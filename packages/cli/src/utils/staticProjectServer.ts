@@ -71,7 +71,11 @@ export async function serveStaticProjectHtml(
   projectDir: string,
   html: string,
   bindErrorMessage = "Failed to bind local HTTP server",
+  // Extra dirs to resolve non-index requests against, after projectDir (e.g. a
+  // temp dir of localized remote assets).
+  assetRoots: readonly string[] = [],
 ): Promise<StaticProjectServer> {
+  const roots = [projectDir, ...assetRoots];
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
@@ -81,16 +85,15 @@ export async function serveStaticProjectHtml(
       return;
     }
 
-    const filePath = resolve(projectDir, decodeURIComponent(url).replace(/^\//, ""));
-    const rel = relative(projectDir, filePath);
-    if (rel.startsWith("..") || isAbsolute(rel)) {
-      res.writeHead(403);
-      res.end();
-      return;
-    }
-    if (existsSync(filePath)) {
-      serveFileWithRange(filePath, req.headers.range, res);
-      return;
+    const requestPath = decodeURIComponent(url).replace(/^\//, "");
+    for (const root of roots) {
+      const filePath = resolve(root, requestPath);
+      const rel = relative(root, filePath);
+      if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
+      if (existsSync(filePath)) {
+        serveFileWithRange(filePath, req.headers.range, res);
+        return;
+      }
     }
     res.writeHead(404);
     res.end();

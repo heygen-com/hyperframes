@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
@@ -334,6 +335,37 @@ export function extractCompositionErrorsFromLint(
     .map((f) => ({ level: "error" as const, text: f.message }));
 }
 
+// Match the render pipeline: localize remote <img>/<video>/<audio>/@font-face
+// into a temp dir (served as an extra asset root) so validate resolves them
+// same-origin and doesn't false-fail on cross-origin (crossorigin/CORS) fetches
+// the real render never makes. Best-effort: no-op on any failure.
+async function localizeRemoteAssets(
+  html: string,
+): Promise<{ html: string; assetRoots: string[]; cleanup: () => void }> {
+  let dir: string | undefined;
+  try {
+    const { loadProducer } = await import("../utils/producer.js");
+    const { localizeRemoteMediaSources, localizeRemoteImageSources, localizeRemoteFontFaces } =
+      await loadProducer();
+    dir = mkdtempSync(join(tmpdir(), "hf-validate-assets-"));
+    const assetDir = dir;
+    const media = await localizeRemoteMediaSources(html, assetDir);
+    const images = await localizeRemoteImageSources(media.html, assetDir);
+    const fonts = await localizeRemoteFontFaces(images.html, assetDir);
+    const count =
+      media.remoteMediaAssets.size + images.remoteMediaAssets.size + fonts.remoteMediaAssets.size;
+    return {
+      html: fonts.html,
+      assetRoots: count > 0 ? [assetDir] : [],
+      cleanup: () => rmSync(assetDir, { recursive: true, force: true }),
+    };
+  } catch {
+    // Best-effort: drop any partial temp dir before falling back to remote URLs.
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    return { html, assetRoots: [], cleanup: () => {} };
+  }
+}
+
 async function validateInBrowser(
   project: ProjectDir,
   opts: { timeout?: number; contrast?: boolean },
@@ -359,7 +391,17 @@ async function validateInBrowser(
   // runtime tag) is no longer needed — there's no `src` attribute to match.
   const html = await bundleToSingleHtml(projectDir);
 
-  const server = await serveStaticProjectHtml(projectDir, html);
+  const localized = await localizeRemoteAssets(html);
+  const server = await serveStaticProjectHtml(
+    projectDir,
+    localized.html,
+    undefined,
+    localized.assetRoots,
+  ).catch((err) => {
+    // Server never started — the finally below won't run, so clean up here.
+    localized.cleanup();
+    throw err;
+  });
 
   const errors: ConsoleEntry[] = [...compositionErrors];
   const warnings: ConsoleEntry[] = [];
@@ -445,6 +487,7 @@ async function validateInBrowser(
     await chromeBrowser.close();
   } finally {
     await server.close();
+    localized.cleanup();
   }
 
   return { errors, warnings, contrast };

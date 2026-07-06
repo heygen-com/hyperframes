@@ -27,6 +27,15 @@ export {
   type RenderObservationStatus,
 } from "./services/render/observability.js";
 
+// ── HTML asset localization ─────────────────────────────────────────────────
+// Rewrite remote <img>/<video>/<audio>/@font-face to same-origin local paths
+// before capture. Shared by render and `validate` so both resolve assets alike.
+export {
+  localizeRemoteMediaSources,
+  localizeRemoteImageSources,
+  localizeRemoteFontFaces,
+} from "./services/htmlCompiler.js";
+
 // ── Frame capture (lower-level) ─────────────────────────────────────────────
 export {
   createCaptureSession,

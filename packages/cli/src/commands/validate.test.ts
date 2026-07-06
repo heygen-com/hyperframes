@@ -9,6 +9,25 @@ import {
 } from "./validate.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 
+// validateInBrowser lazy-loads the producer localize helpers via loadProducer;
+// mock it so these unit tests never resolve @hyperframes/producer's built dist.
+vi.mock("../utils/producer.js", () => ({
+  loadProducer: vi.fn(async () => ({
+    localizeRemoteMediaSources: vi.fn(async (html: string) => ({
+      html,
+      remoteMediaAssets: new Map(),
+    })),
+    localizeRemoteImageSources: vi.fn(async (html: string) => ({
+      html,
+      remoteMediaAssets: new Map(),
+    })),
+    localizeRemoteFontFaces: vi.fn(async (html: string) => ({
+      html,
+      remoteMediaAssets: new Map(),
+    })),
+  })),
+}));
+
 // Regression for the validate audio-duration-probe timeout: a slow-loading
 // media element's duration was snapshotted once, at a fixed point in time,
 // and any element still mid-load was permanently misreported as unreadable.
