@@ -420,6 +420,11 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                       setSelectedElementId(nextElement ? elementKey : null);
                       onSelectElement?.(nextElement);
                     }}
+                    onKeyActivate={() => {
+                      const nextElement = isSelected ? null : el;
+                      setSelectedElementId(nextElement ? elementKey : null);
+                      onSelectElement?.(nextElement);
+                    }}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
                       if (suppressClickRef.current) return;

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
+import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 
 const SHORTCUT_SECTIONS = [
   {
@@ -18,7 +19,7 @@ const SHORTCUT_SECTIONS = [
     ],
   },
   {
-    title: "Keyframes",
+    title: "Keyframes (when an element is selected)",
     hints: [
       { key: "K", label: "Add keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
@@ -36,9 +37,10 @@ const SHORTCUT_SECTIONS = [
       { key: "⌘V", label: "Paste element" },
       { key: "⌘X", label: "Cut element" },
       { key: "S", label: "Split clip at playhead" },
+      { key: "⇧Click", label: "Razor tool: split all tracks" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
-      { key: "Del", label: "Delete selected element" },
+      { key: "Del", label: "Delete selected element (no keyframe selected)" },
     ],
   },
   {
@@ -101,19 +103,23 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
 }: ShortcutsPanelProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [jumpFrame, setJumpFrame] = useState("");
-  const shortcutsPanelRef = useRef<HTMLDivElement>(null);
+  const closePanel = useCallback(() => setShowShortcuts(false), []);
+  // Ref covers trigger + panel; closes on outside click AND Escape.
+  const shortcutsPanelRef = useContextMenuDismiss(closePanel);
+  const panelBodyRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
+  // Move focus into the panel on open so keyboard users can scroll/operate it;
+  // return focus to the trigger on close.
+  // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
-    if (!showShortcuts) return;
-    const handleMouseDown = (e: MouseEvent) => {
-      if (shortcutsPanelRef.current && !shortcutsPanelRef.current.contains(e.target as Node)) {
-        setShowShortcuts(false);
-      }
-    };
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown);
-    };
+    if (showShortcuts) {
+      const trigger = triggerRef.current;
+      panelBodyRef.current?.focus();
+      return () => {
+        trigger?.focus();
+      };
+    }
   }, [showShortcuts]);
 
   const commitJumpFrame = useCallback(() => {
@@ -144,6 +150,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     <div ref={shortcutsPanelRef} className="relative flex-shrink-0">
       <Tooltip label="Shortcuts and tools">
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setShowShortcuts((v) => !v)}
           className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
@@ -172,7 +179,11 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
       </Tooltip>
       {showShortcuts && (
         <div
-          className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto"
+          ref={panelBodyRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-label="Keyboard shortcuts and tools"
+          className="absolute bottom-full right-0 mb-2 z-50 rounded-lg shadow-xl min-w-[220px] overflow-y-auto outline-none"
           style={{
             background: "#161618",
             border: "1px solid rgba(255,255,255,0.08)",

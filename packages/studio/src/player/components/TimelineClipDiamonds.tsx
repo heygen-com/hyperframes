@@ -268,12 +268,22 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onClick={(e) => {
+              // Keyboard activation only (Enter/Space synthesize a click with
+              // detail === 0); pointer presses are handled in onPointerUp and
+              // their synthesized click is suppressed via suppressNextClick.
+              if (e.detail !== 0) return;
+              e.stopPropagation();
+              if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
+              else onClickKeyframe?.(kf.percentage);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
               onContextMenuKeyframe?.(e, elementId, kf.percentage);
             }}
-            title={`${kf.percentage}%`}
+            title={`Keyframe at ${Math.round(kf.percentage)}%`}
+            aria-label={`Keyframe at ${Math.round(kf.percentage)}%`}
           >
             <svg width={diamondSize} height={diamondSize} viewBox="0 0 10 10">
               {isKfSelected && (

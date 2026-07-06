@@ -121,12 +121,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const loadCountRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const assetFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const playerElRef = useRef<HyperframesPlayerElement | null>(null);
+    const srcRef = useRef<string>("");
     const [assetsLoading, setAssetsLoading] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
+    const [assetWaitLong, setAssetWaitLong] = useState(false);
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
+    const [loadError, setLoadError] = useState(false);
 
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
@@ -155,6 +159,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const src = directUrl || `/api/projects/${projectId}/preview`;
+        playerElRef.current = player;
+        srcRef.current = src;
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
         player.setAttribute("src", src);
@@ -201,9 +207,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         const handleReady = () => {
           setCompositionLoading(false);
+          setLoadError(false);
         };
         const handleError = () => {
           setCompositionLoading(false);
+          setLoadError(true);
         };
         player.addEventListener("ready", handleReady);
         player.addEventListener("error", handleError);
@@ -213,6 +221,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           loadCountRef.current++;
           setShaderTransitionLoading(false);
           setCompositionLoading(true);
+          setLoadError(false);
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -249,6 +258,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               attempts += 1;
               lastUnloaded = hasUnloadedAssets(iframe, lastUnloaded);
               if (!lastUnloaded || attempts > 100) {
+                if (lastUnloaded && attempts > 100) {
+                  console.debug(
+                    "[studio] asset readiness poll hit the 10s cap — continuing with unloaded assets",
+                  );
+                }
                 if (assetPollRef.current) clearInterval(assetPollRef.current);
                 assetPollRef.current = null;
                 setAssetsLoading(false);
@@ -268,6 +282,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
+          if (playerElRef.current === player) playerElRef.current = null;
           container.removeChild(player);
           // Clear the forwarded ref only if it still points to THIS iframe.
           // During crossfade refreshes the retiring Player unmounts after the
@@ -292,6 +307,17 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         cleanup?.();
       };
     });
+
+    // Surface a "Continue anyway" escape hatch once the asset wait drags on.
+    // eslint-disable-next-line no-restricted-syntax
+    useEffect(() => {
+      if (!assetsLoading) {
+        setAssetWaitLong(false);
+        return;
+      }
+      const timer = setTimeout(() => setAssetWaitLong(true), 3000);
+      return () => clearTimeout(timer);
+    }, [assetsLoading]);
 
     useEffect(() => {
       if (assetFadeRef.current) {
@@ -320,12 +346,28 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     }, [assetsLoading]);
 
+    const handleRetryLoad = () => {
+      const player = playerElRef.current;
+      if (!player || !srcRef.current) return;
+      setLoadError(false);
+      setCompositionLoading(true);
+      player.setAttribute("src", srcRef.current);
+    };
+
+    const handleContinueAnyway = () => {
+      if (assetPollRef.current) {
+        clearInterval(assetPollRef.current);
+        assetPollRef.current = null;
+      }
+      setAssetsLoading(false);
+    };
+
     const showCompositionOverlay =
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
       shouldShowCompositionLoadingOverlay(compositionLoading);
     const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
+      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !loadError;
 
     useEffect(() => {
       onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
@@ -362,17 +404,50 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             style={{
               opacity: assetOverlayFading ? 0 : 1,
               pointerEvents: assetOverlayFading ? "none" : "auto",
-              transition: "opacity 240ms ease-out",
+              transition: "opacity 180ms ease-in",
             }}
             onDragStart={(event) => event.preventDefault()}
             onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={(event) => event.preventDefault()}
           >
-            <HyperframesLoader
-              title="Preparing preview assets"
-              detail="Waiting for media and motion assets before playback starts."
-              size={56}
-            />
+            <div className="flex flex-col items-center gap-3">
+              <HyperframesLoader
+                title="Preparing preview assets"
+                detail="Waiting for media and motion assets before playback starts."
+                size={56}
+              />
+              {assetWaitLong && (
+                <button
+                  type="button"
+                  onClick={handleContinueAnyway}
+                  className="px-3 py-1.5 text-[11px] rounded-md border border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800 transition-colors"
+                >
+                  Continue anyway
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {loadError && !showCompositionOverlay && (
+          <div
+            className="absolute inset-0 bg-black/90 flex items-center justify-center z-30 select-none"
+            data-hyperframes-ignore=""
+            role="alert"
+          >
+            <div className="flex flex-col items-center gap-3 text-center px-6">
+              <span className="text-sm text-neutral-200 font-medium">
+                Couldn&apos;t load the composition preview
+              </span>
+              <span className="text-[11px] text-neutral-500">
+                The preview failed to load. Check that the composition file is valid, then retry.
+              </span>
+              <button
+                type="button"
+                onClick={handleRetryLoad}
+                className="px-3 py-1.5 text-[11px] rounded-md border border-studio-accent/40 text-studio-accent hover:bg-studio-accent/10 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
       </div>

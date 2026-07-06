@@ -13,16 +13,43 @@ interface EditPopoverProps {
   onClose: () => void;
 }
 
+function draftKey(start: number, end: number): string {
+  return `hf-edit-draft:${start.toFixed(2)}:${end.toFixed(2)}`;
+}
+
+function readDraft(key: string): string {
+  try {
+    return sessionStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeDraft(key: string, value: string): void {
+  try {
+    if (value) sessionStorage.setItem(key, value);
+    else sessionStorage.removeItem(key);
+  } catch {
+    /* storage unavailable — draft persistence degrades gracefully */
+  }
+}
+
 export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }: EditPopoverProps) {
   const elements = usePlayerStore((s) => s.elements);
-  const [prompt, setPrompt] = useState("");
-  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
-  const [copiedPromptOnly, setCopiedPromptOnly] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   const start = Math.min(rangeStart, rangeEnd);
   const end = Math.max(rangeStart, rangeEnd);
+  // Persist the typed prompt per range so Escape/outside-click doesn't destroy it.
+  const storageKey = draftKey(start, end);
+  const [prompt, setPromptState] = useState(() => readDraft(storageKey));
+  const setPrompt = (value: string) => {
+    setPromptState(value);
+    writeDraft(storageKey, value);
+  };
+  const [copiedAgentPrompt, setCopiedAgentPrompt] = useState(false);
+  const [copiedPromptOnly, setCopiedPromptOnly] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const elementsInRange = useMemo(() => {
     return elements.filter((el) => {
@@ -64,19 +91,28 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
 
   const handleCopy = useCallback(async () => {
     const copied = await copyTextToClipboard(buildClipboardText());
-    if (!copied) return;
+    if (!copied) {
+      setCopyError(true);
+      return;
+    }
+    setCopyError(false);
+    writeDraft(storageKey, "");
     setCopiedAgentPrompt(true);
     setTimeout(() => {
       setCopiedAgentPrompt(false);
       onClose();
     }, 800);
-  }, [buildClipboardText, onClose]);
+  }, [buildClipboardText, onClose, storageKey]);
 
   const handleCopyPrompt = useCallback(async () => {
     const promptText = buildPromptCopyText(prompt);
     if (!promptText) return;
     const copied = await copyTextToClipboard(promptText);
-    if (!copied) return;
+    if (!copied) {
+      setCopyError(true);
+      return;
+    }
+    setCopyError(false);
     setCopiedPromptOnly(true);
     setTimeout(() => {
       setCopiedPromptOnly(false);
@@ -137,6 +173,11 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
         </div>
 
         {/* Action */}
+        {copyError && (
+          <p className="px-3 pb-2 text-[10px] text-red-400" role="alert">
+            Copy failed — check clipboard permissions and try again.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2 px-3 pb-3">
           <button
             onClick={handleCopyPrompt}

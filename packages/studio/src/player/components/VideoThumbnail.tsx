@@ -25,6 +25,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const [containerWidth, setContainerWidth] = useState(0);
   const [visible, setVisible] = useState(false);
   const [frames, setFrames] = useState<string[]>([]);
+  const [failed, setFailed] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
   const ioRef = useRef<IntersectionObserver | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
@@ -125,7 +126,9 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     });
 
     video.addEventListener("error", () => {
-      /* keep whatever frames we have */
+      // Keep whatever frames we have; with none, mark failed so the shimmer
+      // resolves to a static placeholder instead of pulsing forever.
+      if (!cancelled) setFailed(true);
     });
 
     video.src = videoSrc;
@@ -135,6 +138,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       cancelled = true;
       extractingRef.current = false;
       setFrames([]);
+      setFailed(false);
       video.src = "";
       video.load();
     };
@@ -167,14 +171,20 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         </div>
       )}
 
-      {visible && frames.length === 0 && (
+      {visible && frames.length === 0 && !failed && (
         <div
-          className="absolute inset-0 animate-pulse"
+          className="absolute inset-0 animate-pulse motion-reduce:animate-none"
           style={{
             background:
               "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
           }}
         />
+      )}
+
+      {visible && frames.length === 0 && failed && (
+        <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/60">
+          <span className="text-[8px] text-neutral-500 bg-black/50 px-1 rounded">no preview</span>
+        </div>
       )}
 
       <div

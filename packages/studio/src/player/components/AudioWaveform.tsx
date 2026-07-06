@@ -41,31 +41,28 @@ function extractPeaks(channelData: Float32Array, barCount: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
-/** Deterministic fake waveform as fallback (matches demo app). */
-function fakePeaks(url: string, count: number): number[] {
-  let seed = 0;
-  for (let i = 0; i < url.length; i++) seed = ((seed << 5) - seed + url.charCodeAt(i)) | 0;
-  seed = Math.abs(seed) || 42;
-  const rand = () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed & 0x7fffffff) / 2147483647;
-  };
-  const peaks: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = i / count;
-    const envelope = 0.3 + 0.3 * Math.sin(t * Math.PI * 3.2) + 0.2 * Math.sin(t * Math.PI * 7.1);
-    peaks.push(Math.max(0.05, Math.min(1, envelope * (0.4 + 0.6 * rand()))));
-  }
-  return peaks;
-}
-
 // Module-level cache so decoded audio persists across re-renders and re-mounts
 const peaksCache = new Map<string, number[]>();
-const decodeInFlight = new Map<string, Promise<number[]>>();
+const decodeInFlight = new Map<string, Promise<number[] | null>>();
+// URLs whose fetch/decode recently failed — render the degraded state instead
+// of refetch-looping (and never fabricate plausible-looking peaks the user
+// might trim or beat-align against). Failures expire so a transient error
+// (server restarting, file mid-import) doesn't pin "unavailable" all session.
+const decodeFailed = new Map<string, number>();
+const DECODE_RETRY_MS = 30_000;
+function hasRecentDecodeFailure(key: string): boolean {
+  const failedAt = decodeFailed.get(key);
+  if (failedAt === undefined) return false;
+  if (Date.now() - failedAt > DECODE_RETRY_MS) {
+    decodeFailed.delete(key);
+    return false;
+  }
+  return true;
+}
 
 /**
  * Audio waveform rendered from real PCM data via Web Audio API.
- * Falls back to a deterministic fake pattern if decoding fails.
+ * Shows an explicit "waveform unavailable" degraded state if decoding fails.
  * Bars grow from bottom to top, rendered as CSS divs for zoom resilience.
  */
 export const AudioWaveform = memo(function AudioWaveform({
@@ -81,9 +78,17 @@ export const AudioWaveform = memo(function AudioWaveform({
   const roRef = useRef<ResizeObserver | null>(null);
   const cacheKey = waveformUrl ?? audioUrl;
   const [peaks, setPeaks] = useState<number[] | null>(peaksCache.get(cacheKey) ?? null);
+  const [decodeError, setDecodeError] = useState(() => hasRecentDecodeFailure(cacheKey));
+
+  // Re-sync when the clip's audio source is swapped on the same mounted
+  // component — a stale error (or stale peaks) must not block the new URL.
+  useEffect(() => {
+    setPeaks(peaksCache.get(cacheKey) ?? null);
+    setDecodeError(hasRecentDecodeFailure(cacheKey));
+  }, [cacheKey]);
 
   useEffect(() => {
-    if (peaks || !cacheKey) return;
+    if (peaks || decodeError || !cacheKey) return;
 
     let cancelled = false;
 
@@ -105,10 +110,13 @@ export const AudioWaveform = memo(function AudioWaveform({
               })
               .then((decoded) => extractPeaks(decoded.getChannelData(0), 4000))
       )
-        .catch(() => fakePeaks(cacheKey, 4000))
-        .then((p) => {
+        .then((p: number[]) => {
           peaksCache.set(cacheKey, p);
-          return p;
+          return p as number[] | null;
+        })
+        .catch(() => {
+          decodeFailed.set(cacheKey, Date.now());
+          return null;
         })
         .finally(() => decodeInFlight.delete(cacheKey));
 
@@ -116,12 +124,14 @@ export const AudioWaveform = memo(function AudioWaveform({
     }
 
     promise.then((p) => {
-      if (!cancelled) setPeaks(p);
+      if (cancelled) return;
+      if (p) setPeaks(p);
+      else setDecodeError(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [audioUrl, waveformUrl, cacheKey, peaks]);
+  }, [audioUrl, waveformUrl, cacheKey, peaks, decodeError]);
 
   // Draw bars into the container using innerHTML (fast, zoom-resilient)
   const draw = useCallback(() => {
@@ -185,15 +195,36 @@ export const AudioWaveform = memo(function AudioWaveform({
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       <div ref={barsRef} className="absolute left-0 right-0 bottom-0" style={{ top: 16 }} />
       {/* Shimmer while decoding */}
-      {!peaks && (
+      {!peaks && !decodeError && (
         <div
-          className="absolute left-0 right-0 bottom-0 animate-pulse"
+          className="absolute left-0 right-0 bottom-0 animate-pulse motion-reduce:animate-none"
           style={{
             top: 16,
             background:
               "linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0.02) 100%)",
           }}
         />
+      )}
+      {/* Degraded state — decode failed; render an explicit flat placeholder
+          instead of fabricated peaks the user might edit against. */}
+      {decodeError && (
+        <div
+          className="absolute left-0 right-0 flex items-center justify-center gap-1.5"
+          style={{ top: 16, bottom: 0 }}
+        >
+          <div
+            className="absolute left-0 right-0"
+            style={{
+              bottom: "20%",
+              height: 2,
+              background:
+                "repeating-linear-gradient(90deg, rgba(75,163,210,0.35) 0 2px, transparent 2px 5px)",
+            }}
+          />
+          <span className="relative text-[8px] text-neutral-500 bg-black/50 px-1 rounded">
+            waveform unavailable
+          </span>
+        </div>
       )}
       <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 z-10">
         <span

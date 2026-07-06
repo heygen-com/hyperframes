@@ -308,7 +308,6 @@ const SeekBar = memo(function SeekBar({
       aria-disabled={disabled || undefined}
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
-      aria-valuenow={0}
       className={`min-w-[96px] flex-1 h-6 flex items-center group outline-none focus-visible:ring-1 focus-visible:ring-white/30 focus-visible:rounded ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
@@ -328,7 +327,7 @@ const SeekBar = memo(function SeekBar({
         />
         <div
           ref={progressThumbRef}
-          className="absolute top-1/2 z-[4] w-3 h-3 rounded-full -translate-y-1/2 -translate-x-1/2 transition-transform group-hover:scale-125"
+          className="absolute top-1/2 z-[4] w-3 h-3 rounded-full -translate-y-1/2 -translate-x-1/2 transition-transform group-hover:scale-110"
           style={{
             background: "var(--hf-accent, #3CE6AC)",
             boxShadow: "0 0 6px rgba(60,230,172,0.4), 0 1px 4px rgba(0,0,0,0.4)",
@@ -421,6 +420,12 @@ export const PlayerControls = memo(function PlayerControls({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         onSeek(Math.min(duration, stepFrameTime(currentTimeRef.current, step)));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        onSeek(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        onSeek(duration);
       }
     },
     [disabled, timelineReady, duration, onSeek],
