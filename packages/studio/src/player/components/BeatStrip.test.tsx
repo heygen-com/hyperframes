@@ -74,9 +74,7 @@ function mountBeatStrip(renderTimeRange?: { start: number; end: number }) {
 }
 
 function firstBeat(): HTMLDivElement {
-  const beat = document.querySelector<HTMLDivElement>(
-    '[title="Drag to move · double-click to delete"]',
-  );
+  const beat = document.querySelector<HTMLDivElement>('[title="Drag to move · ⌥-click to delete"]');
   if (!beat) throw new Error("Expected a beat handle");
   return beat;
 }
@@ -256,9 +254,7 @@ describe("BeatStrip gesture ownership", () => {
       );
     });
 
-    expect(
-      document.querySelectorAll('[title="Drag to move · double-click to delete"]'),
-    ).toHaveLength(2);
+    expect(document.querySelectorAll('[title="Drag to move · ⌥-click to delete"]')).toHaveLength(2);
     expect(commitBeatEditsSpy).not.toHaveBeenCalled();
 
     act(() => {
@@ -297,10 +293,10 @@ describe("BeatStrip gesture ownership", () => {
     });
 
     const lefts = Array.from(
-      document.querySelectorAll<HTMLDivElement>('[title="Drag to move · double-click to delete"]'),
+      document.querySelectorAll<HTMLDivElement>('[title="Drag to move · ⌥-click to delete"]'),
       (beat) => beat.style.left,
     );
-    expect(lefts).toContain("134px");
+    expect(lefts).toContain("128px");
 
     releaseBeatDrag(140);
     expectCommittedBeatAt(1.4);
@@ -310,7 +306,7 @@ describe("BeatStrip gesture ownership", () => {
     mountBeatStrip();
     startBeatDrag();
     const beats = document.querySelectorAll<HTMLDivElement>(
-      '[title="Drag to move · double-click to delete"]',
+      '[title="Drag to move · ⌥-click to delete"]',
     );
     act(() => {
       beats[1]?.dispatchEvent(

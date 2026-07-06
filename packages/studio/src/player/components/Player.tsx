@@ -135,6 +135,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [assetsLoading, setAssetsLoading] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
+    const [assetWaitLong, setAssetWaitLong] = useState(false);
     const [shaderTransitionLoading, setShaderTransitionLoading] = useState(false);
     const [compositionLoading, setCompositionLoading] = useState(true);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
@@ -236,6 +237,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               attempts += 1;
               lastUnloaded = hasUnloadedAssets(iframe, lastUnloaded);
               if (!lastUnloaded || attempts > 100) {
+                if (lastUnloaded && attempts > 100) {
+                  console.debug(
+                    "[studio] asset readiness poll hit the 10s cap — continuing with unloaded assets",
+                  );
+                }
                 if (assetPollRef.current) clearInterval(assetPollRef.current);
                 assetPollRef.current = null;
                 setAssetsLoading(false);
@@ -327,6 +333,17 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     });
 
+    // Surface a "Continue anyway" escape hatch once the asset wait drags on.
+    // eslint-disable-next-line no-restricted-syntax
+    useEffect(() => {
+      if (!assetsLoading) {
+        setAssetWaitLong(false);
+        return;
+      }
+      const timer = setTimeout(() => setAssetWaitLong(true), 3000);
+      return () => clearTimeout(timer);
+    }, [assetsLoading]);
+
     useEffect(() => {
       if (assetFadeRef.current) {
         clearTimeout(assetFadeRef.current);
@@ -354,12 +371,20 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       };
     }, [assetsLoading]);
 
+    const handleContinueAnyway = () => {
+      if (assetPollRef.current) {
+        clearInterval(assetPollRef.current);
+        assetPollRef.current = null;
+      }
+      setAssetsLoading(false);
+    };
+
     const showCompositionOverlay =
       !suppressLoadingOverlay &&
       !compositionOverlayDeferred &&
       shouldShowCompositionLoadingOverlay(compositionLoading);
     const showAssetOverlay =
-      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
+      assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay && !previewError;
 
     useEffect(() => {
       onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
@@ -396,17 +421,27 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             style={{
               opacity: assetOverlayFading ? 0 : 1,
               pointerEvents: assetOverlayFading ? "none" : "auto",
-              transition: "opacity 240ms ease-out",
+              transition: "opacity 180ms ease-in",
             }}
             onDragStart={(event) => event.preventDefault()}
             onMouseDown={(event) => event.preventDefault()}
-            onPointerDown={(event) => event.preventDefault()}
           >
-            <HyperframesLoader
-              title="Preparing preview assets"
-              detail="Waiting for media and motion assets before playback starts."
-              size={56}
-            />
+            <div className="flex flex-col items-center gap-3">
+              <HyperframesLoader
+                title="Preparing preview assets"
+                detail="Waiting for media and motion assets before playback starts."
+                size={56}
+              />
+              {assetWaitLong && (
+                <button
+                  type="button"
+                  onClick={handleContinueAnyway}
+                  className="px-3 py-1.5 text-[11px] rounded-md border border-neutral-700 text-neutral-300 hover:border-neutral-500 hover:bg-neutral-800 transition-colors"
+                >
+                  Continue anyway
+                </button>
+              )}
+            </div>
           </div>
         )}
         {previewError && (

@@ -12,6 +12,8 @@ import {
 import { ClipContextMenu } from "./ClipContextMenu";
 import { TrackGapContextMenu } from "./TrackGapContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
+import { copyTextToClipboard } from "../../utils/clipboard";
+import { trackStudioSegmentEaseEdit } from "../../telemetry/events";
 
 export interface ClipContextMenuState {
   x: number;
@@ -195,6 +197,38 @@ export function TimelineOverlays({
                 }
               : undefined
           }
+          // Routed to the same focused-ease-segment path a segment click takes,
+          // so the menu advertises the editor that exists rather than growing a
+          // second one. Offered only for a keyframe that names a tween to focus.
+          onEditEase={
+            kfContextMenu.animationId !== undefined && kfContextMenu.tweenPercentage !== undefined
+              ? (elementId, keyframe) => {
+                  if (
+                    keyframe.animationId === undefined ||
+                    keyframe.tweenPercentage === undefined
+                  ) {
+                    return;
+                  }
+                  usePlayerStore.getState().setFocusedEaseSegment({
+                    animationId: keyframe.animationId,
+                    collidingAnimationTargets: keyframe.collidingAnimationTargets,
+                    tweenPercentage: keyframe.tweenPercentage,
+                    elementId,
+                  });
+                  trackStudioSegmentEaseEdit({ action: "open" });
+                }
+              : undefined
+          }
+          onCopyProperties={(elementId, keyframe) => {
+            const entry = usePlayerStore.getState().keyframeCache.get(elementId);
+            // Tolerance match on clip-%, the same basis the cache is keyed on —
+            // an exact float compare misses a keyframe the menu just opened over.
+            const kf = entry?.keyframes.find(
+              (item) => Math.abs(item.percentage - keyframe.percentage) < 0.5,
+            );
+            if (!kf) return false;
+            return copyTextToClipboard(JSON.stringify(kf.properties, null, 2));
+          }}
         />
       )}
 
