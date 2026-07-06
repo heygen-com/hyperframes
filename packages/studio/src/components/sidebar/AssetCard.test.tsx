@@ -52,7 +52,7 @@ describe("AssetCard click behavior", () => {
   const cardProps = {
     projectId: "p1",
     onCopy: vi.fn(),
-    isCopied: false,
+    copyFeedback: null,
   };
 
   it("clears an open preview overlay when clicking an already-added asset (reveal branch)", () => {
@@ -81,7 +81,7 @@ describe("AudioRow click behavior", () => {
   const rowProps = {
     projectId: "p1",
     onCopy: vi.fn(),
-    isCopied: false,
+    copyFeedback: null,
   };
 
   it("clears an open preview overlay when clicking an already-added audio asset (reveal branch)", () => {
