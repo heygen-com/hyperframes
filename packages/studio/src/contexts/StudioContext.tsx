@@ -19,7 +19,12 @@ export interface StudioShellValue {
   renderQueue: {
     jobs: unknown[];
     isRendering: boolean;
+    loadError: string | null;
+    actionError: string | null;
+    dismissActionError: () => void;
+    reloadRenders: () => void;
     deleteRender: (jobId: string) => void;
+    cancelRender: (jobId: string) => void;
     clearCompleted: () => void;
     startRender: (options: unknown) => Promise<void>;
   };
@@ -58,6 +63,7 @@ export function useStudioPlaybackContext(): StudioPlaybackValue {
 }
 
 /** @deprecated Use useStudioShellContext and/or useStudioPlaybackContext instead. */
+// fallow-ignore-next-line unused-export
 export function useStudioContext(): StudioContextValue {
   const shell = useStudioShellContext();
   const playback = useStudioPlaybackContext();
@@ -166,6 +172,7 @@ export function StudioPlaybackProvider({
 }
 
 /** @deprecated Use StudioShellProvider and StudioPlaybackProvider instead. */
+// fallow-ignore-next-line unused-export
 export function StudioProvider({
   value,
   children,

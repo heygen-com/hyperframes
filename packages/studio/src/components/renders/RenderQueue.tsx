@@ -1,5 +1,6 @@
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useId } from "react";
 import { RenderQueueItem } from "./RenderQueueItem";
+import { Button } from "../ui/Button";
 import type { RenderJob, ResolutionPreset } from "./useRenderQueue";
 import { getPersistedRenderSettings, persistRenderSettings } from "./renderSettings";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -20,9 +21,17 @@ interface RenderQueueProps {
   jobs: RenderJob[];
   projectId: string;
   onDelete: (jobId: string) => void;
+  onCancel?: (jobId: string) => void;
   onClearCompleted: () => void;
   onStartRender: StartRenderHandler;
   isRendering: boolean;
+  /** History fetch failure (null when the last load succeeded). */
+  loadError?: string | null;
+  /** Retry a failed history load. */
+  onRetryLoad?: () => void;
+  /** Failure of a delete/cancel action, shown inline until dismissed. */
+  actionError?: string | null;
+  onDismissActionError?: () => void;
   /**
    * Authored dimensions of the active composition. Used to pick the
    * matching preset (landscape / portrait / square) when the user selects
@@ -110,9 +119,15 @@ function scaleOptionLabel(
   dims: CompositionDimensions | null | undefined,
 ): string {
   const resolved = resolvedDimensions(scale, dims);
-  return resolved
+  const base = resolved
     ? `${SCALE_LABEL[scale]} · ${resolved.width}×${resolved.height}`
     : SCALE_LABEL[scale];
+  // Explain *why* an option is disabled instead of greying it silently:
+  // the preset must be an exact integer upscale of the authored size.
+  if (dims && !scaleApplies(scale, dims)) {
+    return `${base} — not an integer scale of ${dims.width}×${dims.height}`;
+  }
+  return base;
 }
 
 const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string }> = {
@@ -127,9 +142,14 @@ const FORMAT_INFO: Record<"mp4" | "webm" | "mov", { label: string; desc: string 
   },
 };
 
+// Rich format guidance in a keyboard-reachable disclosure: the trigger is a
+// real button (focusable, labelled), the panel is tied to it via
+// aria-describedby, and Escape dismisses (WCAG 1.4.13). Content is too rich
+// for the one-line ui/Tooltip primitive, so this stays a local popover.
 function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
   const [open, setOpen] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const panelId = useId();
 
   const show = () => {
     clearTimeout(timeoutRef.current);
@@ -141,27 +161,51 @@ function FormatInfoTooltip({ format }: { format: "mp4" | "webm" | "mov" }) {
 
   useEffect(() => () => clearTimeout(timeoutRef.current), []);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
   const info = FORMAT_INFO[format];
 
   return (
     <div className="relative" onPointerEnter={show} onPointerLeave={hide}>
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="text-panel-text-5 hover:text-panel-text-3 transition-colors cursor-help"
+      <button
+        type="button"
+        aria-label="About video formats"
+        aria-expanded={open}
+        aria-describedby={open ? panelId : undefined}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex items-center justify-center p-0.5 -m-0.5 rounded text-panel-text-5 hover:text-panel-text-3 transition-colors cursor-help outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
       >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+      </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50">
+        <div
+          id={panelId}
+          role="tooltip"
+          className="absolute top-full right-0 mt-1.5 w-52 p-2 rounded bg-panel-input border border-neutral-700 shadow-lg z-50"
+        >
           <p className="text-[10px] font-semibold text-panel-text-1 mb-0.5">{info.label}</p>
           <p className="text-[9px] text-panel-text-3 leading-tight">{info.desc}</p>
           <div className="mt-1.5 pt-1.5 border-t border-neutral-800">
@@ -191,14 +235,21 @@ const QUALITY_OPTIONS: {
   { value: "high", label: "High Quality", title: "Best quality, larger file" },
 ];
 
+function formatEta(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 function FormatExportButton({
   onStartRender,
   isRendering,
   compositionDimensions,
+  lastRenderDurationMs,
 }: {
   onStartRender: StartRenderHandler;
   isRendering: boolean;
   compositionDimensions?: CompositionDimensions | null;
+  lastRenderDurationMs?: number;
 }) {
   const persisted = getPersistedRenderSettings();
   const [format, setFormat] = useState<"mp4" | "webm" | "mov">(persisted.format);
@@ -293,16 +344,26 @@ function FormatExportButton({
           </div>
         )}
       </div>
-      <button
+      <Button
+        variant="primary"
+        size="md"
+        loading={isRendering}
         onClick={() => {
+          // loading already disables the button; this guard also stops a
+          // double-click in the same frame from enqueueing two renders.
+          if (isRendering) return;
           trackStudioEvent("render_start", { format, quality, resolution, fps });
           void onStartRender(format, quality, resolution, fps);
         }}
-        disabled={isRendering}
-        className="w-full flex items-center justify-center h-8 text-[11px] font-semibold rounded-md bg-panel-accent text-[#09090B] hover:brightness-110 transition-colors disabled:opacity-50"
+        className="w-full text-[11px] font-semibold"
       >
-        {isRendering ? "Rendering..." : "Export"}
-      </button>
+        {isRendering ? "Rendering…" : "Export"}
+      </Button>
+      {lastRenderDurationMs !== undefined && !isRendering && (
+        <p className="text-[9px] text-panel-text-5 text-center -mt-1.5">
+          Last render took {formatEta(lastRenderDurationMs)}
+        </p>
+      )}
     </div>
   );
 }
@@ -311,9 +372,14 @@ export const RenderQueue = memo(function RenderQueue({
   jobs,
   projectId,
   onDelete,
+  onCancel,
   onClearCompleted,
   onStartRender,
   isRendering,
+  loadError,
+  onRetryLoad,
+  actionError,
+  onDismissActionError,
   compositionDimensions,
 }: RenderQueueProps) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -327,6 +393,9 @@ export const RenderQueue = memo(function RenderQueue({
   }, [jobs.length]);
 
   const completedCount = jobs.filter((j) => j.status !== "rendering").length;
+  const lastRenderDurationMs = [...jobs]
+    .reverse()
+    .find((j) => j.status === "complete" && j.durationMs !== undefined)?.durationMs;
 
   return (
     <div className="flex flex-col h-full">
@@ -335,12 +404,40 @@ export const RenderQueue = memo(function RenderQueue({
           onStartRender={onStartRender}
           isRendering={isRendering}
           compositionDimensions={compositionDimensions}
+          lastRenderDurationMs={lastRenderDurationMs}
         />
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-2 px-3 py-2 border-b border-panel-border bg-red-500/10"
+        >
+          <span className="text-[10px] text-red-400">{actionError}</span>
+          {onDismissActionError && (
+            <button
+              onClick={onDismissActionError}
+              aria-label="Dismiss error"
+              className="text-[10px] text-panel-text-4 hover:text-panel-text-2 flex-shrink-0"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Job list */}
       <div ref={listRef} className="flex-1 overflow-y-auto">
-        {jobs.length === 0 ? (
+        {loadError && jobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full px-4 gap-2" role="alert">
+            <p className="text-[10px] text-red-400 text-center">{loadError}</p>
+            {onRetryLoad && (
+              <Button size="sm" variant="secondary" onClick={onRetryLoad}>
+                Retry
+              </Button>
+            )}
+          </div>
+        ) : jobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
               width="20"
@@ -376,11 +473,14 @@ export const RenderQueue = memo(function RenderQueue({
                 <span className="text-[10px] text-panel-text-4">
                   {jobs.length} render{jobs.length === 1 ? "" : "s"}
                 </span>
+                {/* "Hide", not "Clear": files stay on disk (delete is per-row
+                    and confirmed); hidden rows don't resurrect on reload. */}
                 <button
                   onClick={onClearCompleted}
+                  title="Hide finished renders from this list (files stay on disk)"
                   className="text-[10px] text-panel-text-4 hover:text-panel-text-2 transition-colors"
                 >
-                  Clear
+                  Hide finished
                 </button>
               </div>
             )}
@@ -390,6 +490,7 @@ export const RenderQueue = memo(function RenderQueue({
                 job={job}
                 projectId={projectId}
                 onDelete={() => onDelete(job.id)}
+                onCancel={() => onCancel?.(job.id)}
               />
             ))}
           </div>

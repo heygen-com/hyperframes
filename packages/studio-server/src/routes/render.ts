@@ -26,7 +26,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   const cleanupFinishedJobs = () => {
     const now = Date.now();
     for (const [key, job] of renderJobs) {
-      if ((job.status === "complete" || job.status === "failed") && now - job.createdAt > TTL_MS) {
+      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
         renderJobs.delete(key);
       }
     }
@@ -142,10 +142,23 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             error: current.error,
           }),
         });
-        if (current.status === "complete" || current.status === "failed") break;
+        if (current.status !== "rendering") break;
         await stream.sleep(500);
       }
     });
+  });
+
+  // Cancel an in-flight render. Marks the job cancelled immediately (so the
+  // SSE stream terminates) and invokes the adapter's abort hook when present.
+  api.post("/render/:jobId/cancel", (c) => {
+    const { jobId } = c.req.param();
+    const job = renderJobs.get(jobId);
+    if (!job) return c.json({ error: "not found" }, 404);
+    if (job.status === "rendering") {
+      job.status = "cancelled";
+      job.cancel?.();
+    }
+    return c.json({ status: job.status });
   });
 
   const RENDER_MIME: Record<string, string> = {

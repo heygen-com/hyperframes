@@ -21,7 +21,12 @@ interface StudioContextInput {
   renderQueue: {
     jobs: unknown[];
     isRendering: boolean;
+    loadError: string | null;
+    actionError: string | null;
+    dismissActionError: () => void;
+    reloadRenders: () => void;
     deleteRender: (id: string) => void;
+    cancelRender: (id: string) => void;
     clearCompleted: () => void;
     startRender: (options: unknown) => Promise<void>;
   };

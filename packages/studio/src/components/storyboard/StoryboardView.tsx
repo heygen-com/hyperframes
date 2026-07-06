@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useStoryboard } from "../../hooks/useStoryboard";
+import { Button } from "../ui/Button";
 import { StoryboardLoaded } from "./StoryboardLoaded";
 
 export interface StoryboardViewProps {
@@ -22,6 +23,11 @@ export function StoryboardView({ projectId, onSelectComposition }: StoryboardVie
     return (
       <StoryboardFrame>
         <Message tone="error">Couldn’t load the storyboard: {error}</Message>
+        <div className="flex justify-center">
+          <Button size="sm" variant="secondary" onClick={reload}>
+            Retry
+          </Button>
+        </div>
       </StoryboardFrame>
     );
   }

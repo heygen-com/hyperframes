@@ -1,8 +1,14 @@
-import { useCallback, useState, type RefObject } from "react";
+import { useCallback, useRef, useState, type RefObject } from "react";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 
 interface UsePreviewBlockDropOptions {
   portrait?: boolean;
+  /**
+   * Authored composition size measured from the live preview. Preferred over
+   * the portrait fallback — hard-coding 1080/1920 places drops at the wrong
+   * spot for any composition authored at another size (square, 720p, 4K).
+   */
+  compositionSize?: { width: number; height: number } | null;
   stageRef: RefObject<HTMLDivElement | null>;
   onBlockDrop?: (blockName: string, position: { left: number; top: number }) => void;
 }
@@ -28,6 +34,7 @@ function resolveCompositionPosition(
   clientX: number,
   clientY: number,
   stageRect: DOMRect,
+  compositionSize: { width: number; height: number } | null | undefined,
   portrait: boolean | undefined,
 ): { left: number; top: number } | null {
   if (stageRect.width === 0 || stageRect.height === 0) return null;
@@ -35,8 +42,8 @@ function resolveCompositionPosition(
   const normalizedX = (clientX - stageRect.left) / stageRect.width;
   const normalizedY = (clientY - stageRect.top) / stageRect.height;
 
-  const compWidth = portrait ? 1080 : 1920;
-  const compHeight = portrait ? 1920 : 1080;
+  const compWidth = compositionSize?.width ?? (portrait ? 1080 : 1920);
+  const compHeight = compositionSize?.height ?? (portrait ? 1920 : 1080);
 
   return {
     left: Math.max(0, Math.min(normalizedX * compWidth, compWidth)),
@@ -58,10 +65,24 @@ function centerBlockAtPosition(
 
 export function usePreviewBlockDrop({
   portrait,
+  compositionSize,
   stageRef,
   onBlockDrop,
 }: UsePreviewBlockDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
+  // dragenter/dragleave fire for every internal element boundary; a depth
+  // counter keeps the drop indicator steady instead of flickering.
+  const dragDepthRef = useRef(0);
+
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (!onBlockDrop) return;
+      if (!e.dataTransfer.types.includes(TIMELINE_BLOCK_MIME)) return;
+      dragDepthRef.current += 1;
+      setIsDragOver(true);
+    },
+    [onBlockDrop],
+  );
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -69,18 +90,20 @@ export function usePreviewBlockDrop({
       if (!e.dataTransfer.types.includes(TIMELINE_BLOCK_MIME)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
-      setIsDragOver(true);
+      // dragenter/dragleave own the isDragOver flag (depth-counted).
     },
     [onBlockDrop],
   );
 
   const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDragOver(false);
   }, []);
 
   // fallow-ignore-next-line complexity
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
+      dragDepthRef.current = 0;
       setIsDragOver(false);
       if (!onBlockDrop) return;
 
@@ -96,14 +119,15 @@ export function usePreviewBlockDrop({
         e.clientX,
         e.clientY,
         stage.getBoundingClientRect(),
+        compositionSize,
         portrait,
       );
       if (!pos) return;
 
       onBlockDrop(block.name, centerBlockAtPosition(pos, block));
     },
-    [onBlockDrop, stageRef, portrait],
+    [onBlockDrop, stageRef, compositionSize, portrait],
   );
 
-  return { isDragOver, handleDragOver, handleDragLeave, handleDrop };
+  return { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop };
 }
