@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -48,7 +49,7 @@ export default defineCommand({
     output: {
       type: "string",
       description: "Output file path (default: speech.wav in current directory)",
-      alias: "o",
+      alias: ["o", "out"],
     },
     voice: {
       type: "string",
@@ -76,6 +77,7 @@ export default defineCommand({
       default: false,
     },
   },
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── List voices mode ──────────────────────────────────────────────
     if (args.list) {

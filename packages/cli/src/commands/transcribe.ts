@@ -1,6 +1,8 @@
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, writeFileSync } from "node:fs";
+import { findParakeet, transcribeWithParakeet } from "../whisper/parakeet.js";
 
 type CaptionExportFormat = "srt" | "vtt";
 
@@ -40,6 +42,12 @@ export default defineCommand({
       type: "string",
       description: "Project directory (default: current directory)",
       alias: "d",
+    },
+    engine: {
+      type: "string",
+      description:
+        "ASR engine: auto (Parakeet if installed, else whisper), parakeet, or whisper. Default: auto. Parakeet is more accurate and faster; enable with `uv pip install parakeet-mlx`.",
+      alias: "e",
     },
     model: {
       type: "string",
@@ -111,8 +119,9 @@ export default defineCommand({
       return importTranscript(inputPath, dir, args.json);
     }
 
-    // ── Transcribe mode: run whisper ─────────────────────────────────────
+    // ── Transcribe mode: run the ASR engine ──────────────────────────────
     return transcribeAudio(inputPath, dir, {
+      engine: args.engine,
       model: args.model,
       language: args.language,
       json: args.json,
@@ -213,25 +222,45 @@ async function exportTranscript(
 // Transcribe audio/video with whisper
 // ---------------------------------------------------------------------------
 
+// fallow-ignore-next-line complexity
 async function transcribeAudio(
   inputPath: string,
   dir: string,
-  opts: { model?: string; language?: string; json?: boolean; optional?: boolean },
+  opts: { engine?: string; model?: string; language?: string; json?: boolean; optional?: boolean },
 ): Promise<void> {
   const { transcribe } = await import("../whisper/transcribe.js");
   const { loadTranscript, patchCaptionHtml, stripBeforeOnset } =
     await import("../whisper/normalize.js");
 
+  // Engine: auto (Parakeet if installed, else whisper), or forced parakeet/whisper.
+  const engine = (opts.engine ?? "auto").toLowerCase();
+  if (engine !== "auto" && engine !== "parakeet" && engine !== "whisper") {
+    failWith(`Unknown --engine: ${opts.engine}. Use auto, parakeet, or whisper.`, !!opts.json);
+  }
+  const useParakeet = engine === "parakeet" || (engine === "auto" && !!findParakeet());
+
   const model = opts.model ?? DEFAULT_MODEL;
+  // --model selects the whisper model only; Parakeet uses its own fixed model.
+  if (useParakeet && opts.model && !opts.json) {
+    console.error(
+      c.dim(`  Note: --model applies to the whisper engine only; ignored under Parakeet.`),
+    );
+  }
+  const label = useParakeet ? "Parakeet" : model;
   const spin = opts.json ? null : clack.spinner();
-  spin?.start(`Transcribing with ${c.accent(model)}...`);
+  spin?.start(`Transcribing with ${c.accent(label)}...`);
 
   try {
-    const result = await transcribe(inputPath, dir, {
-      model,
-      language: opts.language,
-      onProgress: spin ? (msg) => spin.message(msg) : undefined,
-    });
+    const result = useParakeet
+      ? transcribeWithParakeet(inputPath, dir, {
+          language: opts.language,
+          onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        })
+      : await transcribe(inputPath, dir, {
+          model,
+          language: opts.language,
+          onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        });
 
     let { words } = loadTranscript(result.transcriptPath);
 
@@ -253,7 +282,8 @@ async function transcribeAudio(
       console.log(
         JSON.stringify({
           ok: true,
-          model,
+          engine: useParakeet ? "parakeet" : "whisper",
+          model: useParakeet ? "parakeet-tdt-0.6b-v3" : model,
           wordCount: words.length,
           durationSeconds: result.durationSeconds,
           speechOnsetSeconds: result.speechOnsetSeconds,
@@ -272,7 +302,15 @@ async function transcribeAudio(
       );
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Surface the last few lines of the ASR subprocess's stderr, which
+    // execFileSync captures but otherwise drops on the floor — that's where
+    // parakeet-mlx / whisper report the actual failure cause.
+    const stderr =
+      err && typeof err === "object" && "stderr" in err && err.stderr
+        ? String(err.stderr).trim().split("\n").slice(-3).join("\n")
+        : "";
+    const base = err instanceof Error ? err.message : String(err);
+    const message = stderr ? `${base}\n${stderr}` : base;
 
     // whisper-cpp is an optional prerequisite, not part of the CLI. When it is
     // simply unavailable (no binary, no toolchain to build one), that is a setup

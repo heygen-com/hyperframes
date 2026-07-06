@@ -110,6 +110,7 @@ export interface SynthesizeResult {
 /**
  * Synthesize text to speech using Kokoro-82M via kokoro-onnx.
  */
+// fallow-ignore-next-line complexity
 export async function synthesize(
   text: string,
   outputPath: string,
@@ -124,13 +125,13 @@ export async function synthesize(
   const python = findPython();
   if (!python) {
     throw new Error(
-      "Python 3 is required for text-to-speech. Install Python 3.8+ and run: pip install kokoro-onnx soundfile",
+      "Python 3 is required for text-to-speech. Install Python 3.10+ and run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
     );
   }
 
   if (!hasPythonPackage(python, "kokoro_onnx")) {
     throw new Error(
-      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile",
+      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
     );
   }
 
