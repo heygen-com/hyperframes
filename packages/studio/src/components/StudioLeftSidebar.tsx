@@ -34,6 +34,7 @@ export function StudioLeftSidebar({
   const {
     leftCollapsed,
     leftWidth,
+    setLeftWidth,
     toggleLeftSidebar,
     handlePanelResizeStart,
     handlePanelResizeMove,
@@ -114,14 +115,22 @@ export function StudioLeftSidebar({
         onRenameFile={handleRenameFile}
         onDuplicateFile={handleDuplicateFile}
         onMoveFile={handleMoveFile}
-        onImportFiles={handleImportFiles}
+        onImportFiles={async (files, dir) => {
+          await handleImportFiles(files, dir);
+        }}
         codeChildren={
           editingFile ? (
             isMediaFile(editingFile.path) ? (
               <MediaPreview projectId={projectId} filePath={editingFile.path} />
+            ) : editingFile.content == null ? (
+              // Never mount the editor on unloaded content: a keystroke would
+              // autosave an empty document over the real file.
+              <div className="flex h-full items-center justify-center text-[11px] text-neutral-600">
+                Loading {editingFile.path}…
+              </div>
             ) : (
               <SourceEditor
-                content={editingFile.content ?? ""}
+                content={editingFile.content}
                 filePath={editingFile.path}
                 onChange={handleContentChange}
                 revealOffset={revealSourceOffset}
@@ -140,11 +149,23 @@ export function StudioLeftSidebar({
         onPreviewBlock={onPreviewBlock}
       />
       <div
-        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
+        role="separator"
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        tabIndex={0}
+        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("left", e)}
         onPointerMove={handlePanelResizeMove}
         onPointerUp={handlePanelResizeEnd}
+        onPointerCancel={handlePanelResizeEnd}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          const delta = e.key === "ArrowLeft" ? -16 : 16;
+          const maxLeft = Math.floor(window.innerWidth * 0.5);
+          setLeftWidth(Math.max(160, Math.min(maxLeft, leftWidth + delta)));
+        }}
       >
         <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>

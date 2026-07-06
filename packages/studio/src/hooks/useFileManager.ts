@@ -126,6 +126,7 @@ export function useFileManager({
     recordEdit,
     domEditSaveTimestampRef,
     setRefreshKey,
+    showToast,
   });
 
   // ── File select ──
@@ -133,26 +134,34 @@ export function useFileManager({
   const revealRequestIdRef = useRef(0);
   const revealAbortRef = useRef<AbortController | null>(null);
 
-  const handleFileSelect = useCallback((path: string) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    revealAbortRef.current?.abort();
-    revealAbortRef.current = null;
-    revealRequestIdRef.current++;
-    // Skip fetching binary content for media files — just set the path for preview
-    if (isMediaFile(path)) {
-      setEditingFile({ path, content: null });
-      return;
-    }
-    fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`)
-      .then((r) => r.json())
-      .then((data: { content?: string }) => {
-        if (data.content != null) {
-          setEditingFile({ path, content: data.content });
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const handleFileSelect = useCallback(
+    (path: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      revealAbortRef.current?.abort();
+      revealAbortRef.current = null;
+      revealRequestIdRef.current++;
+      // Skip fetching binary content for media files — just set the path for preview
+      if (isMediaFile(path)) {
+        setEditingFile({ path, content: null });
+        return;
+      }
+      fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`Failed to load ${path} (${r.status})`);
+          return r.json();
+        })
+        .then((data: { content?: string }) => {
+          if (data.content != null) {
+            setEditingFile({ path, content: data.content });
+          }
+        })
+        .catch((err: unknown) => {
+          showToast(err instanceof Error ? err.message : `Failed to load ${path}`, "error");
+        });
+    },
+    [showToast],
+  );
 
   // ── Click-to-source ──
 
@@ -253,9 +262,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create file failed: ${err.error}`);
+        showToast(`Couldn't create ${path}: ${err.error}`, "error");
       }
     },
-    [refreshFileTree, handleFileSelect],
+    [refreshFileTree, handleFileSelect, showToast],
   );
 
   const handleCreateFolder = useCallback(
@@ -275,9 +285,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create folder failed: ${err.error}`);
+        showToast(`Couldn't create folder ${path}: ${err.error}`, "error");
       }
     },
-    [refreshFileTree],
+    [refreshFileTree, showToast],
   );
 
   const handleDeleteFile = useCallback(
@@ -293,9 +304,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Delete failed: ${err.error}`);
+        showToast(`Couldn't delete ${path}: ${err.error}`, "error");
       }
     },
-    [refreshFileTree],
+    [refreshFileTree, showToast],
   );
 
   const handleRenameFile = useCallback(
@@ -316,9 +328,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Rename failed: ${err.error}`);
+        showToast(`Couldn't rename ${oldPath}: ${err.error}`, "error");
       }
     },
-    [refreshFileTree, handleFileSelect, setRefreshKey],
+    [refreshFileTree, handleFileSelect, setRefreshKey, showToast],
   );
 
   const handleDuplicateFile = useCallback(
@@ -337,9 +350,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Duplicate failed: ${err.error}`);
+        showToast(`Couldn't duplicate ${path}: ${err.error}`, "error");
       }
     },
-    [refreshFileTree, handleFileSelect],
+    [refreshFileTree, handleFileSelect, showToast],
   );
 
   const handleMoveFile = handleRenameFile;

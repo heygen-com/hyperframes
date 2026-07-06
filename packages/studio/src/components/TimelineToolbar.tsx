@@ -112,7 +112,9 @@ export function TimelineToolbar({
                 <button
                   type="button"
                   onClick={() => setActiveTool("select")}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors ${
+                  aria-label="Selection tool"
+                  aria-pressed={activeTool === "select"}
+                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
                     activeTool === "select"
                       ? "bg-neutral-700 text-neutral-200"
                       : "text-neutral-500 hover:text-neutral-300"
@@ -123,11 +125,13 @@ export function TimelineToolbar({
                   </svg>
                 </button>
               </Tooltip>
-              <Tooltip label="Razor tool (B)">
+              <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
                 <button
                   type="button"
                   onClick={() => setActiveTool("razor")}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors ${
+                  aria-label="Razor tool"
+                  aria-pressed={activeTool === "razor"}
+                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
                     activeTool === "razor"
                       ? "bg-neutral-700 text-neutral-200"
                       : "text-neutral-500 hover:text-neutral-300"
@@ -153,7 +157,12 @@ export function TimelineToolbar({
               <button
                 type="button"
                 onClick={onToggleKeyframe}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                aria-label={
+                  keyframeState === "active"
+                    ? "Remove keyframe at playhead"
+                    : "Add keyframe at playhead"
+                }
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
                   keyframeState === "active"
                     ? "text-studio-accent"
                     : keyframeState === "inactive"
@@ -187,8 +196,9 @@ export function TimelineToolbar({
               <button
                 type="button"
                 onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
+                aria-label="Auto-record manual edits as keyframes"
                 aria-pressed={autoKeyframeEnabled}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
                   autoKeyframeEnabled
                     ? "text-red-400 hover:text-red-300"
                     : "text-neutral-600 hover:text-neutral-400"
@@ -213,23 +223,35 @@ export function TimelineToolbar({
           )}
           {onSplitElement &&
             (() => {
+              // Render the button unconditionally (disabled when unusable):
+              // mounting/unmounting mid-task shifts the neighboring controls.
               const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
               const el = selectedElementId
                 ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
                 : null;
-              if (!el || !canSplitElement(el)) return null;
-              const canSplit = currentTime > el.start && currentTime < el.start + el.duration;
+              const splittable = el != null && canSplitElement(el);
+              const canSplit =
+                splittable && currentTime > el.start && currentTime < el.start + el.duration;
               return (
-                <Tooltip label="Split clip at playhead (S)">
+                <Tooltip
+                  label={
+                    canSplit
+                      ? "Split clip at playhead (S)"
+                      : splittable
+                        ? "Move the playhead inside the clip to split"
+                        : "Select a clip to split"
+                  }
+                >
                   <button
                     type="button"
                     disabled={!canSplit}
+                    aria-label="Split clip at playhead"
                     onClick={() => {
-                      if (canSplit) onSplitElement(el, currentTime);
+                      if (canSplit && el) onSplitElement(el, currentTime);
                     }}
                     className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
                       canSplit
-                        ? "text-neutral-500 hover:text-neutral-200"
+                        ? "text-neutral-500 hover:text-neutral-200 active:scale-[0.98]"
                         : "text-neutral-700 cursor-not-allowed"
                     }`}
                   >
@@ -239,26 +261,38 @@ export function TimelineToolbar({
               );
             })()}
           {beatAnalysisReady &&
-            canAddBeatAt(currentTime) &&
-            (() => (
-              <Tooltip label="Add beat at playhead">
-                <button
-                  type="button"
-                  onClick={() => addBeatAtCompositionTime(currentTime)}
-                  className="flex h-7 w-7 items-center justify-center rounded text-neutral-500 transition-colors hover:text-[#22c55e]"
+            (() => {
+              const canAdd = canAddBeatAt(currentTime);
+              return (
+                <Tooltip
+                  label={canAdd ? "Add beat at playhead" : "A beat already exists at the playhead"}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </Tooltip>
-            ))()}
+                  <button
+                    type="button"
+                    disabled={!canAdd}
+                    aria-label="Add beat at playhead"
+                    onClick={() => {
+                      if (canAdd) addBeatAtCompositionTime(currentTime);
+                    }}
+                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                      canAdd
+                        ? "text-neutral-500 hover:text-[#22c55e] active:scale-[0.98]"
+                        : "text-neutral-700 cursor-not-allowed"
+                    }`}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </Tooltip>
+              );
+            })()}
         </div>
         <div className="flex items-center gap-1">
           <Tooltip label="Fit timeline to width">

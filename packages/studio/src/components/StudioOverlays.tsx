@@ -11,6 +11,7 @@ type LintFindings = ComponentProps<typeof LintModal>["findings"];
 
 export interface StudioOverlaysProps {
   projectId: string;
+  projectDir?: string | null;
   lintModal: LintFindings | null;
   closeLintModal: () => void;
   consoleErrors: LintFindings | null;
@@ -18,8 +19,8 @@ export interface StudioOverlaysProps {
   domEditSession: ReturnType<typeof useDomEditSession>;
   activeCompPath: string | null;
   dragOverlayActive: boolean;
-  appToast: ReturnType<typeof useToast>["appToast"];
-  dismissToast: () => void;
+  toasts: ReturnType<typeof useToast>["toasts"];
+  dismissToast: (id: number) => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export interface StudioOverlaysProps {
 // fallow-ignore-next-line complexity
 export function StudioOverlays({
   projectId,
+  projectDir,
   lintModal,
   closeLintModal,
   consoleErrors,
@@ -37,16 +39,30 @@ export function StudioOverlays({
   domEditSession,
   activeCompPath,
   dragOverlayActive,
-  appToast,
+  toasts,
   dismissToast,
 }: StudioOverlaysProps) {
   return (
     <>
       {lintModal !== null && (
-        <LintModal findings={lintModal} projectId={projectId} onClose={closeLintModal} />
+        <LintModal
+          findings={lintModal}
+          projectId={projectId}
+          projectDir={projectDir}
+          onClose={closeLintModal}
+        />
       )}
-      {consoleErrors !== null && consoleErrors.length > 0 && (
-        <LintModal findings={consoleErrors} projectId={projectId} onClose={clearConsoleErrors} />
+      {/* One modal at a time — console errors wait behind an open lint modal
+          instead of stacking two full-screen overlays. */}
+      {lintModal === null && consoleErrors !== null && consoleErrors.length > 0 && (
+        <LintModal
+          findings={consoleErrors}
+          projectId={projectId}
+          projectDir={projectDir}
+          title="Console errors in preview"
+          promptIntro="Fix these runtime console errors from the composition preview"
+          onClose={clearConsoleErrors}
+        />
       )}
       {domEditSession.agentModalOpen && domEditSession.domEditSelection && (
         <AskAgentModal
@@ -62,8 +78,18 @@ export function StudioOverlays({
         />
       )}
       {dragOverlayActive && <StudioGlobalDragOverlay />}
-      {appToast && (
-        <StudioToast message={appToast.message} tone={appToast.tone} onDismiss={dismissToast} />
+      {toasts.length > 0 && (
+        <div className="absolute bottom-6 right-6 z-[91] flex flex-col items-end gap-2">
+          {toasts.map((toast) => (
+            <StudioToast
+              key={toast.id}
+              message={toast.message}
+              tone={toast.tone}
+              leaving={toast.leaving}
+              onDismiss={() => dismissToast(toast.id)}
+            />
+          ))}
+        </div>
       )}
     </>
   );

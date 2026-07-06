@@ -1,4 +1,4 @@
-import { useState, useCallback, type MouseEvent } from "react";
+import { useState, useCallback, useRef, type MouseEvent } from "react";
 import { useMountEffect } from "./useMountEffect";
 import { liveTime, usePlayerStore } from "../player";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "../utils/frameCapture";
@@ -17,6 +17,8 @@ export function useFrameCapture({
   waitForPendingDomEditSaves,
 }: UseFrameCaptureParams) {
   const [captureFrameTime, setCaptureFrameTime] = useState(0);
+  const [capturing, setCapturing] = useState(false);
+  const capturingRef = useRef(false);
 
   useMountEffect(() => {
     setCaptureFrameTime(usePlayerStore.getState().currentTime);
@@ -31,6 +33,11 @@ export function useFrameCapture({
     async (event: MouseEvent<HTMLAnchorElement>) => {
       if (!projectId) return;
       event.preventDefault();
+      // A capture can take up to ~35s (save drain + server render) — ignore
+      // re-entrant clicks instead of firing parallel captures.
+      if (capturingRef.current) return;
+      capturingRef.current = true;
+      setCapturing(true);
       try {
         const time = usePlayerStore.getState().currentTime;
         setCaptureFrameTime(time);
@@ -79,6 +86,9 @@ export function useFrameCapture({
         }
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Capture failed", "error");
+      } finally {
+        capturingRef.current = false;
+        setCapturing(false);
       }
     },
     [activeCompPath, projectId, showToast, waitForPendingDomEditSaves],
@@ -98,5 +108,6 @@ export function useFrameCapture({
     captureFrameFilename,
     handleCaptureFrameClick,
     refreshCaptureFrameTime,
+    capturing,
   };
 }

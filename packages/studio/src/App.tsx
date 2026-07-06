@@ -27,6 +27,7 @@ import { useFrameCapture } from "./hooks/useFrameCapture";
 import { useLintModal } from "./hooks/useLintModal";
 import { useCompositionDimensions } from "./hooks/useCompositionDimensions";
 import { useToast } from "./hooks/useToast";
+import { useCompositionContentLoader } from "./hooks/useCompositionContentLoader";
 import { useStudioUrlState } from "./hooks/useStudioUrlState";
 import {
   buildStudioContextValue,
@@ -132,7 +133,7 @@ export function StudioApp() {
       return !v;
     });
   }, []);
-  const { appToast, showToast, dismissToast } = useToast();
+  const { toasts, showToast, dismissToast } = useToast();
   const panelLayout = usePanelLayout({
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
@@ -389,17 +390,13 @@ export function StudioApp() {
     },
     [appHotkeys, resetConsoleErrors, refreshPreviewDocumentVersion],
   );
-  const handleSelectComposition = useCallback(
-    (comp: string) => {
-      setActiveCompPath(comp.endsWith(".html") ? comp : null);
-      fileManager.setEditingFile({ path: comp, content: null });
-      fetch(`/api/projects/${projectId}/files/${comp}`)
-        .then((r) => r.json())
-        .then((data) => fileManager.setEditingFile({ path: comp, content: data.content }))
-        .catch(() => {});
-    },
-    [projectId, fileManager],
-  );
+  const { setEditingFile } = fileManager;
+  const handleSelectComposition = useCompositionContentLoader({
+    projectId,
+    setEditingFile,
+    setActiveCompPath,
+    showToast,
+  });
   const {
     designPanelActive,
     inspectorPanelActive,
@@ -484,6 +481,7 @@ export function StudioApp() {
                     captureFrameFilename={frameCapture.captureFrameFilename}
                     handleCaptureFrameClick={frameCapture.handleCaptureFrameClick}
                     refreshCaptureFrameTime={frameCapture.refreshCaptureFrameTime}
+                    capturing={frameCapture.capturing}
                     inspectorButtonActive={inspectorButtonActive}
                     inspectorPanelActive={inspectorPanelActive}
                     onExport={() => {
@@ -496,7 +494,7 @@ export function StudioApp() {
                   {previewPersistence.domEditSaveQueuePaused && (
                     <SaveQueuePausedBanner
                       message={previewPersistence.domEditSaveQueuePaused}
-                      onDismiss={previewPersistence.resetDomEditSaveQueueBreaker}
+                      onRetry={previewPersistence.resetDomEditSaveQueueBreaker}
                     />
                   )}
                   {viewModeValue.viewMode === "storyboard" && (
@@ -578,6 +576,7 @@ export function StudioApp() {
                   </div>
                   <StudioOverlays
                     projectId={projectId}
+                    projectDir={fileManager.projectDir}
                     lintModal={lintModal}
                     closeLintModal={closeLintModal}
                     consoleErrors={consoleErrors}
@@ -585,7 +584,7 @@ export function StudioApp() {
                     domEditSession={domEditSession}
                     activeCompPath={activeCompPath}
                     dragOverlayActive={dragOverlay.active}
-                    appToast={appToast}
+                    toasts={toasts}
                     dismissToast={dismissToast}
                   />
                 </div>
