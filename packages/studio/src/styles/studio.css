@@ -251,3 +251,64 @@ body {
   background: linear-gradient(90deg, #06e3fa, #4fdb5e);
   transition: transform 160ms ease;
 }
+
+/* Toast enter/exit (StudioToast) */
+@keyframes hf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hf-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.hf-toast-enter {
+  animation: hf-toast-in 160ms ease-out;
+}
+
+.hf-toast-exit {
+  animation: hf-toast-out 160ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-toast-enter,
+  .hf-toast-exit {
+    animation: none;
+  }
+  .hf-toast-exit {
+    opacity: 0;
+  }
+}
+
+/* Overlay/backdrop entrance — the heaviest visual changes shouldn't pop in */
+@keyframes hf-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hf-backdrop-in {
+  animation: hf-backdrop-in 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-backdrop-in {
+    animation: none;
+  }
+}

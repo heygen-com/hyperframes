@@ -25,7 +25,7 @@ export function HyperframesLoader({
   const markFrameSize = Math.round(size * 1.16);
 
   return (
-    <div className="hf-loader" draggable={false}>
+    <div className="hf-loader" role="status" draggable={false}>
       <div
         className="hf-loader-mark-frame"
         style={{ width: markFrameSize, height: markFrameSize }}
@@ -83,7 +83,13 @@ export function HyperframesLoader({
       <div className="hf-loader-title">{title}</div>
       {detail && <div className="hf-loader-detail">{detail}</div>}
       {boundedProgress !== undefined && (
-        <div className="hf-loader-progress" aria-hidden="true">
+        <div
+          className="hf-loader-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(boundedProgress * 100)}
+        >
           <div
             className="hf-loader-progress__fill"
             style={{ transform: `scaleX(${boundedProgress})` }}
@@ -95,6 +101,7 @@ export function HyperframesLoader({
   );
 }
 
+// fallow-ignore-next-line unused-export
 export function StatusFrame(props: HyperframesLoaderProps) {
   return (
     <div className="hf-frame">

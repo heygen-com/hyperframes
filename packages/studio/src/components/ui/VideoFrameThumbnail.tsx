@@ -5,10 +5,19 @@ import { useState, useEffect } from "react";
  * video + canvas. Seeks to ~10% of duration to avoid black opening frames.
  * Used by AssetThumbnail (assets tab) and RenderQueueItem (renders tab).
  */
-export function VideoFrameThumbnail({ src }: { src: string }) {
+export function VideoFrameThumbnail({
+  src,
+  fallbackLabel,
+}: {
+  src: string;
+  /** Shown instead of an endless shimmer when the video can't be decoded. */
+  fallbackLabel?: string;
+}) {
   const [frame, setFrame] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    setFailed(false);
     const video = document.createElement("video");
     video.crossOrigin = "anonymous";
     video.muted = true;
@@ -35,15 +44,29 @@ export function VideoFrameThumbnail({ src }: { src: string }) {
       cleanup();
     });
 
-    video.addEventListener("error", cleanup);
+    video.addEventListener("error", () => {
+      // Resolve the loading state — a permanent shimmer reads as "still loading".
+      setFailed(true);
+      cleanup();
+    });
     video.src = src;
     video.load();
 
     return cleanup;
   }, [src]);
 
+  if (failed && !frame) {
+    return (
+      <div className="w-full h-full bg-neutral-800 flex items-center justify-center">
+        <span className="text-[9px] font-medium text-neutral-600">{fallbackLabel ?? "VIDEO"}</span>
+      </div>
+    );
+  }
+
   if (!frame) {
-    return <div className="w-full h-full bg-neutral-800 animate-pulse" />;
+    return (
+      <div className="w-full h-full bg-neutral-800 animate-pulse motion-reduce:animate-none" />
+    );
   }
 
   return <img src={frame} alt="" draggable={false} className="w-full h-full object-contain" />;
