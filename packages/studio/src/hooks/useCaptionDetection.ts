@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useCaptionStore } from "../captions/store";
 import { useCaptionSync } from "../captions/hooks/useCaptionSync";
 import { parseCaptionComposition } from "../captions/parser";
@@ -24,6 +24,24 @@ export function useCaptionDetection({
   captionSync,
   setRightCollapsed,
 }: UseCaptionDetectionParams) {
+  // Switching compositions must drop the previous comp's caption state — a
+  // stale model + full-canvas overlay otherwise blocks normal element editing
+  // on the new composition (and edit mode could never be exited).
+  const prevCompPathRef = useRef<string | null>(activeCompPath);
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    if (prevCompPathRef.current !== activeCompPath) {
+      prevCompPathRef.current = activeCompPath;
+      const store = useCaptionStore.getState();
+      if (store.model || store.isEditMode) {
+        // Flush the last debounced caption edit before the reset destroys the
+        // model — otherwise a save landing after the switch writes nothing.
+        store.retrySave?.();
+        store.reset();
+      }
+    }
+  }, [activeCompPath]);
+
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!projectId) return;
@@ -31,7 +49,9 @@ export function useCaptionDetection({
     let activating = false;
 
     const tryActivateCaptions = () => {
-      if (useCaptionStore.getState().isEditMode || activating) {
+      const captionState = useCaptionStore.getState();
+      // `dismissed` = user explicitly exited caption editing; don't re-trap them.
+      if (captionState.isEditMode || captionState.dismissed || activating) {
         return;
       }
 

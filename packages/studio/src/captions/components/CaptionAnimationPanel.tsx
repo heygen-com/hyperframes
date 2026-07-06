@@ -61,7 +61,13 @@ const EASE_PRESETS = [
   "bounce.out",
 ];
 
-import { Section, Row, inputCls } from "./shared";
+import { Section, Row, inputCls, NumberField } from "./shared";
+
+// Animation edits currently mutate only the in-memory model: they are not
+// applied to the preview and not serialized by buildOverrides, so tuning them
+// would be editing blind. Controls stay visible (so the capability is
+// discoverable) but disabled until the apply/persist pipeline exists.
+const ANIMATION_PIPELINE_WIRED = false;
 
 // ---------------------------------------------------------------------------
 // Animation phase controls
@@ -72,6 +78,7 @@ interface AnimationPhaseProps {
   presets: string[];
   animation: CaptionAnimation | null;
   showIntensity?: boolean;
+  disabled?: boolean;
   onChange: (update: Partial<CaptionAnimation>) => void;
 }
 
@@ -80,6 +87,7 @@ function AnimationPhase({
   presets,
   animation,
   showIntensity,
+  disabled,
   onChange,
 }: AnimationPhaseProps) {
   const preset = animation?.preset ?? "none";
@@ -93,6 +101,8 @@ function AnimationPhase({
       <Row label="Preset">
         <select
           value={preset}
+          disabled={disabled}
+          aria-label={`${label} preset`}
           onChange={(e) => onChange({ preset: e.target.value })}
           className={inputCls}
         >
@@ -105,20 +115,22 @@ function AnimationPhase({
       </Row>
 
       <Row label="Duration">
-        <input
-          type="number"
+        <NumberField
           value={duration}
           step={0.05}
           min={0}
           max={2}
-          onChange={(e) => onChange({ duration: Number(e.target.value) })}
-          className={inputCls}
+          disabled={disabled}
+          ariaLabel={`${label} duration`}
+          onCommit={(v) => onChange({ duration: v })}
         />
       </Row>
 
       <Row label="Ease">
         <select
           value={ease}
+          disabled={disabled}
+          aria-label={`${label} ease`}
           onChange={(e) => onChange({ ease: e.target.value })}
           className={inputCls}
         >
@@ -131,14 +143,14 @@ function AnimationPhase({
       </Row>
 
       <Row label="Stagger">
-        <input
-          type="number"
+        <NumberField
           value={stagger}
           step={0.02}
           min={0}
           max={0.5}
-          onChange={(e) => onChange({ stagger: Number(e.target.value) })}
-          className={inputCls}
+          disabled={disabled}
+          ariaLabel={`${label} stagger`}
+          onCommit={(v) => onChange({ stagger: v })}
         />
       </Row>
 
@@ -151,8 +163,13 @@ function AnimationPhase({
               max={1}
               step={0.01}
               value={intensity}
-              onChange={(e) => onChange({ intensity: Number(e.target.value) })}
-              className="flex-1 accent-studio-accent"
+              disabled={disabled}
+              aria-label={`${label} intensity`}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChange({ intensity: v });
+              }}
+              className="flex-1 accent-studio-accent disabled:opacity-40"
             />
             <span className="text-2xs text-neutral-400 font-mono w-8 text-right flex-shrink-0">
               {intensity.toFixed(2)}
@@ -222,19 +239,31 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
   if (!group || !resolvedGroupId || !animation) {
     return (
       <div className="flex items-center justify-center h-full px-4 text-center">
-        <p className="text-xs text-neutral-500">Select a caption group to edit animations</p>
+        <p className="text-xs text-neutral-500">Select a caption word to edit animations</p>
       </div>
     );
   }
 
+  const gated = !ANIMATION_PIPELINE_WIRED;
+
   return (
     <div className="flex flex-col h-full min-h-0">
+      {gated && (
+        <div className="flex-shrink-0 mx-3 mt-2 px-2 py-1.5 rounded border border-amber-500/30 bg-amber-500/10">
+          <p className="text-2xs text-amber-300/90 leading-snug">
+            Animation editing isn&apos;t applied to playback or saved yet, so these controls are
+            disabled.
+          </p>
+        </div>
+      )}
+
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <AnimationPhase
           label="Entrance"
           presets={ENTRANCE_PRESETS}
           animation={animation.entrance}
+          disabled={gated}
           onChange={handleEntranceChange}
         />
 
@@ -243,6 +272,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
           presets={HIGHLIGHT_PRESETS}
           animation={animation.highlight}
           showIntensity
+          disabled={gated}
           onChange={handleHighlightChange}
         />
 
@@ -250,6 +280,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
           label="Exit"
           presets={EXIT_PRESETS}
           animation={animation.exit}
+          disabled={gated}
           onChange={handleExitChange}
         />
       </div>
@@ -259,7 +290,9 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
         <button
           type="button"
           onClick={handleApplyToAll}
-          className="w-full py-1.5 rounded border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors"
+          disabled={gated}
+          title={gated ? "Disabled until animation editing is applied to playback" : undefined}
+          className="w-full py-1.5 rounded border border-neutral-700 text-2xs text-neutral-300 hover:border-studio-accent/50 hover:text-studio-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-neutral-700 disabled:hover:text-neutral-300"
         >
           Apply to all groups
         </button>

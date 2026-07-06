@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from "vitest";
 import { shouldHandleCaptionNudgeKey } from "./keyboard";
 
@@ -34,5 +36,15 @@ describe("shouldHandleCaptionNudgeKey", () => {
 
   it("ignores non-arrow keys", () => {
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("KeyL"))).toBe(false);
+  });
+
+  it("ignores arrows when the event target is an editable element", () => {
+    const input = document.createElement("input");
+    const textarea = document.createElement("textarea");
+    const div = document.createElement("div");
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), input)).toBe(false);
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), textarea)).toBe(false);
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), div)).toBe(true);
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), null)).toBe(true);
   });
 });
