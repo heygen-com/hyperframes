@@ -1,5 +1,6 @@
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
+import { SearchInput } from "../ui/SearchInput";
 import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -7,6 +8,7 @@ import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
 import {
   type MediaCategory,
+  type CopyFeedback,
   getCategory,
   basename,
   ext,
@@ -18,7 +20,7 @@ import { AudioRow } from "./AudioRow";
 interface AssetsTabProps {
   projectId: string;
   assets: string[];
-  onImport?: (files: FileList) => void;
+  onImport?: (files: FileList) => void | Promise<void>;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
 }
@@ -29,7 +31,7 @@ function ImageCard({
   asset,
   used,
   onCopy,
-  isCopied,
+  copyFeedback,
   onDelete,
   onRename,
   size,
@@ -38,27 +40,54 @@ function ImageCard({
   asset: string;
   used: boolean;
   onCopy: (path: string) => void;
-  isCopied: boolean;
+  copyFeedback: CopyFeedback;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   size: "large" | "small";
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const name = basename(asset);
   const extension = ext(asset);
   const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
+  const isCopied = copyFeedback?.path === asset && copyFeedback.ok;
+  const copyFailed = copyFeedback?.path === asset && !copyFeedback.ok;
 
   const thumbW = size === "large" ? "w-full" : "w-[50px]";
   const thumbH = size === "large" ? "h-[100px]" : "h-[32px]";
+
+  // Visible cue for the click affordance (A1) and its outcome (F3).
+  const copyChip = (
+    <span
+      className={`flex-shrink-0 text-[9px] font-medium px-1.5 py-px rounded transition-opacity ${
+        copyFailed
+          ? "text-red-400 bg-red-500/10 opacity-100"
+          : isCopied
+            ? "text-panel-accent bg-panel-accent/10 opacity-100"
+            : "text-panel-text-5 bg-panel-input opacity-0 group-hover/asset:opacity-100 group-focus-within/asset:opacity-100"
+      }`}
+    >
+      {copyFailed ? "Copy failed" : isCopied ? "Copied" : "Copy path"}
+    </span>
+  );
 
   return (
     <>
       <div
         draggable
+        role="button"
+        tabIndex={0}
+        aria-label={`${name} — copy path, drag to timeline, right-click for actions`}
         onClick={() => onCopy(asset)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onCopy(asset);
+          }
+        }}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
@@ -70,7 +99,7 @@ function ImageCard({
         }}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`transition-colors cursor-pointer ${
+        className={`group/asset transition-colors cursor-pointer outline-none focus-visible:bg-neutral-800/60 ${
           size === "large"
             ? `px-2.5 py-1 ${isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/30"}`
             : `px-2.5 py-1.5 flex items-center gap-2.5 ${
@@ -83,18 +112,21 @@ function ImageCard({
         {size === "large" ? (
           <div className="flex flex-col gap-1">
             <div className={`${thumbW} ${thumbH} rounded overflow-hidden bg-neutral-900 relative`}>
-              {isImage && (
+              {isImage && !imgError && (
                 <img
                   src={serveUrl}
                   alt={name}
                   loading="lazy"
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  onError={() => setImgError(true)}
                 />
               )}
-              {isVideo && <VideoFrameThumbnail src={serveUrl} />}
+              {isImage && imgError && (
+                <div className="w-full h-full flex items-center justify-center">
+                  <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
+                </div>
+              )}
+              {isVideo && <VideoFrameThumbnail src={serveUrl} fallbackLabel={extension} />}
               {isVideo && hovered && (
                 <video
                   src={serveUrl}
@@ -118,23 +150,22 @@ function ImageCard({
                   in use
                 </span>
               )}
+              {copyChip}
             </div>
           </div>
         ) : (
           <>
             <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
-              {isImage && (
+              {isImage && !imgError && (
                 <img
                   src={serveUrl}
                   alt={name}
                   loading="lazy"
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
+                  onError={() => setImgError(true)}
                 />
               )}
-              {!isImage && (
+              {(!isImage || imgError) && (
                 <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
               )}
             </div>
@@ -151,6 +182,7 @@ function ImageCard({
                     in use
                   </span>
                 )}
+                {copyChip}
               </div>
             </div>
           </>
@@ -181,7 +213,8 @@ export const AssetsTab = memo(function AssetsTab({
 }: AssetsTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback>(null);
+  const [importing, setImporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manifest, setManifest] = useState<
@@ -228,21 +261,32 @@ export const AssetsTab = memo(function AssetsTab({
     };
   }, [projectId, assetsKey]);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragOver(false);
-      if (e.dataTransfer.files.length) onImport?.(e.dataTransfer.files);
+  const handleImport = useCallback(
+    async (files: FileList) => {
+      if (!onImport) return;
+      setImporting(true);
+      try {
+        await onImport(files);
+      } finally {
+        setImporting(false);
+      }
     },
     [onImport],
   );
 
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (e.dataTransfer.files.length) void handleImport(e.dataTransfer.files);
+    },
+    [handleImport],
+  );
+
   const handleCopyPath = useCallback(async (path: string) => {
     const copied = await copyTextToClipboard(path);
-    if (copied) {
-      setCopiedPath(path);
-      setTimeout(() => setCopiedPath(null), 1500);
-    }
+    setCopyFeedback({ path, ok: copied });
+    setTimeout(() => setCopyFeedback(null), copied ? 1500 : 3000);
   }, []);
 
   const elements = usePlayerStore((s) => s.elements);
@@ -257,16 +301,22 @@ export const AssetsTab = memo(function AssetsTab({
     return paths;
   }, [elements]);
 
+  // Unfiltered pool — header controls (search, chips) are gated on THIS, not
+  // the search-filtered list, so a no-match query can't unmount its own input.
+  const allMediaAssets = useMemo(
+    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+    [assets],
+  );
+
   const mediaAssets = useMemo(() => {
-    const all = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
-    if (!searchQuery) return all;
+    if (!searchQuery) return allMediaAssets;
     const q = searchQuery.toLowerCase();
-    return all.filter((a) => {
+    return allMediaAssets.filter((a) => {
       if (basename(a).toLowerCase().includes(q)) return true;
       const rec = manifest.get(a);
       return rec?.description?.toLowerCase().includes(q);
     });
-  }, [assets, searchQuery, manifest]);
+  }, [allMediaAssets, searchQuery, manifest]);
 
   const categorized = useMemo(() => {
     const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
@@ -313,20 +363,45 @@ export const AssetsTab = memo(function AssetsTab({
           <>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-1.5 rounded-md bg-panel-input px-3 py-[7px] text-[11px] font-medium text-panel-text-3 hover:text-panel-text-1 transition-colors mb-2.5"
+              disabled={importing}
+              className="w-full flex items-center justify-center gap-1.5 rounded-md bg-panel-input px-3 py-[7px] text-[11px] font-medium text-panel-text-3 enabled:hover:text-panel-text-1 enabled:active:scale-[0.98] disabled:opacity-60 transition-colors mb-2.5"
             >
-              <svg
-                width="11"
-                height="11"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Import media
+              {importing ? (
+                <svg
+                  className="animate-spin"
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              )}
+              {importing ? "Importing…" : "Import media"}
             </button>
             <input
               ref={fileInputRef}
@@ -336,7 +411,7 @@ export const AssetsTab = memo(function AssetsTab({
               className="hidden"
               onChange={(e) => {
                 if (e.target.files?.length) {
-                  onImport(e.target.files);
+                  void handleImport(e.target.files);
                   e.target.value = "";
                 }
               }}
@@ -344,45 +419,24 @@ export const AssetsTab = memo(function AssetsTab({
           </>
         )}
 
-        {/* Search */}
-        {mediaAssets.length > 0 && (
-          <div className="flex items-center gap-1.5 rounded-md bg-panel-input px-2.5 py-[5px] mb-2">
-            <svg width="12" height="12" viewBox="0 0 256 256" fill="none" className="flex-shrink-0">
-              <circle
-                cx="116"
-                cy="116"
-                r="76"
-                stroke="currentColor"
-                strokeWidth="22"
-                className="text-panel-text-5"
-              />
-              <line
-                x1="170"
-                y1="170"
-                x2="232"
-                y2="232"
-                stroke="currentColor"
-                strokeWidth="22"
-                strokeLinecap="round"
-                className="text-panel-text-5"
-              />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search assets..."
-              className="min-w-0 w-full bg-transparent text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-5"
-            />
-          </div>
+        {/* Search — gated on the UNFILTERED pool so it never unmounts itself */}
+        {allMediaAssets.length > 0 && (
+          <SearchInput
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search assets..."
+            aria-label="Search assets"
+            className="mb-2"
+          />
         )}
 
         {/* Filter chips — panel-input style */}
-        {mediaAssets.length > 0 && (
+        {allMediaAssets.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             <button
               onClick={() => setActiveFilter("all")}
-              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+              aria-pressed={activeFilter === "all"}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                 activeFilter === "all"
                   ? "bg-panel-accent/15 text-panel-accent"
                   : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
@@ -395,7 +449,8 @@ export const AssetsTab = memo(function AssetsTab({
                 <button
                   key={cat}
                   onClick={() => setActiveFilter(activeFilter === cat ? "all" : cat)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                  aria-pressed={activeFilter === cat}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                     activeFilter === cat
                       ? "bg-panel-accent/15 text-panel-accent"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
@@ -411,7 +466,21 @@ export const AssetsTab = memo(function AssetsTab({
 
       {/* Asset list */}
       <div className="flex-1 overflow-y-auto mt-1">
-        {mediaAssets.length === 0 ? (
+        {mediaAssets.length === 0 && searchQuery ? (
+          // Searched-empty: the filter caused the emptiness — say so and offer a way out.
+          <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
+            <p className="text-[11px] text-neutral-500 text-center">
+              No assets match &ldquo;{searchQuery}&rdquo;
+            </p>
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-panel-input text-panel-text-3 hover:text-panel-text-1 active:scale-[0.98] transition-colors"
+            >
+              Clear search
+            </button>
+          </div>
+        ) : mediaAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
               width="24"
@@ -452,7 +521,7 @@ export const AssetsTab = memo(function AssetsTab({
                     used={usedPaths.has(a)}
                     meta={manifest.get(a)}
                     onCopy={handleCopyPath}
-                    isCopied={copiedPath === a}
+                    copyFeedback={copyFeedback}
                     onDelete={onDelete}
                     onRename={onRename}
                   />
@@ -465,7 +534,7 @@ export const AssetsTab = memo(function AssetsTab({
                     asset={a}
                     used={usedPaths.has(a)}
                     onCopy={handleCopyPath}
-                    isCopied={copiedPath === a}
+                    copyFeedback={copyFeedback}
                     onDelete={onDelete}
                     onRename={onRename}
                     size={categorized[cat].length <= 4 ? "large" : "small"}
@@ -479,7 +548,7 @@ export const AssetsTab = memo(function AssetsTab({
                     asset={a}
                     used={usedPaths.has(a)}
                     onCopy={handleCopyPath}
-                    isCopied={copiedPath === a}
+                    copyFeedback={copyFeedback}
                     onDelete={onDelete}
                     onRename={onRename}
                     size="small"
