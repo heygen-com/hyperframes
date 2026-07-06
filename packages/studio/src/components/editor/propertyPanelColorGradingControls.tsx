@@ -296,6 +296,8 @@ export function ColorGradingControls({
   onCommitColorGrading: (nextGrading: NormalizedHfColorGrading) => void;
 }) {
   const lutInputRef = useRef<HTMLInputElement>(null);
+  const [lutImporting, setLutImporting] = useState(false);
+  const [lutImportError, setLutImportError] = useState<string | null>(null);
   const lutAssets = useMemo(
     () => assets.filter((asset) => LUT_EXT.test(asset)).sort((a, b) => a.localeCompare(b)),
     [assets],
@@ -305,7 +307,15 @@ export function ColorGradingControls({
 
   const applyPreset = (preset: string) => {
     const next = normalizeHfColorGrading({ preset, intensity: 1 });
-    if (next) onCommitColorGrading(next);
+    if (!next) return;
+    // Apply the preset's own adjust values (that IS the preset's look —
+    // grading.adjust is fully materialized, so carrying it over would always
+    // discard the preset entirely). Only the LUT survives a preset switch;
+    // manual slider tweaks made afterwards layer on the new baseline.
+    onCommitColorGrading({
+      ...next,
+      lut: grading.lut,
+    });
   };
   const applyLut = (src: string | null, intensity = 1) => {
     onCommitColorGrading({
@@ -320,9 +330,17 @@ export function ColorGradingControls({
   };
   const importLuts = async (files: FileList | null) => {
     if (!files?.length || !onImportAssets) return;
-    const uploaded = await onImportAssets(files, LUT_UPLOAD_DIR);
-    const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
-    if (firstLut) applyLut(firstLut, 1);
+    setLutImporting(true);
+    setLutImportError(null);
+    try {
+      const uploaded = await onImportAssets(files, LUT_UPLOAD_DIR);
+      const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
+      if (firstLut) applyLut(firstLut, 1);
+    } catch {
+      setLutImportError("LUT import failed — check the .cube file and try again.");
+    } finally {
+      setLutImporting(false);
+    }
   };
 
   return (
@@ -370,16 +388,21 @@ export function ColorGradingControls({
           </select>
           <button
             type="button"
-            disabled={!onImportAssets}
+            disabled={!onImportAssets || lutImporting}
             onClick={(event) => {
               event.stopPropagation();
               lutInputRef.current?.click();
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-panel-input text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Import .cube LUT"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-panel-input text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-1 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+            title={lutImporting ? "Importing…" : "Import .cube LUT"}
             aria-label="Import .cube LUT"
+            aria-busy={lutImporting}
           >
-            <Plus size={13} />
+            {lutImporting ? (
+              <span className="h-3 w-3 animate-spin rounded-full border border-panel-text-4 border-t-transparent motion-reduce:animate-none" />
+            ) : (
+              <Plus size={13} />
+            )}
           </button>
           <input
             ref={lutInputRef}
@@ -393,6 +416,11 @@ export function ColorGradingControls({
             }}
           />
         </div>
+        {lutImportError && (
+          <div className="text-[10px] text-red-400" role="alert">
+            {lutImportError}
+          </div>
+        )}
         {grading.lut && (
           <div className="grid gap-2">
             {selectedProjectLut && (

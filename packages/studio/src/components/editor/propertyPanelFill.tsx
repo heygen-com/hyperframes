@@ -89,6 +89,7 @@ export function ImageFillField({
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const imageAssets = useMemo(() => assets.filter((a) => IMAGE_EXT.test(a)), [assets]);
   const selectedAsset = useMemo(
     () => resolveSelectedAsset(value, sourceFile, imageAssets),
@@ -99,10 +100,13 @@ export function ImageFillField({
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length || !onImportAssets) return;
     setUploading(true);
+    setUploadError(null);
     try {
       const uploaded = await onImportAssets(files);
       const nextImage = uploaded.find((a) => IMAGE_EXT.test(a));
       if (nextImage) onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+    } catch {
+      setUploadError("Upload failed — check the file and try again.");
     } finally {
       setUploading(false);
     }
@@ -139,6 +143,11 @@ export function ImageFillField({
             }}
           />
         </div>
+        {uploadError && (
+          <div className="text-[10px] text-red-400" role="alert">
+            {uploadError}
+          </div>
+        )}
         {imageAssets.length > 0 ? (
           <div className="space-y-3">
             {selectedAsset && (
@@ -253,10 +262,48 @@ export function GradientField({
           {parsed.stops.map((stop, index) => (
             <div
               key={`stop-preview-${index}`}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              role="slider"
+              tabIndex={disabled ? -1 : 0}
+              aria-label={`Stop ${index + 1} position`}
+              aria-valuenow={Math.round(stop.position)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              onKeyDown={(event) => {
+                if (disabled) return;
+                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                event.preventDefault();
+                const step = event.shiftKey ? 10 : 1;
+                const delta = event.key === "ArrowRight" ? step : -step;
+                updateStop(index, {
+                  position: Math.max(0, Math.min(100, Math.round(stop.position + delta))),
+                });
+              }}
+              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-none focus-visible:ring-2 focus-visible:ring-studio-accent"
               style={{
                 left: `calc(${stop.position}% - 8px)`,
                 backgroundColor: stop.color,
+              }}
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => {
+                if (disabled) return;
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (disabled || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const rect = previewRef.current?.getBoundingClientRect();
+                if (!rect || rect.width <= 0) return;
+                const next = Math.max(
+                  0,
+                  Math.min(100, ((event.clientX - rect.left) / rect.width) * 100),
+                );
+                updateStop(index, { position: Math.round(next * 10) / 10 });
+              }}
+              onPointerUp={(event) => {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onPointerCancel={(event) => {
+                event.currentTarget.releasePointerCapture(event.pointerId);
               }}
             />
           ))}
@@ -306,6 +353,7 @@ export function GradientField({
         <div className="grid gap-1.5">
           <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
           <SliderControl
+            ariaLabel="Angle"
             value={parsed.angle}
             min={0}
             max={360}
@@ -342,6 +390,7 @@ export function GradientField({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Center X</span>
             <SliderControl
+              ariaLabel="Center X"
               value={parsed.centerX}
               min={0}
               max={100}
@@ -355,6 +404,7 @@ export function GradientField({
           <div className="grid min-w-0 gap-1.5">
             <span className={LABEL}>Center Y</span>
             <SliderControl
+              ariaLabel="Center Y"
               value={parsed.centerY}
               min={0}
               max={100}
@@ -375,7 +425,8 @@ export function GradientField({
             type="button"
             disabled={disabled || parsed.stops.length >= 6}
             onClick={() => addStop()}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+            title={parsed.stops.length >= 6 ? "Maximum 6 stops" : "Add a gradient stop"}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <Plus size={12} />
             Add stop

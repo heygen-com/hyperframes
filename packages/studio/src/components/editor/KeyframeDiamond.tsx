@@ -29,9 +29,11 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
         e.stopPropagation();
         onClick();
       }}
-      className="flex-shrink-0 p-0.5 transition-opacity hover:opacity-100"
+      className="relative flex-shrink-0 p-0.5 transition-opacity hover:opacity-100 before:absolute before:-inset-1.5 before:content-['']"
       style={{ color, opacity }}
       title={title}
+      aria-label={title}
+      aria-pressed={state === "active"}
     >
       <svg width={size} height={size} viewBox="0 0 10 10">
         {isHold ? (

@@ -79,34 +79,15 @@ export function BorderRadiusEditor({
             stroke="rgba(255,255,255,0.24)"
             strokeWidth={1.5}
           />
-          <circle
-            cx={sTL}
-            cy={sTL}
-            r={3}
-            fill={linked ? "#3b82f6" : "#a78bfa"}
-            className="cursor-pointer"
-          />
-          <circle
-            cx={PREVIEW_W - sTR}
-            cy={sTR}
-            r={3}
-            fill={linked ? "#3b82f6" : "#a78bfa"}
-            className="cursor-pointer"
-          />
+          <circle cx={sTL} cy={sTL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
+          <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
           <circle
             cx={PREVIEW_W - sBR}
             cy={PREVIEW_H - sBR}
             r={3}
             fill={linked ? "#3b82f6" : "#a78bfa"}
-            className="cursor-pointer"
           />
-          <circle
-            cx={sBL}
-            cy={PREVIEW_H - sBL}
-            r={3}
-            fill={linked ? "#3b82f6" : "#a78bfa"}
-            className="cursor-pointer"
-          />
+          <circle cx={sBL} cy={PREVIEW_H - sBL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
         </svg>
 
         <button

@@ -43,9 +43,14 @@ export function ContextMenu({
   onDelete: (path: string) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const firstItem = menuRef.current?.querySelector("button");
+    if (firstItem instanceof HTMLElement) firstItem.focus();
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
@@ -59,8 +64,27 @@ export function ContextMenu({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
+      restoreFocusRef.current?.focus();
     };
   }, [onClose]);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") {
+      return;
+    }
+    const menu = menuRef.current;
+    if (!menu) return;
+    e.preventDefault();
+    const items = Array.from(menu.querySelectorAll("button"));
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next = 0;
+    if (e.key === "ArrowDown") next = current < 0 ? 0 : (current + 1) % items.length;
+    else if (e.key === "ArrowUp") {
+      next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+    } else if (e.key === "End") next = items.length - 1;
+    items[next]?.focus();
+  };
 
   const adjustedX = Math.min(state.x, window.innerWidth - 180);
   const adjustedY = Math.min(state.y, window.innerHeight - 200);
@@ -74,13 +98,16 @@ export function ContextMenu({
   return (
     <div
       ref={menuRef}
+      role="menu"
+      onKeyDown={handleMenuKeyDown}
       className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[160px]"
       style={{ left: adjustedX, top: adjustedY }}
     >
       {state.targetIsFolder && (
         <>
           <button
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
             onClick={() => {
               onNewFile(state.targetPath);
               onClose();
@@ -90,7 +117,8 @@ export function ContextMenu({
             New File
           </button>
           <button
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
             onClick={() => {
               onNewFolder(state.targetPath);
               onClose();
@@ -105,7 +133,8 @@ export function ContextMenu({
       {!state.targetIsFolder && (
         <>
           <button
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+            role="menuitem"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
             onClick={() => {
               onNewFile(parentPath);
               onClose();
@@ -118,7 +147,8 @@ export function ContextMenu({
         </>
       )}
       <button
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+        role="menuitem"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
         onClick={() => {
           onRename(state.targetPath);
           onClose();
@@ -129,7 +159,8 @@ export function ContextMenu({
       </button>
       {!state.targetIsFolder && (
         <button
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
+          role="menuitem"
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 active:bg-neutral-700 outline-none cursor-pointer text-left"
           onClick={() => {
             onDuplicate(state.targetPath);
             onClose();
@@ -141,7 +172,8 @@ export function ContextMenu({
       )}
       <div className="border-t border-neutral-700 my-1" />
       <button
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 cursor-pointer text-left"
+        role="menuitem"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 focus-visible:bg-red-900/30 active:bg-red-900/50 outline-none cursor-pointer text-left"
         onClick={() => {
           onDelete(state.targetPath);
           onClose();
@@ -172,6 +204,13 @@ export function InlineInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const committedRef = useRef(false);
   const [value, setValue] = useState(defaultValue);
+  const [error, setError] = useState<string | null>(null);
+
+  const validate = (name: string): string | null => {
+    if (/[/\\]/.test(name)) return "Name can't contain / or \\";
+    if (name.includes("..")) return "Name can't contain ..";
+    return null;
+  };
 
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
@@ -196,8 +235,16 @@ export function InlineInput({
     if (e.key === "Enter") {
       e.preventDefault();
       const trimmed = value.trim();
-      if (trimmed && !(/[/\\]/.test(trimmed) || trimmed.includes(".."))) commit(trimmed);
-      else onCancel();
+      if (!trimmed) {
+        onCancel();
+        return;
+      }
+      const invalid = validate(trimmed);
+      if (invalid) {
+        setError(invalid);
+        return;
+      }
+      commit(trimmed);
     } else if (e.key === "Escape") {
       e.preventDefault();
       onCancel();
@@ -206,8 +253,7 @@ export function InlineInput({
 
   const handleBlur = () => {
     const trimmed = value.trim();
-    if (trimmed && trimmed !== defaultValue && !(/[/\\]/.test(trimmed) || trimmed.includes("..")))
-      commit(trimmed);
+    if (trimmed && trimmed !== defaultValue && !validate(trimmed)) commit(trimmed);
     else onCancel();
   };
 
@@ -221,15 +267,28 @@ export function InlineInput({
       ) : (
         <FileIcon path={value} />
       )}
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        className="flex-1 min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border border-neutral-600 outline-none focus:border-[#3CE6AC]"
-        spellCheck={false}
-      />
+      <div className="flex-1 min-w-0">
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          aria-invalid={error ? true : undefined}
+          className={`w-full min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border outline-none ${
+            error ? "border-red-500/70" : "border-neutral-600 focus:border-[#3CE6AC]"
+          }`}
+          spellCheck={false}
+        />
+        {error && (
+          <div className="mt-0.5 text-[10px] text-red-400" role="alert">
+            {error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -238,10 +297,12 @@ export function InlineInput({
 
 export function DeleteConfirm({
   name,
+  isFolder,
   onConfirm,
   onCancel,
 }: {
   name: string;
+  isFolder?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -269,7 +330,16 @@ export function DeleteConfirm({
       className="mx-1 my-0.5 p-2 bg-neutral-800 border border-neutral-700 rounded-md text-xs"
     >
       <p className="text-neutral-300 mb-2">
-        Delete <span className="font-medium text-neutral-100">{name}</span>?
+        {isFolder ? (
+          <>
+            Delete folder <span className="font-medium text-neutral-100">{name}</span> and
+            everything inside it?
+          </>
+        ) : (
+          <>
+            Delete <span className="font-medium text-neutral-100">{name}</span>?
+          </>
+        )}
       </p>
       <div className="flex gap-1.5">
         <button

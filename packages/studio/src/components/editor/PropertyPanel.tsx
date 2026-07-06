@@ -296,11 +296,17 @@ export const PropertyPanel = memo(function PropertyPanel({
       if (props) lines.push(`Properties: ${props}`);
     }
     const text = lines.join("\n");
-    void navigator.clipboard.writeText(text);
-    showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
-    setClipboardCopied(true);
-    clearTimeout(clipboardTimerRef.current);
-    clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
+        setClipboardCopied(true);
+        clearTimeout(clipboardTimerRef.current);
+        clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
+      })
+      .catch(() => {
+        showToast("Couldn't copy to the clipboard — check browser permissions", "error");
+      });
   };
 
   return (
