@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // audio.mjs — product-launch audio ADAPTER. The TTS / BGM / SFX implementation
 // no longer lives here: it is the shared engine at
-// ../../hyperframes-media/scripts/audio.mjs. This file only (a) maps the
+// ../../media-use/audio/scripts/audio.mjs. This file only (a) maps the
 // product-launch model (SCRIPT.md frames + STORYBOARD.md music/sfx) into the
 // engine's neutral audio_request.json, (b) converts the engine's id-keyed
 // audio_meta back into the frame-keyed shape captions.mjs / assemble-index.mjs
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_ENGINE = join(HERE, "..", "..", "hyperframes-media", "scripts", "audio.mjs");
+const DEFAULT_ENGINE = join(HERE, "..", "..", "media-use", "audio", "scripts", "audio.mjs");
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);

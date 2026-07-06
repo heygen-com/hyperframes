@@ -141,7 +141,7 @@ npx hyperframes transcribe narration.wav
 | `narration.txt`  | The exact spoken text with pronunciation substitutions applied (`API` → `A P I`, `$2T` → `two trillion`). Distinct from `SCRIPT.md` so you can regenerate the audio later with a different voice without redoing the substitutions. |
 | `transcript.json`| `[{ text, start, end }]` for every word. Every later step reads this for timing. |
 
-Hyperframes ships multiple TTS adapters (Kokoro, ElevenLabs, HeyGen); see [`/hyperframes-media`](/guides/prompting) for the skill that picks one. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
+Hyperframes ships multiple TTS adapters (Kokoro, ElevenLabs, HeyGen); see [`/media-use`](/guides/prompting) for the skill that picks one. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
 
 **Gate:** `narration.wav`, `narration.txt`, and `transcript.json` exist. `STORYBOARD.md` beat timings reference real timestamps, not estimates.
 

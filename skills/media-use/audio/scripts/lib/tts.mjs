@@ -181,7 +181,7 @@ export function spawnP(
     if (!_warnedNpxResolution) {
       _warnedNpxResolution = true;
       console.error(
-        `[hyperframes-media] Cannot run "${cmd}" on Windows: npm_execpath is not set, so the ` +
+        `[media-use] Cannot run "${cmd}" on Windows: npm_execpath is not set, so the ` +
           `npx JS CLI can't be located. This happens when this script is run directly with ` +
           `\`node\` instead of through npm/npx. Every "${cmd}" call is being skipped. ` +
           `Fix: run via \`npx\`/\`npm run\`, or export npm_execpath pointing at your npm-cli.js.`,

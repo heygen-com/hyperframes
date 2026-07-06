@@ -122,7 +122,7 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       if (!existsSync(src)) {
         anomalies.push(
           `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
-            `library (${sfxLibDir}) — skipped. Reinstall the hyperframes-media skill to ` +
+            `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
             `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
         );
         continue;

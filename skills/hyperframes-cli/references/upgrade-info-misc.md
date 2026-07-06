@@ -72,4 +72,4 @@ npx hyperframes remove-background
 
 These produce assets (narration audio, word-level transcripts, transparent video) that get dropped into a composition. Each may download its own model on first run.
 
-For voice selection, Whisper model rules, output format choice, and the TTS → transcript → captions chain, invoke the `hyperframes-media` skill. This skill stays focused on the dev loop.
+For voice selection, Whisper model rules, output format choice, and the TTS → transcript → captions chain, invoke the `media-use` skill. This skill stays focused on the dev loop.

@@ -11,7 +11,7 @@
 //
 //   TTS : HeyGen REST → ElevenLabs → Kokoro (CLI)
 //   BGM : HeyGen retrieve  → (no credential) Lyria/MusicGen generate
-//   SFX : HeyGen retrieve  → (no credential) bundled 21-file library
+//   SFX : HeyGen retrieve  → (no credential) bundled 19-file library
 //
 // ── audio_request.json (input) ────────────────────────────────────────────────
 //   {

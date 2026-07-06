@@ -1,15 +1,32 @@
 ---
 name: media-use
-description: Agent Media OS — resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) handles the full cascade — project cache, global cache, HeyGen catalog search, freeze, register. Keeps search noise on disk, hands the agent a path. Use when a composition needs background music, sound effects, images, or icons.
+description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, or voice into a frozen local file + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Keeps search noise on disk, hands the agent a path. Use for any audio, image, icon, voiceover, caption, or media-asset need.
 ---
 
 # media-use
 
-Resolve media needs into frozen local files. One verb, four types, zero context noise.
+The media OS for HyperFrames: resolve · generate · operate · remember, every media type, one skill, zero context noise.
+
+## What it owns (the gaps HyperFrames leaves)
+
+HyperFrames owns media _playback_; media-use owns everything else. Each row is enforced by `scripts/lib/coverage.test.mjs` so the claim can't rot.
+
+| HyperFrames gap                            | media-use owns it via                                                                                                                       |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                          |
+| No voice / audio generation                | `resolve --type voice` + the audio engine (`audio/scripts/audio.mjs`)                                                                       |
+| Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                          |
+| No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                           |
+| No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                   |
+| No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                            |
+| No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                  |
+| No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)             |
+| No video generation                        | spec-gated local LTX (`videogen` in `scripts/lib/local-models.mjs`); `heygen video create` avatar upsell                                    |
+| Weak local-model defaults                  | free-usage HeyGen first (TTS, bg-removal) via the `heygen` CLI; local open-source only as an opt-out fallback (`scripts/lib/local-run.mjs`) |
 
 ## When to use
 
-Call `resolve` whenever a composition needs media — background music, sound effects, images, or icons. media-use searches the HeyGen catalog, downloads the best match, freezes it locally, and registers it in a manifest. The agent gets back one line; all search noise stays on disk.
+Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to Parakeet (better than whisper.cpp: 6.05% vs 7.44% WER, 5-10x faster) via `scripts/transcribe.mjs`, with whisper.cpp auto-fallback (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
 
 ## Resolve
 
@@ -27,6 +44,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | `sfx`   | Sound effects       | Bundled 19-file library + HeyGen catalog |
 | `image` | Photos, backgrounds | HeyGen asset search (75k+ vectors)       |
 | `icon`  | Icons, logos        | HeyGen asset search (type=icon)          |
+| `voice` | TTS voiceover       | Local Kokoro (free); HeyGen TTS upsell   |
 
 ### Examples
 
@@ -50,14 +68,46 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ### Flags
 
-| Flag            | Description                                |
-| --------------- | ------------------------------------------ |
-| `--type, -t`    | Media type: bgm, sfx, image, icon          |
-| `--intent, -i`  | What you need (natural language)           |
-| `--entity, -e`  | Entity name for cache matching (optional)  |
-| `--project, -p` | Project directory (default: .)             |
-| `--adopt`       | Bulk-import existing assets/ into manifest |
-| `--json`        | Output JSON instead of one-line result     |
+| Flag            | Description                                                     |
+| --------------- | --------------------------------------------------------------- |
+| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                        |
+| `--intent, -i`  | What you need (natural language)                                |
+| `--entity, -e`  | Entity name for cache matching (optional)                       |
+| `--project, -p` | Project directory (default: .)                                  |
+| `--from`        | Freeze a local file or direct public URL (ingest)               |
+| `--local-only`  | Offline: skip every network provider (cache + local only)       |
+| `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`) |
+| `--adopt`       | Bulk-import existing assets/ into manifest                      |
+| `--json`        | Output JSON instead of one-line result                          |
+
+## Providers
+
+media-use holds no keys; every external tool owns its auth. Generation is
+local-first with a cloud upsell where one helps. `resolve` spec-checks
+AVAILABLE RAM and auto-picks the best local model that fits (a RAM-graded
+ladder, `describeModelLadder`); the agent can see the ladder and override.
+
+| Type          | Provider (in order)                                                                     |
+| ------------- | --------------------------------------------------------------------------------------- |
+| bgm/sfx       | heygen catalog (free)                                                                   |
+| image         | heygen search, then local mflux (best FLUX for your RAM), then codex `image_gen` upsell |
+| voice         | local **Kokoro** (free, on-device), then **heygen tts** paid upsell                     |
+| icon          | heygen asset search                                                                     |
+| video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
+
+Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
+private, offline once cached). Paid/cloud upsells sit behind them: HeyGen TTS
+for voice, the `codex` CLI (ChatGPT sub) for a better image, the `heygen` CLI
+for avatar video. Cost rule (X4): the agent confirms before an agent-initiated
+paid call; a user-requested one just runs.
+
+To force a specific generator (e.g. a user says "make this image with codex"),
+pass `--provider codex`: it pins resolution to that provider and skips the
+free-first default. See `references/operations.md` for the RAM ladders and
+upsell recipes.
+
+`--local-only` skips every network provider, including the free HeyGen ones,
+leaving the project + global cache and any local provider.
 
 ## How it works
 
@@ -90,35 +140,84 @@ After resolve or adopt, read `.media/index.md` for the full inventory:
 # .media · 4 assets
 
 id         type   dur   dims       path                          description
-bgm_001    bgm    25s   —          .media/audio/bgm/bgm_001.mp3  upbeat tech launch
-sfx_001    sfx    0.6s  —          .media/audio/sfx/sfx_001.mp3  whoosh
-image_001  image  —     1920×1080  .media/images/image_001.jpg   gradient tech background
-icon_001   icon   —     200×200    .media/images/icon_001.png    rocket
+bgm_001    bgm    25s   -          .media/audio/bgm/bgm_001.mp3  upbeat tech launch
+sfx_001    sfx    0.6s  -          .media/audio/sfx/sfx_001.mp3  whoosh
+image_001  image  -     1920×1080  .media/images/image_001.jpg   gradient tech background
+icon_001   icon   -     200×200    .media/images/icon_001.png    rocket
 ```
 
 ## Cross-project reuse
 
-Assets are cached automatically on resolve. Subsequent resolves for the same prompt hit the global cache at `~/.media/` — no re-download, no provider call. Promote an asset explicitly with `organize --promote <id>` to make it reusable across all projects.
+Assets are cached automatically on resolve. Every resolved/ingested asset is auto-promoted to the global cache at `~/.media/`, so subsequent resolves for the same prompt, in any project, hit the cache with no re-download and no provider call.
 
 ## Files
 
-- `.media/manifest.jsonl` — machine SSOT, one JSON record per line
-- `.media/index.md` — agent-readable table (id, type, dur, dims, path, description)
-- `~/.media/` — global cross-project reuse cache (content-addressed, SHA-256)
+- `.media/manifest.jsonl`: machine SSOT, one JSON record per line
+- `.media/index.md`: agent-readable table (id, type, dur, dims, path, description)
+- `~/.media/`: global cross-project reuse cache (content-addressed, SHA-256)
 
-## CLI tools used
+## Audio engine: voiceover, music, SFX, captions, transcription
 
-| Tool      | Purpose                                    | Required?     |
-| --------- | ------------------------------------------ | ------------- |
-| `ffprobe` | Probe duration, dimensions, codec on adopt | Yes           |
-| `heygen`  | Audio catalog, asset search                | For providers |
-
-Install the `heygen` CLI (single static binary, no runtime) and authenticate:
+For a full audio pass (TTS voiceover + background music + sound effects in one
+shot), use the shared engine at `audio/scripts/audio.mjs`. It takes a neutral
+`audio_request.json` and writes `audio_meta.json` plus assets under
+`.media/audio/{voice,bgm,sfx}`:
 
 ```bash
-curl -fsSL https://static.heygen.ai/cli/install.sh | bash   # installs latest to ~/.local/bin
-heygen update                                               # if already installed: needs >= v0.1.6
-export HEYGEN_API_KEY=<your-key>                            # or: heygen auth login --key <key>
+node <SKILL_DIR>/audio/scripts/audio.mjs --request ./audio_request.json --out ./audio_meta.json
 ```
 
-Requires **heygen >= v0.1.6** — the providers tag requests with the allowlisted `--headers 'X-HeyGen-Client-Source: media-use'` flag, added in v0.1.6. `asset search` is a pre-launch command hidden from `heygen --help`, but it runs. Without a `heygen` on PATH (or a valid key) the providers print a one-line diagnostic to stderr and resolve falls through to "no provider could resolve".
+- **Request** `{ provider?, lang?, speed?, lines: [{ id, text, sfx?: [names] }], bgm: { mode?, query?, prompt? } }`: `id` joins each line back to your model; `bgm.mode` = `retrieve | generate | none` (omit for auto). `--only tts,bgm,sfx` runs a subset and merges into an existing `--out`.
+- **Output** `audio_meta.json` (id-keyed): `voices[].{path,duration_s,words[]}` (word timestamps for captions), `sfx[]`, `bgm`, `total_duration_s`.
+- **Auto-degrades on one switch**: HeyGen credential present → HeyGen TTS + music/SFX retrieval; absent → ElevenLabs/Kokoro TTS, Lyria/MusicGen BGM generation, and the bundled SFX library (no credential needed).
+- If BGM took the generate path (`bgm_pending: true`), run `audio/scripts/wait-bgm.mjs` before final render.
+
+Single-shot helpers: `audio/scripts/heygen-tts.mjs` (one voice file). Transcription / background removal / captions use the `hyperframes` CLI (`transcribe`, `remove-background`), see the per-topic guides in `audio/references/` (`tts.md`, `bgm.md`, `sfx.md`, `transcribe.md`, `remove-background.md`, `captions/`).
+
+## Operating on media (cut, reframe, transform)
+
+media-use resolves + remembers; for **operating** on assets see
+`references/operations.md`: local-tool recipes (ffmpeg trim/reframe/montage,
+auto-editor, scenedetect) and the local-vs-HeyGen transform table (background
+removal, upscale, lipsync, translate). Run the tool, then register the output
+with `resolve --from <output> --type <type>` so it joins the ledger + global
+cache.
+
+## CLI tools used (what to run, and how to enable each)
+
+`resolve` auto-cascades; each provider shells one CLI. Local tools are OPT-IN:
+if a local tool is absent, resolve degrades gracefully to the free/cloud path,
+so nothing here is strictly required except `ffmpeg`/`ffprobe`. Install a local
+tool to unlock its free, private, on-device path. media-use holds no keys.
+
+| Tool               | Serves                                                                   | Install                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `ffmpeg`/`ffprobe` | adopt probing, cut, duck bake, loudnorm                                  | system package (`brew install ffmpeg`)                                                                              |
+| `heygen`           | catalog (bgm/sfx/image/icon), TTS + avatar upsell                        | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --key <key>` (needs >= v0.1.6) |
+| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                     | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                  |
+| `codex`            | image gen upsell (ChatGPT sub)                                           | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                |
+| `parakeet-mlx`     | local transcription (default ASR, best)                                  | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                            |
+| `ltx-2-mlx`        | local video gen                                                          | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                            |
+| `npx hyperframes`  | Kokoro TTS (voice), whisper.cpp (transcribe fallback), remove-background | bundled with the hyperframes CLI                                                                                    |
+
+The RAM-graded local-model shortlist + exact per-tier install/invoke lives in
+`scripts/lib/local-models.mjs` (the agent can read `describeModelLadder(cap, specs)`
+to see which model fits this machine). Without a tool on PATH, its provider
+prints a one-line diagnostic to stderr and resolve falls through to the next
+provider (e.g. no `mflux` -> codex image upsell; no `parakeet-mlx` -> whisper.cpp).
+
+`heygen asset search` is a pre-launch command hidden from `heygen --help`, but it
+runs; providers tag requests with the allowlisted `X-HeyGen-Client-Source` header
+(v0.1.6+).
+
+## Telemetry
+
+`resolve` and the edit tools (transcribe / transcript-cut / audio-duck) send an
+anonymous usage event to PostHog (`scripts/lib/telemetry.mjs`), so we can see
+which capabilities are actually used. It records only the media TYPE, the
+resolution SOURCE, and the winning PROVIDER: never the intent text, file names,
+or paths, and `$ip:null` so no IP is stored. Best-effort and non-blocking (a
+resolve never waits on or fails from telemetry).
+
+Opt out with `DO_NOT_TRACK=1` or `HYPERFRAMES_NO_TELEMETRY=1` (also off in CI and
+dev). Same public PostHog project key and opt-outs as the `hyperframes` CLI.

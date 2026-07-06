@@ -44,11 +44,11 @@ expired OAuth token it stops with a hint to run `npx hyperframes auth refresh`.
 export HEYGEN_API_KEY=...   # or put it in a project .env
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)
-node skills/hyperframes-media/scripts/heygen-tts.mjs \
+node skills/media-use/audio/scripts/heygen-tts.mjs \
   "Welcome to HyperFrames." -o narration.wav --words narration.words.json
 
-node skills/hyperframes-media/scripts/heygen-tts.mjs ./script.txt -o narration.wav
-node skills/hyperframes-media/scripts/heygen-tts.mjs --list   # public starfish voices
+node skills/media-use/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
+node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish voices
 ```
 
 - **Voice:** `--voice <id>` must be a **starfish** voice_id (`--list`, or `GET /v3/voices?engine=starfish`). v2-catalog ids are rejected with HTTP 400. Omit `--voice` (English) and it defaults to **Marcia** (`05f19352e8f74b0392a8f411eba40de1`, a fixed default so the choice is deterministic). Non-English with no `--voice` falls back to the first matching catalog voice.

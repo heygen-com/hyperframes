@@ -31,8 +31,7 @@ Atomic capabilities you load **on demand** — not full video workflows. For "ma
 | **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU)                              | `/hyperframes-animation` |
 | **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
 | **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                       | `/hyperframes-creative`  |
-| **Media** — TTS voiceover, background music, transcription, background removal, captions                                                                                | `/hyperframes-media`     |
-| **Media resolve** — find + freeze BGM, SFX, images, icons from HeyGen catalog into `.media/` with manifest tracking                                                     | `/media-use`             |
+| **Media** — resolve/generate BGM, SFX, image, icon, voice; TTS voiceover, transcription, background removal, captions; cross-project reuse                              | `/media-use`             |
 | **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
 | **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
 | **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion, shaders (MCP)                                               | `/figma`                 |

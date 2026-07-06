@@ -27,7 +27,7 @@ Other useful flags:
 
 When using `--tailwind`, invoke the `hyperframes-core` (Tailwind reference) skill before editing classes or theme tokens. The scaffold uses Tailwind v4 browser runtime patterns, not Studio's Tailwind v3 setup.
 
-When `--audio` or `--video` is supplied, `init` transcribes the file with Whisper. For voice/model selection see the `hyperframes-media` skill.
+When `--audio` or `--video` is supplied, `init` transcribes the file with Whisper. For voice/model selection see the `media-use` skill.
 
 ## capture
 

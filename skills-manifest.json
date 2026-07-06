@@ -2,11 +2,11 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "62aec45830eda54b",
+      "hash": "1cf326d503115227",
       "files": 144
     },
     "faceless-explainer": {
-      "hash": "6dac80491c3db278",
+      "hash": "868057217d0499e8",
       "files": 18
     },
     "figma": {
@@ -14,23 +14,23 @@
       "files": 1
     },
     "general-video": {
-      "hash": "a30225e30ec7b06c",
+      "hash": "d30096cfc7bd5db2",
       "files": 1
     },
     "hyperframes": {
-      "hash": "e4e2f137d492c6d7",
+      "hash": "c52186059c9796ae",
       "files": 1
     },
     "hyperframes-animation": {
-      "hash": "19024009fab8e5d1",
+      "hash": "6323b750d67287e9",
       "files": 116
     },
     "hyperframes-cli": {
-      "hash": "9b36a367a0e3a332",
+      "hash": "9f9fa8d0cf3ef9e2",
       "files": 7
     },
     "hyperframes-core": {
-      "hash": "50ed383eb88a58b6",
+      "hash": "afea2e8bb200ee71",
       "files": 13
     },
     "hyperframes-creative": {
@@ -41,32 +41,28 @@
       "hash": "47f20312033792c3",
       "files": 3
     },
-    "hyperframes-media": {
-      "hash": "56190192ead45ed1",
-      "files": 47
-    },
     "hyperframes-registry": {
       "hash": "e3b389526834109d",
       "files": 10
     },
     "media-use": {
-      "hash": "75dda0086dda18ce",
-      "files": 19
+      "hash": "969e6ed350111d63",
+      "files": 87
     },
     "motion-graphics": {
-      "hash": "be1d1f159d5eb0e4",
+      "hash": "73771b2d1300236d",
       "files": 23
     },
     "music-to-video": {
-      "hash": "0c5738fac0fe622f",
+      "hash": "84295adeeebcf923",
       "files": 132
     },
     "pr-to-video": {
-      "hash": "d40ba25aa5af30e1",
+      "hash": "0bc51f6ba74b2bfd",
       "files": 22
     },
     "product-launch-video": {
-      "hash": "b1895d518ec04da5",
+      "hash": "40bfb0bf49ae17cd",
       "files": 20
     },
     "remotion-to-hyperframes": {
@@ -82,7 +78,7 @@
       "files": 27
     },
     "website-to-video": {
-      "hash": "ac39931f9a7da749",
+      "hash": "813dc861e4214a35",
       "files": 32
     }
   }
