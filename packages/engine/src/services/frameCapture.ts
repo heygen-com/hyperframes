@@ -417,8 +417,16 @@ async function initDrawElementOrTransparentBackground(
   // captures frozen-blank (raf-ball rendered fully black). On a GPU the same
   // path happens to work, but the hint asked for screenshot — honor it.
   const forceScreenshot = session.config?.forceScreenshot ?? false;
-  // SCRATCH: HF_FORCE_DRAWELEMENT=1 forces the drawElement path + skips all gates
-  // (149-vs-151 fix demo). Uncommitted.
+  // DIAGNOSTIC ONLY — HF_FORCE_DRAWELEMENT=1 forces the drawElement path,
+  // bypassing every compile/init gate AND the compatibility hints (it overrides
+  // forceScreenshot). Exists for upstream-Chromium repro work (isolating gate
+  // behavior from drawElementImage behavior, e.g. the crbug 521861819 149-vs-151
+  // comparison) and for R&D on gated effect classes. Renders under this flag may
+  // be DAMAGED by design — the gates it skips exist because measured damage
+  // (blur/backdrop ~18-49dB, 3D backface, SwiftShader sub-layer drops) is real.
+  // Never set it in production; it is intentionally not documented in user-facing
+  // help, and the safety-net blank guard also stands down under it so diagnostic
+  // frames arrive unmodified.
   const forceDE = process.env.HF_FORCE_DRAWELEMENT === "1";
   const useDrawElement =
     ((session.config?.useDrawElement ?? false) || forceDE) &&
@@ -1983,6 +1991,13 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
+  // (verification screenshots need the un-injected DOM), and initializeSession
+  // calls this again unconditionally afterwards. Once staticFrames is
+  // populated, re-running would overwrite the armed state with
+  // skipReason="capture_mode" (captureMode is "drawelement" by then) —
+  // contradictory telemetry — and re-run the verification seeks. No-op instead.
+  if (session.staticFrames || session.staticDedupSkipReason) return;
   // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
   // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
   // Default-on: only an explicit `staticFrameDedup === false` (resolved from
