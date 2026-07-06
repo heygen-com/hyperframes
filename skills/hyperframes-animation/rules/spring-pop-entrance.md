@@ -175,7 +175,7 @@ tl.fromTo(
 );
 ```
 
-Keep `OVERSHOOT` modest even here (≤ ~2) — past that it reads as a cartoon wobble, not an arrival.
+Keep `OVERSHOOT` modest even here (≤ ~2) — past that it reads as a cartoon wobble, not an arrival. Better still: the baked spring at `dampingFraction: 0.6–0.7` (`../adapters/gsap-easing-and-stagger.md` → Spring Eases) gives ~5–10% overshoot with a second-order settle that reads physical where `back.out` reads cartoon.
 
 ### Origin-anchored pop (callout springs from a pointer / source)
 
@@ -195,6 +195,7 @@ When a popped element then **holds** an ongoing slot (a constellation node, a pe
 
 - **EASE** — the settle curve (the load-bearing decision)
   - Default: **`power3.out`** — a smooth long-tail settle, no overshoot; the house style for product / enterprise / serious tone. Use `expo.out` for a punchier, faster-front arrival (still smooth).
+  - Exact-physics option: `springEase({ response: 0.4 })` (critically damped, ζ=1) from `../adapters/gsap-easing-and-stagger.md` → Spring Eases — the curve `power3.out` approximates, with a harder front and a longer settle tail; take `duration` from the helper. Use when the settle IS the shot (a wordmark landing, a final lockup).
   - Playful exception only: `back.out(OVERSHOOT)` — see the Bouncy pop variation; reach for it only when a bounce is clearly the brand intent.
 
 - **OVERSHOOT** — `back.out(OVERSHOOT)` overshoot strength — **only used in the rare bouncy variant**; the smooth default has no overshoot dial
