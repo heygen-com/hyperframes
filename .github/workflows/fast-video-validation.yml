@@ -8,6 +8,9 @@
 # Manual trigger: Actions → "Fast-capture video validation" → Run workflow.
 name: Fast-capture video validation
 
+permissions:
+  contents: read
+
 on:
   # Manual only. NOTE: currently fails by design — fast capture cannot capture
   # video on any platform yet (see docs/fast-capture-limitations.md, Limitation 2).
