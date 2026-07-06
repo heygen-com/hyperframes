@@ -191,9 +191,18 @@ const NON_RENDERED_TAGS = new Set(["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE"
  * already render correctly are untouched.
  */
 function promoteTemplateCompositionId(rawComp: string, body: Element): void {
-  const templateCompositionId = rawComp.match(
-    /<template[^>]*\sdata-composition-id\s*=\s*["']([^"']+)["']/i,
-  )?.[1];
+  // Two-step match instead of one `[^>]*\s…` regex: the single-pattern form
+  // backtracks polynomially on crafted input (CodeQL js/polynomial-redos).
+  // Step 1 grabs each <template …> open tag (linear); step 2 finds the attr
+  // within that short tag text.
+  let templateCompositionId: string | undefined;
+  for (const tag of rawComp.matchAll(/<template\b[^>]*/gi)) {
+    const id = /\bdata-composition-id\s*=\s*["']([^"']+)["']/i.exec(tag[0] ?? "")?.[1];
+    if (id) {
+      templateCompositionId = id;
+      break;
+    }
+  }
   if (!templateCompositionId) return;
   if (body.querySelector("[data-composition-id]")) return;
 
