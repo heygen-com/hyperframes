@@ -12,7 +12,7 @@ import {
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { persistHfIdsIfNeeded } from "../helpers/hfIdPersist.js";
+import { persistHfIdsIfNeeded, stampFileHfIds } from "../helpers/hfIdPersist.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -333,17 +333,14 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
    * and stamping a non-HTML file (SVG, etc.) would corrupt it on disk.
    *
    * Returns the stamped content to thread into the build (so served ids match
-   * the mint even when the disk write is skipped — read-only fs, TOCTOU
-   * guard), undefined for non-HTML paths, or null when the file vanished
-   * between the caller's stat and the read here.
+   * the mint even when the disk write is skipped — read-only fs), undefined
+   * for non-HTML paths, or null when the file vanished after the caller's
+   * stat. stampFileHfIds does its validation, read, and write through one
+   * file descriptor, so there is no check/read/write path gap to race.
    */
   function pinSubCompHfIds(compFile: string, compPath: string): string | undefined | null {
     if (!/\.html?$/i.test(compPath)) return undefined;
-    try {
-      return persistHfIdsIfNeeded(compFile, readFileSync(compFile, "utf-8"));
-    } catch {
-      return null;
-    }
+    return stampFileHfIds(compFile);
   }
 
   // Sub-composition preview
