@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: transparent;
+        overflow: hidden;
+      }
+      #mk-bg-root {
+        /* ---- mk tokens: override these in the host to re-skin the family ---- */
+        --mk-font: "Inter", -apple-system, sans-serif;
+        --mk-stage: #f5f5f7;
+        --mk-base: #ffffff;
+        --mk-blob-1: #ff7ac8;
+        --mk-blob-2: #45d6c8;
+        --mk-stage-dark: #000000;
+        --mk-base-dark: #0a0a0c;
+        --mk-blob-1-dark: #7d5cff;
+        --mk-blob-2-dark: #2d1b69;
+        --mk-radius-card: 40px;
+        --mk-shadow: 0 30px 80px rgba(0, 0, 0, 0.18);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--mk-stage);
+      }
+      #mk-bg-root.mk-dark {
+        background: var(--mk-stage-dark);
+      }
+      /* The "Bar" — an animatable rounded-rect mask. Full-bleed by default,
+         animatable down to a floating card over the stage. */
+      #mk-bg-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        border-radius: 0;
+        background: var(--mk-base);
+        box-shadow: var(--mk-shadow);
+      }
+      .mk-dark #mk-bg-card {
+        background: var(--mk-base-dark);
+      }
+      /* Soft radial blobs — the procedural "mesh gradient". Two oversized
+         radial gradients with a long falloff, drifting slowly. */
+      .mk-bg-blob {
+        position: absolute;
+        border-radius: 50%;
+        will-change: transform;
+      }
+      #mk-bg-blob1 {
+        background: radial-gradient(
+          circle closest-side,
+          var(--mk-blob-1) 0%,
+          rgba(255, 255, 255, 0) 72%
+        );
+      }
+      #mk-bg-blob2 {
+        background: radial-gradient(
+          circle closest-side,
+          var(--mk-blob-2) 0%,
+          rgba(255, 255, 255, 0) 72%
+        );
+      }
+      .mk-dark #mk-bg-blob1 {
+        background: radial-gradient(
+          circle closest-side,
+          var(--mk-blob-1-dark) 0%,
+          rgba(0, 0, 0, 0) 72%
+        );
+      }
+      .mk-dark #mk-bg-blob2 {
+        background: radial-gradient(
+          circle closest-side,
+          var(--mk-blob-2-dark) 0%,
+          rgba(0, 0, 0, 0) 72%
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mk-bg-root"
+      data-composition-id="mk-background"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="mk-bg-card">
+        <div id="mk-bg-blob1" class="mk-bg-blob" data-layout-allow-overflow></div>
+        <div id="mk-bg-blob2" class="mk-bg-blob" data-layout-allow-overflow></div>
+      </div>
+      <div
+        id="mk-bg-drv"
+        class="clip"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+        style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none"
+      ></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        /* ---- published parameters (inspector-style CONFIG) ---- */
+        var CONFIG = {
+          scheme: "light", // "light" | "dark"
+          animationIn: true, // fade/settle entrance
+          animationOut: true, // fade exit
+          drift: true, // ambient blob motion
+          // Soft BG blobs: center as fraction of canvas, radius in px
+          blob1: { x: 0.28, y: 0.32, r: 950, opacity: 0.85 },
+          blob2: { x: 0.74, y: 0.66, r: 1100, opacity: 0.8 },
+          // Bar mask (rounded-rect card). demo:true plays full-bleed -> card -> full-bleed
+          bar: {
+            demo: true, // full-bleed -> rounded card -> full-bleed showcase
+            x: 240,
+            y: 140,
+            width: 1440,
+            height: 800,
+            roundness: 40,
+          },
+          // Content opacity + frost only matter with footage beneath the block
+          contentOpacity: 1,
+          frostBlur: 0, // px; e.g. 24 for the frosted-card look over footage
+        };
+
+        var W = 1920,
+          H = 1080,
+          DUR = 10;
+
+        var root = document.getElementById("mk-bg-root");
+        var card = document.getElementById("mk-bg-card");
+        var blob1 = document.getElementById("mk-bg-blob1");
+        var blob2 = document.getElementById("mk-bg-blob2");
+
+        if (CONFIG.scheme === "dark") root.classList.add("mk-dark");
+
+        function placeBlob(el, b) {
+          var d = b.r * 2;
+          el.style.width = d + "px";
+          el.style.height = d + "px";
+          el.style.left = b.x * W - b.r + "px";
+          el.style.top = b.y * H - b.r + "px";
+          el.style.opacity = String(b.opacity);
+        }
+        placeBlob(blob1, CONFIG.blob1);
+        placeBlob(blob2, CONFIG.blob2);
+
+        card.style.opacity = String(CONFIG.contentOpacity);
+        if (CONFIG.frostBlur > 0) {
+          card.style.backdropFilter = "blur(" + CONFIG.frostBlur + "px) saturate(1.4)";
+        }
+
+        var tl = gsap.timeline({ paused: true });
+
+        /* entrance — fade + blobs settle (power3, no bounce) */
+        if (CONFIG.animationIn) {
+          tl.from(root, { opacity: 0, duration: 0.7, ease: "power2.out" }, 0);
+          tl.from([blob1, blob2], { scale: 1.14, duration: 1.2, ease: "power3.out" }, 0);
+        }
+
+        /* ambient drift — slow sine yoyo, seek-safe timeline tweens */
+        if (CONFIG.drift) {
+          tl.to(
+            blob1,
+            { x: 70, y: 42, duration: 2.35, ease: "sine.inOut", yoyo: true, repeat: 3 },
+            0.3,
+          );
+          tl.to(
+            blob2,
+            { x: -84, y: -36, duration: 2.35, ease: "sine.inOut", yoyo: true, repeat: 3 },
+            0.3,
+          );
+        }
+
+        /* bar-mask demo: full-bleed -> rounded card over the stage -> full-bleed */
+        if (CONFIG.bar.demo) {
+          tl.to(
+            card,
+            {
+              top: CONFIG.bar.y,
+              left: CONFIG.bar.x,
+              width: CONFIG.bar.width,
+              height: CONFIG.bar.height,
+              borderRadius: CONFIG.bar.roundness,
+              duration: 1.1,
+              ease: "power3.inOut",
+            },
+            3.8,
+          );
+          tl.to(
+            card,
+            {
+              top: 0,
+              left: 0,
+              width: W,
+              height: H,
+              borderRadius: 0,
+              duration: 1.0,
+              ease: "power3.inOut",
+            },
+            7.6,
+          );
+        }
+
+        /* exit + hard kill */
+        if (CONFIG.animationOut) {
+          tl.to(root, { opacity: 0, duration: 0.4, ease: "power2.in" }, DUR - 0.45);
+        }
+        tl.set(root, { visibility: "hidden" }, DUR - 0.02);
+
+        window.__timelines["mk-background"] = tl;
+      })();
+    </script>
+  </body>
+</html>
