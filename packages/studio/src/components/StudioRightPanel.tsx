@@ -69,6 +69,7 @@ export function StudioRightPanel({
 }: StudioRightPanelProps) {
   const {
     rightWidth,
+    setRightWidth,
     rightPanelTab,
     setRightPanelTab,
     rightInspectorPanes,
@@ -295,6 +296,11 @@ export function StudioRightPanel({
       jobs={renderJobs}
       projectId={projectId}
       onDelete={renderQueue.deleteRender}
+      onCancel={renderQueue.cancelRender}
+      loadError={renderQueue.loadError}
+      onRetryLoad={renderQueue.reloadRenders}
+      actionError={renderQueue.actionError}
+      onDismissActionError={renderQueue.dismissActionError}
       onClearCompleted={renderQueue.clearCompleted}
       onStartRender={async (format, quality, resolution, fps) => {
         await waitForPendingDomEditSaves();
@@ -316,11 +322,23 @@ export function StudioRightPanel({
   return (
     <>
       <div
-        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
+        role="separator"
+        aria-label="Resize inspector panel"
+        aria-orientation="vertical"
+        tabIndex={0}
+        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
         onPointerUp={handlePanelResizeEnd}
+        onPointerCancel={handlePanelResizeEnd}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
+          const delta = e.key === "ArrowLeft" ? 16 : -16;
+          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+        }}
       >
         <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
@@ -339,7 +357,8 @@ export function StudioRightPanel({
                     <button
                       type="button"
                       onClick={() => handleInspectorPaneButtonClick("design")}
-                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                      aria-pressed={designPaneOpen}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
                         designPaneOpen
                           ? "bg-neutral-800 text-white"
                           : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
@@ -352,7 +371,8 @@ export function StudioRightPanel({
                     <button
                       type="button"
                       onClick={() => handleInspectorPaneButtonClick("layers")}
-                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                      aria-pressed={layersPaneOpen}
+                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
                         layersPaneOpen
                           ? "bg-neutral-800 text-white"
                           : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
@@ -367,7 +387,8 @@ export function StudioRightPanel({
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("renders")}
-                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                  aria-pressed={rightPanelTab === "renders"}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
                     rightPanelTab === "renders"
                       ? "bg-neutral-800 text-white"
                       : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
@@ -380,7 +401,8 @@ export function StudioRightPanel({
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("slideshow")}
-                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
+                  aria-pressed={rightPanelTab === "slideshow"}
+                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors active:scale-[0.98] ${
                     rightPanelTab === "slideshow"
                       ? "bg-neutral-800 text-white"
                       : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
@@ -432,6 +454,24 @@ export function StudioRightPanel({
                 <LayersPanel />
               ) : designPaneOpen ? (
                 propertyPanel
+              ) : inspectorTabActive ? (
+                // Inspector tab selected but no pane can render (panes toggled
+                // off, or inspector inactive during playback/recording): show an
+                // explanation instead of silently rendering the render queue
+                // under a highlighted inspector tab.
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                  <p className="text-xs text-neutral-500">
+                    Inspector is unavailable right now — select the Design or Layers pane above, or
+                    pause playback/recording to inspect elements.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab("renders")}
+                    className="h-7 rounded-md border border-neutral-800 px-3 text-[11px] font-medium text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200 active:scale-[0.98]"
+                  >
+                    Show Renders
+                  </button>
+                </div>
               ) : (
                 renderQueuePanel
               )}

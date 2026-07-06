@@ -1,6 +1,7 @@
 import { useState, useRef, type CSSProperties } from "react";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { type AgentModalAnchorPoint, clampNumber } from "../utils/studioHelpers";
+import { useDialogBehavior } from "./ui/useDialogBehavior";
 
 function getAgentModalPositionStyle(
   anchorPoint: AgentModalAnchorPoint | null,
@@ -39,7 +40,16 @@ export function AskAgentModal({
 }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const modalPositionStyle = getAgentModalPositionStyle(anchorPoint);
+  // A dirty draft vetoes Escape/backdrop closes — a stray click must not
+  // discard typed instructions. The X button and Copy still close directly.
+  const { requestClose } = useDialogBehavior({
+    open: true,
+    onClose,
+    containerRef,
+    canClose: () => !value.trim(),
+  });
 
   useMountEffect(() => {
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -54,13 +64,18 @@ export function AskAgentModal({
     <div
       className={
         anchorPoint
-          ? "fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-          : "fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          ? "hf-backdrop-in fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+          : "hf-backdrop-in fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       }
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
-        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl ${
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Copy prompt to AI agent"
+        tabIndex={-1}
+        className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-none ${
           anchorPoint ? "fixed" : ""
         }`}
         style={modalPositionStyle}
@@ -74,8 +89,9 @@ export function AskAgentModal({
             </p>
           </div>
           <button
-            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50"
+            className="p-1 rounded-md text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 active:scale-[0.98]"
             onClick={onClose}
+            aria-label="Close"
           >
             <svg
               width="14"
@@ -100,7 +116,8 @@ export function AskAgentModal({
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
-              if (e.key === "Escape") onClose();
+              // Escape is handled at the document level by useDialogBehavior,
+              // guarded against discarding a dirty draft.
             }}
           />
           {contextPreview && (

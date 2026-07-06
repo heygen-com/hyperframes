@@ -100,6 +100,7 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     leftWidth,
     setLeftWidth,
     rightWidth,
+    setRightWidth,
     leftCollapsed,
     setLeftCollapsed,
     rightCollapsed,
