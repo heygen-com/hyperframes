@@ -225,6 +225,97 @@ describe("DomEditOverlay", () => {
     host.remove();
   });
 
+  it("keeps the normal click path when marquee starts below threshold", async () => {
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      return {
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 450,
+        width: 800,
+        height: 450,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    };
+
+    const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
+    const originalReleasePointerCapture = HTMLDivElement.prototype.releasePointerCapture;
+    HTMLDivElement.prototype.setPointerCapture = () => {};
+    HTMLDivElement.prototype.releasePointerCapture = () => {};
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const onCanvasMouseDown = vi.fn();
+    const onMarqueeSelect = vi.fn();
+
+    act(() => {
+      root.render(
+        React.createElement(DomEditOverlay, {
+          ...createOverlayProps({
+            iframeRef,
+            selection: null,
+            hoverSelection: null,
+            onSelectionChange: () => {},
+          }),
+          onCanvasMouseDown,
+          onMarqueeSelect,
+        }),
+      );
+    });
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
+    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
+    expect(overlay).toBeTruthy();
+
+    act(() => {
+      overlay.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+      overlay.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+      overlay.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          button: 0,
+          clientX: 120,
+          clientY: 80,
+        }),
+      );
+    });
+
+    expect(onCanvasMouseDown).toHaveBeenCalled();
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+
+    act(() => {
+      root.unmount();
+    });
+    HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
+    HTMLDivElement.prototype.releasePointerCapture = originalReleasePointerCapture;
+    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    host.remove();
+  });
+
   it("starts movement from the selected bounds", async () => {
     // The overlay's compRect updates via a RAF loop reading iframe + overlay
     // getBoundingClientRect. happy-dom returns all zeros for newly-created

@@ -377,9 +377,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           cy >= compRect.top &&
           cy <= compRect.top + compRect.height;
         if (inComp) {
-          event.preventDefault();
-          event.stopPropagation();
-          suppressNextOverlayMouseDownRef.current = true;
           (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
           marquee.marqueeRef.current = {
             startX: cx,

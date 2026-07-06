@@ -145,6 +145,8 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
           if (Math.hypot(dx, dy) < MARQUEE_THRESHOLD_PX) return;
           m.pastThreshold = true;
         }
+        event.preventDefault();
+        event.stopPropagation();
         const rect: Rect = {
           left: Math.min(m.startX, m.currentX),
           top: Math.min(m.startY, m.currentY),
@@ -185,8 +187,6 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
             },
             event.shiftKey,
           );
-        } else {
-          deps.onMarqueeSelectRef.current?.([], false);
         }
         setMarqueeRect(null);
         setCandidateRects([]);
@@ -194,7 +194,7 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
       }
       deps.gestures.onPointerUp(event);
     },
-    [deps.gestures, commitMarquee, deps.onMarqueeSelectRef],
+    [deps.gestures, commitMarquee],
   );
 
   const onPointerCancel = useCallback(() => {
