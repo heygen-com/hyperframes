@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -183,6 +184,7 @@ function createSelection(
     capabilities: {
       canSelect: true,
       canEditStyles: true,
+      canCrop: true,
       canMove: true,
       canResize: true,
       canApplyManualOffset: true,

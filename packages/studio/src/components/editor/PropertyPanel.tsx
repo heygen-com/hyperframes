@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Layers, Move } from "../../icons/SystemIcons";
+import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
@@ -27,9 +27,11 @@ import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
+import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
 
 // Re-export helpers that external consumers import from this module
 export {
+  buildInsetClipPathSides,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   getCssFilterFunctionPx,
@@ -37,6 +39,7 @@ export {
   inferBoxShadowPreset,
   inferClipPathPreset,
   normalizePanelPxValue,
+  parseInsetClipPathSides,
   setCssFilterFunctionPx,
 } from "./propertyPanelHelpers";
 
@@ -94,6 +97,8 @@ export const PropertyPanel = memo(function PropertyPanel({
   recordingState,
   recordingDuration,
   onToggleRecording,
+  cropMode,
+  onCropModeChange,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
@@ -160,35 +165,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   };
 
   if (!element) {
-    return (
-      <div className="flex h-full flex-col bg-neutral-900">
-        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-          {multiSelectCount > 1 ? (
-            <>
-              <Layers size={18} className="mb-3 text-neutral-600" />
-              <p className="text-sm font-medium text-neutral-200">
-                {multiSelectCount} elements selected
-              </p>
-              <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-                Select a single element to edit its properties. Click an element in the preview or
-                use the timeline layer panel.
-              </p>
-            </>
-          ) : (
-            <>
-              <Eye size={18} className="mb-3 text-neutral-600" />
-              <p className="text-sm font-medium text-neutral-200">
-                Select an element in the preview.
-              </p>
-              <p className="mt-2 max-w-[260px] text-xs leading-5 text-neutral-500">
-                The inspector is tuned for element edits with safer geometry controls, color
-                picking, and cleaner grouped layer controls.
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-    );
+    return <PropertyPanelEmptyState multiSelectCount={multiSelectCount} />;
   }
 
   const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
@@ -581,6 +558,8 @@ export const PropertyPanel = memo(function PropertyPanel({
             onSetStyle={onSetStyle}
             onImportAssets={onImportAssets}
             gsapBorderRadius={gsapBorderRadius}
+            cropMode={cropMode}
+            onCropModeChange={onCropModeChange}
           />
         )}
       </div>

@@ -4,6 +4,7 @@
  */
 import { useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { hugRectForElement } from "./domEditOverlayCrop";
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import {
   type GroupOverlayItem,
@@ -15,7 +16,7 @@ import {
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
-  toOverlayRect,
+  toVisibleOverlayRect,
 } from "./domEditOverlayGeometry";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
@@ -164,7 +165,7 @@ export function useDomEditOverlayRects({
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
               if (!child.getBoundingClientRect) continue;
-              const r = toOverlayRect(overlayEl, iframe, child);
+              const r = toVisibleOverlayRect(overlayEl, iframe, child);
               if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);
             }
             if (!childRectsEqual(childRectsRef.current, nextChildRects)) {
@@ -203,7 +204,8 @@ export function useDomEditOverlayRects({
           if (liveGroupKeys.has(key)) continue;
           liveGroupKeys.add(key);
           const el = resolveGroupElement(doc, groupSelection);
-          const rect = el ? groupAwareOverlayRect(overlayEl, iframe, el) : null;
+          const base = el ? groupAwareOverlayRect(overlayEl, iframe, el) : null;
+          const rect = base && el ? { ...base, ...hugRectForElement(base, el) } : base;
           if (el && rect)
             nextGroupItems.push({ key, selection: groupSelection, element: el, rect });
         }

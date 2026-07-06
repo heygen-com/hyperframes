@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import {
@@ -53,6 +54,16 @@ describe("patchElementInHtml", () => {
 
     expect(matched).toBe(true);
     expect(result).toMatch(/color:\s*red/);
+    expect(result).toContain('id="hero"');
+  });
+
+  it("patches a 4-side clip-path inset inline style", () => {
+    const { html: result, matched } = patchElementInHtml(FIXTURE, { id: "hero" }, [
+      { type: "inline-style", property: "clip-path", value: "inset(10px 20px 30px 40px)" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(result).toMatch(/clip-path:\s*inset\(10px 20px 30px 40px\)/);
     expect(result).toContain('id="hero"');
   });
 

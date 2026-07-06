@@ -50,6 +50,9 @@ export const CURATED_STYLE_PROPERTIES = [
 export interface DomEditCapabilities {
   canSelect: boolean;
   canEditStyles: boolean;
+  /** Can take a non-destructive `clip-path: inset()` crop — broader than
+   *  canEditStyles (a sub-composition host is croppable from the parent view). */
+  canCrop: boolean;
   /** Directly editable authored left/top style fields. Canvas drag uses manual edits instead. */
   canMove: boolean;
   /** Directly editable authored width/height style fields. Canvas resize uses manual edits instead. */

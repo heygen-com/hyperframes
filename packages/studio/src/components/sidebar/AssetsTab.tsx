@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
@@ -14,6 +15,7 @@ import {
   FILTER_ORDER,
 } from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
+import { GlobalAssetsView } from "./GlobalAssetsView";
 
 interface AssetsTabProps {
   projectId: string;
@@ -172,6 +174,51 @@ function ImageCard({
   );
 }
 
+export type UsageFilter = "all" | "used" | "unused";
+
+/** Filter assets by whether the composition references them. Pure — unit-tested. */
+export function filterByUsage(
+  assets: string[],
+  usedPaths: Set<string>,
+  usageFilter: UsageFilter,
+): string[] {
+  if (usageFilter === "used") return assets.filter((a) => usedPaths.has(a));
+  if (usageFilter === "unused") return assets.filter((a) => !usedPaths.has(a));
+  return assets;
+}
+
+/** Count used vs unused over a media set. Pure — unit-tested. */
+export function countUsage(
+  assets: string[],
+  usedPaths: Set<string>,
+): { used: number; unused: number } {
+  let used = 0;
+  for (const a of assets) if (usedPaths.has(a)) used++;
+  return { used, unused: assets.length - used };
+}
+
+/**
+ * Project-relative asset paths referenced by composition elements — the set the
+ * "in use" badge, used-first sort, and usage filter all key on. Element src is
+ * the raw authored value (timelineElementHelpers sets entry.src =
+ * getAttribute("src")), so it can be a relative path ("assets/x.png"), a
+ * "./"-prefixed path, the served "/api/projects/<id>/preview/assets/x.png" form,
+ * or carry a ?query — normalize all of them to the bare project path so they
+ * match the asset-list entries. Pure — unit-tested.
+ */
+export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> {
+  const paths = new Set<string>();
+  for (const el of elements) {
+    if (!el.src) continue;
+    const s = el.src
+      .replace(/^\/api\/projects\/[^/]+\/preview\//, "") // strip the dev serve prefix
+      .replace(/^\.?\//, "") // strip leading ./ or /
+      .split(/[?#]/)[0]; // drop query / hash
+    if (s) paths.add(s);
+  }
+  return paths;
+}
+
 export const AssetsTab = memo(function AssetsTab({
   projectId,
   assets,
@@ -183,7 +230,11 @@ export const AssetsTab = memo(function AssetsTab({
   const [dragOver, setDragOver] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
+  const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // Cross-project view: the global media-use cache (~/.media). The view itself
+  // (GlobalAssetsView) owns its fetch — AssetsTab only tracks which scope is active.
+  const [viewMode, setViewMode] = useState<"local" | "global">("local");
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
@@ -246,19 +297,11 @@ export const AssetsTab = memo(function AssetsTab({
   }, []);
 
   const elements = usePlayerStore((s) => s.elements);
-  const usedPaths = useMemo(() => {
-    const paths = new Set<string>();
-    for (const el of elements) {
-      if (el.src) {
-        const src = el.src.replace(/^\/api\/projects\/[^/]+\/preview\//, "");
-        paths.add(src);
-      }
-    }
-    return paths;
-  }, [elements]);
+  const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
 
   const mediaAssets = useMemo(() => {
-    const all = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
+    const media = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
+    const all = filterByUsage(media, usedPaths, usageFilter);
     if (!searchQuery) return all;
     const q = searchQuery.toLowerCase();
     return all.filter((a) => {
@@ -266,7 +309,7 @@ export const AssetsTab = memo(function AssetsTab({
       const rec = manifest.get(a);
       return rec?.description?.toLowerCase().includes(q);
     });
-  }, [assets, searchQuery, manifest]);
+  }, [assets, searchQuery, manifest, usageFilter, usedPaths]);
 
   const categorized = useMemo(() => {
     const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
@@ -291,6 +334,17 @@ export const AssetsTab = memo(function AssetsTab({
     return c;
   }, [mediaAssets, categorized]);
 
+  // Usage counts over the full media set (independent of the active usage filter,
+  // so the chips don't show their own filtered totals).
+  const usageCounts = useMemo(
+    () =>
+      countUsage(
+        assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+        usedPaths,
+      ),
+    [assets, usedPaths],
+  );
+
   const visibleCategories =
     activeFilter === "all"
       ? FILTER_ORDER.filter((c) => categorized[c].length > 0)
@@ -308,6 +362,22 @@ export const AssetsTab = memo(function AssetsTab({
     >
       {/* Header — matches design panel Section pattern */}
       <div className="px-4 pt-2.5 pb-1.5 flex-shrink-0">
+        {/* Scope toggle — this project's assets vs the global media-use cache */}
+        <div className="flex gap-1 mb-2.5 p-0.5 rounded-md bg-panel-input">
+          {(["local", "global"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
+                viewMode === m
+                  ? "bg-panel-accent/15 text-panel-accent"
+                  : "text-panel-text-3 hover:text-panel-text-1"
+              }`}
+            >
+              {m === "local" ? "This project" : "All projects"}
+            </button>
+          ))}
+        </div>
         {/* Import */}
         {onImport && (
           <>
@@ -377,8 +447,8 @@ export const AssetsTab = memo(function AssetsTab({
           </div>
         )}
 
-        {/* Filter chips — panel-input style */}
-        {mediaAssets.length > 0 && (
+        {/* Filter chips — panel-input style (local view only) */}
+        {viewMode === "local" && mediaAssets.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             <button
               onClick={() => setActiveFilter("all")}
@@ -405,13 +475,41 @@ export const AssetsTab = memo(function AssetsTab({
                 </button>
               ) : null,
             )}
+            {/* Usage filter — show only assets the composition references, or only the unused ones */}
+            {usageCounts.used > 0 && usageCounts.unused > 0 && (
+              <>
+                <span className="w-px self-stretch bg-panel-input mx-0.5" aria-hidden="true" />
+                <button
+                  onClick={() => setUsageFilter(usageFilter === "used" ? "all" : "used")}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                    usageFilter === "used"
+                      ? "bg-panel-accent/15 text-panel-accent"
+                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
+                  }`}
+                >
+                  In use {usageCounts.used}
+                </button>
+                <button
+                  onClick={() => setUsageFilter(usageFilter === "unused" ? "all" : "unused")}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                    usageFilter === "unused"
+                      ? "bg-panel-accent/15 text-panel-accent"
+                      : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
+                  }`}
+                >
+                  Unused {usageCounts.unused}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
 
       {/* Asset list */}
       <div className="flex-1 overflow-y-auto mt-1">
-        {mediaAssets.length === 0 ? (
+        {viewMode === "global" ? (
+          <GlobalAssetsView searchQuery={searchQuery} />
+        ) : mediaAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full px-4 gap-2">
             <svg
               width="24"

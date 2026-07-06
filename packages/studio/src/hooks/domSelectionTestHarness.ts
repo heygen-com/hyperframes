@@ -30,6 +30,7 @@ export function makeSelection(label: string, element: HTMLElement): DomEditSelec
     capabilities: {
       canSelect: true,
       canEditStyles: true,
+      canCrop: true,
       canMove: true,
       canResize: true,
       canApplyManualOffset: true,

@@ -108,4 +108,6 @@ export interface PropertyPanelProps {
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
+  cropMode?: boolean;
+  onCropModeChange?: (active: boolean) => void;
 }

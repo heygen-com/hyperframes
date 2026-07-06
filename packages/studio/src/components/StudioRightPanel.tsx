@@ -51,6 +51,8 @@ export interface StudioRightPanelProps {
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
+  cropMode?: boolean;
+  onCropModeChange?: (active: boolean) => void;
   /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
   sdkSession: Composition | null;
   reloadPreview: () => void;
@@ -70,6 +72,8 @@ export function StudioRightPanel({
   recordingState,
   recordingDuration,
   onToggleRecording,
+  cropMode,
+  onCropModeChange,
   sdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
@@ -393,6 +397,8 @@ export function StudioRightPanel({
       recordingState={recordingState}
       recordingDuration={recordingDuration}
       onToggleRecording={onToggleRecording}
+      cropMode={cropMode}
+      onCropModeChange={onCropModeChange}
     />
   );
 

@@ -37,6 +37,7 @@ import {
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
 import { useGestureCommit } from "./hooks/useGestureCommit";
+import { useCropModeProps } from "./hooks/useCropMode";
 import { STUDIO_KEYFRAMES_ENABLED } from "./components/editor/manualEditingAvailability";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftSidebar } from "./components/StudioLeftSidebar";
@@ -82,6 +83,7 @@ export function StudioApp() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
+  const cropModeProps = useCropModeProps();
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
@@ -369,6 +371,7 @@ export function StudioApp() {
     isGestureRecordingRef,
   });
   handleToggleRecordingRef.current = handleToggleRecording;
+  const recordingToggle = STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined;
   const canvasRectRef = useRef<CanvasRect | null>(null);
   useLayoutEffect(() => {
     if (gestureState !== "recording" || !previewIframe) {
@@ -537,10 +540,9 @@ export function StudioApp() {
                       shouldShowSelectedDomBounds={shouldShowSelectedDomBounds}
                       isGestureRecording={gestureState === "recording"}
                       recordingState={gestureState}
-                      onToggleRecording={
-                        STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined
-                      }
+                      onToggleRecording={recordingToggle}
                       blockPreview={blockPreview}
+                      {...cropModeProps}
                       gestureOverlay={
                         gestureState === "recording" && previewIframe ? (
                           <GestureTrailOverlay
@@ -564,13 +566,12 @@ export function StudioApp() {
                         }}
                         recordingState={gestureState}
                         recordingDuration={gestureRecording.recordingDuration}
-                        onToggleRecording={
-                          STUDIO_KEYFRAMES_ENABLED ? handleToggleRecording : undefined
-                        }
+                        onToggleRecording={recordingToggle}
                         sdkSession={sdkHandle.session}
                         reloadPreview={reloadPreview}
                         domEditSaveTimestampRef={domEditSaveTimestampRef}
                         recordEdit={editHistory.recordEdit}
+                        {...cropModeProps}
                       />
                     )}
                   </div>

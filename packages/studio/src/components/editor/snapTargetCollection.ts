@@ -1,9 +1,8 @@
-// fallow-ignore-file unused-file
 // fallow-ignore-file code-duplication
 import type { DomEditSelection } from "./domEditing";
 import {
   isElementVisibleForOverlay,
-  toOverlayRect,
+  toVisibleOverlayRect,
   type OverlayRect,
 } from "./domEditOverlayGeometry";
 import {
@@ -106,7 +105,7 @@ export function collectSnapContext(input: {
     id: string;
   }> = [];
   for (let i = 0; i < elements.length; i++) {
-    const rect = toOverlayRect(input.overlayEl, input.iframe, elements[i]);
+    const rect = toVisibleOverlayRect(input.overlayEl, input.iframe, elements[i]);
     if (rect) entries.push({ rect, id: `snap-target-${i}` });
   }
 

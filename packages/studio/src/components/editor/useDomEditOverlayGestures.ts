@@ -46,6 +46,7 @@ import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
+import { hugRectForElement } from "./domEditOverlayCrop";
 import {
   resolveSnapAdjustment,
   resolveResizeSnapAdjustment,
@@ -183,12 +184,18 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (g.kind === "drag") {
       const sc = g.snapContext;
       if (sc?.snapEnabled && sc.targets.length > 0) {
-        const movingRect = {
-          left: g.originLeft,
-          top: g.originTop,
-          width: g.originWidth,
-          height: g.originHeight,
-        };
+        // Snap the element's VISIBLE (crop-hugged) edges, not the full bounds.
+        const movingRect = hugRectForElement(
+          {
+            left: g.originLeft,
+            top: g.originTop,
+            width: g.originWidth,
+            height: g.originHeight,
+            editScaleX: g.editScaleX,
+            editScaleY: g.editScaleY,
+          },
+          g.selection.element,
+        );
         const allTargets = sc.compositionTarget
           ? [...sc.targets, sc.compositionTarget]
           : sc.targets;

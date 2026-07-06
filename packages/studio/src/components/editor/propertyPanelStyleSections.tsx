@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
+import { Eye, Layers, Palette, Scissors, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
   buildBoxShadowPresetValue,
   buildClipPathValue,
+  buildInsetClipPathSides,
   buildInsetClipPathValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
@@ -17,10 +18,12 @@ import {
   inferClipPathPreset,
   LABEL,
   normalizePanelPxValue,
+  parseInsetClipPathSides,
   parseNumericValue,
   parsePxMetricValue,
   RESPONSIVE_GRID,
   setCssFilterFunctionPx,
+  type ClipPathInsetSides,
   type BoxShadowPreset,
 } from "./propertyPanelHelpers";
 import {
@@ -35,6 +38,7 @@ import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
+// fallow-ignore-next-line complexity
 export function StyleSections({
   projectId,
   element,
@@ -43,6 +47,8 @@ export function StyleSections({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
+  cropMode = false,
+  onCropModeChange,
 }: {
   projectId: string;
   element: DomEditSelection;
@@ -51,6 +57,8 @@ export function StyleSections({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  cropMode?: boolean;
+  onCropModeChange?: (active: boolean) => void;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
@@ -86,7 +94,16 @@ export function StyleSections({
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
   const clipPathValue = styles["clip-path"] || "none";
   const clipPathPreset = inferClipPathPreset(clipPathValue);
+  const parsedClipInsets = parseInsetClipPathSides(clipPathValue);
   const clipInsetValue = getClipPathInsetPx(clipPathValue);
+  const clipInsetSides = parsedClipInsets ?? {
+    top: clipInsetValue,
+    right: clipInsetValue,
+    bottom: clipInsetValue,
+    left: clipInsetValue,
+    radius: radiusValue,
+  };
+  const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
 
@@ -115,6 +132,19 @@ export function StyleSections({
         serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
+  };
+
+  const commitClipInsetSide = (side: keyof ClipPathInsetSides, nextValue: string) => {
+    const next = parsePxMetricValue(nextValue);
+    if (next == null) return;
+    const sides: ClipPathInsetSides = {
+      top: clipInsetSides.top,
+      right: clipInsetSides.right,
+      bottom: clipInsetSides.bottom,
+      left: clipInsetSides.left,
+    };
+    sides[side] = next;
+    onSetStyle("clip-path", buildInsetClipPathSides(sides, clipInsetSides.radius));
   };
 
   return (
@@ -344,6 +374,50 @@ export function StyleSections({
               }
             />
           </div>
+          {showClipInsetSides && (
+            <div className="grid gap-2">
+              <div className="grid grid-cols-4 gap-2">
+                <MetricField
+                  label="T"
+                  value={formatPxMetricValue(clipInsetSides.top)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("top", next)}
+                />
+                <MetricField
+                  label="R"
+                  value={formatPxMetricValue(clipInsetSides.right)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("right", next)}
+                />
+                <MetricField
+                  label="B"
+                  value={formatPxMetricValue(clipInsetSides.bottom)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("bottom", next)}
+                />
+                <MetricField
+                  label="L"
+                  value={formatPxMetricValue(clipInsetSides.left)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("left", next)}
+                />
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={styleEditingDisabled || !onCropModeChange}
+            aria-pressed={cropMode}
+            onClick={() => onCropModeChange?.(!cropMode)}
+            className={`inline-flex h-8 w-fit items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              cropMode
+                ? "border-studio-accent/60 bg-studio-accent/15 text-studio-accent"
+                : "border-panel-border bg-panel-input text-panel-text-2 hover:text-white"
+            }`}
+          >
+            <Scissors size={13} />
+            Crop
+          </button>
         </div>
       </Section>
 
