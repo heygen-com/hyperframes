@@ -9,17 +9,36 @@ import {
 
 let nextSplitId = 0;
 
+const HISTORY_CAP = 50;
+/** Coalesce rapid same-target edits (typing, nudging) into one history entry. */
+const HISTORY_COALESCE_MS = 800;
+
 interface CaptionState {
   isEditMode: boolean;
+  /** User explicitly exited caption editing — suppresses auto re-activation. */
+  dismissed: boolean;
   model: CaptionModel | null;
   selectedSegmentIds: Set<string>;
   selectedGroupId: string | null;
   sourceFilePath: string | null;
+  /** Load/save failure surfaced to the user (null = healthy). */
+  syncError: string | null;
+  /** Registered by useCaptionSync so error banners can retry the save. */
+  retrySave: (() => void) | null;
+
+  // Undo/redo (in-memory model snapshots)
+  past: CaptionModel[];
+  future: CaptionModel[];
+  undo: () => CaptionModel | null;
+  redo: () => CaptionModel | null;
 
   // Basic
   setEditMode: (active: boolean) => void;
+  setDismissed: (dismissed: boolean) => void;
   setModel: (model: CaptionModel | null) => void;
   setSourceFilePath: (path: string | null) => void;
+  setSyncError: (error: string | null) => void;
+  setRetrySave: (fn: (() => void) | null) => void;
 
   // Selection
   selectSegment: (id: string, additive?: boolean) => void;
@@ -53,19 +72,70 @@ interface CaptionState {
 
 const initialState = {
   isEditMode: false,
+  dismissed: false,
   model: null,
   selectedSegmentIds: new Set<string>(),
   selectedGroupId: null,
   sourceFilePath: null,
+  syncError: null,
+  retrySave: null,
+  past: [] as CaptionModel[],
+  future: [] as CaptionModel[],
 };
+
+// Coalescing bookkeeping lives outside the store — it is not renderable state.
+let lastHistoryKey: string | null = null;
+let lastHistoryAt = 0;
+
+/**
+ * Snapshot the current model onto the undo stack before a mutation.
+ * `key` identifies the edit target so rapid repeats (typing a value, arrow-key
+ * nudging) coalesce into a single entry instead of one per keystroke.
+ */
+function pushHistory(
+  state: Pick<CaptionState, "model" | "past">,
+  key: string,
+): Partial<Pick<CaptionState, "past" | "future">> {
+  if (!state.model) return {};
+  const now = Date.now();
+  if (lastHistoryKey === key && now - lastHistoryAt < HISTORY_COALESCE_MS) {
+    lastHistoryAt = now;
+    return { future: [] };
+  }
+  lastHistoryKey = key;
+  lastHistoryAt = now;
+  const past = [...state.past, state.model].slice(-HISTORY_CAP);
+  return { past, future: [] };
+}
 
 export const useCaptionStore = create<CaptionState>((set, get) => ({
   ...initialState,
 
   // Basic
   setEditMode: (active) => set({ isEditMode: active }),
+  setDismissed: (dismissed) => set({ dismissed }),
   setModel: (model) => set({ model }),
   setSourceFilePath: (path) => set({ sourceFilePath: path }),
+  setSyncError: (error) => set({ syncError: error }),
+  setRetrySave: (fn) => set({ retrySave: fn }),
+
+  // Undo/redo
+  undo: () => {
+    const { model, past, future } = get();
+    const prev = past[past.length - 1];
+    if (!prev || !model) return null;
+    lastHistoryKey = null;
+    set({ model: prev, past: past.slice(0, -1), future: [...future, model] });
+    return prev;
+  },
+  redo: () => {
+    const { model, past, future } = get();
+    const next = future[future.length - 1];
+    if (!next || !model) return null;
+    lastHistoryKey = null;
+    set({ model: next, past: [...past, model].slice(-HISTORY_CAP), future: future.slice(0, -1) });
+    return next;
+  },
 
   // Selection
   selectSegment: (id, additive = false) =>
@@ -111,7 +181,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       if (!segment) return {};
       const segments = new Map(state.model.segments);
       segments.set(segmentId, { ...segment, style: { ...segment.style, ...style } });
-      return { model: { ...state.model, segments } };
+      return {
+        ...pushHistory(state, `seg-style:${segmentId}`),
+        model: { ...state.model, segments },
+      };
     }),
 
   updateSegmentText: (segmentId, text) =>
@@ -121,7 +194,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       if (!segment) return {};
       const segments = new Map(state.model.segments);
       segments.set(segmentId, { ...segment, text });
-      return { model: { ...state.model, segments } };
+      return {
+        ...pushHistory(state, `seg-text:${segmentId}`),
+        model: { ...state.model, segments },
+      };
     }),
 
   updateSegmentTiming: (segmentId, start, end) =>
@@ -131,7 +207,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       if (!segment) return {};
       const segments = new Map(state.model.segments);
       segments.set(segmentId, { ...segment, start, end });
-      return { model: { ...state.model, segments } };
+      return {
+        ...pushHistory(state, `seg-timing:${segmentId}`),
+        model: { ...state.model, segments },
+      };
     }),
 
   // Group mutations
@@ -142,7 +221,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       if (!group) return {};
       const groups = new Map(state.model.groups);
       groups.set(groupId, { ...group, style: { ...group.style, ...style } });
-      return { model: { ...state.model, groups } };
+      return {
+        ...pushHistory(state, `group-style:${groupId}`),
+        model: { ...state.model, groups },
+      };
     }),
 
   updateGroupContainer: (groupId, container) =>
@@ -155,7 +237,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
         ...group,
         containerStyle: { ...group.containerStyle, ...container },
       });
-      return { model: { ...state.model, groups } };
+      return {
+        ...pushHistory(state, `group-container:${groupId}`),
+        model: { ...state.model, groups },
+      };
     }),
 
   updateGroupAnimation: (groupId, phase, animation) =>
@@ -173,7 +258,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
         ...group,
         animation: { ...group.animation, [phase]: mergedPhase },
       });
-      return { model: { ...state.model, groups } };
+      return {
+        ...pushHistory(state, `group-anim:${groupId}:${phase}`),
+        model: { ...state.model, groups },
+      };
     }),
 
   splitGroup: (groupId, atSegmentId) =>
@@ -206,7 +294,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
         }
       });
 
-      return { model: { ...state.model, groups, segments, groupOrder } };
+      return {
+        ...pushHistory(state, `split:${groupId}:${atSegmentId}:${nextSplitId}`),
+        model: { ...state.model, groups, segments, groupOrder },
+      };
     }),
 
   mergeGroups: (groupId1, groupId2) =>
@@ -236,7 +327,11 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       // Clear selection if it referenced group2
       const selectedGroupId = state.selectedGroupId === groupId2 ? null : state.selectedGroupId;
 
-      return { model: { ...state.model, groups, segments, groupOrder }, selectedGroupId };
+      return {
+        ...pushHistory(state, `merge:${groupId1}:${groupId2}`),
+        model: { ...state.model, groups, segments, groupOrder },
+        selectedGroupId,
+      };
     }),
 
   // Bulk
@@ -250,7 +345,10 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
           segments.set(segmentId, { ...segment, style: { ...segment.style, ...style } });
         }
       }
-      return { model: { ...state.model, segments } };
+      return {
+        ...pushHistory(state, `sel-style:${[...state.selectedSegmentIds].join(",")}`),
+        model: { ...state.model, segments },
+      };
     }),
 
   applyAnimationToAll: (animation) =>
@@ -260,13 +358,21 @@ export const useCaptionStore = create<CaptionState>((set, get) => ({
       for (const [id, group] of groups) {
         groups.set(id, { ...group, animation });
       }
-      return { model: { ...state.model, groups } };
+      return {
+        ...pushHistory(state, "apply-anim-all"),
+        model: { ...state.model, groups },
+      };
     }),
 
-  // Reset
-  reset: () =>
-    set({
+  // Reset — keeps retrySave (registered once by useCaptionSync for the app's lifetime)
+  reset: () => {
+    lastHistoryKey = null;
+    set((state) => ({
       ...initialState,
+      retrySave: state.retrySave,
       selectedSegmentIds: new Set<string>(),
-    }),
+      past: [],
+      future: [],
+    }));
+  },
 }));
