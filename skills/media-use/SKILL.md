@@ -183,19 +183,29 @@ removal, upscale, lipsync, translate). Run the tool, then register the output
 with `resolve --from <output> --type <type>` so it joins the ledger + global
 cache.
 
-## CLI tools used
+## CLI tools used (what to run, and how to enable each)
 
-| Tool      | Purpose                                    | Required?     |
-| --------- | ------------------------------------------ | ------------- |
-| `ffprobe` | Probe duration, dimensions, codec on adopt | Yes           |
-| `heygen`  | Audio catalog, asset search                | For providers |
+`resolve` auto-cascades; each provider shells one CLI. Local tools are OPT-IN:
+if a local tool is absent, resolve degrades gracefully to the free/cloud path,
+so nothing here is strictly required except `ffmpeg`/`ffprobe`. Install a local
+tool to unlock its free, private, on-device path. media-use holds no keys.
 
-Install the `heygen` CLI (single static binary, no runtime) and authenticate:
+| Tool               | Serves                                                                   | Install                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `ffmpeg`/`ffprobe` | adopt probing, cut, duck bake, loudnorm                                  | system package (`brew install ffmpeg`)                                                                              |
+| `heygen`           | catalog (bgm/sfx/image/icon), TTS + avatar upsell                        | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --key <key>` (needs >= v0.1.6) |
+| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                     | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                  |
+| `codex`            | image gen upsell (ChatGPT sub)                                           | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                |
+| `parakeet-mlx`     | local transcription (default ASR, best)                                  | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                            |
+| `ltx-2-mlx`        | local video gen                                                          | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                            |
+| `npx hyperframes`  | Kokoro TTS (voice), whisper.cpp (transcribe fallback), remove-background | bundled with the hyperframes CLI                                                                                    |
 
-```bash
-curl -fsSL https://static.heygen.ai/cli/install.sh | bash   # installs latest to ~/.local/bin
-heygen update                                               # if already installed: needs >= v0.1.6
-export HEYGEN_API_KEY=<your-key>                            # or: heygen auth login --key <key>
-```
+The RAM-graded local-model shortlist + exact per-tier install/invoke lives in
+`scripts/lib/local-models.mjs` (the agent can read `describeModelLadder(cap, specs)`
+to see which model fits this machine). Without a tool on PATH, its provider
+prints a one-line diagnostic to stderr and resolve falls through to the next
+provider (e.g. no `mflux` -> codex image upsell; no `parakeet-mlx` -> whisper.cpp).
 
-Requires **heygen >= v0.1.6**: the providers tag requests with the allowlisted `--headers 'X-HeyGen-Client-Source: media-use'` flag, added in v0.1.6. `asset search` is a pre-launch command hidden from `heygen --help`, but it runs. Without a `heygen` on PATH (or a valid key) the providers print a one-line diagnostic to stderr and resolve falls through to "no provider could resolve".
+`heygen asset search` is a pre-launch command hidden from `heygen --help`, but it
+runs; providers tag requests with the allowlisted `X-HeyGen-Client-Source` header
+(v0.1.6+).

@@ -42,6 +42,19 @@ export async function mfluxImageGenerate(intent, ctx) {
   if (sel.recommend) return null; // no local model fits -> codex upsell/fallback
 
   const { model } = sel;
+  const bin = model.invoke.trim().split(/\s+/)[0];
+  // Not installed? Surface the exact enable-command FIRST (before the model
+  // download) so the agent learns the free local path is available instead of
+  // silently taking the codex upsell.
+  try {
+    execFileSync("which", [bin], { stdio: ["ignore", "ignore", "ignore"] });
+  } catch {
+    console.error(
+      `media-use: local image gen not enabled (\`${bin}\` not on PATH). Install for free on-device FLUX: ${model.install}`,
+    );
+    return null;
+  }
+
   const outPath = join(tmpdir(), `media-use-mflux-${process.pid}-${Date.now()}.png`);
   const width = ctx?.width || 512;
   const height = ctx?.height || 512;
@@ -55,7 +68,7 @@ export async function mfluxImageGenerate(intent, ctx) {
   }
 
   const argv = buildArgv(model.invoke, vars);
-  const bin = argv.shift();
+  argv.shift(); // drop the bin (already validated)
   try {
     execFileSync(bin, argv, {
       encoding: "utf8",
