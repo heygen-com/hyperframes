@@ -47,7 +47,7 @@ function renderDiamonds(onClickKeyframe = vi.fn()) {
 describe("TimelineClipDiamonds", () => {
   it("treats primary pointerup without drag as a keyframe click", () => {
     const { host, root, onClickKeyframe } = renderDiamonds();
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
@@ -60,7 +60,7 @@ describe("TimelineClipDiamonds", () => {
 
   it("does not treat secondary pointerup as a keyframe click", () => {
     const { host, root, onClickKeyframe } = renderDiamonds();
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
@@ -104,7 +104,7 @@ describe("TimelineClipDiamonds", () => {
         />,
       );
     });
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
@@ -154,7 +154,7 @@ describe("TimelineClipDiamonds", () => {
         />,
       );
     });
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
@@ -202,7 +202,7 @@ describe("TimelineClipDiamonds", () => {
         />,
       );
     });
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {

@@ -4,7 +4,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { CLIP_Y } from "./timelineLayout";
 
 export const BEAT_BAND_H = 14; // dark band height at top of track
-const BEAT_HIT_W = 12; // grab width per beat (px)
+const BEAT_HIT_W = 24; // grab width per beat (px) — ≥24px pointer target
 
 /** Hide both layers when beats are packed tighter than this (px) — too dense to read. */
 function beatsTooDense(beatTimes: number[], pps: number): boolean {
@@ -58,8 +58,9 @@ export const BeatBackgroundLines = memo(function BeatBackgroundLines({
 
 /**
  * Green beat dots on the music track's row. Drag a dot to move its beat,
- * double-click to delete; both scrub the audio. Dot size/brightness scale with
- * beat loudness (gamma-curved for contrast).
+ * ⌥-click to delete (kept off double-click so a stuttered drag can't destroy
+ * a beat); both scrub the audio. Dot size/brightness scale with beat loudness
+ * (gamma-curved for contrast). Deletes remain undoable via ⌘Z.
  */
 export const BeatStrip = memo(function BeatStrip({
   beatTimes,
@@ -93,7 +94,7 @@ export const BeatStrip = memo(function BeatStrip({
           <div
             key={`${t}-${i}`}
             className="absolute select-none"
-            title="Drag to move · double-click to delete"
+            title="Drag to move · ⌥-click to delete"
             draggable={false}
             style={{
               left: x - BEAT_HIT_W / 2,
@@ -138,12 +139,12 @@ export const BeatStrip = memo(function BeatStrip({
                 const newTime = Math.max(0, d.origTime + dx / pps);
                 moveBeatCompositionTime(d.origTime, newTime);
                 usePlayerStore.getState().requestSeek(newTime); // park scrubber at new beat
+              } else if (e.altKey) {
+                // ⌥-click deletes. Deliberately NOT double-click: a stuttered
+                // drag attempt reads as a double-click and would nuke the beat.
+                deleteBeatAtCompositionTime(t);
+                usePlayerStore.getState().requestSeek(Math.max(0, t)); // park scrubber at deleted beat
               }
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              deleteBeatAtCompositionTime(t);
-              usePlayerStore.getState().requestSeek(Math.max(0, t)); // park scrubber at deleted beat
             }}
           >
             <div

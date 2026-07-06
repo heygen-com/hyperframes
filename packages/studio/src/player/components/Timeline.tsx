@@ -6,6 +6,7 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { EditPopover } from "./EditModal";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
@@ -531,7 +532,9 @@ export const Timeline = memo(function Timeline({
               Shift
             </kbd>
             <span className="text-[9px]" style={{ color: theme.textSecondary }}>
-              + drag/click to edit range
+              {activeTool === "razor"
+                ? "+ click to split all tracks"
+                : "+ drag/click to edit range"}
             </span>
           </div>
         </div>
@@ -565,9 +568,8 @@ export const Timeline = memo(function Timeline({
           onCopyProperties={(elId, pct) => {
             const kfData = keyframeCache.get(elId);
             const kf = kfData?.keyframes.find((k) => k.percentage === pct);
-            if (kf) {
-              void navigator.clipboard.writeText(JSON.stringify(kf.properties, null, 2));
-            }
+            if (!kf) return false;
+            return copyTextToClipboard(JSON.stringify(kf.properties, null, 2));
           }}
         />
       )}

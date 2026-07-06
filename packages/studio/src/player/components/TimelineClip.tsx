@@ -24,6 +24,8 @@ interface TimelineClipProps {
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Keyboard activation (Enter/Space on the focused clip) — toggles selection. */
+  onKeyActivate?: () => void;
   children?: ReactNode;
 }
 
@@ -46,6 +48,7 @@ export const TimelineClip = memo(function TimelineClip({
   onClick,
   onDoubleClick,
   onContextMenu,
+  onKeyActivate,
   children,
 }: TimelineClipProps) {
   const leftPx = el.start * pps;
@@ -70,11 +73,15 @@ export const TimelineClip = memo(function TimelineClip({
   return (
     <div
       data-clip="true"
-      className={
+      role="button"
+      tabIndex={0}
+      aria-label={`${displayLabel} clip, ${el.start.toFixed(1)}s to ${(el.start + el.duration).toFixed(1)}s`}
+      aria-pressed={isSelected}
+      className={`${
         hasCustomContent
           ? "absolute overflow-visible"
           : "absolute flex items-center overflow-visible"
-      }
+      } outline-none focus-visible:ring-1 focus-visible:ring-white/50`}
       style={{
         left: leftPx,
         width: widthPx,
@@ -84,7 +91,7 @@ export const TimelineClip = memo(function TimelineClip({
         background: trackStyle.clip,
         border: `1px solid ${borderColor}`,
         boxShadow,
-        transition: "border-color 100ms, box-shadow 100ms",
+        transition: "border-color 150ms, box-shadow 150ms",
         zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
         cursor: capabilities.canMove ? "grab" : "default",
         transform: isDragging ? "translateY(-1px)" : undefined,
@@ -101,6 +108,14 @@ export const TimelineClip = memo(function TimelineClip({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        // Ignore keystrokes bubbling from focusable children (keyframe diamonds).
+        if (e.target !== e.currentTarget) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onKeyActivate?.();
+      }}
     >
       {/* Left accent stripe — wider + brighter for expanded sub-comp children */}
       <div

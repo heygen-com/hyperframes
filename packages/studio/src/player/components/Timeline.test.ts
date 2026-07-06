@@ -86,7 +86,7 @@ describe("Timeline provider boundary", () => {
       root.render(React.createElement(Timeline, { onSeek }));
     });
 
-    const diamond = host.querySelector<HTMLButtonElement>('button[title="50%"]');
+    const diamond = host.querySelector<HTMLButtonElement>('button[title="Keyframe at 50%"]');
     expect(diamond).not.toBeNull();
 
     act(() => {
