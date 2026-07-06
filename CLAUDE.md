@@ -34,21 +34,22 @@ Atomic capabilities the creation workflows compose against — pull one when you
 
 - `/hyperframes-core` — the composition contract: `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, determinism rules. Read before writing composition HTML.
 - `/hyperframes-animation` — all animation knowledge: atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP default, plus Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU).
-- `/hyperframes-keyframes` — seek-safe keyframe authoring across runtimes: GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, text trails, cursor demos, 3D depth; plus `hyperframes keyframes` diagnostics for surfacing and verifying rendered motion.
+- `/hyperframes-keyframes` — seek-safe keyframe authoring across runtimes: GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, text trails, 3D depth; plus `hyperframes keyframes` diagnostics for surfacing and verifying rendered motion.
 - `/hyperframes-creative` — non-animation creative direction: `frame.md` / `design.md` handling, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.
 - `/media-use` — the media OS: resolve any media need (BGM, SFX, image, icon, voice) into a frozen local file + ledger record; generate via TTS / music when the catalog misses; transcribe, remove backgrounds, and reuse assets across projects. One shared `scripts/audio.mjs` engine + manifest tracking; keeps search noise on disk.
 - `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
 - `/hyperframes-registry` — install and wire registry blocks and components into compositions via `hyperframes add`. Covers authoring a new block or component to contribute upstream.
-- `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations and shaders (MCP) into a composition.
+- `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.
 
 ## Skill catalog maintenance
 
-When adding a new skill, or substantially renaming / repurposing an existing one, update all three agent-facing discoverability surfaces in lockstep:
+When adding a new skill, or substantially renaming / repurposing an existing one, update all agent-facing discoverability surfaces in lockstep:
 
-1. The skill list above (CLAUDE.md) AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)). Out-of-date entries silently kill discovery.
-2. If the skill changes the routing surface for "make a video" requests, also update the capability map and intent router in `skills/hyperframes/SKILL.md` — that's the canonical router agents read first.
-3. Mirror the Router / Creation workflows / Domain skills grouping across all three surfaces so a skill always lives in the same column.
-4. Skill count appears in the README and CLAUDE.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page deliberately omits a count to avoid drift; keep it count-free.
+1. The skill list above (CLAUDE.md) AND the skill list in the root `AGENTS.md` AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)). Out-of-date entries silently kill discovery.
+2. The scaffolded project template `packages/cli/src/templates/_shared/CLAUDE.md` + `AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. The two template files must stay byte-identical.
+3. If the skill changes the routing surface for "make a video" requests, also update the capability map and intent router in `skills/hyperframes/SKILL.md` — that's the canonical router agents read first.
+4. Mirror the Router / Creation workflows / Domain skills grouping across all surfaces so a skill always lives in the same column.
+5. Skill count appears in the README and CLAUDE.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 

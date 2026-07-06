@@ -1,17 +1,14 @@
 ---
 name: motion-graphics
 description: >
-  Use when the user wants a short, design-led motion graphic where motion is the
-  message: kinetic typography, stat or number count-up, chart/data-viz hit,
-  logo sting, brand lockup, lower-third, callout, social overlay, animated
-  headline/tweet/news item, motion poster, or quick captured-page highlight.
-  Usually under 10s and up to ~30s, with no narration arc, voice-over, or
-  live-action subject. Can render to MP4 or transparent overlay. Not for longer,
-  multi-scene, narrated, or brand-reel pieces (use general-video), narrated
-  website videos (website-to-video), topic explainers
-  (faceless-explainer), product promos (product-launch-video), PR videos
-  (pr-to-video), or captions on existing footage (embedded-captions). When unsure whether it's a
-  quick motion-first piece or a longer / narrated treatment, see /hyperframes.
+  A short, design-led motion graphic where motion is the message — kinetic
+  typography, stat count-up, chart/data-viz hit, logo sting / brand lockup,
+  lower-third / callout / social overlay, animated map (highlight regions,
+  connect places, zoom to a location), animated tweet / news-article /
+  headline, webpage / UI animation (scroll, cursor, callouts), or fusing a
+  real image's geometry into a chart. Usually under 10s (up to ~30s), no
+  narration or live-action subject; renders to MP4 or transparent overlay.
+  Longer / narrated / multi-scene → /general-video. Unclear → /hyperframes.
 metadata:
   {
     "tags": "orchestrator, motion-graphics, kinetic-type, data-viz, logo-reveal, lower-thirds, news, tweet, webpage, asset-fusion, short-form, overlay, no-narration",
@@ -42,13 +39,14 @@ A short design-led motion graphic. **Asset-first**: decide the asset strategy an
 
 **Form categories — no search; the user supplies the content:**
 
-| Category       | Intent                                         | Leans on                                                                    |
-| -------------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
-| `kinetic-type` | punchy line / quote / title, motion-first text | `caption-*` blocks + animation rules                                        |
-| `stat`         | single hero number / count-up + ring           | `apple-money-count` / `rules/{counting-dynamic-scale, stat-bars-and-fills}` |
-| `charts`       | bar / line / pie / race / % from data          | `data-chart` block                                                          |
-| `logo-reveal`  | logo sting / brand lockup (user logo)          | `logo-outro` / `rules/svg-path-draw`                                        |
-| `lower-thirds` | name / title bars, callouts, social overlays   | `caption-*` + registry overlay blocks                                       |
+| Category       | Intent                                                                                                         | Leans on                                                                    |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `kinetic-type` | punchy line / quote / title, motion-first text                                                                 | `caption-*` blocks + animation rules                                        |
+| `stat`         | single hero number / count-up + ring                                                                           | `apple-money-count` / `rules/{counting-dynamic-scale, stat-bars-and-fills}` |
+| `charts`       | bar / line / pie / race / % from data                                                                          | `data-chart` block                                                          |
+| `logo-reveal`  | logo sting / brand lockup (user logo)                                                                          | `logo-outro` / `rules/svg-path-draw`                                        |
+| `lower-thirds` | name / title bars, callouts, social overlays                                                                   | `caption-*` + registry overlay blocks                                       |
+| `maps`         | geographic motion — highlight regions, connect places, zoom to a location (vector lane, or baked basemap lane) | `us-map` / `world-map` family + `bake-basemap.mjs`                          |
 
 **Search-driven categories — search first, then animate by content type** (the RWA path):
 

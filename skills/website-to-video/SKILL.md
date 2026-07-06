@@ -1,6 +1,6 @@
 ---
 name: website-to-video
-description: "Capture a general website/URL and turn it into a HyperFrames video (site tour, showcase, or social clip from the site's own visuals). Uses headless Chrome screenshots + brand assets. Use when intent is general — portfolio/blog/landing-page showcase or social clip from the site. NOT for: product/SaaS launch or promo (→ /product-launch-video, even from a URL); topic explainer with no site (→ /faceless-explainer); GitHub PR (→ /pr-to-video); adding captions to existing video (→ /embedded-captions); short unnarrated page-highlight motion graphic (→ /motion-graphics). Unclear launch-vs-general-site? Ask one question or start at /hyperframes."
+description: "Capture a general website/URL and turn it into a video OF the site — tour, showcase, or social clip built from captured screenshots and the site's own brand assets. Use for portfolio / blog / docs / landing-page showcases. Not a product launch or promo, even from a URL (/product-launch-video). Unclear → /hyperframes."
 ---
 
 > **media-use**: Before sourcing audio/images, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog. Run `--adopt` first to register existing assets. See `/media-use` skill.
@@ -113,13 +113,14 @@ Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3,
 
 Typical constraints by video type — use as a starting point, not a formula. Beat count should follow from the content and the narration, not from a target range.
 
-| Type                  | Typical duration | Duration driver    | Narration             |
-| --------------------- | ---------------- | ------------------ | --------------------- |
-| Social ad (IG/TikTok) | 10–15s           | Platform limit     | Optional              |
-| Product demo          | 30–60s           | Script length      | Full narration        |
-| Feature announcement  | 15–30s           | Feature complexity | Full narration        |
-| Brand reel            | 20–45s           | Music track        | Optional, music focus |
-| Launch teaser         | 10–20s           | Hook energy        | Minimal               |
+| Type                    | Typical duration | Duration driver    | Narration             |
+| ----------------------- | ---------------- | ------------------ | --------------------- |
+| Social clip (IG/TikTok) | 10–15s           | Platform limit     | Optional              |
+| Site walkthrough        | 30–60s           | Script length      | Full narration        |
+| Content announcement    | 15–30s           | Content complexity | Full narration        |
+| Brand reel              | 20–45s           | Music track        | Optional, music focus |
+
+(A product demo, feature announcement, or launch teaser that _sells_ the product belongs to `/product-launch-video` — see the routing note at the top.)
 
 Beat count is not in this table intentionally — it should come from the storyboard, not from "social ad = 3-4 beats." A social ad for a complex product might need 5 well-timed beats. A brand reel with one strong visual thesis might need 3.
 

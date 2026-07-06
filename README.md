@@ -49,7 +49,7 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 ## Skills
 
-HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a video" request and points to the domain skills below.
+HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
 
 Run `npx skills add heygen-com/hyperframes` for the interactive picker, `npx skills add heygen-com/hyperframes --all` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
 
@@ -88,7 +88,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 | `/media-use`             | The media OS — resolve any media need (BGM, SFX, image, icon, voice) into a frozen local file + ledger record, generate via TTS/music when the catalog misses, transcribe, remove backgrounds, and reuse assets across projects. One shared audio engine + manifest tracking. |
 | `/hyperframes-cli`       | CLI dev loop — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, plus AWS Lambda cloud rendering (`lambda deploy / render / progress`).                                                                                                        |
 | `/hyperframes-registry`  | Install and wire registry blocks and components into compositions via `hyperframes add`. Authoring a new block or component to contribute upstream.                                                                                                                           |
-| `/figma`                 | Import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations and shaders (MCP) into a composition.                                                                           |
+| `/figma`                 | Import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.                                              |
 
 For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design) and [Open Design guide](https://hyperframes.heygen.com/guides/open-design).
 

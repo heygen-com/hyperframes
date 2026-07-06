@@ -1,12 +1,12 @@
 ---
 name: slideshow
 description: >
-  Author a HyperFrames slideshow composition — a presentation, pitch deck, or
-  interactive deck with discrete slides, fragment reveals, branching sequences,
-  and hotspot navigation. Use as an intent check when the user asks for a
-  presentation, pitch deck, slide deck, interactive deck, or page-to-deck
-  conversion that might be a slideshow; if the user did not explicitly ask for a
-  slideshow / slide show, confirm before authoring.
+  Author a HyperFrames slideshow — a presentation, pitch deck, or interactive
+  deck with discrete slides, fragment reveals, branching, hotspot navigation,
+  and built-in presenter mode with speaker notes; also converts an existing
+  page into a deck. Output is a navigable deck, not a rendered MP4. If the
+  user didn't explicitly ask for a slideshow, confirm before authoring.
+  Unclear → /hyperframes.
 ---
 
 # Slideshow authoring contract
