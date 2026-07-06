@@ -92,6 +92,10 @@ export function trackEvent(
       is_tty: sys.is_tty,
       sandbox_runtime: sys.sandbox_runtime ?? undefined,
       agent_runtime: sys.agent_runtime ?? undefined,
+      // New-agent discovery signals — populated only when agent_runtime is null.
+      agent_hint: sys.agent_hint ?? undefined,
+      term_program: sys.term_program ?? undefined,
+      agent_env_hints: sys.agent_env_hints ?? undefined,
     },
     timestamp: new Date().toISOString(),
   });
