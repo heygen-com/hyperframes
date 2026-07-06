@@ -21,6 +21,8 @@ interface NLEPreviewProps {
   directUrl?: string;
   suppressLoadingOverlay?: boolean;
   onStageRef?: (ref: React.RefObject<HTMLDivElement | null>) => void;
+  /** Reports the authored composition size measured from the loaded preview. */
+  onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
 }
 
 export function getPreviewPlayerKey({
@@ -123,6 +125,7 @@ export const NLEPreview = memo(function NLEPreview({
   directUrl,
   suppressLoadingOverlay,
   onStageRef,
+  onCompositionSizeChange,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -170,12 +173,21 @@ export const NLEPreview = memo(function NLEPreview({
     return () => observer.disconnect();
   }, [compositionSize, portrait]);
 
+  const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
+  onCompositionSizeChangeRef.current = onCompositionSizeChange;
+
   const updateCompositionSizeFromPreview = useCallback(() => {
     const next = readPreviewCompositionSize(previewIframeRef.current);
+    // Pure updater — the parent notification happens in the effect below
+    // (updaters may run more than once under Strict Mode / concurrent React).
     setCompositionSize((prev) =>
       prev?.width === next?.width && prev?.height === next?.height ? prev : next,
     );
   }, []);
+
+  useEffect(() => {
+    onCompositionSizeChangeRef.current?.(compositionSize);
+  }, [compositionSize]);
 
   const setPreviewIframeRef = useCallback(
     (node: HTMLIFrameElement | null) => {
@@ -206,10 +218,17 @@ export const NLEPreview = memo(function NLEPreview({
       };
       zoomRef.current = clamped;
 
-      if (showHud && !zoomingRef.current) {
-        zoomingRef.current = true;
+      if (showHud) {
         const hud = hudRef.current;
-        if (hud) hud.style.opacity = "1";
+        if (hud) {
+          if (!zoomingRef.current) {
+            zoomingRef.current = true;
+            hud.style.opacity = "1";
+          }
+          // Live per-frame readout — without this the HUD shows an empty pill
+          // on the first-ever zoom and a stale percentage mid-gesture.
+          hud.textContent = isPreviewAtFit(clamped) ? "Fit" : `${Math.round(clamped.zoomPercent)}%`;
+        }
       }
 
       writeTransform(clamped);
@@ -254,7 +273,24 @@ export const NLEPreview = memo(function NLEPreview({
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
     if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
-      writeTransform(z);
+      // A pan persisted on a large window can restore the composition mostly
+      // off-screen in a smaller one; clamp against the current viewport first.
+      const viewport = viewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const sz = stageSizeRef.current;
+      if (rect && rect.width > 0 && rect.height > 0 && sz.width > 0 && sz.height > 0) {
+        const pan = clampPreviewPan({
+          panX: z.panX,
+          panY: z.panY,
+          zoomPercent: z.zoomPercent,
+          viewportWidth: rect.width,
+          viewportHeight: rect.height,
+          contentWidth: sz.width,
+          contentHeight: sz.height,
+        });
+        zoomRef.current = { ...z, ...pan };
+      }
+      writeTransform(zoomRef.current);
     }
   }, [writeTransform]);
 
@@ -474,7 +510,7 @@ export const NLEPreview = memo(function NLEPreview({
         <div
           ref={hudRef}
           className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 rounded-lg px-4 py-2 text-sm font-mono tabular-nums text-white/90 bg-black/60 backdrop-blur-sm shadow-lg"
-          style={{ opacity: 0, transition: "opacity 300ms ease-out" }}
+          style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
         {!isPreviewAtFit(settledZoom) && (

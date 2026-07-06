@@ -33,8 +33,9 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
           });
           onNavigate(stack.length - 2);
         }}
-        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-        title="Back (Esc)"
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-[0.98] transition-colors"
+        title="Back (Esc, or double-click empty timeline)"
+        aria-label="Back to parent composition"
       >
         <ArrowLeft size={12} weight="bold" />
       </button>

@@ -12,11 +12,17 @@ export interface ResolvedProject {
 /** Observable render job state, polled by the SSE progress handler. */
 export interface RenderJobState {
   id: string;
-  status: "rendering" | "complete" | "failed";
+  status: "rendering" | "complete" | "failed" | "cancelled";
   progress: number;
   stage?: string;
   outputPath: string;
   error?: string;
+  /**
+   * Optional abort hook set by the adapter. The cancel route calls this to
+   * stop an in-flight render; adapters that can't abort may omit it (the
+   * route still marks the job cancelled so the SSE stream terminates).
+   */
+  cancel?: () => void;
 }
 
 export interface MediaProcessingJobState {

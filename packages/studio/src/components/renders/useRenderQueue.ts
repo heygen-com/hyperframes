@@ -36,23 +36,66 @@ export interface StartRenderOptions {
   composition?: string;
 }
 
+// "Hide" (formerly "Clear") is a view operation, not a delete: hidden ids are
+// remembered here so hidden renders don't resurrect from the on-disk history
+// on the next load. Per-project key so projects don't hide each other's rows.
+function hiddenIdsKey(projectId: string): string {
+  return `hf-studio-hidden-renders:${projectId}`;
+}
+
+function readHiddenIds(projectId: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(hiddenIdsKey(projectId));
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenIds(projectId: string, ids: Set<string>): void {
+  try {
+    // Cap the list so it doesn't grow unbounded across months of renders.
+    window.localStorage.setItem(hiddenIdsKey(projectId), JSON.stringify([...ids].slice(-200)));
+  } catch {
+    /* localStorage may be unavailable or full */
+  }
+}
+
 export function useRenderQueue(projectId: string | null) {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
+  // History fetch failure — distinguished from "no renders yet" so the panel
+  // never shows a false empty state.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Failure of a user action (delete/cancel), surfaced inline in the panel.
+  const [actionError, setActionError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const activeJobRef = useRef<string | null>(null);
+
+  const closeActiveEventSource = useCallback((jobId?: string) => {
+    if (jobId && activeJobRef.current !== jobId) return;
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    activeJobRef.current = null;
+  }, []);
 
   // Load completed renders from the server
   const loadRenders = useCallback(async () => {
     if (!projectId) return;
     try {
       const res = await fetch(`/api/projects/${projectId}/renders`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setLoadError(`Couldn't load render history (server error ${res.status}).`);
+        return;
+      }
       const data = await res.json();
+      setLoadError(null);
       if (Array.isArray(data.renders)) {
+        const hidden = readHiddenIds(projectId);
         setJobs((prev) => {
           const existing = new Set(prev.map((j) => j.id));
           const fromServer: RenderJob[] = data.renders
-            .filter((r: { id: string }) => !existing.has(r.id))
+            .filter((r: { id: string }) => !existing.has(r.id) && !hidden.has(r.id))
             .map(
               (r: {
                 id: string;
@@ -74,7 +117,7 @@ export function useRenderQueue(projectId: string | null) {
         });
       }
     } catch {
-      // ignore
+      setLoadError("Couldn't load render history. Is the studio server running?");
     }
   }, [projectId]);
 
@@ -175,6 +218,8 @@ export function useRenderQueue(projectId: string | null) {
       es.addEventListener("progress", (event) => {
         try {
           const data = JSON.parse(event.data);
+          const terminal =
+            data.status === "complete" || data.status === "failed" || data.status === "cancelled";
           setJobs((prev) =>
             prev.map((j) =>
               j.id === jobId
@@ -182,21 +227,15 @@ export function useRenderQueue(projectId: string | null) {
                     ...j,
                     progress: data.progress ?? j.progress,
                     stage: data.stage ?? data.message ?? j.stage,
-                    status:
-                      data.status === "complete"
-                        ? "complete"
-                        : data.status === "failed"
-                          ? "failed"
-                          : j.status,
+                    status: terminal ? (data.status as RenderJob["status"]) : j.status,
                     durationMs: data.status === "complete" ? Date.now() - startTime : undefined,
                     error: data.error ?? j.error,
                   }
                 : j,
             ),
           );
-          if (data.status === "complete" || data.status === "failed") {
-            es.close();
-            activeJobRef.current = null;
+          if (terminal) {
+            closeActiveEventSource(jobId);
           }
         } catch {
           // ignore parse errors
@@ -221,21 +260,78 @@ export function useRenderQueue(projectId: string | null) {
 
       return jobId;
     },
-    [projectId],
+    [projectId, closeActiveEventSource],
   );
 
-  const deleteRender = useCallback(async (jobId: string) => {
-    try {
-      await fetch(`/api/render/${jobId}`, { method: "DELETE" });
-    } catch {
-      // ignore
-    }
-    setJobs((prev) => prev.filter((j) => j.id !== jobId));
-  }, []);
+  // Cancel an in-flight render. The job row stays (as "cancelled") so the
+  // user sees the outcome; the SSE stream is closed either way.
+  const cancelRender = useCallback(
+    async (jobId: string) => {
+      setActionError(null);
+      closeActiveEventSource(jobId);
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === jobId && j.status === "rendering" ? { ...j, status: "cancelled" } : j,
+        ),
+      );
+      try {
+        const res = await fetch(`/api/render/${jobId}/cancel`, { method: "POST" });
+        if (!res.ok && res.status !== 404) {
+          setActionError("Couldn't cancel on the server — the render may still be running.");
+          return;
+        }
+        // Reconcile with the status the route reports: if the render actually
+        // finished (or failed) before the cancel landed, don't leave the row
+        // stuck on the optimistic "cancelled" — reload to pick up the real
+        // outcome (and the finished file's metadata).
+        if (res.ok) {
+          const body = (await res.json().catch(() => null)) as { status?: string } | null;
+          if (body?.status && body.status !== "cancelled") {
+            void loadRenders();
+          }
+        }
+      } catch {
+        setActionError("Couldn't reach the server to cancel — the render may still be running.");
+      }
+    },
+    [closeActiveEventSource, loadRenders],
+  );
 
+  const deleteRender = useCallback(
+    async (jobId: string) => {
+      setActionError(null);
+      closeActiveEventSource(jobId);
+      try {
+        const res = await fetch(`/api/render/${jobId}`, { method: "DELETE" });
+        if (!res.ok) {
+          setActionError("Couldn't delete the render — it's still on disk.");
+          return;
+        }
+      } catch {
+        setActionError("Couldn't reach the server to delete the render.");
+        return;
+      }
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    },
+    [closeActiveEventSource],
+  );
+
+  // Hide finished rows from the list (view-only — files stay on disk and can
+  // be recovered from the renders/ directory). Remembered per project so the
+  // rows don't resurrect from history on reload.
   const clearCompleted = useCallback(() => {
-    setJobs((prev) => prev.filter((j) => j.status === "rendering"));
-  }, []);
+    setJobs((prev) => {
+      const finished = prev.filter((j) => j.status !== "rendering");
+      if (projectId && finished.length > 0) {
+        const hidden = readHiddenIds(projectId);
+        for (const j of finished) hidden.add(j.id);
+        writeHiddenIds(projectId, hidden);
+      }
+      return prev.filter((j) => j.status === "rendering");
+    });
+  }, [projectId]);
+
+  const dismissActionError = useCallback(() => setActionError(null), []);
 
   // Clean up EventSource on unmount or projectId change
   useEffect(() => {
@@ -250,10 +346,26 @@ export function useRenderQueue(projectId: string | null) {
     () => ({
       jobs,
       isRendering,
+      loadError,
+      actionError,
+      dismissActionError,
+      reloadRenders: loadRenders,
       deleteRender,
+      cancelRender,
       clearCompleted,
       startRender: startRender as (options: unknown) => Promise<void>,
     }),
-    [jobs, isRendering, deleteRender, clearCompleted, startRender],
+    [
+      jobs,
+      isRendering,
+      loadError,
+      actionError,
+      dismissActionError,
+      loadRenders,
+      deleteRender,
+      cancelRender,
+      clearCompleted,
+      startRender,
+    ],
   );
 }

@@ -13,6 +13,7 @@ import type { TimelineElement } from "../../player";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
+import { TimelineResizeDivider, MIN_TIMELINE_H, MIN_PREVIEW_H } from "./TimelineResizeDivider";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useCompositionStack } from "./useCompositionStack";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
@@ -23,6 +24,7 @@ import {
   getTimelineToggleTitle,
 } from "../../utils/timelineDiscovery";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
+import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 interface NLELayoutProps {
   projectId: string;
@@ -75,9 +77,7 @@ interface NLELayoutProps {
   onCompositionLoadingChange?: (loading: boolean) => void;
 }
 
-const MIN_TIMELINE_H = 100;
 const DEFAULT_TIMELINE_H = 220;
-const MIN_PREVIEW_H = 120;
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -138,13 +138,22 @@ export const NLELayout = memo(function NLELayout({
     stageRefForDrop.current = ref.current;
   }, []);
 
+  // Authored composition size measured from the loaded preview — drives drop
+  // coordinate mapping so blocks land where the user pointed on any comp size.
+  const [previewCompositionSize, setPreviewCompositionSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
   const {
     isDragOver: previewDragOver,
+    handleDragEnter: handlePreviewDragEnter,
     handleDragOver: handlePreviewDragOver,
     handleDragLeave: handlePreviewDragLeave,
     handleDrop: handlePreviewDrop,
   } = usePreviewBlockDrop({
     portrait,
+    compositionSize: previewCompositionSize,
     stageRef: stageRefForDrop as React.RefObject<HTMLDivElement | null>,
     onBlockDrop: onPreviewBlockDrop,
   });
@@ -289,7 +298,10 @@ export const NLELayout = memo(function NLELayout({
 
   useMountEffect(() => {
     fetch(`/api/projects/${projectId}/files/index.html`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: { content?: string }) => {
         const html = data.content || "";
         const map = new Map<string, string>();
@@ -307,7 +319,11 @@ export const NLELayout = memo(function NLELayout({
         setCompositionSourceMap(map);
         onCompIdToSrcChange?.(map);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // Non-fatal: drill-down still works via the iframe DOM scan; without
+        // the map only source-file resolution for sub-comps degrades.
+        console.warn("[studio] Couldn't load composition source map from index.html:", err);
+      });
   });
 
   // Patch elements with compositionSrc whenever elements or compIdToSrc change.
@@ -343,8 +359,24 @@ export const NLELayout = memo(function NLELayout({
     });
   }, [compIdToSrc]);
 
-  // Resizable timeline height
-  const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
+  // Resizable timeline height — persisted alongside zoom/pan so the user's
+  // workspace layout survives reloads.
+  const [timelineH, setTimelineH] = useState(() => {
+    const stored = readStudioUiPreferences().timelineHeight;
+    return stored !== undefined && stored >= MIN_TIMELINE_H ? stored : DEFAULT_TIMELINE_H;
+  });
+  const persistTimelineH = useCallback((height: number) => {
+    writeStudioUiPreferences({ timelineHeight: Math.round(height) });
+  }, []);
+  // A height persisted on a tall window can exceed this window's container and
+  // collapse the flex-1 preview to 0px — clamp once the container is measurable
+  // (the drag/keyboard paths already clamp; the restore path must too).
+  useEffect(() => {
+    const containerH = containerRef.current?.getBoundingClientRect().height;
+    if (!containerH) return;
+    const max = containerH - MIN_PREVIEW_H;
+    setTimelineH((prev) => (prev > max ? Math.max(MIN_TIMELINE_H, max) : prev));
+  }, []);
   const hasLoadedOnceRef = useRef(false);
   const [compositionLoading, setCompositionLoadingRaw] = useState(true);
   const setCompositionLoading = useCallback((loading: boolean) => {
@@ -360,7 +392,6 @@ export const NLELayout = memo(function NLELayout({
 
   const fullscreenElement = useSyncExternalStore(subscribeFullscreen, getFullscreenElement);
   const isTimelineVisible = timelineVisible ?? true;
-  const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
 
@@ -381,37 +412,6 @@ export const NLELayout = memo(function NLELayout({
   useEffect(() => {
     onIframeRefStable.current?.(iframeRef.current);
   }, [compositionStack.length, refreshKey, iframeRef]);
-
-  // Resize divider handlers
-  const handleDividerPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (timelineDisabled) return;
-      e.preventDefault();
-      isDragging.current = true;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    },
-    [timelineDisabled],
-  );
-
-  const handleDividerPointerMove = useCallback(
-    (e: React.PointerEvent) => {
-      if (timelineDisabled) return;
-      if (!isDragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const mouseY = e.clientY - rect.top;
-      const containerH = rect.height;
-      const newTimelineH = Math.max(
-        MIN_TIMELINE_H,
-        Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
-      );
-      setTimelineH(newTimelineH);
-    },
-    [timelineDisabled],
-  );
-
-  const handleDividerPointerUp = useCallback(() => {
-    isDragging.current = false;
-  }, []);
 
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
@@ -451,6 +451,7 @@ export const NLELayout = memo(function NLELayout({
               e.clientY <= rect.bottom;
             if (!inside) onSelectTimelineElement?.(null);
           }}
+          onDragEnter={handlePreviewDragEnter}
           onDragOver={handlePreviewDragOver}
           onDragLeave={handlePreviewDragLeave}
           onDrop={handlePreviewDrop}
@@ -465,6 +466,7 @@ export const NLELayout = memo(function NLELayout({
               directUrl={directUrl}
               suppressLoadingOverlay={hasLoadedOnceRef.current}
               onStageRef={handleStageRef}
+              onCompositionSizeChange={setPreviewCompositionSize}
             />
             {previewDragOver && (
               <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
@@ -491,16 +493,13 @@ export const NLELayout = memo(function NLELayout({
 
       {!isFullscreen && isTimelineVisible ? (
         <>
-          {/* Resize divider */}
-          <div
-            className="group h-2 flex-shrink-0 cursor-row-resize flex items-center justify-center z-10"
-            style={{ touchAction: "none" }}
-            onPointerDown={handleDividerPointerDown}
-            onPointerMove={handleDividerPointerMove}
-            onPointerUp={handleDividerPointerUp}
-          >
-            <div className="h-px w-full bg-white/10 transition-colors group-hover:bg-white/16 group-active:bg-white/22" />
-          </div>
+          <TimelineResizeDivider
+            timelineH={timelineH}
+            setTimelineH={setTimelineH}
+            persistTimelineH={persistTimelineH}
+            containerRef={containerRef}
+            disabled={timelineDisabled}
+          />
 
           {/* Timeline section */}
           <div
@@ -537,13 +536,17 @@ export const NLELayout = memo(function NLELayout({
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
             {timelineDisabled && (
               <div
-                className="absolute inset-0 z-30 cursor-not-allowed bg-black/18"
+                className="absolute inset-0 z-30 cursor-not-allowed bg-black/18 flex items-center justify-center"
                 data-testid="timeline-loading-disabled-overlay"
-                aria-hidden="true"
+                role="status"
                 onPointerDown={(event) => event.preventDefault()}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => event.preventDefault()}
-              />
+              >
+                <span className="rounded-md bg-neutral-900/90 px-2.5 py-1 text-[11px] text-neutral-400">
+                  Loading composition…
+                </span>
+              </div>
             )}
           </div>
         </>

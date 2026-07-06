@@ -429,6 +429,81 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
   });
 });
 
+describe("POST /render/:jobId/cancel", () => {
+  async function startJob(app: Hono): Promise<string> {
+    const res = await app.request("http://localhost/projects/demo/render", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+    });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { jobId: string }).jobId;
+  }
+
+  it("marks a rendering job cancelled and invokes the adapter abort hook", async () => {
+    const spy = vi.fn();
+    let aborted = false;
+    const { adapter, rendersDir } = createAdapter(spy);
+    const baseStartRender = adapter.startRender.bind(adapter);
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.cancel = () => {
+        aborted = true;
+      };
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const jobId = await startJob(app);
+      const res = await app.request(`http://localhost/render/${jobId}/cancel`, { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { status: string }).status).toBe("cancelled");
+      expect(aborted).toBe(true);
+      // SSE progress for a cancelled job must terminate (status is terminal).
+      const progress = await app.request(`http://localhost/render/${jobId}/progress`);
+      expect(progress.status).toBe(200);
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not cancel a job that already completed", async () => {
+    const spy = vi.fn();
+    const states: Array<{ status: string }> = [];
+    const { adapter, rendersDir } = createAdapter(spy);
+    const baseStartRender = adapter.startRender.bind(adapter);
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      states.push(state);
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const jobId = await startJob(app);
+      const [state] = states;
+      if (state) state.status = "complete";
+      const res = await app.request(`http://localhost/render/${jobId}/cancel`, { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { status: string }).status).toBe("complete");
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("404s for unknown jobs", async () => {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/render/nope/cancel", { method: "POST" });
+      expect(res.status).toBe(404);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("POST /projects/:id/render — telemetryDistinctId forwarding", () => {
   it("forwards the browser telemetryDistinctId to the adapter as distinctId", async () => {
     const spy = vi.fn();

@@ -8,6 +8,7 @@ import {
   realpathSync,
   mkdirSync,
   copyFileSync,
+  unlinkSync,
 } from "node:fs";
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import type { ViteDevServer } from "vite";
@@ -204,14 +205,31 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
     rendersDir: () => resolve(dataDir, "../renders"),
 
     startRender(opts): RenderJobState {
+      const abortController = new AbortController();
       const state: RenderJobState = {
         id: opts.jobId,
         status: "rendering",
         progress: 0,
         outputPath: opts.outputPath,
+        cancel: () => abortController.abort(),
       };
 
       const startTime = Date.now();
+      const removeCancelledOutput = () => {
+        // User-initiated cancel: not a failure. Remove any output so the
+        // cancelled job doesn't resurrect in the render history.
+        state.status = "cancelled";
+        for (const fp of [
+          opts.outputPath,
+          opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json"),
+        ]) {
+          try {
+            if (existsSync(fp)) unlinkSync(fp);
+          } catch {
+            /* ignore */
+          }
+        }
+      };
       // fallow-ignore-next-line complexity
       (async () => {
         try {
@@ -233,7 +251,19 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(job, opts.project.dir, opts.outputPath, onProgress);
+          await executeRenderJob(
+            job,
+            opts.project.dir,
+            opts.outputPath,
+            onProgress,
+            abortController.signal,
+          );
+          if (abortController.signal.aborted) {
+            // Cancel landed just as the render finished: honor the cancel the
+            // route already reported instead of resurrecting a completed job.
+            removeCancelledOutput();
+            return;
+          }
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
@@ -242,6 +272,10 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
           );
         } catch (err) {
+          if (abortController.signal.aborted) {
+            removeCancelledOutput();
+            return;
+          }
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
           try {

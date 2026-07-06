@@ -7,7 +7,7 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, statSync, unlinkSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { createProjectWatcher, type ProjectWatcher } from "./fileWatcher.js";
 import {
@@ -361,17 +361,34 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     rendersDir: () => join(projectDir, "renders"),
 
     startRender(opts): RenderJobState {
+      const abortController = new AbortController();
       const state: RenderJobState = {
         id: opts.jobId,
         status: "rendering",
         progress: 0,
         outputPath: opts.outputPath,
+        cancel: () => abortController.abort(),
       };
 
       // Run render asynchronously, mutating the state object
       const startTime = Date.now();
       (async () => {
         let renderJob: RenderJob | undefined;
+        const removeCancelledOutput = () => {
+          // User-initiated cancel: not a failure. Remove any output so the
+          // cancelled job doesn't resurrect in the render history.
+          state.status = "cancelled";
+          for (const suffix of ["", ".meta.json"]) {
+            const fp = suffix
+              ? opts.outputPath.replace(/\.(mp4|webm|mov)$/, suffix)
+              : opts.outputPath;
+            try {
+              if (existsSync(fp)) unlinkSync(fp);
+            } catch {
+              /* ignore */
+            }
+          }
+        };
         try {
           const { createRenderJob, executeRenderJob } = await loadStudioProducer();
           const { ensureBrowser } = await import("../browser/manager.js");
@@ -402,7 +419,19 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(job, opts.project.dir, opts.outputPath, onProgress);
+          await executeRenderJob(
+            job,
+            opts.project.dir,
+            opts.outputPath,
+            onProgress,
+            abortController.signal,
+          );
+          if (abortController.signal.aborted) {
+            // Cancel landed just as the render finished: honor the cancel the
+            // route already reported instead of resurrecting a completed job.
+            removeCancelledOutput();
+            return;
+          }
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
@@ -412,6 +441,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           );
           emitStudioRenderComplete(opts, Date.now() - startTime, job.perfSummary);
         } catch (err) {
+          if (abortController.signal.aborted) {
+            removeCancelledOutput();
+            return;
+          }
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
           // fallow-ignore-next-line code-duplication

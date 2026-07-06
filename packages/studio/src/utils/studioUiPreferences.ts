@@ -7,6 +7,7 @@ export interface StoredPreviewZoomState {
 export interface StudioUiPreferences {
   leftCollapsed?: boolean;
   timelineVisible?: boolean;
+  timelineHeight?: number;
   playbackRate?: number;
   audioMuted?: boolean;
   previewZoom?: StoredPreviewZoomState;
@@ -47,6 +48,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.timelineVisible === "boolean") {
       preferences.timelineVisible = parsed.timelineVisible;
+    }
+    if (typeof parsed.timelineHeight === "number" && Number.isFinite(parsed.timelineHeight)) {
+      preferences.timelineHeight = parsed.timelineHeight;
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;

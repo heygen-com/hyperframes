@@ -3,6 +3,7 @@ import { setFrameStatus, setFrameVoiceover, type FrameStatus } from "@hyperframe
 import type { StoryboardFrameView } from "../../hooks/useStoryboard";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 import { useViewMode } from "../../contexts/ViewModeContext";
+import { Button } from "../ui/Button";
 import { FramePoster, posterTime } from "./FramePoster";
 import { FRAME_STATUS_META, FRAME_STATUS_ORDER } from "./frameStatus";
 
@@ -67,7 +68,25 @@ export function StoryboardFrameFocus({
   const dirty = draft !== (frame.voiceover ?? "");
   const canOpenPreview = frame.srcExists && Boolean(frame.src);
 
-  // Leaving the frame drops the in-memory voiceover draft; confirm when it's dirty.
+  const saveVoiceover = useCallback(() => {
+    return applyEdit((src) => setFrameVoiceover(src, frame.index, draft));
+  }, [applyEdit, frame.index, draft]);
+
+  // Closing the tab with a dirty voiceover would lose it silently — same
+  // guard the sibling markdown editor registers for the same class of loss.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
+
+  // Leaving the frame drops the in-memory voiceover draft; confirm while it's
+  // dirty. An in-flight save does NOT count as safe: if it fails after unmount
+  // the error lands on an unmounted component and the draft is silently lost,
+  // so keep confirming until the save actually lands (dirty clears on success).
   const confirmLeave = () => !dirty || window.confirm("Discard unsaved voiceover changes?");
   const handleBack = () => {
     if (confirmLeave()) onBack();
@@ -158,18 +177,27 @@ export function StoryboardFrameFocus({
               <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 🎙 Voiceover <span className="font-normal normal-case text-neutral-600">guide</span>
               </h3>
-              <button
-                type="button"
-                onClick={() => applyEdit((src) => setFrameVoiceover(src, frame.index, draft))}
-                disabled={!dirty || busy}
-                className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-40"
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={saveVoiceover}
+                disabled={!dirty}
+                loading={busy}
+                className="bg-emerald-600 text-white enabled:hover:bg-emerald-500 shadow-none"
               >
-                Save
-              </button>
+                {busy ? "Saving…" : "Save"}
+              </Button>
             </div>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => {
+                // Same autosave paradigm as the status row above — mixed save
+                // models inside one panel taught users the panel autosaves,
+                // then lost their voiceover. Explicit Save stays as the
+                // affordance; blur is the safety net.
+                if (dirty && !busy) void saveVoiceover();
+              }}
               rows={3}
               placeholder="What the narrator says over this frame…"
               className="w-full resize-y rounded border border-neutral-800 bg-neutral-900 p-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
@@ -189,14 +217,9 @@ export function StoryboardFrameFocus({
             </section>
           )}
 
-          <button
-            type="button"
-            onClick={openInPreview}
-            disabled={!canOpenPreview}
-            className="rounded border border-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:bg-neutral-800 disabled:opacity-40"
-          >
+          <Button size="sm" variant="secondary" onClick={openInPreview} disabled={!canOpenPreview}>
             Open in Preview →
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -217,7 +240,7 @@ function NavButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800 disabled:opacity-30"
+      className="rounded px-2 py-1 text-xs font-medium text-neutral-300 hover:bg-neutral-800 enabled:active:scale-[0.98] transition-transform disabled:opacity-30"
     >
       {label}
     </button>
