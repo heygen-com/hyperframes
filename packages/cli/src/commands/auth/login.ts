@@ -84,8 +84,13 @@ async function runOAuthLogin(): Promise<void> {
   try {
     await startAuthorizationCodeFlow();
   } catch (err) {
-    trackAuthLoginFailed("oauth", "flow_error");
-    console.error(c.error(`Sign-in failed: ${(err as Error).message}`));
+    const message = (err as Error).message ?? "";
+    // The loopback server rejects with "OAuth callback timed out after …" when
+    // the user never completes the browser step (closed the tab / walked away).
+    // That is the dominant non-error dropout, so split it from real failures
+    // (IdP misconfig, network) instead of lumping everything as flow_error.
+    trackAuthLoginFailed("oauth", /timed out/i.test(message) ? "flow_timeout" : "flow_error");
+    console.error(c.error(`Sign-in failed: ${message}`));
     process.exit(1);
   }
 
@@ -178,7 +183,18 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     await import("../../telemetry/index.js");
   trackAuthLoginStarted("api_key");
 
-  const key = await collectApiKey(inlineKey);
+  // collectApiKey throws when the user cancels the interactive prompt (Ctrl-C)
+  // or when no key arrives on stdin before the timeout — both are "user walked
+  // away", the abandonment signal we most want. Record it before the error
+  // propagates so `started` still reconciles to `completed + failed`.
+  let key: string;
+  try {
+    key = await collectApiKey(inlineKey);
+  } catch (err) {
+    trackAuthLoginFailed("api_key", "aborted");
+    console.error(c.error((err as Error).message || "Sign-in aborted."));
+    process.exit(1);
+  }
   if (!key) {
     trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error("No API key provided."));
@@ -308,8 +324,9 @@ async function promptForKey(): Promise<string> {
     },
   });
   if (clack.isCancel(value)) {
-    console.error("Aborted.");
-    process.exit(1);
+    // Throw rather than exit here so the single catch in runApiKeyLogin records
+    // the abandonment (auth_login_failed: aborted) and then exits.
+    throw new Error("Aborted.");
   }
   return value.trim();
 }
