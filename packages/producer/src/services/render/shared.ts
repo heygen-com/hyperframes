@@ -10,7 +10,15 @@
  * backwards compatibility with existing test files and external callers.
  */
 
-import { copyFileSync, cpSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   CANVAS_DIMENSIONS,
@@ -275,6 +283,10 @@ type MaterializeFileSystem = {
   mkdirSync: (path: string, options: { recursive: true }) => unknown;
   symlinkSync: (target: string, path: string) => unknown;
   cpSync: (src: string, dest: string, options: { recursive: true }) => unknown;
+  // Optional: only the stale-entry (EEXIST) recovery path calls it, and the
+  // default fileSystem always supplies it. Test doubles that never trigger
+  // EEXIST may omit it.
+  rmSync?: (path: string, options: { recursive: true; force: true }) => unknown;
 };
 
 type MaterializeExtractedFramesOptions = {
@@ -304,6 +316,7 @@ const materializeFileSystem: MaterializeFileSystem = {
   mkdirSync,
   symlinkSync,
   cpSync,
+  rmSync,
 };
 
 /**
@@ -379,6 +392,18 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
 // Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
 // which failed high/standard renders — degrade to a copy there rather than
 // throwing. Non-permission errors still propagate so real failures aren't hidden.
+// Create the symlink, degrading to a copy on Windows' no-symlink-privilege
+// (EPERM/EACCES). Non-permission errors propagate.
+function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
+  try {
+    fileSystem.symlinkSync(src, dest);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== "EPERM" && code !== "EACCES") throw err;
+    fileSystem.cpSync(src, dest, { recursive: true });
+  }
+}
+
 function stageExtractedFrameDir(
   fileSystem: MaterializeFileSystem,
   src: string,
@@ -390,11 +415,16 @@ function stageExtractedFrameDir(
     return;
   }
   try {
-    fileSystem.symlinkSync(src, dest);
+    linkOrCopyFrameDir(fileSystem, src, dest);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EPERM" && code !== "EACCES") throw err;
-    fileSystem.cpSync(src, dest, { recursive: true });
+    if ((err as NodeJS.ErrnoException | undefined)?.code !== "EEXIST") throw err;
+    // A stale entry already sits at `dest` — typically a DANGLING symlink left
+    // after the extraction cache was GC'd (its target removed). The caller's
+    // existsSync() guard follows the link, so the dead link reads as absent and
+    // we reach here; the link file itself still exists, so symlinkSync collides
+    // with EEXIST. Clear the stale entry and re-stage.
+    fileSystem.rmSync?.(dest, { recursive: true, force: true });
+    linkOrCopyFrameDir(fileSystem, src, dest);
   }
 }
 

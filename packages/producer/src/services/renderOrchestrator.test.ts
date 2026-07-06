@@ -613,6 +613,51 @@ describe("materializeExtractedFramesForCompiledDir", () => {
       }),
     ).toThrow(/ENOSPC/);
   });
+
+  // fallow-ignore-next-line code-duplication
+  it("clears a stale dangling entry and re-stages when symlinkSync fails with EEXIST", () => {
+    // After the extraction cache is GC'd, a symlink from a prior render dangles
+    // (its target removed). existsSync() follows the dead link so the caller's
+    // guard reads it as absent and reaches staging, but the link file itself
+    // still exists, so symlinkSync collides with EEXIST. The helper must clear
+    // the stale entry (rmSync) and re-stage, not hard-fail the render.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    const removed: string[] = [];
+    const symlinks: Array<{ target: string; path: string }> = [];
+    let symlinkCalls = 0;
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          symlinkCalls += 1;
+          if (symlinkCalls === 1) {
+            const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists, symlink");
+            err.code = "EEXIST";
+            throw err;
+          }
+          symlinks.push({ target, path });
+        },
+        cpSync: () => {
+          throw new Error("EEXIST recovery should re-link, not copy");
+        },
+        rmSync: (path) => {
+          removed.push(path);
+        },
+      },
+    });
+
+    expect(removed).toEqual([linkPath]);
+    expect(symlinks).toEqual([{ target: outputDir, path: linkPath }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
