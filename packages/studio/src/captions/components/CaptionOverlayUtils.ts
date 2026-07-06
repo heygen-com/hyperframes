@@ -205,6 +205,60 @@ export function writeTransform(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Iframe registry — lets non-component code (undo/redo in useAppHotkeys)
+// reapply a restored model's transforms to the live preview.
+// ---------------------------------------------------------------------------
+
+let registeredIframe: React.RefObject<HTMLIFrameElement | null> | null = null;
+
+export function registerCaptionIframe(ref: React.RefObject<HTMLIFrameElement | null>): () => void {
+  registeredIframe = ref;
+  return () => {
+    if (registeredIframe === ref) registeredIframe = null;
+  };
+}
+
+/**
+ * True when the caption preview iframe is mounted AND visible. The caption
+ * store's isEditMode stays true while the preview is merely hidden (e.g.
+ * storyboard view), so hotkeys must not route ⌘Z to the caption stack unless
+ * the user can actually see the captions the undo would change.
+ */
+export function isCaptionPreviewVisible(): boolean {
+  const iframe = registeredIframe?.current;
+  return Boolean(iframe?.isConnected && iframe.offsetParent !== null);
+}
+
+/** Reapply every segment's transform from a (restored) model to the preview DOM. */
+export function applyCaptionModelToIframe(model: {
+  groupOrder: string[];
+  groups: Map<string, { segmentIds: string[] }>;
+  segments: Map<string, { style: { x?: number; y?: number; scaleX?: number; rotation?: number } }>;
+}): void {
+  const iframe = registeredIframe?.current;
+  if (!iframe) return;
+  let win: Window | null = null;
+  try {
+    win = iframe.contentWindow;
+  } catch {
+    return;
+  }
+  if (!win) return;
+  for (let gi = 0; gi < model.groupOrder.length; gi++) {
+    const group = model.groups.get(model.groupOrder[gi]);
+    if (!group) continue;
+    for (let wi = 0; wi < group.segmentIds.length; wi++) {
+      const seg = model.segments.get(group.segmentIds[wi]);
+      if (!seg) continue;
+      const wordEl = getWordEl(iframe, gi, wi);
+      if (!wordEl) continue;
+      const s = seg.style;
+      writeTransform(wordEl, win, s.x ?? 0, s.y ?? 0, s.scaleX ?? 1, s.rotation ?? 0);
+    }
+  }
+}
+
 /** Compute style deltas from the current wrapper transform — used by syncToStore in the overlay. */
 export function computeTransformStyle(el: HTMLElement, iframeWin: Window): Record<string, number> {
   const wrapper = getOrCreateWrapper(el);

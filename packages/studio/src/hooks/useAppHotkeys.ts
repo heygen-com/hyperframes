@@ -5,6 +5,11 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
+import { useCaptionStore } from "../captions/store";
+import {
+  applyCaptionModelToIframe,
+  isCaptionPreviewVisible,
+} from "../captions/components/CaptionOverlayUtils";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
@@ -372,6 +377,23 @@ export function useAppHotkeys({
 
   const applyHistory = useCallback(
     async (direction: "undo" | "redo") => {
+      // Caption edits live in their own in-memory stack. While caption edit
+      // mode is active, ⌘Z must revert the caption edit — not an unrelated
+      // earlier file edit (which would ALSO leave the caption change intact).
+      const captionState = useCaptionStore.getState();
+      // Only when the caption preview is actually visible: isEditMode stays
+      // true while the preview is hidden (storyboard view), and eating ⌘Z
+      // there would pop invisible caption edits instead of file history.
+      if (captionState.isEditMode && isCaptionPreviewVisible()) {
+        const restored = direction === "undo" ? captionState.undo() : captionState.redo();
+        if (restored) {
+          applyCaptionModelToIframe(restored);
+          showToast(`${direction === "undo" ? "Undid" : "Redid"} caption edit`, "info");
+          return;
+        }
+        // Empty caption stack: fall through to beat/file history as usual.
+      }
+
       // Beat edits interleave with file history by timestamp; handle them first.
       if (tryApplyBeatHistory(direction, editHistory.state, showToast)) return;
 

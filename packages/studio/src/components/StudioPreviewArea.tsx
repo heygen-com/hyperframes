@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, type ReactNode } from "react";
 import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
+import { useCaptionStore } from "../captions/store";
 import { DomEditOverlay } from "./editor/DomEditOverlay";
 import { MotionPathOverlay } from "./editor/MotionPathOverlay";
 import { useCompositionDimensions } from "../hooks/useCompositionDimensions";
@@ -114,6 +115,33 @@ export function StudioPreviewArea({
   } = useStudioPlaybackContext();
   const compositionDimensions = useCompositionDimensions();
 
+  // Caption edit mode is entered automatically when captions are detected;
+  // these give the user an explicit way OUT (and back in) — without them the
+  // caption overlay permanently replaces normal element editing.
+  const captionModelPresent = useCaptionStore((s) => s.model !== null);
+  const captionDismissed = useCaptionStore((s) => s.dismissed);
+  const captionSyncError = useCaptionStore((s) => s.syncError);
+  const handleExitCaptionMode = useCallback(() => {
+    const store = useCaptionStore.getState();
+    store.clearSelection();
+    store.setDismissed(true);
+    store.setEditMode(false);
+  }, []);
+  const handleEnterCaptionMode = useCallback(() => {
+    const store = useCaptionStore.getState();
+    store.setDismissed(false);
+    store.setEditMode(true);
+  }, []);
+  const handleCaptionSeek = useCallback((time: number) => {
+    usePlayerStore.getState().requestSeek(time);
+  }, []);
+  const handleRetryCaptionSave = useCallback(() => {
+    useCaptionStore.getState().retrySave?.();
+  }, []);
+  const handleDismissCaptionError = useCallback(() => {
+    useCaptionStore.getState().setSyncError(null);
+  }, []);
+
   const {
     domEditHoverSelection,
     domEditSelection,
@@ -133,6 +161,7 @@ export function StudioPreviewArea({
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleGsapRemoveKeyframe,
+    handleUpdateKeyframeEase,
     handleGsapMoveKeyframeToPlayhead,
     handleGsapMoveKeyframe,
     handleGsapResizeKeyframedTween,
@@ -245,10 +274,12 @@ export function StudioPreviewArea({
           );
         }
       },
-      onChangeKeyframeEase: (_elId: string, _pct: number, ease: string) => {
-        for (const anim of selectedGsapAnimations) {
-          if (anim.keyframes) handleGsapUpdateMeta(anim.id, { ease });
-        }
+      // Per-keyframe: the menu targets one diamond, so resolve the clip-% to
+      // that keyframe's anim + tween-% and set only that segment's ease (the
+      // whole-tween ease lives in the inspector's Animation section instead).
+      onChangeKeyframeEase: (_elId: string, pct: number, ease: string) => {
+        const target = resolveKeyframeTarget(pct);
+        if (target) handleUpdateKeyframeEase(target.animId, target.tweenPct, ease);
       },
       // fallow-ignore-next-line complexity
       onToggleKeyframeAtPlayhead: (el: TimelineElement) => {
@@ -287,6 +318,7 @@ export function StudioPreviewArea({
       handleGsapMoveKeyframe,
       handleGsapResizeKeyframedTween,
       handleGsapUpdateMeta,
+      handleUpdateKeyframeEase,
       handleGsapAddKeyframe,
       handleGsapConvertToKeyframes,
       buildDomSelectionForTimelineElement,
@@ -346,7 +378,47 @@ export function StudioPreviewArea({
                   ) : null}
                 </div>
               ) : captionEditMode ? (
-                <CaptionOverlay iframeRef={previewIframeRef} />
+                <>
+                  <CaptionOverlay iframeRef={previewIframeRef} />
+                  {/* Mode indicator + explicit exit */}
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/70 border border-studio-accent/40">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full bg-studio-accent"
+                      aria-hidden="true"
+                    />
+                    <span className="text-2xs text-neutral-200">Editing captions</span>
+                    <button
+                      type="button"
+                      onClick={handleExitCaptionMode}
+                      className="text-2xs text-neutral-400 hover:text-neutral-100 underline underline-offset-2 focus-visible:outline focus-visible:outline-1 focus-visible:outline-studio-accent rounded"
+                    >
+                      Exit
+                    </button>
+                  </div>
+                  {captionSyncError && (
+                    <div
+                      role="alert"
+                      className="absolute top-10 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-950/90 border border-red-500/50"
+                    >
+                      <span className="text-2xs text-red-200">{captionSyncError}</span>
+                      <button
+                        type="button"
+                        onClick={handleRetryCaptionSave}
+                        className="text-2xs text-red-100 underline underline-offset-2 hover:text-white rounded"
+                      >
+                        Retry
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDismissCaptionError}
+                        aria-label="Dismiss"
+                        className="text-2xs text-red-300/70 hover:text-red-100 rounded px-0.5"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
                 <>
                   <DomEditOverlay
@@ -391,6 +463,15 @@ export function StudioPreviewArea({
                     />
                   )}
                   {gestureOverlay}
+                  {captionModelPresent && captionDismissed && (
+                    <button
+                      type="button"
+                      onClick={handleEnterCaptionMode}
+                      className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] px-2.5 py-1 rounded-full bg-black/60 border border-neutral-700 text-2xs text-neutral-300 hover:text-studio-accent hover:border-studio-accent/50 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-studio-accent"
+                    >
+                      Edit captions
+                    </button>
+                  )}
                 </>
               ) : null
             }
@@ -405,7 +486,7 @@ export function StudioPreviewArea({
                       Captions
                     </span>
                   </div>
-                  <CaptionTimeline pixelsPerSecond={100} />
+                  <CaptionTimeline pixelsPerSecond={100} onSeek={handleCaptionSeek} />
                 </div>
               ) : undefined
             }
