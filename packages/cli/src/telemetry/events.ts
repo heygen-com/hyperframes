@@ -114,6 +114,24 @@ export function trackRenderComplete(
     staticDedupSkipReason?: string;
     staticDedupPredictedFrames?: number;
     staticDedupReusedFrames?: number;
+    // drawElement fast-capture outcome (default-on release visibility).
+    // Undefined on render paths with no capture session.
+    deCaptureMode?: string;
+    deCompileGate?: string;
+    deClampReason?: string;
+    deGateReason?: string;
+    deWorkerEncode?: boolean;
+    deVerifyArmed?: number;
+    deVerifyChecked?: number;
+    deVerifyMinDb?: number;
+    deVerifyInitMs?: number;
+    deSelfVerifyFallback?: boolean;
+    deFallbackReason?: string;
+    deBlankSuspects?: number;
+    deBlankDeterministicAccepts?: number;
+    deBlankRecaptures?: number;
+    deBoundaryFrames?: number;
+    deNcprFallbacks?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
     // triggered by a studio preview-server render (POST /api/projects/:id/render).
     source?: "cli" | "studio";
@@ -170,6 +188,22 @@ export function trackRenderComplete(
       static_dedup_skip_reason: props.staticDedupSkipReason,
       static_dedup_predicted_frames: props.staticDedupPredictedFrames,
       static_dedup_reused_frames: props.staticDedupReusedFrames,
+      de_capture_mode: props.deCaptureMode,
+      de_compile_gate: props.deCompileGate,
+      de_clamp_reason: props.deClampReason,
+      de_gate_reason: props.deGateReason,
+      de_worker_encode: props.deWorkerEncode,
+      de_verify_armed: props.deVerifyArmed,
+      de_verify_checked: props.deVerifyChecked,
+      de_verify_min_db: props.deVerifyMinDb,
+      de_verify_init_ms: props.deVerifyInitMs,
+      de_self_verify_fallback: props.deSelfVerifyFallback,
+      de_fallback_reason: props.deFallbackReason,
+      de_blank_suspects: props.deBlankSuspects,
+      de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
+      de_blank_recaptures: props.deBlankRecaptures,
+      de_boundary_frames: props.deBoundaryFrames,
+      de_ncpr_fallbacks: props.deNcprFallbacks,
       source: props.source ?? "cli",
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,

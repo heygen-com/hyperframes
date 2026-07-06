@@ -35,6 +35,58 @@ export function pushWorkerDedupPerfs(
  * same composition); predicted/reused = SUM (each worker dedups its own frame
  * range); skipReason = the distinct reasons (sorted, `|`-joined) when not armed.
  */
+/**
+ * Collapse per-session capture perf + producer-side decisions into the
+ * render-level drawElement outcome. mode/gateReason |-join distinct values
+ * across workers (bounded cardinality); counters SUM.
+ */
+// Flat field mapping — branches are ?? fallbacks, not logic.
+// fallow-ignore-next-line complexity
+function aggregateDrawElement(
+  perfs: CapturePerfSummary[],
+  de: {
+    compileGate?: string;
+    clampReason?: string;
+    selfVerifyFallback: boolean;
+    fallbackReason?: string;
+    drainStats?: {
+      verifyChecked: number;
+      verifyMinDb?: number;
+      blankSuspects: number;
+      blankDeterministicAccepts: number;
+      blankRecaptures: number;
+    };
+  },
+): RenderPerfSummary["drawElement"] {
+  if (perfs.length === 0) return undefined;
+  const modes = [...new Set(perfs.map((p) => p.captureMode).filter(Boolean))].sort();
+  const gateReasons = [
+    ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
+  ].sort();
+  const drain = de.drainStats;
+  return {
+    mode: modes.join("|") || "unknown",
+    compileGate: de.compileGate,
+    clampReason: de.clampReason,
+    gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
+    workerEncode: perfs.some((p) => p.deWorkerEncode),
+    verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
+    verifyChecked: drain?.verifyChecked ?? 0,
+    verifyMinDb:
+      drain?.verifyMinDb === undefined
+        ? undefined
+        : Math.round(Math.min(drain.verifyMinDb, 999) * 10) / 10,
+    verifyInitMs: perfs.reduce((sum, p) => sum + (p.deVerifyInitMs ?? 0), 0),
+    selfVerifyFallback: de.selfVerifyFallback,
+    fallbackReason: de.fallbackReason,
+    blankSuspects: drain?.blankSuspects ?? 0,
+    blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
+    blankRecaptures: drain?.blankRecaptures ?? 0,
+    boundaryFrames: perfs.reduce((sum, p) => sum + (p.deBoundaryFrames ?? 0), 0),
+    ncprFallbacks: perfs.reduce((sum, p) => sum + (p.deNcprFallbacks ?? 0), 0),
+  };
+}
+
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
@@ -83,6 +135,19 @@ export function buildRenderPerfSummary(input: {
   peakHeapUsedBytes: number;
   /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
   dedupPerfs: CapturePerfSummary[];
+  drawElement?: {
+    compileGate?: string;
+    clampReason?: string;
+    selfVerifyFallback: boolean;
+    fallbackReason?: string;
+    drainStats?: {
+      verifyChecked: number;
+      verifyMinDb?: number;
+      blankSuspects: number;
+      blankDeterministicAccepts: number;
+      blankRecaptures: number;
+    };
+  };
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -130,5 +195,9 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    drawElement: aggregateDrawElement(
+      input.dedupPerfs,
+      input.drawElement ?? { selfVerifyFallback: false },
+    ),
   };
 }

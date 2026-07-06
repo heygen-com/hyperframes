@@ -352,6 +352,42 @@ export interface RenderPerfSummary {
     reusedFrames: number;
     skipReason?: string;
   };
+  /**
+   * drawElement fast-capture outcome for this render (default-on release
+   * visibility). Undefined when no capture session ran.
+   */
+  drawElement?: {
+    /** Final capture mode: "drawelement" | "screenshot" | "beginframe" (|-joined if workers diverge). */
+    mode: string;
+    /** Compile-time gate that disabled default DE: 3d | mix_blend_mode | shader_transitions. */
+    compileGate?: string;
+    /** Producer clamp that disabled default DE: parallel | disk_path. */
+    clampReason?: string;
+    /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
+    gateReason?: string;
+    /** Worker-encode drain (the verified path) was active. */
+    workerEncode: boolean;
+    /** Self-verification ground-truth samples armed at init. */
+    verifyArmed: number;
+    /** Samples actually compared at drain time. */
+    verifyChecked: number;
+    /** Minimum PSNR across checked samples (dB; margin above the 32dB threshold). */
+    verifyMinDb?: number;
+    /** Init cost of capturing ground truth (ms). */
+    verifyInitMs: number;
+    /** Self-verification tripped and the render re-ran via screenshot. */
+    selfVerifyFallback: boolean;
+    /** What tripped it: psnr | blank. */
+    fallbackReason?: string;
+    /** Blank-guard counters. */
+    blankSuspects: number;
+    blankDeterministicAccepts: number;
+    blankRecaptures: number;
+    /** Clip-cut boundary frames captured via per-frame screenshot. */
+    boundaryFrames: number;
+    /** Per-frame "No cached paint record" screenshot fallbacks. */
+    ncprFallbacks: number;
+  };
 }
 
 export interface HdrDiagnostics {
@@ -1167,6 +1203,13 @@ export async function executeRenderJob(
     // via the explicit `forceScreenshot` parameter rather than reading
     // `cfg.forceScreenshot` directly.
     let captureForceScreenshot = compileResult.forceScreenshot;
+    // drawElement release telemetry: why default DE disengaged (if it did),
+    // whether self-verify fell back, and the drain-side counters.
+    const deCompileGate = compileResult.deCompileGate;
+    let deClampReason: string | undefined;
+    let deSelfVerifyFallback = false;
+    let deFallbackReason: string | undefined;
+    let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
     updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
     observability.checkpoint("compile", "composition metadata resolved", {
       width,
@@ -1584,6 +1627,7 @@ export async function executeRenderJob(
       (!useStreamingEncode || workerCount > 1)
     ) {
       cfg.useDrawElement = false;
+      deClampReason = workerCount > 1 ? "parallel" : "disk_path";
       log.info(
         "[Render] Fast capture: default-on drawElement disabled for this render — " +
           (workerCount > 1 ? "parallel capture" : "the disk capture path") +
@@ -1837,6 +1881,10 @@ export async function executeRenderJob(
           // session was closed by the stage's finally; probeSession (if any)
           // was consumed by it, so a fresh session spawns on retry.
           if (!isDrawElementVerificationError(err)) throw err;
+          deSelfVerifyFallback = true;
+          deFallbackReason = /blank/i.test(err instanceof Error ? err.message : "")
+            ? "blank"
+            : "psnr";
           log.warn("[Render] drawElement self-verification failed; re-rendering via screenshot", {
             error: err instanceof Error ? err.message : String(err),
           });
@@ -1858,6 +1906,7 @@ export async function executeRenderJob(
         const captureFrameMs = Date.now() - captureFrameStart;
         if (streamingRes.success) {
           streamingHandled = true;
+          deDrainStats = streamingRes.deDrainStats;
           workerCount = streamingRes.workerCount;
           updateCaptureObservability({ workerCount });
           if (streamingRes.captureBeyondViewport !== undefined) {
@@ -2026,6 +2075,13 @@ export async function executeRenderJob(
       captureCalibration,
       captureAttempts,
       dedupPerfs,
+      drawElement: {
+        compileGate: deCompileGate,
+        clampReason: deClampReason,
+        selfVerifyFallback: deSelfVerifyFallback,
+        fallbackReason: deFallbackReason,
+        drainStats: deDrainStats,
+      },
       hdrDiagnostics,
       hdrPerf,
       observability: observabilitySummary,

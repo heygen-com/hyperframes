@@ -128,6 +128,15 @@ export interface CaptureStreamingStageInput {
   dedupPerfs: CapturePerfSummary[];
 }
 
+/** Drain-side safety-net counters for the worker-encode loop (telemetry). */
+export interface DeDrainStats {
+  verifyChecked: number;
+  verifyMinDb?: number;
+  blankSuspects: number;
+  blankDeterministicAccepts: number;
+  blankRecaptures: number;
+}
+
 export type CaptureStreamingStageResult =
   | {
       /** Streaming path ran successfully — sequencer should skip the disk path AND Stage 5 encode. */
@@ -139,6 +148,8 @@ export type CaptureStreamingStageResult =
       workerCount: number;
       /** Engine-resolved screenshot flag from the consumed sequential/probe session, when observed. */
       captureBeyondViewport?: boolean;
+      /** Safety-net drain counters (worker-encode loop only; undefined elsewhere). */
+      deDrainStats?: DeDrainStats;
     }
   | {
       /** Spawn failed (non-abort) — sequencer should fall back to the disk path. */
@@ -176,6 +187,7 @@ async function runWorkerEncodePipelineLoop(
   assertNotAborted: () => void,
   onProgress: CaptureStreamingStageInput["onProgress"],
   log: CaptureStreamingStageInput["log"],
+  stats: DeDrainStats,
 ): Promise<void> {
   let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
   const frameTime = (i: number) => (i * job.config.fps.den) / job.config.fps.num;
@@ -228,9 +240,13 @@ async function runWorkerEncodePipelineLoop(
     if (process.env.HF_FORCE_DRAWELEMENT !== "1") {
       const floor = blankFloor();
       if (floor > 0 && buf.length < floor && acceptedSmall?.equals(buf)) {
+        stats.blankSuspects += 1;
+        stats.blankDeterministicAccepts += 1;
         // Identical to a small frame already proven deterministic (dark
         // clip-gap runs repeat the same bytes) — skip the recapture.
       } else if (floor > 0 && buf.length < floor) {
+        stats.blankSuspects += 1;
+        stats.blankRecaptures += 1;
         log.warn("[Render] drawElement blank-frame suspect; re-capturing", {
           frame: idx,
           bytes: buf.length,
@@ -255,6 +271,7 @@ async function runWorkerEncodePipelineLoop(
           // transient blank drop (those are intermittent by nature) — the
           // frame is legitimately small (dark / low-detail). Accept it;
           // deterministic damage classes are the PSNR self-verify's job.
+          stats.blankDeterministicAccepts += 1;
           log.info("[Render] drawElement small frame is deterministic; accepted", {
             frame: idx,
             bytes: buf.length,
@@ -299,6 +316,8 @@ async function runWorkerEncodePipelineLoop(
           `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
         );
       }
+      stats.verifyChecked += 1;
+      stats.verifyMinDb = stats.verifyMinDb === undefined ? db : Math.min(stats.verifyMinDb, db);
       log.info("[Render] drawElement self-verify passed", {
         frame: idx,
         psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
@@ -426,6 +445,7 @@ export async function runCaptureStreamingStage(
   } = input;
   let { workerCount, probeSession } = input;
   let lastBrowserConsole: string[] = [];
+  let deDrainStats: DeDrainStats | undefined;
   let captureBeyondViewport: boolean | undefined = probeSession?.options.captureBeyondViewport;
 
   // Derive a local cfg view rather than reading `forceScreenshot` from the
@@ -546,6 +566,12 @@ export async function runCaptureStreamingStage(
         if (session.workerEncodeEnabled) {
           // Worker-encode pipeline: depth-2. Frame N's in-page Worker encodes
           // while frame N+1's main thread does seek+paint+drawElement+kick.
+          deDrainStats = {
+            verifyChecked: 0,
+            blankSuspects: 0,
+            blankDeterministicAccepts: 0,
+            blankRecaptures: 0,
+          };
           await runWorkerEncodePipelineLoop(
             session,
             totalFrames,
@@ -555,6 +581,7 @@ export async function runCaptureStreamingStage(
             assertNotAborted,
             onProgress,
             log,
+            deDrainStats,
           );
         } else {
           for (let i = 0; i < totalFrames; i++) {
@@ -613,6 +640,7 @@ export async function runCaptureStreamingStage(
       probeSession,
       lastBrowserConsole,
       workerCount,
+      deDrainStats,
       captureBeyondViewport,
     };
   } finally {

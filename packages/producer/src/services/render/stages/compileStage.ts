@@ -102,6 +102,9 @@ export interface CompileStageResult {
    * instead of relying on `cfg.forceScreenshot` mutations.
    */
   forceScreenshot: boolean;
+  /** Low-cardinality compile-time gate that disabled default drawElement:
+   * `3d` | `mix_blend_mode` | `shader_transitions`. Undefined when none fired. */
+  deCompileGate?: string;
 }
 
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
@@ -162,12 +165,14 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   // Detection runs inside the compiler on PRE-CDN-inline HTML — GSAP's own
   // source contains `transformPerspective`, so scanning compiled.html here
   // would flag every composition that loads GSAP.
+  let deCompileGate: string | undefined;
   if (
     cfg.useDrawElement &&
     process.env.HF_FAST_CAPTURE_3D !== "true" &&
     compiled.usesThreeDTransforms
   ) {
     cfg.useDrawElement = false;
+    deCompileGate = "3d";
     log.info(
       "[Render] Fast capture: composition uses a CSS 3D rendering context " +
         "(perspective / preserve-3d / backface-visibility) — disabling drawElementImage " +
@@ -186,6 +191,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     compiled.usesMixBlendMode
   ) {
     cfg.useDrawElement = false;
+    deCompileGate = "mix_blend_mode";
     log.info(
       "[Render] Fast capture: composition uses mix-blend-mode — disabling drawElementImage " +
         "for this render. Capture uses the platform's baseline route.",
@@ -202,6 +208,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     compiled.hasShaderTransitions
   ) {
     cfg.useDrawElement = false;
+    deCompileGate = "shader_transitions";
     log.info(
       "[Render] Fast capture: composition uses shader transitions — disabling drawElementImage " +
         "so page-side compositing stays available.",
@@ -269,5 +276,6 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     outputHeight,
     compileOnlyMs,
     forceScreenshot,
+    deCompileGate,
   };
 }

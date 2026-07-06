@@ -197,6 +197,26 @@ export interface CapturePerfSummary {
    * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
+  // ── drawElement fast-capture outcome (default-on release visibility) ──
+  /** Final capture mode this session used: "drawelement" | "screenshot" | "beginframe". */
+  captureMode: string;
+  /**
+   * Low-cardinality init-time gate that routed a drawElement-eligible session
+   * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
+   * `3d_init_failed` | `supersampling` | `render_mode_hint`. Undefined when
+   * drawElement ran or was never attempted.
+   */
+  deGateReason?: string;
+  /** Worker-encode pipeline active (the drain that runs self-verification). */
+  deWorkerEncode: boolean;
+  /** Self-verification ground-truth samples armed at init (0 = verification off/skipped). */
+  deVerifyArmed: number;
+  /** Wall-clock cost of capturing the ground-truth samples at init. */
+  deVerifyInitMs: number;
+  /** Clip-cut boundary frames routed to per-frame screenshot (Lim 6). */
+  deBoundaryFrames: number;
+  /** Per-frame "No cached paint record" screenshot fallbacks during capture. */
+  deNcprFallbacks: number;
 }
 
 // ── Global Augmentation ────────────────────────────────────────────────────────

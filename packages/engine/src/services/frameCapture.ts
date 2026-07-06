@@ -154,6 +154,12 @@ export interface CaptureSession {
    * DrawElementVerificationError and the orchestrator re-renders via the
    * screenshot path. */
   deVerifyFrames?: Map<number, Buffer>;
+  /** Low-cardinality init-gate reason when drawElement routed to baseline (telemetry). */
+  deGateReason?: string;
+  /** Wall-clock ms spent capturing self-verification ground truth at init (telemetry). */
+  deVerifyInitMs?: number;
+  /** Count of per-frame "No cached paint record" screenshot fallbacks (telemetry). */
+  deNcprFallbacks?: number;
 }
 
 /**
@@ -470,12 +476,14 @@ async function initDrawElementOrTransparentBackground(
     !supersampling &&
     (!forceScreenshot || forceDE);
   if ((session.config?.useDrawElement ?? false) && supersampling) {
+    session.deGateReason = "supersampling";
     console.log(
       "[engine] --experimental-fast-capture disabled for this render: drawElementImage " +
         "ignores deviceScaleFactor, so supersampled (DPR > 1) output uses screenshot capture.",
     );
   }
   if ((session.config?.useDrawElement ?? false) && !supersampling && forceScreenshot) {
+    session.deGateReason = "render_mode_hint";
     console.log(
       "[engine] fast capture: falling back to screenshot — render-mode compatibility " +
         "hint forced screenshot capture (e.g. raw requestAnimationFrame composition).",
@@ -532,6 +540,7 @@ async function initDrawElementOrTransparentBackground(
     // PSNR=inf; efb59c5b 24.5→47.4 dB, 0 damaged frames). 151 is the pinned floor.
     const mode = resolveDrawElementCaptureMode(session.isSwiftShader, transparent);
     if (mode === "screenshot") {
+      session.deGateReason = "swiftshader";
       // Fall back to the browser's LAUNCH mode, not unconditionally to
       // "screenshot": on a BeginFrame-launched browser (Linux fast capture)
       // Page.captureScreenshot hangs for the full protocol timeout, while
@@ -551,6 +560,7 @@ async function initDrawElementOrTransparentBackground(
       if (!forceDE && process.env.HF_FAST_CAPTURE_CSSFX !== "true") {
         const cssFx = await detectCssEffectRisk(page);
         if (cssFx) {
+          session.deGateReason = `css_effect:${(cssFx.split(":")[0] ?? "").replace(/[^a-z-]/gi, "")}`;
           console.log(
             `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
               `${cssFx} detected (drawElementImage cannot reproduce it; see fast-capture-limitations.md)`,
@@ -584,6 +594,7 @@ async function initDrawElementOrTransparentBackground(
           `timeline at-risk predictor: ${atRisk.size}/${totalFrames} frames (${Math.round(atRiskFraction * 100)}%)`,
         );
         if (atRisk.size > 0 && atRiskFraction > fractionFloor) {
+          session.deGateReason = "at_risk_timeline";
           console.log(
             `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
               `${atRisk.size}/${totalFrames} frames animate a compositor-incompatible prop ` +
@@ -600,6 +611,7 @@ async function initDrawElementOrTransparentBackground(
       // threeDProjection.ts. No-op for compositions without 3D content.
       const threeD = await initThreeDProjection(page);
       if (!forceDE && !threeD.ok) {
+        session.deGateReason = "3d_init_failed";
         console.log(
           `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
             `3D projection init failed (${threeD.reason ?? "unknown"})`,
@@ -620,7 +632,11 @@ async function initDrawElementOrTransparentBackground(
       // Self-verification ground truth: must ALSO run pre-injection — after the
       // canvas wraps the root, a page screenshot shows the canvas's last-drawn
       // bitmap, not the live DOM (see the Lim 6 boundary-screenshot note).
-      await captureDeVerificationFrames(session, page, logInitPhase);
+      {
+        const verifyStart = Date.now();
+        await captureDeVerificationFrames(session, page, logInitPhase);
+        session.deVerifyInitMs = Date.now() - verifyStart;
+      }
       await injectDrawElementCanvas(page, session.options.width, session.options.height);
       if (transparent) {
         await initTransparentBackground(session.page);
@@ -2349,6 +2365,7 @@ async function captureFrameCore(
         // is a per-frame condition, not a whole-comp one — fall back to screenshot
         // for THIS frame instead of aborting the render. See fast-capture-limitations.md.
         if (isNoCachedPaintRecordError(err)) {
+          session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
           console.log(
             `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
               `screenshot fallback for this frame (see fast-capture-limitations.md)`,
@@ -2530,6 +2547,7 @@ export async function captureFrameToBufferPipelined(
     // The worker isn't involved for this frame; return a resolved encodeResult so
     // the pipeline loop writes it like any other. See fast-capture-limitations.md.
     if (isNoCachedPaintRecordError(captureError)) {
+      session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
       console.log(
         `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
           `screenshot fallback for this frame (see fast-capture-limitations.md)`,
@@ -2934,6 +2952,13 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
     staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
+    captureMode: session.captureMode,
+    deGateReason: session.deGateReason,
+    deWorkerEncode: session.workerEncodeEnabled ?? false,
+    deVerifyArmed: session.deVerifyFrames?.size ?? 0,
+    deVerifyInitMs: session.deVerifyInitMs ?? 0,
+    deBoundaryFrames: session.clipBoundaryFrames?.size ?? 0,
+    deNcprFallbacks: session.deNcprFallbacks ?? 0,
   };
 }
 
