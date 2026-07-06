@@ -577,48 +577,46 @@ async function scaffoldProject(
 }
 
 /**
- * Ensure the AI coding skills are present and current. Checks the installed
- * skills against the latest published on GitHub and only (re)installs when
- * something is outdated or missing — so re-running `init` on an up-to-date
- * machine is a no-op. Best-effort: if the version check can't reach GitHub, it
- * installs anyway. The install itself (`installAllSkills`) installs the full set
- * once GLOBALLY (~/.claude/skills + ~/.agents/skills) and mirrors it into every
- * other installed agent, so it is project-independent — the check is global-first
- * to match.
+ * Keep the AI coding skills present and current — TARGETED, not the full
+ * set. Guarantees the core set (the `/hyperframes` entry router + shared
+ * domain skills) and refreshes any skill already installed; the end-user
+ * workflow skills are NOT pulled here — they install on demand when their
+ * workflow is triggered (`hyperframes skills update <name>`, which the router
+ * runs before entering a workflow). Re-running `init` on an up-to-date machine
+ * is a no-op, and `init` never expands a deliberate partial install.
+ * Best-effort: offline, it degrades to a presence check and never breaks init.
+ * The install itself lands once GLOBALLY (~/.claude/skills + ~/.agents/skills)
+ * and mirrors into every other installed agent, so it is project-independent —
+ * the check is global-first to match.
  */
-async function ensureSkillsCurrent(destDir: string): Promise<void> {
-  const { installAllSkills } = await import("./skills.js");
-  const { checkSkills } = await import("../utils/skillsManifest.js");
+async function keepSkillsCurrent(destDir: string): Promise<void> {
+  const { updateSkills } = await import("./skills.js");
 
   console.log();
   console.log(c.bold("Checking AI coding skills against GitHub..."));
-  let needsInstall = true;
+  // Wrap defensively (non-strict already swallows most failures): a
+  // skills-install failure can never break `init` itself — it warns and
+  // proceeds, since --skip-skills no longer escapes this path.
   try {
-    const result = await checkSkills({ cwd: destDir });
-    needsInstall = result.updateAvailable;
-  } catch {
-    // Couldn't reach GitHub (offline, rate-limited) — install anyway.
-  }
-
-  if (needsInstall) {
-    // installAllSkills installs the full set once globally and mirrors it into
-    // every installed agent's global dir — project-independent, so a freshly
-    // scaffolded project doesn't need any agent folders yet.
-    //
-    // Best-effort: installAllSkills (non-strict here) already swallows its own
-    // failures, but now that --skip-skills no longer escapes this path every
-    // init runs it — including offline ones, where checkSkills throws and we
-    // fall through to "install anyway". Wrap defensively so a skills-install
-    // failure can never break `init` itself; it only warns and proceeds.
-    try {
-      await installAllSkills({ cwd: destDir });
-    } catch (err) {
+    const result = await updateSkills({ refreshInstalled: true, cwd: destDir });
+    if (result.presenceOnly) {
+      // Freshness never got checked (GitHub unreachable) — don't claim
+      // "up to date"; the engine already reported what it could verify or
+      // blind-install. Point at the recovery command instead.
       console.log(
-        c.dim(`AI coding skills install skipped: ${err instanceof Error ? err.message : err}`),
+        c.dim("Skills freshness unverified — run `npx hyperframes skills update` when online."),
+      );
+    } else if (result.installed.length === 0) {
+      console.log(c.success("AI coding skills are already up to date."));
+    } else {
+      console.log(
+        c.dim("Workflow skills not installed here are added on demand, when first used."),
       );
     }
-  } else {
-    console.log(c.success("AI coding skills are already up to date."));
+  } catch (err) {
+    console.log(
+      c.dim(`AI coding skills install skipped: ${err instanceof Error ? err.message : err}`),
+    );
   }
 }
 
@@ -871,7 +869,7 @@ export default defineCommand({
       }
 
       if (!skipSkills) {
-        await ensureSkillsCurrent(destDir);
+        await keepSkillsCurrent(destDir);
       }
 
       console.log();
@@ -1087,11 +1085,12 @@ export default defineCommand({
     const files = readdirSync(destDir);
     clack.note(files.map((f) => c.accent(f)).join("\n"), c.success(`Created ${name}/`));
 
-    // Check skills against GitHub and (re)install only if outdated or missing —
-    // init is the one place the full set is pulled. The --skip-skills flag is
-    // temporarily neutered (see above); CI/tests opt out via HYPERFRAMES_SKIP_SKILLS=1.
+    // Check skills against GitHub and refresh only what's stale — the core set
+    // plus anything already installed; workflow skills install on demand. The
+    // --skip-skills flag is temporarily neutered (see above); CI/tests opt out
+    // via HYPERFRAMES_SKIP_SKILLS=1.
     if (!skipSkills) {
-      await ensureSkillsCurrent(destDir);
+      await keepSkillsCurrent(destDir);
     }
 
     // Auto-launch studio preview
