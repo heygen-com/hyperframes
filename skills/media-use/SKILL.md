@@ -209,3 +209,15 @@ provider (e.g. no `mflux` -> codex image upsell; no `parakeet-mlx` -> whisper.cp
 `heygen asset search` is a pre-launch command hidden from `heygen --help`, but it
 runs; providers tag requests with the allowlisted `X-HeyGen-Client-Source` header
 (v0.1.6+).
+
+## Telemetry
+
+`resolve` and the edit tools (transcribe / transcript-cut / audio-duck) send an
+anonymous usage event to PostHog (`scripts/lib/telemetry.mjs`), so we can see
+which capabilities are actually used. It records only the media TYPE, the
+resolution SOURCE, and the winning PROVIDER: never the intent text, file names,
+or paths, and `$ip:null` so no IP is stored. Best-effort and non-blocking (a
+resolve never waits on or fails from telemetry).
+
+Opt out with `DO_NOT_TRACK=1` or `HYPERFRAMES_NO_TELEMETRY=1` (also off in CI and
+dev). Same public PostHog project key and opt-outs as the `hyperframes` CLI.

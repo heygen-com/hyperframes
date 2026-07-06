@@ -9,6 +9,7 @@ import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cac
 import { runCapability, listTypes } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
+import { track } from "./lib/telemetry.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -166,6 +167,11 @@ async function run() {
   }
 
   if (!searchResult) {
+    await track("media_use_resolve_miss", {
+      type,
+      local_only: !!localOnly,
+      provider_override: !!args.provider,
+    });
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
     const msg =
@@ -269,10 +275,19 @@ async function ingest(src) {
   } catch {
     // best-effort
   }
-  result(record, "ingested");
+  await result(record, "ingested");
 }
 
-function result(record, source) {
+async function result(record, source) {
+  // Non-PII usage event: which media type, how it resolved, which provider won.
+  // Never the intent text or paths. Awaited so a short-lived run flushes it.
+  await track("media_use_resolve", {
+    type: record.type,
+    source,
+    provider: record.provenance?.provider,
+    local_only: !!args["local-only"],
+    provider_override: !!args.provider,
+  });
   if (args.json) {
     console.log(JSON.stringify({ ok: true, ...record, _source: source }));
   } else {

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { duckKeyframes, speechSpans } from "./lib/duck.mjs";
+import { track } from "./lib/telemetry.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -47,6 +48,7 @@ Options:
 
 try {
   run();
+  await track("media_use_duck", { sequential: !!args.sequential });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
   else console.error(`error: ${err.message}`);
