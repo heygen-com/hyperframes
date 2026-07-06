@@ -40,7 +40,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 - `/media-use` — resolve any media need (BGM, SFX, image, icon) into a frozen local file + ledger record. One verb (`resolve`) over the HeyGen catalog with manifest tracking; keeps search noise on disk.
 - `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
 - `/hyperframes-registry` — install and wire registry blocks and components into compositions via `hyperframes add`. Covers authoring a new block or component to contribute upstream.
-- `/figma` — import Figma assets, tokens, components, and storyboard sections → animatics (REST/CLI) plus Motion animations and shaders (MCP) into a composition.
+- `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations and shaders (MCP) into a composition.
 
 ## Skill catalog maintenance
 

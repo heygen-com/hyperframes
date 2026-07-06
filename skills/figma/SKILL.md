@@ -1,6 +1,6 @@
 ---
 name: figma
-description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, storyboard sections → animatics (REST/CLI), and Figma Motion animations + shaders (MCP). Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
+description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI), and Figma Motion animations + shaders (MCP). Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
 ---
 
 # Figma → HyperFrames
@@ -15,7 +15,7 @@ Bring the user's Figma work into a composition. **Split by capability** (design 
 | 4     | Motion → GSAP       | **MCP only**                 | you, via `get_motion_context` |
 | 5     | Shaders             | **MCP only** / manual export | you                           |
 
-REST is used wherever it can be (usable at volume, headless); MCP only where Figma exposes no REST equivalent (motion, shaders). Every path freezes assets locally so renders stay deterministic. Storyboard animatics compose Phase-1 asset exports (REST) with agent-driven timeline assembly — no MCP needed. Existing frozen assets, manifest records, and bindings are unaffected by routing changes — the split only changes which credential the next import uses.
+REST is used wherever it can be (usable at volume, headless); MCP only where Figma exposes no REST equivalent (motion, shaders). Every path freezes assets locally so renders stay deterministic. Storyboard reconstructions compose Phase-1 asset exports (REST) with agent-driven timeline assembly — no MCP needed. Existing frozen assets, manifest records, and bindings are unaffected by routing changes — the split only changes which credential the next import uses.
 
 ## Auth — two credentials, scoped
 
@@ -115,6 +115,7 @@ Storyboard files follow a grammar you can parse mechanically — don't eyeball, 
 
 8. **Stills vs. components routing**: a note describing motion _between_ scenes → transition on the still (above). A note describing motion _inside_ a scene ("TEXT LINES REVEAL ONE AFTER THE OTHER", "PILLS ANIMATE IN") → that frame deserves a Phase-3 component import (real elements) animated per the note, not a flat PNG. Do the animatic pass first with stills, then upgrade the scenes the notes single out.
 9. One `main` timeline sequences everything (opacity/x/y per scene at absolute times) — no per-scene sub-compositions needed for an animatic.
+10. **Escalation — frames depict ONE product UI → rebuild the app, not element chains.** When every frame is the same application screen in successive states (a signup flow, a settings panel, a player), element chains undersell it. Rebuild the UI as live DOM — Phase-3 component import for the parts that change state, real exported pixels for static chrome (**code what changes state, freeze what doesn't**) — and treat each frame delta as an **interaction to perform**, not a tween to apply: the cursor enters, clicks the control, the state responds, screens push/slide as real navigation. The result reads as one continuous screen recording of a working app. This is the cardinal rule taken to its conclusion for UI flows; the stills/element-chain treatments are for storyboards that aren't one coherent application.
 
 ## Determinism
 

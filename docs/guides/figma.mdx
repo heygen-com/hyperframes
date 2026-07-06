@@ -1,6 +1,6 @@
 ---
 title: Figma Import
-description: "Bring Figma designs into HyperFrames — frozen assets, brand tokens, editable components, storyboard animatics, and Figma Motion timelines translated to GSAP."
+description: "Bring Figma designs into HyperFrames — frozen assets, brand tokens, editable components, storyboard reconstruction, and Figma Motion timelines translated to GSAP."
 ---
 
 The work your designer already did in Figma — layout, color, type, motion — becomes the starting point of a composition instead of a thing to rebuild by hand. Point at a Figma URL; the artifact lands as a native HyperFrames piece: a frozen local file, a composition variable, editable HTML, or a paused GSAP timeline.
@@ -14,7 +14,7 @@ The work your designer already did in Figma — layout, color, type, motion — 
 | **Components** | A frame as editable HTML with brand-linked colors | `hyperframes figma component` |
 | **Motion** | A Figma Motion timeline as an editable, paused GSAP timeline | `/figma` skill (agent, MCP) |
 | **Shaders** | A shader fill/effect as a frozen still or clip | `/figma` skill (agent, MCP) |
-| **Storyboards** | A section of scene frames reconstructed as an animatic | `/figma` skill (agent) |
+| **Storyboards** | Scene frames reconstructed as motion — frames read as states, not slides | `/figma` skill (agent) |
 
 Two transports, split by what Figma exposes: assets, tokens, and components run over the **REST API** (headless, works in CI, generous per-minute rate limits). Motion and shaders exist only on Figma's **MCP server**, so an agent drives those. Every path freezes files locally — **renders never call Figma**.
 
@@ -98,7 +98,7 @@ These run through the `/figma` agent skill:
 
 - **Motion** — a Figma Motion timeline (keyframes, easing, repeats) translates structurally into a paused, finite GSAP timeline registered on `window.__timelines`, seekable frame-by-frame like any hand-authored animation, and editable afterward. Tracks that can't translate faithfully fall back to a baked video clip — the agent tells you which path it took and why.
 - **Shaders** — Figma's export path doesn't execute shaders, so the default is a native Figma export (PNG or Motion MP4) imported as an asset/clip.
-- **Storyboards** — a section of scene frames is decoded, not slideshowed: frames sharing an element are treated as that element's keyframes over time, diffed into element chains and tweened, with text under the strip read as director notes. See the `/figma` skill for the full grammar.
+- **Storyboards** — a section of scene frames is decoded, not slideshowed: frames sharing an element are treated as that element's keyframes over time, diffed into element chains and tweened, with text under the strip read as director notes. When the frames depict one product UI in successive states, the agent escalates further — rebuilds the UI as live DOM and performs each frame delta as a real interaction (cursor, click, navigation), so the result reads as a continuous screen recording. See the `/figma` skill for the full grammar.
 
 ## Provenance and refresh
 
