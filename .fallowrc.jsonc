@@ -86,6 +86,22 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
+    // drawElementService is the bottom of the fast-capture Graphite stack
+    // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
+    // a per-PR audit diffing against the merge base sees these exports as
+    // unused. Consumed for real once the stack merges; safe to drop this
+    // entry after #1919 lands.
+    {
+      "file": "packages/engine/src/services/drawElementService.ts",
+      "exports": [
+        "instrumentAcceleratedCanvases",
+        "injectDrawElementCanvas",
+        "captureDrawElementFrame",
+        "initDrawElementWorkerEncode",
+        "cleanupDrawElementWorkerEncode",
+        "produceDrawElementFrame",
+      ],
+    },
     // CLI command files: every command exports a const `examples` per the
     // convention documented in CLAUDE.md. This is a namespace barrel, not a
     // collision.
