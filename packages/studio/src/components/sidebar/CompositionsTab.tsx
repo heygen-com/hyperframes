@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Tooltip } from "../ui/Tooltip";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -177,10 +178,23 @@ function CompCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open composition ${name}`}
+      aria-pressed={isActive}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        // Only when the row itself is focused — keydowns bubbling from the
+        // inner controls (play button) must keep their native activation.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
-      className={`group/card w-full text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer ${
+      className={`group/card w-full text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-pointer outline-none focus-visible:bg-neutral-800/60 ${
         isActive
           ? "bg-studio-accent/10 border-l-2 border-studio-accent"
           : "border-l-2 border-transparent hover:bg-neutral-800/50"
@@ -225,42 +239,49 @@ function CompCard({
         <div className="flex items-center gap-1">
           <span className="text-[11px] font-medium text-neutral-300 truncate">{name}</span>
           {lintInfo && lintInfo.count > 0 && (
-            <span className="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" />
+            <span
+              aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
+              className="flex-shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400"
+            >
+              {lintInfo.count}
+            </span>
           )}
         </div>
         <span className="text-[9px] text-neutral-600 truncate block">{comp}</span>
       </div>
       {onRender && (
-        <button
-          type="button"
-          title={isRendering ? "Rendering..." : `Render ${name}`}
-          aria-label={isRendering ? "Rendering..." : `Render ${name}`}
-          disabled={isRendering}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRender();
-          }}
-          className={`flex-shrink-0 p-1 rounded transition-colors ${
-            isRendering
-              ? "text-neutral-600 cursor-not-allowed"
-              : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800"
-          }`}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <Tooltip label={isRendering ? "A render is already in progress" : `Render ${name}`}>
+          <button
+            type="button"
+            aria-label={isRendering ? "A render is already in progress" : `Render ${name}`}
+            disabled={isRendering}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRender();
+            }}
+            className={`flex-shrink-0 p-1 rounded transition-colors ${
+              isRendering
+                ? "text-neutral-600 cursor-not-allowed"
+                : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800 active:scale-[0.95]"
+            }`}
           >
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        </button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+        </Tooltip>
       )}
     </div>
   );
