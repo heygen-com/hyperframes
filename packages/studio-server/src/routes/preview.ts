@@ -340,6 +340,14 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
     }
 
+    // Pin hf-ids to the RAW file before the build pipeline mutates attributes
+    // (rewriteRelativePaths etc.) — minting is content-keyed over attrs, so
+    // stamping only AFTER the rewrite mints preview-only ids that exist nowhere
+    // in the source. Pinned ids ride through the rewrite unchanged, keeping the
+    // served DOM, the disk file, and the studio SDK session in one id space.
+    // Mirrors the main-preview route's persistHfIdsIfNeeded call.
+    persistHfIdsIfNeeded(compFile, readFileSync(compFile, "utf-8"));
+
     const baseHref = `/api/projects/${project.id}/preview/`;
     let html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
     if (!html) return c.text("not found", 404);

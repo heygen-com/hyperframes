@@ -98,6 +98,17 @@ describe("A. Flag gating", () => {
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
   });
 
+  it("A2c: empty session → skips entirely (no event, no attempt)", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    flushAttemptCounts(); // drain counts left by earlier tests
+    const session = await openComposition("<!DOCTYPE html><html><body></body></html>");
+    runResolverShadow(session, "hf-anything", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+    expect(flushAttemptCounts()).toBeNull();
+  });
+
   it("A3: shadow depends ONLY on shadow flag, not on STUDIO_SDK_CUTOVER_ENABLED", async () => {
     // The mock always returns STUDIO_SDK_CUTOVER_ENABLED=false. Use a divergence
     // (poisoned session) so the flag-on case emits; flag-off must stay silent.
@@ -268,7 +279,12 @@ describe("C. Resolver-parity detection", () => {
 
   it("C8 sourceHfIdCount: emitted element_not_found carries source occurrence count", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
-    const session = { getElement: () => null, getElements: () => [] } as unknown as Composition;
+    // One unrelated element so the session isn't "empty" (empty sessions are
+    // skipped as structural modeling gaps) — it just can't resolve hf-dup.
+    const session = {
+      getElement: () => null,
+      getElements: () => [{ id: "hf-other" }],
+    } as unknown as Composition;
     // id present twice in source (duplicate-id ambiguity) but absent from session
     const source = `<div data-hf-id="hf-dup">a</div><div data-hf-id="hf-dup">b</div>`;
     runResolverShadow(
@@ -282,7 +298,10 @@ describe("C. Resolver-parity detection", () => {
 
   it("C8 sourceLooseMatchOnly: hfId matches source only as plain text, not a data-hf-id attribute", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
-    const session = { getElement: () => null, getElements: () => [] } as unknown as Composition;
+    const session = {
+      getElement: () => null,
+      getElements: () => [{ id: "hf-other" }],
+    } as unknown as Composition;
     // "hf-widget" appears only inside a class name, never as data-hf-id="hf-widget".
     const source = `<div class="hf-widget-container">no attribute match here</div>`;
     runResolverShadow(
@@ -436,7 +455,7 @@ describe("F. recordResolverParity", () => {
     expect(ev?.sourceHfIdCount).toBeUndefined();
   });
 
-  it("fails open: a readSource error still emits (no suppression)", async () => {
+  it("fails open: a readSource error still emits (no suppression), tagged sourceReadFailed", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     const session = await openComposition(BASE_HTML);
     await recordResolverParity(session, "hf-missing", "setTiming", () =>
@@ -445,6 +464,30 @@ describe("F. recordResolverParity", () => {
     const ev = lastShadow();
     expect(ev?.mismatchCount).toBe(1);
     expect(ev?.sourceHfIdCount).toBeUndefined();
+    // Distinguishes "reader threw" from "no reader wired" — every wild emission
+    // of the setTiming class had an absent sourceHfIdCount and the two cases
+    // were indistinguishable in telemetry.
+    expect(ev?.sourceReadFailed).toBe(true);
+  });
+
+  it("does not tag sourceReadFailed when no reader is supplied", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-missing", "setTiming");
+    expect(lastShadow()?.sourceReadFailed).toBeUndefined();
+  });
+
+  it("skips entirely (no event, no attempt) when the session has zero elements", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    flushAttemptCounts(); // drain any counts left by earlier tests
+    const session = await openComposition("<!DOCTYPE html><html><body></body></html>");
+    await recordResolverParity(session, "hf-anything", "setTiming");
+    // An empty session structurally cannot resolve ANY id — that's a modeling
+    // gap (empty file, unsupported comp shape), not a resolver divergence, and
+    // it can't cut over either, so it belongs in neither numerator nor
+    // denominator of the soak rate.
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+    expect(flushAttemptCounts()).toBeNull();
   });
 
   it("tags sourceLooseMatchOnly when hfId matches source only as plain text, not a data-hf-id attribute", async () => {

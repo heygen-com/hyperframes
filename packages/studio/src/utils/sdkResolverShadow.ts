@@ -356,6 +356,11 @@ export function runResolverShadow(
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!hfId) return;
   try {
+    // An empty session structurally cannot resolve ANY id — a modeling gap
+    // (empty file, unsupported comp shape), not a resolver divergence. It can't
+    // cut over either, so it belongs in neither the divergence count nor the
+    // attempt denominator of the soak rate.
+    if (session.getElements().length === 0) return;
     recordAttempt("dom-edit");
     const mismatches = sdkResolverShadowCheck(session, hfId, ops, sourceContent);
     // Emit only on divergence — parity is silent, matching recordResolverParity
@@ -409,6 +414,9 @@ export async function recordResolverParity(
   if (!STUDIO_SDK_RESOLVER_SHADOW_ENABLED) return;
   if (!session || !hfId) return;
   try {
+    // Empty session = structural modeling gap, not a resolver divergence — see
+    // the identical skip in runResolverShadow.
+    if (session.getElements().length === 0) return;
     recordAttempt(opLabel);
     if (resolveSnapshot(session, hfId)) return; // resolves — parity, nothing to record
     // Capture BEFORE any await: this call is fire-and-forget (`void recordResolverParity(...)`)
@@ -419,11 +427,13 @@ export async function recordResolverParity(
     const sessionElementCount = session.getElements().length;
     // Cheap check passed above, so the source read only runs on a real divergence.
     let source: string | undefined;
+    let sourceReadFailed = false;
     if (readSource) {
       try {
         source = await readSource();
       } catch {
         source = undefined; // fail-open: a read error must not drop a real divergence
+        sourceReadFailed = true;
       }
     }
     // Runtime-generated node the static parse can't model — suppress (mirrors the dom-edit path).
@@ -444,6 +454,9 @@ export async function recordResolverParity(
       // Lets telemetry consumers filter this cohort without parsing the
       // sourceHfIdCount comment above.
       ...(strictCount === 0 ? { sourceLooseMatchOnly: true } : {}),
+      // The reader was wired but threw — distinguishes "read failed, emitted
+      // fail-open without the suppression/count checks" from "no reader wired".
+      ...(sourceReadFailed ? { sourceReadFailed: true } : {}),
       mismatchCount: 1,
       mismatches: JSON.stringify([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,

@@ -11,7 +11,13 @@
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
-import { findRoot, getElementStyles, getOwnText, isNewHostBoundary } from "./engine/model.js";
+import {
+  findRoot,
+  getElementStyles,
+  getOwnText,
+  isNewHostBoundary,
+  querySelectorAllDeep,
+} from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -67,7 +73,7 @@ function buildAnimationIdMap(document: Document): Map<string, string[]> {
     if (!selector) continue;
     let matches: Element[] = [];
     try {
-      matches = Array.from(document.querySelectorAll(selector));
+      matches = querySelectorAllDeep(document, selector);
     } catch {
       continue; // selector not valid for querySelectorAll — skip
     }
@@ -94,6 +100,31 @@ function buildAnimationIdMap(document: Document): Map<string, string[]> {
  */
 export function parsedAnimationIds(script: string): Set<string> {
   return new Set(parseLocatedCached(script).map(({ id }) => id));
+}
+
+/**
+ * Build the element list for a parent's children, treating <template> as a
+ * TRANSPARENT container: its inner elements are spliced in at the template's
+ * position, the template itself gets no node. This mirrors the studio preview,
+ * which unwraps <template data-composition-id> content into the served body —
+ * so template-based sub-comps expose the same elements (and hf-ids) here as
+ * the timeline reads from the live preview DOM.
+ */
+function buildChildren(
+  parent: Element,
+  scopePrefix: string,
+  animationIdsByHfId: Map<string, string[]>,
+): HyperFramesElement[] {
+  const out: HyperFramesElement[] = [];
+  for (const child of Array.from(parent.children)) {
+    if (child.tagName.toLowerCase() === "template") {
+      out.push(...buildChildren(child, scopePrefix, animationIdsByHfId));
+      continue;
+    }
+    const built = buildElement(child, scopePrefix, animationIdsByHfId);
+    if (built) out.push(built);
+  }
+  return out;
 }
 
 // fallow-ignore-next-line complexity
@@ -143,11 +174,7 @@ function buildElement(
     start !== null && endAttr !== null ? Math.max(0, parseFloat(endAttr) - start) : null;
   const trackIndex = trackAttr !== null ? parseInt(trackAttr, 10) : null;
 
-  const children: HyperFramesElement[] = [];
-  for (const child of Array.from(el.children)) {
-    const built = buildElement(child, childPrefix, animationIdsByHfId);
-    if (built) children.push(built);
-  }
+  const children = buildChildren(el, childPrefix, animationIdsByHfId);
 
   return {
     id,
@@ -215,15 +242,8 @@ function extractDuration(doc: Document): number | null {
  */
 export function buildRoots(document: Document): HyperFramesElement[] {
   const body = document.body;
-  const roots: HyperFramesElement[] = [];
-  const animationIdsByHfId = buildAnimationIdMap(document);
-  if (body) {
-    for (const child of Array.from(body.children)) {
-      const built = buildElement(child, "", animationIdsByHfId);
-      if (built) roots.push(built);
-    }
-  }
-  return roots;
+  if (!body) return [];
+  return buildChildren(body, "", buildAnimationIdMap(document));
 }
 
 /**
