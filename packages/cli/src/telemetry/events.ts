@@ -338,6 +338,33 @@ export function trackCliError(props: {
   });
 }
 
+/**
+ * One figma import outcome (asset/tokens/component). Carries capability mix,
+ * dedup effectiveness, and fidelity-degradation counts — never fileKeys,
+ * node ids, names, or descriptions.
+ */
+export function trackFigmaImport(props: {
+  phase: "asset" | "tokens" | "component";
+  durationMs: number;
+  reused?: boolean;
+  tokensMode?: "variables" | "styles";
+  entryCount?: number;
+  unresolvedBindings?: number;
+  rasterizedNodes?: number;
+}): void {
+  trackEvent("figma_import", {
+    phase: props.phase,
+    duration_ms: props.durationMs,
+    ...(props.reused !== undefined ? { reused: props.reused } : {}),
+    ...(props.tokensMode !== undefined ? { tokens_mode: props.tokensMode } : {}),
+    ...(props.entryCount !== undefined ? { entry_count: props.entryCount } : {}),
+    ...(props.unresolvedBindings !== undefined
+      ? { unresolved_bindings: props.unresolvedBindings }
+      : {}),
+    ...(props.rasterizedNodes !== undefined ? { rasterized_nodes: props.rasterizedNodes } : {}),
+  });
+}
+
 // Report why a command failed before it exits non-zero. cli_command_result
 // records the failure but not the reason; this fills that gap via cli_error so
 // command failures are diagnosable. Enqueues synchronously — the process `exit`

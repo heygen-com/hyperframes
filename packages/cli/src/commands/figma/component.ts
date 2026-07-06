@@ -130,7 +130,8 @@ export default defineCommand({
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
-    await withFigmaErrors(async () => {
+    await withFigmaErrors("figma:component", async () => {
+      const t0 = Date.now();
       const client = createFigmaClient({ token: process.env.FIGMA_TOKEN ?? "" });
       const result = await runComponentImport(args.ref, {
         projectDir: args.dir,
@@ -145,6 +146,13 @@ export default defineCommand({
           `${result.unresolved.length} binding(s) reference tokens not yet imported — colors baked as literals (flagged data-figma-unresolved). Run \`hyperframes figma tokens\` on the source/library file, then re-import to link them.`,
         );
       }
+      const { trackFigmaImport } = await import("../../telemetry/index.js");
+      trackFigmaImport({
+        phase: "component",
+        unresolvedBindings: result.unresolved.length,
+        rasterizedNodes: result.rasterized.length,
+        durationMs: Date.now() - t0,
+      });
     });
   },
 });

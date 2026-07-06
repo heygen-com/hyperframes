@@ -11,6 +11,7 @@ const {
   trackRenderObservation,
   trackCommandFailure,
   trackCliError,
+  trackFigmaImport,
   trackRenderFeedback,
   trackRenderPreflightRejected,
 } = await import("./events.js");
@@ -184,6 +185,44 @@ describe("trackCommandFailure", () => {
         command: "transcribe",
         error_message: "No words found in transcript.",
       }),
+    );
+  });
+});
+
+describe("trackFigmaImport", () => {
+  beforeEach(() => {
+    trackEvent.mockClear();
+  });
+
+  it("emits figma_import with phase + quality counters, no identifiers", () => {
+    trackFigmaImport({
+      phase: "component",
+      durationMs: 1234,
+      unresolvedBindings: 2,
+      rasterizedNodes: 3,
+    });
+    expect(trackEvent).toHaveBeenCalledWith("figma_import", {
+      phase: "component",
+      duration_ms: 1234,
+      unresolved_bindings: 2,
+      rasterized_nodes: 3,
+    });
+  });
+
+  it("carries reused for the asset phase and omits absent props entirely", () => {
+    trackFigmaImport({ phase: "asset", durationMs: 42, reused: true });
+    expect(trackEvent).toHaveBeenCalledWith("figma_import", {
+      phase: "asset",
+      duration_ms: 42,
+      reused: true,
+    });
+  });
+
+  it("carries tokens mode + entry count for the tokens phase", () => {
+    trackFigmaImport({ phase: "tokens", durationMs: 10, tokensMode: "styles", entryCount: 0 });
+    expect(trackEvent).toHaveBeenCalledWith(
+      "figma_import",
+      expect.objectContaining({ phase: "tokens", tokens_mode: "styles", entry_count: 0 }),
     );
   });
 });

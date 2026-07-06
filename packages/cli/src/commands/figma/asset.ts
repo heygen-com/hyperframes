@@ -179,7 +179,8 @@ export default defineCommand({
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
-    await withFigmaErrors(async () => {
+    await withFigmaErrors("figma:asset", async () => {
+      const t0 = Date.now();
       const token = process.env.FIGMA_TOKEN ?? "";
       const client = createFigmaClient({ token });
       const result = await runAssetImport(
@@ -195,6 +196,8 @@ export default defineCommand({
       const verb = result.reused ? "reused" : "imported";
       console.log(`${verb} ${result.record.id} → ${result.record.path}`);
       console.log(result.snippet.html);
+      const { trackFigmaImport } = await import("../../telemetry/index.js");
+      trackFigmaImport({ phase: "asset", reused: result.reused, durationMs: Date.now() - t0 });
     });
   },
 });

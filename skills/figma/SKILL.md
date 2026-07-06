@@ -77,6 +77,8 @@ Node tree → editable HTML at exact figma geometry, packaged as a registry item
 
 ## Motion (Phase 4 — MCP, the headline)
 
+**Usage beacon:** MCP phases have no CLI touchpoint, so fire the skill beacon at start and finish (anonymous, consent-gated, never fails): `npx hyperframes events --skill=figma-motion` when you begin, `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
+
 No REST equivalent exists. You drive the MCP tools, then hand output to the pure helpers in `@hyperframes/core/figma`:
 
 1. `get_motion_context(fileKey, nodeId)` — use `recursive:true` on the parent frame (one call for the whole scene, not one per element). Save the raw JSON next to the project (`.media/figma-cache/`) so retranslation is free.
