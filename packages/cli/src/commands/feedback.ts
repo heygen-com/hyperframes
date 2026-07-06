@@ -7,6 +7,7 @@ import { trackRenderFeedback } from "../telemetry/events.js";
 import { shouldTrack, flush } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
 import { publishProjectArchive } from "../utils/publishProject.js";
+import { submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
@@ -164,6 +165,7 @@ export default defineCommand({
     trackRenderFeedback({ rating, comment, doctorSummary });
 
     await flush();
+    await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
     console.log(c.dim("Thanks for the feedback!"));
 
     if (args["file-issue"] === true) {
