@@ -308,6 +308,36 @@ export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
 }
 
+// Sign-in lifecycle. The CLI tracks command and render lifecycles but never
+// authentication, so `auth login` outcomes are invisible on the observability
+// dashboards — a completed sign-in, a browser flow the user abandoned, and a
+// rejected key all look identical (i.e. absent). These three events close that
+// gap so the sign-in funnel is measurable like the render funnel already is.
+// `method` is "oauth" (the default browser PKCE flow) or "api_key". No token,
+// key, identity, email, or free text is ever attached — only the method and a
+// low-cardinality outcome/reason.
+export type AuthLoginMethod = "oauth" | "api_key";
+export type AuthLoginFailureReason =
+  | "flow_error" // OAuth authorization/exchange threw
+  | "no_credential" // flow reported success but nothing was persisted
+  | "rejected" // backend rejected the supplied API key (401)
+  | "invalid_input"; // no key provided, or header-unsafe / too short
+
+export function trackAuthLoginStarted(method: AuthLoginMethod): void {
+  trackEvent("auth_login_started", { method });
+}
+
+export function trackAuthLoginCompleted(method: AuthLoginMethod): void {
+  trackEvent("auth_login_completed", { method });
+}
+
+export function trackAuthLoginFailed(
+  method: AuthLoginMethod,
+  reason: AuthLoginFailureReason,
+): void {
+  trackEvent("auth_login_failed", { method, reason });
+}
+
 // A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
 // before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
 // 1783183, distinct from deep render failures. `kind` is the low-cardinality

@@ -78,9 +78,13 @@ export default defineCommand({
 async function runOAuthLogin(): Promise<void> {
   assertOAuthConfiguredOrExit();
 
+  const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
+  trackAuthLoginStarted("oauth");
+
   try {
     await startAuthorizationCodeFlow();
   } catch (err) {
+    trackAuthLoginFailed("oauth", "flow_error");
     console.error(c.error(`Sign-in failed: ${(err as Error).message}`));
     process.exit(1);
   }
@@ -90,11 +94,18 @@ async function runOAuthLogin(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function reportIdentity(): Promise<void> {
+  const { trackAuthLoginCompleted, trackAuthLoginFailed } =
+    await import("../../telemetry/index.js");
   const credential = await tryResolveCredential();
   if (!credential) {
+    trackAuthLoginFailed("oauth", "no_credential");
     console.error(c.warn("Sign-in completed but no credential was persisted."));
     process.exit(1);
   }
+  // A resolvable credential IS the success signal: the tokens are on disk and
+  // usable. The `/v3/users/me` probe below only fetches a display name, so its
+  // outcome is cosmetic and does not gate completion.
+  trackAuthLoginCompleted("oauth");
   // Wire the refresh hook here too — a freshly-minted token shouldn't
   // need it, but a fast IdP-side rotation (or a misconfigured short
   // TTL) shouldn't punish the user with a hard failure when the
@@ -163,8 +174,13 @@ async function clearUserInfoBestEffort(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function runApiKeyLogin(inlineKey: string): Promise<void> {
+  const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed } =
+    await import("../../telemetry/index.js");
+  trackAuthLoginStarted("api_key");
+
   const key = await collectApiKey(inlineKey);
   if (!key) {
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error("No API key provided."));
     process.exit(1);
   }
@@ -172,10 +188,12 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     // CR/LF in the value would smuggle headers when the key is sent
     // via `x-api-key`. The backend handles "wrong key" itself, but
     // header-injection has to be caught here.
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error("API key must not contain newline or control characters."));
     process.exit(1);
   }
   if (key.length < MIN_KEY_LENGTH) {
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error(`API key looks too short (got ${key.length} chars).`));
     process.exit(1);
   }
@@ -186,9 +204,11 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
 
   const verifyOk = await verifyAndReport(key);
   if (!verifyOk) {
+    trackAuthLoginFailed("api_key", "rejected");
     await rollback(previous);
     process.exit(1);
   }
+  trackAuthLoginCompleted("api_key");
 }
 
 async function snapshotStore(): Promise<Credentials> {
