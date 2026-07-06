@@ -28,6 +28,7 @@ import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
+import { applyPositionEdits } from "./positionEdits";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -72,6 +73,12 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // SDK moveElement edits must render even when no usable GSAP timeline ever
+  // binds (CSS/WAAPI-animated or fully static compositions) — apply at init.
+  // This runs at DOMContentLoaded, after inline composition scripts have
+  // parsed their tweens, so GSAP (when present) won't fold the translate.
+  // Re-applied on every timeline bind for the rebind/soft-reload paths.
+  applyPositionEdits(document);
   const exportRenderFps = resolveExportRenderFps();
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
@@ -1198,6 +1205,12 @@ export function initSandboxRuntimeModular(): void {
       // during initial rebind (timing race on first load / soft reload).
       const applyFn = (window as Record<string, unknown>).__hfStudioManualEditsApply;
       if (typeof applyFn === "function") applyFn();
+
+      // SDK moveElement edits (data-hf-edit-base-x/y markers) render as a
+      // CSS translate delta. Must run after the timeline is bound so GSAP has
+      // already parsed the elements — a translate present at first parse gets
+      // folded into the cached transform and lost per-axis on seek.
+      applyPositionEdits(document);
     }
     if (resolution.diagnostics) {
       postRuntimeMessage({

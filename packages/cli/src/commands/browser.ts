@@ -5,6 +5,7 @@ import { c } from "../ui/colors.js";
 
 export const examples: Example[] = [
   ["Find or download Chrome for rendering", "hyperframes browser ensure"],
+  ["Purge a stale/partial download and re-download", "hyperframes browser ensure --force"],
   ["Print the Chrome executable path", "hyperframes browser path"],
   ["Remove cached Chrome download", "hyperframes browser clear"],
 ];
@@ -19,11 +20,11 @@ import {
 } from "../browser/manager.js";
 import { trackBrowserInstall, trackCommandFailure } from "../telemetry/events.js";
 
-async function runEnsure(): Promise<void> {
+async function runEnsure(options?: { force?: boolean }): Promise<void> {
   clack.intro(c.bold("hyperframes browser ensure"));
 
-  // ARM64 Linux: Chrome headless shell is not available.
-  // Try to find system Chromium first, then attempt auto-install via apt.
+  // ARM64 Linux: Chrome headless shell is not available (apt-get/system-only
+  // install flow, no download cache to force a purge of) — --force is a no-op here.
   if (isLinuxArm()) {
     const s = clack.spinner();
     s.start("Linux ARM64 detected — looking for system Chromium...");
@@ -61,26 +62,31 @@ async function runEnsure(): Promise<void> {
   }
 
   const s = clack.spinner();
-  s.start("Looking for an existing browser...");
+  if (!options?.force) {
+    s.start("Looking for an existing browser...");
 
-  const existing = await findBrowser();
-  if (existing) {
-    s.stop(c.success("Browser found"));
-    console.log();
-    console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
-    console.log(`   ${c.dim("Path:")}    ${c.bold(existing.executablePath)}`);
-    console.log();
-    clack.outro(c.success("Ready to render."));
-    return;
+    const existing = await findBrowser();
+    if (existing) {
+      s.stop(c.success("Browser found"));
+      console.log();
+      console.log(`   ${c.dim("Source:")}  ${c.bold(existing.source)}`);
+      console.log(`   ${c.dim("Path:")}    ${c.bold(existing.executablePath)}`);
+      console.log();
+      clack.outro(c.success("Ready to render."));
+      return;
+    }
+
+    s.stop("No browser found — downloading");
+  } else {
+    s.start("Purging cached download and re-downloading...");
   }
-
-  s.stop("No browser found — downloading");
 
   const downloadSpinner = clack.spinner();
   downloadSpinner.start(`Downloading Chrome Headless Shell ${c.dim("v" + CHROME_VERSION)}...`);
 
   let lastPct = -1;
   const result = await ensureBrowser({
+    force: options?.force,
     onProgress: (downloaded, total) => {
       if (total <= 0) return;
       const pct = Math.floor((downloaded / total) * 100);
@@ -141,6 +147,12 @@ export default defineCommand({
         "ensure = find or download Chrome, path = print executable path, clear = remove cached download",
       required: false,
     },
+    force: {
+      type: "boolean",
+      description:
+        "ensure only: purge any cached download (including a stale/partial one) and re-download from scratch",
+      default: false,
+    },
   },
   async run({ args }) {
     const subcommand = args.subcommand;
@@ -157,16 +169,17 @@ ${c.bold("SUBCOMMANDS:")}
   ${c.accent("clear")}    ${c.dim("Remove cached Chrome download")}
 
 ${c.bold("EXAMPLES:")}
-  ${c.accent("npx hyperframes browser ensure")}   ${c.dim("Download Chrome if needed")}
-  ${c.accent("npx hyperframes browser path")}     ${c.dim("Print path for scripts")}
-  ${c.accent("npx hyperframes browser clear")}    ${c.dim("Remove cached browser")}
+  ${c.accent("npx hyperframes browser ensure")}           ${c.dim("Download Chrome if needed")}
+  ${c.accent("npx hyperframes browser ensure --force")}   ${c.dim("Purge a stale/partial download and re-download")}
+  ${c.accent("npx hyperframes browser path")}             ${c.dim("Print path for scripts")}
+  ${c.accent("npx hyperframes browser clear")}            ${c.dim("Remove cached browser")}
 `);
       return;
     }
 
     switch (subcommand) {
       case "ensure":
-        return runEnsure();
+        return runEnsure({ force: args.force });
       case "path":
         return runPath();
       case "clear":

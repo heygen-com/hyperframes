@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { heygenAuthHeaders, heygenCredential, heygenJSON } from "./heygen.mjs";
+import { pythonInvocation } from "./python.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
@@ -25,7 +26,8 @@ export function heygenAvailable() {
 }
 export function elevenlabsAvailable() {
   if (!process.env.ELEVENLABS_API_KEY) return false;
-  const r = spawnSync("python3", ["-c", "import elevenlabs"], {
+  const { cmd, args } = pythonInvocation(["-c", "import elevenlabs"]);
+  const r = spawnSync(cmd, args, {
     stdio: "ignore",
   });
   return r.status === 0;
@@ -214,11 +216,14 @@ export async function synthesizeOne({
 }) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
   if (provider === "elevenlabs") {
-    const r = await spawnP(
-      "python3",
-      ["-c", ELEVENLABS_PY, writeTmpText(text), voiceId, wavAbs],
-      {},
-    );
+    const { cmd, args } = pythonInvocation([
+      "-c",
+      ELEVENLABS_PY,
+      writeTmpText(text),
+      voiceId,
+      wavAbs,
+    ]);
+    const r = await spawnP(cmd, args, {});
     return { ok: r.status === 0 && existsSync(wavAbs), words: null };
   }
   // kokoro — via the published CLI; --output is relative to the project dir.

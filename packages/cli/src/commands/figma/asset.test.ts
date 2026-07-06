@@ -101,4 +101,56 @@ describe("runAssetImport", () => {
       /node/i,
     );
   });
+
+  it("records description + entity and regenerates .media/index.md", async () => {
+    const dir = scratch();
+    const out = await runAssetImport(
+      "KEY:1-2",
+      { format: "png", description: "hero illustration", entity: "Acme hero" },
+      deps(dir),
+    );
+    expect(out.record.description).toBe("hero illustration");
+    expect(out.record.entity).toBe("Acme hero");
+    expect(out.snippet.html).toContain('alt="hero illustration"');
+    const index = readFileSync(join(dir, ".media", "index.md"), "utf8");
+    expect(index).toContain("hero illustration");
+    expect(index).toContain(out.record.id);
+  });
+
+  it("applies --description/--entity on a reuse hit instead of dropping them", async () => {
+    const dir = scratch();
+    const first = await runAssetImport("KEY:1-2", { format: "png" }, deps(dir));
+    expect(first.record.description).toBeUndefined();
+    const again = await runAssetImport(
+      "KEY:1-2",
+      { format: "png", description: "Acme logo", entity: "Acme logo" },
+      deps(dir),
+    );
+    expect(again.reused).toBe(true);
+    expect(again.record.description).toBe("Acme logo");
+    expect(again.snippet.html).toContain('alt="Acme logo"');
+    const index = readFileSync(join(dir, ".media", "index.md"), "utf8");
+    expect(index).toContain("Acme logo");
+    expect(index).not.toContain("image_002");
+  });
+
+  it("reuses against ANY matching tuple, not just the oldest row", async () => {
+    const dir = scratch();
+    await runAssetImport("KEY:1-2", { format: "svg" }, deps(dir)); // image_001 (svg)
+    const png = await runAssetImport("KEY:1-2", { format: "png" }, deps(dir)); // image_002
+    expect(png.reused).toBe(false);
+    const pngAgain = await runAssetImport("KEY:1-2", { format: "png" }, deps(dir));
+    expect(pngAgain.reused).toBe(true);
+    expect(pngAgain.record.id).toBe(png.record.id);
+  });
+
+  it("flattens whitespace in descriptions so index.md rows stay single-line", async () => {
+    const dir = scratch();
+    const out = await runAssetImport(
+      "KEY:1-2",
+      { format: "png", description: "line one\nline two" },
+      deps(dir),
+    );
+    expect(out.record.description).toBe("line one line two");
+  });
 });

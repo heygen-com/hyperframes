@@ -9,12 +9,14 @@ import {
   appendRecord,
   buildAssetSnippet,
   createFigmaClient,
-  findByFigmaNode,
+  findAllByFigmaNode,
   freezeBytes,
   nextId,
   parseFigmaRef,
+  regenerateIndex,
   sanitizeSvg,
   typeDirPath,
+  updateRecord,
   type AssetSnippet,
   type FigmaAssetFormat,
   type FigmaClient,
@@ -28,6 +30,10 @@ import { withFigmaErrors } from "./cliError.js";
 export interface AssetImportOptions {
   format: FigmaAssetFormat;
   scale?: number;
+  /** human description — lands in the manifest + index.md + <img alt> */
+  description?: string;
+  /** media-use interop: entity name for `resolve --entity` cache hits */
+  entity?: string;
 }
 
 export interface AssetImportDeps {
@@ -55,21 +61,39 @@ export async function runAssetImport(
     );
 
   const { version } = await deps.client.fileVersion(ref.fileKey);
+  const description = normalizeMeta(opts.description);
+  const entity = normalizeMeta(opts.entity);
 
   // Cache key per spec §5: fileKey:nodeId:format:scale:version → reuse.
-  // Unspecified scale is canonically 1 on both sides (figma's default), so
-  // `--scale 1` and no flag dedupe to the same record. Reuse also requires
-  // the frozen file to still exist — a deleted file falls through to
-  // re-import instead of returning a snippet that points at nothing.
-  const existing = findByFigmaNode(deps.projectDir, ref.fileKey, ref.nodeId);
-  if (
-    existing &&
-    existing.provenance.format === opts.format &&
-    (existing.provenance.scale ?? 1) === (opts.scale ?? 1) &&
-    existing.provenance.version === version &&
-    existsSync(join(deps.projectDir, existing.path))
-  ) {
-    return { record: existing, snippet: buildAssetSnippet(existing), reused: true };
+  // Check EVERY row for the node (a node can legitimately have several
+  // format/scale/version tuples — the oldest-row shortcut minted duplicates
+  // forever once a second tuple existed). Unspecified scale is canonically 1
+  // on both sides (figma's default). Reuse also requires the frozen file to
+  // still exist — a deleted file falls through to re-import.
+  const existing = findAllByFigmaNode(deps.projectDir, ref.fileKey, ref.nodeId).find(
+    (r) =>
+      r.provenance.format === opts.format &&
+      (r.provenance.scale ?? 1) === (opts.scale ?? 1) &&
+      r.provenance.version === version &&
+      existsSync(join(deps.projectDir, r.path)),
+  );
+  if (existing) {
+    // Metadata supplied on a re-import still lands: upsert the row instead
+    // of silently discarding the flags.
+    let record = existing;
+    if (
+      (description !== undefined && description !== existing.description) ||
+      (entity !== undefined && entity !== existing.entity)
+    ) {
+      record = {
+        ...existing,
+        ...(description !== undefined && { description }),
+        ...(entity !== undefined && { entity }),
+      };
+      updateRecord(deps.projectDir, record);
+    }
+    safeRegenerateIndex(deps.projectDir);
+    return { record, snippet: buildAssetSnippet(record), reused: true };
   }
 
   const rendered = await deps.client.renderNode(ref, opts);
@@ -92,6 +116,8 @@ export async function runAssetImport(
     type: "image",
     path: relative(deps.projectDir, destAbs),
     source: `figma:${ref.fileKey}/${ref.nodeId}`,
+    ...(description !== undefined && { description }),
+    ...(entity !== undefined && { entity }),
     provenance: {
       source: "figma",
       fileKey: ref.fileKey,
@@ -102,7 +128,27 @@ export async function runAssetImport(
     },
   };
   appendRecord(deps.projectDir, record);
+  safeRegenerateIndex(deps.projectDir);
   return { record, snippet: buildAssetSnippet(record), reused: false };
+}
+
+/** index.md is a single table row per record — newlines/tabs in a
+ * description would corrupt the whole table. */
+function normalizeMeta(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/** Keep the agent-readable inventory in step with the manifest (media-use
+ * regenerates the same file after its writes). Best-effort: the import is
+ * already durable, so an index write failure must not fail the command. */
+function safeRegenerateIndex(projectDir: string): void {
+  try {
+    regenerateIndex(projectDir);
+  } catch (err) {
+    console.warn(`index.md regeneration failed: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 const FORMATS: readonly FigmaAssetFormat[] = ["png", "svg", "jpg", "pdf"];
@@ -122,6 +168,14 @@ export default defineCommand({
     },
     format: { type: "string", description: "png | svg | jpg | pdf", default: "svg" },
     scale: { type: "string", description: "export scale (e.g. 2)" },
+    description: {
+      type: "string",
+      description: "what this asset is (index.md + <img alt>); e.g. the layer's purpose",
+    },
+    entity: {
+      type: "string",
+      description: 'entity name for media-use cache lookups (e.g. "Acme logo")',
+    },
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
@@ -133,6 +187,8 @@ export default defineCommand({
         {
           format: parseFormat(args.format),
           scale: args.scale !== undefined ? Number(args.scale) : undefined,
+          description: args.description,
+          entity: args.entity,
         },
         { projectDir: args.dir, client, download: downloadRender },
       );

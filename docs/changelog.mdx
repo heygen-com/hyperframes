@@ -9,6 +9,126 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.36"
+  description="Released - 2026-07-05"
+  tags={["Release", "CLI"]}
+>
+This release closes the remaining Windows FFmpeg path gap by making CLI preflight
+choose real `ffmpeg.exe`/`ffprobe.exe` binaries over shell shims. `hyperframes
+render` now avoids exporting `ffmpeg.cmd` as `HYPERFRAMES_FFMPEG_PATH`, keeping
+the engine on the hardened executable-resolution path.
+
+## Fixes
+
+- **CLI:** Prefer real ffmpeg exe over cmd shim ([98b539df](https://github.com/heygen-com/hyperframes/commit/98b539df728f221de677e7ede3e9e3eb4cad2bca), [#1958](https://github.com/heygen-com/hyperframes/pull/1958))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.35...v0.7.36).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.35"
+  description="Released - 2026-07-05"
+  tags={["Release", "Lambda", "Engine", "Hyperframes Media"]}
+>
+This release fixes three feedback-driven reliability issues: Lambda render bundles now provide CommonJS path globals for inlined dependencies, Windows FFmpeg lookup prefers real executables over command shims, and offline SFX resolution no longer records missing bundled files as usable audio.
+
+## Fixes
+
+- **Lambda:** Define `__dirname` and `__filename` in handler bundles ([f999b40d](https://github.com/heygen-com/hyperframes/commit/f999b40d73aa8e0cbe082c199a566f544fbf6f96))
+- **Engine:** Prefer real FFmpeg executables over Windows command shims ([b7dcb9e2](https://github.com/heygen-com/hyperframes/commit/b7dcb9e2a3bd220c889be0ac8ff31b0ea5c62a36))
+- **Hyperframes Media:** Skip and report offline SFX entries whose bundled file is missing ([b34e623b](https://github.com/heygen-com/hyperframes/commit/b34e623bf8c5fb2ae9608edf1908c466584d627e))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.34...v0.7.35).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.34"
+  description="Released - 2026-07-05"
+  tags={["Release", "Engine"]}
+>
+This release hardens DOM layer masking in the engine so temporary screenshot
+visibility changes restore the exact prior inline state. It adds another guard
+around layered HDR captures, reducing the chance that masking one frame affects
+later captures.
+
+## Fixes
+
+- **Engine:** Preserve DOM mask visibility state ([56d4a7032](https://github.com/heygen-com/hyperframes/commit/56d4a7032b64ecc3f46eeb7ed17e62a11af1c07b), [#1953](https://github.com/heygen-com/hyperframes/pull/1953))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.33...v0.7.34).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.33"
+  description="Released - 2026-07-04"
+  tags={["Release", "Producer"]}
+>
+This release fixes an HDR compositing regression where hidden or future timed DOM
+descendants could be revived during per-layer screenshots and bleed into HDR
+frames. DOM-layer masking now preserves those hidden descendants while capturing
+the active layer, keeping HDR output aligned with preview timing.
+
+## Fixes
+
+- **Producer:** Avoid reviving hidden DOM in HDR layers ([bb066077b](https://github.com/heygen-com/hyperframes/commit/bb066077b4ecbf4efc021779e37da6475c6f80dd), [#1935](https://github.com/heygen-com/hyperframes/pull/1935))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.32...v0.7.33).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.32"
+  description="Released - 2026-07-04"
+  tags={["Release", "Hyperframes Media", "CLI", "Video Workflows"]}
+>
+This release hardens the CLI validation and browser-install paths: validate now seeks through the runtime player, honors the configured timeout more consistently, and browser installs recover from stale or partial downloads without racing concurrent forced reinstalls. It also closes Windows media setup gaps, scopes `window.__hyperframes` correctly inside sub-compositions, pads transition-tail frame durations, and moves large audio filter graphs out of the command line.
+
+## Fixes
+
+- **Hyperframes Media:** Install MusicGen deps via python3 -m pip, not bare pip ([942080fa8](https://github.com/heygen-com/hyperframes/commit/942080fa8e8e77de93ef6546690b5b5421d80e88), [#1894](https://github.com/heygen-com/hyperframes/pull/1894))
+- **Hyperframes Media:** Resolve python3 -\> python/py on Windows ([3388635f1](https://github.com/heygen-com/hyperframes/commit/3388635f1d1431de0b2a2e7d132f834f7614557c), [#1922](https://github.com/heygen-com/hyperframes/pull/1922))
+- **CLI:** Validate seeks the runtime player directly, not raw timelines ([3f49f107e](https://github.com/heygen-com/hyperframes/commit/3f49f107eb8fb64b34f621bfcd076391ff06e167), [#1895](https://github.com/heygen-com/hyperframes/pull/1895))
+- **CLI:** Validate navigation timeout honors --timeout, hints on CDN scripts ([0338be97f](https://github.com/heygen-com/hyperframes/commit/0338be97fdc548fd4a179561810c0c9320b61388), [#1929](https://github.com/heygen-com/hyperframes/pull/1929))
+- **Video Workflows:** Pad the frame's own duration to match the transition tail ([8bc1e5d60](https://github.com/heygen-com/hyperframes/commit/8bc1e5d603bd828511bdc6dddaa96a64ea7a43d3), [#1889](https://github.com/heygen-com/hyperframes/pull/1889))
+- **Engine:** Write the audio mix filter graph to a file, not the command line ([8a3227f54](https://github.com/heygen-com/hyperframes/commit/8a3227f5482320907edcb47972c3d7f6e25c6d62), [#1890](https://github.com/heygen-com/hyperframes/pull/1890))
+- **CLI:** Purge stale/partial browser installs instead of wedging retries ([78069da14](https://github.com/heygen-com/hyperframes/commit/78069da1403669cb3f68a475da128d0b0ce14a97), [#1913](https://github.com/heygen-com/hyperframes/pull/1913))
+- **Core:** Route window.__hyperframes to the scoped variant in sub-comps ([f7c9c35d8](https://github.com/heygen-com/hyperframes/commit/f7c9c35d8b1095037402cc55539084d514691b28), [#1931](https://github.com/heygen-com/hyperframes/pull/1931))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.31...v0.7.32).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.31"
+  description="Released - 2026-07-04"
+  tags={["Release", "Core,cli"]}
+>
+This release makes Figma imports first-class citizens of the shared media inventory: every `hyperframes figma asset` import now regenerates `.media/index.md` (byte-identical with media-use's format), carries `--description`/`--entity` metadata into the manifest, index, and alt text, and the reuse path correctly upserts metadata and dedupes against any prior format/scale/version tuple. media-use's entity lookups now match figma-imported brand marks across the icon/image boundary.
+
+## Features
+
+- **Core,cli:** Media-use interop — shared index.md regen + description/entity on figma imports ([3900caaaa](https://github.com/heygen-com/hyperframes/commit/3900caaaa94443efb01597dac26df1533f8add35), [#1927](https://github.com/heygen-com/hyperframes/pull/1927))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.30...v0.7.31).
+</Update>
+
+<Update
+  label="HyperFrames v0.7.30"
+  description="Released - 2026-07-04"
+  tags={["Release", "Studio", "Sdk"]}
+>
+This release adds a low-volume attempt counter to the resolver-shadow tripwire, giving the SDK-cutover soak gate a real `divergences / attempts` denominator instead of a bare divergence count. It also fixes `moveElement` losing its offset when the target element is under a running GSAP animation.
+
+## Features
+
+- **Studio:** Add resolver-shadow attempt counter for soak-gate denominator ([fe821ff8b](https://github.com/heygen-com/hyperframes/commit/fe821ff8bc9acbb840b4a42153db66790b9419a1), [#1926](https://github.com/heygen-com/hyperframes/pull/1926))
+
+## Fixes
+
+- **Sdk:** MoveElement survives GSAP animation per-axis via runtime delta translate ([74faa4b2a](https://github.com/heygen-com/hyperframes/commit/74faa4b2a42c60c77d1550e7288bf3333c15e25d), [#1875](https://github.com/heygen-com/hyperframes/pull/1875))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.29...v0.7.30).
+</Update>
+
+<Update
   label="HyperFrames v0.7.29"
   description="Released - 2026-07-04"
   tags={["Release", "Skills", "Studio", "Core,cli"]}

@@ -20,6 +20,8 @@ export interface FigmaManifestRecord {
   path: string;
   source: string;
   description?: string;
+  /** media-use interop: lets `resolve --entity` find figma-imported assets */
+  entity?: string;
   width?: number;
   height?: number;
   provenance: FigmaProvenance;

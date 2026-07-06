@@ -13,7 +13,11 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "files": ["src/runtime/clipTree.ts", "src/runtime/mediaVolumeEnvelope.ts"],
+  "files": [
+    "src/runtime/clipTree.ts",
+    "src/runtime/mediaVolumeEnvelope.ts",
+    "src/runtime/positionEdits.ts"
+  ],
   "include": ["src/**/*"],
   "exclude": [
     "node_modules",

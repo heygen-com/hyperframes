@@ -38,7 +38,7 @@ HyperFrames is an open-source framework for turning HTML, CSS, media, and seekab
 Install the HyperFrames skills, then describe the video you want:
 
 ```bash
-npx skills add heygen-com/hyperframes
+npx skills add heygen-com/hyperframes --yes
 ```
 
 Try a prompt like:

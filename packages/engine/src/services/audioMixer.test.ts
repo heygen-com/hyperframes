@@ -3,14 +3,29 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const { runFfmpegMock } = vi.hoisted(() => ({
-  runFfmpegMock: vi.fn(async () => ({
-    success: true,
-    durationMs: 1,
-    stderr: "",
-    exitCode: 0,
-  })),
-}));
+// The mix filter graph is written to a temp file and passed via
+// -filter_complex_script (not inlined via -filter_complex) so the command
+// line doesn't scale with track count — production code deletes that file
+// the moment the (real) ffmpeg process exits. The mock captures each call's
+// filter content synchronously, while the file still exists, into an
+// index-aligned side array (rather than re-reading it from disk after
+// processCompositionAudio resolves, by which point it's already gone).
+const { runFfmpegMock, capturedFilterScripts } = vi.hoisted(() => {
+  const capturedFilterScripts: string[] = [];
+  return {
+    capturedFilterScripts,
+    runFfmpegMock: vi.fn(async (args: string[]) => {
+      const idx = args.indexOf("-filter_complex_script");
+      if (idx >= 0) {
+        const { readFileSync } = await import("node:fs");
+        capturedFilterScripts.push(readFileSync(args[idx + 1], "utf8"));
+      } else {
+        capturedFilterScripts.push("");
+      }
+      return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+    }),
+  };
+});
 
 vi.mock("../utils/runFfmpeg.js", () => ({
   runFfmpeg: runFfmpegMock,
@@ -23,6 +38,7 @@ describe("processCompositionAudio", () => {
 
   afterEach(() => {
     runFfmpegMock.mockClear();
+    capturedFilterScripts.length = 0;
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -57,9 +73,7 @@ describe("processCompositionAudio", () => {
     expect(result.success).toBe(true);
     expect(runFfmpegMock).toHaveBeenCalledTimes(2);
 
-    const mixArgs = runFfmpegMock.mock.calls[1]?.[0];
-    const filterIndex = mixArgs.indexOf("-filter_complex");
-    const filter = mixArgs[filterIndex + 1];
+    const filter = capturedFilterScripts[1];
 
     expect(filter).toContain("volume=0");
     expect(filter).toContain("[mixed]volume=1[out]");
@@ -119,8 +133,7 @@ describe("processCompositionAudio", () => {
     // 3 prepare calls (one per track via Promise.all) precede the mix call,
     // so the mix is at index 3, not index 1.
     expect(runFfmpegMock).toHaveBeenCalledTimes(4);
-    const mixArgs = runFfmpegMock.mock.calls[3]?.[0];
-    const filter = mixArgs[mixArgs.indexOf("-filter_complex") + 1];
+    const filter = capturedFilterScripts[3];
 
     expect(filter).toContain("amix=inputs=3");
     expect(filter).not.toContain("normalize=");
@@ -161,9 +174,7 @@ describe("processCompositionAudio", () => {
 
     expect(result.success).toBe(true);
 
-    const mixArgs = runFfmpegMock.mock.calls[1]?.[0];
-    const filterIndex = mixArgs.indexOf("-filter_complex");
-    const filter = mixArgs[filterIndex + 1];
+    const filter = capturedFilterScripts[1];
 
     expect(filter).toContain("volume=");
     expect(filter).toContain(":eval=frame");
@@ -211,9 +222,7 @@ describe("processCompositionAudio", () => {
 
     expect(result.success).toBe(true);
 
-    const mixArgs = runFfmpegMock.mock.calls[1]?.[0];
-    const filterIndex = mixArgs.indexOf("-filter_complex");
-    const filter = mixArgs[filterIndex + 1];
+    const filter = capturedFilterScripts[1];
 
     // One nested `if(lt(...))` is emitted per segment; cap it well under the
     // FFmpeg evaluator's nesting limit (MAX_VOLUME_SEGMENTS = 32).
@@ -235,20 +244,24 @@ describe("processCompositionAudio", () => {
 
     // Simulate an ffmpeg build that rejects the automation expression: the
     // first mix attempt fails, the static-volume retry succeeds. (prepare =
-    // call 0, automated mix = call 1, fallback mix = call 2.)
+    // call 0, automated mix = call 1, fallback mix = call 2.) These two
+    // one-time overrides bypass the default mock's capturedFilterScripts
+    // push, so they push an empty placeholder themselves to keep the array
+    // index-aligned with call order for the fallback mix's assertion below.
     runFfmpegMock
-      .mockImplementationOnce(async () => ({
-        success: true,
-        durationMs: 1,
-        stderr: "",
-        exitCode: 0,
-      }))
-      .mockImplementationOnce(async () => ({
-        success: false,
-        durationMs: 1,
-        stderr: "Error initializing filters",
-        exitCode: 234,
-      }));
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+      })
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return {
+          success: false,
+          durationMs: 1,
+          stderr: "Error initializing filters",
+          exitCode: 234,
+        };
+      });
 
     const result = await processCompositionAudio(
       [
@@ -280,10 +293,59 @@ describe("processCompositionAudio", () => {
     expect(result.error).toMatch(/base volume/i);
 
     // The fallback mix omits the automation expression (base volume only).
-    const fallbackArgs = runFfmpegMock.mock.calls[2]?.[0];
-    const fallbackFilter = fallbackArgs[fallbackArgs.indexOf("-filter_complex") + 1];
+    const fallbackFilter = capturedFilterScripts[2];
     expect(fallbackFilter).not.toContain(":eval=frame");
     expect(fallbackFilter).toContain("volume=0.8");
+  });
+
+  it("keeps the ffmpeg command line short with a large track count (regression for spawn ENAMETOOLONG)", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    // Reported in the wild at 146 timed audio clips: the old inline
+    // -filter_complex string scaled with track count and blew past the OS
+    // command-line length limit. 150 tracks reproduces the same shape.
+    const trackCount = 150;
+    const elements = Array.from({ length: trackCount }, (_, i) => {
+      const filename = `clip-${i}.wav`;
+      writeFileSync(join(baseDir, filename), "stub");
+      return {
+        id: `clip-${i}`,
+        src: filename,
+        start: i * 0.1,
+        end: i * 0.1 + 0.5,
+        mediaStart: 0,
+        layer: i,
+        volume: 1,
+        type: "audio" as const,
+      };
+    });
+
+    const result = await processCompositionAudio(
+      elements,
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      trackCount * 0.1 + 0.5,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.tracksProcessed).toBe(trackCount);
+
+    const mixArgs = runFfmpegMock.mock.calls.at(-1)?.[0] as string[];
+    expect(mixArgs).toContain("-filter_complex_script");
+    expect(mixArgs).not.toContain("-filter_complex");
+
+    // The only things that scale with track count are the -i pairs (short,
+    // fixed-size each) and the filter SCRIPT FILE's content (off the command
+    // line entirely) — not the args array's own total character length.
+    const argsLength = mixArgs.join(" ").length;
+    expect(argsLength).toBeLessThan(20_000);
+
+    const filter = capturedFilterScripts.at(-1);
+    expect(filter).toContain(`amix=inputs=${trackCount}`);
+    expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount);
   });
 
   it("prepares percent-encoded non-Latin audio srcs from decoded filesystem paths", async () => {

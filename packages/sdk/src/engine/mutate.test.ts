@@ -974,6 +974,33 @@ describe("moveElement", () => {
     expect(el.getAttribute("data-x")).toBe("50");
     expect(el.getAttribute("data-y")).toBe("75");
   });
+
+  it("captures the pre-edit baseline on first move only", () => {
+    const parsed = fresh();
+    const el = parsed.document.querySelector('[data-hf-id="hf-title"]') as Element;
+    el.setAttribute("data-x", "50");
+    applyOp(parsed, { type: "moveElement", target: "hf-title", x: 100, y: 200 });
+    // Baseline = the values before the first edit (absent data-y → "0").
+    expect(el.getAttribute("data-hf-edit-base-x")).toBe("50");
+    expect(el.getAttribute("data-hf-edit-base-y")).toBe("0");
+    // A second move keeps the original baseline.
+    applyOp(parsed, { type: "moveElement", target: "hf-title", x: 300, y: 400 });
+    expect(el.getAttribute("data-hf-edit-base-x")).toBe("50");
+    expect(el.getAttribute("data-hf-edit-base-y")).toBe("0");
+    expect(el.getAttribute("data-x")).toBe("300");
+    expect(el.getAttribute("data-y")).toBe("400");
+  });
+
+  it("inverse of the first move removes the baseline attributes", () => {
+    const parsed = fresh();
+    const el = parsed.document.querySelector('[data-hf-id="hf-title"]') as Element;
+    const result = applyOp(parsed, { type: "moveElement", target: "hf-title", x: 100, y: 200 });
+    applyPatchesToDocument(parsed, result.inverse);
+    expect(el.getAttribute("data-hf-edit-base-x")).toBeNull();
+    expect(el.getAttribute("data-hf-edit-base-y")).toBeNull();
+    expect(el.getAttribute("data-x")).toBeNull();
+    expect(el.getAttribute("data-y")).toBeNull();
+  });
 });
 
 // ─── validateOp (can()) ───────────────────────────────────────────────────────

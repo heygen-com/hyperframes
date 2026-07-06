@@ -252,6 +252,10 @@ async function bundleHandler(stagingDir: string): Promise<void> {
         "// hyperframes-aws-lambda handler bundle",
         'import { createRequire as __hf_createRequire } from "module";',
         "const require = __hf_createRequire(import.meta.url);",
+        'import { fileURLToPath as __hf_fileURLToPath } from "url";',
+        'import { dirname as __hf_dirname } from "path";',
+        "const __filename = __hf_fileURLToPath(import.meta.url);",
+        "const __dirname = __hf_dirname(__filename);",
       ].join("\n"),
     },
   });

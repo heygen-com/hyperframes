@@ -28,6 +28,7 @@ import { join, resolve } from "node:path";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { loadTransitionRegistry, transitionsByName } from "./lib/transition-registry.mjs";
+import { padFrameInternalDuration } from "./lib/pad-frame-duration.mjs";
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);
@@ -183,6 +184,12 @@ function runInject(argv) {
     const dur = resolveDur(spec, rec, reg);
     const T = r3(incoming.start); // cut = incoming start (frames tile)
     outgoing.duration = r3(outgoing.duration + dur); // extend outgoing only
+    padFrameInternalDuration(
+      hyperframesDir,
+      order[i - 1].frame.src,
+      outgoing.id,
+      outgoing.duration,
+    );
     gsapLines.push(
       ...buildGsap(rec, outgoing.id, incoming.id, dur, T, spec.direction, CW, CH, die),
     );

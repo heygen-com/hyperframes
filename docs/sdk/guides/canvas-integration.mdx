@@ -86,7 +86,7 @@ iframeDoc.addEventListener("click", (e) => {
 
 The draft loop keeps the model clean during a drag. The SDK is **not** in the 60fps path — you call `preview.applyDraft` on every `pointermove` and `preview.commitPreview` once on `pointerup`. The model sees exactly one `moveElement` op per drag, rather than hundreds.
 
-`applyDraft` writes CSS custom properties (`--hf-studio-dx`, `--hf-studio-dy`) directly onto the target element inside the iframe. The composition's CSS uses these vars to translate the element visually. Nothing in the SDK model changes.
+`applyDraft` sets the element's CSS `translate` directly inside the iframe — the pre-drag value composed with the accumulated delta — so the drag is visible in any composition without composition-side CSS, and works on GSAP-animated elements (a `translate` set after GSAP's first parse composes with the animated transform instead of being overwritten). Nothing in the SDK model changes. `cancelPreview` restores the pre-drag translate; `commitPreview` derives one `moveElement` op and mirrors the committed position onto the live element.
 
 ```typescript
 let dragging = false;

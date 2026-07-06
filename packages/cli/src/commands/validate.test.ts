@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   extractCompositionErrorsFromLint,
+  navigationTimeoutHint,
   raceMediaReady,
+  resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
+  waitForPreferredSeekTarget,
 } from "./validate.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 
@@ -86,6 +89,28 @@ describe("shouldIgnoreRequestFailure", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/sfx.wav", "net::ERR_FAILED"),
     ).toBe(false);
+  });
+});
+
+describe("waitForPreferredSeekTarget", () => {
+  it("waits for the runtime player/bridge target before falling back to raw timelines", async () => {
+    const page = {
+      waitForFunction: vi.fn(async () => undefined),
+    };
+
+    await waitForPreferredSeekTarget(page, 123);
+
+    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
+  });
+
+  it("does not fail validation when only the legacy raw timeline fallback is available", async () => {
+    const page = {
+      waitForFunction: vi.fn(async () => {
+        throw new Error("waiting failed: timeout");
+      }),
+    };
+
+    await expect(waitForPreferredSeekTarget(page, 1)).resolves.toBeUndefined();
   });
 });
 
@@ -190,5 +215,41 @@ describe("extractCompositionErrorsFromLint", () => {
     const errors = extractCompositionErrorsFromLint(lintResult);
     expect(errors).toHaveLength(2);
     expect(errors.map((e) => e.text)).toEqual(["scene-a is empty", "scene-b is empty"]);
+  });
+});
+
+// Regression: `validate` used a hardcoded 10s page-navigation timeout that
+// ignored --timeout, so a composition loading GSAP from a CDN <script> (which
+// blocks domcontentloaded) failed with an opaque "Navigation timeout of 10000ms"
+// even though the full render's larger budget rode it out — with no knob to
+// extend it. resolveNavigationTimeoutMs makes --timeout raise the nav budget
+// (never below the 10s floor); navigationTimeoutHint replaces the opaque error.
+describe("resolveNavigationTimeoutMs", () => {
+  it("keeps the 10s floor when --timeout is unset or smaller", () => {
+    expect(resolveNavigationTimeoutMs(undefined)).toBe(10000);
+    expect(resolveNavigationTimeoutMs(3000)).toBe(10000); // the default --timeout
+    expect(resolveNavigationTimeoutMs(0)).toBe(10000);
+  });
+
+  it("raises the navigation budget to --timeout when it exceeds the floor", () => {
+    expect(resolveNavigationTimeoutMs(30000)).toBe(30000);
+  });
+});
+
+describe("navigationTimeoutHint", () => {
+  it("replaces a Puppeteer navigation-timeout error with an actionable CDN/--timeout hint", () => {
+    const hinted = navigationTimeoutHint(
+      new Error("Navigation timeout of 10000 ms exceeded"),
+      10000,
+    );
+    expect(hinted).toBeInstanceOf(Error);
+    expect(hinted?.message).toContain("10000ms");
+    expect(hinted?.message).toContain("CDN");
+    expect(hinted?.message).toContain("--timeout");
+  });
+
+  it("returns null for any non-navigation-timeout error so the caller rethrows it as-is", () => {
+    expect(navigationTimeoutHint(new Error("net::ERR_CONNECTION_REFUSED"), 10000)).toBeNull();
+    expect(navigationTimeoutHint("some string failure", 10000)).toBeNull();
   });
 });

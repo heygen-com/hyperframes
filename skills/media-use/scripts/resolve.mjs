@@ -90,10 +90,16 @@ async function run() {
     return result(projectHit, "cached");
   }
 
-  // 1b. entity match in project
+  // 1b. entity match in project. icon and image are interchangeable for
+  // entity hits — both live in images/, and figma-imported brand marks are
+  // always recorded as type image while agents ask for logos as type icon.
   if (entity) {
     const entityHit = findByEntity(projectDir, entity);
-    if (entityHit && entityHit.type === type && existsSync(join(projectDir, entityHit.path))) {
+    if (
+      entityHit &&
+      typesMatch(entityHit.type, type) &&
+      existsSync(join(projectDir, entityHit.path))
+    ) {
       return result(entityHit, "cached");
     }
   }
@@ -131,7 +137,7 @@ async function run() {
 
   if (entity) {
     const entityCacheHit = cacheGetByEntity(entity);
-    if (entityCacheHit && entityCacheHit.type === type) {
+    if (entityCacheHit && typesMatch(entityCacheHit.type, type)) {
       const id = nextId(projectDir, type);
       const ext = extname(entityCacheHit.cached_path);
       const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
@@ -276,6 +282,12 @@ async function ingest(src) {
     // best-effort
   }
   await result(record, "ingested");
+}
+
+function typesMatch(a, b) {
+  if (a === b) return true;
+  const visual = new Set(["icon", "image"]);
+  return visual.has(a) && visual.has(b);
 }
 
 async function result(record, source) {

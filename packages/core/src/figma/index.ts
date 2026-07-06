@@ -25,12 +25,15 @@ export {
   mediaDir,
   manifestPath,
   typeDirPath,
+  updateRecord,
   isFigmaManifestRecord,
   readManifest,
   appendRecord,
+  findAllByFigmaNode,
   findByFigmaNode,
   nextId,
 } from "./manifest";
+export { regenerateIndex } from "./mediaIndex";
 export { buildAssetSnippet } from "./assetSnippet";
 export { sanitizeSvg } from "./sanitizeSvg";
 export {

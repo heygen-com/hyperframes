@@ -79,6 +79,59 @@ body { margin: 0; }
     expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
   });
 
+  it("routes the documented window.__hyperframes.getVariables() to the scoped variant too", () => {
+    // Regression: the docs (variables-and-media.md) show `window.__hyperframes.
+    // getVariables()`, but inside a sub-comp the scoped `window` proxy used to
+    // fall through to the HOST page's base __hyperframes, returning the wrong
+    // (or empty) variables — the bare `__hyperframes` param was the only form
+    // that worked. Both spellings must now resolve to this comp's variables.
+    const { document } = parseHTML(`<div data-composition-id="card-1"></div>`);
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      __hfVariablesByComp: {
+        "card-1": { title: "Pro", price: "$29" },
+        "card-2": { title: "Enterprise", price: "Custom" },
+      },
+      __hyperframes: {
+        getVariables: () => ({ title: "TOP-LEVEL-LEAK" }),
+        fitTextFontSize: () => undefined,
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `window.__captured = window.__hyperframes.getVariables();`,
+      "card-1",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__captured).toEqual({ title: "Pro", price: "$29" });
+  });
+
+  it("preserves non-getVariables members on window.__hyperframes (only getVariables is rescoped)", () => {
+    const { document } = parseHTML(`<div data-composition-id="card-1"></div>`);
+    let fitCalled = false;
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      __hfVariablesByComp: { "card-1": { title: "Pro" } },
+      __hyperframes: {
+        getVariables: () => ({ title: "TOP-LEVEL-LEAK" }),
+        fitTextFontSize: () => {
+          fitCalled = true;
+        },
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `window.__hyperframes.fitTextFontSize();`,
+      "card-1",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fitCalled).toBe(true);
+  });
+
   it("scoped getVariables reads from the runtime composition id when it differs", () => {
     const { document } = parseHTML(`<div data-composition-id="scene"></div>`);
     const fakeWindow: Record<string, unknown> = {

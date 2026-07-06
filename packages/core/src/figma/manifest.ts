@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonlValues } from "./jsonl";
 import type { FigmaManifestRecord } from "./types";
@@ -68,15 +68,41 @@ export function findByFigmaNode(
   fileKey: string,
   nodeId: string,
 ): FigmaManifestRecord | null {
-  for (const r of readManifest(projectDir)) {
-    if (
+  return findAllByFigmaNode(projectDir, fileKey, nodeId)[0] ?? null;
+}
+
+/** EVERY row for a node — reuse gates must check all (format, scale, version)
+ * tuples, not just the oldest, or a second tuple defeats idempotency forever. */
+export function findAllByFigmaNode(
+  projectDir: string,
+  fileKey: string,
+  nodeId: string,
+): FigmaManifestRecord[] {
+  return readManifest(projectDir).filter(
+    (r) =>
       r.provenance.source === "figma" &&
       r.provenance.fileKey === fileKey &&
-      r.provenance.nodeId === nodeId
-    )
-      return r;
-  }
-  return null;
+      r.provenance.nodeId === nodeId,
+  );
+}
+
+/** Rewrite one row in place by id, preserving every other line (other
+ * writers' rows included) byte-for-byte. */
+export function updateRecord(projectDir: string, record: FigmaManifestRecord): void {
+  const p = manifestPath(projectDir);
+  const lines = readFileSync(p, "utf8").split(/\r?\n/);
+  const out = lines.map((line) => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) return line;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (isFigmaManifestRecord(parsed) && parsed.id === record.id) return JSON.stringify(record);
+    } catch {
+      // non-JSON line — preserve untouched
+    }
+    return line;
+  });
+  writeFileSync(p, out.join("\n"));
 }
 
 export function nextId(projectDir: string, type: FigmaManifestRecord["type"]): string {

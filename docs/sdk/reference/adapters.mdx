@@ -100,15 +100,15 @@ interface PreviewAdapter {
 </ParamField>
 
 <ParamField path="applyDraft" type="(id: string, props: DraftProps) => void">
-  Applies draft CSS markers to the preview element at 60fps during a drag. Writes CSS custom properties (`--hf-studio-dx`, `--hf-studio-dy`) onto the element so the composition's CSS can visually translate it without touching the model. The **SDK is not called here** — this is a direct write to the preview surface by your pointer-move handler.
+  Visually translates the preview element at 60fps during a drag: sets the element's CSS `translate` to its pre-drag value composed with the accumulated delta. Works on GSAP-animated elements (a `translate` set after GSAP's first parse composes with the animated transform). The **SDK is not called here** — this is a direct write to the preview surface by your pointer-move handler. Switching `id` mid-drag reverts the previous element's draft first.
 </ParamField>
 
 <ParamField path="commitPreview" type="() => void">
-  Called once on pointer-up. Reads the accumulated draft markers, derives a `moveElement` op from them, dispatches it into the SDK, emits a patch event, and clears the markers. This is the only moment the SDK becomes aware of a drag.
+  Called once on pointer-up. Reads the accumulated draft delta, derives a `moveElement` op from it, dispatches it into the SDK, emits a patch event, and mirrors the committed position onto the live element (so it holds without a reload). This is the only moment the SDK becomes aware of a drag. If dispatch throws, the draft translate is reverted and the error propagates.
 </ParamField>
 
 <ParamField path="cancelPreview" type="() => void">
-  Reverts the draft CSS markers without dispatching any op. The model is never changed. Call this on `Escape` keydown or when a drag is aborted.
+  Restores the element's pre-drag `translate` without dispatching any op. The model is never changed. Call this on `Escape` keydown or when a drag is aborted.
 </ParamField>
 
 <ParamField path="select" type="(ids: string[], opts?: { additive?: boolean }) => void">

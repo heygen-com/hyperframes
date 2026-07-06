@@ -51,6 +51,7 @@ import {
 } from "./patches.js";
 import { upsertCssRule } from "./cssWriter.js";
 import { mintHfId, EXCLUDED_TAGS } from "@hyperframes/core/hf-ids";
+import { EDIT_BASE_X_ATTR, EDIT_BASE_Y_ATTR } from "@hyperframes/core/runtime/position-edits";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
@@ -342,11 +343,34 @@ function handleMoveElement(
 ): MutationResult {
   // HF elements are positioned via data-x / data-y (parsed by htmlParser.ts,
   // emitted by hyperframes generator). CSS left/top is not the convention.
-  const rx = handleSetAttribute(parsed, ids, "data-x", String(x));
-  const ry = handleSetAttribute(parsed, ids, "data-y", String(y));
+  //
+  // The pre-edit values are captured once per element into
+  // data-hf-edit-base-x/y. The runtime (core runtime/positionEdits.ts) renders
+  // the edit as translate(data-x − base, data-y − base), which composes with
+  // GSAP-animated transforms instead of being overwritten per-axis.
+  const parts: MutationResult[] = [];
+  for (const id of ids) {
+    const el = resolveScoped(parsed.document, id);
+    if (!el) continue;
+    if (el.getAttribute(EDIT_BASE_X_ATTR) === null) {
+      parts.push(
+        handleSetAttribute(parsed, [id], EDIT_BASE_X_ATTR, el.getAttribute("data-x") ?? "0"),
+      );
+    }
+    if (el.getAttribute(EDIT_BASE_Y_ATTR) === null) {
+      parts.push(
+        handleSetAttribute(parsed, [id], EDIT_BASE_Y_ATTR, el.getAttribute("data-y") ?? "0"),
+      );
+    }
+  }
+  parts.push(handleSetAttribute(parsed, ids, "data-x", String(x)));
+  parts.push(handleSetAttribute(parsed, ids, "data-y", String(y)));
   return {
-    forward: [...rx.forward, ...ry.forward],
-    inverse: [...ry.inverse, ...rx.inverse],
+    forward: parts.flatMap((p) => p.forward),
+    inverse: parts
+      .slice()
+      .reverse()
+      .flatMap((p) => p.inverse),
   };
 }
 

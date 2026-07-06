@@ -1,10 +1,14 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+// @vitest-environment happy-dom
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   sdkResolverShadowCheck,
   runResolverShadow,
   recordResolverParity,
   recordAnimationResolverParity,
   evaluateSoakGate,
+  recordAttempt,
+  flushAttemptCounts,
+  __resetAttemptSchedulingForTests,
   type SdkResolverMismatch,
 } from "./sdkResolverShadow";
 import type { PatchOperation } from "./sourcePatcher";
@@ -13,12 +17,15 @@ import { openComposition } from "@hyperframes/sdk";
 // ─── Telemetry capture ────────────────────────────────────────────────────────
 
 const trackedEvents: Array<{ event: string; props: Record<string, unknown> }> = [];
+const flushViaBeacon = vi.fn();
 vi.mock("./studioTelemetry", () => ({
   trackStudioEvent: (event: string, props: Record<string, unknown>) =>
     trackedEvents.push({ event, props }),
+  flushViaBeacon: () => flushViaBeacon(),
 }));
 beforeEach(() => {
   trackedEvents.length = 0;
+  flushViaBeacon.mockClear();
 });
 const lastShadow = () =>
   trackedEvents.filter((e) => e.event === "sdk_resolver_shadow").at(-1)?.props;
@@ -530,5 +537,177 @@ describe("H. inlined sub-composition leaf", () => {
       { type: "inline-style", property: "color", value: "blue" },
     ]);
     expect(mismatches.some((m) => m.kind === "element_not_found")).toBe(false);
+  });
+});
+
+// ─── I. Attempt counter (denominator for the soak gate) ───────────────────────
+
+describe("I. recordAttempt / flushAttemptCounts", () => {
+  beforeEach(() => {
+    // Drain any counts left over from a prior test so each test starts clean.
+    flushAttemptCounts();
+  });
+
+  it("flushAttemptCounts returns null when nothing has been recorded", () => {
+    expect(flushAttemptCounts()).toBeNull();
+  });
+
+  it("increments the counter for a given op label", () => {
+    recordAttempt("setTiming");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 1 });
+  });
+
+  it("accumulates multiple calls with the same label", () => {
+    recordAttempt("setTiming");
+    recordAttempt("setTiming");
+    recordAttempt("setTiming");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 3 });
+  });
+
+  it("tracks different labels independently", () => {
+    recordAttempt("setTiming");
+    recordAttempt("addGsapTween");
+    recordAttempt("setTiming");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 2, addGsapTween: 1 });
+  });
+
+  it("resets to empty after a flush", () => {
+    recordAttempt("setTiming");
+    flushAttemptCounts();
+    expect(flushAttemptCounts()).toBeNull();
+  });
+});
+
+describe("I. attempt counting inside the three emit functions", () => {
+  beforeEach(() => {
+    flushAttemptCounts();
+  });
+
+  it("runResolverShadow counts an attempt on the parity (silent) path", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    runResolverShadow(session, "hf-box", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(flushAttemptCounts()).toEqual({ "dom-edit": 1 });
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("runResolverShadow counts an attempt on the divergence (emits) path too", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    runResolverShadow(session, "hf-missing", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    expect(flushAttemptCounts()).toEqual({ "dom-edit": 1 });
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(1);
+  });
+
+  it("recordResolverParity counts an attempt on the parity (silent) path", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 1 });
+  });
+
+  it("recordResolverParity counts an attempt on the divergence (emits) path too", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-missing", "setTiming");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 1 });
+  });
+
+  it("recordAnimationResolverParity counts an attempt on the parity (silent) path", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(GSAP_HTML);
+    const realId = session.getElements().flatMap((e) => [...e.animationIds])[0] ?? "";
+    expect(realId).not.toBe(""); // fixture has a tween on hf-box, see block G above
+    recordAnimationResolverParity(session, realId, "removeGsapTween");
+    expect(flushAttemptCounts()).toEqual({ removeGsapTween: 1 });
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
+  });
+
+  it("recordAnimationResolverParity counts an attempt on the divergence (emits) path too", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(GSAP_HTML);
+    recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
+    expect(flushAttemptCounts()).toEqual({ setGsapTween: 1 });
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(1);
+  });
+
+  it("counts accumulate across multiple different chokepoints in one rollup", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    await recordResolverParity(session, "hf-box", "setTiming");
+    recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
+    expect(flushAttemptCounts()).toEqual({ setTiming: 2, setGsapTween: 1 });
+  });
+
+  it("does not count an attempt when the flag is off", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = false;
+    const session = await openComposition(BASE_HTML);
+    runResolverShadow(session, "hf-box", [
+      { type: "inline-style", property: "color", value: "blue" },
+    ]);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    recordAnimationResolverParity(session, "no-such-anim", "setGsapTween");
+    expect(flushAttemptCounts()).toBeNull();
+  });
+});
+
+describe("I. production rollup wiring", () => {
+  beforeEach(() => {
+    flushAttemptCounts();
+    __resetAttemptSchedulingForTests();
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearInterval", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    __resetAttemptSchedulingForTests();
+    vi.useRealTimers();
+    Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
+
+  it("does not emit a rollup event when nothing was recorded", () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow_attempt")).toHaveLength(0);
+  });
+
+  it("emits a sdk_resolver_shadow_attempt rollup event every 5 minutes after the first attempt", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    vi.advanceTimersByTime(5 * 60_000);
+    const rollups = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow_attempt");
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0].props.counts).toBe(JSON.stringify({ setTiming: 1 }));
+  });
+
+  it("flushes a rollup and forces a beacon delivery on visibilitychange -> hidden", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    const rollups = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow_attempt");
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0].props.counts).toBe(JSON.stringify({ setTiming: 1 }));
+    // Delivery must not depend on studioTelemetry's own visibilitychange listener
+    // winning a race — this module forces its own beacon flush.
+    expect(flushViaBeacon).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not register a duplicate visibilitychange listener after a scheduling reset", async () => {
+    mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
+    const session = await openComposition(BASE_HTML);
+    await recordResolverParity(session, "hf-box", "setTiming");
+    __resetAttemptSchedulingForTests();
+    await recordResolverParity(session, "hf-box", "setTiming"); // re-arms scheduling, incl. listener
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    // If the reset had leaked the old listener, this would fire twice.
+    expect(flushViaBeacon).toHaveBeenCalledTimes(1);
   });
 });

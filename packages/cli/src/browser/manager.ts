@@ -21,6 +21,7 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
 }
 
 const CHROME_VERSION = "131.0.6778.85";
+const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -39,8 +40,8 @@ const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headl
 //
 // mkdirSync is atomic (EEXIST if another process already holds it), so it
 // doubles as a zero-dependency cross-process mutex — no lockfile library needed.
-const INSTALL_LOCK_DIR = join(CACHE_DIR, ".install.lock");
-const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_DIR, ".install.reclaim.lock");
+const INSTALL_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.lock");
+const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.reclaim.lock");
 const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
 const INSTALL_LOCK_POLL_MS = 200;
 
@@ -88,7 +89,9 @@ export async function withInstallLock<T>(
   pollMs = INSTALL_LOCK_POLL_MS,
 ): Promise<T> {
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
-  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+  // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
+  // delete another installer's in-flight lock.
+  if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
   let deadline = Date.now() + timeoutMs;
   for (;;) {
     if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
@@ -127,11 +130,31 @@ export interface BrowserResult {
 
 export interface EnsureBrowserOptions {
   onProgress?: (downloadedBytes: number, totalBytes: number) => void;
+  // Purge any cached HF-managed download before resolving, so a stale or
+  // partially-extracted install can't make the retry look like a no-op.
+  force?: boolean;
 }
 
 interface CacheLookupResult {
   result?: BrowserResult;
   staleHyperframesCachePath?: string;
+  // Root install-folder path for the stale entry (InstalledBrowser#path), NOT
+  // the missing executablePath above — this is what actually needs deleting.
+  staleInstallPath?: string;
+}
+
+/**
+ * Remove one browser version's install directory (not the whole CACHE_DIR).
+ * @puppeteer/browsers' install() treats an existing-but-incomplete directory
+ * as already installed and throws "folder exists but executable is missing"
+ * rather than re-extracting — so an extraction interrupted by a Windows AV
+ * lock, a sleep/wake cycle, or ctrl-C (left with only alphabetically-early
+ * files like ABOUT/LICENSE, no exe) wedges every subsequent ensure/render
+ * with the same error until someone manually deletes the directory. Purging
+ * it first makes the retry actually retry.
+ */
+function purgeStaleInstall(installPath: string): void {
+  rmSync(installPath, { recursive: true, force: true });
 }
 
 // --- Internal helpers -------------------------------------------------------
@@ -215,7 +238,7 @@ async function findFromCache(): Promise<CacheLookupResult> {
       return { result: { executablePath: match.executablePath, source: "cache" } };
     }
     if (match) {
-      return { staleHyperframesCachePath: match.executablePath };
+      return { staleHyperframesCachePath: match.executablePath, staleInstallPath: match.path };
     }
   }
 
@@ -371,7 +394,10 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
       `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
-      return await withInstallLock(() => downloadBrowser());
+      return await withInstallLock(async () => {
+        if (fromCache.staleInstallPath) purgeStaleInstall(fromCache.staleInstallPath);
+        return downloadBrowser();
+      });
     } catch (err) {
       const cause = normalizeErrorMessage(err);
       throw new Error(
@@ -445,27 +471,44 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
   const fromEnv = findFromEnv();
   if (fromEnv) return fromEnv;
 
-  const fromCache = await findFromCache();
-  if (fromCache.result) return fromCache.result;
-  if (fromCache.staleHyperframesCachePath) {
-    console.warn(
-      `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
-    );
-    return withInstallLock(() => downloadBrowser(options));
-  }
+  if (!options?.force) {
+    const fromCache = await findFromCache();
+    if (fromCache.result) return fromCache.result;
+    if (fromCache.staleHyperframesCachePath) {
+      console.warn(
+        `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      );
+      return withInstallLock(async () => {
+        if (fromCache.staleInstallPath) purgeStaleInstall(fromCache.staleInstallPath);
+        return downloadBrowser(options);
+      });
+    }
 
-  const fromSystem = findFromSystem();
-  if (fromSystem) {
-    warnSystemFallbackOnce(fromSystem.executablePath);
-    return fromSystem;
+    const fromSystem = findFromSystem();
+    if (fromSystem) {
+      warnSystemFallbackOnce(fromSystem.executablePath);
+      return fromSystem;
+    }
   }
 
   return withInstallLock(async () => {
+    if (options?.force) {
+      // `--force` means "always get a fresh managed download" — purging the
+      // whole HF-managed cache after acquiring the install lock keeps two
+      // concurrent force retries from deleting each other's in-flight lock or
+      // partially extracted install.
+      clearBrowser();
+    }
+
     // Re-check after acquiring the lock: a concurrent invocation may have
     // finished installing while we were waiting, in which case reuse its
-    // result instead of downloading and extracting a second time.
-    const afterLock = await findFromCache();
-    if (afterLock.result) return afterLock.result;
+    // result instead of downloading and extracting a second time. Skipped
+    // under --force, which already purged and always wants a fresh download.
+    if (!options?.force) {
+      const afterLock = await findFromCache();
+      if (afterLock.result) return afterLock.result;
+      if (afterLock.staleInstallPath) purgeStaleInstall(afterLock.staleInstallPath);
+    }
     return downloadBrowser(options);
   });
 }

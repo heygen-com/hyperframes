@@ -4,7 +4,7 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
-import { existsSync, mkdirSync, rmSync } from "fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
 import { isAbsolute, join, dirname } from "path";
 import { parseHTML } from "linkedom";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
@@ -384,11 +384,9 @@ async function mixAudioTracks(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const buildArgs = (ignoreAutomation: boolean): string[] => {
-    const inputs: string[] = [];
+  const buildFilterComplex = (ignoreAutomation: boolean): string => {
     const filterParts: string[] = [];
     tracks.forEach((track, i) => {
-      inputs.push("-i", track.srcPath);
       const delayMs = Math.round(track.start * 1000);
       const trimDuration = track.end - track.start;
       const volumeFilter = buildVolumeExpression(track, ignoreAutomation);
@@ -403,12 +401,31 @@ async function mixAudioTracks(
     // gain by track count so per-track volumes authored in data-volume are preserved.
     const compensatedGain = masterOutputGain * tracks.length;
     const postMixGainFilter = `[mixed]volume=${formatFilterNumber(compensatedGain)}[out]`;
-    const fullFilter = [...filterParts, mixFilter, postMixGainFilter].join(";");
+    return [...filterParts, mixFilter, postMixGainFilter].join(";");
+  };
 
-    return [
+  // A large track count (100+) makes the inline `-filter_complex <string>`
+  // argument scale linearly with track count until it exceeds the OS
+  // command-line length limit — spawn ENAMETOOLONG, seen in practice at 146
+  // tracks — even though every individual filter segment is short. FFmpeg's
+  // own `-filter_complex_script <file>` reads the same graph from disk
+  // instead, sidestepping the argv limit for the one component of this
+  // command line that actually grows with the composition.
+  const runMix = (ignoreAutomation: boolean) => {
+    const inputs: string[] = [];
+    tracks.forEach((track) => inputs.push("-i", track.srcPath));
+    const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
+    const scriptPath = join(scriptDir, "graph.txt");
+    const fd = openSync(scriptPath, "wx", 0o600);
+    try {
+      writeFileSync(fd, buildFilterComplex(ignoreAutomation));
+    } finally {
+      closeSync(fd);
+    }
+    const args = [
       ...inputs,
-      "-filter_complex",
-      fullFilter,
+      "-filter_complex_script",
+      scriptPath,
       "-map",
       "[out]",
       "-acodec",
@@ -420,9 +437,12 @@ async function mixAudioTracks(
       "-y",
       outputPath,
     ];
+    return runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout }).finally(() =>
+      rmSync(scriptDir, { recursive: true, force: true }),
+    );
   };
 
-  let result = await runFfmpeg(buildArgs(false), { signal, timeout: ffmpegProcessTimeout });
+  let result = await runMix(false);
 
   // Defense in depth: volume automation is folded into an FFmpeg `volume`
   // expression whose evaluator limits are build-dependent (see
@@ -432,7 +452,7 @@ async function mixAudioTracks(
   let degradedAutomation = false;
   const hasAutomation = tracks.some((track) => (track.volumeKeyframes?.length ?? 0) > 0);
   if (!result.success && !signal?.aborted && hasAutomation) {
-    const retry = await runFfmpeg(buildArgs(true), { signal, timeout: ffmpegProcessTimeout });
+    const retry = await runMix(true);
     if (retry.success) {
       result = retry;
       degradedAutomation = true;

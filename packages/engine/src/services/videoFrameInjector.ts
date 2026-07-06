@@ -371,6 +371,13 @@ export interface ElementStackingInfo {
   layoutHeight: number;
   opacity: number;
   visible: boolean;
+  /**
+   * True when the SDR video replacement image injected beside this element is
+   * currently paintable. Native videos are hidden during capture, so this lets
+   * the layered HDR compositor keep their replacement frames in the right DOM
+   * layer without reviving unrelated hidden elements.
+   */
+  renderFrameVisible: boolean;
   isHdr: boolean;
   transform: string; // CSS transform matrix string, e.g. "matrix(1,0,0,1,0,0)" or "none"
   borderRadius: [number, number, number, number]; // [tl, tr, br, bl] in CSS px from nearest clipping ancestor
@@ -635,6 +642,17 @@ export async function queryElementStacking(
       return Number.isFinite(n) ? n : 0;
     }
 
+    function isElementPaintable(node: Element): boolean {
+      const rect = node.getBoundingClientRect();
+      const style = window.getComputedStyle(node);
+      return (
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    }
+
     for (const el of elements) {
       const id = el.id;
       if (!id) continue;
@@ -647,11 +665,9 @@ export async function queryElementStacking(
       // remains the GSAP-controlled value. Walk from the element itself to
       // multiply through any ancestor opacity stacks.
       const opacity = getEffectiveOpacity(el);
-      const visible =
-        style.visibility !== "hidden" &&
-        style.display !== "none" &&
-        rect.width > 0 &&
-        rect.height > 0;
+      const visible = isElementPaintable(el);
+      const renderFrame = document.getElementById(`__render_frame_${id}__`);
+      const renderFrameVisible = renderFrame ? isElementPaintable(renderFrame) : false;
       // offsetWidth/offsetHeight only exist on HTMLElement (not on
       // SVGElement, MathMLElement, etc.). Fall back to the bounding rect
       // dimensions for non-HTML elements so callers always get sensible
@@ -668,6 +684,7 @@ export async function queryElementStacking(
         layoutHeight: htmlEl?.offsetHeight || Math.round(rect.height),
         opacity,
         visible,
+        renderFrameVisible,
         isHdr: hdrSet.has(id),
         // For HDR elements, use the full accumulated viewport matrix so the
         // affine blit can apply rotation/scale/translate properly. For DOM

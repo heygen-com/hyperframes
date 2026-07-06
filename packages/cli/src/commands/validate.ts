@@ -32,7 +32,35 @@ interface ContrastEntry {
 
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
+const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
 const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+// Floor for the initial page navigation. A blocking external <script> (GSAP
+// from a CDN, etc.) delays `domcontentloaded`; the actual render (much larger
+// budget) rides it out, so validate's navigation must be at least as patient as
+// the user's --timeout, never stuck below this floor.
+const NAV_TIMEOUT_FLOOR_MS = 10000;
+
+// Navigation budget = the larger of the floor and the user's --timeout, so
+// `--timeout` (already the "wait longer for slow loads" knob for media/settle)
+// also extends navigation instead of being ignored by a hardcoded 10s.
+export function resolveNavigationTimeoutMs(optTimeout?: number): number {
+  return Math.max(NAV_TIMEOUT_FLOOR_MS, optTimeout ?? 0);
+}
+
+// Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
+// actionable message: the usual cause is a blocking CDN <script> that render
+// tolerates but validate's tighter budget does not. Returns a replacement Error
+// for a navigation timeout, or null for any other error (caller rethrows as-is).
+export function navigationTimeoutHint(err: unknown, navTimeoutMs: number): Error | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (!/navigation timeout/i.test(msg)) return null;
+  return new Error(
+    `Page navigation timed out after ${navTimeoutMs}ms. A blocking external <script> ` +
+      `(e.g. GSAP loaded from a CDN) can delay page load past this budget even when the ` +
+      `full render succeeds. Vendor the script locally (recommended for deterministic ` +
+      `renders), or re-run with a longer --timeout.`,
+  );
+}
 
 export function shouldIgnoreRequestFailure(
   url: string,
@@ -57,7 +85,24 @@ async function getCompositionDuration(page: import("puppeteer-core").Page): Prom
 }
 
 async function seekTo(page: import("puppeteer-core").Page, time: number): Promise<void> {
+  await waitForPreferredSeekTarget(page);
   await page.evaluate((t: number) => {
+    // window.__player.renderSeek is exposed directly by the composition
+    // runtime (packages/core/src/runtime/init.ts) on every page load, and
+    // — unlike raw timeline.seek() — it also runs the runtime's own
+    // [data-start]/[data-duration] visibility sync, hiding clips outside
+    // their timeline window. window.__hf.seek only exists when the
+    // producer's render-pipeline bridge script has been injected, which
+    // validate's static preview server never does, so it was always
+    // falling through to the raw __timelines seek below and skipping that
+    // sync — leaving off-window elements looking fully visible to any
+    // check (e.g. the contrast audit) that reads computed style afterward.
+    const player = (window as unknown as { __player?: { renderSeek?: (t: number) => void } })
+      .__player;
+    if (player && typeof player.renderSeek === "function") {
+      player.renderSeek(t);
+      return;
+    }
     if (window.__hf && typeof window.__hf.seek === "function") {
       window.__hf.seek(t);
       return;
@@ -72,6 +117,32 @@ async function seekTo(page: import("puppeteer-core").Page, time: number): Promis
     }
   }, time);
   await new Promise((r) => setTimeout(r, SEEK_SETTLE_MS));
+}
+
+interface WaitForFunctionPage {
+  waitForFunction: (pageFunction: () => boolean, options: { timeout: number }) => Promise<unknown>;
+}
+
+export async function waitForPreferredSeekTarget(
+  page: WaitForFunctionPage,
+  timeoutMs = PREFERRED_SEEK_TARGET_WAIT_MS,
+): Promise<void> {
+  try {
+    await page.waitForFunction(
+      () => {
+        const w = window as unknown as {
+          __hf?: { seek?: unknown };
+          __player?: { renderSeek?: unknown };
+        };
+        return typeof w.__player?.renderSeek === "function" || typeof w.__hf?.seek === "function";
+      },
+      { timeout: timeoutMs },
+    );
+  } catch {
+    // Older/static pages may only expose raw window.__timelines. Keep the
+    // legacy fallback path rather than turning a missing player API into a
+    // validate failure.
+  }
 }
 
 /**
@@ -353,7 +424,14 @@ async function validateInBrowser(
       }
     });
 
-    await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
+    const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
+    try {
+      await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
+    } catch (err) {
+      const hinted = navigationTimeoutHint(err, navTimeoutMs);
+      if (hinted) throw hinted;
+      throw err;
+    }
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {
@@ -472,7 +550,9 @@ Examples:
     },
     timeout: {
       type: "string",
-      description: "Ms to wait for scripts to settle (default: 3000)",
+      description:
+        "Ms to wait for scripts to settle and media to load (default: 3000). Also raises the " +
+        "page-navigation budget above its 10s floor when a slow external <script> needs longer.",
       default: "3000",
     },
   },
