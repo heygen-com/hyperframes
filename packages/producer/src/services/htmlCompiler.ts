@@ -1822,6 +1822,8 @@ export interface BrowserMediaElement {
   loop: boolean;
   hasAudio: boolean;
   volume: number;
+  /** The `muted` attribute/property. Preview silences muted media; the mix must too. */
+  muted: boolean;
 }
 
 export interface BrowserAudioVolumeAutomation {
@@ -1842,6 +1844,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       loop: boolean;
       hasAudio: boolean;
       volume: number;
+      muted: boolean;
     }[] = [];
 
     const mediaEls = document.querySelectorAll("video[data-start], audio[data-start]");
@@ -1858,6 +1861,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       const loop = htmlEl.hasAttribute("loop");
       const hasAudio = htmlEl.getAttribute("data-has-audio") === "true";
       const volume = parseFloat(htmlEl.getAttribute("data-volume") || "1");
+      const muted = htmlEl.hasAttribute("muted") || htmlEl.muted;
 
       results.push({
         id,
@@ -1870,6 +1874,7 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
         loop,
         hasAudio,
         volume,
+        muted,
       });
     });
 

@@ -375,8 +375,11 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       const existingVideoIds = new Set(composition.videos.map((v) => v.id));
       const existingAudioIds = new Set(composition.audios.map((a) => a.id));
 
+      pruneMutedBrowserMedia(composition, browserMedia, existingAudioIds);
+
       for (const el of browserMedia) {
         if (!el.src || el.src === "about:blank") continue;
+        if (el.muted && el.tagName === "audio") continue;
 
         // Convert absolute localhost URLs back to relative paths
         let src = el.src;
@@ -411,7 +414,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               ) {
                 existing.mediaStart = el.mediaStart;
               }
-              if (el.hasAudio && !existing.hasAudio) {
+              if (el.hasAudio && !el.muted && !existing.hasAudio) {
                 existing.hasAudio = true;
               }
               if (el.loop && !existing.loop) {
@@ -427,7 +430,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               end: el.end,
               mediaStart: el.mediaStart,
               loop: el.loop,
-              hasAudio: el.hasAudio,
+              hasAudio: el.hasAudio && !el.muted,
             });
             existingVideoIds.add(el.id);
           }
@@ -609,4 +612,32 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     browserProbeMs,
     beginFrameStalled,
   };
+}
+
+/**
+ * Preview/render parity for `muted` media: the runtime keeps muted elements
+ * silent, so the mixer must exclude their audio too (they used to be mixed at
+ * full volume). Muted video still renders frames but loses its audio track;
+ * muted audio drops out of the mix entirely. Pure over its inputs so the
+ * parity rule is testable without the probe-session harness.
+ */
+export function pruneMutedBrowserMedia(
+  composition: {
+    videos: { id: string; hasAudio?: boolean }[];
+    audios: { id: string }[];
+  },
+  browserMedia: { id: string; tagName: string; muted?: boolean }[],
+  existingAudioIds?: Set<string>,
+): void {
+  for (const el of browserMedia) {
+    if (!el.muted) continue;
+    if (el.tagName === "video") {
+      const existing = composition.videos.find((v) => v.id === el.id);
+      if (existing) existing.hasAudio = false;
+    } else {
+      const idx = composition.audios.findIndex((a) => a.id === el.id);
+      if (idx >= 0) composition.audios.splice(idx, 1);
+      existingAudioIds?.delete(el.id);
+    }
+  }
 }
