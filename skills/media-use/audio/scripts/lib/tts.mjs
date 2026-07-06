@@ -155,6 +155,13 @@ export function resolveSpawnCommand(
 // `platform`/`spawnFn` params (default process.platform / the real spawn)
 // exist so tests can exercise the win32 branch without mocking node:child_process
 // (its ESM exports are non-configurable, so mock.method can't patch it).
+// One-shot so a whole batch of TTS lines doesn't repeat the same diagnostic.
+let _warnedNpxResolution = false;
+/** Test-only: reset the one-shot npx-resolution warning latch. */
+export function _resetNpxResolutionWarnForTests() {
+  _warnedNpxResolution = false;
+}
+
 export function spawnP(
   cmd,
   args,
@@ -165,7 +172,23 @@ export function spawnP(
   pathExists = existsSync,
 ) {
   const resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
-  if (!resolved) return Promise.resolve({ status: -1 });
+  if (!resolved) {
+    // resolveSpawnCommand only returns null for the npx-on-win32 case where
+    // npm_execpath isn't set (e.g. audio.mjs invoked directly with `node`, not
+    // through npm/npx). Without this, every call silently returns status:-1 and
+    // stdio:"ignore" hides why — callers just report "TTS failed - omitted" for
+    // every line. Surface the real reason once so it's diagnosable.
+    if (!_warnedNpxResolution) {
+      _warnedNpxResolution = true;
+      console.error(
+        `[hyperframes-media] Cannot run "${cmd}" on Windows: npm_execpath is not set, so the ` +
+          `npx JS CLI can't be located. This happens when this script is run directly with ` +
+          `\`node\` instead of through npm/npx. Every "${cmd}" call is being skipped. ` +
+          `Fix: run via \`npx\`/\`npm run\`, or export npm_execpath pointing at your npm-cli.js.`,
+      );
+    }
+    return Promise.resolve({ status: -1 });
+  }
   return new Promise((resolve) => {
     const p = spawnFn(resolved.cmd, resolved.args, resolved.opts);
     p.on("exit", (code) => resolve({ status: code ?? -1 }));
