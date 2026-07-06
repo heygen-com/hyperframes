@@ -154,35 +154,61 @@ window.__contrastAudit = async function (imgBase64, time) {
     var fg = parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
 
-    // Sample 4px ring outside bbox for background color
-    var rr = [],
-      gg = [],
-      bb = [];
-    var x0 = Math.max(0, Math.floor(rect.x) - 4);
-    var x1 = Math.min(w - 1, Math.ceil(rect.x + rect.width) + 4);
-    var y0 = Math.max(0, Math.floor(rect.y) - 4);
-    var y1 = Math.min(h - 1, Math.ceil(rect.y + rect.height) + 4);
-    var sample = function (sx, sy) {
-      if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
-      var idx = (sy * w + sx) * 4;
-      rr.push(px[idx]);
-      gg.push(px[idx + 1]);
-      bb.push(px[idx + 2]);
-    };
-    for (var x = x0; x <= x1; x++) {
-      sample(x, y0);
-      sample(x, y1);
-    }
-    for (var y = y0; y <= y1; y++) {
-      sample(x0, y);
-      sample(x1, y);
+    // Prefer an opaque own/ancestor background-color over the pixel ring. A
+    // caption/CTA that paints its OWN solid background (a pill, a button, a
+    // card) composites its text over THAT color, not over whatever surrounds
+    // the box. Sampling the ring there measured the text against the scene
+    // behind the element (often a dark photo) and reported false ~1:1 warnings
+    // for perfectly readable CTAs. Walk up until a fully-opaque background-color
+    // is found; stop and defer to the ring on the first background-image (text
+    // over real pixels). Keep this in sync with commands/contrast-bg.ts.
+    var ownBg = null;
+    for (var bn = el; bn && bn !== document.body; bn = bn.parentElement) {
+      var bcs = getComputedStyle(bn);
+      if (bcs.backgroundImage && bcs.backgroundImage !== "none") break;
+      var bc = parseColor(bcs.backgroundColor);
+      if (bc[3] >= 0.999) {
+        ownBg = [bc[0], bc[1], bc[2]];
+        break;
+      }
     }
 
-    if (rr.length === 0) continue;
+    var bgR, bgG, bgB;
+    if (ownBg) {
+      bgR = ownBg[0];
+      bgG = ownBg[1];
+      bgB = ownBg[2];
+    } else {
+      // Sample 4px ring outside bbox for background color
+      var rr = [],
+        gg = [],
+        bb = [];
+      var x0 = Math.max(0, Math.floor(rect.x) - 4);
+      var x1 = Math.min(w - 1, Math.ceil(rect.x + rect.width) + 4);
+      var y0 = Math.max(0, Math.floor(rect.y) - 4);
+      var y1 = Math.min(h - 1, Math.ceil(rect.y + rect.height) + 4);
+      var sample = function (sx, sy) {
+        if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
+        var idx = (sy * w + sx) * 4;
+        rr.push(px[idx]);
+        gg.push(px[idx + 1]);
+        bb.push(px[idx + 2]);
+      };
+      for (var x = x0; x <= x1; x++) {
+        sample(x, y0);
+        sample(x, y1);
+      }
+      for (var y = y0; y <= y1; y++) {
+        sample(x0, y);
+        sample(x1, y);
+      }
 
-    var bgR = median(rr),
-      bgG = median(gg),
+      if (rr.length === 0) continue;
+
+      bgR = median(rr);
+      bgG = median(gg);
       bgB = median(bb);
+    }
 
     // Composite foreground alpha over measured background
     var compR = Math.round(fg[0] * fg[3] + bgR * (1 - fg[3]));
