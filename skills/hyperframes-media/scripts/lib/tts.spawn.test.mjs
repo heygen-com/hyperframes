@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { resolveNpxCliFromNpmExecPath, resolveSpawnCommand, spawnP } from "./tts.mjs";
+import {
+  resolveNpxCliFromNpmExecPath,
+  resolveSpawnCommand,
+  spawnP,
+  _resetNpxResolutionWarnForTests,
+} from "./tts.mjs";
 
 // Regression: on Windows, npx resolves to npx.cmd, which spawn() cannot exec
 // without shell:true — it fails ENOENT, silently swallowed as ok:false by the
@@ -94,4 +99,45 @@ test("spawnP does not enable shell for non-npx commands even on win32", async ()
   assert.equal(captured[0].cmd, "python3");
   assert.deepEqual(captured[0].args, ["-c", "pass"]);
   assert.equal(captured[0].opts.shell, undefined);
+});
+
+// Regression: win32 + npx with npm_execpath unset can't locate the npx JS CLI,
+// so resolveSpawnCommand returns null and spawnP short-circuits. Previously it
+// returned {status:-1} silently — every TTS line just dropped as "TTS failed -
+// omitted" with no hint. Now it must surface a clear one-time diagnostic naming
+// npm_execpath, while still returning {status:-1} without spawning anything.
+test("spawnP surfaces a clear diagnostic (once) when npx can't be resolved on win32", async () => {
+  _resetNpxResolutionWarnForTests();
+  const errors = [];
+  const originalError = console.error;
+  console.error = (msg) => errors.push(msg);
+  const captured = [];
+  const emptyEnv = {}; // no npm_execpath
+  try {
+    const r1 = await spawnP(
+      "npx",
+      ["hyperframes", "tts"],
+      {},
+      "win32",
+      fakeSpawn(captured),
+      emptyEnv,
+      () => false,
+    );
+    const r2 = await spawnP(
+      "npx",
+      ["hyperframes", "tts"],
+      {},
+      "win32",
+      fakeSpawn(captured),
+      emptyEnv,
+      () => false,
+    );
+    assert.equal(r1.status, -1);
+    assert.equal(r2.status, -1);
+    assert.equal(captured.length, 0, "must not spawn anything when resolution fails");
+    assert.equal(errors.length, 1, "diagnostic is emitted once for a batch, not per line");
+    assert.match(errors[0], /npm_execpath/);
+  } finally {
+    console.error = originalError;
+  }
 });
