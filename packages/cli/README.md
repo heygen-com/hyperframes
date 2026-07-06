@@ -40,10 +40,13 @@ npx hyperframes preview --port 4567
 
 ### `render`
 
-Render a composition to MP4:
+Render a composition to MP4. Run from the project directory; the positional
+argument is the project directory (not a file), so render the project's
+`index.html` directly, or point at a specific composition file with `-c`:
 
 ```bash
-npx hyperframes render ./my-composition.html -o output.mp4
+npx hyperframes render -o output.mp4
+npx hyperframes render -c ./my-composition.html -o output.mp4
 ```
 
 ### `lint`
