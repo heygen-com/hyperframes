@@ -199,8 +199,20 @@ async function runWorkerEncodePipelineLoop(
   //    agreement measures ≥45, damage <30) → verification error.
   // A DrawElementVerificationError propagates to the orchestrator, which
   // re-renders the whole job via the screenshot path (never-wrong fallback).
+  // Clamp to a defensible band: below ~10dB even severe damage passes (the
+  // check stops meaning anything); above ~60dB natural DE-vs-screenshot
+  // encoder differences (~45dB+) would force a screenshot fallback on every
+  // verified render. Out-of-range or malformed values fall back to 32.
   const verifyMinDbRaw = Number(process.env.HF_DE_VERIFY_MIN_DB ?? "32");
-  const verifyMinDb = Number.isFinite(verifyMinDbRaw) ? verifyMinDbRaw : 32;
+  const verifyMinDb =
+    Number.isFinite(verifyMinDbRaw) && verifyMinDbRaw >= 10 && verifyMinDbRaw <= 60
+      ? verifyMinDbRaw
+      : 32;
+  if (process.env.HF_DE_VERIFY_MIN_DB !== undefined && verifyMinDb !== verifyMinDbRaw) {
+    log.warn("[Render] HF_DE_VERIFY_MIN_DB out of range [10,60]; using 32", {
+      raw: process.env.HF_DE_VERIFY_MIN_DB,
+    });
+  }
   const sizes: number[] = [];
   // Absolute floor lowers once a small frame proves deterministic (dark /
   // low-detail content), so a dark stretch doesn't re-capture every frame.

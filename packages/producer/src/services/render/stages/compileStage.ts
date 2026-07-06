@@ -208,11 +208,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     );
   }
   // Whenever a compile-time gate cleared useDrawElement, restore page-side
-  // compositing to its configured value — resolveConfig turned it off on the
-  // assumption drawElement would run, and leaving it off would silently push
-  // shader transitions onto the slower Node-side blend.
-  if (!cfg.useDrawElement && process.env.HF_PAGE_SIDE_COMPOSITING !== "false") {
+  // compositing — but ONLY when resolveConfig auto-disabled it because
+  // drawElement was going to run. An explicit enablePageSideCompositing:false
+  // from the programmatic API or HF_PAGE_SIDE_COMPOSITING=false never had the
+  // auto-disabled flag set and stays off.
+  if (!cfg.useDrawElement && cfg.pageSideCompositingAutoDisabled) {
     cfg.enablePageSideCompositing = true;
+    cfg.pageSideCompositingAutoDisabled = false;
   }
   const callerForced = cfg.forceScreenshot || (needsAlpha && !cfg.useDrawElement);
   const { forceScreenshot: hintForced } = applyRenderModeHints(callerForced, compiled, log);

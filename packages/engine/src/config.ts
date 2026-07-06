@@ -82,6 +82,13 @@ export interface EngineConfig {
    */
   enableDrawElementWorkerEncode: boolean;
   /**
+   * INTERNAL. Set by resolveConfig when it disabled enablePageSideCompositing
+   * solely because drawElement was on. Lets the producer's compile-time gates
+   * restore page-side compositing without overriding an explicit caller/env
+   * opt-out. Not intended to be set by callers.
+   */
+  pageSideCompositingAutoDisabled?: boolean;
+  /**
    * Low-memory render profile. When `true`, the orchestrator collapses the
    * pipeline to its cheapest shape on memory-constrained hosts: it skips the
    * throwaway auto-worker calibration browser, pins capture to a single
@@ -554,8 +561,13 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   // transitions fall back to the Node-side layered blend rather than silently
   // dropping. This keeps the flag self-consistent and avoids a per-session
   // incompatibility warning on every fast-capture render.
-  if (merged.useDrawElement) {
+  if (merged.useDrawElement && merged.enablePageSideCompositing) {
     merged.enablePageSideCompositing = false;
+    // Record that THIS resolution (not the caller) turned page-side
+    // compositing off, so a later compile-time drawElement gate can restore
+    // it without clobbering an explicit enablePageSideCompositing:false from
+    // the programmatic API or HF_PAGE_SIDE_COMPOSITING=false.
+    merged.pageSideCompositingAutoDisabled = true;
   }
 
   return {

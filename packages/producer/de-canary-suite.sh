@@ -9,7 +9,7 @@
 #              diverting them IS the pass condition)
 #   any      — either outcome passes (known-flaky DE damage: fallback ~2/3 of runs)
 # Exit nonzero on any FAIL. Usage: COMP_ROOT=/tmp/cc-all bash de-canary-suite.sh
-set -u
+set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="${COMP_ROOT:-/tmp/cc-all}"
 OUT="${1:-/tmp/de-canary-suite}"
@@ -35,7 +35,7 @@ echo "$CANARIES" | grep -v '^\s*$' | while read -r pre expect _; do
   dir=$(find "$ROOT/" -maxdepth 1 -type d -name "${pre}*" | head -1)
   if [ -z "$dir" ]; then echo "FAIL $pre: comp not found under $ROOT"; exit 1; fi
   log="$OUT/$pre.log"
-  env $DE_ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun we-render.mjs "$dir" "$OUT/$pre-de.mp4" </dev/null >"$log" 2>&1
+  env $DE_ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun we-render.mjs "$dir" "$OUT/$pre-de.mp4" </dev/null >"$log" 2>&1 || true
   if ! grep -q "RENDER_OK" "$log"; then echo "FAIL $pre: render did not complete (see $log)"; exit 1; fi
   if grep -q "re-rendering via screenshot" "$log"; then verdict=fallback; else verdict=clean; fi
   case "$expect" in
@@ -48,10 +48,11 @@ echo "$CANARIES" | grep -v '^\s*$' | while read -r pre expect _; do
   # DE-vs-screenshot agreement is marginal/intermittent — the check would fail
   # on their intrinsic divergence, not on a regression.
   if [ "$verdict" = clean ] && [ "$expect" != any ]; then
-    env $SS_ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun we-render.mjs "$dir" "$OUT/$pre-ss.mp4" </dev/null >"$OUT/$pre-ss.log" 2>&1
+    env $SS_ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 bun we-render.mjs "$dir" "$OUT/$pre-ss.mp4" </dev/null >"$OUT/$pre-ss.log" 2>&1 || true
     if ! grep -q "RENDER_OK" "$OUT/$pre-ss.log"; then echo "FAIL $pre: screenshot arm failed"; exit 1; fi
     db=$(ffmpeg -nostdin -hide_banner -i "$OUT/$pre-de.mp4" -i "$OUT/$pre-ss.mp4" -lavfi psnr -f null - 2>&1 \
-      | grep -oE "average:(inf|[0-9.]+)" | head -1 | cut -d: -f2)
+      | grep -oE "average:(inf|[0-9.]+)" | head -1 | cut -d: -f2 || true)
+    if [ -z "$db" ]; then echo "FAIL $pre: PSNR compare produced no value"; exit 1; fi
     if [ "$db" != "inf" ] && awk -v d="$db" -v m="$MIN_DB" 'BEGIN{exit !(d<m)}'; then
       echo "FAIL $pre: DE-vs-screenshot ${db}dB < ${MIN_DB}dB"; exit 1
     fi

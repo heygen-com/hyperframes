@@ -279,6 +279,15 @@ describe("resolveConfig", () => {
       const config = resolveConfig({ useDrawElement: true, enablePageSideCompositing: true });
       expect(config.useDrawElement).toBe(true);
       expect(config.enablePageSideCompositing).toBe(false);
+      // The auto-disable is recorded so compile-time gates can restore it.
+      expect(config.pageSideCompositingAutoDisabled).toBe(true);
+    });
+
+    it("does NOT mark auto-disabled when the caller explicitly opted out of page-side compositing", () => {
+      const config = resolveConfig({ useDrawElement: true, enablePageSideCompositing: false });
+      expect(config.enablePageSideCompositing).toBe(false);
+      // Explicit caller intent — a compile-time drawElement gate must not restore it.
+      expect(config.pageSideCompositingAutoDisabled).not.toBe(true);
     });
 
     it("leaves page-side compositing on when fast capture is off", () => {
