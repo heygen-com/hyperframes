@@ -2553,6 +2553,38 @@ export async function captureFrameToBufferPipelined(
 }
 
 /**
+ * Verification-grade single-frame recapture for the producer's blank-frame
+ * guard. Unlike {@link captureFrameToBufferPipelined} it takes NO shortcuts
+ * and has NO fallbacks, both of which can return the WRONG FRAME's pixels at
+ * drain time:
+ *  - the static-dedup fast path returns session.lastEncodeResult, which by
+ *    drain time can hold a frame several indices AHEAD of the suspect frame;
+ *  - the per-frame "No cached paint record" screenshot fallback captures the
+ *    injected canvas — i.e. the LAST drawn drawElement frame, not this one.
+ * Any failure here throws; the caller treats that as verification failure and
+ * falls back the whole render (correct, never wrong-frame).
+ */
+export async function recaptureDrawElementFrameForVerify(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+): Promise<Buffer> {
+  const { page, options } = session;
+  if (!session.isInitialized) {
+    throw new Error("[FrameCapture] Session not initialized");
+  }
+  await prepareFrameForCapture(session, frameIndex, time);
+  const { encodeResult } = await produceDrawElementFrame(
+    page,
+    options.width,
+    options.height,
+    options.quality ?? 80,
+    true,
+  );
+  return encodeResult;
+}
+
+/**
  * P6 prototype (HF_DE_BATCH): capture N consecutive frames in one CDP
  * round-trip via {@link produceDrawElementFrameBatch}. The caller pre-plans the
  * batch (consecutive frame indices, none static-dedup'd, none opt-in
@@ -2803,38 +2835,68 @@ async function captureDeVerificationFrames(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  const k = Math.max(0, Math.min(8, Math.floor(Number(process.env.HF_DE_VERIFY ?? "4")) || 0));
+  const kRaw = Number(process.env.HF_DE_VERIFY ?? "4");
+  const k = Number.isFinite(kRaw) ? Math.max(0, Math.min(8, Math.floor(kRaw))) : 4;
   if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
   if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
   const fps = fpsToNumber(session.options.fps);
-  const duration = await page.evaluate(
-    () => (window as unknown as { __hf?: { duration?: number } }).__hf?.duration ?? 0,
-  );
+  // Prefer the producer-resolved duration (the range that will actually be
+  // drained). The page's raw __hf.duration can exceed it — timelines outrun
+  // their data-duration, and infinite-repeat GSAP reports a huge sentinel —
+  // and indices derived from it would never be drained, silently disarming
+  // verification for exactly the comps that need it.
+  const duration =
+    session.options.compositionDurationSeconds ??
+    (await page.evaluate(
+      () => (window as unknown as { __hf?: { duration?: number } }).__hf?.duration ?? 0,
+    ));
   const totalFrames = Math.floor(duration * fps);
   if (totalFrames < 10) return;
   if (duration > 3600) {
-    // Implausible __hf.duration (e.g. infinite-repeat GSAP timelines report a
-    // huge sentinel; the producer renders the data-duration clamp instead).
-    // Fraction-based indices computed from it would never be drained.
-    // ponytail: skip verification here; threading the producer-resolved
-    // duration into CaptureOptions is the upgrade path if coverage matters.
+    // No producer duration and the page reports an implausible one.
     logInitPhase(`drawElement self-verify skipped: implausible duration ${duration}s`);
     return;
   }
+  // Ground truth must show what the real capture paths would show: <video>
+  // pixels come from the onBeforeCapture injector. When this session has no
+  // injector (e.g. a probe session initialized before the render wires one
+  // up) a video comp's truth would screenshot black boxes and every sample
+  // would false-positive into the screenshot fallback — skip instead.
+  if (!session.onBeforeCapture) {
+    const hasVideos = await page.evaluate(() => document.querySelector("video") !== null);
+    if (hasVideos) {
+      logInitPhase("drawElement self-verify skipped: video comp without frame injector");
+      return;
+    }
+  }
   const boundary = await computeClipBoundaryFrames(page, fps);
-  const fractions = [0.15, 0.4, 0.65, 0.9, 0.25, 0.55, 0.8, 0.05].slice(0, k);
-  const frames = new Map<number, Buffer>();
-  for (const f of fractions) {
-    let idx = Math.min(totalFrames - 1, Math.max(1, Math.round(totalFrames * f)));
-    // Nudge off clip-cut boundaries (±1-frame desync is legitimate there).
-    let guard = 0;
-    while (boundary.has(idx) && guard++ < 6) idx = Math.min(totalFrames - 1, idx + 2);
-    if (frames.has(idx)) continue;
-    const t = quantizeTimeToFrame(idx / fps, fps);
+  // Ascending order, and seek frame 0 first: GSAP .from()/overlapping tweens
+  // lazily record their start values on FIRST seek — scrubbing mid-timeline
+  // before the render's frame-0 seek corrupts those caches for the whole
+  // render (the detectCssEffectRisk lesson), and because DE frames and truth
+  // would share the corruption, PSNR would pass on the damaged output.
+  // Seeking 0 → ascending reproduces the render's own seek order.
+  const fractions = Array.from({ length: k }, (_, i) => (i + 1) / (k + 1));
+  const seekTo = async (t: number): Promise<void> => {
     await page.evaluate((tt: number) => {
       const hf = (window as unknown as { __hf?: { seek?: (x: number) => void } }).__hf;
       if (hf && typeof hf.seek === "function") hf.seek(tt);
     }, t);
+  };
+  await seekTo(quantizeTimeToFrame(0, fps));
+  // Force one frame so lazy tween initialization paints at t=0 state.
+  await pageScreenshotCapture(page, session.options);
+  const frames = new Map<number, Buffer>();
+  for (const f of fractions) {
+    let idx = Math.min(totalFrames - 1, Math.max(1, Math.round(totalFrames * f)));
+    // Nudge off clip-cut boundaries (±1-frame desync is legitimate there);
+    // if the nudge saturates on a boundary index, skip the sample entirely.
+    let guard = 0;
+    while (boundary.has(idx) && guard++ < 6) idx = Math.min(totalFrames - 1, idx + 2);
+    if (boundary.has(idx)) continue;
+    if (frames.has(idx)) continue;
+    const t = quantizeTimeToFrame(idx / fps, fps);
+    await seekTo(t);
     // Video frame injection (same hook the real capture paths run) — without
     // it, <video> elements screenshot black and every video comp would
     // false-positive into the screenshot fallback.
@@ -2849,6 +2911,9 @@ async function captureDeVerificationFrames(
     await pageScreenshotCapture(page, session.options);
     frames.set(idx, await pageScreenshotCapture(page, session.options));
   }
+  // Leave the page at frame 0 so the render's first seek starts from the
+  // same state as an unverified render.
+  await seekTo(quantizeTimeToFrame(0, fps));
   session.deVerifyFrames = frames;
   logInitPhase(
     `drawElement self-verify armed: ${frames.size} ground-truth frame(s) @ [${[...frames.keys()].join(", ")}] of ${totalFrames}`,

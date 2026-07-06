@@ -520,10 +520,13 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   };
 
   // Default-on drawElement is clamped to hosts where it can actually engage
-  // (macOS + a hardware-GPU browser; SwiftShader drops transparent sub-layers —
-  // crbug 521434899). Without the clamp, the default would needlessly disable
-  // page-side shader compositing (below) on Linux/Docker and macOS-software
-  // hosts where DE never runs. An EXPLICIT opt-in (env or caller override)
+  // (macOS with a non-software-GPU browser; SwiftShader drops transparent
+  // sub-layers — crbug 521434899). "auto" passes the clamp: the stock CLI
+  // resolves GPU mode to auto, which probes to hardware on real Macs — and if
+  // it resolves to software after all, the SwiftShader init-time gate still
+  // routes the session to the screenshot baseline. Without the clamp, the
+  // default would needlessly disable page-side shader compositing (below) on
+  // Linux/Docker hosts where DE never runs. An EXPLICIT opt-in (env or caller override)
   // skips the clamp and keeps the old semantics — attempt DE, let the
   // init-time gates route away — which debugging relies on.
   const explicitDrawElementOptIn =
@@ -531,8 +534,16 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   if (
     merged.useDrawElement &&
     !explicitDrawElementOptIn &&
-    !(process.platform === "darwin" && merged.browserGpuMode === "hardware")
+    !(process.platform === "darwin" && merged.browserGpuMode !== "software")
   ) {
+    merged.useDrawElement = false;
+  }
+  // The runtime self-verification net lives in the worker-encode drain — the
+  // serial drawElement path has only the blank guard. Default-on drawElement
+  // therefore requires worker-encode; disabling HF_DE_WORKER_ENCODE without an
+  // explicit drawElement opt-in falls back to the screenshot baseline rather
+  // than shipping unverified drawElement frames.
+  if (merged.useDrawElement && !explicitDrawElementOptIn && !merged.enableDrawElementWorkerEncode) {
     merged.useDrawElement = false;
   }
 

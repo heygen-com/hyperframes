@@ -1444,6 +1444,9 @@ export async function executeRenderJob(
       ...captureOptions,
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
+      // Probe-resolved duration: drawElement self-verification derives its
+      // sample frame indices from this so they land inside the drained range.
+      compositionDurationSeconds: job.duration,
     });
     // The URL-served frame path (PR #596) hands each injected `<img>` a
     // fileServer URL instead of a base64 data URI, on the theory that
@@ -1570,6 +1573,29 @@ export async function executeRenderJob(
       durationSeconds: job.duration,
       maxDurationSeconds: cfg.streamingEncodeMaxDurationSeconds,
     });
+    // Default-on drawElement is only safe where the runtime self-verification
+    // net actually runs: the single-worker streaming worker-encode drain. The
+    // disk path (png-sequence / over the streaming duration cap) and parallel
+    // capture ship frames no drain verifies — route those renders to the
+    // screenshot baseline unless drawElement was explicitly opted into.
+    if (
+      cfg.useDrawElement &&
+      process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE !== "true" &&
+      (!useStreamingEncode || workerCount > 1)
+    ) {
+      cfg.useDrawElement = false;
+      log.info(
+        "[Render] Fast capture: default-on drawElement disabled for this render — " +
+          (workerCount > 1 ? "parallel capture" : "the disk capture path") +
+          " has no runtime self-verification. Set PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true to override.",
+      );
+      // The probe session already initialized in drawElement mode (canvas
+      // injected); it must not be reused by the unverified path.
+      if (probeSession && probeSession.captureMode === "drawelement") {
+        await closeCaptureSession(probeSession);
+        probeSession = null;
+      }
+    }
 
     // `captureAttempts` is declared at function scope above (shared with the
     // catch block). Static-dedup perf, appended per sequential session / per
@@ -1825,6 +1851,9 @@ export async function executeRenderJob(
           });
           probeSession = null;
           streamingRes = await invokeStreaming();
+          // The first attempt's error marked the phase failed; the retry
+          // recovered it — don't brand the render as failed in telemetry.
+          observability.clearFailure("capture_streaming");
         }
         const captureFrameMs = Date.now() - captureFrameStart;
         if (streamingRes.success) {

@@ -64,6 +64,7 @@ import {
   executeParallelCapture,
   getCapturePerfSummary,
   getFfmpegBinary,
+  recaptureDrawElementFrameForVerify,
   initializeSession,
   prepareCaptureSessionForReuse,
   spawnStreamingEncoder,
@@ -184,17 +185,22 @@ async function runWorkerEncodePipelineLoop(
   // evaluates (see the batch NOTE below), so a re-seek + recapture here is
   // safe — nothing else is mutating page time.
   //
-  // 1. Blank guard (worker-path port of the serial-path guard in
+  // 1. Blank guard (worker-path analogue of the serial-path guard in
   //    frameCapture): drawElement intermittently returns an anomalously small
   //    blank frame with no throw. A frame far below the rolling-median byte
-  //    size is re-captured once; still blank → verification error.
+  //    size is re-captured once (verification-grade recapture — no dedup
+  //    shortcut, no screenshot fallback); still blank → verification error.
+  //    The floor only arms after 12 drained frames — early frames are covered
+  //    by the PSNR verify samples rather than the size heuristic, which has
+  //    no stable median yet.
   // 2. Self-verification: at K sampled indices, compare the DE frame against
   //    its pre-injection screenshot ground truth (session.deVerifyFrames).
   //    PSNR below HF_DE_VERIFY_MIN_DB (default 32; natural DE-vs-screenshot
   //    agreement measures ≥45, damage <30) → verification error.
   // A DrawElementVerificationError propagates to the orchestrator, which
   // re-renders the whole job via the screenshot path (never-wrong fallback).
-  const verifyMinDb = Number(process.env.HF_DE_VERIFY_MIN_DB ?? "32");
+  const verifyMinDbRaw = Number(process.env.HF_DE_VERIFY_MIN_DB ?? "32");
+  const verifyMinDb = Number.isFinite(verifyMinDbRaw) ? verifyMinDbRaw : 32;
   const sizes: number[] = [];
   // Absolute floor lowers once a small frame proves deterministic (dark /
   // low-detail content), so a dark stretch doesn't re-capture every frame.
@@ -218,13 +224,20 @@ async function runWorkerEncodePipelineLoop(
           bytes: buf.length,
           floor: Math.round(floor),
         });
-        // Save/restore the static-dedup anchor: the re-capture would otherwise
-        // overwrite session.lastEncodeResult with this OLD frame, and a later
-        // static frame would reuse the wrong pixels.
-        const savedAnchor = session.lastEncodeResult;
-        const retry = await captureFrameToBufferPipelined(session, idx, frameTime(idx));
-        const retryBuf = await retry.encodeResult;
-        session.lastEncodeResult = savedAnchor;
+        // Verification-grade recapture: NOT captureFrameToBufferPipelined,
+        // whose static-dedup fast path and "No cached paint record" screenshot
+        // fallback can both return a DIFFERENT frame's pixels at drain time
+        // (dedup anchor runs ahead of the drain; the fallback screenshots the
+        // injected canvas = last drawn DE frame). Any recapture failure is a
+        // verification failure — fall back the whole render.
+        let retryBuf: Buffer;
+        try {
+          retryBuf = await recaptureDrawElementFrameForVerify(session, idx, frameTime(idx));
+        } catch (err) {
+          throw new DrawElementVerificationError(
+            `blank drawElement frame ${idx}: ${buf.length}B < floor ${Math.round(floor)}B and recapture failed (${err instanceof Error ? err.message : String(err)})`,
+          );
+        }
         if (retryBuf.equals(buf)) {
           // Byte-identical on re-capture ⇒ deterministic content, not a
           // transient blank drop (those are intermittent by nature) — the
@@ -249,7 +262,18 @@ async function runWorkerEncodePipelineLoop(
     }
     const truth = session.deVerifyFrames?.get(idx);
     if (truth) {
-      const db = await psnrDb(buf, truth);
+      let db: number;
+      try {
+        db = await psnrDb(buf, truth);
+      } catch (err) {
+        // Infrastructure failure (ffmpeg spawn/parse/tmpdir), not evidence of
+        // damage — skip this sample rather than failing or falling back.
+        log.warn("[Render] drawElement self-verify sample skipped (psnr infrastructure)", {
+          frame: idx,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return buf;
+      }
       if (db < verifyMinDb) {
         // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
         const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
@@ -298,7 +322,8 @@ async function runWorkerEncodePipelineLoop(
   // order-dependent) and at opt-in boundary-screenshot frames; those go through
   // the per-frame path unchanged. onBeforeCapture (video frame injection) needs
   // a node-side hook per frame → no batching. Kill switch: HF_DE_BATCH=0.
-  const batchN = Math.floor(Number(process.env.HF_DE_BATCH ?? "4"));
+  const batchNRaw = Number(process.env.HF_DE_BATCH ?? "4");
+  const batchN = Number.isFinite(batchNRaw) ? Math.floor(batchNRaw) : 4;
   const drainBatch = async (batch: Array<{ idx: number; encodeResult: Promise<Buffer> }>) => {
     for (const item of batch) {
       assertNotAborted();

@@ -86,6 +86,7 @@ export {
   captureFramesBatchPipelined,
   DrawElementVerificationError,
   isDrawElementVerificationError,
+  recaptureDrawElementFrameForVerify,
   writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,

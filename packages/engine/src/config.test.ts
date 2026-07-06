@@ -223,6 +223,9 @@ describe("resolveConfig", () => {
 
   describe("useDrawElement (PRODUCER_EXPERIMENTAL_FAST_CAPTURE)", () => {
     it("default is clamped off on software-GPU hosts (page-side compositing preserved)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
       const config = resolveConfig();
       expect(config.useDrawElement).toBe(false);
       expect(config.enablePageSideCompositing).toBe(true);
@@ -230,11 +233,30 @@ describe("resolveConfig", () => {
 
     it("default engages on macOS with a hardware-GPU browser", () => {
       setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
       const config = resolveConfig();
       expect(config.useDrawElement).toBe(process.platform === "darwin");
     });
 
+    it("default engages on macOS with auto GPU mode (the stock CLI path)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "auto");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(process.platform === "darwin");
+    });
+
+    it("default requires worker-encode (the verified drain)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      setEnv("HF_DE_WORKER_ENCODE", "false");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
+    });
+
     it("explicit env opt-in skips the platform clamp", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
       setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
       const config = resolveConfig();
       expect(config.useDrawElement).toBe(true);

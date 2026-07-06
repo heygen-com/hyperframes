@@ -308,6 +308,13 @@ export class RenderObservabilityRecorder {
     return this.failedPhase !== undefined;
   }
 
+  /** A phase failure that was subsequently recovered (e.g. the drawElement
+   * self-verify fallback re-rendering via screenshot) should not brand the
+   * whole render as failed in the summary. */
+  clearFailure(phase: string): void {
+    if (this.failedPhase === phase) this.failedPhase = undefined;
+  }
+
   private record(event: RenderObservationEvent): RenderObservationEvent {
     this.eventCount++;
     const eventWithJob = { ...event, renderJobId: this.input.renderJobId };

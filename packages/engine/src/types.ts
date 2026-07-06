@@ -83,6 +83,15 @@ export interface CaptureOptions {
   width: number;
   height: number;
   /**
+   * Producer-resolved composition duration (seconds) — the data-duration
+   * clamp actually rendered, which can differ from the page's raw
+   * `__hf.duration` (infinite-repeat GSAP timelines report a huge sentinel;
+   * timelines can outrun their declared duration). Consumers that derive
+   * frame indices meant to be drained by the producer (drawElement
+   * self-verification) MUST prefer this over `__hf.duration`.
+   */
+  compositionDurationSeconds?: number;
+  /**
    * Frame rate as an exact rational. Integer fps is `{ num: 30, den: 1 }`;
    * NTSC is `{ num: 30000, den: 1001 }`. Captures are scheduled by the
    * decimal interval (1000 * den / num ms) but FFmpeg arg builders emit the

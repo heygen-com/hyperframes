@@ -13,10 +13,6 @@ const job = createRenderJob({
   workers: Math.max(1, Number(process.env.WORKERS || "1")),
   useGpu: false,
   hdrMode: "force-sdr",
-  // ponytail: thread the fast-capture flags the env sets (createRenderJob's
-  // explicit config otherwise defaults these false, so env was being ignored).
-  useDrawElement: process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true",
-  enableDrawElementWorkerEncode: process.env.HF_DE_WORKER_ENCODE === "true",
 });
 const __t = Date.now();
 await executeRenderJob(job, dir, out);
