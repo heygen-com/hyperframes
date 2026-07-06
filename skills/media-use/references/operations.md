@@ -77,6 +77,9 @@ engine directly.
 ```bash
 # install once: uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx
 node <SKILL_DIR>/scripts/transcribe.mjs --input talk.mp4 --out talk.transcribe.json
+
+# equivalently, the hyperframes CLI has Parakeet built in (auto-detects it, whisper fallback):
+npx hyperframes transcribe talk.mp4 --engine parakeet   # or --engine auto (default)
 ```
 
 VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers English +

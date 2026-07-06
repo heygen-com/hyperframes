@@ -38,9 +38,15 @@ export async function localTtsGenerate(intent, ctx) {
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (err) {
-    console.error(
-      `media-use: local TTS (kokoro via \`hyperframes tts\`) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
-    );
+    // `hyperframes tts` prints its "kokoro-onnx not installed" hint to stdout
+    // (clack UI), so read both streams and surface the actionable enable-command
+    // rather than a bare "Command failed": otherwise resolve silently falls
+    // through to the PAID HeyGen TTS upsell when free local voice was one pip away.
+    const out = `${err.stdout?.toString() ?? ""}${err.stderr?.toString() ?? ""}`.trim();
+    const hint = /not installed|pip install kokoro/i.test(out)
+      ? "install for free on-device voice: pip install kokoro-onnx soundfile (or set HYPERFRAMES_PYTHON to a venv that has it)"
+      : out.slice(-200) || err.message;
+    console.error(`media-use: local voice not enabled (kokoro). ${hint}`);
     return null;
   }
   if (!existsSync(outPath) || statSync(outPath).size === 0) return null;
