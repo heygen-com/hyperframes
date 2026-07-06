@@ -320,6 +320,32 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     }
   });
 
+  /**
+   * Pin hf-ids to the RAW sub-comp file before the build pipeline mutates
+   * attributes (rewriteRelativePaths etc.) — minting is content-keyed over
+   * attrs, so stamping only AFTER the rewrite mints preview-only ids that
+   * exist nowhere in the source. Pinned ids ride through the rewrite
+   * unchanged, keeping the served DOM, the disk file, and the studio SDK
+   * session in one id space. Mirrors the main-preview route's
+   * persistHfIdsIfNeeded call.
+   *
+   * Gated to composition files: the wildcard route serves any project path,
+   * and stamping a non-HTML file (SVG, etc.) would corrupt it on disk.
+   *
+   * Returns the stamped content to thread into the build (so served ids match
+   * the mint even when the disk write is skipped — read-only fs, TOCTOU
+   * guard), undefined for non-HTML paths, or null when the file vanished
+   * between the caller's stat and the read here.
+   */
+  function pinSubCompHfIds(compFile: string, compPath: string): string | undefined | null {
+    if (!/\.html?$/i.test(compPath)) return undefined;
+    try {
+      return persistHfIdsIfNeeded(compFile, readFileSync(compFile, "utf-8"));
+    } catch {
+      return null;
+    }
+  }
+
   // Sub-composition preview
   api.get("/projects/:id/preview/comp/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
@@ -334,22 +360,26 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       return c.text("not found", 404);
     }
 
-    const etag = `"comp:${compPath}:${signature}"`;
+    // "v2" salts the etag for the hf-id-pinning change below: a client holding
+    // a pre-pin cached response (preview-only ids, unstamped disk file) must
+    // not revalidate to a 304 that skips the pin.
+    const etag = `"comp:v2:${compPath}:${signature}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
     }
 
-    // Pin hf-ids to the RAW file before the build pipeline mutates attributes
-    // (rewriteRelativePaths etc.) — minting is content-keyed over attrs, so
-    // stamping only AFTER the rewrite mints preview-only ids that exist nowhere
-    // in the source. Pinned ids ride through the rewrite unchanged, keeping the
-    // served DOM, the disk file, and the studio SDK session in one id space.
-    // Mirrors the main-preview route's persistHfIdsIfNeeded call.
-    persistHfIdsIfNeeded(compFile, readFileSync(compFile, "utf-8"));
+    const stamped = pinSubCompHfIds(compFile, compPath);
+    if (stamped === null) return c.text("not found", 404); // file removed between stat and read
 
     const baseHref = `/api/projects/${project.id}/preview/`;
-    let html = buildSubCompositionHtml(project.dir, compPath, adapter.runtimeUrl, baseHref);
+    let html = buildSubCompositionHtml(
+      project.dir,
+      compPath,
+      adapter.runtimeUrl,
+      baseHref,
+      stamped,
+    );
     if (!html) return c.text("not found", 404);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     return c.html(

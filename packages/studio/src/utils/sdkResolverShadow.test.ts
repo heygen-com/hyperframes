@@ -98,15 +98,21 @@ describe("A. Flag gating", () => {
     expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
   });
 
-  it("A2c: empty session → skips entirely (no event, no attempt)", async () => {
+  it("A2c: empty session → ONE tagged session_empty event per session, no attempt", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     flushAttemptCounts(); // drain counts left by earlier tests
     const session = await openComposition("<!DOCTYPE html><html><body></body></html>");
-    runResolverShadow(session, "hf-anything", [
-      { type: "inline-style", property: "color", value: "blue" },
-    ]);
-    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
-    expect(flushAttemptCounts()).toBeNull();
+    const ops: PatchOperation[] = [{ type: "inline-style", property: "color", value: "blue" }];
+    runResolverShadow(session, "hf-anything", ops);
+    runResolverShadow(session, "hf-other", ops); // repeat edits do not re-emit
+    const events = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow");
+    // The modeling gap stays VISIBLE (silence would blind the tripwire to the
+    // exact class that exposed the template-comp bug) but is distinguishable
+    // and rate-limited to once per session instance.
+    expect(events).toHaveLength(1);
+    expect(events[0]?.props.sessionEmpty).toBe(true);
+    expect(JSON.stringify(events[0]?.props.mismatches)).toContain("session_empty");
+    expect(flushAttemptCounts()).toBeNull(); // can't cut over → not in the denominator
   });
 
   it("A3: shadow depends ONLY on shadow flag, not on STUDIO_SDK_CUTOVER_ENABLED", async () => {
@@ -477,17 +483,18 @@ describe("F. recordResolverParity", () => {
     expect(lastShadow()?.sourceReadFailed).toBeUndefined();
   });
 
-  it("skips entirely (no event, no attempt) when the session has zero elements", async () => {
+  it("empty session → ONE tagged session_empty event, no attempt, no element_not_found", async () => {
     mockFlags.STUDIO_SDK_RESOLVER_SHADOW_ENABLED = true;
     flushAttemptCounts(); // drain any counts left by earlier tests
     const session = await openComposition("<!DOCTYPE html><html><body></body></html>");
     await recordResolverParity(session, "hf-anything", "setTiming");
-    // An empty session structurally cannot resolve ANY id — that's a modeling
-    // gap (empty file, unsupported comp shape), not a resolver divergence, and
-    // it can't cut over either, so it belongs in neither numerator nor
-    // denominator of the soak rate.
-    expect(trackedEvents.filter((e) => e.event === "sdk_resolver_shadow")).toHaveLength(0);
-    expect(flushAttemptCounts()).toBeNull();
+    await recordResolverParity(session, "hf-other", "setTiming"); // no re-emit
+    const events = trackedEvents.filter((e) => e.event === "sdk_resolver_shadow");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.props.sessionEmpty).toBe(true);
+    expect(JSON.stringify(events[0]?.props.mismatches)).toContain("session_empty");
+    expect(JSON.stringify(events[0]?.props.mismatches)).not.toContain("element_not_found");
+    expect(flushAttemptCounts()).toBeNull(); // can't cut over → not in the denominator
   });
 
   it("tags sourceLooseMatchOnly when hfId matches source only as plain text, not a data-hf-id attribute", async () => {

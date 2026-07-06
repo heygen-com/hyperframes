@@ -58,10 +58,14 @@ function querySelectorAllWithTemplates(root: Document | Element, selector: strin
   // querySelectorAll doesn't traverse <template> content in linkedom.
   // Search directly on each template element (NOT .content — removing from
   // .content's DocumentFragment doesn't update the serialized output).
+  // Recurse so NESTED templates resolve too — ensureHfIds and the SDK's
+  // querySelectorAllDeep descend nested composition templates, so ids exist at
+  // any template depth; a one-level search here would silently no-op
+  // server-side ops on those ids while the SDK resolves them.
   const templates = Array.from(root.querySelectorAll("template"));
   for (const tmpl of templates) {
-    const inner = tmpl.querySelectorAll(selector);
-    if (inner.length > 0) return Array.from(inner);
+    const inner = querySelectorAllWithTemplates(tmpl, selector);
+    if (inner.length > 0) return inner;
   }
   return [];
 }

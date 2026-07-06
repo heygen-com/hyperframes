@@ -9,7 +9,7 @@
  */
 
 import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import {
   findRoot,
@@ -103,12 +103,14 @@ export function parsedAnimationIds(script: string): Set<string> {
 }
 
 /**
- * Build the element list for a parent's children, treating <template> as a
- * TRANSPARENT container: its inner elements are spliced in at the template's
- * position, the template itself gets no node. This mirrors the studio preview,
- * which unwraps <template data-composition-id> content into the served body —
- * so template-based sub-comps expose the same elements (and hf-ids) here as
- * the timeline reads from the live preview DOM.
+ * Build the element list for a parent's children, treating a COMPOSITION
+ * template (`<template data-composition-id>`) as a TRANSPARENT container: its
+ * inner elements are spliced in at the template's position, the template
+ * itself gets no node. This mirrors the studio preview, which unwraps exactly
+ * that pattern into the served body — so template-based sub-comps expose the
+ * same elements (and hf-ids) here as the timeline reads from the live preview
+ * DOM. A plain <template> (runtime clone-source) stays fully excluded: its
+ * inert interior is not editable and its content is duplicated at runtime.
  */
 function buildChildren(
   parent: Element,
@@ -118,7 +120,9 @@ function buildChildren(
   const out: HyperFramesElement[] = [];
   for (const child of Array.from(parent.children)) {
     if (child.tagName.toLowerCase() === "template") {
-      out.push(...buildChildren(child, scopePrefix, animationIdsByHfId));
+      if (isCompositionTemplate(child)) {
+        out.push(...buildChildren(child, scopePrefix, animationIdsByHfId));
+      }
       continue;
     }
     const built = buildElement(child, scopePrefix, animationIdsByHfId);

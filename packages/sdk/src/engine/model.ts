@@ -42,16 +42,37 @@ export function escapeHfId(id: string): string {
 }
 
 /**
- * querySelectorAll that also descends into <template> subtrees — linkedom's
- * querySelectorAll does not, so template-based sub-comp content (which the
- * studio preview unwraps into the served body) would be unreachable for
- * resolution/dispatch even though buildRoots models it. Throws like
- * querySelectorAll on an invalid selector.
+ * querySelectorAll that also descends into COMPOSITION `<template>` subtrees
+ * (`data-composition-id` — the pattern the studio preview unwraps) — linkedom's
+ * querySelectorAll does not, so template-based sub-comp content would be
+ * unreachable for resolution/dispatch even though buildRoots models it.
+ *
+ * Implemented as a document-order DOM walk (not qsa + append) so duplicate-id
+ * tiebreaks resolve in TRUE document order — appending template matches after
+ * all top-level matches would make resolveScoped pick a different duplicate
+ * than the preview's unwrapped DOM does. Plain templates (runtime clone
+ * sources) are skipped, matching buildChildren and ensureHfIds.
+ *
+ * Throws like querySelectorAll on an invalid selector (Element.matches).
  */
 export function querySelectorAllDeep(root: Document | Element, selector: string): Element[] {
-  const out = Array.from(root.querySelectorAll(selector));
-  for (const tpl of Array.from(root.querySelectorAll("template"))) {
-    out.push(...querySelectorAllDeep(tpl, selector));
+  const out: Element[] = [];
+  const start: Element | null =
+    "body" in root ? ((root as Document).body ?? null) : (root as Element);
+  const walk = (parent: Element): void => {
+    for (const child of Array.from(parent.children)) {
+      if (child.tagName.toLowerCase() === "template") {
+        if (child.getAttribute("data-composition-id") !== null) walk(child);
+        continue;
+      }
+      if (child.matches(selector)) out.push(child);
+      walk(child);
+    }
+  };
+  if (start) {
+    // When rooted at an Element (scoped-path step), the root itself is the
+    // context, not a candidate — only descendants match, like querySelectorAll.
+    walk(start);
   }
   return out;
 }

@@ -60,4 +60,22 @@ describe("template-based sub-comp compositions", () => {
     expect(a?.start).toBe(0);
     expect(a?.duration).toBe(3);
   });
+
+  it("plain <template> (runtime clone-source) stays fully excluded", async () => {
+    const comp = await openComposition(
+      `<div data-hf-id="hf-stage" data-hf-root>x</div><template><li data-hf-id="hf-clone">item</li></template>`,
+    );
+    expect(comp.getElements().map((e) => e.id)).toEqual(["hf-stage"]);
+    expect(comp.getElement("hf-clone")).toBeNull();
+  });
+
+  it("duplicate hf-id resolves in true document order (template-inner first when it comes first)", async () => {
+    // A comp-template-inner element EARLIER in the document and a top-level
+    // element LATER share an id (copy-paste drift). The preview's unwrapped
+    // DOM resolves the first-in-document copy; the SDK must agree.
+    const comp = await openComposition(
+      `<template data-composition-id="t"><div data-hf-id="hf-dup" data-start="1" data-end="2">tpl</div></template><div data-hf-id="hf-dup" data-start="5" data-end="6">top</div>`,
+    );
+    expect(comp.getElement("hf-dup")?.text).toBe("tpl");
+  });
 });

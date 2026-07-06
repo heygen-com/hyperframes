@@ -133,14 +133,34 @@ describe("ensureHfIds — template-inner minting", () => {
     expect(new Set(rawIds(out)).size).toBe(2);
   });
 
-  it("descends nested templates", () => {
-    const html = doc(`<template><div>a</div><template><span>b</span></template></template>`);
+  it("descends nested composition templates", () => {
+    const html = doc(
+      `<template data-composition-id="a"><div>a</div><template data-composition-id="b"><span>b</span></template></template>`,
+    );
     const out = ensureHfIds(html);
     expect(rawIds(out)).toHaveLength(2); // div + span
   });
 
+  it("does NOT stamp inside a plain <template> (runtime clone-source)", () => {
+    // A plain template's content is cloned N times into the live DOM at
+    // runtime; a persisted inner id would be duplicated across every clone.
+    const html = doc(`<div class="stage">x</div><template><li class="row">item</li></template>`);
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(1); // only the stage div
+    expect(out).not.toMatch(/<li[^>]*data-hf-id/);
+  });
+
+  it("does NOT stamp inside a plain template nested in a composition template", () => {
+    const html = doc(
+      `<template data-composition-id="t"><div>a</div><template><li>clone-src</li></template></template>`,
+    );
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(1); // only the div
+    expect(out).not.toMatch(/<li[^>]*data-hf-id/);
+  });
+
   it("is idempotent for template-inner ids", () => {
-    const once = ensureHfIds(doc(`<template><div>a</div></template>`));
+    const once = ensureHfIds(doc(`<template data-composition-id="t"><div>a</div></template>`));
     expect(ensureHfIds(once)).toBe(once);
   });
 });

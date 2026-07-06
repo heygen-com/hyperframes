@@ -468,6 +468,18 @@ describe("T7 — data-hf-id targeting (spec for R1)", () => {
     expect(html).toContain('data-hf-id="hf-x7k2"');
   });
 
+  it("resolves a data-hf-id inside a NESTED template (matches SDK deep resolution)", () => {
+    // ensureHfIds and the SDK descend nested composition templates, so ids
+    // exist at any template depth; the server-side patch path must resolve
+    // them too or those ops silently no-op while the SDK reports parity.
+    const source = `<template data-composition-id="a"><div>x</div><template data-composition-id="b"><p data-hf-id="hf-deep" data-start="0">deep</p></template></template>`;
+    const { html, matched } = patchElementInHtml(source, { hfId: "hf-deep" }, [
+      { type: "attribute", property: "start", value: "2.5" },
+    ]);
+    expect(matched).toBe(true);
+    expect(html).toContain('data-start="2.5"');
+  });
+
   it("hfId lookup falls through to selector when hfId is not found in the document", () => {
     const source = `<h1 class="headline" style="color: red">Hello</h1>`;
     const { html, matched } = patchElementInHtml(
