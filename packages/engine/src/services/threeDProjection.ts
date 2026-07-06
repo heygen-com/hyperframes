@@ -949,6 +949,7 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
           if (bf && bf !== "none") return "backdrop-filter";
           const f = cs.filter || "";
           if (f && f !== "none" && f.indexOf("blur(") !== -1) return "filter:blur";
+          if (f && f !== "none" && f.indexOf("drop-shadow(") !== -1) return "filter:drop-shadow";
           const mbm = cs.mixBlendMode || "";
           if (mbm && mbm !== "normal") return "mix-blend-mode";
           const an = cs.animationName || "";
@@ -974,6 +975,9 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
             const txt = (rule as CSSRule).cssText || "";
             if (/backdrop-filter\s*:\s*(?!none)/i.test(txt)) return "backdrop-filter";
             if (/(?:^|[^-])filter\s*:[^;{}]*blur\(/i.test(txt)) return "filter:blur";
+            if (/(?:^|[^-])filter\s*:[^;{}]*drop-shadow\(/i.test(txt)) {
+              return "filter:drop-shadow";
+            }
             if (/mix-blend-mode\s*:\s*(?!normal)/i.test(txt)) return "mix-blend-mode";
           }
         }
@@ -998,6 +1002,9 @@ export async function detectCssEffectRisk(page: Page): Promise<string | null> {
               if (kl.includes("blend")) return "mix-blend-mode";
               if (kl.includes("backdrop")) return "backdrop-filter";
               if (kl === "filter" && /blur\(/i.test(String(vars[k] ?? ""))) return "filter:blur";
+              if (kl === "filter" && /drop-shadow\(/i.test(String(vars[k] ?? ""))) {
+                return "filter:drop-shadow";
+              }
             }
           }
           return null;
