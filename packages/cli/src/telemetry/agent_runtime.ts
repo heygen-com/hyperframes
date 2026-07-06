@@ -292,10 +292,47 @@ export interface AgentHints {
 // Anything longer, spaced, or secret-shaped falls outside this and is dropped.
 const SAFE_HINT = /^[a-z0-9_.-]{1,32}$/;
 
+// The slug allowlist alone still accepts SHORT credential-shaped values
+// (AGENT=sk-ant-api03, AGENT=AKIAIOSFODNN7EXAMPLE, AGENT=github_pat_abc), so
+// two extra guards enforce the "never emit a secret" boundary this PR relies on:
+//   1. known credential/token prefixes (compared lowercased), and
+//   2. any unbroken alphanumeric run >= 16 chars — the shape of key bodies,
+//      hex digests, and base64-ish tokens (agent names segment on _/-/. and
+//      keep each run short).
+const CREDENTIAL_PREFIXES = [
+  "sk-",
+  "sk_",
+  "pk-",
+  "pplx-",
+  "ghp_",
+  "gho_",
+  "ghu_",
+  "ghs_",
+  "ghr_",
+  "github_pat_",
+  "glpat-",
+  "gsk_",
+  "xox",
+  "akia",
+  "asia",
+  "aiza",
+  "ya29",
+  "hf_",
+  "r8_",
+];
+const LONG_ALNUM_RUN = /[a-z0-9]{16,}/;
+
+function looksLikeCredential(v: string): boolean {
+  if (CREDENTIAL_PREFIXES.some((p) => v.startsWith(p))) return true;
+  return LONG_ALNUM_RUN.test(v);
+}
+
 function sanitizeHint(value: string | undefined): string | null {
   if (typeof value !== "string") return null;
   const v = value.trim().toLowerCase();
-  return SAFE_HINT.test(v) ? v : null;
+  if (!SAFE_HINT.test(v)) return null;
+  if (looksLikeCredential(v)) return null;
+  return v;
 }
 
 // A key (uppercased) looks like a coding-agent marker. Excludes the two
