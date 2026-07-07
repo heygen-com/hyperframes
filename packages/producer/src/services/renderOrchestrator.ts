@@ -110,7 +110,10 @@ import {
 import { type HdrPerfCollector, type HdrPerfSummary } from "./render/hdrPerf.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
-import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import {
+  runExtractVideosStage,
+  shouldCopyExtractedFrames,
+} from "./render/stages/extractVideosStage.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
 import { runCaptureStage } from "./render/stages/captureStage.js";
 import { runCaptureStreamingStage } from "./render/stages/captureStreamingStage.js";
@@ -1350,6 +1353,9 @@ export async function executeRenderJob(
           composition,
           abortSignal,
           assertNotAborted,
+          // Copy (don't symlink) extracted frames on Windows — symlinkSync throws
+          // EPERM there without Developer Mode/admin, which failed local renders.
+          materializeSymlinks: shouldCopyExtractedFrames(process.platform),
         }),
     );
     const {

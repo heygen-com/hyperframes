@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendAutoDetectedVideoAudio } from "./extractVideosStage.js";
+import { appendAutoDetectedVideoAudio, shouldCopyExtractedFrames } from "./extractVideosStage.js";
 import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
 
 function makeVideo(overrides: Partial<VideoElement> = {}): VideoElement {
@@ -79,5 +79,16 @@ describe("appendAutoDetectedVideoAudio", () => {
     };
     appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
     expect(composition.audios).toHaveLength(1);
+  });
+});
+
+describe("shouldCopyExtractedFrames", () => {
+  it("copies frames on Windows (symlinkSync throws EPERM without Developer Mode)", () => {
+    expect(shouldCopyExtractedFrames("win32")).toBe(true);
+  });
+
+  it("symlinks on macOS and Linux (cheaper, symlinks allowed)", () => {
+    expect(shouldCopyExtractedFrames("darwin")).toBe(false);
+    expect(shouldCopyExtractedFrames("linux")).toBe(false);
   });
 });
