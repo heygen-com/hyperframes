@@ -47,6 +47,23 @@ describe("submitFeedback", () => {
     );
   });
 
+  it("truncates over-long fields to the backend caps", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await submitFeedback({
+      rating: 3,
+      comment: "x".repeat(2500),
+      cliVersion: "v".repeat(200),
+      env: "e".repeat(600),
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.comment).toHaveLength(2000);
+    expect(body.cli_version).toHaveLength(100);
+    expect(body.env).toHaveLength(500);
+  });
+
   it("does not reject when fetch rejects", async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("fetch failed"));
     vi.stubGlobal("fetch", fetchMock);

@@ -165,8 +165,10 @@ export default defineCommand({
     trackRenderFeedback({ rating, comment, doctorSummary });
 
     await flush();
-    await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
+    // Ack first so the user isn't kept waiting on the best-effort forward (which
+    // is bounded to a few seconds and never surfaces an error either way).
     console.log(c.dim("Thanks for the feedback!"));
+    await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
 
     if (args["file-issue"] === true) {
       await fileGithubIssue({
