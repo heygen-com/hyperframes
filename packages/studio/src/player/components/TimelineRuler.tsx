@@ -87,7 +87,13 @@ export const TimelineRuler = memo(function TimelineRuler({
       {/* Ruler */}
       <div
         className="relative overflow-hidden"
-        style={{ height: RULER_H, marginLeft: GUTTER, width: trackContentWidth }}
+        style={{
+          height: RULER_H,
+          marginLeft: GUTTER,
+          width: trackContentWidth,
+          background: theme.gutterBackground,
+          borderBottom: `1px solid ${theme.rulerBorder}`,
+        }}
       >
         {shiftHeld && !rangeSelection && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
@@ -99,23 +105,24 @@ export const TimelineRuler = memo(function TimelineRuler({
 
         {minor.map((t) => (
           <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
-            <div className="w-px h-[3px]" style={{ background: theme.tickMinor }} />
+            <div className="w-px h-2" style={{ background: theme.tickMinor }} />
           </div>
         ))}
 
         {major.map((t) => (
-          <div
-            key={`M-${t}`}
-            className="absolute bottom-0 flex flex-col items-center"
-            style={{ left: t * pps }}
-          >
+          <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
             <span
-              className="text-[9px] font-mono tabular-nums leading-none mb-0.5"
-              style={{ color: theme.tickText }}
+              className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
+              style={{
+                color: theme.tickText,
+                left: 5,
+                top: 5,
+                fontSize: 10,
+              }}
             >
               {formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
             </span>
-            <div className="w-px h-[5px]" style={{ background: theme.tickMajor }} />
+            <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
           </div>
         ))}
       </div>

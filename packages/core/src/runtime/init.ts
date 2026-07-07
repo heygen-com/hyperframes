@@ -1666,6 +1666,8 @@ export function initSandboxRuntimeModular(): void {
     timedClipInFlow = new WeakMap<Element, boolean>();
     timedClipIsLeaf = new WeakMap<Element, boolean>();
   };
+  const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
+  const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
 
   const syncMediaForCurrentState = () => {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
@@ -1753,6 +1755,29 @@ export function initSandboxRuntimeModular(): void {
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
       if (!(rawNode instanceof HTMLElement)) continue;
+
+      if (rawNode.hasAttribute("data-hidden")) {
+        if (!dataHiddenDisplayNodes.has(rawNode)) {
+          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
+          dataHiddenDisplayNodes.add(rawNode);
+        }
+        rawNode.style.display = "none";
+        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+          colorGradingRuntime?.setSourceVisibility(rawNode, false);
+        }
+        continue;
+      }
+
+      if (dataHiddenDisplayNodes.has(rawNode)) {
+        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
+        if (previousDisplay) {
+          rawNode.style.display = previousDisplay;
+        } else {
+          rawNode.style.removeProperty("display");
+        }
+        dataHiddenDisplayRestores.delete(rawNode);
+        dataHiddenDisplayNodes.delete(rawNode);
+      }
 
       let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
       // Descendants must not override a hidden ancestor clip. CSS visibility can

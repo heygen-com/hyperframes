@@ -60,6 +60,7 @@ export interface StudioRightPanelProps {
     kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
+  onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
 }
 
 // fallow-ignore-next-line complexity
@@ -74,6 +75,7 @@ export function StudioRightPanel({
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
+  onToggleElementHidden,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -346,6 +348,7 @@ export function StudioRightPanel({
       multiSelectCount={domEditGroupSelections.length}
       copiedAgentPrompt={copiedAgentPrompt}
       onClearSelection={clearDomSelection}
+      onToggleElementHidden={onToggleElementHidden}
       onUngroup={handleUngroupSelection}
       onSetStyle={handleDomStyleCommit}
       onSetAttribute={handleDomAttributeCommit}

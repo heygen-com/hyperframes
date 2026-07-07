@@ -528,6 +528,7 @@ export function StudioApp() {
                       handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
                       handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
                       handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
+                      handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
                       handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
                       handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                       handleRazorSplit={timelineEditing.handleRazorSplit}
@@ -571,6 +572,7 @@ export function StudioApp() {
                         reloadPreview={reloadPreview}
                         domEditSaveTimestampRef={domEditSaveTimestampRef}
                         recordEdit={editHistory.recordEdit}
+                        onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                       />
                     )}
                   </div>

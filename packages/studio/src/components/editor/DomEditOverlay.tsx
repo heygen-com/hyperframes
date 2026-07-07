@@ -1,12 +1,10 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useMemo, useRef, useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
-import { groupAwareOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
-import { collectDomEditLayerItems } from "./domEditingLayers";
-import { isElementComputedVisible } from "./domEditingElement";
+import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
@@ -21,6 +19,8 @@ import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
+import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { resolveSelectionShapeStyles } from "./domEditOverlayShape";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -75,7 +75,6 @@ interface DomEditOverlayProps {
   onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
 }
-
 // fallow-ignore-next-line complexity
 export const DomEditOverlay = memo(function DomEditOverlay({
   iframeRef,
@@ -103,29 +102,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
-  // fallow-ignore-next-line complexity
-  const selectionShapeStyles = (() => {
-    const fallback = {
-      borderRadius: 8 as string | number,
-      clipPath: undefined as string | undefined,
-    };
-    if (!selection?.element) return fallback;
-    try {
-      const tag = selection.element.tagName.toLowerCase();
-      if (tag === "svg" || tag === "img" || tag === "video" || tag === "canvas") return fallback;
-      const win = selection.element.ownerDocument.defaultView;
-      if (!win) return fallback;
-      const cs = win.getComputedStyle(selection.element);
-      const br = cs.borderRadius;
-      const cp = cs.clipPath;
-      return {
-        borderRadius: br && br !== "0px" ? br : 4,
-        clipPath: cp && cp !== "none" ? cp : undefined,
-      };
-    } catch {
-      return fallback;
-    }
-  })();
+  const selectionShapeStyles = resolveSelectionShapeStyles(selection);
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
@@ -189,8 +166,27 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     scaleX: 1,
     scaleY: 1,
   });
+
+  // Off-canvas element indicators — dashed outlines for elements positioned
+  // outside the composition bounds so users can find them. Kept in sync by
+  // OBSERVING the actual driver of their position: any style/childList mutation
+  // inside the preview document (a seek re-applies transforms, an edit soft-reloads
+  // the script, fonts/media reflow) flips a dirty flag via MutationObserver, which
+  // the RAF loop below coalesces into one recompute per frame. No timer and no list
+  // of "edit events" to keep in sync — the latter is exactly what left the old
+  // reload-counter effect stale after a move (see recomputeOffCanvasIndicators).
+  const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
+  const offCanvasSigRef = useRef("");
+  const offCanvasDirtyRef = useRef(true);
+  const offCanvasObservedDocRef = useRef<Document | null>(null);
+  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
+
   useMountEffect(() => {
     let frame = 0;
+    const markOffCanvasDirty = () => {
+      offCanvasDirtyRef.current = true;
+    };
     // fallow-ignore-next-line complexity
     const update = () => {
       frame = requestAnimationFrame(update);
@@ -220,58 +216,47 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           return prev;
         return { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };
       });
+
+      // (Re)attach the MutationObserver whenever the preview document changes (a
+      // full reload swaps contentDocument; a soft reload keeps the same nodes, so
+      // the observer stays live and the re-seek's style writes fire it).
+      if (doc && doc !== offCanvasObservedDocRef.current) {
+        offCanvasObserverRef.current?.disconnect();
+        const observer = new MutationObserver(markOffCanvasDirty);
+        observer.observe(doc.documentElement, {
+          attributes: true,
+          attributeFilter: ["style", "class", "transform", "width", "height"],
+          childList: true,
+          subtree: true,
+        });
+        offCanvasObserverRef.current = observer;
+        offCanvasObservedDocRef.current = doc;
+        offCanvasDirtyRef.current = true;
+      }
+
+      // Coalesce a burst of mutations into a single recompute against the live DOM.
+      if (offCanvasDirtyRef.current) {
+        offCanvasDirtyRef.current = false;
+        recomputeOffCanvasIndicators(
+          iframe,
+          overlayEl,
+          doc,
+          { left, top, width: iRect.width, height: iRect.height },
+          activeCompositionPathRef.current,
+          offCanvasSigRef,
+          offCanvasElementsRef,
+          setOffCanvasRects,
+        );
+      }
     };
     frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      offCanvasObserverRef.current?.disconnect();
+      offCanvasObserverRef.current = null;
+      offCanvasObservedDocRef.current = null;
+    };
   });
-
-  // Off-canvas element indicators — dashed outlines for elements positioned
-  // outside the composition bounds so users can find them.
-  const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  // fallow-ignore-next-line complexity
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    const overlay = overlayRef.current;
-    if (!iframe || !overlay || compRect.width <= 0) {
-      setOffCanvasRects([]);
-      return;
-    }
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-    const root = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.body;
-    const acp = activeCompositionPath ?? "index.html";
-    const items = collectDomEditLayerItems(root, {
-      activeCompositionPath: acp,
-      isMasterView: !acp || acp === "index.html",
-    });
-    const rects: typeof offCanvasRects = [];
-    const elMap = new Map<string, HTMLElement>();
-    for (const item of items) {
-      if (!isElementComputedVisible(item.element)) continue;
-      // Groups use their members' union (where they actually render), so a group
-      // whose members sit inside the canvas isn't flagged off-canvas by a stale
-      // wrapper box.
-      const r = groupAwareOverlayRect(overlay, iframe, item.element);
-      if (!r) continue;
-      // Any edge crossing the composition border → gray-zone indicator (the
-      // in-canvas portion is clipped away below, so only the sliver shows).
-      const extendsOutsideComp =
-        r.left < compRect.left ||
-        r.left + r.width > compRect.left + compRect.width ||
-        r.top < compRect.top ||
-        r.top + r.height > compRect.top + compRect.height;
-      if (extendsOutsideComp) {
-        rects.push({ key: item.key, left: r.left, top: r.top, width: r.width, height: r.height });
-        elMap.set(item.key, item.element);
-      }
-    }
-    offCanvasElementsRef.current = elMap;
-    setOffCanvasRects(rects);
-    // Positions depend on layout, not selection — the selected-element
-    // suppression is a render-time filter, so selection/groupSelections stay
-    // out of the deps to avoid re-walking geometry on each selection change.
-  }, [iframeRef, compRect, activeCompositionPath]);
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,

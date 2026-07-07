@@ -1,0 +1,109 @@
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { resolveTweenDuration } from "../utils/globalTimeCompiler";
+import type { RuntimeTweenChange, SetPatchProps } from "./gsapRuntimePatch";
+
+/** The shape of an `update-property` mutation a static-set nudge POSTs. */
+interface UpdatePropertyMutation {
+  type: "update-property";
+  animationId: string;
+  property: string;
+  value: number;
+}
+
+/**
+ * Build the `instantPatch` for a value-only `tl.set` from the SAME
+ * `update-property` mutation(s) that are POSTed — so the patch can never carry a
+ * value the source write didn't (one source of truth). Each mutation contributes
+ * its `{property: value}` channel to the patch's props.
+ */
+export function setPatchFromUpdateProperties(
+  selector: string,
+  mutations: UpdatePropertyMutation[],
+  global = false,
+): { selector: string; change: RuntimeTweenChange } {
+  const props: SetPatchProps = {};
+  for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
+  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
+  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
+  return { selector, change: { kind: global ? "global-set" : "set", props } };
+}
+
+/** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
+export function setPatchFromUpdateProperty(
+  selector: string,
+  mutation: UpdatePropertyMutation,
+  global = false,
+): { selector: string; change: RuntimeTweenChange } {
+  return setPatchFromUpdateProperties(selector, [mutation], global);
+}
+
+/**
+ * Find the studio position-hold `set` for a selector — a `tl.set("#el",{x,y})`
+ * with no duration. This is what a static-element nudge writes/updates.
+ */
+function findPositionSetAnimation(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  return (
+    animations.find(
+      (a) =>
+        a.method === "set" &&
+        a.targetSelector === selector &&
+        ("x" in a.properties || "y" in a.properties),
+    ) ?? null
+  );
+}
+
+/**
+ * Find the EXISTING static position HOLD to update for a static-hold drag. Not
+ * just a `set`: a degenerate `tl.to("#el",{duration:0,x,y})` (what
+ * remove-all-keyframes leaves behind) is a held position too, and the next drag
+ * must UPDATE it in place rather than append a second `gsap.set` that fights it
+ * (the duplicate-position-write bug). Only zero-duration holds qualify — a
+ * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
+ * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
+ * A keyframed zero-duration `to` is ALSO a static hold (a drag-path corruption
+ * artifact) and must be recognized so the static commit normalizes it.
+ * Prefers a `set` (the canonical static channel) when both forms exist.
+ */
+export function findExistingPositionWrite(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  const set = findPositionSetAnimation(animations, selector);
+  if (set) return set;
+  return (
+    animations.find(
+      (a) =>
+        a.targetSelector === selector &&
+        a.propertyGroup === "position" &&
+        resolveTweenDuration(a) === 0,
+    ) ?? null
+  );
+}
+
+export function findRotationSetAnimation(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  return (
+    animations.find(
+      (a) => a.method === "set" && a.targetSelector === selector && "rotation" in a.properties,
+    ) ?? null
+  );
+}
+
+export function findSizeSetAnimation(
+  animations: GsapAnimation[],
+  selector: string,
+): GsapAnimation | null {
+  return (
+    animations.find(
+      (a) =>
+        a.method === "set" &&
+        a.targetSelector === selector &&
+        ("width" in a.properties || "height" in a.properties),
+    ) ?? null
+  );
+}

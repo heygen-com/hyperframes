@@ -344,6 +344,7 @@ export function buildMissingCompositionElements(
 
     const trackStr = el.getAttribute("data-track-index");
     const track = trackStr != null ? parseInt(trackStr, 10) : 0;
+    // fallow-ignore-next-line code-duplication
     const compSrc =
       el.getAttribute("data-composition-src") || el.getAttribute("data-composition-file");
     const selector = getTimelineElementSelector(el);

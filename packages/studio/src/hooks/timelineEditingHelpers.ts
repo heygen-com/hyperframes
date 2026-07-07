@@ -41,19 +41,30 @@ export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
+export function findTimelineElementInIframe(
+  iframe: HTMLIFrameElement | null,
+  element: TimelineElement,
+): Element | null {
+  try {
+    const doc = iframe?.contentDocument;
+    if (!doc) return null;
+    return element.domId
+      ? doc.getElementById(element.domId)
+      : element.selector
+        ? (doc.querySelectorAll(element.selector)[element.selectorIndex ?? 0] ?? null)
+        : null;
+  } catch {
+    return null;
+  }
+}
+
 export function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
   attrs: Array<[string, string]>,
 ): void {
   try {
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
-    const el = element.domId
-      ? doc.getElementById(element.domId)
-      : element.selector
-        ? (doc.querySelectorAll(element.selector)[element.selectorIndex ?? 0] ?? null)
-        : null;
+    const el = findTimelineElementInIframe(iframe, element);
     if (!el) return;
     for (const [name, value] of attrs) el.setAttribute(name, value);
   } catch {
@@ -61,6 +72,7 @@ export function patchIframeDomTiming(
   }
 }
 
+// fallow-ignore-next-line complexity
 export function resolveResizePlaybackStart(
   original: string,
   target: PatchTarget,

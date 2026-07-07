@@ -3,6 +3,7 @@
 import React, { act, isValidElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import type { TimelineElement } from "../player/store/playerStore";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
@@ -63,7 +64,10 @@ describe("normalizeCompositionSrc", () => {
 });
 
 describe("useRenderClipContent", () => {
-  function renderClipContent(el: TimelineElement): ReactNode {
+  function renderClipContent(
+    el: TimelineElement,
+    activePreviewUrl: string | null = "/api/projects/my-project/preview",
+  ): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -73,7 +77,7 @@ describe("useRenderClipContent", () => {
       const render = useRenderClipContent({
         projectIdRef: { current: "my-project" },
         compIdToSrc: new Map(),
-        activePreviewUrl: "/api/projects/my-project/preview",
+        activePreviewUrl,
         effectiveTimelineDuration: 12,
       });
       content = render(el, { clip: "#222", label: "#fff" });
@@ -99,5 +103,67 @@ describe("useRenderClipContent", () => {
 
     expect(isValidElement(content)).toBe(true);
     if (isValidElement(content)) expect(content.type).toBe(AudioWaveform);
+  });
+
+  it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
+    const cases: Array<{ content: ReactNode; type: unknown }> = [
+      {
+        content: renderClipContent({
+          id: "voiceover",
+          tag: "audio",
+          start: 1,
+          duration: 4,
+          track: 1,
+          src: "assets/voiceover.mp3",
+        }),
+        type: AudioWaveform,
+      },
+      {
+        content: renderClipContent({
+          id: "nested",
+          tag: "div",
+          start: 0,
+          duration: 4,
+          track: 0,
+          compositionSrc: "compositions/nested.html",
+        }),
+        type: CompositionThumbnail,
+      },
+      {
+        content: renderClipContent(
+          {
+            id: "clip-video",
+            tag: "video",
+            start: 0,
+            duration: 4,
+            track: 0,
+            src: "assets/clip.mp4",
+          },
+          null,
+        ),
+        type: VideoThumbnail,
+      },
+      {
+        content: renderClipContent(
+          {
+            id: "headline",
+            tag: "div",
+            start: 1,
+            duration: 4,
+            track: 0,
+          },
+          null,
+        ),
+        type: CompositionThumbnail,
+      },
+    ];
+
+    for (const item of cases) {
+      expect(isValidElement<{ label: string }>(item.content)).toBe(true);
+      if (isValidElement<{ label: string }>(item.content)) {
+        expect(item.content.type).toBe(item.type);
+        expect(item.content.props.label).toBe("");
+      }
+    }
   });
 });
