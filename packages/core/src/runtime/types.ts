@@ -212,12 +212,16 @@ export type RuntimePlayer = {
   play: () => void;
   pause: () => void;
   seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
-  renderSeek: (timeSeconds: number) => void;
+  renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;
   setPlaybackRate: (rate: number) => void;
   getPlaybackRate: () => number;
+};
+
+export type RuntimeSeekOptions = {
+  suppressEvents?: boolean;
 };
 
 export type RuntimeTimelineLike = {
@@ -236,7 +240,7 @@ export type RuntimeTimelineLike = {
 export type RuntimeDeterministicAdapter = {
   name: string;
   discover: () => void;
-  seek: (ctx: { time: number }) => void;
+  seek: (ctx: { time: number; suppressEvents?: boolean }) => void;
   pause: () => void;
   play?: () => void;
   revert?: () => void;

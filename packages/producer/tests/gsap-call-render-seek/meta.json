@@ -1,0 +1,13 @@
+{
+  "name": "gsap-call-render-seek",
+  "description": "Regression guard for GSAP .call() side effects during producer render seeks. Administrative/static-dedup seeks must not fire callbacks or leave the page playhead poisoned before real frame capture.",
+  "tags": ["regression", "render-compat", "gsap"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

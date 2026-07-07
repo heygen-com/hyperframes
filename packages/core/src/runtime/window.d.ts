@@ -1,4 +1,4 @@
-import type { RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
+import type { RuntimeSeekOptions, RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
 import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
@@ -35,6 +35,8 @@ declare global {
     __hf?: {
       colorGrading?: RuntimeColorGradingApi;
       onSwallowed?: (label: string, err: unknown) => void;
+      seek?: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
+      duration?: number;
     };
     __playerReady?: boolean;
     __renderReady?: boolean;

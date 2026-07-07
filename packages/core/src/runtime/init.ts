@@ -34,7 +34,12 @@ import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../studio-api/helpers/draftMarkers";
-import type { RuntimeDeterministicAdapter, RuntimeJson, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeDeterministicAdapter,
+  RuntimeJson,
+  RuntimeSeekOptions,
+  RuntimeTimelineLike,
+} from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
 
@@ -205,7 +210,7 @@ export function initSandboxRuntimeModular(): void {
     getTime: () => number;
     getDuration: () => number;
     isPlaying: () => boolean;
-    renderSeek: (timeSeconds: number) => void;
+    renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   }): PlayerAPI => {
     const defaultStageZoom: ReturnType<PlayerAPI["getStageZoom"]> = {
       scale: 1,
@@ -1901,7 +1906,7 @@ export function initSandboxRuntimeModular(): void {
       }
       if (method === "discover") {
         try {
-          adapter.seek({ time: timeSeconds });
+          adapter.seek({ time: timeSeconds, suppressEvents: true });
         } catch (err) {
           // ignore seek bootstrap failures
           swallow("runtime.init.site9", err);
@@ -2064,10 +2069,14 @@ export function initSandboxRuntimeModular(): void {
       syncMediaForCurrentState();
     },
     onStatePost: postState,
-    onDeterministicSeek: (timeSeconds) => {
+    onDeterministicSeek: (timeSeconds, options) => {
       for (const adapter of state.deterministicAdapters) {
+        if (adapter.name === "gsap" && state.capturedTimeline) continue;
         try {
-          adapter.seek({ time: Number(timeSeconds) || 0 });
+          adapter.seek({
+            time: Number(timeSeconds) || 0,
+            suppressEvents: options?.suppressEvents,
+          });
         } catch (err) {
           // ignore adapter failure
           swallow("runtime.init.site11", err);
@@ -2351,20 +2360,22 @@ export function initSandboxRuntimeModular(): void {
     timeline: RuntimeTimelineLike,
     timeSeconds: number,
     swallowLabel: string,
+    options?: RuntimeSeekOptions,
   ) => {
     try {
+      const suppressEvents = options?.suppressEvents === true;
       timeline.pause();
       if (typeof timeline.totalTime === "function") {
-        timeline.totalTime(timeSeconds, false);
+        timeline.totalTime(timeSeconds, suppressEvents);
       } else {
-        timeline.seek(timeSeconds, false);
+        timeline.seek(timeSeconds, suppressEvents);
       }
     } catch (err) {
       swallow(swallowLabel, err);
     }
   };
 
-  const seekStandaloneRegisteredTimelines = (timeSeconds: number) => {
+  const seekStandaloneRegisteredTimelines = (timeSeconds: number, options?: RuntimeSeekOptions) => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
     const rootCompositionId =
       resolveRootCompositionElement()?.getAttribute("data-composition-id") ?? null;
@@ -2386,7 +2397,7 @@ export function initSandboxRuntimeModular(): void {
           ? Math.min(duration, timeSeconds - start)
           : timeSeconds - start,
       );
-      seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline");
+      seekRuntimeTimeline(timeline, localTime, "runtime.init.transport.childTimeline", options);
     }
   };
 
@@ -2410,8 +2421,12 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  const seekTimelineAndAdapters = (t: number, opts?: { activateChildren?: boolean }) => {
+  const seekTimelineAndAdapters = (
+    t: number,
+    opts?: { activateChildren?: boolean; suppressEvents?: boolean },
+  ) => {
     const tl = state.capturedTimeline;
+    const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
       // When rendering frame-by-frame (activateChildren=true), ensure all
       // sibling timelines are unpaused before seeking the root. GSAP
@@ -2445,9 +2460,9 @@ export function initSandboxRuntimeModular(): void {
       }
       try {
         if (typeof tl.totalTime === "function") {
-          tl.totalTime(tlSeekTime, false);
+          tl.totalTime(tlSeekTime, suppressEvents);
         } else {
-          tl.seek(tlSeekTime, false);
+          tl.seek(tlSeekTime, suppressEvents);
         }
       } catch (err) {
         swallow("runtime.init.transport.seek", err);
@@ -2460,11 +2475,12 @@ export function initSandboxRuntimeModular(): void {
       // Play/pause propagation for siblings happens in the player.play()
       // and player.pause() overrides via the adapter layer.
     } else {
-      seekStandaloneRegisteredTimelines(t);
+      seekStandaloneRegisteredTimelines(t, opts);
     }
     for (const adapter of state.deterministicAdapters) {
+      if (adapter.name === "gsap" && tl) continue;
       try {
-        adapter.seek({ time: t });
+        adapter.seek({ time: t, suppressEvents });
       } catch (err) {
         swallow("runtime.init.transport.adapter", err);
       }
@@ -2791,7 +2807,7 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
-  player.renderSeek = (timeSeconds: number) => {
+  player.renderSeek = (timeSeconds: number, options?: RuntimeSeekOptions) => {
     const quantized = quantizeTimeToFrame(
       Math.max(0, Number(timeSeconds) || 0),
       state.canonicalFps,
@@ -2801,7 +2817,10 @@ export function initSandboxRuntimeModular(): void {
     state.currentTime = clock.now();
     state.isPlaying = false;
     state.mediaForceSyncNextTick = true;
-    seekTimelineAndAdapters(state.currentTime, { activateChildren: true });
+    seekTimelineAndAdapters(state.currentTime, {
+      activateChildren: true,
+      suppressEvents: options?.suppressEvents,
+    });
     syncMediaForCurrentState();
     colorGrading.redraw();
     postState(true);

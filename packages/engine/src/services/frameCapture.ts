@@ -2067,12 +2067,19 @@ export async function verifyStaticFramesSafe(
     if (last && f === last.b + 1) last.b = f;
     else runs.push({ a: f, b: f });
   }
-  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
+  const seekToFrame = async (frameIdx: number): Promise<void> => {
     const t = quantizeTimeToFrame(frameIdx / fps, fps);
     await page.evaluate((tt: number) => {
-      const hf = (window as unknown as { __hf?: { seek?: (t: number) => void } }).__hf;
-      if (hf && typeof hf.seek === "function") hf.seek(tt);
+      const hf = (
+        window as unknown as {
+          __hf?: { seek?: (t: number, options?: { suppressEvents?: boolean }) => void };
+        }
+      ).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
     }, t);
+  };
+  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
+    await seekToFrame(frameIdx);
     return pageScreenshotCapture(page, session.options);
   };
   // Verify EVERY run in order (no longest-first truncation that would leave runs armed
@@ -2093,23 +2100,27 @@ export async function verifyStaticFramesSafe(
     400,
     Math.ceil(frames.length / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + runs.length,
   );
-  let spent = 0;
-  for (const { a, b } of runs) {
-    const anchor = a - 1;
-    if (anchor < 0) continue;
-    const anchorBuf = await seekCapture(anchor);
-    spent++;
-    for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
-      const cur = await seekCapture(f);
+  try {
+    let spent = 0;
+    for (const { a, b } of runs) {
+      const anchor = a - 1;
+      if (anchor < 0) continue;
+      const anchorBuf = await seekCapture(anchor);
       spent++;
-      if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
+      for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
+        const cur = await seekCapture(f);
+        spent++;
+        if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
+      }
+      // Budget exhausted → can't fully verify → disarm, distinct from real drift so a
+      // `verification_budget` spike in telemetry reads as "this composition has a lot
+      // of static material to verify," not "compositions are non-static."
+      if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
     }
-    // Budget exhausted → can't fully verify → disarm, distinct from real drift so a
-    // `verification_budget` spike in telemetry reads as "this composition has a lot
-    // of static material to verify," not "compositions are non-static."
-    if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
+    return null;
+  } finally {
+    await seekToFrame(0).catch(() => {});
   }
-  return null;
 }
 
 /**
@@ -2985,8 +2996,12 @@ async function captureDeVerificationFrames(
   const fractions = Array.from({ length: k }, (_, i) => (i + 1) / (k + 1));
   const seekTo = async (t: number): Promise<void> => {
     await page.evaluate((tt: number) => {
-      const hf = (window as unknown as { __hf?: { seek?: (x: number) => void } }).__hf;
-      if (hf && typeof hf.seek === "function") hf.seek(tt);
+      const hf = (
+        window as unknown as {
+          __hf?: { seek?: (x: number, options?: { suppressEvents?: boolean }) => void };
+        }
+      ).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
     }, t);
   };
   await seekTo(quantizeTimeToFrame(0, fps));
