@@ -64,7 +64,7 @@ One clear job per beat — never "more benefits" or "another feature." Beat `typ
 
 `hook | pain_point | product_intro | feature_showcase | benefit_highlight | social_proof | branding | cta`
 
-The opening 3–5s needs ONE hook that creates tension, curiosity, or desire — a shocking stat, pain validation, a rhetorical question, direct address, an imagine/future-pace, a category announcement, or visual spectacle. Never open with generic company description.
+The opening 3–5s needs ONE hook that creates tension, curiosity, or desire — a shocking stat, pain validation, a rhetorical question, direct address, an imagine/future-pace, a category announcement, or visual spectacle. Never open with generic company description. Per `../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's outcome language (what they gain, never a feature list), and the promise (`message`) lands by beat 2 — features after that are its evidence.
 
 A UI demo is usually a SEQUENCE of 3+ consecutive `feature_showcase` / `benefit_highlight` beats on the same surface (input → response → result → benefit), not one isolated frame.
 

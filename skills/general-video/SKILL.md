@@ -53,7 +53,7 @@ Run for every multi-scene composition (skip for single-scene pieces and trivial 
 
 Before writing HTML, think at a high level:
 
-1. **What** — the viewer experience: narrative arc, key moments, emotional beats.
+1. **What** — the viewer experience: narrative arc, key moments, emotional beats. For a narrated story piece, follow `hyperframes-creative/references/story-spine.md` — hook in viewer-outcome language, the message landing by beat 2, evidence after.
 2. **Structure** — how many compositions, sub-comp vs inline, which tracks carry video / audio / overlays / captions. For the monolithic-single-file vs modular-sub-comp call, see `hyperframes-core/references/composition-patterns.md` § Two Architectures (rule of thumb: ≥3 hard scene cuts, or any reused scene → modularize; a short single-scene piece stays one file).
 3. **Rhythm** — name the pattern before implementing (e.g. `fast-fast-SLOW-SHADER-hold`); see `hyperframes-creative/references/beat-direction.md`.
 4. **Timing** — which clips drive duration, where transitions land, the pacing.

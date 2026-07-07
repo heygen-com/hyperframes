@@ -11,7 +11,7 @@ Use this skill to ingest a GitHub pull request, understand the change, plan a co
 
 > **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue. This skill is for a **GitHub pull request** (a code change). Route other intents elsewhere: a product launch/promo → `/product-launch-video`; a general website tour → `/website-to-video`; a topic explainer with no PR → `/faceless-explainer`; captions on existing footage → `/embedded-captions`; a short unnarrated motion graphic → `/motion-graphics`; a whole-repo or multi-PR release walkthrough → `/general-video`. **Out of scope:** live / at-render-time data — PR facts are read once at author time and baked in. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
-You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the interaction mode (collaborative vs autonomous), the shared brief fields, and how to ask; the mode governs how the Step 0/3/6 gates behave. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
+You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the two modes, the gate types, and the brief fields; the mode governs the Step 0/3/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 
 Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extracted/` + `assets/<login>.png`; Step 2 design system → `frame.md`; Step 3 storyboard/script → `STORYBOARD.md` and `SCRIPT.md`; Step 3.1 audio → `audio_meta.json`; Step 4 visual design → enriched `STORYBOARD.md`; Step 5 frames → `compositions/frames/NN-*.html` and `index.html`; Step 6 final render → `renders/video.mp4`.
 
@@ -21,18 +21,23 @@ Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extrac
 
 Goal: Lock the PR reference and the core video brief, and create the HyperFrames project if needed.
 
-Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) and, in one round, confirm the brief per the brief contract — every asked field gets its own question with a recommended default **plus its receipt**; pre-fill anything `/hyperframes` already set.
+Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo), then confirm the brief in two rounds — through the question UI when the environment has one, conversationally otherwise. The intro text states **message** (the ONE thing the video must say about this change, in one sentence), **language**, and the style (always **claude**). Skip a question only when the user's request already answered it.
 
-**Ask** (each its own question, every run — never drop one as "inferable"):
+**Round 1 — mode.** One question, asked first. Skip it when the request already carried a signal ("surprise me" / "just build it"):
 
-- **angle** — changelog / feature-reveal / fix-explainer / refactor-walkthrough; default: infer from the PR.
-- **audience** — default: developers.
-- **length** — default: **scale to the PR's change size** (see below).
-- **destination → aspect** — per the contract's derivation; a code explainer defaults to 16:9 unless a feed destination is named → then 1:1.
+- **Collaborative (recommended)** — confirm the key choices together before building.
+- **Autonomous** — every decision is made for the user, each stated with its reason; the only remaining question is preview-before-render.
 
-**State in the intro text** (don't ask): **message** (the ONE thing the video must say about this change, echoed in one sentence), **language**, and the style (always **claude**).
+Autonomous → ask nothing more. State the locked brief (all fields + receipts) as a heads-up and proceed straight through; the preview question waits at Step 6.
 
-Proceed only after the user replies; a "go" accepts the defaults. In autonomous mode, state the locked brief as a heads-up and proceed.
+**Round 2 — the brief (collaborative).** One round, these four questions, recommended option first with its receipt:
+
+- **Angle — what story does this PR tell?** changelog / feature-reveal / fix-explainer / refactor-walkthrough; recommend the one the PR itself suggests, with its basis.
+- **Audience — who is it for?** developers (default) · mixed technical · non-technical stakeholders.
+- **Length — how long?** From the size table below; the tier is a ceiling, and a one-headline story recommends inside 30–90s ("+A/−D across F files" is the receipt).
+- **Destination — where will it play?** YouTube / embed → 16:9 (default for a code explainer) · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
+
+A "go" accepts all recommended defaults.
 
 **Recommend the length from the PR's change size**, not a fixed guess. Before confirming the brief, peek at the PR once — a read-only call that also grounds the angle (Step 1 still does the full deterministic fetch):
 
@@ -110,11 +115,11 @@ The script copies the claude preset's `FRAME.md` → `frame.md`, remixes it onto
 
 Goal: Turn the PR into an approved frame-by-frame explanation plan.
 
-Read `references/story-design.md`, `../hyperframes-animation/blueprints-index.md`, `../hyperframes-core/references/storyboard-format.md`, and `../hyperframes-core/references/script-format.md`. Use them to write `STORYBOARD.md` and, when narration is needed, `SCRIPT.md`.
+Read `../hyperframes-creative/references/story-spine.md` (hook language, value-before-evidence, storyboard-as-proposal), `references/story-design.md`, `../hyperframes-animation/blueprints-index.md`, `../hyperframes-core/references/storyboard-format.md`, and `../hyperframes-core/references/script-format.md`. Use them to write `STORYBOARD.md` and, when narration is needed, `SCRIPT.md`.
 
 Use `story-design.md` for the PR archetype (changelog / feature-reveal / fix-explainer / refactor-walkthrough), the PR-native frame types, hook, persuasion, beats, the per-frame word budget, and the optional credits close. The sequence comes from **narrative design, not the diff's file order** — explain the change, don't read the diff aloud. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, write the voiceover in the shape its candidate blueprint implies and tag that candidate `blueprint:` id when one fits (story truth still decides which beats exist — never force a beat to fit a shape). Feature 2–4 real diff hunks (from `capture/diff.patch`), each a small legible snippet; name the `code-*` block each wants in the frame's `scene`. Frames carry no `asset_candidates` except an optional `credits` close (2–6 `assets/<login>.png` avatars). Use the exact required fields from the storyboard and script references.
 
-After drafting, show a frame-by-frame summary. In that same message ask the user (a) to approve or request changes, and (b) whether they want a live preview of the storyboard scaffold (`npx hyperframes preview`) — open it only on a yes. Iterate until approved; carry the preview choice to Step 6. This is a **checkpoint gate** (brief contract § 1): in autonomous mode, post the same summary as a heads-up and proceed without waiting — skip the preview question and carry "not asked" to Step 6.
+After drafting, present the plan as a proposal per story-spine § 3: open by echoing **"This video tells [audience] that [message]"**, then a frame-by-frame summary where every frame carries a one-line `why:` (its `narrativeRole`, traced to the message). In that same message ask the user (a) to approve or request changes, and (b) whether they want a live preview of the storyboard scaffold (`npx hyperframes preview`) — open it only on a yes. Iterate until approved; carry the preview choice to Step 6. This is a **checkpoint gate** (brief contract § 1): in autonomous mode, post the same summary as a heads-up and proceed — the preview question is asked once, at Step 6.
 
 **Gate:** `STORYBOARD.md` exists, every frame has the required narrative fields, `SCRIPT.md` exists when narration is needed, and the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -210,11 +215,11 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 **Known false-positive — do not chase it.** `inspect` may report a handful of `text_box_overflow` errors of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
-After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: open it if the user asked earlier, offer it if they declined earlier, do not ask again if they are already reviewing in Studio. In autonomous mode the review pause is a checkpoint gate: post a one-line heads-up (checks passed, render starting — `npx hyperframes preview` if they want to look first), proceed to render without waiting, then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
+After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: open it if the user asked earlier, offer it if they declined earlier, do not ask again if they are already reviewing in Studio. In autonomous mode this is the one question the mode keeps: ask "preview first, or render?" — open the preview on yes, render on no — then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
 Preview: `npx hyperframes preview`
 
-Render only after user approval (autonomous mode: after the checks pass):
+Render only after user approval (autonomous mode: after the preview-or-render question):
 
 `npx hyperframes render --skill=pr-to-video --quality high --output renders/video.mp4`
 
@@ -234,19 +239,20 @@ Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless
 
 The reusable, domain-agnostic shot shapes live in `../hyperframes-animation/blueprints/` (indexed by `../hyperframes-animation/blueprints-index.md`); the `code-*` registry blocks are the code-beat vocabulary (`references/code-vocabulary.md`).
 
-| Read                                                                                                                                                        | When                                                           |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Step 0: the interaction mode, brief fields, and how to ask.    |
-| `[references/story-design.md](references/story-design.md)`                                                                                                  | Step 3: plan the PR explanation.                               |
-| `[../hyperframes-animation/blueprints-index.md](../hyperframes-animation/blueprints-index.md)`                                                              | Step 3: role→blueprint menu. Step 4: pick the shot shape.      |
-| `[../hyperframes-core/references/storyboard-format.md](../hyperframes-core/references/storyboard-format.md)`                                                | Step 3: write `STORYBOARD.md`.                                 |
-| `[../hyperframes-core/references/script-format.md](../hyperframes-core/references/script-format.md)`                                                        | Step 3: write `SCRIPT.md`.                                     |
-| `[../media-use/audio/references/tts.md](../media-use/audio/references/tts.md)`                                                                              | Step 3.1: choose or understand TTS providers.                  |
-| `[references/visual-design.md](references/visual-design.md)`                                                                                                | Step 4: write the frame's shot sequence (+ Layout vocabulary). |
-| `[references/code-vocabulary.md](references/code-vocabulary.md)`                                                                                            | Step 4 + 5: pick + fill the `code-*` block for a code beat.    |
-| `[references/motion-language.md](references/motion-language.md)`                                                                                            | Step 4: the motion vocabulary + the motion doctrine.           |
-| `[references/cut-catalog.md](references/cut-catalog.md)`                                                                                                    | Step 4-5: the cut catalog (worker builds within-frame seams).  |
-| `[../hyperframes-animation/rules-index.md](../hyperframes-animation/rules-index.md)` + `[../hyperframes-animation/rules/](../hyperframes-animation/rules/)` | Step 5: local rule recipe bodies for the cited motions.        |
-| `[sub-agents/frame-worker.md](sub-agents/frame-worker.md)`                                                                                                  | Step 5: dispatch per-frame workers.                            |
-| `[../hyperframes-core/references/subagent-dispatch.md](../hyperframes-core/references/subagent-dispatch.md)`                                                | Step 5: dispatch sub-agents safely.                            |
-| `[../hyperframes-creative/frame-presets/claude/FRAME.md](../hyperframes-creative/frame-presets/claude/FRAME.md)`                                            | Step 2: the claude preset (fixed style).                       |
+| Read                                                                                                                                                        | When                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Step 0: the interaction mode, brief fields, and how to ask.                    |
+| `[../hyperframes-creative/references/story-spine.md](../hyperframes-creative/references/story-spine.md)`                                                    | Step 3: story doctrine — hook language, value-before-evidence, proposal shape. |
+| `[references/story-design.md](references/story-design.md)`                                                                                                  | Step 3: plan the PR explanation.                                               |
+| `[../hyperframes-animation/blueprints-index.md](../hyperframes-animation/blueprints-index.md)`                                                              | Step 3: role→blueprint menu. Step 4: pick the shot shape.                      |
+| `[../hyperframes-core/references/storyboard-format.md](../hyperframes-core/references/storyboard-format.md)`                                                | Step 3: write `STORYBOARD.md`.                                                 |
+| `[../hyperframes-core/references/script-format.md](../hyperframes-core/references/script-format.md)`                                                        | Step 3: write `SCRIPT.md`.                                                     |
+| `[../media-use/audio/references/tts.md](../media-use/audio/references/tts.md)`                                                                              | Step 3.1: choose or understand TTS providers.                                  |
+| `[references/visual-design.md](references/visual-design.md)`                                                                                                | Step 4: write the frame's shot sequence (+ Layout vocabulary).                 |
+| `[references/code-vocabulary.md](references/code-vocabulary.md)`                                                                                            | Step 4 + 5: pick + fill the `code-*` block for a code beat.                    |
+| `[references/motion-language.md](references/motion-language.md)`                                                                                            | Step 4: the motion vocabulary + the motion doctrine.                           |
+| `[references/cut-catalog.md](references/cut-catalog.md)`                                                                                                    | Step 4-5: the cut catalog (worker builds within-frame seams).                  |
+| `[../hyperframes-animation/rules-index.md](../hyperframes-animation/rules-index.md)` + `[../hyperframes-animation/rules/](../hyperframes-animation/rules/)` | Step 5: local rule recipe bodies for the cited motions.                        |
+| `[sub-agents/frame-worker.md](sub-agents/frame-worker.md)`                                                                                                  | Step 5: dispatch per-frame workers.                                            |
+| `[../hyperframes-core/references/subagent-dispatch.md](../hyperframes-core/references/subagent-dispatch.md)`                                                | Step 5: dispatch sub-agents safely.                                            |
+| `[../hyperframes-creative/frame-presets/claude/FRAME.md](../hyperframes-creative/frame-presets/claude/FRAME.md)`                                            | Step 2: the claude preset (fixed style).                                       |

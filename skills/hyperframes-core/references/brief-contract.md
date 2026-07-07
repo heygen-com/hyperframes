@@ -10,13 +10,13 @@ There are two modes. Default: **collaborative**.
 
 - **Ongoing autonomous signals** — "autonomous", "surprise me", "decide for me", "just build it", "don't ask, just go", "LFG": the whole flow switches to autonomous from this point on.
 - **One-time acceptance** — a bare "go" / "looks good" at a gate accepts only that gate's defaults; the mode does not change.
-- The mode is set **once** — during routing (`/hyperframes`) or during the workflow brief — and **carries forward. No later step asks again.** Once a storyboard exists, record it in `STORYBOARD.md` frontmatter (`mode: autonomous`) so resumed sessions inherit it.
+- The mode is set **once** — by a signal in the request, or by the brief's first question (§ 3) — and **carries forward. No later step asks again.** Once a storyboard exists, record it in `STORYBOARD.md` frontmatter (`mode: autonomous`) so resumed sessions inherit it.
 - **Mid-run switch**: "stop asking / just finish it" → autonomous for the rest of the run. Clear feedback on a heads-up → collaborative resumes at the next gate.
 
 **Gate types.** Autonomous mode changes only the first two types:
 
 1. **Preference gates** (which preset, voice, caption identity, want a preview?) — autonomous: decide yourself and state the decision with a one-line reason. Never stay silent.
-2. **Checkpoint gates** (storyboard approval, pre-render review) — autonomous: post the same summary you would have asked about as an inline heads-up, then continue without waiting.
+2. **Checkpoint gates** (storyboard approval, pre-render review) — autonomous: post the same summary you would have asked about as an inline heads-up, then continue. One exception: before rendering, ask once — preview first, or render (§ 3).
 3. **Quality gates** (`lint` / `validate` / `inspect`, capture completeness, fetch failures, workflow-specific verification checklists) — never skip these in any mode. Errors still stop the run. Reasoning like "autonomous means bias toward action, so I'll skip verification" misuses the mode — bias toward action applies to deciding _what to build_, not _whether to verify_.
 4. **Routing and sign-in decisions** — wrong routing is a quality problem: an ambiguous-intent confirmation, such as `/slideshow`'s "is this a deck?", still happens in autonomous mode. Auth sign-in follows `/media-use` → Preflight: show the status as-is; collaborative waits for the user's choice, while autonomous notes it and continues offline.
 
@@ -40,9 +40,9 @@ The shared brief fields. Each workflow's SKILL.md declares which fields it uses,
 
 ## 3. Question rules
 
-- **Parse the prompt first.** Only ask for what the user has not already specified, and never ask them to confirm what they already said. Pre-fill anything `/hyperframes` or an earlier step has locked.
-- **One round, one question per asked field.** Bundle the brief into a single round: every field the workflow's binding marks **ask** gets its own question (native UI: one multi-question call — e.g. angle / length / destination as separate questions), leading with the recommended default plus its receipt; every **state** field goes in the intro text. The ask/state split is fixed by the binding table — **never drop a question because its answer looks inferable**; confidence sharpens the recommended default, it doesn't remove the question. "go" accepts all defaults.
-- **Advertise the mode, don't ask it.** Every brief carries a one-line legend: `"go" accepts all defaults · "surprise me" / "just build it" hands me every later decision (autonomous — no more questions, each call comes with its reason)`. In plain text, end the brief message with it; with a native question UI (`AskUserQuestion` or equivalent), put it in the short intro text you send **before** the question call — the UI has no message tail. The mode never gets its own question or option; the legend text is the only place it appears.
-- **Receipts.** A recommendation without a reason is a guess — every default states where it came from, for example: "~40s — small change, +44/−13 across 12 files".
-- **Channel.** When the environment has a native question UI (`AskUserQuestion` or equivalent), using it for the **ask** fields is **mandatory** in collaborative mode — one multi-question call, each question offering 2–4 options with the recommended one first. A plain-text "here's the brief, reply 'go'" statement is NOT a substitute; that shape is reserved for autonomous mode's heads-up. Only in an environment with no native UI, ask in plain text as one numbered list. Use 2–5 questions max per round.
-- **Autonomous brief.** Don't ask at all — state the locked brief, including all fields and receipts, as a heads-up and proceed.
+The executable question script lives in each workflow's Step 0 as a literal two-round template. This section defines only the invariants that script satisfies:
+
+- **Round 1 asks the mode** — one question, skipped when the request already carried a signal. Autonomous → no further questions: state the locked brief (all fields + receipts) as a heads-up and build straight through; the one remaining question, before render, is "preview first, or render?". Collaborative → Round 2.
+- **Round 2 asks the workflow's ask-marked fields** — one question per field, recommended option first, each with its receipt. Skip a question only when the user already answered that field in their request; inference is not an answer.
+- **Receipts.** Every recommended option states its basis: "~40s — small change, +44/−13 across 12 files".
+- **Channel.** Native question UI when the environment has one; otherwise plain text as one numbered list. "go" accepts all defaults.

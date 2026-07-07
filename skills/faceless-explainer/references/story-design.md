@@ -125,7 +125,7 @@ Pick one opening strategy for the first 3-5 seconds. For explainers the hook ope
 | Imagine / scenario     | A thought experiment frames the whole piece.       | "Imagine money that loses value if you don't spend it."          |
 | Stakes / consequence   | The "why care now" is a real cost or risk.         | "Get this one step wrong and the whole batch is ruined."         |
 
-The hook must create curiosity, tension, or stakes. Do not open with a generic definition.
+The hook must create curiosity, tension, or stakes. Do not open with a generic definition. Per `../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's language (the payoff of understanding, never the source text's section headings), and the thesis (`message`) lands by beat 2 — the explanation after that is its evidence.
 
 ## Clarity / rhetoric technique catalog
 
