@@ -514,7 +514,10 @@ describe("render fps arg definition", () => {
     // no-op caught in review. The "30" fallback must live at the
     // parseFps(fpsArg ?? "30") call, not on the arg.
     const cmd = (await import("./render.js")).default;
-    const fpsArg = cmd.args?.fps as { default?: unknown } | undefined;
+    // citty types `args` as Resolvable (it could be a promise/factory); in
+    // practice it's the literal object, so read it through a plain record.
+    const args = cmd.args as unknown as Record<string, { default?: unknown } | undefined>;
+    const fpsArg = args.fps;
     expect(fpsArg).toBeDefined();
     expect(fpsArg?.default).toBeUndefined();
   });
