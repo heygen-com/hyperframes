@@ -25,6 +25,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  ensureRenderFrameSiblings,
   getCdpSession,
   pageScreenshotCapture,
   initTransparentBackground,
@@ -1478,6 +1479,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
     await armStaticDedup(session, session.page, logInitPhase);
+    await ensureRenderFrameSiblings(session.page);
     session.isInitialized = true;
     return;
   }
@@ -1608,13 +1610,16 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   await recordSessionInitTelemetry(session, initStart);
 
-  // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
-  // until LOCKED_WARMUP_TICKS, so we await its promise to ensure the count is
-  // exact before deriving the baseline.
+  // Stop warmup, then drain the loop in BOTH modes before any further
+  // BeginFrame on this session (drawElement init, the render-frame commit tick
+  // at the end of init, and frame 0). Clearing the flag only stops new
+  // iterations — a warmup `HeadlessExperimental.beginFrame` may still be in
+  // flight, and a second beginFrame on the same session while one is pending
+  // fails with "Another frame is pending". Locked mode additionally needs the
+  // await to reach the exact LOCKED_WARMUP_TICKS count before deriving the
+  // baseline below.
   warmupState.running = false;
-  if (lockWarmupTicks) {
-    await warmupLoopPromise.catch(() => {});
-  }
+  await warmupLoopPromise.catch(() => {});
 
   // Set base frame time ticks past warmup range. Locked mode pins to the
   // constant so chunk workers on different hosts compute the same baseline.
@@ -1632,6 +1637,27 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
   await armStaticDedup(session, session.page, logInitPhase);
+
+  // Pre-create the hidden `__render_frame__` siblings so the first per-session
+  // `injectVideoFramesBatch` takes the `hasImg = true` (src-update) path instead
+  // of inserting a fresh `<img>` mid-capture. Then drive ONE non-capture,
+  // *visual* BeginFrame (`noDisplayUpdates: false`) to actually composite the
+  // new layers before the first real capture. The warmup ticks above are
+  // `noDisplayUpdates: true` (they advance the clock but don't paint), and the
+  // seek in `prepareFrameForCapture` doesn't tick, so without this commit tick
+  // the first *display-producing* BeginFrame would be the capture itself — and
+  // the freshly-inserted layers would miss it (the per-session worker-boundary
+  // near-black flash). The tick time sits in the gap between the last warmup
+  // tick and frame 0 (`beginFrameTimeTicks` carries +10 intervals of headroom),
+  // so ticks stay monotonic and no render frame is consumed.
+  await ensureRenderFrameSiblings(page);
+  const commitCdp = await getCdpSession(page);
+  await commitCdp.send("HeadlessExperimental.beginFrame", {
+    frameTimeTicks: session.beginFrameTimeTicks - session.beginFrameIntervalMs,
+    interval: session.beginFrameIntervalMs,
+    noDisplayUpdates: false,
+  });
+
   session.isInitialized = true;
 }
 

@@ -543,6 +543,46 @@ export async function removeDomLayerMask(page: Page, _extraHideIds: string[]): P
 }
 
 /**
+ * Pre-create hidden `__render_frame__` sibling `<img>`s for every
+ * `video[data-start]` in the page. Idempotent — videos that already
+ * have a sibling are skipped.
+ *
+ * `injectVideoFramesBatch` creates the sibling on the fly the first time
+ * it paints a given videoId (the `isNewImage = !hasImg` branch below).
+ * Under chrome-headless-shell's deterministic + `HeadlessExperimental.
+ * BeginFrame` mode, the immediately-next BeginFrame captures before the
+ * freshly-inserted `<img>` layer lands in the compositor's layer tree;
+ * the layer arrives a frame later. That single frame paints only the
+ * body background + previously-composed overlays.
+ *
+ * Called from `initializeSession`: in the screenshot path at the end (that
+ * capture path flushes paint, so timing doesn't matter), and in the BeginFrame
+ * path followed by one explicit visual `HeadlessExperimental.beginFrame`
+ * (`noDisplayUpdates: false`) that composites the new layers before the first
+ * capture — the warmup ticks are `noDisplayUpdates: true` and don't paint.
+ * Every subsequent `injectVideoFramesBatch` then takes the `hasImg = true` path
+ * (just an `img.src` update). The `isNewImage` branch stays as a fallback for
+ * callers that don't run through `initializeSession`.
+ */
+export async function ensureRenderFrameSiblings(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const video of Array.from(
+      document.querySelectorAll<HTMLVideoElement>("video[data-start]"),
+    )) {
+      const next = video.nextElementSibling;
+      if (next !== null && next.classList.contains("__render_frame__")) continue;
+      const img = document.createElement("img");
+      img.classList.add("__render_frame__");
+      img.id = `__render_frame_${video.id}__`;
+      img.style.pointerEvents = "none";
+      img.style.position = "absolute";
+      img.style.visibility = "hidden";
+      video.parentNode?.insertBefore(img, video.nextSibling);
+    }
+  });
+}
+
+/**
  * Returns the subset of `updates.videoId`s that were actually painted in
  * this call. Videos skipped because of a hidden visual ancestor are NOT
  * included — the caller relies on this to avoid recording a `lastInjected`
