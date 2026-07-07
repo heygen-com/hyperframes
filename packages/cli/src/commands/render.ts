@@ -51,6 +51,7 @@ import { cpus, freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { resolveProject } from "../utils/project.js";
+import { readCompositionFps } from "../utils/compositionFps.js";
 import { lintProject, shouldBlockRender } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
@@ -388,9 +389,23 @@ export default defineCommand({
     // legitimate framerates (NTSC trio, PAL, 120/240 slow-mo) work without
     // CLI gymnastics. The exact rational survives end-to-end into FFmpeg's
     // `-r` / `-framerate` flags via `fpsToFfmpegArg`.
-    const fpsParse = parseFps(args.fps ?? "30");
+    // Precedence: explicit --fps, else the composition's root data-fps, else 30.
+    // Honoring data-fps matches the runtime — render used to silently force 30
+    // even when the composition declared e.g. data-fps="24".
+    let fpsArg = args.fps;
+    if (fpsArg == null) {
+      try {
+        const declared = readCompositionFps(readFileSync(join(project.dir, "index.html"), "utf8"));
+        if (declared != null && parseFps(declared).ok) {
+          fpsArg = declared;
+        }
+      } catch {
+        // Unreadable index.html — fall back to the default fps below.
+      }
+    }
+    const fpsParse = parseFps(fpsArg ?? "30");
     if (!fpsParse.ok) {
-      errorBox("Invalid fps", formatFpsParseError(args.fps ?? "30", fpsParse.reason));
+      errorBox("Invalid fps", formatFpsParseError(fpsArg ?? "30", fpsParse.reason));
       process.exit(1);
     }
     let fps: Fps = fpsParse.value;
