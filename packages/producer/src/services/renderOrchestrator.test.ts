@@ -554,6 +554,188 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
   });
+
+  // fallow-ignore-next-line code-duplication
+  it("falls back to copying frames when symlinkSync fails with EPERM (Windows, no Developer Mode)", () => {
+    // Windows without Developer Mode/Administrator rejects symlink creation with
+    // EPERM — high/standard-quality renders failed here while draft worked. The
+    // helper must degrade to a recursive copy instead of throwing.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          const err: NodeJS.ErrnoException = new Error("EPERM: operation not permitted, symlink");
+          err.code = "EPERM";
+          throw err;
+        },
+        cpSync: (src, dest, options) => {
+          copies.push({ src, dest, recursive: options.recursive });
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+    expect(extracted.outputDir).toBe(linkPath);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  it("rethrows a non-permission symlink error instead of masking it with a copy", () => {
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+
+    expect(() =>
+      materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+        pathModule: win32,
+        fileSystem: {
+          existsSync: () => false,
+          mkdirSync: () => undefined,
+          symlinkSync: () => {
+            const err: NodeJS.ErrnoException = new Error("ENOSPC: no space left");
+            err.code = "ENOSPC";
+            throw err;
+          },
+          cpSync: () => {
+            throw new Error("must not fall back to copy for a non-permission error");
+          },
+        },
+      }),
+    ).toThrow(/ENOSPC/);
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("clears a stale dangling entry and re-stages when symlinkSync fails with EEXIST", () => {
+    // After the extraction cache is GC'd, a symlink from a prior render dangles
+    // (its target removed). existsSync() follows the dead link so the caller's
+    // guard reads it as absent and reaches staging, but the link file itself
+    // still exists, so symlinkSync collides with EEXIST. The helper must clear
+    // the stale entry (rmSync) and re-stage, not hard-fail the render.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    const removed: string[] = [];
+    const symlinks: Array<{ target: string; path: string }> = [];
+    let symlinkCalls = 0;
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          symlinkCalls += 1;
+          if (symlinkCalls === 1) {
+            const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists, symlink");
+            err.code = "EEXIST";
+            throw err;
+          }
+          symlinks.push({ target, path });
+        },
+        cpSync: () => {
+          throw new Error("EEXIST recovery should re-link, not copy");
+        },
+        rmSync: (path) => {
+          removed.push(path);
+        },
+      },
+    });
+
+    expect(removed).toEqual([linkPath]);
+    expect(symlinks).toEqual([{ target: outputDir, path: linkPath }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("falls back to copying when symlinkSync fails with UNKNOWN (some Windows privilege denials)", () => {
+    // Some Windows builds surface a no-symlink-privilege denial as an
+    // UNKNOWN-coded error rather than EPERM/EACCES — it must still degrade to a
+    // copy, not hard-fail the render.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          const err: NodeJS.ErrnoException = new Error("UNKNOWN: unknown error, symlink");
+          err.code = "UNKNOWN";
+          throw err;
+        },
+        cpSync: (src, dest, options) => {
+          copies.push({ src, dest, recursive: options.recursive });
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("clears a stale entry and re-copies when the eager-copy path (materializeSymlinks) hits EEXIST", () => {
+    // #2025 routes Windows through the eager-copy branch. Reusing a dir a prior
+    // Linux run populated with a (now dangling) symlink makes cpSync collide
+    // with EEXIST — the recovery must clear the stale entry and re-copy, exactly
+    // like the symlink path does.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    const removed: string[] = [];
+    const copies: Array<{ src: string; dest: string }> = [];
+    let cpCalls = 0;
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      materializeSymlinks: true,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          throw new Error("eager-copy path must not symlink");
+        },
+        cpSync: (src, dest) => {
+          cpCalls += 1;
+          if (cpCalls === 1) {
+            const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists, cp");
+            err.code = "EEXIST";
+            throw err;
+          }
+          copies.push({ src, dest });
+        },
+        rmSync: (path) => {
+          removed.push(path);
+        },
+      },
+    });
+
+    expect(removed).toEqual([linkPath]);
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {

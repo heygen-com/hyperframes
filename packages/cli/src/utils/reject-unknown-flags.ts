@@ -33,11 +33,11 @@ function knownFlags(args: ArgsDef | undefined): Set<string> {
 function unknownFlagIn(tok: string, known: Set<string>): string | null {
   if (tok === "-" || !tok.startsWith("-")) return null; // positional or flag value
   if (tok.startsWith("--")) {
-    let name = tok.slice(2).split("=")[0];
+    let name = tok.slice(2).split("=")[0] ?? "";
     if (name.startsWith("no-")) name = name.slice(3);
     return name && !known.has(name) ? `--${name}` : null;
   }
-  for (const ch of tok.slice(1).split("=")[0]) {
+  for (const ch of tok.slice(1).split("=")[0] ?? "") {
     if (!known.has(ch)) return `-${ch}`;
   }
   return null;
@@ -50,7 +50,12 @@ function unknownFlagIn(tok: string, known: Set<string>): string | null {
  */
 export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): void {
   if (!Array.isArray(rawArgs)) return;
-  const known = knownFlags(cmd.args);
+  // citty types `args` as Resolvable<ArgsDef> (it may be a fn/promise); every
+  // hyperframes command uses a static object, so treat anything else as "no
+  // declared args" and skip validation rather than risk a wrong rejection.
+  const rawDef = cmd.args;
+  const args = rawDef && typeof rawDef === "object" ? (rawDef as ArgsDef) : undefined;
+  const known = knownFlags(args);
   for (const tok of rawArgs) {
     if (tok === "--") break;
     const bad = unknownFlagIn(tok, known);

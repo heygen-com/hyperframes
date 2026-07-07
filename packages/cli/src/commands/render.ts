@@ -10,6 +10,7 @@ import {
   parseGifLoopArg,
   resolveBrowserTimeoutMsArg,
   resolveCompositionEntryArg,
+  resolveDefaultFpsArg,
 } from "../utils/renderArgs.js";
 
 export const examples: Example[] = [
@@ -171,8 +172,12 @@ export default defineCommand({
       description:
         "Frame rate. Accepts integer (24, 25, 30, 50, 60, 120, 240) or " +
         "ffmpeg-style rational (30000/1001 for NTSC 29.97, 24000/1001 for " +
-        "23.976, 60000/1001 for 59.94). Range 1-240.",
-      default: "30",
+        "23.976, 60000/1001 for 59.94). Range 1-240. " +
+        "Defaults to the composition's root data-fps, else 30.",
+      // No `default` here on purpose: citty would set args.fps="30" on
+      // omission, which would make explicitFps always non-null and short-
+      // circuit the data-fps resolution below (resolveDefaultFpsArg). The
+      // "30" fallback lives at the parseFps(fpsArg ?? "30") call instead.
     },
     quality: {
       type: "string",
@@ -382,15 +387,24 @@ export default defineCommand({
     // ── Resolve project ────────────────────────────────────────────────────
     const project = resolveProject(args.dir);
 
+    // ── Resolve composition entry file ─────────────────────────────────────
+    // Needed early: fps default below must read the actual render target, not
+    // always index.html.
+    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
+
     // ── Validate fps ───────────────────────────────────────────────────────
     // Accept either integer (`30`) or ffmpeg-style rational (`30000/1001`).
     // The whitelist-based validator was replaced with a sane numeric range so
     // legitimate framerates (NTSC trio, PAL, 120/240 slow-mo) work without
     // CLI gymnastics. The exact rational survives end-to-end into FFmpeg's
     // `-r` / `-framerate` flags via `fpsToFfmpegArg`.
-    const fpsParse = parseFps(args.fps ?? "30");
+    // Precedence: explicit --fps, else the composition's root data-fps, else 30.
+    // Honoring data-fps matches the runtime — render used to silently force 30
+    // even when the composition declared e.g. data-fps="24".
+    const fpsArg = resolveDefaultFpsArg(args.fps, project.dir, project.indexPath, entryFile);
+    const fpsParse = parseFps(fpsArg ?? "30");
     if (!fpsParse.ok) {
-      errorBox("Invalid fps", formatFpsParseError(args.fps ?? "30", fpsParse.reason));
+      errorBox("Invalid fps", formatFpsParseError(fpsArg ?? "30", fpsParse.reason));
       process.exit(1);
     }
     let fps: Fps = fpsParse.value;
@@ -659,12 +673,11 @@ export default defineCommand({
       console.log(c.warn("  GIF output is capped at 30fps. Use --fps 15 for smaller files."));
     }
 
-    // ── Validate browser-timeout (seconds) and composition entry file ────
-    // Both validators live in `utils/renderArgs.ts` so the parse/reject
+    // ── Validate browser-timeout (seconds) ───────────────────────────────
+    // This validator lives in `utils/renderArgs.ts` so the parse/reject
     // branches are unit-testable without `process.exit`. See issue #1199
-    // for the original EISDIR / silent-timeout-0 footguns this guards.
+    // for the original silent-timeout-0 footgun this guards.
     const pageNavigationTimeoutMs = resolveBrowserTimeoutMsArg(args["browser-timeout"]);
-    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
 
     // ── Preflight batch rows before browser/lint work ────────────────────
     let batchModule: typeof import("./batchRender.js") | undefined;

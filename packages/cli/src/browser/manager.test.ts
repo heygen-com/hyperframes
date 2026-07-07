@@ -501,3 +501,69 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("isCorruptArchiveError", () => {
+  it("matches truncated / corrupt archive extraction failures", async () => {
+    const { isCorruptArchiveError } = await import("./manager.js");
+    for (const msg of [
+      "invalid end-of-central-directory record",
+      "end of central directory record signature not found",
+      "invalid or corrupt zip file",
+      "File is not a zip file",
+      "unexpected end of file",
+      "the archive is corrupted",
+    ]) {
+      expect(isCorruptArchiveError(new Error(msg))).toBe(true);
+    }
+  });
+
+  it("does not match network or unrelated errors", async () => {
+    const { isCorruptArchiveError } = await import("./manager.js");
+    for (const msg of ["ECONNRESET", "socket hang up", "ENOENT: no such file", "boom"]) {
+      expect(isCorruptArchiveError(new Error(msg))).toBe(false);
+    }
+  });
+});
+
+describe("installWithCorruptArchiveRecovery", () => {
+  it("clears the cache and re-downloads once on a corrupt archive, then succeeds", async () => {
+    const { installWithCorruptArchiveRecovery } = await import("./manager.js");
+    const runInstall = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("invalid end-of-central-directory record"))
+      .mockResolvedValueOnce({ executablePath: "/ok" });
+    const clearCache = vi.fn();
+    const onRecover = vi.fn();
+
+    const result = await installWithCorruptArchiveRecovery(runInstall, clearCache, onRecover);
+
+    expect(result).toEqual({ executablePath: "/ok" });
+    expect(runInstall).toHaveBeenCalledTimes(2);
+    expect(clearCache).toHaveBeenCalledTimes(1);
+    expect(onRecover).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a non-corruption error without clearing the cache", async () => {
+    const { installWithCorruptArchiveRecovery } = await import("./manager.js");
+    const runInstall = vi.fn().mockRejectedValue(new Error("ECONNRESET"));
+    const clearCache = vi.fn();
+
+    await expect(installWithCorruptArchiveRecovery(runInstall, clearCache)).rejects.toThrow(
+      "ECONNRESET",
+    );
+    expect(runInstall).toHaveBeenCalledTimes(1);
+    expect(clearCache).not.toHaveBeenCalled();
+  });
+
+  it("does not retry forever: a second corruption propagates", async () => {
+    const { installWithCorruptArchiveRecovery } = await import("./manager.js");
+    const runInstall = vi.fn().mockRejectedValue(new Error("end of central directory not found"));
+    const clearCache = vi.fn();
+
+    await expect(installWithCorruptArchiveRecovery(runInstall, clearCache)).rejects.toThrow(
+      "end of central directory",
+    );
+    expect(runInstall).toHaveBeenCalledTimes(2);
+    expect(clearCache).toHaveBeenCalledTimes(1);
+  });
+});

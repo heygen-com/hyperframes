@@ -17,6 +17,7 @@ import {
 } from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
 
 export const examples: Example[] = [
   ["Deploy the Lambda render stack to AWS", "hyperframes lambda deploy"],
@@ -297,7 +298,10 @@ export default defineCommand({
           console.error("[lambda render] --width and --height are required.");
           process.exit(1);
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? 30;
+        const fpsRaw =
+          parseIntFlag(args.fps) ??
+          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
+          30;
         if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
           console.error(`[lambda render] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
           process.exit(1);
@@ -349,7 +353,10 @@ export default defineCommand({
           console.error("[lambda render-batch] --width and --height are required.");
           process.exit(1);
         }
-        const fpsRaw = parseIntFlag(args.fps) ?? 30;
+        const fpsRaw =
+          parseIntFlag(args.fps) ??
+          readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ??
+          30;
         if (fpsRaw !== 24 && fpsRaw !== 30 && fpsRaw !== 60) {
           console.error(`[lambda render-batch] --fps must be 24, 30, or 60; got ${fpsRaw}.`);
           process.exit(1);
