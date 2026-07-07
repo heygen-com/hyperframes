@@ -2,6 +2,18 @@ import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
+import { detectInstaller } from "./installerDetection.js";
+
+/**
+ * True when `v` is a strict semver-shaped string. Registry-supplied versions
+ * flow into displayed (and, in `upgrade`, executed) commands; rejecting
+ * non-semver up front means a poisoned `latest` can't smuggle shell
+ * metacharacters into a command the user might copy-paste or we might run.
+ * Shared by the update notice and the `upgrade` command so both guard once.
+ */
+export function isSafeVersion(v: string): boolean {
+  return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(v);
+}
 
 const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -125,8 +137,17 @@ export function printUpdateNotice(): void {
   const meta = getUpdateMeta();
   if (!meta.updateAvailable || !meta.latestVersion) return;
 
+  // Show the command that updates *this* install: the detected package
+  // manager's upgrade for owned global installs (npm/bun/pnpm/brew), and the
+  // universal `npx hyperframes@latest` for ephemeral/unknown installs (where a
+  // manager command wouldn't apply). detectInstaller() only runs here, after
+  // the suppression + update-available gates, so it adds no cost to normal runs.
+  const safeLatest = isSafeVersion(meta.latestVersion);
+  const managerCommand = safeLatest ? detectInstaller().installCommand(meta.latestVersion) : null;
+  const command = managerCommand ?? "npx hyperframes@latest";
+
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +
-      `  Run: npx hyperframes@latest\n\n`,
+      `  Run: ${command}\n\n`,
   );
 }
