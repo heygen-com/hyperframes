@@ -116,3 +116,62 @@ describe("printUpdateNotice — install-method-aware command", () => {
     expect(out).toBe("");
   });
 });
+
+/**
+ * The registry-boundary guard: a poisoned or non-string data.version must
+ * never be cached, because it flows into the auto-updater's install command.
+ * This closes the injection class for every downstream consumer at one point.
+ */
+async function checkWith(registryVersion: unknown): Promise<{
+  latest: string;
+  wroteVersion: string | undefined;
+}> {
+  vi.resetModules();
+  const writes: Array<Record<string, unknown>> = [];
+  vi.doMock("../telemetry/config.js", () => ({
+    readConfig: () => ({}),
+    writeConfig: (c: Record<string, unknown>) => writes.push({ ...c }),
+  }));
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    json: async () => ({ version: registryVersion }),
+  })) as unknown as typeof fetch;
+  try {
+    const mod = await import("./updateCheck.js");
+    const result = await mod.checkForUpdate(true);
+    const lastWrite = writes.at(-1);
+    return {
+      latest: result.latest,
+      wroteVersion: lastWrite ? (lastWrite["latestVersion"] as string | undefined) : undefined,
+    };
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+}
+
+describe("checkForUpdate — registry boundary guard", () => {
+  afterEach(() => {
+    vi.doUnmock("../telemetry/config.js");
+    vi.resetModules();
+  });
+
+  it("caches and returns a valid semver from the registry", async () => {
+    const { latest, wroteVersion } = await checkWith("9.9.9");
+    expect(latest).toBe("9.9.9");
+    expect(wroteVersion).toBe("9.9.9");
+  });
+
+  it("rejects a version carrying shell metacharacters (no cache, no surface)", async () => {
+    const { latest, wroteVersion } = await checkWith("1.2.3; rm -rf /");
+    expect(latest).not.toContain(";");
+    expect(latest).not.toBe("1.2.3; rm -rf /");
+    expect(wroteVersion).toBeUndefined(); // never written to config
+  });
+
+  it("rejects a non-string data.version", async () => {
+    const { latest, wroteVersion } = await checkWith({ evil: true });
+    expect(typeof latest).toBe("string");
+    expect(wroteVersion).toBeUndefined();
+  });
+});
