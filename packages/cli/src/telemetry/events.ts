@@ -443,6 +443,7 @@ export function trackFigmaImport(props: {
   entryCount?: number;
   unresolvedBindings?: number;
   rasterizedNodes?: number;
+  rasterizeFailures?: number;
 }): void {
   trackEvent("figma_import", {
     phase: props.phase,
@@ -454,6 +455,9 @@ export function trackFigmaImport(props: {
       ? { unresolved_bindings: props.unresolvedBindings }
       : {}),
     ...(props.rasterizedNodes !== undefined ? { rasterized_nodes: props.rasterizedNodes } : {}),
+    ...(props.rasterizeFailures !== undefined
+      ? { rasterize_failures: props.rasterizeFailures }
+      : {}),
   });
 }
 

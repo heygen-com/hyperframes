@@ -7,6 +7,7 @@
 import { defineCommand } from "citty";
 import {
   createFigmaClient,
+  FigmaClientError,
   nodeToHtml,
   parseFigmaRef,
   readBindings,
@@ -41,6 +42,8 @@ export interface ComponentImportResult {
   htmlPath: string;
   unresolved: BindingSite[];
   rasterized: RasterizeRequest[];
+  /** node ids figma refused to render as svg AND png — placeholders shipped without src */
+  failedRasterize: string[];
 }
 
 export async function runComponentImport(
@@ -68,12 +71,33 @@ export async function runComponentImport(
   // replaceAll covers the same node appearing twice in the tree.
   let html = mapped.html;
   const frozenAssets: string[] = [];
+  const failedRasterize: string[] = [];
   for (const req of mapped.rasterize) {
-    const asset = await runAssetImport(
-      `${ref.fileKey}:${req.nodeId}`,
-      { format: "svg", description: req.name },
-      { projectDir: deps.projectDir, client: deps.client, download: deps.download },
-    );
+    // figma sometimes refuses to render a node (nested instances commonly
+    // fail as svg) — retry once as png, then skip THIS node and keep the
+    // import: one unrenderable node must not abort the whole component. The
+    // placeholder keeps its data-figma-rasterize marker (no src) so the gap
+    // is visible and hand-fixable.
+    let asset = null;
+    for (const format of ["svg", "png"] as const) {
+      try {
+        asset = await runAssetImport(
+          `${ref.fileKey}:${req.nodeId}`,
+          { format, description: req.name },
+          { projectDir: deps.projectDir, client: deps.client, download: deps.download },
+        );
+        break;
+      } catch (err) {
+        if (!(err instanceof FigmaClientError) || err.code !== "RENDER_FAILED") throw err;
+      }
+    }
+    if (asset === null) {
+      failedRasterize.push(req.nodeId);
+      console.warn(
+        `could not render node ${req.nodeId} ("${req.name}") as svg or png — leaving its placeholder without src`,
+      );
+      continue;
+    }
     frozenAssets.push(asset.record.path);
     // src is a URL — always forward slashes, even when relative() yields
     // windows separators.
@@ -120,6 +144,7 @@ export async function runComponentImport(
     htmlPath: relative(deps.projectDir, htmlFile),
     unresolved: bindings.unresolved,
     rasterized: mapped.rasterize,
+    failedRasterize,
   };
 }
 
@@ -139,8 +164,14 @@ export default defineCommand({
         download: downloadRender,
       });
       console.log(`imported component "${result.name}" → ${result.htmlPath}`);
-      if (result.rasterized.length > 0)
-        console.log(`rasterized ${result.rasterized.length} node(s) via asset export`);
+      if (result.rasterized.length > 0) {
+        const ok = result.rasterized.length - result.failedRasterize.length;
+        console.log(
+          result.failedRasterize.length > 0
+            ? `rasterized ${ok}/${result.rasterized.length} node(s) via asset export — ${result.failedRasterize.length} skipped (unrenderable; placeholders have no src)`
+            : `rasterized ${result.rasterized.length} node(s) via asset export`,
+        );
+      }
       if (result.unresolved.length > 0) {
         console.log(
           `${result.unresolved.length} binding(s) reference tokens not yet imported — colors baked as literals (flagged data-figma-unresolved). Run \`hyperframes figma tokens\` on the source/library file, then re-import to link them.`,
@@ -151,6 +182,7 @@ export default defineCommand({
         phase: "component",
         unresolvedBindings: result.unresolved.length,
         rasterizedNodes: result.rasterized.length,
+        rasterizeFailures: result.failedRasterize.length,
         durationMs: Date.now() - t0,
       });
     });
