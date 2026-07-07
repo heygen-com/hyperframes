@@ -172,8 +172,12 @@ export default defineCommand({
       description:
         "Frame rate. Accepts integer (24, 25, 30, 50, 60, 120, 240) or " +
         "ffmpeg-style rational (30000/1001 for NTSC 29.97, 24000/1001 for " +
-        "23.976, 60000/1001 for 59.94). Range 1-240.",
-      default: "30",
+        "23.976, 60000/1001 for 59.94). Range 1-240. " +
+        "Defaults to the composition's root data-fps, else 30.",
+      // No `default` here on purpose: citty would set args.fps="30" on
+      // omission, which would make explicitFps always non-null and short-
+      // circuit the data-fps resolution below (resolveDefaultFpsArg). The
+      // "30" fallback lives at the parseFps(fpsArg ?? "30") call instead.
     },
     quality: {
       type: "string",

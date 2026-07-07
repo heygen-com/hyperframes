@@ -506,4 +506,18 @@ describe("checkRenderResolutionPreflight", () => {
   });
 });
 
+describe("render fps arg definition", () => {
+  it("declares no citty default for --fps (so data-fps resolution can run)", async () => {
+    // Regression guard: a `default: "30"` here makes citty set args.fps="30"
+    // on omission, which short-circuits resolveDefaultFpsArg (explicitFps is
+    // never null) and silently reverts the command to always-30 — the exact
+    // no-op caught in review. The "30" fallback must live at the
+    // parseFps(fpsArg ?? "30") call, not on the arg.
+    const cmd = (await import("./render.js")).default;
+    const fpsArg = cmd.args?.fps as { default?: unknown } | undefined;
+    expect(fpsArg).toBeDefined();
+    expect(fpsArg?.default).toBeUndefined();
+  });
+});
+
 // Variables-helper tests live in `../utils/variables.test.ts`.
