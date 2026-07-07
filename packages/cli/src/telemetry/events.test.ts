@@ -5,6 +5,12 @@ vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
 }));
 
+// identifyUser reads the install anonymousId; pin it so the $identify alias is
+// deterministic and the test never touches disk.
+vi.mock("./config.js", () => ({
+  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+}));
+
 const {
   trackRenderComplete,
   trackRenderError,
@@ -17,6 +23,7 @@ const {
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
+  identifyUser,
 } = await import("./events.js");
 
 describe("render telemetry events", () => {
@@ -285,12 +292,26 @@ describe("auth login telemetry events", () => {
     );
   });
 
-  it("forwards an explicit distinctId to trackEvent for future user-level attribution", () => {
-    trackAuthLoginCompleted("oauth", "heygen-user-123");
+  it("forwards an explicit distinctId to trackEvent for user-level attribution", () => {
+    trackAuthLoginCompleted("oauth", "alice@example.com");
     expect(trackEvent).toHaveBeenCalledWith(
       "auth_login_completed",
       { method: "oauth" },
-      "heygen-user-123",
+      "alice@example.com",
     );
+  });
+
+  it("identifyUser emits a $identify alias linking the anon install to the identity", () => {
+    identifyUser("alice@example.com");
+    expect(trackEvent).toHaveBeenCalledWith(
+      "$identify",
+      { $anon_distinct_id: "anon-test-123" },
+      "alice@example.com",
+    );
+  });
+
+  it("identifyUser is a no-op when there is no identity to attach", () => {
+    identifyUser("");
+    expect(trackEvent).not.toHaveBeenCalled();
   });
 });

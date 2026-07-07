@@ -12,5 +12,6 @@ export {
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
+  identifyUser,
 } from "./events.js";
 export { getSystemMeta, getShmSizeMb, getFreeDiskMb, bytesToMb } from "./system.js";

@@ -31,6 +31,17 @@ vi.mock("../../auth/index.js", async (orig) => {
   return { ...actual, AuthClient: MockAuthClient };
 });
 
+// Spy on the telemetry the login flow emits, so we can assert the identity is
+// attributed on success. login.ts imports these via a dynamic import of
+// telemetry/index.js; the mock intercepts it.
+const telemetry = vi.hoisted(() => ({
+  trackAuthLoginStarted: vi.fn(),
+  trackAuthLoginCompleted: vi.fn(),
+  trackAuthLoginFailed: vi.fn(),
+  identifyUser: vi.fn(),
+}));
+vi.mock("../../telemetry/index.js", () => telemetry);
+
 const ENV_KEYS = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_CONFIG_DIR"] as const;
 
 describe("auth login --api-key rollback", () => {
@@ -46,6 +57,7 @@ describe("auth login --api-key rollback", () => {
     process.env["HEYGEN_CONFIG_DIR"] = dir;
     verifyState.reject = false;
     verifyState.user = { email: "alice@example.com" };
+    for (const fn of Object.values(telemetry)) fn.mockClear();
     // process.exit throws so we can assert the post-rollback state.
     vi.spyOn(process, "exit").mockImplementation(((code?: string | number | null) => {
       throw new Error(`process.exit:${code ?? 0}`);
@@ -156,6 +168,34 @@ describe("auth login --api-key rollback", () => {
     const onDisk = JSON.parse(await fs.readFile(join(dir, "credentials"), "utf8"));
     expect(onDisk.api_key).toBeUndefined();
     expect(onDisk.future_credential).toEqual({ token: "owned_by_other_cli" });
+  });
+
+  it("attributes a successful login to the account email", async () => {
+    verifyState.user = { email: "alice@example.com", username: "alice" };
+    await runLogin("hg_goodkey456");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice@example.com");
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice@example.com");
+  });
+
+  it("falls back to username when the account has no email", async () => {
+    verifyState.user = { username: "alice" };
+    await runLogin("hg_goodkey456");
+    expect(telemetry.identifyUser).toHaveBeenCalledWith("alice");
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", "alice");
+  });
+
+  it("does not identify when the identity probe returns nothing", async () => {
+    verifyState.user = {}; // verified key, but no identity fields
+    await runLogin("hg_goodkey456");
+    expect(telemetry.identifyUser).not.toHaveBeenCalled();
+    expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("api_key", undefined);
+  });
+
+  it("records a rejected key as failed and never identifies", async () => {
+    verifyState.reject = true;
+    await expect(runLogin("hg_badkey123")).rejects.toThrow(/process\.exit:1/);
+    expect(telemetry.identifyUser).not.toHaveBeenCalled();
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("api_key", "rejected");
   });
 
   it("preserves an unknown/foreign top-level key across a successful re-login", async () => {
