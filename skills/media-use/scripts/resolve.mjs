@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
-import { appendRecord, findByPrompt, findByEntity, nextId, typeSubdir } from "./lib/manifest.mjs";
+import {
+  appendRecord,
+  findByPrompt,
+  findByEntity,
+  nextId,
+  allocateId,
+} from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
-import { runCapability, listTypes } from "./lib/registry.mjs";
+import { runCapability, listTypes, providerMatches, providerNamesFor } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
 import { track } from "./lib/telemetry.mjs";
@@ -81,8 +87,10 @@ if (args.candidates || args["dry-run"]) {
 }
 
 // Reuse: import a specific global-cache asset (by content sha/prefix, taken
-// from --candidates) into this project.
-if (args.reuse) {
+// from --candidates) into this project. `!== undefined` so an empty --reuse ""
+// still routes here (and gets a clear empty-sha error) instead of falling
+// through to the misleading "--type and --intent are required".
+if (args.reuse !== undefined) {
   await reuseGlobal(args.reuse);
   process.exit(0);
 }
@@ -93,13 +101,23 @@ if (args.from) {
   process.exit(0);
 }
 
-if (!args.type || !args.intent) {
-  console.error("error: --type and --intent are required");
+if (!args.type || !args.intent || !args.intent.trim()) {
+  console.error("error: --type and a non-empty --intent are required");
   process.exit(2);
 }
 
 if (!listTypes().includes(args.type)) {
   console.error(`error: unknown media type: ${args.type} (known: ${listTypes().join(", ")})`);
+  process.exit(2);
+}
+
+// Forced-provider validation: reject an unknown/unavailable provider name up
+// front so a typo reads as a typo, not a catalog miss (`no provider could
+// resolve`). Match rule mirrors runProviders (full name or dotted prefix).
+if (args.provider && !providerMatches(args.type, args.provider)) {
+  console.error(
+    `error: unknown provider "${args.provider}" for type ${args.type} (available: ${providerNamesFor(args.type).join(", ")})`,
+  );
   process.exit(2);
 }
 
@@ -109,8 +127,14 @@ const intent = args.intent;
 const entity = args.entity || null;
 
 async function run() {
+  // A forced --provider means "(re)generate with THIS provider" — it bypasses
+  // every reuse rung (project/entity/assets/global cache) so it can't silently
+  // hand back an asset from a different provider. The floor only applies to the
+  // default (unforced) cascade.
+  const forced = !!args.provider;
+
   // 1. project manifest — exact-prompt match
-  const projectHit = findByPrompt(projectDir, intent, type);
+  const projectHit = forced ? null : findByPrompt(projectDir, intent, type);
   if (projectHit && existsSync(join(projectDir, projectHit.path))) {
     return result(projectHit, "cached");
   }
@@ -118,7 +142,7 @@ async function run() {
   // 1b. entity match in project. icon and image are interchangeable for
   // entity hits — both live in images/, and figma-imported brand marks are
   // always recorded as type image while agents ask for logos as type icon.
-  if (entity) {
+  if (!forced && entity) {
     const entityHit = findByEntity(projectDir, entity);
     if (
       entityHit &&
@@ -130,7 +154,7 @@ async function run() {
   }
 
   // 1c. scan existing assets/ directory for unregistered matches
-  const existingAsset = findExistingAsset(projectDir, intent, type);
+  const existingAsset = forced ? null : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
     const id = nextId(projectDir, type);
     const record = {
@@ -147,11 +171,10 @@ async function run() {
   }
 
   // 2. global cache — exact-prompt or entity match
-  const cacheHit = cacheGet(intent, type);
+  const cacheHit = forced ? null : cacheGet(intent, type);
   if (cacheHit) {
-    const id = nextId(projectDir, type);
     const ext = extname(cacheHit.cached_path);
-    const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
+    const { id, localPath } = allocateId(projectDir, type, ext);
     const imported = importFromCache(cacheHit, projectDir, id, localPath);
     if (imported) {
       appendRecord(projectDir, imported);
@@ -160,12 +183,11 @@ async function run() {
     }
   }
 
-  if (entity) {
+  if (!forced && entity) {
     const entityCacheHit = cacheGetByEntity(entity);
     if (entityCacheHit && typesMatch(entityCacheHit.type, type)) {
-      const id = nextId(projectDir, type);
       const ext = extname(entityCacheHit.cached_path);
-      const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
+      const { id, localPath } = allocateId(projectDir, type, ext);
       const imported = importFromCache(entityCacheHit, projectDir, id, localPath);
       if (imported) {
         appendRecord(projectDir, imported);
@@ -189,7 +211,7 @@ async function run() {
     const { similar } = listCandidates({ projectDir, type, intent, cap: CANDIDATE_CAP });
     if (similar > 0) {
       console.error(
-        `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already exist — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
+        `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already ${similar === 1 ? "exists" : "exist"} — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
       );
     }
   } catch {
@@ -224,7 +246,9 @@ async function run() {
     const msg =
       type === "brand"
         ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
-        : `no provider could resolve ${type}: "${intent}"`;
+        : args.provider
+          ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
+          : `no provider could resolve ${type}: "${intent}"`;
     if (args.json) {
       console.log(JSON.stringify({ ok: false, error: msg }));
     } else {
@@ -233,10 +257,10 @@ async function run() {
     process.exit(1);
   }
 
-  // 5. freeze + register
-  const id = nextId(projectDir, type);
+  // 5. freeze + register (atomic id+file reservation so concurrent resolves
+  // can't collide on an id during the download — MU-23)
   const ext = searchResult.ext || extFromUrl(searchResult.url || "") || defaultExt(type);
-  const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
+  const { id, localPath } = allocateId(projectDir, type, ext);
   const fullPath = join(projectDir, localPath);
 
   if (searchResult.localPath) {
@@ -254,7 +278,9 @@ async function run() {
     path: localPath,
     source: searchResult.source || "search",
     description: searchResult.metadata?.description || intent,
-    ...(searchResult.metadata?.duration != null && { duration: searchResult.metadata.duration }),
+    ...(searchResult.metadata?.duration != null && {
+      duration: Math.round(searchResult.metadata.duration * 10) / 10, // round to 0.1s like probe (voice bypassed it)
+    }),
     ...(searchResult.metadata?.width != null && { width: searchResult.metadata.width }),
     ...(searchResult.metadata?.height != null && { height: searchResult.metadata.height }),
     ...(searchResult.metadata?.transparent != null && {
@@ -301,9 +327,14 @@ async function ingest(src) {
     console.error(`error: file not found: ${src}`);
     process.exit(2);
   }
-  const id = nextId(projectDir, type);
+  // Refuse 0-byte input: an empty asset would register clean but fail at render
+  // (freezeUrl already rejects empty responses; this covers local files).
+  if (!isUrl && statSync(resolve(src)).size === 0) {
+    console.error(`error: refusing to ingest a 0-byte file: ${src}`);
+    process.exit(2);
+  }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
-  const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
+  const { id, localPath } = allocateId(projectDir, type, ext);
   const fullPath = join(projectDir, localPath);
   if (isUrl) await freezeUrl(src, fullPath);
   else freezeLocalFile(resolve(src), fullPath);
@@ -359,6 +390,10 @@ async function reuseGlobal(shaArg) {
     console.error(`error: --reuse requires --type (one of: ${listTypes().join(", ")})`);
     process.exit(2);
   }
+  if (!shaArg || !shaArg.trim()) {
+    console.error("error: --reuse needs a content sha/prefix (from `resolve --candidates`)");
+    process.exit(2);
+  }
   const rec = findGlobalBySha(shaArg);
   if (rec && rec.ambiguous) {
     console.error(
@@ -370,9 +405,14 @@ async function reuseGlobal(shaArg) {
     console.error(`error: no reusable global asset matches sha "${shaArg}"`);
     process.exit(1);
   }
-  const id = nextId(projectDir, type);
+  // Type guard: don't import a bgm asset as an image (audio under images/).
+  // icon<->image are interchangeable; everything else must match --type.
+  if (!typesMatch(rec.type, type)) {
+    console.error(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`);
+    process.exit(2);
+  }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
-  const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
+  const { id, localPath } = allocateId(projectDir, type, ext);
   const imported = importFromCache(rec, projectDir, id, localPath);
   if (!imported) {
     console.error(`error: cache entry for "${shaArg}" is incomplete or missing on disk`);

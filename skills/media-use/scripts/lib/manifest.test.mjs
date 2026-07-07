@@ -8,6 +8,7 @@ import {
   findByPrompt,
   findByEntity,
   nextId,
+  allocateId,
   normalizePrompt,
   manifestPath,
   mediaDir,
@@ -127,6 +128,28 @@ function runTests() {
   test("normalizePrompt trims, lowercases, collapses whitespace", () => {
     assert.equal(normalizePrompt("  Upbeat   Tech  Launch "), "upbeat tech launch");
     assert.equal(normalizePrompt(null), "");
+  });
+
+  test("allocateId reserves the id on disk so a pre-append caller can't reuse it (MU-23)", () => {
+    setup();
+    const a = allocateId(tmp, "bgm", ".wav");
+    assert.equal(a.id, "bgm_001");
+    assert.ok(existsSync(join(tmp, a.localPath)), "placeholder reserved on disk");
+    // Second allocation BEFORE any manifest append (the download window) must not
+    // hand back bgm_001 again, even with a different extension.
+    const b = allocateId(tmp, "bgm", ".mp3");
+    assert.equal(b.id, "bgm_002");
+    assert.notEqual(a.localPath, b.localPath);
+    // Lock file is released (not left behind).
+    assert.ok(!existsSync(join(tmp, ".media", ".lock")), "lock released");
+    cleanup();
+  });
+
+  test("allocateId continues past the highest manifest id", () => {
+    setup();
+    appendRecord(tmp, makeRecord({ id: "bgm_005" }));
+    assert.equal(allocateId(tmp, "bgm", ".wav").id, "bgm_006");
+    cleanup();
   });
 
   test("findByEntity matches case-insensitively", () => {

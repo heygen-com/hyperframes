@@ -54,6 +54,12 @@ export function scanExistingAssets(projectDir) {
     if (!type) continue;
     const fullPath = join(assetsDir, rel);
     const stat = statSync(fullPath);
+    if (stat.size === 0) {
+      // A 0-byte asset would register clean but fail at render — skip it loudly
+      // rather than adopt a broken file.
+      console.error(`media-use: skipping 0-byte asset assets/${rel}`);
+      continue;
+    }
     const meta = probe(fullPath);
     found.push({
       relativePath: `assets/${rel}`,

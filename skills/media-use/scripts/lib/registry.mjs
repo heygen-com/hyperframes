@@ -79,6 +79,20 @@ export function listTypes() {
   return Object.keys(REGISTRY);
 }
 
+/** Provider names available for a type, in cascade order (for --provider validation). */
+export function providerNamesFor(type) {
+  return listFor(type).map((p) => p.name);
+}
+
+/**
+ * Does an override token (full name like "codex.image_gen" or a prefix like
+ * "codex") match any provider declared for the type? Same match rule as
+ * runProviders, so validation and dispatch never disagree.
+ */
+export function providerMatches(type, want) {
+  return providerNamesFor(type).some((n) => n === want || n.startsWith(`${want}.`));
+}
+
 /**
  * Back-compat shim for the v1 single-provider API. Returns the first declared
  * provider for the type (tagged with `type`); throws for an unknown type.
@@ -94,17 +108,21 @@ export function getProvider(type) {
  * order, returns the first non-null result, skips providers that don't expose
  * the capability. Pure over its input — the unit-testable core of the cascade.
  *
- * Offline guard: a `network` provider is skipped when `ctx.localOnly` is set.
+ * Offline guard: a `network` provider is skipped when `ctx.localOnly` is set —
+ * unconditionally, even under a `ctx.provider` override. --local-only is a hard
+ * safety flag: it must never make a network call. Forcing a network provider
+ * while offline yields a clean miss (the caller explains the conflict), never a
+ * silent network request.
  * Provider override: `ctx.provider` (a full name like "codex.image_gen" or a
  * prefix like "codex") pins resolution to matching providers only — this is how
  * a user "make an image WITH codex" forces the upsell instead of taking the
- * free-first default. An override to a `network` provider ignores --local-only.
+ * free-first default.
  */
 export async function runProviders(providers, capability, intent, ctx) {
   const want = ctx?.provider;
   for (const p of providers) {
     if (want && p.name !== want && !p.name.startsWith(`${want}.`)) continue;
-    if (p.network && ctx?.localOnly && !want) continue; // --local-only: cache + local only
+    if (p.network && ctx?.localOnly) continue; // --local-only wins, even over --provider
     const fn = p[capability];
     if (typeof fn !== "function") continue;
     const res = await fn(intent, ctx);

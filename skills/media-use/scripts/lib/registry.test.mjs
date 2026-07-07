@@ -68,10 +68,16 @@ test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", asyn
     await runProviders(providers, "generate", "x", { provider: "codex.image_gen" }),
     { hit: "codex" },
   );
-  // forcing a network provider ignores --local-only (explicit user intent)
-  assert.deepEqual(
+  // --local-only wins even over a forced network provider: no network call,
+  // clean miss (the caller surfaces the conflict). A forced LOCAL provider under
+  // --local-only still runs.
+  assert.equal(
     await runProviders(providers, "generate", "x", { provider: "codex", localOnly: true }),
-    { hit: "codex" },
+    null,
+  );
+  assert.deepEqual(
+    await runProviders(providers, "generate", "x", { provider: "mflux", localOnly: true }),
+    { hit: "local" },
   );
 });
 
