@@ -34,7 +34,7 @@ Atomic capabilities you load **on demand** — not full workflows; they never ow
 | **Media** — resolve/generate BGM, SFX, image, icon, voice; TTS voiceover, transcription, background removal, captions; cross-project reuse                              | `/media-use`             |
 | **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
 | **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
-| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion, shaders (MCP)                                               | `/figma`                 |
+| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion (MCP), shaders (MCP source / native export)                  | `/figma`                 |
 
 ---
 
