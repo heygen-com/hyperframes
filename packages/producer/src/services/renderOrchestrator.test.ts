@@ -28,6 +28,7 @@ import {
   MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
   shouldDiscardProbeSessionForPageSideCompositing,
+  resolveInversionRetryPlan,
   shouldPreferSingleWorkerDrawElement,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
@@ -1624,6 +1625,7 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
 
   it("is disabled by minFrames <= 0 (HF_DE_SINGLE_MIN_FRAMES=0 kill switch)", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: -1 })).toBe(false);
   });
 
   it("requires drawElement to be enabled and ungated", () => {
@@ -1641,5 +1643,62 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
 
   it("is a no-op when workers already resolved to 1", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+});
+
+describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
+  const cfg = { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 240 };
+
+  it("returns null when the render was never inverted", () => {
+    expect(
+      resolveInversionRetryPlan({
+        deWorkerInversion: undefined,
+        preInversionWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+      }),
+    ).toBe(null);
+    expect(
+      resolveInversionRetryPlan({
+        deWorkerInversion: "reverted",
+        preInversionWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+      }),
+    ).toBe(null);
+  });
+
+  it("restores the pre-inversion worker count and routes multi-worker retries to disk", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+    });
+    expect(plan).toEqual({
+      workerCount: 5,
+      // shouldUseStreamingEncode is workerCount===1-only — parallel retry
+      // goes through the disk path.
+      useStreamingEncode: false,
+      deWorkerInversion: "reverted",
+    });
+  });
+
+  it("keeps streaming when the pre-inversion resolution was already single-worker", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 1,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deWorkerInversion: "reverted",
+    });
   });
 });

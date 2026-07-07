@@ -45,7 +45,7 @@ export function pushWorkerDedupPerfs(
 export interface DrawElementPerfInput {
   compileGate?: string;
   clampReason?: string;
-  workerInversion?: boolean;
+  workerInversion?: "inverted" | "reverted";
   selfVerifyFallback: boolean;
   fallbackReason?: string;
   drainStats?: {
@@ -73,7 +73,7 @@ function aggregateDrawElement(
     mode: modes.join("|") || "unknown",
     compileGate: de.compileGate,
     clampReason: de.clampReason,
-    workerInversion: de.workerInversion ?? false,
+    workerInversion: de.workerInversion ?? "none",
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),

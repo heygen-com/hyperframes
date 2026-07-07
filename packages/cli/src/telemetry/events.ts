@@ -120,7 +120,7 @@ export function trackRenderComplete(
     deCaptureMode?: string;
     deCompileGate?: string;
     deClampReason?: string;
-    deWorkerInversion?: boolean;
+    deWorkerInversion?: string;
     deGateReason?: string;
     deWorkerEncode?: boolean;
     deVerifyArmed?: number;

@@ -376,8 +376,8 @@ export interface RenderPerfSummary {
     compileGate?: string;
     /** Producer clamp that disabled default DE: parallel | disk_path. */
     clampReason?: string;
-    /** Auto-parallel was inverted to single-worker verified DE streaming. */
-    workerInversion?: boolean;
+    /** Auto-parallel inversion outcome: "inverted" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". */
+    workerInversion?: string;
     /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Worker-encode drain (the verified path) was active. */
@@ -1017,6 +1017,36 @@ export function shouldPreferSingleWorkerDrawElement(args: {
   );
 }
 
+/**
+ * Plan the self-verify retry for an inverted render: the inversion bet on
+ * drawElement and lost, so the re-render returns to the pre-inversion parallel
+ * screenshot path (streaming re-resolved for that worker count — multi-worker
+ * routes to the disk stage). Returns null when the render was not inverted.
+ */
+export function resolveInversionRetryPlan(args: {
+  deWorkerInversion: "inverted" | "reverted" | undefined;
+  preInversionWorkerCount: number;
+  cfg: Pick<EngineConfig, "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds">;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  durationSeconds: number;
+}): {
+  workerCount: number;
+  useStreamingEncode: boolean;
+  deWorkerInversion: "reverted";
+} | null {
+  if (args.deWorkerInversion !== "inverted") return null;
+  return {
+    workerCount: args.preInversionWorkerCount,
+    useStreamingEncode: shouldUseStreamingEncode(
+      args.cfg,
+      args.outputFormat,
+      args.preInversionWorkerCount,
+      args.durationSeconds,
+    ),
+    deWorkerInversion: "reverted",
+  };
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -1284,7 +1314,9 @@ export async function executeRenderJob(
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
     let deClampReason: string | undefined;
-    let deWorkerInversion = false;
+    // "inverted" = fired and held; "reverted" = fired but the self-verify
+    // retry rolled back to the parallel path; undefined = never fired.
+    let deWorkerInversion: "inverted" | "reverted" | undefined;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -1638,10 +1670,11 @@ export async function executeRenderJob(
         ? 900
         : Number(deSingleMinFramesRaw);
     const deSingleMinFrames = Number.isFinite(deSingleMinFramesNum) ? deSingleMinFramesNum : 900;
+    // "Would ANY multi-worker resolution be inverted?" — if workers resolve
+    // to 1 naturally the outcome is identical either way.
+    const WOULD_RESOLVE_MULTI_WORKER = 2;
     const deInversionEligible = shouldPreferSingleWorkerDrawElement({
-      // Sentinel 2: "would a multi-worker resolution be inverted?" — if workers
-      // resolve to 1 naturally the outcome is identical either way.
-      workerCount: 2,
+      workerCount: WOULD_RESOLVE_MULTI_WORKER,
       requestedWorkers: job.config.workers,
       useDrawElement: cfg.useDrawElement,
       deCompileGate,
@@ -1726,7 +1759,7 @@ export async function executeRenderJob(
     // parallel path when the drawElement bet loses.
     const preInversionWorkerCount = workerCount;
     if (deInversionEligible && workerCount > 1) {
-      deWorkerInversion = true;
+      deWorkerInversion = "inverted";
       log.info(
         "[Render] Fast capture: single-worker drawElement streaming preferred over " +
           `${workerCount}-worker screenshot capture (${totalFrames} frames >= ` +
@@ -1738,7 +1771,7 @@ export async function executeRenderJob(
     updateCaptureObservability({ workerCount, deWorkerInversion });
     observability.checkpoint("worker_resolution", "resolved", {
       workerCount,
-      deWorkerInversion,
+      deWorkerInversion: deWorkerInversion ?? "none",
     });
 
     if (workerCount > 1 && probeSession) {
@@ -2039,22 +2072,26 @@ export async function executeRenderJob(
             deSelfVerifyFallback: true,
           });
           probeSession = null;
-          if (deWorkerInversion) {
+          const inversionRetryPlan = resolveInversionRetryPlan({
+            deWorkerInversion,
+            preInversionWorkerCount,
+            cfg,
+            outputFormat,
+            durationSeconds: job.duration,
+          });
+          if (inversionRetryPlan) {
             // The inversion bet on drawElement and lost — re-render on the
             // pre-inversion parallel screenshot path instead of single-worker
             // screenshot streaming (the slowest capture shape for this size).
-            deWorkerInversion = false;
-            workerCount = preInversionWorkerCount;
-            useStreamingEncode = shouldUseStreamingEncode(
-              cfg,
-              outputFormat,
-              workerCount,
-              job.duration,
-            );
+            // "reverted" (not cleared) so telemetry keeps the lost-inversion
+            // cohort distinguishable from renders that never inverted.
+            deWorkerInversion = inversionRetryPlan.deWorkerInversion;
+            workerCount = inversionRetryPlan.workerCount;
+            useStreamingEncode = inversionRetryPlan.useStreamingEncode;
             updateCaptureObservability({
               workerCount,
               useStreamingEncode,
-              deWorkerInversion: false,
+              deWorkerInversion,
             });
             log.info(
               `[Render] Reverting worker inversion for the retry: ${workerCount} workers, ` +
