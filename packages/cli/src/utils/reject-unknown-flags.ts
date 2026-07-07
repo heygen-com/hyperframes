@@ -30,15 +30,20 @@ function knownFlags(args: ArgsDef | undefined): Set<string> {
 // The unknown flag a single token introduces, or null when it's fine
 // (positional, flag value, `--`, or all-known). `--no-foo` -> `foo`,
 // `--flag=value` -> `flag`; a combined short group (`-ab`) checks each char.
+// `--flag`, `--flag=value`, `--no-flag` -> the bare flag name.
+function longFlagName(tok: string): string {
+  const name = tok.slice(2).split("=")[0] ?? "";
+  return name.startsWith("no-") ? name.slice(3) : name;
+}
+
 function unknownFlagIn(tok: string, known: Set<string>): string | null {
   if (tok === "-" || !tok.startsWith("-")) return null; // positional or flag value
   if (tok.startsWith("--")) {
-    let name = tok.slice(2).split("=")[0] ?? "";
-    if (name.startsWith("no-")) name = name.slice(3);
+    const name = longFlagName(tok);
     return name && !known.has(name) ? `--${name}` : null;
   }
   for (const ch of tok.slice(1).split("=")[0] ?? "") {
-    if (!known.has(ch)) return `-${ch}`;
+    if (!known.has(ch)) return `-${ch}`; // combined shorts: check each char
   }
   return null;
 }
