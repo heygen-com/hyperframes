@@ -12,7 +12,9 @@ function findTopLevelAncestor(id: string, parentMap: Map<string, string>): strin
   while (parentMap.has(current)) {
     if (visited.has(current)) return current;
     visited.add(current);
-    current = parentMap.get(current)!;
+    const parent = parentMap.get(current);
+    if (!parent) return current;
+    current = parent;
   }
   return current;
 }
@@ -34,6 +36,67 @@ function resolveRawId(
   const clip = manifest.find((c) => c.label === selectedId || c.label === rawId);
   if (clip?.id && parentMap.has(clip.id)) return clip.id;
   return null;
+}
+
+interface TimelineExpansionRawIdInput {
+  selectedElementId: string | null;
+  isPlaying: boolean;
+  currentTime: number;
+  manifest: ClipManifestClip[];
+  parentMap: Map<string, string>;
+}
+
+function clipContainsTime(clip: ClipManifestClip, time: number): boolean {
+  return Number.isFinite(time) && time >= clip.start && time < clip.start + clip.duration;
+}
+
+function getActiveParentDepth(id: string, parentMap: Map<string, string>, activeIds: Set<string>) {
+  let depth = 0;
+  let parent = parentMap.get(id);
+  const visited = new Set<string>();
+  visited.add(id);
+  while (parent) {
+    if (visited.has(parent)) return depth;
+    visited.add(parent);
+    if (activeIds.has(parent)) depth += 1;
+    parent = parentMap.get(parent);
+  }
+  return depth;
+}
+
+function findActiveExpandableCompositionId(
+  currentTime: number,
+  manifest: ClipManifestClip[],
+  parentMap: Map<string, string>,
+): string | null {
+  const parentIds = new Set(parentMap.values());
+  const activeIds = new Set<string>();
+  for (const clip of manifest) {
+    if (!clip.id || !parentIds.has(clip.id) || !clipContainsTime(clip, currentTime)) continue;
+    activeIds.add(clip.id);
+  }
+  let bestId: string | null = null;
+  let bestDepth = -1;
+  for (const id of activeIds) {
+    const depth = getActiveParentDepth(id, parentMap, activeIds);
+    if (depth <= bestDepth) continue;
+    bestId = id;
+    bestDepth = depth;
+  }
+  return bestId;
+}
+
+export function resolveTimelineExpansionRawId({
+  selectedElementId,
+  isPlaying,
+  currentTime,
+  manifest,
+  parentMap,
+}: TimelineExpansionRawIdInput): string | null {
+  const selectedRawId = resolveRawId(selectedElementId, manifest, parentMap);
+  if (selectedRawId) return selectedRawId;
+  if (isPlaying) return null;
+  return findActiveExpandableCompositionId(currentTime, manifest, parentMap);
 }
 
 function filterToTopLevel(
@@ -105,7 +168,7 @@ function buildChildElements(
       domId,
       selector,
       sourceFile: editBasis.sourceFile,
-      timingSource: "authored" as const,
+      timingSource: "authored",
     });
   }
   return result;
@@ -122,19 +185,21 @@ function domSiblingClips(
 ): ClipManifestClip[] {
   return domClipChildren
     .filter((c) => c.parentId === siblingParentId)
-    .map((c) => ({
-      id: c.id,
-      label: c.label,
-      start: host.start,
-      duration: host.duration,
-      track: host.track,
-      kind: "element" as const,
-      tagName: null,
-      compositionId: null,
-      parentCompositionId: host.id ?? null,
-      compositionSrc: host.compositionSrc ?? null,
-      assetUrl: null,
-    }));
+    .map(
+      (c): ClipManifestClip => ({
+        id: c.id,
+        label: c.label,
+        start: host.start,
+        duration: host.duration,
+        track: host.track,
+        kind: "element",
+        tagName: null,
+        compositionId: null,
+        parentCompositionId: host.id ?? null,
+        compositionSrc: host.compositionSrc ?? null,
+        assetUrl: null,
+      }),
+    );
 }
 
 // Exported for tests.
@@ -191,16 +256,38 @@ export function useExpandedTimelineElements(): TimelineElement[] {
   const clipParentMap = usePlayerStore((s) => s.clipParentMap);
   const domClipChildren = usePlayerStore((s) => s.domClipChildren);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const currentTime = usePlayerStore((s) => s.currentTime);
+
+  // Resolve which raw clip drives expansion. This reads currentTime (for paused
+  // auto-expand) so it re-runs each scrub tick, but it's a cheap manifest scan and
+  // its RESULT only changes when the playhead crosses a composition boundary. Keying
+  // the expensive build below on these ids (not raw currentTime) avoids re-allocating
+  // expandedElements — and cascading TimelineClip re-renders — on every tick.
+  const { rawId, selectedRawId } = useMemo(() => {
+    if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
+      return { rawId: null as string | null, selectedRawId: null as string | null };
+    }
+    return {
+      rawId: resolveTimelineExpansionRawId({
+        selectedElementId,
+        isPlaying,
+        currentTime,
+        manifest: clipManifest,
+        parentMap: clipParentMap,
+      }),
+      selectedRawId: resolveRawId(selectedElementId, clipManifest, clipParentMap),
+    };
+  }, [clipManifest, clipParentMap, selectedElementId, isPlaying, currentTime]);
 
   return useMemo(() => {
     if (!clipManifest || clipManifest.length === 0 || clipParentMap.size === 0) {
       return elements;
     }
-
-    const rawId = resolveRawId(selectedElementId, clipManifest, clipParentMap);
     if (!rawId) return filterToTopLevel(elements, clipParentMap);
 
-    const immediateParent = clipParentMap.get(rawId)!;
+    const immediateParent = selectedRawId ? clipParentMap.get(rawId) : rawId;
+    if (!immediateParent) return filterToTopLevel(elements, clipParentMap);
     const topLevel = findTopLevelAncestor(rawId, clipParentMap) ?? immediateParent;
     return buildExpandedElements(
       elements,
@@ -210,5 +297,5 @@ export function useExpandedTimelineElements(): TimelineElement[] {
       immediateParent,
       domClipChildren,
     );
-  }, [elements, clipManifest, clipParentMap, domClipChildren, selectedElementId]);
+  }, [elements, clipManifest, clipParentMap, domClipChildren, rawId, selectedRawId]);
 }

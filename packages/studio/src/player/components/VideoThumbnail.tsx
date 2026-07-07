@@ -47,6 +47,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       },
       { rootMargin: "200px" },
     );
+    // fallow-ignore-next-line code-duplication
     ioRef.current.observe(el);
 
     const target = el.parentElement || el;
@@ -177,20 +178,22 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         />
       )}
 
-      <div
-        className="absolute bottom-0 left-0 right-0 z-10 px-1.5 pb-0.5 pt-3"
-        style={{
-          background:
-            "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
-        }}
-      >
-        <span
-          className="text-[9px] font-semibold truncate block leading-tight"
-          style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
+      {label && (
+        <div
+          className="absolute bottom-0 left-0 right-0 z-10 px-1.5 pb-0.5 pt-3"
+          style={{
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 60%, transparent 100%)",
+          }}
         >
-          {label}
-        </span>
-      </div>
+          <span
+            className="text-[9px] font-semibold truncate block leading-tight"
+            style={{ color: labelColor, textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
+          >
+            {label}
+          </span>
+        </div>
+      )}
     </div>
   );
 });

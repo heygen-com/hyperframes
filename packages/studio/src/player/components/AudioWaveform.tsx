@@ -32,6 +32,7 @@ function extractPeaks(channelData: Float32Array, barCount: number): number[] {
     const start = i * samplesPerBar;
     const end = Math.min(start + samplesPerBar, channelData.length);
     for (let j = start; j < end; j++) {
+      // fallow-ignore-next-line code-duplication
       const abs = Math.abs(channelData[j] ?? 0);
       if (abs > max) max = abs;
     }
@@ -195,14 +196,16 @@ export const AudioWaveform = memo(function AudioWaveform({
           }}
         />
       )}
-      <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 z-10">
-        <span
-          className="text-[9px] font-semibold truncate block leading-tight"
-          style={{ color: labelColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
-        >
-          {label}
-        </span>
-      </div>
+      {label && (
+        <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 z-10">
+          <span
+            className="text-[9px] font-semibold truncate block leading-tight"
+            style={{ color: labelColor, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+          >
+            {label}
+          </span>
+        </div>
+      )}
     </div>
   );
 });

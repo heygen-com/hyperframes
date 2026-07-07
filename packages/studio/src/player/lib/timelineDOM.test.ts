@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { parseTimelineFromDOM, createImplicitTimelineLayersFromDOM } from "./timelineDOM";
+import {
+  createTimelineElementFromManifestClip,
+  parseTimelineFromDOM,
+  createImplicitTimelineLayersFromDOM,
+} from "./timelineDOM";
 
 function makeDoc(html: string): Document {
   const d = document.implementation.createHTMLDocument();
@@ -54,6 +58,49 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     const elements = parseTimelineFromDOM(doc, 10);
 
     expect(elements.map((el) => el.tag)).toEqual(["img"]);
+  });
+
+  it("marks parsed timeline elements hidden when data-hidden is present", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="hero" class="clip" data-start="0" data-duration="5" data-hidden></div>
+      </div>
+    `);
+
+    const elements = parseTimelineFromDOM(doc, 10);
+    const hero = elements.find((el) => el.domId === "hero");
+
+    expect(hero?.hidden).toBe(true);
+  });
+
+  it("marks manifest timeline elements hidden when the host has data-hidden", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="hero" class="clip" data-start="0" data-duration="5" data-hidden></div>
+      </div>
+    `);
+    const hostEl = doc.getElementById("hero");
+
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "hero",
+        label: "Hero",
+        kind: "element",
+        tagName: "div",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl,
+    });
+
+    expect(element.hidden).toBe(true);
   });
 });
 

@@ -2,6 +2,7 @@ import { parseCssColor, type ParsedColor } from "./colorValue";
 import { COMMON_LOCAL_FONT_FAMILIES } from "./fontCatalog";
 import type { DomEditSelection } from "./domEditing";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
+import type { TimelineElement } from "../../player";
 import { roundToCenti } from "../../utils/rounding";
 
 export type {
@@ -16,6 +17,16 @@ export function stripQueryAndHash(value: string): string {
   if (queryIndex < 0) return hashIndex < 0 ? value : value.slice(0, hashIndex);
   if (hashIndex < 0) return value.slice(0, queryIndex);
   return value.slice(0, Math.min(queryIndex, hashIndex));
+}
+
+export function isSelectedElementHidden(
+  elements: readonly TimelineElement[],
+  selectedElementId: string | null,
+): boolean {
+  if (!selectedElementId) return false;
+  return (
+    elements.find((element) => (element.key ?? element.id) === selectedElementId)?.hidden === true
+  );
 }
 
 /* ------------------------------------------------------------------ */

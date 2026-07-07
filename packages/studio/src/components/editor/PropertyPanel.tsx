@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
+import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
@@ -10,6 +11,7 @@ import {
   RESPONSIVE_GRID,
   readGsapRuntimeValuesForPanel,
   readGsapBorderRadiusForPanel,
+  isSelectedElementHidden,
 } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
@@ -67,6 +69,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onAddTextField,
   onRemoveTextField,
   onAskAgent: _onAskAgent,
+  onToggleElementHidden,
   onImportAssets,
   fontAssets = [],
   onImportFonts,
@@ -106,6 +109,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const storeTime = usePlayerStore((s) => s.currentTime);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const timelineElements = usePlayerStore((s) => s.elements);
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementHidden = isSelectedElementHidden(timelineElements, selectedElementId);
+  const visibilityToggleLabel = selectedElementHidden ? "Show element" : "Hide element";
   const liveTimeRef = useRef(storeTime);
   const [, forceRender] = useState(0);
   useEffect(() => {
@@ -288,13 +295,32 @@ export const PropertyPanel = memo(function PropertyPanel({
             </div>
             <div className="mt-0.5 truncate text-[11px] text-neutral-500">{sourceLabel}</div>
           </div>
-          <InspectorHeaderActions
-            element={element}
-            copied={clipboardCopied}
-            onCopy={handleCopyElementInfo}
-            onClear={onClearSelection}
-            onUngroup={onUngroup}
-          />
+          <div className="flex items-center gap-1">
+            {selectedElementId && onToggleElementHidden && (
+              <button
+                type="button"
+                aria-label={visibilityToggleLabel}
+                title={visibilityToggleLabel}
+                onClick={() => {
+                  void onToggleElementHidden(selectedElementId, !selectedElementHidden);
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+              >
+                {selectedElementHidden ? (
+                  <EyeSlash size={13} weight="bold" aria-hidden="true" />
+                ) : (
+                  <Eye size={13} weight="bold" aria-hidden="true" />
+                )}
+              </button>
+            )}
+            <InspectorHeaderActions
+              element={element}
+              copied={clipboardCopied}
+              onCopy={handleCopyElementInfo}
+              onClear={onClearSelection}
+              onUngroup={onUngroup}
+            />
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">

@@ -4,7 +4,6 @@ import {
   Eye as PhEye,
   FilmStrip,
   Stack,
-  ChatCenteredText,
   ArrowsOutCardinal,
   MusicNote,
   Palette as PhPalette,
@@ -15,7 +14,6 @@ import {
   TextT,
   X as PhX,
   Lightning,
-  CaretDown,
   CaretRight,
   ClipboardText,
   ArrowCounterClockwise,
@@ -41,7 +39,6 @@ export const Clock = makeIcon(PhClock);
 export const Eye = makeIcon(PhEye);
 export const Film = makeIcon(FilmStrip);
 export const Layers = makeIcon(Stack);
-export const MessageSquare = makeIcon(ChatCenteredText);
 export const Move = makeIcon(ArrowsOutCardinal);
 export const Music = makeIcon(MusicNote);
 export const Palette = makeIcon(PhPalette);
@@ -53,7 +50,18 @@ export const Type = makeIcon(TextT);
 export const X = makeIcon(PhX);
 export const Zap = makeIcon(Lightning);
 // Extra icons used in this project (not in lucide's default mapping above)
-export const ChevronDown = makeIcon(CaretDown);
+export const ChevronDown = ({ title, style, ...props }: IconProps) => {
+  const transform = style?.transform ? `${style.transform} rotate(90deg)` : "rotate(90deg)";
+  return (
+    <CaretRight
+      alt={title}
+      aria-label={title}
+      aria-hidden={title ? undefined : true}
+      style={{ ...style, transform }}
+      {...props}
+    />
+  );
+};
 export const ChevronRight = makeIcon(CaretRight);
 export const ClipboardList = makeIcon(ClipboardText);
 export const RotateCcw = makeIcon(ArrowCounterClockwise);

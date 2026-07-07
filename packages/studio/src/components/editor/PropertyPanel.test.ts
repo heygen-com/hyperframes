@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { TimelineElement } from "../../player";
 import {
   buildInsetClipPathSides,
   buildStrokeStyleUpdates,
@@ -11,6 +12,7 @@ import {
   parseInsetClipPathSides,
   setCssFilterFunctionPx,
 } from "./PropertyPanel";
+import { isSelectedElementHidden } from "./propertyPanelHelpers";
 
 describe("PropertyPanel style helpers", () => {
   it("normalizes bounded pixel values without accepting incompatible units", () => {
@@ -111,5 +113,28 @@ describe("PropertyPanel style helpers", () => {
     ]);
     expect(buildStrokeStyleUpdates("none", "4px")).toEqual([["border-style", "none"]]);
     expect(buildStrokeStyleUpdates("solid", "4px")).toEqual([["border-style", "solid"]]);
+  });
+});
+
+describe("isSelectedElementHidden", () => {
+  it("reads hidden state by selected timeline id or key", () => {
+    const elements: TimelineElement[] = [
+      { id: "visible", tag: "div", start: 0, duration: 1, track: 0 },
+      { id: "hidden", tag: "div", start: 0, duration: 1, track: 0, hidden: true },
+      {
+        id: "keyed-hidden",
+        key: "scene.html:#keyed-hidden",
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: 0,
+        hidden: true,
+      },
+    ];
+
+    expect(isSelectedElementHidden(elements, null)).toBe(false);
+    expect(isSelectedElementHidden(elements, "visible")).toBe(false);
+    expect(isSelectedElementHidden(elements, "hidden")).toBe(true);
+    expect(isSelectedElementHidden(elements, "scene.html:#keyed-hidden")).toBe(true);
   });
 });
