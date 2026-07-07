@@ -142,6 +142,17 @@ export async function injectDrawElementCanvas(
     ({ w, h }: { w: number; h: number }) => {
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
       if (!root || document.getElementById("__hf_de_canvas")) return;
+      // Record the root's base opacity (timeline at 0, before any entrance/
+      // outro tween) for the LEGACY root-opacity ratio correction. The
+      // correction only runs on paths whose paint does not bake the root's
+      // current opacity into the snapshot — BeginFrame (sync=false) captures
+      // and builds without canvas.requestPaint(); see __hfDeInvalidate below.
+      try {
+        (window as unknown as { __HF_ROOT_BASE_OPACITY__?: number }).__HF_ROOT_BASE_OPACITY__ =
+          parseFloat(getComputedStyle(root).opacity) || 1;
+      } catch {
+        /* leave undefined → ratio defaults to 1 */
+      }
       const parent = root.parentNode;
       if (!parent) throw new Error("drawElement: composition root has no parent node");
       const canvas = document.createElement("canvas") as HTMLCanvasElement & {
@@ -155,16 +166,46 @@ export async function injectDrawElementCanvas(
       parent.insertBefore(canvas, root);
       canvas.appendChild(root);
       // Invalidation sentinel: a canvas child OUTSIDE the captured root.
-      // Fallback for hosts without canvas.requestPaint() (WICG html-in-canvas
-      // contract; present since 151) — toggling its background each capture
-      // dirties the layoutsubtree so a paint (and a fresh snapshot) is
-      // guaranteed even for static frames, without ever appearing in
-      // drawElementImage(root) output.
+      // Toggling its background each capture is a PAINT-level dirty
+      // (layout/transform toggles do NOT fire the canvas `paint` event), so a
+      // paint — and a fresh snapshot — is guaranteed even for static frames,
+      // without the sentinel ever appearing in drawElementImage(root) output.
       const tick = document.createElement("div");
       tick.id = "__hf_de_tick";
       tick.style.cssText =
         "position:absolute;left:0px;top:0;width:1px;height:1px;background:#000;opacity:0.01;pointer-events:none";
       canvas.appendChild(tick);
+      // Per-frame invalidation helper shared by every paint-wait site (serial
+      // capture, worker produce, batch produce). Two mechanisms, both applied:
+      //  - the sentinel toggle guarantees a paint even if requestPaint() were
+      //    to elide one on a clean subtree, and remains the sole mechanism on
+      //    builds without requestPaint;
+      //  - canvas.requestPaint() is the html-in-canvas API's intended
+      //    invalidation (crbug 529829538 triage): it refreshes the subtree's
+      //    paint records — compositor-applied props included — where the
+      //    sentinel's dirty alone would not on pre-151 builds. Guarded so a
+      //    throwing implementation degrades to sentinel-only instead of
+      //    rejecting the capture.
+      // Returns true when requestPaint was called — the snapshot then bakes
+      // the root's CURRENT compositor-applied opacity (measured on 151/152),
+      // so callers must skip the legacy root-opacity ratio correction.
+      interface RequestPaintCanvas extends HTMLCanvasElement {
+        requestPaint?: () => void;
+      }
+      (window as Window & { __hfDeInvalidate?: () => boolean }).__hfDeInvalidate = () => {
+        tick.style.backgroundColor =
+          tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+        const cvp: RequestPaintCanvas = canvas;
+        if (typeof cvp.requestPaint === "function") {
+          try {
+            cvp.requestPaint();
+            return true;
+          } catch {
+            // Feature drift — sentinel dirty above still forces the paint.
+          }
+        }
+        return false;
+      };
     },
     { w: width, h: height },
   );
@@ -237,8 +278,15 @@ export async function captureDrawElementFrame(
         __hf_accel_canvases?: HTMLCanvasElement[];
         __hf_canvas_2d?: HTMLCanvasElement[];
         __hf3d?: { update: () => void };
+        __hfDeInvalidate?: () => boolean;
+        __HF_ROOT_PROPS__?: boolean;
+        __HF_ROOT_BASE_OPACITY__?: number;
       };
       const aw = window as AccelWindow;
+      // True when this frame's paint was requested via canvas.requestPaint()
+      // — the snapshot then bakes the root's current compositor-applied
+      // opacity, so the legacy ratio correction below must be skipped.
+      let usedRequestPaint = false;
       // Re-project CSS 3D contexts for THIS frame (threeDProjection.ts) so
       // their WebGL canvases are fresh before being drawImage-composited
       // below. Must run before the paint wait for the same reason as the
@@ -311,22 +359,38 @@ export async function captureDrawElementFrame(
                 // Zero-sized or not-yet-configured canvas — skip this frame.
               }
             }
-            // Root TRANSFORM correction: the snapshot NEVER bakes the captured
-            // element's own transform (even a static one renders unscaled — the
-            // parent applies it at composite time), so apply the current matrix
-            // unconditionally about the transform-origin (no transform ⇒ no-op).
-            // Verified still required under the requestPaint contract (crbug
-            // 529829538 triage, probed on 151 + 152 canary 2026-07-07).
-            // Opacity and filter need NO correction: the per-frame paint wait
-            // bakes the current values into the snapshot (root opacity as the
-            // pixel alpha). The former opacity ratio correction DOUBLE-APPLIED
-            // animated root fades (~0.92 → 0.85 effective, 30.1 dB self-verify
-            // failure on a root-fade A/B) and was removed.
-            const __rw = window as unknown as { __HF_ROOT_PROPS__?: boolean };
+            // Root compositor-prop corrections. Two distinct behaviours:
+            //  • transform — the snapshot NEVER bakes the captured element's
+            //    own transform (even a static one renders unscaled — the
+            //    parent applies it at composite time; verified still true
+            //    under the requestPaint contract, crbug 529829538 triage,
+            //    probed on 151 + 152 canary 2026-07-07). Apply the current
+            //    matrix unconditionally about the transform-origin.
+            //  • opacity — DEPENDS on how this frame's paint was produced.
+            //    A requestPaint()-driven paint bakes the root's CURRENT
+            //    opacity into the snapshot (pixel alpha) — the legacy ratio
+            //    correction DOUBLE-APPLIES there (~0.92 → 0.85 effective,
+            //    30.1 dB self-verify failure on a root-fade A/B) and must be
+            //    skipped. BeginFrame captures (sync=false) and builds without
+            //    requestPaint keep the pre-existing ratio correction: on
+            //    those paths the snapshot holds the load-time opacity.
+            //    filter is never corrected (paint wait bakes it).
             let __appliedTransform = false;
-            if (__rw.__HF_ROOT_PROPS__) {
+            let __appliedAlpha = false;
+            if (aw.__HF_ROOT_PROPS__) {
               try {
                 const rcs = getComputedStyle(root);
+                if (!usedRequestPaint) {
+                  const baseOp = aw.__HF_ROOT_BASE_OPACITY__ ?? 1;
+                  const curOp = parseFloat(rcs.opacity);
+                  if (baseOp > 0.001 && Number.isFinite(curOp)) {
+                    const ratio = curOp / baseOp;
+                    if (Math.abs(ratio - 1) > 0.002) {
+                      ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
+                      __appliedAlpha = true;
+                    }
+                  }
+                }
                 const curTransform = rcs.transform;
                 if (curTransform && curTransform !== "none") {
                   const m = new DOMMatrix(curTransform);
@@ -345,6 +409,7 @@ export async function captureDrawElementFrame(
             (
               ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
             ).drawElementImage(root, 0, 0);
+            if (__appliedAlpha) ctx.globalAlpha = 1;
             if (__appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
             // 3D-projection canvases (threeDProjection.ts) composite OVER the
             // DOM paint: their content replaces clip-path-hidden foreground
@@ -391,26 +456,14 @@ export async function captureDrawElementFrame(
         canvas.addEventListener("paint", onPaint);
         // Force an invalidation so a paint is guaranteed even when this frame's
         // seek produced no paint-level change (static scene, or transform-only
-        // GSAP updates that are compositor-side and never repaint).
-        // canvas.requestPaint() is the html-in-canvas API's intended mechanism
-        // (per crbug 529829538 triage): it schedules a paint that refreshes the
-        // subtree's paint records — compositor-applied props included — and
-        // fires the `paint` event. Fallback for builds without it: toggle the
-        // sentinel's background (a PAINT-level change; layout/transform toggles
-        // do NOT fire the paint event) — see injectDrawElementCanvas.
-        const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
-        if (typeof cvp.requestPaint === "function") {
-          cvp.requestPaint();
-        } else {
-          const tick = document.getElementById("__hf_de_tick");
-          if (tick) {
-            tick.style.backgroundColor =
-              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
-          }
-        }
+        // GSAP updates that are compositor-side and never repaint). Sentinel
+        // dirty + requestPaint(), installed by injectDrawElementCanvas — see
+        // __hfDeInvalidate there for the full mechanism/rationale.
+        usedRequestPaint = aw.__hfDeInvalidate?.() === true;
         // Safety net: if the paint event doesn't arrive (feature drift /
         // throttled page), fall back to an unsynchronized draw after 250 ms —
-        // worst case one-frame-stale content rather than a hung render.
+        // worst case one-frame-stale content (the root's alpha may lag its
+        // transform by that frame) rather than a hung render.
         setTimeout(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndEncode();
@@ -661,6 +714,9 @@ export async function produceDrawElementFrame(
         __hf_accel_canvases?: HTMLCanvasElement[];
         __hf_canvas_2d?: HTMLCanvasElement[];
         __hf3d?: { update: () => void };
+        __hfDeInvalidate?: () => boolean;
+        __HF_ROOT_PROPS__?: boolean;
+        __HF_ROOT_BASE_OPACITY__?: number;
       };
       const aw = window as AccelWindow;
       aw.__hf3d?.update();
@@ -679,6 +735,7 @@ export async function produceDrawElementFrame(
 
       return new Promise<void>((resolveCapture, rejectCapture) => {
         let settled = false;
+        let usedRequestPaint = false;
         const drawAndKick = () => {
           if (settled) return;
           settled = true;
@@ -708,14 +765,25 @@ export async function produceDrawElementFrame(
                 // skip
               }
             }
-            // Root TRANSFORM correction — identical to the serial path (see
-            // drawAndEncode's comment; opacity/filter are baked by the paint
-            // wait and need no correction).
-            const __rw = window as unknown as { __HF_ROOT_PROPS__?: boolean };
+            // Root compositor-prop corrections — identical to the serial path
+            // (see drawAndEncode's comment): transform always; opacity ratio
+            // only when this frame's paint was NOT requestPaint-driven.
             let __appliedTransform = false;
-            if (__rw.__HF_ROOT_PROPS__) {
+            let __appliedAlpha = false;
+            if (aw.__HF_ROOT_PROPS__) {
               try {
                 const rcs = getComputedStyle(root);
+                if (!usedRequestPaint) {
+                  const baseOp = aw.__HF_ROOT_BASE_OPACITY__ ?? 1;
+                  const curOp = parseFloat(rcs.opacity);
+                  if (baseOp > 0.001 && Number.isFinite(curOp)) {
+                    const ratio = curOp / baseOp;
+                    if (Math.abs(ratio - 1) > 0.002) {
+                      ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
+                      __appliedAlpha = true;
+                    }
+                  }
+                }
                 const curTransform = rcs.transform;
                 if (curTransform && curTransform !== "none") {
                   const m = new DOMMatrix(curTransform);
@@ -734,6 +802,7 @@ export async function produceDrawElementFrame(
             (
               ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
             ).drawElementImage(root, 0, 0);
+            if (__appliedAlpha) ctx.globalAlpha = 1;
             if (__appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
             // fallow-ignore-next-line code-duplication
             for (const c of accel) {
@@ -779,17 +848,9 @@ export async function produceDrawElementFrame(
           drawAndKick();
         };
         canvas.addEventListener("paint", onPaint);
-        // requestPaint-first invalidation — see captureDrawElementFrame.
-        const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
-        if (typeof cvp.requestPaint === "function") {
-          cvp.requestPaint();
-        } else {
-          const tick = document.getElementById("__hf_de_tick");
-          if (tick) {
-            tick.style.backgroundColor =
-              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
-          }
-        }
+        // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
+        // injectDrawElementCanvas.
+        usedRequestPaint = aw.__hfDeInvalidate?.() === true;
         setTimeout(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndKick();
@@ -804,8 +865,9 @@ export async function produceDrawElementFrame(
 
 /**
  * P6 prototype (HF_DE_BATCH): batch-produce N consecutive frames in ONE CDP
- * round-trip. In-page loop per frame: `__hf.seek(t)` → paint-wait (tick toggle +
- * canvas `paint` event) → drawElementImage composite → createImageBitmap →
+ * round-trip. In-page loop per frame: `__hf.seek(t)` → paint-wait
+ * (__hfDeInvalidate: sentinel dirty + requestPaint, then the canvas `paint`
+ * event) → drawElementImage composite → createImageBitmap →
  * postMessage to the encode worker. Bitmaps are posted per-frame (encode starts
  * immediately); only the CDP protocol round-trips are amortized N-fold.
  * Micro-pipeline inside the batch: frame i+1's seek/paint-wait overlaps frame
@@ -879,10 +941,13 @@ export async function produceDrawElementFrameBatch(
         __hf_accel_canvases?: HTMLCanvasElement[];
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
+        __hfDeInvalidate?: () => boolean;
         __HF_ROOT_PROPS__?: boolean;
+        __HF_ROOT_BASE_OPACITY__?: number;
         __hfEncWorker?: Worker;
       };
       const aw = window as AccelWindow;
+      let usedRequestPaint = false;
 
       const waitPaint = (): Promise<void> =>
         new Promise((res) => {
@@ -894,17 +959,9 @@ export async function produceDrawElementFrameBatch(
             res();
           };
           canvas.addEventListener("paint", settle);
-          // requestPaint-first invalidation — see captureDrawElementFrame.
-          const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
-          if (typeof cvp.requestPaint === "function") {
-            cvp.requestPaint();
-          } else {
-            const tick = document.getElementById("__hf_de_tick");
-            if (tick) {
-              tick.style.backgroundColor =
-                tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
-            }
-          }
+          // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
+          // injectDrawElementCanvas.
+          usedRequestPaint = aw.__hfDeInvalidate?.() === true;
           setTimeout(settle, 250);
         });
 
@@ -952,12 +1009,25 @@ export async function produceDrawElementFrameBatch(
               // skip
             }
           }
-          // Root TRANSFORM correction — mirrors produceDrawElementFrame (see
-          // drawAndEncode's comment; opacity/filter baked by the paint wait).
+          // Root compositor-prop corrections — mirrors produceDrawElementFrame
+          // (see drawAndEncode's comment): transform always; opacity ratio only
+          // when this frame's paint was NOT requestPaint-driven.
           let appliedTransform = false;
+          let appliedAlpha = false;
           if (aw.__HF_ROOT_PROPS__) {
             try {
               const rcs = getComputedStyle(root);
+              if (!usedRequestPaint) {
+                const baseOp = aw.__HF_ROOT_BASE_OPACITY__ ?? 1;
+                const curOp = parseFloat(rcs.opacity);
+                if (baseOp > 0.001 && Number.isFinite(curOp)) {
+                  const ratio = curOp / baseOp;
+                  if (Math.abs(ratio - 1) > 0.002) {
+                    ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
+                    appliedAlpha = true;
+                  }
+                }
+              }
               const curTransform = rcs.transform;
               if (curTransform && curTransform !== "none") {
                 const m = new DOMMatrix(curTransform);
@@ -976,6 +1046,7 @@ export async function produceDrawElementFrameBatch(
           (
             ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
           ).drawElementImage(root, 0, 0);
+          if (appliedAlpha) ctx.globalAlpha = 1;
           if (appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
           for (const c of accel) {
             if (!c.hasAttribute("data-hf-3d")) continue;

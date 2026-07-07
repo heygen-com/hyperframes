@@ -822,14 +822,24 @@ export async function createCaptureSession(
   if (useDrawElement) {
     await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
   }
-  // Re-apply the captured root's own computed TRANSFORM to the 2D context:
-  // drawElementImage never bakes the captured element's own transform into its
-  // content snapshot (the parent applies it at composite time — verified still
-  // true under the requestPaint contract, crbug 529829538 triage 2026-07-07),
-  // so an animated root scale/translate renders unmoved. On by default;
-  // disable with HF_FAST_CAPTURE_ROOT_PROPS=false. (The former opacity ratio
-  // correction was removed: since Chrome 151 the paint wait bakes root opacity
-  // into the snapshot, and the ratio double-applied animated root fades.)
+  // The opacity → autoAlpha tween rewrite was RETIRED with the requestPaint
+  // contract adoption (crbug 529829538 closed WAI): a requestPaint-driven
+  // paint refreshes nested opacity layers natively, and the rewrite itself
+  // measured ~28 dB of damage on comps whose fades it touched. Warn instead
+  // of silently ignoring the old escape hatch.
+  if (process.env.HF_FAST_CAPTURE_AUTOALPHA !== undefined) {
+    console.warn(
+      "[engine] HF_FAST_CAPTURE_AUTOALPHA is retired and ignored — the requestPaint " +
+        "paint contract captures animated opacity natively (see drawElementService.ts).",
+    );
+  }
+  // Re-apply the captured root's own compositor-applied props to the 2D
+  // context where the snapshot does not carry them (see the correction
+  // comment in drawElementService.ts drawAndEncode: transform always —
+  // never baked, verified under the requestPaint contract 2026-07-07;
+  // opacity ratio only on non-requestPaint paints, where the snapshot holds
+  // the load-time value). On by default; disable with
+  // HF_FAST_CAPTURE_ROOT_PROPS=false.
   if (useDrawElement && process.env.HF_FAST_CAPTURE_ROOT_PROPS !== "false") {
     await page.evaluateOnNewDocument(() => {
       (window as unknown as { __HF_ROOT_PROPS__?: boolean }).__HF_ROOT_PROPS__ = true;

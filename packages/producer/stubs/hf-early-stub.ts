@@ -171,7 +171,8 @@ function unwrapTimelineArg(arg: unknown): unknown {
 /**
  * Record tween targets (3D + all-targets) from a tween call's args so the
  * engine's 3D projection and at-risk scans can see to()-style tweens whose
- * computed style is still flat/opaque at t=0.
+ * computed style is still flat/opaque at t=0. Pure observer — tween args are
+ * NEVER modified on their way to GSAP.
  *
  * (The former fast-capture opacity → autoAlpha rewrite that lived here was
  * removed: it existed for crbug 521861819 — fixed in Chrome 151, the pinned
@@ -180,9 +181,8 @@ function unwrapTimelineArg(arg: unknown): unknown {
  * when the capture is synchronized via canvas.requestPaint(); see the
  * engine's drawElementService.)
  */
-function observeTweenArgs(method: TimelineOperationMethod, args: unknown[]): unknown[] {
+function observeTweenCall(method: TimelineOperationMethod, args: unknown[]): void {
   if (method !== "add") recordThreeDTweenTarget(args);
-  return args;
 }
 
 function varsHasThreeD(vars: unknown): boolean {
@@ -228,7 +228,8 @@ function enqueueTimelineOperation(
   method: TimelineOperationMethod,
   args: unknown[],
 ): TimelineProxy {
-  const entry = { proxy, method, args: observeTweenArgs(method, args) };
+  observeTweenCall(method, args);
+  const entry = { proxy, method, args };
   proxy.__hfQueue.push(entry);
   pendingOperations.push(entry);
   scheduleBatch();
@@ -482,12 +483,18 @@ if (typeof window !== "undefined") {
           const orig = g[method];
           if (typeof orig !== "function") continue;
           const bound = (orig as (...a: unknown[]) => unknown).bind(g);
-          g[method] = (...args: unknown[]): unknown => bound(...observeTweenArgs(method, args));
+          g[method] = (...args: unknown[]): unknown => {
+            observeTweenCall(method, args);
+            return bound(...args);
+          };
         }
         const origFromTo = g.fromTo;
         if (typeof origFromTo === "function") {
           const bound = (origFromTo as (...a: unknown[]) => unknown).bind(g);
-          g.fromTo = (...args: unknown[]): unknown => bound(...observeTweenArgs("fromTo", args));
+          g.fromTo = (...args: unknown[]): unknown => {
+            observeTweenCall("fromTo", args);
+            return bound(...args);
+          };
         }
       },
     });
