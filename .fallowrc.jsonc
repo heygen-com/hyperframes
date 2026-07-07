@@ -26,8 +26,9 @@
     // page.addScriptTag (see layout.ts / validate.ts) — referenced by file
     // path, never imported, so they have no import-graph referrer.
     "packages/cli/src/commands/layout-audit.browser.js",
-    "packages/cli/src/commands/contrast-audit.browser.js",
     "packages/cli/src/commands/motion-sample.browser.js",
+    // @hyperframes/validate contrast audit injects it via page.addScriptTag (raw string, no import referrer).
+    "packages/validate/src/contrast-audit.browser.js",
     // Worker entry points loaded dynamically by their *Pool.ts companions.
     "packages/producer/src/services/pngDecodeBlitWorker.ts",
     "packages/producer/src/services/shaderTransitionWorker.ts",
@@ -305,6 +306,13 @@
       // new package makes fallow see it as a fresh finding; the underlying clone
       // predates this refactor.
       "packages/parsers/src/hfIds.ts",
+      // @hyperframes/validate vendors these from cli/src/utils/* so it needn't import @hyperframes/cli (which depends on it); a shared low-level package is a follow-up.
+      "packages/validate/src/staticProjectServer.ts",
+      "packages/validate/src/compositionViewport.ts",
+      "packages/validate/src/dom.ts",
+      "packages/validate/src/errorMessage.ts",
+      // browserValidate.ts: raceMediaReady vs auditClipDurations' in-page closure share the race wiring; intentional — the closure is Puppeteer-serialized into a separate realm (see raceMediaReady doc).
+      "packages/validate/src/browserValidate.ts",
       // Parser test files: parallel arrange/act/assert test cases — pre-existing
       // duplication moved from packages/core/src/parsers/.
       "packages/parsers/src/gsapParser.test.ts",
@@ -573,6 +581,8 @@
       "packages/studio/src/player/components/TimelineCanvas.tsx",
       "packages/studio/src/player/components/TimelineClip.tsx",
       "packages/studio/src/player/components/TimelineClipDiamonds.tsx",
+      // WCAG contrast sampler ported wholesale into @hyperframes/validate; high cyclomatic is inherent to the pixel scan (no new logic).
+      "packages/validate/src/contrast-audit.browser.js",
     ],
   },
 }
