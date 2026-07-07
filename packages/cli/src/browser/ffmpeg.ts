@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { selectBinaryFromPathResults } from "@hyperframes/engine";
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -15,10 +16,7 @@ function findOnPath(name: "ffmpeg" | "ffprobe"): string | undefined {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5000,
     });
-    const first = output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
+    const first = selectBinaryFromPathResults(output, process.platform);
     return first ? resolve(first) : undefined;
   } catch {
     return undefined;

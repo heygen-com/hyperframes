@@ -216,6 +216,7 @@ export {
   assertConfiguredFfmpegBinariesExist,
   getFfmpegBinary,
   getFfprobeBinary,
+  selectBinaryFromPathResults,
   FFMPEG_PATH_ENV,
   FFPROBE_PATH_ENV,
 } from "./utils/ffmpegBinaries.js";

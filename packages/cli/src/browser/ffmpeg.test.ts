@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
@@ -42,5 +43,20 @@ describe("findFFmpeg", () => {
 
     const { findFFmpeg } = await import("./ffmpeg.js");
     expect(findFFmpeg()).toBeUndefined();
+  });
+
+  it("on win32, prefers ffmpeg.exe over a ffmpeg.cmd shim listed first", async () => {
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    mockExec.mockReturnValue("C:\\tools\\bin\\ffmpeg.cmd\r\nC:\\ffmpeg\\bin\\ffmpeg.exe\r\n");
+
+    const { findFFmpeg } = await import("./ffmpeg.js");
+    expect(findFFmpeg()).toBe(resolve("C:\\ffmpeg\\bin\\ffmpeg.exe"));
+  });
+
+  it("on non-win32, returns the first ffmpeg path from which unchanged", async () => {
+    mockExec.mockReturnValue("/usr/local/bin/ffmpeg\n/usr/bin/ffmpeg\n");
+
+    const { findFFmpeg } = await import("./ffmpeg.js");
+    expect(findFFmpeg()).toBe("/usr/local/bin/ffmpeg");
   });
 });
