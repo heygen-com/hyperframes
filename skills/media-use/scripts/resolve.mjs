@@ -3,13 +3,7 @@
 import { existsSync, statSync } from "node:fs";
 import { resolve, join, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
-import {
-  appendRecord,
-  findByPrompt,
-  findByEntity,
-  nextId,
-  allocateId,
-} from "./lib/manifest.mjs";
+import { appendRecord, findByPrompt, findByEntity, nextId, allocateId } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
 import { runCapability, listTypes, providerMatches, providerNamesFor } from "./lib/registry.mjs";
