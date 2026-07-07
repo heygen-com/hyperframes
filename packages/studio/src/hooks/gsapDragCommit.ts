@@ -14,7 +14,16 @@ import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeComp
 import { roundTo3 } from "../utils/rounding";
 import { computeElementPercentage } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
-import type { RuntimeTweenChange, SetPatchProps } from "./gsapRuntimePatch";
+import type { RuntimeTweenChange } from "./gsapRuntimePatch";
+import {
+  setPatchFromUpdateProperties,
+  setPatchFromUpdateProperty,
+} from "./gsapDragStaticSetHelpers";
+export {
+  findExistingPositionWrite,
+  findRotationSetAnimation,
+  findSizeSetAnimation,
+} from "./gsapDragStaticSetHelpers";
 export interface GsapDragCommitCallbacks {
   commitMutation: (
     selection: DomEditSelection,
@@ -103,86 +112,6 @@ export async function materializeIfDynamic(
 
 // ── Drag → GSAP position math ──────────────────────────────────────────────
 
-/** The shape of an `update-property` mutation a static-set nudge POSTs. */
-interface UpdatePropertyMutation {
-  type: "update-property";
-  animationId: string;
-  property: string;
-  value: number;
-}
-
-/**
- * Build the `instantPatch` for a value-only `tl.set` from the SAME
- * `update-property` mutation(s) that are POSTed — so the patch can never carry a
- * value the source write didn't (one source of truth). Each mutation contributes
- * its `{property: value}` channel to the patch's props.
- */
-function setPatchFromUpdateProperties(
-  selector: string,
-  mutations: UpdatePropertyMutation[],
-  global = false,
-): { selector: string; change: RuntimeTweenChange } {
-  const props: SetPatchProps = {};
-  for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
-  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
-  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
-  return { selector, change: { kind: global ? "global-set" : "set", props } };
-}
-
-/** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
-function setPatchFromUpdateProperty(
-  selector: string,
-  mutation: UpdatePropertyMutation,
-  global = false,
-): { selector: string; change: RuntimeTweenChange } {
-  return setPatchFromUpdateProperties(selector, [mutation], global);
-}
-
-/**
- * Find the studio position-hold `set` for a selector — a `tl.set("#el",{x,y})`
- * with no duration. This is what a static-element nudge writes/updates.
- */
-function findPositionSetAnimation(
-  animations: GsapAnimation[],
-  selector: string,
-): GsapAnimation | null {
-  return (
-    animations.find(
-      (a) =>
-        a.method === "set" &&
-        a.targetSelector === selector &&
-        ("x" in a.properties || "y" in a.properties),
-    ) ?? null
-  );
-}
-
-/**
- * Find the EXISTING static position HOLD to update for a static-hold drag. Not
- * just a `set`: a degenerate `tl.to("#el",{duration:0,x,y})` (what
- * remove-all-keyframes leaves behind) is a held position too, and the next drag
- * must UPDATE it in place rather than append a second `gsap.set` that fights it
- * (the duplicate-position-write bug). Only zero-duration holds qualify — a
- * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
- * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
- * Prefers a `set` (the canonical static channel) when both forms exist.
- */
-function findExistingPositionWrite(
-  animations: GsapAnimation[],
-  selector: string,
-): GsapAnimation | null {
-  const set = findPositionSetAnimation(animations, selector);
-  if (set) return set;
-  return (
-    animations.find(
-      (a) =>
-        a.targetSelector === selector &&
-        a.propertyGroup === "position" &&
-        !a.keyframes &&
-        (a.duration ?? 0) === 0,
-    ) ?? null
-  );
-}
-
 /**
  * Commit a STATIC element drag as a `tl.set("#el",{x,y})` — the single-source
  * position channel for elements with no position animation. Idempotent: a
@@ -201,6 +130,34 @@ export async function commitStaticGsapPosition(
 ): Promise<void> {
   const { newX, newY } = computeDraggedGsapPosition(selection.element, studioOffset, gsapPos);
   if (existingSet) {
+    if (existingSet.keyframes) {
+      // Keyframed zero-duration hold (drag-path corruption): can't update-property
+      // into keyframes — delete it and write a clean static set instead.
+      const coalesceKey = `gsap:heal-static:${existingSet.id}`;
+      await callbacks.commitMutation(
+        selection,
+        { type: "delete", animationId: existingSet.id },
+        { label: "Move layer", skipReload: true, coalesceKey },
+      );
+      await callbacks.commitMutation(
+        selection,
+        {
+          type: "add",
+          targetSelector: selector,
+          method: "set",
+          position: 0,
+          properties: { x: newX, y: newY },
+          global: true,
+        },
+        {
+          label: "Move layer",
+          softReload: true,
+          coalesceKey,
+          instantPatch: { selector, change: { kind: "global-set", props: { x: newX, y: newY } } },
+        },
+      );
+      return;
+    }
     // Update in place — two single-property mutations (the API updates one prop
     // per call). Coalesce them and reload only after the second lands.
     const coalesceKey = `gsap:set-nudge:${existingSet.id}`;
@@ -262,19 +219,6 @@ export async function commitStaticGsapPosition(
   );
 }
 
-export { findExistingPositionWrite };
-
-function findRotationSetAnimation(
-  animations: GsapAnimation[],
-  selector: string,
-): GsapAnimation | null {
-  return (
-    animations.find(
-      (a) => a.method === "set" && a.targetSelector === selector && "rotation" in a.properties,
-    ) ?? null
-  );
-}
-
 /**
  * Commit a STATIC element rotation as a `tl.set("#el",{rotation})` — the single-
  * source rotation channel for elements with no rotation animation (mirrors
@@ -325,19 +269,6 @@ export async function commitStaticGsapRotation(
       softReload: true,
       instantPatch: { selector, change: { kind: "global-set", props: { rotation: newRotation } } },
     },
-  );
-}
-
-export { findRotationSetAnimation };
-
-function findSizeSetAnimation(animations: GsapAnimation[], selector: string): GsapAnimation | null {
-  return (
-    animations.find(
-      (a) =>
-        a.method === "set" &&
-        a.targetSelector === selector &&
-        ("width" in a.properties || "height" in a.properties),
-    ) ?? null
   );
 }
 
@@ -489,8 +420,6 @@ export async function commitKeyframedSizeFromResize(
   return true;
 }
 
-export { findSizeSetAnimation };
-
 // ── Whole-path offset (plain drag on animated element) ──────────────────
 
 /**
@@ -498,6 +427,7 @@ export { findSizeSetAnimation };
  * shifts together so the animation shape is preserved and the element can't
  * dart off-screen. For flat tweens (no keyframes), convert first then shift.
  */
+// fallow-ignore-next-line code-duplication
 // fallow-ignore-next-line complexity
 export async function commitWholePathOffset(
   selection: DomEditSelection,
@@ -515,6 +445,7 @@ export async function commitWholePathOffset(
     gsapPos,
   );
   const deltaX = newX - baseGsapX;
+  // fallow-ignore-next-line code-duplication
   const deltaY = newY - baseGsapY;
   const origX = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-x") ?? "") || 0;
   const origY = Number.parseFloat(el.getAttribute("data-hf-drag-initial-offset-y") ?? "") || 0;
@@ -525,6 +456,7 @@ export async function commitWholePathOffset(
     el.removeAttribute("data-hf-drag-initial-offset-y");
   };
 
+  // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);
