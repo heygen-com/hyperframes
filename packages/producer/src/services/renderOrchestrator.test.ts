@@ -1577,6 +1577,10 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     totalFrames: 2380,
     minFrames: 900,
     singleWorkerStreamingOk: true,
+    layeredOrEffectRoute: false,
+    supersampling: false,
+    probeDeGated: false,
+    experimentalParallelDeOptIn: false,
   };
 
   it("inverts an auto-resolved multi-worker render for an eligible long comp", () => {
@@ -1585,6 +1589,32 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
 
   it("honors explicitly requested workers", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, requestedWorkers: 3 })).toBe(false);
+  });
+
+  it("inverts for requestedWorkers undefined — the value production actually passes for auto", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, requestedWorkers: undefined })).toBe(
+      true,
+    );
+  });
+
+  it("skips comps routed to layered/HDR/shader paths (drawElement never runs there)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, layeredOrEffectRoute: true })).toBe(
+      false,
+    );
+  });
+
+  it("skips supersampled renders (engine init-time DE gate)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, supersampling: true })).toBe(false);
+  });
+
+  it("skips when the probe session already shows DE gated out", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, probeDeGated: true })).toBe(false);
+  });
+
+  it("honors the explicit experimental parallel-DE opt-in", () => {
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, experimentalParallelDeOptIn: true }),
+    ).toBe(false);
   });
 
   it("skips below the amortization threshold (measured crossover ~900 frames)", () => {
