@@ -47,6 +47,7 @@ function aggregateDrawElement(
   de: {
     compileGate?: string;
     clampReason?: string;
+    workerInversion?: boolean;
     selfVerifyFallback: boolean;
     fallbackReason?: string;
     drainStats?: {
@@ -68,6 +69,7 @@ function aggregateDrawElement(
     mode: modes.join("|") || "unknown",
     compileGate: de.compileGate,
     clampReason: de.clampReason,
+    workerInversion: de.workerInversion || undefined,
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
@@ -138,6 +140,7 @@ export function buildRenderPerfSummary(input: {
   drawElement?: {
     compileGate?: string;
     clampReason?: string;
+    workerInversion?: boolean;
     selfVerifyFallback: boolean;
     fallbackReason?: string;
     drainStats?: {

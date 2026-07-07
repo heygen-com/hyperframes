@@ -373,6 +373,8 @@ export interface RenderPerfSummary {
     compileGate?: string;
     /** Producer clamp that disabled default DE: parallel | disk_path. */
     clampReason?: string;
+    /** Auto-parallel was inverted to single-worker verified DE streaming. */
+    workerInversion?: boolean;
     /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Worker-encode drain (the verified path) was active. */
@@ -950,6 +952,43 @@ export function shouldUseStreamingEncode(
   return workerCount === 1;
 }
 
+/**
+ * DE priority inversion predicate: should an AUTO-resolved multi-worker render
+ * drop to single-worker verified drawElement streaming?
+ *
+ * Benchmarked 2026-07-08: above ~900 frames DE-single beats screenshot-parallel
+ * at every worker count (2,380f: 66s vs 109–127s at W2–W5); below it DE's fixed
+ * init cost (verify + dedup arming) loses by a small margin. Only fires for the
+ * exact benchmarked configuration: default-on DE, mp4, streaming-eligible,
+ * no compile gate, no forced screenshot, workers not explicitly requested.
+ */
+export function shouldPreferSingleWorkerDrawElement(args: {
+  workerCount: number;
+  /** job.config.workers — a number means the user explicitly chose. */
+  requestedWorkers: number | "auto" | undefined;
+  useDrawElement: boolean;
+  deCompileGate: string | undefined;
+  forceScreenshot: boolean;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  totalFrames: number;
+  /** Amortization threshold; <=0 disables the inversion. */
+  minFrames: number;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site. */
+  singleWorkerStreamingOk: boolean;
+}): boolean {
+  return (
+    args.workerCount > 1 &&
+    typeof args.requestedWorkers !== "number" &&
+    args.useDrawElement &&
+    !args.deCompileGate &&
+    !args.forceScreenshot &&
+    args.outputFormat === "mp4" &&
+    args.minFrames > 0 &&
+    args.totalFrames >= args.minFrames &&
+    args.singleWorkerStreamingOk
+  );
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -1217,6 +1256,7 @@ export async function executeRenderJob(
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
     let deClampReason: string | undefined;
+    let deWorkerInversion = false;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -1606,8 +1646,41 @@ export async function executeRenderJob(
       log,
       captureCalibration?.estimate,
     );
+    // DE priority inversion — see shouldPreferSingleWorkerDrawElement for the
+    // policy and benchmark rationale. Comps that later hit an INIT-time gate
+    // (css-effects / at-risk, ~1.5% of local renders) render single-worker
+    // screenshot streaming — slower than parallel would have been, accepted
+    // for the routing win everywhere else.
+    // Threshold override: HF_DE_SINGLE_MIN_FRAMES (0 disables the inversion).
+    const deSingleMinFramesRaw = Number(process.env.HF_DE_SINGLE_MIN_FRAMES ?? "900");
+    const deSingleMinFrames = Number.isFinite(deSingleMinFramesRaw) ? deSingleMinFramesRaw : 900;
+    if (
+      shouldPreferSingleWorkerDrawElement({
+        workerCount,
+        requestedWorkers: job.config.workers,
+        useDrawElement: cfg.useDrawElement,
+        deCompileGate,
+        forceScreenshot: captureForceScreenshot,
+        outputFormat,
+        totalFrames,
+        minFrames: deSingleMinFrames,
+        singleWorkerStreamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      })
+    ) {
+      deWorkerInversion = true;
+      log.info(
+        "[Render] Fast capture: single-worker drawElement streaming preferred over " +
+          `${workerCount}-worker screenshot capture (${totalFrames} frames >= ` +
+          `${deSingleMinFrames}; verified path, measured faster at every worker count). ` +
+          "Set HF_DE_SINGLE_MIN_FRAMES=0 or --workers N to override.",
+      );
+      workerCount = 1;
+    }
     updateCaptureObservability({ workerCount });
-    observability.checkpoint("worker_resolution", "resolved", { workerCount });
+    observability.checkpoint("worker_resolution", "resolved", {
+      workerCount,
+      deWorkerInversion,
+    });
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
@@ -2091,6 +2164,7 @@ export async function executeRenderJob(
       drawElement: {
         compileGate: deCompileGate,
         clampReason: deClampReason,
+        workerInversion: deWorkerInversion,
         selfVerifyFallback: deSelfVerifyFallback,
         fallbackReason: deFallbackReason,
         drainStats: deDrainStats,

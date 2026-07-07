@@ -28,6 +28,7 @@ import {
   MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
   shouldDiscardProbeSessionForPageSideCompositing,
+  shouldPreferSingleWorkerDrawElement,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -1562,5 +1563,53 @@ describe("resolveDeviceScaleFactor", () => {
         outputResolution: "landscape",
       }),
     ).toThrow(/aspect ratio/);
+  });
+});
+
+describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
+  const eligible = {
+    workerCount: 5,
+    requestedWorkers: "auto" as const,
+    useDrawElement: true,
+    deCompileGate: undefined,
+    forceScreenshot: false,
+    outputFormat: "mp4" as const,
+    totalFrames: 2380,
+    minFrames: 900,
+    singleWorkerStreamingOk: true,
+  };
+
+  it("inverts an auto-resolved multi-worker render for an eligible long comp", () => {
+    expect(shouldPreferSingleWorkerDrawElement(eligible)).toBe(true);
+  });
+
+  it("honors explicitly requested workers", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, requestedWorkers: 3 })).toBe(false);
+  });
+
+  it("skips below the amortization threshold (measured crossover ~900 frames)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 360 })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 900 })).toBe(true);
+  });
+
+  it("is disabled by minFrames <= 0 (HF_DE_SINGLE_MIN_FRAMES=0 kill switch)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
+  });
+
+  it("requires drawElement to be enabled and ungated", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, useDrawElement: false })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, deCompileGate: "3d" })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, forceScreenshot: true })).toBe(false);
+  });
+
+  it("only applies to the benchmarked configuration (mp4 + streaming-eligible)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, singleWorkerStreamingOk: false }),
+    ).toBe(false);
+  });
+
+  it("is a no-op when workers already resolved to 1", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, workerCount: 1 })).toBe(false);
   });
 });
