@@ -392,14 +392,28 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
 // Developer Mode/Administrator symlink creation is rejected with EPERM/EACCES,
 // which failed high/standard renders — degrade to a copy there rather than
 // throwing. Non-permission errors still propagate so real failures aren't hidden.
+// One-time guard for the symlink→copy fallback notice below.
+let warnedSymlinkFallback = false;
+
 // Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// (EPERM/EACCES). Non-permission errors propagate.
+// errors (EPERM/EACCES, plus UNKNOWN — some Windows builds surface a symlink
+// privilege denial as an UNKNOWN-coded error rather than EPERM). Non-permission
+// errors propagate.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
     fileSystem.symlinkSync(src, dest);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EPERM" && code !== "EACCES") throw err;
+    if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
+    // Copying is measurably slower than symlinking, so surface the degrade once
+    // — it explains a render that suddenly got heavier and saves a support
+    // round-trip diagnosing slow frame staging on Windows.
+    if (!warnedSymlinkFallback) {
+      warnedSymlinkFallback = true;
+      defaultLogger.info(
+        `[Render] Symlinking extracted frames was rejected (${code}); copying them into the compiled dir instead. Expected on Windows without Developer Mode/Administrator.`,
+      );
+    }
     fileSystem.cpSync(src, dest, { recursive: true });
   }
 }
@@ -410,22 +424,36 @@ function stageExtractedFrameDir(
   dest: string,
   materializeSymlinks: boolean,
 ): void {
+  try {
+    stageExtractedFrameDirOnce(fileSystem, src, dest, materializeSymlinks);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException | undefined)?.code !== "EEXIST") throw err;
+    // A stale entry already sits at `dest` — typically a DANGLING symlink left
+    // after the extraction cache was GC'd (its target removed), or a Windows
+    // machine reusing a dir a prior Linux run populated with symlinks (the eager
+    // cpSync then collides with the existing link). The caller's existsSync()
+    // guard follows the link, so the dead link reads as absent and we reach
+    // here; the entry itself still exists, so re-staging collides with EEXIST.
+    // Clear the stale entry and re-stage. Applies to BOTH the symlink and
+    // eager-copy paths so a cross-platform dir reuse self-heals either way.
+    fileSystem.rmSync?.(dest, { recursive: true, force: true });
+    stageExtractedFrameDirOnce(fileSystem, src, dest, materializeSymlinks);
+  }
+}
+
+// One staging attempt: eager copy for the distributed self-contained dir,
+// otherwise a symlink (degrading to a copy on no-symlink-privilege errors).
+function stageExtractedFrameDirOnce(
+  fileSystem: MaterializeFileSystem,
+  src: string,
+  dest: string,
+  materializeSymlinks: boolean,
+): void {
   if (materializeSymlinks) {
     fileSystem.cpSync(src, dest, { recursive: true });
     return;
   }
-  try {
-    linkOrCopyFrameDir(fileSystem, src, dest);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException | undefined)?.code !== "EEXIST") throw err;
-    // A stale entry already sits at `dest` — typically a DANGLING symlink left
-    // after the extraction cache was GC'd (its target removed). The caller's
-    // existsSync() guard follows the link, so the dead link reads as absent and
-    // we reach here; the link file itself still exists, so symlinkSync collides
-    // with EEXIST. Clear the stale entry and re-stage.
-    fileSystem.rmSync?.(dest, { recursive: true, force: true });
-    linkOrCopyFrameDir(fileSystem, src, dest);
-  }
+  linkOrCopyFrameDir(fileSystem, src, dest);
 }
 
 export function materializeExtractedFramesForCompiledDir(
