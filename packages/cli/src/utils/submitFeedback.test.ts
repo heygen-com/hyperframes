@@ -19,7 +19,7 @@ describe("submitFeedback", () => {
   });
 
   it("posts feedback to the backend endpoint", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await submitFeedback({
@@ -48,7 +48,7 @@ describe("submitFeedback", () => {
   });
 
   it("truncates over-long fields to the backend caps", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await submitFeedback({
@@ -58,7 +58,9 @@ describe("submitFeedback", () => {
       env: "e".repeat(600),
     });
 
-    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const requestInit = fetchMock.mock.calls[0]?.[1];
+    expect(requestInit).toBeDefined();
+    const body = JSON.parse(requestInit?.body as string);
     expect(body.comment).toHaveLength(2000);
     expect(body.cli_version).toHaveLength(100);
     expect(body.env).toHaveLength(500);
