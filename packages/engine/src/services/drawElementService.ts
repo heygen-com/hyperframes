@@ -142,16 +142,6 @@ export async function injectDrawElementCanvas(
     ({ w, h }: { w: number; h: number }) => {
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
       if (!root || document.getElementById("__hf_de_canvas")) return;
-      // Record the root's base opacity now (timeline at 0, before any entrance/
-      // outro tween) so the per-frame capture can correct drawElementImage's stale
-      // opacity by the ratio current/base. (Transform is corrected unconditionally
-      // and needs no base; see captureDrawElementFrame.)
-      try {
-        (window as unknown as { __HF_ROOT_BASE_OPACITY__?: number }).__HF_ROOT_BASE_OPACITY__ =
-          parseFloat(getComputedStyle(root).opacity) || 1;
-      } catch {
-        /* leave undefined → ratio defaults to 1 */
-      }
       const parent = root.parentNode;
       if (!parent) throw new Error("drawElement: composition root has no parent node");
       const canvas = document.createElement("canvas") as HTMLCanvasElement & {
@@ -165,9 +155,11 @@ export async function injectDrawElementCanvas(
       parent.insertBefore(canvas, root);
       canvas.appendChild(root);
       // Invalidation sentinel: a canvas child OUTSIDE the captured root.
-      // Toggling its `left` each capture dirties the layoutsubtree so a paint
-      // (and a fresh snapshot) is guaranteed even for static frames — without
-      // ever appearing in drawElementImage(root) output.
+      // Fallback for hosts without canvas.requestPaint() (WICG html-in-canvas
+      // contract; present since 151) — toggling its background each capture
+      // dirties the layoutsubtree so a paint (and a fresh snapshot) is
+      // guaranteed even for static frames, without ever appearing in
+      // drawElementImage(root) output.
       const tick = document.createElement("div");
       tick.id = "__hf_de_tick";
       tick.style.cssText =
@@ -319,40 +311,22 @@ export async function captureDrawElementFrame(
                 // Zero-sized or not-yet-configured canvas — skip this frame.
               }
             }
-            // drawElementImage does not reflect post-paint changes to compositor-
-            // applied properties on the captured element ITSELF — opacity, transform,
-            // and filter on the root are applied by its parent at composite time and
-            // never enter the root's content snapshot (baked at the load-time/base
-            // value). Re-apply them to the 2D context, comparing against the base
-            // recorded at injection so a static root is a no-op (no double-apply / no
-            // regression) and an animated root is corrected.
-            // Two distinct behaviours, both measured:
-            //  • opacity — the content snapshot DOES bake the root's load-time
-            //    opacity, so correct by the ratio current/base (static ⇒ ratio 1 ⇒
-            //    no-op; animated ⇒ corrected).
-            //  • transform — the snapshot NEVER bakes the root's own transform (even
-            //    a static transform renders unscaled), so apply the current matrix
-            //    unconditionally about the transform-origin (no transform ⇒ no-op).
-            //  filter is intentionally NOT corrected: the per-frame sentinel repaint
-            //  already bakes it into the snapshot (correcting it double-applies).
-            const __rw = window as unknown as {
-              __HF_ROOT_PROPS__?: boolean;
-              __HF_ROOT_BASE_OPACITY__?: number;
-            };
-            let __appliedAlpha = false;
+            // Root TRANSFORM correction: the snapshot NEVER bakes the captured
+            // element's own transform (even a static one renders unscaled — the
+            // parent applies it at composite time), so apply the current matrix
+            // unconditionally about the transform-origin (no transform ⇒ no-op).
+            // Verified still required under the requestPaint contract (crbug
+            // 529829538 triage, probed on 151 + 152 canary 2026-07-07).
+            // Opacity and filter need NO correction: the per-frame paint wait
+            // bakes the current values into the snapshot (root opacity as the
+            // pixel alpha). The former opacity ratio correction DOUBLE-APPLIED
+            // animated root fades (~0.92 → 0.85 effective, 30.1 dB self-verify
+            // failure on a root-fade A/B) and was removed.
+            const __rw = window as unknown as { __HF_ROOT_PROPS__?: boolean };
             let __appliedTransform = false;
             if (__rw.__HF_ROOT_PROPS__) {
               try {
                 const rcs = getComputedStyle(root);
-                const baseOp = __rw.__HF_ROOT_BASE_OPACITY__ ?? 1;
-                const curOp = parseFloat(rcs.opacity);
-                if (baseOp > 0.001 && Number.isFinite(curOp)) {
-                  const ratio = curOp / baseOp;
-                  if (Math.abs(ratio - 1) > 0.002) {
-                    ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
-                    __appliedAlpha = true;
-                  }
-                }
                 const curTransform = rcs.transform;
                 if (curTransform && curTransform !== "none") {
                   const m = new DOMMatrix(curTransform);
@@ -371,7 +345,6 @@ export async function captureDrawElementFrame(
             (
               ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
             ).drawElementImage(root, 0, 0);
-            if (__appliedAlpha) ctx.globalAlpha = 1;
             if (__appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
             // 3D-projection canvases (threeDProjection.ts) composite OVER the
             // DOM paint: their content replaces clip-path-hidden foreground
@@ -418,16 +391,22 @@ export async function captureDrawElementFrame(
         canvas.addEventListener("paint", onPaint);
         // Force an invalidation so a paint is guaranteed even when this frame's
         // seek produced no paint-level change (static scene, or transform-only
-        // GSAP updates that are compositor-side and never repaint). The sentinel
-        // is a 1x1 canvas child OUTSIDE the captured root (see
-        // injectDrawElementCanvas): toggling its background is a PAINT-level
-        // change (layout/transform toggles do NOT fire the paint event), so a
-        // paint + fresh snapshot follow promptly — without the sentinel ever
-        // appearing in drawElementImage(root) output.
-        const tick = document.getElementById("__hf_de_tick");
-        if (tick) {
-          tick.style.backgroundColor =
-            tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+        // GSAP updates that are compositor-side and never repaint).
+        // canvas.requestPaint() is the html-in-canvas API's intended mechanism
+        // (per crbug 529829538 triage): it schedules a paint that refreshes the
+        // subtree's paint records — compositor-applied props included — and
+        // fires the `paint` event. Fallback for builds without it: toggle the
+        // sentinel's background (a PAINT-level change; layout/transform toggles
+        // do NOT fire the paint event) — see injectDrawElementCanvas.
+        const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
+        if (typeof cvp.requestPaint === "function") {
+          cvp.requestPaint();
+        } else {
+          const tick = document.getElementById("__hf_de_tick");
+          if (tick) {
+            tick.style.backgroundColor =
+              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+          }
         }
         // Safety net: if the paint event doesn't arrive (feature drift /
         // throttled page), fall back to an unsynchronized draw after 250 ms —
@@ -729,29 +708,14 @@ export async function produceDrawElementFrame(
                 // skip
               }
             }
-            // Re-apply the captured root's compositor-applied opacity/transform —
-            // identical to the serial path (see drawAndEncode). drawElementImage does
-            // not reflect post-paint changes to these on the root itself; without this
-            // the worker path damages comps with an animated root opacity/transform
-            // (the serial path corrects it, so worker-on diverged from serial DE).
-            const __rw = window as unknown as {
-              __HF_ROOT_PROPS__?: boolean;
-              __HF_ROOT_BASE_OPACITY__?: number;
-            };
-            let __appliedAlpha = false;
+            // Root TRANSFORM correction — identical to the serial path (see
+            // drawAndEncode's comment; opacity/filter are baked by the paint
+            // wait and need no correction).
+            const __rw = window as unknown as { __HF_ROOT_PROPS__?: boolean };
             let __appliedTransform = false;
             if (__rw.__HF_ROOT_PROPS__) {
               try {
                 const rcs = getComputedStyle(root);
-                const baseOp = __rw.__HF_ROOT_BASE_OPACITY__ ?? 1;
-                const curOp = parseFloat(rcs.opacity);
-                if (baseOp > 0.001 && Number.isFinite(curOp)) {
-                  const ratio = curOp / baseOp;
-                  if (Math.abs(ratio - 1) > 0.002) {
-                    ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
-                    __appliedAlpha = true;
-                  }
-                }
                 const curTransform = rcs.transform;
                 if (curTransform && curTransform !== "none") {
                   const m = new DOMMatrix(curTransform);
@@ -770,7 +734,6 @@ export async function produceDrawElementFrame(
             (
               ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
             ).drawElementImage(root, 0, 0);
-            if (__appliedAlpha) ctx.globalAlpha = 1;
             if (__appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
             // fallow-ignore-next-line code-duplication
             for (const c of accel) {
@@ -816,10 +779,16 @@ export async function produceDrawElementFrame(
           drawAndKick();
         };
         canvas.addEventListener("paint", onPaint);
-        const tick = document.getElementById("__hf_de_tick");
-        if (tick) {
-          tick.style.backgroundColor =
-            tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+        // requestPaint-first invalidation — see captureDrawElementFrame.
+        const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
+        if (typeof cvp.requestPaint === "function") {
+          cvp.requestPaint();
+        } else {
+          const tick = document.getElementById("__hf_de_tick");
+          if (tick) {
+            tick.style.backgroundColor =
+              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+          }
         }
         setTimeout(() => {
           canvas.removeEventListener("paint", onPaint);
@@ -911,7 +880,6 @@ export async function produceDrawElementFrameBatch(
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
         __HF_ROOT_PROPS__?: boolean;
-        __HF_ROOT_BASE_OPACITY__?: number;
         __hfEncWorker?: Worker;
       };
       const aw = window as AccelWindow;
@@ -926,10 +894,16 @@ export async function produceDrawElementFrameBatch(
             res();
           };
           canvas.addEventListener("paint", settle);
-          const tick = document.getElementById("__hf_de_tick");
-          if (tick) {
-            tick.style.backgroundColor =
-              tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+          // requestPaint-first invalidation — see captureDrawElementFrame.
+          const cvp = canvas as HTMLCanvasElement & { requestPaint?: () => void };
+          if (typeof cvp.requestPaint === "function") {
+            cvp.requestPaint();
+          } else {
+            const tick = document.getElementById("__hf_de_tick");
+            if (tick) {
+              tick.style.backgroundColor =
+                tick.style.backgroundColor === "rgb(0, 0, 0)" ? "rgb(1, 1, 1)" : "rgb(0, 0, 0)";
+            }
           }
           setTimeout(settle, 250);
         });
@@ -978,22 +952,12 @@ export async function produceDrawElementFrameBatch(
               // skip
             }
           }
-          // Root compositor-applied opacity/transform correction — mirrors
-          // produceDrawElementFrame (see its comment).
-          let appliedAlpha = false;
+          // Root TRANSFORM correction — mirrors produceDrawElementFrame (see
+          // drawAndEncode's comment; opacity/filter baked by the paint wait).
           let appliedTransform = false;
           if (aw.__HF_ROOT_PROPS__) {
             try {
               const rcs = getComputedStyle(root);
-              const baseOp = aw.__HF_ROOT_BASE_OPACITY__ ?? 1;
-              const curOp = parseFloat(rcs.opacity);
-              if (baseOp > 0.001 && Number.isFinite(curOp)) {
-                const ratio = curOp / baseOp;
-                if (Math.abs(ratio - 1) > 0.002) {
-                  ctx.globalAlpha = Math.max(0, Math.min(1, ratio));
-                  appliedAlpha = true;
-                }
-              }
               const curTransform = rcs.transform;
               if (curTransform && curTransform !== "none") {
                 const m = new DOMMatrix(curTransform);
@@ -1012,7 +976,6 @@ export async function produceDrawElementFrameBatch(
           (
             ctx as unknown as { drawElementImage(el: Element, x: number, y: number): void }
           ).drawElementImage(root, 0, 0);
-          if (appliedAlpha) ctx.globalAlpha = 1;
           if (appliedTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
           for (const c of accel) {
             if (!c.hasAttribute("data-hf-3d")) continue;

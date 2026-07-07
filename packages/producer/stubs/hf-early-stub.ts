@@ -62,12 +62,6 @@ declare global {
       originalRequestAnimationFrame?: typeof window.requestAnimationFrame;
       originalSetTimeout?: typeof window.setTimeout;
     };
-    /**
-     * Set by the engine (evaluateOnNewDocument, before this stub) when fast
-     * capture (drawElementImage) is active. Opt out per render with
-     * HF_FAST_CAPTURE_AUTOALPHA=false.
-     */
-    __HF_FAST_CAPTURE_AUTOALPHA__?: boolean;
   }
 }
 
@@ -134,13 +128,6 @@ const pendingOperations: TimelineOperation[] = [];
 let batchScheduled = false;
 let publishCheckScheduled = false;
 /**
- * Tween targets whose vars got the opacity → autoAlpha rewrite. Resolved and
- * visibility-hidden at flush completion when still at computed opacity 0 —
- * see hideTransparentAutoAlphaTargets.
- */
-const autoAlphaRewrittenTargets = new Set<unknown>();
-
-/**
  * Tween targets animated with 3D transform vars (rotationX / rotationY /
  * transformPerspective). drawElementImage cannot paint 3D transforms — the
  * engine's threeDProjection module re-projects these elements via WebGL and
@@ -182,63 +169,20 @@ function unwrapTimelineArg(arg: unknown): unknown {
 }
 
 /**
- * Fast-capture autoAlpha rewrite.
+ * Record tween targets (3D + all-targets) from a tween call's args so the
+ * engine's 3D projection and at-risk scans can see to()-style tweens whose
+ * computed style is still flat/opaque at t=0.
  *
- * Elements at `opacity: 0` still paint as transparent promoted compositor
- * layers. Stacked opacity-0 containers (the word-by-word caption pattern)
- * break drawElementImage capture (blackout / misplaced paint records) and
- * stall SwiftShader's first BeginFrame. GSAP's `autoAlpha` is the same fade
- * but additionally sets `visibility: hidden` at 0, removing the element from
- * the paint tree — measured on the chat CI comp: 29.4 → 49.6 dB
- * fast-vs-baseline with zero blackout frames.
- *
- * When the engine signals fast capture (`__HF_FAST_CAPTURE_AUTOALPHA__`),
- * rewrite `opacity` → `autoAlpha` in tween vars. Skipped when the author
- * already manages `autoAlpha` or `visibility` themselves. Baseline renders
- * never see this — the flag is only set on fast-capture sessions.
+ * (The former fast-capture opacity → autoAlpha rewrite that lived here was
+ * removed: it existed for crbug 521861819 — fixed in Chrome 151, the pinned
+ * floor — and the rewrite itself measured ~28 dB of damage on comps whose
+ * fades it touched. drawElementImage now captures animated opacity correctly
+ * when the capture is synchronized via canvas.requestPaint(); see the
+ * engine's drawElementService.)
  */
-function convertVarsOpacityToAutoAlpha(vars: unknown): unknown {
-  if (vars === null || typeof vars !== "object" || Array.isArray(vars)) return vars;
-  const record = vars as Record<string, unknown>;
-  if (!("opacity" in record) || "autoAlpha" in record || "visibility" in record) return vars;
-  const converted: Record<string, unknown> = {};
-  for (const key of Object.keys(record)) {
-    if (key === "opacity") converted.autoAlpha = record[key];
-    else converted[key] = record[key];
-  }
-  return converted;
-}
-
-/**
- * Apply the autoAlpha rewrite to the vars argument(s) of a tween call.
- * `to`/`from`/`set` carry vars at index 1; `fromTo` at indexes 1 and 2.
- */
-function convertTweenArgs(method: TimelineOperationMethod, args: unknown[]): unknown[] {
-  // Always record tween targets (3D + all-targets) regardless of the autoAlpha
-  // rewrite flag, so HF_FAST_CAPTURE_AUTOALPHA=false doesn't blind the 3D
-  // projection's quad-animation check.
+function observeTweenArgs(method: TimelineOperationMethod, args: unknown[]): unknown[] {
   if (method !== "add") recordThreeDTweenTarget(args);
-  if (window.__HF_FAST_CAPTURE_AUTOALPHA__ !== true) return args;
-  if (method === "add") return args;
-  const out = args.slice();
-  let rewritten = false;
-  if (out.length > 1) {
-    const converted = convertVarsOpacityToAutoAlpha(out[1]);
-    if (converted !== out[1]) rewritten = true;
-    out[1] = converted;
-  }
-  if (method === "fromTo" && out.length > 2) {
-    const converted = convertVarsOpacityToAutoAlpha(out[2]);
-    if (converted !== out[2]) rewritten = true;
-    out[2] = converted;
-  }
-  // convertVarsOpacityToAutoAlpha returns the input object untouched when no
-  // rewrite applies, so identity inequality means this target's opacity is
-  // GSAP-controlled via autoAlpha and is safe to visibility-hide at flush.
-  if (rewritten && out[0] !== null && out[0] !== undefined) {
-    autoAlphaRewrittenTargets.add(out[0]);
-  }
-  return out;
+  return args;
 }
 
 function varsHasThreeD(vars: unknown): boolean {
@@ -270,66 +214,6 @@ function recordThreeDTweenTarget(args: unknown[]): void {
   }
 }
 
-/** Resolve a GSAP tween target (selector / Element / NodeList / array) to elements. */
-function resolveTweenTargets(target: unknown): Element[] {
-  if (typeof target === "string") {
-    try {
-      return Array.from(document.querySelectorAll(target));
-    } catch {
-      return [];
-    }
-  }
-  if (target instanceof Element) return [target];
-  if (Array.isArray(target) || (typeof NodeList !== "undefined" && target instanceof NodeList)) {
-    const out: Element[] = [];
-    for (const item of target as Iterable<unknown>) {
-      if (item instanceof Element) out.push(item);
-    }
-    return out;
-  }
-  return [];
-}
-
-/**
- * Flush-time transparent-layer hide.
- *
- * The autoAlpha rewrite only fixes opacity GSAP touches. Elements created
- * with inline `opacity: 0` (the gen_os caption-pill pattern:
- * `pill.style.cssText = "... opacity:0"` then `tl.set(pill, {opacity: 1})`
- * at each caption start) sit in the paint tree as transparent promoted
- * layers from frame 0 until their first autoAlpha event — long enough to
- * trigger the drawElementImage caption blackout mid-video.
- *
- * At flush completion (timeline built, still paused, nothing applied yet)
- * every recorded rewrite target that is STILL at computed opacity 0 gets
- * `visibility: hidden`. Safe by construction: only elements with a queued
- * autoAlpha tween are touched, and that tween restores visibility
- * (autoAlpha > 0 sets `visibility: inherit`) on its first applied frame.
- * Elements faded in by CSS animations, WAAPI, or raw style writes are never
- * recorded here and are left alone. Authors who set inline `visibility`
- * themselves are also skipped, mirroring convertVarsOpacityToAutoAlpha.
- */
-function hideTransparentAutoAlphaTargets(): void {
-  if (window.__HF_FAST_CAPTURE_AUTOALPHA__ !== true) return;
-  if (autoAlphaRewrittenTargets.size === 0) return;
-  const targets = Array.from(autoAlphaRewrittenTargets);
-  autoAlphaRewrittenTargets.clear();
-  for (const target of targets) {
-    for (const el of resolveTweenTargets(target)) {
-      const styled = el as Element & { style?: CSSStyleDeclaration };
-      if (!styled.style) continue;
-      if (styled.style.visibility !== "") continue;
-      let computedOpacity = "";
-      try {
-        computedOpacity = getComputedStyle(el).opacity;
-      } catch {
-        continue;
-      }
-      if (computedOpacity === "0") styled.style.visibility = "hidden";
-    }
-  }
-}
-
 function applyTimelineOperation(entry: TimelineOperation): void {
   const real = entry.proxy.__hfReal;
   const fn = real[entry.method];
@@ -344,7 +228,7 @@ function enqueueTimelineOperation(
   method: TimelineOperationMethod,
   args: unknown[],
 ): TimelineProxy {
-  const entry = { proxy, method, args: convertTweenArgs(method, args) };
+  const entry = { proxy, method, args: observeTweenArgs(method, args) };
   proxy.__hfQueue.push(entry);
   pendingOperations.push(entry);
   scheduleBatch();
@@ -368,7 +252,6 @@ function flushPendingOperations(): void {
 
 function publishTimelinesBuilt(): void {
   publishCheckScheduled = false;
-  hideTransparentAutoAlphaTargets();
   window.__hfTimelinesBuilding = false;
   try {
     window.dispatchEvent(new CustomEvent("hf-timelines-built"));
@@ -592,19 +475,19 @@ if (typeof window !== "undefined") {
         if (!g || typeof g.timeline !== "function") return;
         const origTimeline = g.timeline.bind(g) as (params?: unknown) => GsapTimeline;
         g.timeline = (params?: unknown): GsapTimeline => wrapTimeline(origTimeline(params));
-        // Fast-capture autoAlpha rewrite for top-level gsap.to/from/set/fromTo
-        // calls (compositions often use `gsap.set(el, { opacity: 0 })` for
-        // initial state — the timeline proxy never sees those).
+        // Tween-target tracking for top-level gsap.to/from/set/fromTo calls
+        // (compositions often use `gsap.set(el, { opacity: 0 })` for initial
+        // state — the timeline proxy never sees those).
         for (const method of ["to", "from", "set"] as const) {
           const orig = g[method];
           if (typeof orig !== "function") continue;
           const bound = (orig as (...a: unknown[]) => unknown).bind(g);
-          g[method] = (...args: unknown[]): unknown => bound(...convertTweenArgs(method, args));
+          g[method] = (...args: unknown[]): unknown => bound(...observeTweenArgs(method, args));
         }
         const origFromTo = g.fromTo;
         if (typeof origFromTo === "function") {
           const bound = (origFromTo as (...a: unknown[]) => unknown).bind(g);
-          g.fromTo = (...args: unknown[]): unknown => bound(...convertTweenArgs("fromTo", args));
+          g.fromTo = (...args: unknown[]): unknown => bound(...observeTweenArgs("fromTo", args));
         }
       },
     });
