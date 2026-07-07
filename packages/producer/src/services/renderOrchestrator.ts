@@ -378,6 +378,8 @@ export interface RenderPerfSummary {
     clampReason?: string;
     /** Auto-parallel inversion outcome: "inverted" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". */
     workerInversion?: string;
+    /** Worker count the auto-resolution chose BEFORE the inversion pinned it to 1 — the parallel counterfactual for speedup math. Only set when the inversion fired. */
+    preInversionWorkers?: number;
     /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Worker-encode drain (the verified path) was active. */
@@ -2308,6 +2310,7 @@ export async function executeRenderJob(
         compileGate: deCompileGate,
         clampReason: deClampReason,
         workerInversion: deWorkerInversion,
+        preInversionWorkers: deWorkerInversion ? preInversionWorkerCount : undefined,
         selfVerifyFallback: deSelfVerifyFallback,
         fallbackReason: deFallbackReason,
         drainStats: deDrainStats,

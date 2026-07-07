@@ -46,6 +46,8 @@ export interface DrawElementPerfInput {
   compileGate?: string;
   clampReason?: string;
   workerInversion?: "inverted" | "reverted";
+  /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
+  preInversionWorkers?: number;
   selfVerifyFallback: boolean;
   fallbackReason?: string;
   drainStats?: {
@@ -74,6 +76,7 @@ function aggregateDrawElement(
     compileGate: de.compileGate,
     clampReason: de.clampReason,
     workerInversion: de.workerInversion ?? "none",
+    preInversionWorkers: de.preInversionWorkers,
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),

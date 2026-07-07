@@ -121,6 +121,7 @@ export function trackRenderComplete(
     deCompileGate?: string;
     deClampReason?: string;
     deWorkerInversion?: string;
+    dePreInversionWorkers?: number;
     deGateReason?: string;
     deWorkerEncode?: boolean;
     deVerifyArmed?: number;
@@ -198,6 +199,7 @@ export function trackRenderComplete(
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
       de_worker_inversion: props.deWorkerInversion,
+      de_pre_inversion_workers: props.dePreInversionWorkers,
       de_gate_reason: props.deGateReason,
       de_worker_encode: props.deWorkerEncode,
       de_verify_armed: props.deVerifyArmed,
