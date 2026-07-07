@@ -1650,10 +1650,20 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // near-black flash). The tick time sits in the gap between the last warmup
   // tick and frame 0 (`beginFrameTimeTicks` carries +10 intervals of headroom),
   // so ticks stay monotonic and no render frame is consumed.
+  //
+  // It must land BELOW the producer's BeginFrame liveness probe, which fires
+  // from probeStage right after init at `beginFrameTimeTicks - 5·interval`
+  // (screenshotService.probeBeginFrameLiveness). This commit tick is sent during
+  // init — temporally before the probe — so if its tick were above the probe's,
+  // the probe would run backwards in BeginFrame time (non-monotonic) and
+  // chrome-headless-shell stalls it indefinitely (surfaced as a "SwiftShader
+  // heavy-layer" probe timeout, then routed to screenshot capture). At the
+  // original `-1·interval` that stalled every comp reaching the probe; at
+  // `-6·interval` the order stays warmup < commit < probe < capture.
   await ensureRenderFrameSiblings(page);
   const commitCdp = await getCdpSession(page);
   await commitCdp.send("HeadlessExperimental.beginFrame", {
-    frameTimeTicks: session.beginFrameTimeTicks - session.beginFrameIntervalMs,
+    frameTimeTicks: session.beginFrameTimeTicks - 6 * session.beginFrameIntervalMs,
     interval: session.beginFrameIntervalMs,
     noDisplayUpdates: false,
   });
