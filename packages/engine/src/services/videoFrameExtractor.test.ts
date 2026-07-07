@@ -259,6 +259,74 @@ describe("parseVideoElements", () => {
       loop: true,
     });
   });
+
+  it("resolves a relative data-start reference to another clip's end", () => {
+    const videos = parseVideoElements(
+      '<video id="intro" src="a.mp4" data-start="0" data-duration="10"></video>' +
+        '<video id="main" src="b.mp4" data-start="intro" data-duration="20"></video>',
+    );
+    const main = videos.find((v) => v.id === "main");
+    // intro ends at 10, so main starts at 10 and ends at 30 — not NaN.
+    expect(main?.start).toBe(10);
+    expect(main?.end).toBe(30);
+  });
+
+  it("applies + and - offsets on a relative reference", () => {
+    const videos = parseVideoElements(
+      '<video id="intro" src="a.mp4" data-start="0" data-duration="10"></video>' +
+        '<video id="gap" src="b.mp4" data-start="intro + 2" data-duration="5"></video>' +
+        '<video id="overlap" src="c.mp4" data-start="intro - 0.5" data-duration="5"></video>',
+    );
+    expect(videos.find((v) => v.id === "gap")?.start).toBe(12);
+    expect(videos.find((v) => v.id === "overlap")?.start).toBe(9.5);
+  });
+
+  it("resolves chained references (A -> B -> C)", () => {
+    const videos = parseVideoElements(
+      '<video id="a" src="a.mp4" data-start="0" data-duration="4"></video>' +
+        '<video id="b" src="b.mp4" data-start="a" data-duration="3"></video>' +
+        '<video id="c" src="c.mp4" data-start="b" data-duration="2"></video>',
+    );
+    expect(videos.find((v) => v.id === "b")?.start).toBe(4);
+    expect(videos.find((v) => v.id === "c")?.start).toBe(7); // 4 + 3
+  });
+
+  it("resolves a reference to a non-video timed element (div clip)", () => {
+    const videos = parseVideoElements(
+      '<div id="title" data-start="0" data-duration="6"></div>' +
+        '<video id="clip" src="b.mp4" data-start="title" data-duration="5"></video>',
+    );
+    expect(videos.find((v) => v.id === "clip")?.start).toBe(6);
+  });
+
+  it("derives a referenced clip's duration from data-end when data-duration is absent", () => {
+    const videos = parseVideoElements(
+      '<video id="intro" src="a.mp4" data-start="2" data-end="9"></video>' +
+        '<video id="main" src="b.mp4" data-start="intro" data-duration="5"></video>',
+    );
+    // intro: start 2, end 9 -> duration 7 -> main starts at 9.
+    expect(videos.find((v) => v.id === "main")?.start).toBe(9);
+  });
+
+  it("falls back to 0 (never NaN) for an unknown reference target", () => {
+    const videos = parseVideoElements(
+      '<video id="orphan" src="a.mp4" data-start="does-not-exist" data-duration="5"></video>',
+    );
+    const orphan = videos.find((v) => v.id === "orphan");
+    expect(orphan?.start).toBe(0);
+    expect(Number.isNaN(orphan?.start)).toBe(false);
+    expect(orphan?.end).toBe(5);
+  });
+
+  it("does not hang or NaN on a circular reference", () => {
+    const videos = parseVideoElements(
+      '<video id="a" src="a.mp4" data-start="b" data-duration="4"></video>' +
+        '<video id="b" src="b.mp4" data-start="a" data-duration="3"></video>',
+    );
+    for (const v of videos) {
+      expect(Number.isNaN(v.start)).toBe(false);
+    }
+  });
 });
 
 describe("FrameLookupTable", () => {
@@ -332,6 +400,21 @@ describe("FrameLookupTable", () => {
 
     expect(table.getActiveFramePayloads(0.5).has("hero")).toBe(true);
     expect(table.getActiveFramePayloads(1.5).has("hero")).toBe(false);
+  });
+
+  it("places a relative-reference video in its resolved window end-to-end (was blank)", () => {
+    // The reported bug: <video data-start="intro"> gave NaN start/end, so the
+    // active-window checks (start <= t <= end) were always false and the clip
+    // composited blank. With resolution, `main` is active across [10, 30].
+    const videos = parseVideoElements(
+      '<video id="intro" src="a.mp4" data-start="0" data-duration="10"></video>' +
+        '<video id="main" src="b.mp4" data-start="intro" data-duration="20"></video>',
+    );
+    const table = createFrameLookupTable(videos, [{ ...fakeExtracted(600, 30), videoId: "main" }]);
+    expect(table.getActiveFramePayloads(5).has("main")).toBe(false); // before resolved start (10)
+    expect(table.getActiveFramePayloads(15).has("main")).toBe(true); // within [10, 30]
+    expect(table.getActiveFramePayloads(29).has("main")).toBe(true);
+    expect(table.getActiveFramePayloads(31).has("main")).toBe(false); // after resolved end (30)
   });
 
   it("holds the last frame at the inclusive clip end (t === end)", () => {
