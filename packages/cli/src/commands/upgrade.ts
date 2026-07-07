@@ -137,7 +137,7 @@ function printManualCommands(displayCmd: string, npxFallback: string): void {
   clack.outro(c.success("Run one of the commands above to upgrade."));
 }
 
-function runDetectedInstall(
+export function runDetectedInstall(
   invocation: { bin: string; args: string[] },
   displayCmd: string,
   version: string,
