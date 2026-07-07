@@ -16,21 +16,21 @@ The skills split into three groups:
 <Steps>
   <Step title="Pick what to install (interactive picker)">
     ```bash
-    npx skills add heygen-com/hyperframes
+    npx skills add heygen-com/hyperframes --full-depth
     ```
 
-    Opens a picker so you can choose which skills to add. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+    Opens a picker so you can choose which skills to add. Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours, so you may get an older copy of a skill. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
   </Step>
   <Step title="Or install everything at once (skip the picker)">
     ```bash
-    npx skills add heygen-com/hyperframes --all
+    npx skills add heygen-com/hyperframes --all --full-depth
     ```
 
     Writes every skill to your project in one shot. Recommended when you want the full set without selecting from the picker.
   </Step>
   <Step title="Or install one skill at a time">
     ```bash
-    npx skills add heygen-com/hyperframes --skill <name>
+    npx skills add heygen-com/hyperframes --skill <name> --full-depth
     ```
 
     Pass the bare skill name (no leading `/`) — e.g. `--skill hyperframes-animation`. Useful when you want a single capability without the full set.
