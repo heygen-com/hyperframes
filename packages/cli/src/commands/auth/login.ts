@@ -146,9 +146,11 @@ async function reportIdentity(): Promise<void> {
  * The stable key we associate this install with in telemetry after sign-in.
  * `/v3/users/me` exposes no opaque user_id, so we key on the HeyGen account
  * EMAIL — the canonical account identifier and the reliable join key back to
- * billing — falling back to username. Flip the order here to prefer the less
- * identifying username; the privacy notice (showTelemetryNotice) and
- * docs/packages/cli.mdx must match whatever this returns.
+ * billing — falling back to username only when the account exposes no email.
+ * (Username is NOT a privacy win — HeyGen usernames are frequently email-shaped
+ * — it is purely a fallback so an emailless account is still attributable.)
+ * The privacy notice (showTelemetryNotice) and docs/packages/cli.mdx disclose
+ * both, so keep them in sync with whatever this returns.
  */
 function identityKey(user: UserInfo): string | undefined {
   return user.email ?? user.username;
