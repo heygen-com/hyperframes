@@ -42,14 +42,14 @@ test("image cascade: heygen catalog, then local mflux, then the codex upsell", (
   assert.ok(codex.network, "codex is network (skipped under --local-only)");
 });
 
-test("voice cascade: local Kokoro first (free), HeyGen TTS as the paid upsell", () => {
+test("voice cascade: HeyGen TTS first, Kokoro remains the local fallback", () => {
   const ps = getProviders("voice");
-  assert.equal(ps[0].name, "kokoro.local", "local Kokoro comes first now (HeyGen TTS is paid)");
-  assert.ok(!ps[0].network, "local Kokoro kept under --local-only");
-  assert.ok(!ps[0].paid, "local Kokoro is free");
-  const heygen = ps.find((p) => p.name === "heygen.tts");
-  assert.ok(heygen && heygen.paid, "HeyGen TTS is the paid upsell");
-  assert.ok(heygen.network, "HeyGen TTS is network (skipped under --local-only)");
+  assert.equal(ps[0].name, "heygen.tts", "HeyGen TTS is first when credentials exist");
+  assert.ok(ps[0].network, "HeyGen TTS is network (skipped under --local-only)");
+  assert.ok(ps[0].paid, "HeyGen TTS may bill after the OAuth free allowance");
+  assert.equal(ps[1].name, "kokoro.local", "local Kokoro is the offline fallback");
+  assert.ok(!ps[1].network, "local Kokoro kept under --local-only");
+  assert.ok(!ps[1].paid, "local Kokoro is free");
 });
 
 test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", async () => {

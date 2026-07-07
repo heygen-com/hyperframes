@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
+export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
@@ -71,7 +72,7 @@ export function heygenCredential() {
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
   const cred = heygenCredential();
-  if (cred?.headers) return cred.headers;
+  if (cred?.headers) return { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS };
   if (cred?.expired)
     throw new Error(
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",

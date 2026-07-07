@@ -207,7 +207,9 @@ avatar upsell (decision X3).
   Verified on 24GB: 512x320 x 33f with audio.
 - **HeyGen avatar upsell (better, script-driven): the `heygen` CLI**, NOT the
   raw API. For a talking-head / avatar video, `heygen video create` (avatar
-  engine IV by default) beats a generative clip when you want a real presenter:
+  engine IV by default) beats a generative clip when you want a real presenter.
+  Browser OAuth uses the web-plan/free avatar-video allowance where eligible;
+  API keys follow the normal API billing path:
 
   ```bash
   # discover an avatar + a starfish voice, then create + wait

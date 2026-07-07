@@ -21,6 +21,8 @@ import { scrubCredentials } from "./scrub.js";
 import type { OAuthTokens } from "./store.js";
 
 const DEFAULT_BASE_URL = "https://api.heygen.com";
+export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
+export const HEYGEN_CLI_SOURCE = "cli";
 
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
@@ -177,9 +179,12 @@ export class AuthClient {
 
 export function buildAuthHeaders(credential: ResolvedCredential): Record<string, string> {
   if (credential.type === "oauth") {
-    return { authorization: `Bearer ${credential.access_token}` };
+    return {
+      authorization: `Bearer ${credential.access_token}`,
+      [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
+    };
   }
-  return { "x-api-key": credential.key };
+  return { "x-api-key": credential.key, [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE };
 }
 
 async function safeText(res: Response): Promise<string> {

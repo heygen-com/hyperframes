@@ -36,8 +36,11 @@ The script resolves a HeyGen credential the same way the CLI does — first sour
 wins: `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a project `.env` (auto-loaded,
 walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
 `$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
-`Authorization: Bearer`; an API key as `X-Api-Key`. If the only credential is an
-expired OAuth token it stops with a hint to run `npx hyperframes auth refresh`.
+`Authorization: Bearer`; an API key as `X-Api-Key`; both include
+`X-HeyGen-Source: cli`. OAuth CLI users can consume the web-plan free allowance
+(10 min/month) before paid usage; API keys follow normal API billing. If the
+only credential is an expired OAuth token it stops with a hint to run
+`npx hyperframes auth refresh`.
 
 ```bash
 # Only needed if you haven't run `npx hyperframes auth login`:

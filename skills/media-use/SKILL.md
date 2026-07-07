@@ -69,7 +69,7 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 | `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                           |
 | `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                              |
 | `logo`  | Official brand marks             | svgl → simple-icons → GitHub org avatar → domain favicon     |
-| `voice` | TTS voiceover                    | Local Kokoro (free); HeyGen TTS upsell                       |
+| `voice` | TTS voiceover                    | HeyGen TTS (OAuth free allowance); Kokoro local fallback     |
 | `grade` | HyperFrames color-grading blocks | Core preset → look index params/CDN LUT → deterministic cube |
 | `lut`   | Reusable `.cube` LUT files       | Look index params/CDN LUT → deterministic cube               |
 
@@ -233,17 +233,19 @@ ladder, `describeModelLadder`); the agent can see the ladder and override.
 | ------------- | --------------------------------------------------------------------------------------- |
 | bgm/sfx       | heygen catalog (free)                                                                   |
 | image         | heygen search, then local mflux (best FLUX for your RAM), then codex `image_gen` upsell |
-| voice         | local **Kokoro** (free, on-device), then **heygen tts** paid upsell                     |
+| voice         | **heygen tts** via OAuth/web-plan allowance, then local **Kokoro** fallback             |
 | icon          | heygen asset search                                                                     |
 | logo          | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)         |
 | grade/lut     | local core-preset map, params/CDN look index, deterministic `buildCube` fallback        |
 | video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
-private, offline once cached). Paid/cloud upsells sit behind them: HeyGen TTS
-for voice, the `codex` CLI (ChatGPT sub) for a better image, the `heygen` CLI
-for avatar video. Cost rule (X4): the agent confirms before an agent-initiated
-paid call; a user-requested one just runs.
+private, offline once cached). Credentialed HeyGen TTS should be tried first for
+voice so OAuth CLI users consume the free web-plan allowance (10 min/month);
+API-key usage and overage follow the user's HeyGen billing path. Paid/cloud
+upsells remain the `codex` CLI (ChatGPT sub) for a better image and the
+`heygen` CLI for avatar video. Cost rule (X4): the agent confirms before an
+agent-initiated paid call; a user-requested one just runs.
 
 To force a specific generator (e.g. a user says "make this image with codex"),
 pass `--provider codex`: it pins resolution to that provider and skips the
@@ -338,15 +340,15 @@ if a local tool is absent, resolve degrades gracefully to the free/cloud path,
 so nothing here is strictly required except `ffmpeg`/`ffprobe`. Install a local
 tool to unlock its free, private, on-device path. media-use holds no keys.
 
-| Tool               | Serves                                                                   | Install                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm         | system package (`brew install ffmpeg`)                                                                              |
-| `heygen`           | catalog (bgm/sfx/image/icon), TTS + avatar upsell                        | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --key <key>` (needs >= v0.1.6) |
-| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                     | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                  |
-| `codex`            | image gen upsell (ChatGPT sub)                                           | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                |
-| `parakeet-mlx`     | local transcription (default ASR, best)                                  | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                            |
-| `ltx-2-mlx`        | local video gen                                                          | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                            |
-| `npx hyperframes`  | Kokoro TTS (voice), whisper.cpp (transcribe fallback), remove-background | bundled with the hyperframes CLI                                                                                    |
+| Tool               | Serves                                                                   | Install                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm         | system package (`brew install ffmpeg`)                                                                                           |
+| `heygen`           | catalog (bgm/sfx/image/icon), TTS + avatar upsell                        | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --oauth` or API-key login (needs >= v0.1.6) |
+| `mflux-generate`   | local image gen (FLUX), best-for-RAM                                     | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                               |
+| `codex`            | image gen upsell (ChatGPT sub)                                           | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                             |
+| `parakeet-mlx`     | local transcription (default ASR, best)                                  | `uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx`                                         |
+| `ltx-2-mlx`        | local video gen                                                          | `git clone https://github.com/dgrauet/ltx-2-mlx && cd ltx-2-mlx && uv sync --all-extras`                                         |
+| `npx hyperframes`  | Kokoro TTS (voice), whisper.cpp (transcribe fallback), remove-background | bundled with the hyperframes CLI                                                                                                 |
 
 The RAM-graded local-model shortlist + exact per-tier install/invoke lives in
 `scripts/lib/local-models.mjs` (the agent can read `describeModelLadder(cap, specs)`

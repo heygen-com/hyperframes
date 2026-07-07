@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AuthClient, apiBaseUrl, buildAuthHeaders } from "./client.js";
+import {
+  AuthClient,
+  HEYGEN_CLI_SOURCE,
+  HEYGEN_CLI_SOURCE_HEADER,
+  apiBaseUrl,
+  buildAuthHeaders,
+} from "./client.js";
 import { isAuthError } from "./errors.js";
 import type { ResolvedCredential } from "./resolver.js";
 
@@ -51,11 +57,17 @@ describe("auth/client", () => {
       source: "file_json",
       refreshable: false,
     };
-    expect(buildAuthHeaders(cred)).toEqual({ authorization: "Bearer at_123" });
+    expect(buildAuthHeaders(cred)).toEqual({
+      authorization: "Bearer at_123",
+      [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
+    });
   });
 
   it("buildAuthHeaders uses x-api-key for api_key", () => {
-    expect(buildAuthHeaders(apiKeyCred())).toEqual({ "x-api-key": "hg_x" });
+    expect(buildAuthHeaders(apiKeyCred())).toEqual({
+      "x-api-key": "hg_x",
+      [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
+    });
   });
 
   it("getCurrentUser parses a wrapped {data: {...}} payload", async () => {
