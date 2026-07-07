@@ -192,6 +192,13 @@ export function buildRenderPerfSummary(input: {
               input.totalFrames,
           )
         : undefined,
+    captureP50Ms: (() => {
+      // Per-frame median from the engine's samples; when parallel workers
+      // report separately, take the busiest session's median.
+      const withSamples = input.dedupPerfs.filter((p) => (p.p50TotalMs ?? 0) > 0);
+      if (withSamples.length === 0) return undefined;
+      return withSamples.reduce((a, b) => (b.frames > a.frames ? b : a)).p50TotalMs;
+    })(),
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),

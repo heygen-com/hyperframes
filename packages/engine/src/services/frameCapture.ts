@@ -104,6 +104,9 @@ export interface CaptureSession {
     beforeCaptureMs: number;
     screenshotMs: number;
     totalMs: number;
+    /** Per-frame capture durations (batch frames get the batch mean). Basis for
+     * the warmup-robust p50 in the perf summary. */
+    frameMs: number[];
   };
   captureMode: CaptureMode;
   /**
@@ -160,6 +163,15 @@ export interface CaptureSession {
   deVerifyInitMs?: number;
   /** Count of per-frame "No cached paint record" screenshot fallbacks (telemetry). */
   deNcprFallbacks?: number;
+  /**
+   * drawElement init passed every gate but stopped before verification +
+   * canvas injection: the session has no video-frame injector yet (probe
+   * sessions initialize before extraction) and the comp has <video> elements,
+   * so ground-truth screenshots would capture black video boxes. The capture
+   * stage completes the init via completeDeferredDrawElementInit once
+   * prepareCaptureSessionForReuse attaches the injector.
+   */
+  deInitDeferred?: boolean;
 }
 
 /**
@@ -629,46 +641,102 @@ async function initDrawElementOrTransparentBackground(
       // passed) and the DOM is still normal (canvas not yet injected, so the
       // verification screenshots are valid). drawElement-path only; see armStaticDedup.
       await armStaticDedup(session, page, logInitPhase);
-      // Self-verification ground truth: must ALSO run pre-injection — after the
-      // canvas wraps the root, a page screenshot shows the canvas's last-drawn
-      // bitmap, not the live DOM (see the Lim 6 boundary-screenshot note).
-      {
-        const verifyStart = Date.now();
-        await captureDeVerificationFrames(session, page, logInitPhase);
-        session.deVerifyInitMs = Date.now() - verifyStart;
-      }
-      await injectDrawElementCanvas(page, session.options.width, session.options.height);
-      if (transparent) {
-        await initTransparentBackground(session.page);
-      }
-      session.captureMode = "drawelement";
-      session.drawElementReady = true;
-      logInitPhase("drawElement canvas injected");
-      // Lim 6: clip-cut boundary frames — screenshot these instead of drawElement.
-      if (process.env.HF_FAST_CAPTURE_BOUNDARY_SS !== "false" && !forceDE) {
-        const fps = fpsToNumber(session.options.fps);
-        const boundaryFrames = await computeClipBoundaryFrames(page, fps);
-        if (boundaryFrames.size > 0) {
-          session.clipBoundaryFrames = boundaryFrames;
-          logInitPhase(`screenshot fallback: ${boundaryFrames.size} clip-boundary frame(s)`);
+      // Video comps on injector-less sessions (probe sessions initialize before
+      // video extraction) DEFER the rest of the drawElement init: ground-truth
+      // screenshots would capture black <video> boxes, and once the canvas is
+      // injected they can never be retaken. The capture stage completes the
+      // init after prepareCaptureSessionForReuse attaches the injector.
+      // Retract the autoAlpha rewrite flag while deferred — if no path ever
+      // completes the init (e.g. the disk path takes over), the session
+      // captures via screenshot, where the armed flag causes measured damage.
+      if (!session.onBeforeCapture && !forceDE) {
+        const hasVideos = await page.evaluate(() => document.querySelector("video") !== null);
+        if (hasVideos) {
+          session.deInitDeferred = true;
+          await retractAutoAlphaFlag();
+          logInitPhase("drawElement init deferred: video comp awaiting frame injector");
+          return;
         }
       }
-      // Worker-encode pipeline: macOS hardware GPU path only (syncToPaintEvent=true,
-      // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker) and transparent
-      // (PNG) output — those use the existing synchronous path unchanged.
-      const workerEncodeEnabled =
-        (session.config?.enableDrawElementWorkerEncode ?? false) &&
-        !transparent &&
-        session.beginFrameTimeTicks === 0;
-      if (workerEncodeEnabled) {
-        await initDrawElementWorkerEncode(page);
-        session.workerEncodeEnabled = true;
-        logInitPhase("drawElement worker encode initialized");
-      }
+      await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
   } else if (session.options.format === "png") {
     await initTransparentBackground(session.page);
   }
+}
+
+/**
+ * The tail of drawElement init: self-verification ground truth (pre-injection),
+ * canvas injection, capture-mode flip, clip-boundary predictor, worker-encode.
+ * Runs inline when the session already has its video-frame injector (or the
+ * comp has no videos); runs deferred via completeDeferredDrawElementInit for
+ * probe-initialized video comps.
+ */
+async function finalizeDrawElementInit(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+  opts: { transparent: boolean; forceDE: boolean },
+): Promise<void> {
+  const { transparent, forceDE } = opts;
+  // Self-verification ground truth: must run pre-injection — after the canvas
+  // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
+  // not the live DOM (see the Lim 6 boundary-screenshot note).
+  {
+    const verifyStart = Date.now();
+    await captureDeVerificationFrames(session, page, logInitPhase);
+    session.deVerifyInitMs = Date.now() - verifyStart;
+  }
+  await injectDrawElementCanvas(page, session.options.width, session.options.height);
+  if (transparent) {
+    await initTransparentBackground(session.page);
+  }
+  session.captureMode = "drawelement";
+  session.drawElementReady = true;
+  logInitPhase("drawElement canvas injected");
+  // Lim 6: clip-cut boundary frames — screenshot these instead of drawElement.
+  if (process.env.HF_FAST_CAPTURE_BOUNDARY_SS !== "false" && !forceDE) {
+    const fps = fpsToNumber(session.options.fps);
+    const boundaryFrames = await computeClipBoundaryFrames(page, fps);
+    if (boundaryFrames.size > 0) {
+      session.clipBoundaryFrames = boundaryFrames;
+      logInitPhase(`screenshot fallback: ${boundaryFrames.size} clip-boundary frame(s)`);
+    }
+  }
+  // Worker-encode pipeline: macOS hardware GPU path only (syncToPaintEvent=true,
+  // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker) and transparent
+  // (PNG) output — those use the existing synchronous path unchanged.
+  const workerEncodeEnabled =
+    (session.config?.enableDrawElementWorkerEncode ?? false) &&
+    !transparent &&
+    session.beginFrameTimeTicks === 0;
+  if (workerEncodeEnabled) {
+    await initDrawElementWorkerEncode(page);
+    session.workerEncodeEnabled = true;
+    logInitPhase("drawElement worker encode initialized");
+  }
+}
+
+/**
+ * Complete a deferred drawElement init (see CaptureSession.deInitDeferred).
+ * Call after prepareCaptureSessionForReuse has attached the video-frame
+ * injector; no-op when the session is not deferred or still has no injector.
+ * Re-asserts the autoAlpha rewrite flag retracted at deferral time.
+ */
+export async function completeDeferredDrawElementInit(session: CaptureSession): Promise<void> {
+  if (!session.deInitDeferred || !session.onBeforeCapture) return;
+  const page = session.page;
+  await page.evaluate(() => {
+    (window as Window & { __HF_FAST_CAPTURE_AUTOALPHA__?: boolean }).__HF_FAST_CAPTURE_AUTOALPHA__ =
+      true;
+  });
+  const logInitPhase = (phase: string) =>
+    console.log(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  await finalizeDrawElementInit(session, page, logInitPhase, {
+    transparent: session.options.format === "png",
+    forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
+  });
+  session.deInitDeferred = false;
 }
 
 // fallow-ignore-next-line unit-size
@@ -865,6 +933,7 @@ export async function createCaptureSession(
       beforeCaptureMs: 0,
       screenshotMs: 0,
       totalMs: 0,
+      frameMs: [],
     },
     captureMode,
     launchCaptureMode: captureMode,
@@ -2387,6 +2456,7 @@ async function captureFrameCore(
     session.capturePerf.beforeCaptureMs += beforeCaptureMs;
     session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
+    session.capturePerf.frameMs.push(captureTimeMs);
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
     if (session.staticFrames) session.lastFrameBuffer = screenshotBuffer;
@@ -2510,7 +2580,11 @@ export async function captureFrameToBufferPipelined(
       session.capturePerf.frames += 1;
       session.capturePerf.seekMs += seekMs;
       session.capturePerf.beforeCaptureMs += beforeCaptureMs;
-      session.capturePerf.totalMs += Date.now() - startTime;
+      {
+        const boundaryMs = Date.now() - startTime;
+        session.capturePerf.totalMs += boundaryMs;
+        session.capturePerf.frameMs.push(boundaryMs);
+      }
       const boundaryResult = Promise.resolve(buffer);
       if (session.staticFrames) session.lastEncodeResult = boundaryResult;
       return { encodeResult: boundaryResult, captureTimeMs: Date.now() - startTime };
@@ -2536,6 +2610,7 @@ export async function captureFrameToBufferPipelined(
     // screenshotMs reflects produce time only (encode is async, not tracked here)
     session.capturePerf.screenshotMs += captureTimeMs - seekMs - beforeCaptureMs;
     session.capturePerf.totalMs += captureTimeMs;
+    session.capturePerf.frameMs.push(captureTimeMs);
 
     // Task B: retain this encode result so a following static frame can reuse it.
     if (session.staticFrames) session.lastEncodeResult = encodeResult;
@@ -2635,9 +2710,14 @@ export async function captureFramesBatchPipelined(
   const okCount = failedAt === null ? frameIndices.length : failedAt;
   const elapsed = Date.now() - startTime;
   session.capturePerf.frames += okCount;
-  // Round-trips are fused — attribute the whole batch to produce time.
+  // Round-trips are fused — attribute the whole batch to produce time; each
+  // frame gets the batch mean for the per-frame sample series.
   session.capturePerf.screenshotMs += elapsed;
   session.capturePerf.totalMs += elapsed;
+  if (okCount > 0) {
+    const perFrame = elapsed / okCount;
+    for (let s2 = 0; s2 < okCount; s2++) session.capturePerf.frameMs.push(perFrame);
+  }
 
   const results: Array<{ frameIndex: number; encodeResult: Promise<Buffer> }> = [];
   for (let i = 0; i < okCount; i++) {
@@ -2811,6 +2891,7 @@ export function prepareCaptureSessionForReuse(
     beforeCaptureMs: 0,
     screenshotMs: 0,
     totalMs: 0,
+    frameMs: [],
   };
   session.beginFrameHasDamageCount = 0;
   session.beginFrameNoDamageCount = 0;
@@ -2938,6 +3019,12 @@ async function captureDeVerificationFrames(
   );
 }
 
+function medianOf(samples: number[]): number {
+  if (samples.length === 0) return 0;
+  const sorted = [...samples].sort((a, b) => a - b);
+  return Math.round(sorted[Math.floor(sorted.length / 2)] ?? 0);
+}
+
 export function getCapturePerfSummary(session: CaptureSession): CapturePerfSummary {
   const frames = Math.max(1, session.capturePerf.frames);
   return {
@@ -2946,6 +3033,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgSeekMs: Math.round(session.capturePerf.seekMs / frames),
     avgBeforeCaptureMs: Math.round(session.capturePerf.beforeCaptureMs / frames),
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
+    p50TotalMs: medianOf(session.capturePerf.frameMs),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
     // armed ⟺ a non-empty static set survived verification; predicted === its size.

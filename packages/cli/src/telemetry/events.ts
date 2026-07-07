@@ -143,6 +143,10 @@ export function trackRenderComplete(
     // Processing efficiency
     speedRatio?: number;
     captureAvgMs?: number;
+    /** Warmup-robust per-frame capture median (basis for speedup estimates). */
+    captureP50Ms?: number;
+    /** <video> element count (speedup segmentation: injection comps read lower). */
+    videoCount?: number;
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
@@ -211,6 +215,8 @@ export function trackRenderComplete(
       total_frames: props.totalFrames,
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
+      capture_p50_ms: props.captureP50Ms,
+      video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,

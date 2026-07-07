@@ -309,6 +309,13 @@ export interface RenderPerfSummary {
    * without the split fall back to `stages.captureMs`.
    */
   captureAvgMs?: number;
+  /**
+   * Median per-frame capture time from the engine's per-frame samples —
+   * warmup-robust (first frames pay font/image decode) and free of stage
+   * setup amortization, unlike `captureAvgMs`. From the session that
+   * captured the most frames when parallel workers report separately.
+   */
+  captureP50Ms?: number;
   capturePeakMs?: number;
   captureCalibration?: {
     sampledFrames: number[];

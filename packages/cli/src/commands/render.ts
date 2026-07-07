@@ -1684,6 +1684,8 @@ function trackRenderMetrics(
     totalFrames: perf?.totalFrames,
     speedRatio,
     captureAvgMs: perf?.captureAvgMs,
+    captureP50Ms: perf?.captureP50Ms,
+    videoCount: perf?.videoCount,
     capturePeakMs: perf?.capturePeakMs,
     tmpPeakBytes: perf?.tmpPeakBytes,
     stageCompileMs: stages.compileMs,

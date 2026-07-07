@@ -87,6 +87,7 @@ export {
   DrawElementVerificationError,
   isDrawElementVerificationError,
   recaptureDrawElementFrameForVerify,
+  completeDeferredDrawElementInit,
   writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,

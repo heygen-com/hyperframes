@@ -65,6 +65,7 @@ import {
   getCapturePerfSummary,
   getFfmpegBinary,
   recaptureDrawElementFrameForVerify,
+  completeDeferredDrawElementInit,
   initializeSession,
   prepareCaptureSessionForReuse,
   spawnStreamingEncoder,
@@ -560,6 +561,10 @@ export async function runCaptureStreamingStage(
         if (!session.isInitialized) {
           await initializeSession(session);
         }
+        // Probe-initialized video comps defer verification + canvas injection
+        // until the injector exists (attached by prepareCaptureSessionForReuse
+        // above) — complete it now so drawElement runs VERIFIED on video comps.
+        await completeDeferredDrawElementInit(session);
         assertNotAborted();
         lastBrowserConsole = session.browserConsoleBuffer;
 

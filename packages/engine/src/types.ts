@@ -178,6 +178,12 @@ export interface CapturePerfSummary {
   avgBeforeCaptureMs: number;
   avgScreenshotMs: number;
   /**
+   * Median per-frame capture time — warmup-robust, unlike `avgTotalMs`
+   * (first frames pay font/image decode + GC that swamps short renders'
+   * averages). Basis for in-the-wild speedup estimates. 0 when no frames.
+   */
+  p50TotalMs: number;
+  /**
    * Frames served from the static-dedup cache instead of a real seek+screenshot
    * (opt-out HF_STATIC_DEDUP=false). 0 when dedup was off or never armed. NOT counted
    * in `frames` (reuses are excluded so they don't dilute the per-frame
