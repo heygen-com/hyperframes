@@ -17,9 +17,9 @@ Users say things like:
 - "Make a 30-second site tour / showcase from https://..."
 - "Capture our homepage and build a video from its own visuals"
 
-The workflow has 7 steps. Each produces an artifact that gates the next. By default it's collaborative — gates marked 💬 stop and ask the user. If the user signals autonomous mode ("decide for me", "surprise me"), 💬 user-preference gates are skipped; see step-2-brief.md for how that propagates.
+The workflow has 7 steps. Each produces an artifact that gates the next. By default it's collaborative — gates marked 💬 stop and ask the user. Mode semantics (signals, propagation, gate taxonomy) are canonical in `../hyperframes-core/references/brief-contract.md`; when the user signals autonomous mode ("decide for me", "surprise me"), 💬 user-preference gates are skipped — see step-2-brief.md for how that propagates through this workflow.
 
-**Autonomous mode is NOT "skip all gates."** Auto mode covers user-preference questions (TTS provider, voice, color emphasis, beat count, music yes/no, captions yes/no — where the agent decides on the user's behalf). It does NOT cover quality-verification gates. The following remain non-skippable in auto mode:
+**Autonomous mode is NOT "skip all gates"** (brief contract § 1). It covers user-preference questions (TTS provider, voice, color emphasis, beat count, music yes/no, captions yes/no — where the agent decides on the user's behalf). It does NOT cover quality-verification gates. The following remain non-skippable in auto mode:
 
 - Asset Audit (Step 3) — viewing contact sheets and justifying USE/SKIP for each asset
 - Per-beat HTML read (Step 5) — structured evidence block per beat

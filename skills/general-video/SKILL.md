@@ -27,7 +27,7 @@ For vague, exploratory requests ("make something for our brand", "a cool intro")
 - **Priority** — what matters most? motion quality / content accuracy / brand fidelity / speed?
 - **Variations** — one best shot, or 2-3 meaningfully different options (different pacing, energy, or structure — not just color swaps)?
 
-For specific requests ("add a title card", "fix the timing on scene 3"), skip discovery.
+For specific requests ("add a title card", "fix the timing on scene 3"), skip discovery. If the request carries an ongoing autonomous signal ("surprise me", "just build it" — `hyperframes-core/references/brief-contract.md` § 1), skip discovery too: default to one best shot and state your calls with one-line receipts as you make them.
 
 ### Step 1 — Design system → `hyperframes-creative`
 

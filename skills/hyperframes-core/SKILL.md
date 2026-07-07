@@ -11,20 +11,21 @@ This skill is the **technical contract** — how to build one hyperframes projec
 
 ## References
 
-| File                                 | Read it to…                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                           |
-| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype         |
-| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`           |
-| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another     |
-| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it        |
-| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                    |
-| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit |
-| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                  |
-| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                             |
-| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                  |
-| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                |
-| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)      |
+| File                                 | Read it to…                                                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`  | start from the smallest renderable composition skeleton                                                                 |
+| `references/composition-patterns.md` | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                               |
+| `references/data-attributes.md`      | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                 |
+| `references/tracks-and-clips.md`     | pick `data-track-index`, handle same-track overlap / z-index, time a clip relative to another                           |
+| `references/sub-compositions.md`     | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                              |
+| `references/variables-and-media.md`  | declare variables; place `<video>`/`<audio>`, set volume, trim                                                          |
+| `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                       |
+| `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                                        |
+| `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                   |
+| `references/brief-contract.md`       | conduct a creation workflow's intake — interaction mode (collaborative / autonomous), shared brief fields, asking rules |
+| `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                        |
+| `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                      |
+| `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                            |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 

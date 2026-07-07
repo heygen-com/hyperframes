@@ -48,7 +48,9 @@ Routing needs to know **what the video is about** — its input and subject. If 
 
 - **Input** — a product (URL / brief), a general website, a GitHub PR, a topic to explain, or an existing talking-head video?
 
-**Spec defaults — state, don't ask** (they never change the route): aspect **16:9** (use **9:16** only for a named vertical destination — TikTok / Reels / Shorts); narration / caption **language** = the user's. The chosen workflow re-confirms its own specifics at its first step.
+**Mode** — if the request carries an ongoing autonomous signal ("surprise me", "decide for me", "just build it"), note it and pass it into the workflow: the whole run goes autonomous and no later step re-asks. Default is collaborative. (`/motion-graphics` is autonomous by design.) Semantics: `hyperframes-core` → `references/brief-contract.md`.
+
+**Spec defaults — state, don't ask** (they never change the route): **aspect** derives from the destination — social feed (X / LinkedIn / Instagram) → square **1:1**, TikTok / Reels / Shorts → **9:16**, YouTube / embed / unknown → **16:9**; narration / caption **language** = the user's. The chosen workflow re-confirms its own specifics at its first step (field semantics: `hyperframes-core` → `references/brief-contract.md`).
 
 ## Workflow cheat-sheet
 

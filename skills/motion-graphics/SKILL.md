@@ -19,6 +19,8 @@ metadata:
 
 > **Confirm the route before Step 0.** This skill makes a **short, design-led, unnarrated motion graphic** (motion is the message; ~under 10s, no voice-over). A **longer, multi-scene, or narrated** treatment → `/general-video`; a **narrated video of a website** → `/website-to-video`; a **topic explainer** → `/faceless-explainer`; a **product promo** → `/product-launch-video`; **captions on existing footage** → `/embedded-captions`. **Out of scope**: live / at-render-time data, or footage it can't capture. Unsure motion-first-vs-narrated? **Read `/hyperframes` first.**
 
+This workflow is **autonomous by design** — at most one clarifying question (`agents/director.md`), then straight through to render; the collaborative/autonomous distinction in `../hyperframes-core/references/brief-contract.md` adds no gates here.
+
 A short design-led motion graphic. **Asset-first**: decide the asset strategy and source real material _before_ designing the shot, then design the shot around what you have, then compose by reusing catalog capabilities. All artifacts go to `PROJECT_DIR = videos/<project-name>/` (created in Step 0); all paths below are relative to it.
 
 | Phase    | Execution                                                             | Primary artifact                                                 | Detailed flow                 |
