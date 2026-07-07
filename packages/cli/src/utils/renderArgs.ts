@@ -9,9 +9,11 @@
  * `timeout: 0` footguns at the rate of "one per missing branch".
  */
 
+import { readFileSync, type Stats } from "node:fs";
 import { resolve, sep } from "node:path";
-import { type Stats } from "node:fs";
+import { parseFps } from "@hyperframes/core";
 import { errorBox } from "../ui/format.js";
+import { readCompositionFps } from "./compositionFps.js";
 
 // ── --browser-timeout ──────────────────────────────────────────────────
 
@@ -218,6 +220,32 @@ export function resolveCompositionEntryArg(
     process.exit(1);
   }
   return result.value;
+}
+
+// ── default fps ────────────────────────────────────────────────────────
+
+/**
+ * Resolve the fps argument that local `render` should parse: explicit --fps,
+ * else the actual composition entry file's root data-fps when valid, else
+ * undefined so the caller can apply its final "30" default.
+ */
+export function resolveDefaultFpsArg(
+  explicitFps: string | undefined,
+  projectDir: string,
+  indexPath: string,
+  entryFile: string | undefined,
+): string | undefined {
+  if (explicitFps != null) return explicitFps;
+  try {
+    const fpsSourcePath = entryFile ? resolve(projectDir, entryFile) : indexPath;
+    const declared = readCompositionFps(readFileSync(fpsSourcePath, "utf8"));
+    if (declared != null && parseFps(declared).ok) {
+      return declared;
+    }
+  } catch {
+    // Unreadable composition file — fall back to the default fps in render.ts.
+  }
+  return undefined;
 }
 
 export type GifLoopParseResult =

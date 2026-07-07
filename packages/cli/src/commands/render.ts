@@ -10,6 +10,7 @@ import {
   parseGifLoopArg,
   resolveBrowserTimeoutMsArg,
   resolveCompositionEntryArg,
+  resolveDefaultFpsArg,
 } from "../utils/renderArgs.js";
 
 export const examples: Example[] = [
@@ -51,7 +52,6 @@ import { cpus, freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { resolveProject } from "../utils/project.js";
-import { readCompositionFps } from "../utils/compositionFps.js";
 import { lintProject, shouldBlockRender } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
@@ -383,6 +383,11 @@ export default defineCommand({
     // ── Resolve project ────────────────────────────────────────────────────
     const project = resolveProject(args.dir);
 
+    // ── Resolve composition entry file ─────────────────────────────────────
+    // Needed early: fps default below must read the actual render target, not
+    // always index.html.
+    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
+
     // ── Validate fps ───────────────────────────────────────────────────────
     // Accept either integer (`30`) or ffmpeg-style rational (`30000/1001`).
     // The whitelist-based validator was replaced with a sane numeric range so
@@ -392,17 +397,7 @@ export default defineCommand({
     // Precedence: explicit --fps, else the composition's root data-fps, else 30.
     // Honoring data-fps matches the runtime — render used to silently force 30
     // even when the composition declared e.g. data-fps="24".
-    let fpsArg = args.fps;
-    if (fpsArg == null) {
-      try {
-        const declared = readCompositionFps(readFileSync(join(project.dir, "index.html"), "utf8"));
-        if (declared != null && parseFps(declared).ok) {
-          fpsArg = declared;
-        }
-      } catch {
-        // Unreadable index.html — fall back to the default fps below.
-      }
-    }
+    const fpsArg = resolveDefaultFpsArg(args.fps, project.dir, project.indexPath, entryFile);
     const fpsParse = parseFps(fpsArg ?? "30");
     if (!fpsParse.ok) {
       errorBox("Invalid fps", formatFpsParseError(fpsArg ?? "30", fpsParse.reason));
@@ -674,12 +669,11 @@ export default defineCommand({
       console.log(c.warn("  GIF output is capped at 30fps. Use --fps 15 for smaller files."));
     }
 
-    // ── Validate browser-timeout (seconds) and composition entry file ────
-    // Both validators live in `utils/renderArgs.ts` so the parse/reject
+    // ── Validate browser-timeout (seconds) ───────────────────────────────
+    // This validator lives in `utils/renderArgs.ts` so the parse/reject
     // branches are unit-testable without `process.exit`. See issue #1199
-    // for the original EISDIR / silent-timeout-0 footguns this guards.
+    // for the original silent-timeout-0 footgun this guards.
     const pageNavigationTimeoutMs = resolveBrowserTimeoutMsArg(args["browser-timeout"]);
-    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
 
     // ── Preflight batch rows before browser/lint work ────────────────────
     let batchModule: typeof import("./batchRender.js") | undefined;
