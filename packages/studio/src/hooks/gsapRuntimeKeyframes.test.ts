@@ -176,6 +176,40 @@ describe("hasNonHoldTweenForElement — strict live-tween existence (drag stale-
   });
 });
 
+describe("hasNonHoldTweenForElement — channel-scoped (position vs sibling rotation)", () => {
+  const el = { id: "puck-c" };
+  const rotationTween = {
+    targets: () => [el],
+    vars: { keyframes: { "0%": { rotation: 0 }, "100%": { rotation: 90 } }, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  };
+  const positionTween = {
+    targets: () => [el],
+    vars: { keyframes: { "0%": { x: 0, y: 0 }, "100%": { x: 100, y: 40 } }, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  };
+
+  it("unfiltered: a rotation-only keyframed tween counts as non-hold", () => {
+    expect(hasNonHoldTweenForElement(fakeIframe(el, [rotationTween]), "#puck-c")).toBe(true);
+  });
+
+  it("position-scoped: a sibling rotation-only tween is NOT a live position tween", () => {
+    // The primary fix: a keyframed rotation must not route a static position hold
+    // into the keyframe branch. Scoping to position channels returns false here.
+    expect(
+      hasNonHoldTweenForElement(fakeIframe(el, [rotationTween]), "#puck-c", undefined, ["x", "y"]),
+    ).toBe(false);
+  });
+
+  it("position-scoped: a real keyframed position tween still counts", () => {
+    expect(
+      hasNonHoldTweenForElement(fakeIframe(el, [positionTween]), "#puck-c", undefined, ["x", "y"]),
+    ).toBe(true);
+  });
+});
+
 describe("arcPathFromMotionPathValue", () => {
   it("builds arc config from object form { path, curviness }", () => {
     const arc = arcPathFromMotionPathValue({
