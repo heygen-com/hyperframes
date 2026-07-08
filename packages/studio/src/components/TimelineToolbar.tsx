@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import { Magnet } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -79,6 +80,8 @@ export function TimelineToolbar({
 }: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
+  const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
+  const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
@@ -98,6 +101,24 @@ export function TimelineToolbar({
     enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
     onAddKeyframe: onToggleKeyframe,
   });
+
+  // "N" toggles timeline snapping (industry convention: Resolve/FCP).
+  // Skip when typing in an input/contenteditable.
+  useEffect(() => {
+    // fallow-ignore-next-line complexity
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "n" && e.key !== "N") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      const tag = target?.tagName?.toLowerCase() ?? "";
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const store = usePlayerStore.getState();
+      store.setTimelineSnapEnabled(!store.timelineSnapEnabled);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
@@ -142,6 +163,21 @@ export function TimelineToolbar({
               </Tooltip>
             </div>
           )}
+          <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
+            <button
+              type="button"
+              onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
+              aria-label="Toggle timeline snapping"
+              aria-pressed={timelineSnapEnabled}
+              className={`flex h-6 w-6 items-center justify-center rounded border transition-colors active:scale-[0.98] ${
+                timelineSnapEnabled
+                  ? "border-neutral-700 bg-neutral-700 text-neutral-200"
+                  : "border-neutral-800 text-neutral-500 hover:text-neutral-300"
+              }`}
+            >
+              <Magnet size={13} weight="bold" aria-hidden="true" />
+            </button>
+          </Tooltip>
           {STUDIO_KEYFRAMES_ENABLED && onToggleKeyframe && (
             <Tooltip
               label={

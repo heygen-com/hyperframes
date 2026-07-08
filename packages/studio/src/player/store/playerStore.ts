@@ -108,6 +108,9 @@ interface PlayerState {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
+  timelineSnapEnabled: boolean;
+  setTimelineSnapEnabled: (enabled: boolean) => void;
   /** Work-area in-point (seconds). When set, loop starts here and A jumps here. */
   inPoint: number | null;
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
@@ -260,6 +263,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  timelineSnapEnabled: readStudioUiPreferences().timelineSnapEnabled ?? true,
+  setTimelineSnapEnabled: (enabled) => {
+    writeStudioUiPreferences({ timelineSnapEnabled: enabled });
+    set({ timelineSnapEnabled: enabled });
+  },
   inPoint: null,
   outPoint: null,
 

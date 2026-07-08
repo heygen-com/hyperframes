@@ -50,3 +50,17 @@ describe("studio UI preferences", () => {
     });
   });
 });
+
+describe("timelineSnapEnabled preference", () => {
+  it("round-trips through storage", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ timelineSnapEnabled: false }, storage);
+    expect(readStudioUiPreferences(storage).timelineSnapEnabled).toBe(false);
+  });
+
+  it("ignores non-boolean values", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ timelineSnapEnabled: "yes" }));
+    expect(readStudioUiPreferences(storage).timelineSnapEnabled).toBeUndefined();
+  });
+});

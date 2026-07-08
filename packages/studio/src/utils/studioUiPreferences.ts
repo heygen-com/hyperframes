@@ -16,6 +16,8 @@ export interface StudioUiPreferences {
   gridVisible?: boolean;
   gridSpacing?: number;
   snapToGrid?: boolean;
+  /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
+  timelineSnapEnabled?: boolean;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -87,6 +89,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.snapToGrid === "boolean") {
       preferences.snapToGrid = parsed.snapToGrid;
+    }
+    if (typeof parsed.timelineSnapEnabled === "boolean") {
+      preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
     }
     return preferences;
   } catch {
