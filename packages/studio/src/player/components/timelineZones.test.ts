@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { classifyZone, normalizeToZones, resolveMainOriginTrack } from "./timelineZones";
 
-function el(id: string, tag: string, track: number): TimelineElement {
-  return { id, tag, start: 0, duration: 2, track };
+function el(id: string, tag: string, track: number, duration = 2): TimelineElement {
+  return { id, tag, start: 0, duration, track };
 }
 
 function trackOf(els: TimelineElement[], id: string): number {
@@ -11,10 +11,25 @@ function trackOf(els: TimelineElement[], id: string): number {
 }
 
 describe("resolveMainOriginTrack", () => {
-  it("is the lowest track carrying a video clip", () => {
+  it("is the video track with the most total content (primary sequence)", () => {
+    // track 4 has more total video duration than track 2 → main, even though higher index
     expect(
-      resolveMainOriginTrack([el("a", "img", 0), el("v", "video", 2), el("v2", "video", 4)]),
-    ).toBe(2);
+      resolveMainOriginTrack([el("a", "img", 0), el("v", "video", 2, 3), el("v2", "video", 4, 9)]),
+    ).toBe(4);
+  });
+  it("breaks ties to the lowest index", () => {
+    expect(resolveMainOriginTrack([el("v", "video", 2, 5), el("v2", "video", 4, 5)])).toBe(2);
+  });
+  it("honors an explicit data-timeline-role=main designation over content", () => {
+    const designated: TimelineElement = {
+      id: "m",
+      tag: "video",
+      track: 7,
+      start: 0,
+      duration: 1,
+      timelineRole: "main",
+    };
+    expect(resolveMainOriginTrack([el("v", "video", 0, 20), designated])).toBe(7);
   });
   it("is null when there is no video", () => {
     expect(resolveMainOriginTrack([el("a", "img", 0), el("m", "audio", 1)])).toBe(null);
@@ -60,6 +75,24 @@ describe("normalizeToZones", () => {
   it("returns the same array (identity) when already zoned", () => {
     const input = [el("i", "img", 0), el("v", "video", 1), el("a", "audio", 2)];
     expect(normalizeToZones(input)).toBe(input);
+  });
+
+  it("is idempotent with multiple video tracks (no drift on re-zoning)", () => {
+    // main = the longer video (track 0); a shorter video overlay on track 5 + img + audio.
+    const input = [
+      el("vmain", "video", 0, 8),
+      el("voverlay", "video", 5, 2),
+      el("img", "img", 1),
+      el("aud", "audio", 2),
+    ];
+    const once = normalizeToZones(input);
+    const twice = normalizeToZones(once);
+    // Re-zoning must not move anything (would otherwise swap which video is "main").
+    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
+    // main video sits below the overlays, above audio.
+    expect(trackOf(once, "vmain")).toBeGreaterThan(trackOf(once, "voverlay"));
+    expect(trackOf(once, "vmain")).toBeGreaterThan(trackOf(once, "img"));
+    expect(trackOf(once, "aud")).toBeGreaterThan(trackOf(once, "vmain"));
   });
 
   it("groups multiple audio tracks at the bottom preserving relative order", () => {

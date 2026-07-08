@@ -9,14 +9,34 @@ function sortedDistinct(values: number[]): number[] {
 }
 
 /**
- * The authored track index treated as the single "main" video track: the lowest
- * track that carries a `video` clip. null when the timeline has no video.
+ * The track index of the single "main" video track. Resolution is **stable under
+ * re-zoning** (so normalizeToZones is idempotent even with multiple video tracks):
+ *   1. An explicit `data-timeline-role="main"` designation wins (persisted metadata).
+ *   2. Otherwise the primary sequence = the video track with the most total clip
+ *      duration — identity-based, not index-based, so it survives track renumbering.
+ *      Ties break to the lowest index.
+ * Returns null when the timeline has no video. Works on authored OR zoned elements
+ * (on zoned elements it returns the current main lane index).
  */
 export function resolveMainOriginTrack(elements: TimelineElement[]): number | null {
-  const videoTracks = elements
-    .filter((el) => el.tag === "video" && !isAudioTimelineElement(el))
-    .map((el) => el.track);
-  return videoTracks.length > 0 ? Math.min(...videoTracks) : null;
+  const videos = elements.filter((el) => el.tag === "video" && !isAudioTimelineElement(el));
+  if (videos.length === 0) return null;
+
+  const designated = videos.find((v) => v.timelineRole === "main");
+  if (designated) return designated.track;
+
+  const totalByTrack = new Map<number, number>();
+  for (const v of videos) totalByTrack.set(v.track, (totalByTrack.get(v.track) ?? 0) + v.duration);
+
+  let bestTrack = Number.POSITIVE_INFINITY;
+  let bestTotal = -1;
+  for (const [track, total] of totalByTrack) {
+    if (total > bestTotal || (total === bestTotal && track < bestTrack)) {
+      bestTotal = total;
+      bestTrack = track;
+    }
+  }
+  return bestTrack;
 }
 
 /** Which zone a clip belongs to under the enforced model. The main lane holds
