@@ -321,7 +321,6 @@ export function useTimelineEditing({
       domEditSaveTimestampRef,
     ],
   );
-
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
     projectIdRef,
     activeCompPath,
@@ -335,7 +334,6 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
   });
-
   const handleToggleElementHidden = useTimelineElementVisibilityEditing({
     projectIdRef,
     activeCompPath,
@@ -349,7 +347,6 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
   });
-
   // fallow-ignore-next-line complexity
   const handleTimelineElementDelete = useCallback(
     // fallow-ignore-next-line complexity
@@ -361,16 +358,13 @@ export function useTimelineEditing({
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       const label = getTimelineElementLabel(element);
-
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       try {
         const originalContent = await readFileContent(pid, targetPath);
-
         const patchTarget = buildPatchTarget(element);
         if (!patchTarget) {
           throw new Error(`Timeline element ${element.id} is missing a patchable target`);
         }
-
         const removeResponse = await fetch(
           `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
           {
@@ -382,14 +376,12 @@ export function useTimelineEditing({
         if (!removeResponse.ok) {
           throw new Error(`Failed to delete ${element.id} from ${targetPath}`);
         }
-
         const removeData = (await removeResponse.json()) as {
           changed?: boolean;
           content?: string;
         };
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
-
         domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
@@ -400,7 +392,6 @@ export function useTimelineEditing({
           writeFile: writeProjectFile,
           recordEdit,
         });
-
         usePlayerStore
           .getState()
           .setElements(
@@ -427,7 +418,6 @@ export function useTimelineEditing({
       forceReloadSdkSession,
     ],
   );
-
   // fallow-ignore-next-line complexity
   const handleTimelineAssetDrop = useCallback(
     // fallow-ignore-next-line complexity
@@ -442,17 +432,14 @@ export function useTimelineEditing({
       }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
         showToast("Only image, video, and audio assets can be dropped onto the timeline.");
         return;
       }
-
       const targetPath = activeCompPath || "index.html";
       try {
         const originalContent = await readFileContent(pid, targetPath);
-
         const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
         const duration =
           Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
@@ -518,7 +505,6 @@ export function useTimelineEditing({
       forceReloadSdkSession,
     ],
   );
-
   // fallow-ignore-next-line complexity
   const handleTimelineFileDrop = useCallback(
     // fallow-ignore-next-line complexity
@@ -570,6 +556,33 @@ export function useTimelineEditing({
     ],
   );
 
+  const handleAddAssetAtPlayhead = useCallback(
+    async (assetPath: string) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+      const kind = getTimelineAssetKind(assetPath);
+      if (!kind) {
+        showToast("Only image, video, and audio assets can be added to the timeline.");
+        return;
+      }
+      const start = usePlayerStore.getState().currentTime;
+      const duration = await resolveDroppedAssetDuration(pid, assetPath, kind);
+      const resolvedTargetPath = activeCompPath || "index.html";
+      const occupied = timelineElements
+        .filter((te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath)
+        .map((te) => ({ start: te.start, duration: te.duration, track: te.track }));
+      // Reuse the file-drop placement rule: target track 0, bump to a clear
+      // track when the span overlaps (FCP-style "never reject").
+      const [placement] = buildTimelineFileDropPlacements(
+        { start, track: 0 },
+        [duration],
+        occupied,
+      );
+      await handleTimelineAssetDrop(assetPath, placement, duration);
+    },
+    [activeCompPath, handleTimelineAssetDrop, showToast, timelineElements],
+  );
+
   const handleBlockedTimelineEdit = useCallback(
     (_element: TimelineElement) => {
       const now = Date.now();
@@ -602,6 +615,7 @@ export function useTimelineEditing({
     handleRazorSplitAll,
     handleTimelineAssetDrop,
     handleTimelineFileDrop,
+    handleAddAssetAtPlayhead,
     handleBlockedTimelineEdit,
     ...groupEditing,
   };

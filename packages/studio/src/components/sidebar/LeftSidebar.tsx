@@ -60,6 +60,7 @@ interface LeftSidebarProps {
   onAddBlock?: (blockName: string) => void;
   onPreviewBlock?: (preview: BlockPreviewInfo | null) => void;
   takeoverContent?: ReactNode;
+  onAddAssetToTimeline?: (path: string) => void;
 }
 
 export const LeftSidebar = memo(
@@ -92,6 +93,7 @@ export const LeftSidebar = memo(
       onAddBlock,
       onPreviewBlock,
       takeoverContent,
+      onAddAssetToTimeline,
     },
     ref,
   ) {
@@ -230,6 +232,7 @@ export const LeftSidebar = memo(
                 onImport={onImportFiles}
                 onDelete={onDeleteFile}
                 onRename={onRenameFile}
+                onAddAssetToTimeline={onAddAssetToTimeline}
               />
             )}
             {tab === "code" && (

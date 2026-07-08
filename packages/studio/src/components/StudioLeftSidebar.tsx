@@ -18,6 +18,7 @@ export interface StudioLeftSidebarProps {
   linting: boolean;
   lintFindingCount?: number;
   lintFindingsByFile?: Map<string, { count: number; messages: string[] }>;
+  onAddAssetToTimeline?: (path: string) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -30,6 +31,7 @@ export function StudioLeftSidebar({
   linting,
   lintFindingCount,
   lintFindingsByFile,
+  onAddAssetToTimeline,
 }: StudioLeftSidebarProps) {
   const {
     leftCollapsed,
@@ -147,6 +149,7 @@ export function StudioLeftSidebar({
         onToggleCollapse={toggleLeftSidebar}
         onAddBlock={onAddBlock}
         onPreviewBlock={onPreviewBlock}
+        onAddAssetToTimeline={onAddAssetToTimeline}
       />
       <div
         role="separator"

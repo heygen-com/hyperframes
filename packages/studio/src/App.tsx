@@ -369,7 +369,6 @@ export function StudioApp() {
     const r = previewIframe.getBoundingClientRect();
     canvasRectRef.current = { left: r.left, top: r.top, width: r.width, height: r.height };
   }, [gestureState, previewIframe]);
-
   const handlePreviewIframeRef = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       previewIframeRef.current = iframe;
@@ -508,6 +507,7 @@ export function StudioApp() {
                       linting={linting}
                       lintFindingCount={lintModal?.length ?? findingsByFile.size}
                       lintFindingsByFile={findingsByFile}
+                      onAddAssetToTimeline={timelineEditing.handleAddAssetAtPlayhead}
                     />
                     <StudioPreviewArea
                       timelineToolbar={timelineToolbar}

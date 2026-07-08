@@ -13,6 +13,7 @@ export function AudioRow({
   isCopied,
   onDelete,
   onRename,
+  onAddAssetToTimeline,
 }: {
   projectId: string;
   asset: string;
@@ -22,6 +23,7 @@ export function AudioRow({
   isCopied: boolean;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  onAddAssetToTimeline?: (path: string) => void;
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -204,6 +206,7 @@ export function AudioRow({
           onCopy={onCopy}
           onDelete={onDelete}
           onRename={onRename}
+          onAddAtPlayhead={onAddAssetToTimeline}
         />
       )}
     </>

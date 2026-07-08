@@ -24,6 +24,7 @@ interface AssetsTabProps {
   onImport?: (files: FileList) => void;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  onAddAssetToTimeline?: (path: string) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -35,6 +36,7 @@ function ImageCard({
   isCopied,
   onDelete,
   onRename,
+  onAddAssetToTimeline,
   size,
 }: {
   projectId: string;
@@ -44,6 +46,7 @@ function ImageCard({
   isCopied: boolean;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  onAddAssetToTimeline?: (path: string) => void;
   size: "large" | "small";
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -177,6 +180,7 @@ function ImageCard({
           onCopy={onCopy}
           onDelete={onDelete}
           onRename={onRename}
+          onAddAtPlayhead={onAddAssetToTimeline}
         />
       )}
     </>
@@ -234,6 +238,7 @@ export const AssetsTab = memo(function AssetsTab({
   onImport,
   onDelete,
   onRename,
+  onAddAssetToTimeline,
 }: AssetsTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -287,7 +292,6 @@ export const AssetsTab = memo(function AssetsTab({
       cancelled = true;
     };
   }, [projectId, assetsKey]);
-
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -296,7 +300,6 @@ export const AssetsTab = memo(function AssetsTab({
     },
     [onImport],
   );
-
   const handleCopyPath = useCallback(async (path: string) => {
     const copied = await copyTextToClipboard(path);
     if (copied) {
@@ -304,10 +307,8 @@ export const AssetsTab = memo(function AssetsTab({
       setTimeout(() => setCopiedPath(null), 1500);
     }
   }, []);
-
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
-
   const mediaAssets = useMemo(() => {
     const media = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
     const all = filterByUsage(media, usedPaths, usageFilter);
@@ -319,7 +320,6 @@ export const AssetsTab = memo(function AssetsTab({
       return rec?.description?.toLowerCase().includes(q);
     });
   }, [assets, searchQuery, manifest, usageFilter, usedPaths]);
-
   const categorized = useMemo(() => {
     const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
@@ -336,13 +336,11 @@ export const AssetsTab = memo(function AssetsTab({
     }
     return groups;
   }, [mediaAssets, usedPaths]);
-
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: mediaAssets.length };
     for (const cat of FILTER_ORDER) c[cat] = categorized[cat].length;
     return c;
   }, [mediaAssets, categorized]);
-
   // Usage counts over the full media set (independent of the active usage filter,
   // so the chips don't show their own filtered totals).
   const usageCounts = useMemo(
@@ -353,12 +351,10 @@ export const AssetsTab = memo(function AssetsTab({
       ),
     [assets, usedPaths],
   );
-
   const visibleCategories =
     activeFilter === "all"
       ? FILTER_ORDER.filter((c) => categorized[c].length > 0)
       : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
-
   return (
     <div
       className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/[0.05]" : ""}`}
@@ -561,6 +557,7 @@ export const AssetsTab = memo(function AssetsTab({
                     isCopied={copiedPath === a}
                     onDelete={onDelete}
                     onRename={onRename}
+                    onAddAssetToTimeline={onAddAssetToTimeline}
                   />
                 ))}
               {(cat === "images" || cat === "video") &&
@@ -574,6 +571,7 @@ export const AssetsTab = memo(function AssetsTab({
                     isCopied={copiedPath === a}
                     onDelete={onDelete}
                     onRename={onRename}
+                    onAddAssetToTimeline={onAddAssetToTimeline}
                     size={categorized[cat].length <= 4 ? "large" : "small"}
                   />
                 ))}
@@ -588,6 +586,7 @@ export const AssetsTab = memo(function AssetsTab({
                     isCopied={copiedPath === a}
                     onDelete={onDelete}
                     onRename={onRename}
+                    onAddAssetToTimeline={onAddAssetToTimeline}
                     size="small"
                   />
                 ))}
