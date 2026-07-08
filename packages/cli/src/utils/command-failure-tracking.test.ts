@@ -95,6 +95,7 @@ describe("trackCommandFailures", () => {
     const resolvedGroup = await wrapped();
     const subLoader = (resolvedGroup.subCommands as Record<string, () => Promise<CommandDef>>)
       .render;
+    if (!subLoader) throw new Error("expected a wrapped 'render' subcommand loader");
     const leaf = await subLoader();
     await expect((leaf.run as () => Promise<unknown>)()).rejects.toBe(boom);
     expect(onFailure).toHaveBeenCalledWith(boom);
