@@ -47,3 +47,26 @@ export function getPinchTimelineZoomPercent(
   if (!Number.isFinite(deltaY) || deltaY === 0) return current;
   return clampTimelineZoomPercent(current * Math.exp(-deltaY * PINCH_ZOOM_SENSITIVITY));
 }
+
+const LOG_MIN = Math.log(MIN_TIMELINE_ZOOM_PERCENT);
+const LOG_MAX = Math.log(MAX_TIMELINE_ZOOM_PERCENT);
+
+/**
+ * Maps a zoom percent (10–2000) to a slider position (0–100) using a log scale.
+ * Log scale is used because the range spans 200×; linear would compress the
+ * low end (10–100%) into a tiny sliver of the slider.
+ */
+export function timelineZoomPercentToSlider(percent: number): number {
+  const clamped = clampTimelineZoomPercent(percent);
+  return ((Math.log(clamped) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * 100;
+}
+
+/**
+ * Maps a slider position (0–100) to a zoom percent (10–2000) using a log scale.
+ * Inverse of `timelineZoomPercentToSlider`.
+ */
+export function timelineSliderToZoomPercent(slider: number): number {
+  const clampedSlider = Math.max(0, Math.min(100, slider));
+  const logValue = LOG_MIN + (clampedSlider / 100) * (LOG_MAX - LOG_MIN);
+  return clampTimelineZoomPercent(Math.exp(logValue));
+}

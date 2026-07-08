@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Magnet } from "@phosphor-icons/react";
+import { Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -10,6 +10,8 @@ import { useKeyframeKeyboard } from "../hooks/useKeyframeKeyboard";
 import {
   getNextTimelineZoomPercent,
   getTimelineZoomPercent,
+  timelineZoomPercentToSlider,
+  timelineSliderToZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
@@ -324,7 +326,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               );
             })()}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <Tooltip label="Fit timeline to width">
             <button
               type="button"
@@ -341,30 +343,42 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
           <Tooltip label="Zoom out">
             <button
               type="button"
+              aria-label="Zoom out"
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(
                   getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent),
                 );
               }}
-              className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200 active:scale-[0.96]"
             >
-              -
+              <MagnifyingGlassMinus size={14} aria-hidden="true" />
             </button>
           </Tooltip>
-          <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
-            {`${displayedTimelineZoomPercent}%`}
-          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={timelineZoomPercentToSlider(displayedTimelineZoomPercent)}
+            title={`${displayedTimelineZoomPercent}%`}
+            aria-label="Timeline zoom"
+            onChange={(e) => {
+              setZoomMode("manual");
+              setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
+            }}
+            className="w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+          />
           <Tooltip label="Zoom in">
             <button
               type="button"
+              aria-label="Zoom in"
               onClick={() => {
                 setZoomMode("manual");
                 setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
               }}
-              className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200 active:scale-[0.96]"
             >
-              +
+              <MagnifyingGlassPlus size={14} aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
