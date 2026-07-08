@@ -1,5 +1,34 @@
 import type { TimelineElement } from "../store/playerStore";
 
+/**
+ * Fraction of a track height near a lane boundary that switches a vertical drag
+ * from "target this lane" into "insert a new track at this boundary". Tuned by
+ * feel — bigger = easier to hit boundaries (harder to land on a lane).
+ */
+const INSERT_BAND = 0.22;
+
+/**
+ * Decide whether a vertical drag is inserting a new track at a lane boundary.
+ * `rowFloat` is the pointer's position in track-height units from the top of the
+ * first lane (0 = top of lane 0). Returns the boundary row to insert at
+ * (0 = above the top lane, `trackCount` = below the bottom), or null when the
+ * pointer is over a lane's middle band (a normal move/target).
+ */
+export function resolveInsertRow(
+  rowFloat: number,
+  trackCount: number,
+  band: number = INSERT_BAND,
+): number | null {
+  if (trackCount === 0) return 0;
+  if (rowFloat <= 0) return 0;
+  if (rowFloat >= trackCount) return trackCount;
+  const lane = Math.floor(rowFloat);
+  const frac = rowFloat - lane;
+  if (frac < band) return lane;
+  if (frac > 1 - band) return lane + 1;
+  return null;
+}
+
 /** Half-open overlap test: [aStart, aEnd) intersects [bStart, bEnd). */
 export function timeRangesOverlap(
   aStart: number,
@@ -83,4 +112,50 @@ export function resolvePlacement({
     }
   }
   return { track: desiredTrack, needsInsert: true };
+}
+
+export interface TrackShift {
+  key: string;
+  toTrack: number;
+}
+
+export interface TrackInsertPlan {
+  /** Track index the dragged clip should take. */
+  draggedTrack: number;
+  /** Other clips that must move (down by one lane) to open the gap. */
+  shifts: TrackShift[];
+}
+
+/**
+ * Plan a new-track insert at visual row `insertRow` (0 = above the top lane,
+ * `trackOrder.length` = below the bottom). Minimal-shift: keeps authored track
+ * indices and only bumps clips when there is no integer gap to slot into.
+ * - Edge inserts (row 0 / row N): one-below-top / one-above-bottom, no shifts.
+ * - Interior with a gap (next - prev ≥ 2): slot into the gap, no shifts.
+ * - Interior, consecutive: bump every clip on track ≥ `next` down one lane.
+ */
+export function buildTrackInsert(
+  elements: TimelineElement[],
+  trackOrder: number[],
+  insertRow: number,
+  draggedKey: string | null,
+): TrackInsertPlan {
+  const n = trackOrder.length;
+  if (n === 0) return { draggedTrack: 0, shifts: [] };
+  const row = Math.max(0, Math.min(n, insertRow));
+  if (row === 0) return { draggedTrack: trackOrder[0] - 1, shifts: [] };
+  if (row === n) return { draggedTrack: trackOrder[n - 1] + 1, shifts: [] };
+
+  const prev = trackOrder[row - 1];
+  const next = trackOrder[row];
+  if (next - prev >= 2) {
+    return { draggedTrack: prev + 1, shifts: [] };
+  }
+  const shifts: TrackShift[] = [];
+  for (const el of elements) {
+    const key = el.key ?? el.id;
+    if (key === draggedKey) continue;
+    if (el.track >= next) shifts.push({ key, toTrack: el.track + 1 });
+  }
+  return { draggedTrack: next, shifts };
 }

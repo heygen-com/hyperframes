@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { isLaneFree, resolvePlacement, timeRangesOverlap } from "./timelineCollision";
+import {
+  buildTrackInsert,
+  isLaneFree,
+  resolveInsertRow,
+  resolvePlacement,
+  timeRangesOverlap,
+} from "./timelineCollision";
 
 function el(id: string, track: number, start: number, duration: number): TimelineElement {
   return { id, tag: "video", start, duration, track };
@@ -110,7 +116,7 @@ describe("resolvePlacement", () => {
     ).toEqual({ track: 2, needsInsert: true });
   });
 
-  it("excludes the dragged clip so it does not collide with itself", () => {
+  it("placeholder-scenario excludes the dragged clip so it does not collide with itself", () => {
     const els = [el("self", 1, 0, 5)];
     expect(
       resolvePlacement({
@@ -122,5 +128,65 @@ describe("resolvePlacement", () => {
         excludeKey: "self",
       }),
     ).toEqual({ track: 1, needsInsert: false });
+  });
+});
+
+describe("buildTrackInsert", () => {
+  it("inserts above the top lane with no shifts", () => {
+    const els = [el("a", 0, 0, 5), el("b", 1, 0, 5)];
+    expect(buildTrackInsert(els, [0, 1], 0, null)).toEqual({ draggedTrack: -1, shifts: [] });
+  });
+
+  it("inserts below the bottom lane with no shifts", () => {
+    const els = [el("a", 0, 0, 5), el("b", 1, 0, 5)];
+    expect(buildTrackInsert(els, [0, 1], 2, null)).toEqual({ draggedTrack: 2, shifts: [] });
+  });
+
+  it("slots into an existing integer gap without moving anyone", () => {
+    const els = [el("a", 0, 0, 5), el("b", 2, 0, 5), el("c", 5, 0, 5)];
+    // insert between rows 0 (track 0) and 1 (track 2): gap 2-0 ≥ 2 → track 1, no shifts
+    expect(buildTrackInsert(els, [0, 2, 5], 1, null)).toEqual({ draggedTrack: 1, shifts: [] });
+  });
+
+  it("bumps clips below when lanes are consecutive", () => {
+    const els = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
+    // insert between rows 1 (track 1) and 2 (track 2): consecutive → dragged takes 2,
+    // every clip on track ≥ 2 bumps down one lane.
+    expect(buildTrackInsert(els, [0, 1, 2], 2, null)).toEqual({
+      draggedTrack: 2,
+      shifts: [{ key: "c", toTrack: 3 }],
+    });
+  });
+
+  it("excludes the dragged clip from the shift set", () => {
+    const els = [el("a", 0, 0, 5), el("dragged", 1, 0, 5), el("c", 2, 0, 5)];
+    // insert at row 1 (between track 0 and 1), consecutive → bump ≥1, but skip dragged
+    const plan = buildTrackInsert(els, [0, 1, 2], 1, "dragged");
+    expect(plan.draggedTrack).toBe(1);
+    expect(plan.shifts).toEqual([{ key: "c", toTrack: 3 }]);
+  });
+});
+
+describe("resolveInsertRow", () => {
+  const n = 3; // three lanes: rows 0,1,2
+
+  it("targets the lane (null) when over its middle band", () => {
+    expect(resolveInsertRow(1.5, n, 0.22)).toBe(null); // dead center of lane 1
+  });
+
+  it("inserts at the top boundary of a lane when near its top edge", () => {
+    expect(resolveInsertRow(1.1, n, 0.22)).toBe(1); // just into lane 1 → boundary above it
+  });
+
+  it("inserts at the bottom boundary of a lane when near its bottom edge", () => {
+    expect(resolveInsertRow(1.9, n, 0.22)).toBe(2); // near bottom of lane 1 → boundary below
+  });
+
+  it("inserts above the top lane when the pointer is above everything", () => {
+    expect(resolveInsertRow(-0.5, n, 0.22)).toBe(0);
+  });
+
+  it("inserts below the bottom lane when the pointer is past the last lane", () => {
+    expect(resolveInsertRow(3.4, n, 0.22)).toBe(3);
   });
 });

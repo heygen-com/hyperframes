@@ -8,7 +8,7 @@ import {
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H } from "./timelineLayout";
+import { TRACK_H, RULER_H } from "./timelineLayout";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
 import {
@@ -19,7 +19,7 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import { resolvePlacement } from "./timelineCollision";
+import { resolvePlacement, resolveInsertRow, buildTrackInsert } from "./timelineCollision";
 
 const EMPTY_BEAT_TIMES: number[] = [];
 
@@ -36,6 +36,12 @@ export interface DraggedClipState {
   pointerOffsetY: number;
   previewStart: number;
   previewTrack: number;
+  /**
+   * When non-null, the drop inserts a NEW track at this visual row boundary
+   * (0 = above the top lane, trackOrder.length = below the bottom) instead of
+   * landing on previewTrack. Drives the insertion-line indicator.
+   */
+  insertRow: number | null;
   /** Snap target the clip will land on, for the guide highlight. */
   snapTime: number | null;
   snapType: TimelineSnapType | null;
@@ -207,6 +213,13 @@ export function useTimelineClipDrag({
         trackOrder: trackOrderRef.current,
         excludeKey: drag.element.key ?? drag.element.id,
       });
+      // Insert mode: near a lane boundary (or past an edge) the drop inserts a new
+      // track instead of landing on a lane. rowFloat is the pointer's position in
+      // track-heights from the top of the first lane.
+      const rowFloat = scroll
+        ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
+        : 0;
+      const insertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
       return {
         ...drag,
         started: true,
@@ -214,6 +227,7 @@ export function useTimelineClipDrag({
         pointerClientY: clientY,
         previewStart: snap.start,
         previewTrack: placement.track,
+        insertRow,
         snapTime: snap.snapTime,
         snapType: snap.snapType,
       };
@@ -486,11 +500,56 @@ export function useTimelineClipDrag({
       suppressClickRef.current = true;
       clearSuppressedClick();
 
+      const dragKey = drag.element.key ?? drag.element.id;
+
+      // Insert mode: create a new track at the hovered boundary. The dragged clip
+      // takes the insert lane; clips below shift down one lane (minimal-shift, only
+      // when lanes are consecutive). Reuses the proven per-element move persist —
+      // each affected clip is its own undo entry (batched single-undo is a later
+      // polish; the common gap-insert has no shifts, so it's a single move).
+      if (drag.insertRow != null) {
+        const plan = buildTrackInsert(
+          elementsRef.current,
+          trackOrderRef.current,
+          drag.insertRow,
+          dragKey,
+        );
+        const changed =
+          plan.draggedTrack !== drag.element.track ||
+          drag.previewStart !== drag.element.start ||
+          plan.shifts.length > 0;
+        if (!changed) return;
+
+        updateElement(dragKey, { start: drag.previewStart, track: plan.draggedTrack });
+        Promise.resolve(
+          onMoveElementRef.current?.(drag.element, {
+            start: drag.previewStart,
+            track: plan.draggedTrack,
+          }),
+        ).catch((error) => {
+          updateElement(dragKey, { start: drag.element.start, track: drag.element.track });
+          console.error("[Timeline] Failed to persist clip insert", error);
+        });
+
+        for (const shift of plan.shifts) {
+          const shifted = elementsRef.current.find((e) => (e.key ?? e.id) === shift.key);
+          if (!shifted) continue;
+          updateElement(shift.key, { track: shift.toTrack });
+          Promise.resolve(
+            onMoveElementRef.current?.(shifted, { start: shifted.start, track: shift.toTrack }),
+          ).catch((error) => {
+            updateElement(shift.key, { track: shifted.track });
+            console.error("[Timeline] Failed to persist track shift", error);
+          });
+        }
+        return;
+      }
+
       const hasChanged =
         drag.previewStart !== drag.element.start || drag.previewTrack !== drag.element.track;
       if (!hasChanged) return;
 
-      updateElement(drag.element.key ?? drag.element.id, {
+      updateElement(dragKey, {
         start: drag.previewStart,
         track: drag.previewTrack,
       });
@@ -501,7 +560,7 @@ export function useTimelineClipDrag({
           track: drag.previewTrack,
         }),
       ).catch((error) => {
-        updateElement(drag.element.key ?? drag.element.id, {
+        updateElement(dragKey, {
           start: drag.element.start,
           track: drag.element.track,
         });

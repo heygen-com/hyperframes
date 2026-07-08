@@ -410,6 +410,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                               pointerOffsetY: e.clientY - rect.top,
                               previewStart: el.start,
                               previewTrack: el.track,
+                              insertRow: null,
                               snapTime: null,
                               snapType: null,
                               started: false,
@@ -488,9 +489,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
       }
 
       {/* Drop placeholder — a clip-sized slot at the exact landing spot (target
-          lane + snapped start), parallel to the ghost, so you see where it lands
-          while the ghost follows the cursor. */}
-      {draggedClip?.started && draggedRowIndex >= 0 && (
+          lane + snapped start), parallel to the ghost. Hidden in insert mode. */}
+      {draggedClip?.started && draggedClip.insertRow == null && draggedRowIndex >= 0 && (
         <div
           className="absolute pointer-events-none"
           style={{
@@ -502,6 +502,23 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             background: "rgba(60,230,172,0.12)",
             borderRadius: 4,
             zIndex: 30,
+          }}
+        />
+      )}
+
+      {/* Insertion line — a new track will be inserted at this boundary on drop.
+          Shown while the pointer is near a lane boundary (insert mode). */}
+      {draggedClip?.started && draggedClip.insertRow != null && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: RULER_H + draggedClip.insertRow * TRACK_H - 1,
+            left: GUTTER,
+            width: trackContentWidth,
+            height: 2,
+            background: "#3CE6AC",
+            boxShadow: "0 0 6px rgba(60,230,172,0.7)",
+            zIndex: 55,
           }}
         />
       )}
