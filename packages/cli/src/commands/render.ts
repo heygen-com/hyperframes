@@ -57,6 +57,7 @@ import { formatLintFindings } from "../utils/lintFormat.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatRenderSummaryDetail, errorBox } from "../ui/format.js";
+import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderProgress } from "../ui/progress.js";
 import {
   trackRenderComplete,
@@ -1373,6 +1374,7 @@ async function renderDocker(
   // threaded back here; the summary shows render time only (never a wrong video
   // length). Probe the output with ffprobe if a duration figure is wanted here.
   printRenderComplete(outputPath, elapsed, options.quiet);
+  warnIfWebmAlphaDropped(outputPath, options.format, options.quiet);
   if (options.exitAfterComplete) scheduleRenderProcessExit();
   return { renderTimeMs: elapsed };
 }
@@ -1475,6 +1477,7 @@ export async function renderLocal(
     job.perfSummary?.compositionDurationSeconds,
     job.perfSummary?.totalFrames,
   );
+  warnIfWebmAlphaDropped(outputPath, options.format, options.quiet);
   if (!options.skipFeedback) {
     await maybePromptRenderFeedback({
       renderDurationMs: elapsed,
