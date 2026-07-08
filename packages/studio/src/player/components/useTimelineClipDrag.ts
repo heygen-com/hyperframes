@@ -19,6 +19,7 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
+import { resolvePlacement } from "./timelineCollision";
 
 const EMPTY_BEAT_TIMES: number[] = [];
 
@@ -196,13 +197,23 @@ export function useTimelineClipDrag({
         ppsRef.current,
         durationRef.current,
       );
+      // Collision-push: if the target lane is occupied at the drop time, land on
+      // the nearest free lane (preferring up). needsInsert is resolved later (2b/2c).
+      const placement = resolvePlacement({
+        elements: elementsRef.current,
+        desiredTrack: nextMove.track,
+        start: snap.start,
+        duration: drag.element.duration,
+        trackOrder: trackOrderRef.current,
+        excludeKey: drag.element.key ?? drag.element.id,
+      });
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
         previewStart: snap.start,
-        previewTrack: nextMove.track,
+        previewTrack: placement.track,
         snapTime: snap.snapTime,
         snapType: snap.snapType,
       };
