@@ -4,7 +4,7 @@ import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
-import { createAnimeJsAdapter } from "./adapters/animejs";
+import { createAnimeJsAdapter, installHyperframesAnimeApi } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
 import { createMapboxAdapter } from "./adapters/mapbox";
@@ -37,6 +37,8 @@ import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../studio-api/helpers/draftMarkers";
 import type {
   RuntimeDeterministicAdapter,
+  RuntimeAnimeApi,
+  RuntimeAnimeRegistry,
   RuntimeJson,
   RuntimeSeekOptions,
   RuntimeTimelineLike,
@@ -46,6 +48,10 @@ import { swallow } from "./diagnostics";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
+
+if (typeof window !== "undefined") {
+  installHyperframesAnimeApi();
+}
 
 type ExportRenderFpsResolution = {
   fps: number | null;
@@ -728,6 +734,37 @@ export function initSandboxRuntimeModular(): void {
       }
     }
     return maxSeconds > MIN_VALID_TIMELINE_DURATION_SECONDS ? maxSeconds : null;
+  };
+
+  const getAnimeRuntimeWindow = (): Window & {
+    anime?: { createTimeline?: unknown; animate?: unknown };
+    __hfAnime?: RuntimeAnimeRegistry;
+    hyperframesAnime?: RuntimeAnimeApi;
+  } => window;
+
+  const hasAnimeNamespace = (): boolean => {
+    const anime = getAnimeRuntimeWindow().anime;
+    return (
+      typeof anime === "object" &&
+      anime !== null &&
+      (typeof anime.createTimeline === "function" || typeof anime.animate === "function")
+    );
+  };
+
+  const getAnimeRegistrationCount = (): number => {
+    const runtimeWindow = getAnimeRuntimeWindow();
+    const api = runtimeWindow.hyperframesAnime;
+    if (api && typeof api.entries === "function") {
+      try {
+        return api.entries().length;
+      } catch (err) {
+        swallow("runtime.init.animeEntries", err);
+      }
+    }
+    const registry = runtimeWindow.__hfAnime;
+    if (!registry) return 0;
+    if (Array.isArray(registry)) return registry.length;
+    return Object.keys(registry).filter((key) => registry[key]).length;
   };
 
   const getSafeTimelineDurationSeconds = (
@@ -2312,6 +2349,32 @@ export function initSandboxRuntimeModular(): void {
             `Register the root timeline under its data-composition-id (window.__timelines["${rootCompositionId ?? "<root-id>"}"] = tl).`,
         );
       }
+      if (hasAnimeNamespace() && getAnimeRegistrationCount() === 0) {
+        const rootEl = resolveRootCompositionElement();
+        postRuntimeDiagnosticOnce(
+          "animejs_no_registered_instances",
+          {
+            reason:
+              "anime.js is loaded but no instance was registered with hyperframesAnime.register",
+            rootCompositionId: rootEl?.getAttribute("data-composition-id") ?? null,
+          },
+          "animejs_no_registered_instances",
+        );
+      }
+      const animeRegistrationCount = getAnimeRegistrationCount();
+      if (animeRegistrationCount > 0 && boundDuration <= 0) {
+        const rootEl = resolveRootCompositionElement();
+        postRuntimeDiagnosticOnce(
+          "animejs_no_finite_duration",
+          {
+            reason:
+              "Registered anime.js instances did not report a finite positive duration; add data-duration to the root composition or register a finite instance",
+            rootCompositionId: rootEl?.getAttribute("data-composition-id") ?? null,
+            registeredAnimeInstances: animeRegistrationCount,
+          },
+          "animejs_no_finite_duration",
+        );
+      }
     }
     // __renderReady = timeline binding attempted, safe for deterministic seeking.
     // Set after any GSAP batching has completed. renderSeek works with or
@@ -2338,6 +2401,14 @@ export function initSandboxRuntimeModular(): void {
     }
     publishRenderReadyAfterTimelineBinding();
   };
+
+  const onAnimeRegistered = () => {
+    maybePublishRenderReady();
+  };
+  window.addEventListener("hf-anime-registered", onAnimeRegistered);
+  registerRuntimeCleanup(() => {
+    window.removeEventListener("hf-anime-registered", onAnimeRegistered);
+  });
 
   // When the GSAP tween-batching interceptor (HF_EARLY_STUB, fileServer.ts) is
   // active, composition scripts queue tl.to() calls instead of executing them

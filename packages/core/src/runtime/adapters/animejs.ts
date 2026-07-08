@@ -1,145 +1,260 @@
-import type { RuntimeDeterministicAdapter } from "../types";
+import { resolveRuntimeLabelSeconds } from "../../inline-scripts/parityContract";
+import type {
+  RuntimeAnimeApi,
+  RuntimeAnimeInstance,
+  RuntimeAnimeLabelMap,
+  RuntimeAnimeRegisterOptions,
+  RuntimeAnimeRegistration,
+  RuntimeAnimeRegistry,
+  RuntimeDeterministicAdapter,
+} from "../types";
 import { swallow } from "../diagnostics";
 
 /**
- * anime.js adapter for HyperFrames
+ * anime.js adapter for HyperFrames.
  *
- * Supports anime.js v4+ (the `.seek(timeMs)` API).
- *
- * ## Usage in a composition
+ * anime.js v4 exposes a namespace object at `window.anime`; animations and
+ * timelines are created with `anime.animate(...)` and `anime.createTimeline(...)`.
+ * HyperFrames uses explicit registration as the first-party contract:
  *
  * ```html
- * <script src="https://cdn.jsdelivr.net/npm/animejs@4.0.2/lib/anime.iife.min.js"></script>
+ * <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
  * <script>
- *   const anim = anime({
- *     targets: '.box',
- *     translateX: 250,
- *     rotate: '1turn',
- *     duration: 2000,
- *     autoplay: false,
- *   });
- *   window.__hfAnime = window.__hfAnime || [];
- *   window.__hfAnime.push(anim);
+ *   const tl = anime.createTimeline({ autoplay: false });
+ *   tl.add(".box", { x: 300, duration: 2000 }, 0);
+ *   hyperframesAnime.register("main", tl, { labels: { intro: 0, outro: 2 } });
  * </script>
  * ```
  *
- * Timelines work the same way:
- *
- * ```html
- * <script>
- *   const tl = anime.timeline({ autoplay: false });
- *   tl.add({ targets: '.a', opacity: [0, 1], duration: 500 })
- *     .add({ targets: '.b', translateY: [-40, 0], duration: 400 });
- *   window.__hfAnime = window.__hfAnime || [];
- *   window.__hfAnime.push(tl);
- * </script>
- * ```
- *
- * Multiple instances are supported — all are seeked in sync.
- *
- * ## Auto-discovery
- *
- * The adapter also checks `anime.running` for active instances
- * (useful for compositions that forget to register manually).
+ * `window.__hfAnime = [instance]` is still read as a legacy compatibility
+ * source, but keyed registration is the authoritative runtime contract.
  */
 export function createAnimeJsAdapter(): RuntimeDeterministicAdapter {
   return {
     name: "animejs",
 
     discover: () => {
-      try {
-        const animeGlobal = (window as AnimeWindow).anime;
-        if (!animeGlobal || typeof animeGlobal.running === "undefined") return;
-
-        const running = animeGlobal.running;
-        if (!Array.isArray(running) || running.length === 0) return;
-
-        const existing = (window as AnimeWindow).__hfAnime ?? [];
-        const existingSet = new Set(existing);
-        for (const instance of running) {
-          if (!existingSet.has(instance)) {
-            existing.push(instance);
-          }
-        }
-        (window as AnimeWindow).__hfAnime = existing;
-      } catch (err) {
-        // ignore discovery failures
-        swallow("runtime.adapters.animejs.site1", err);
-      }
+      installHyperframesAnimeApi();
     },
 
     seek: (ctx) => {
       const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
-      const instances = (window as AnimeWindow).__hfAnime;
-      if (!instances || instances.length === 0) return;
-
-      for (const instance of instances) {
+      for (const entry of collectAnimeRegistrations()) {
         try {
-          if (typeof instance.seek === "function") {
-            instance.seek(timeMs);
+          if (typeof entry.instance.seek === "function") {
+            entry.instance.seek(timeMs);
           }
         } catch (err) {
-          // ignore per-instance failures — keep going for other instances
-          swallow("runtime.adapters.animejs.site2", err);
+          swallow("runtime.adapters.animejs.site1", err);
         }
       }
     },
 
     pause: () => {
-      const instances = (window as AnimeWindow).__hfAnime;
-      if (!instances || instances.length === 0) return;
-
-      for (const instance of instances) {
+      for (const entry of collectAnimeRegistrations()) {
         try {
-          if (typeof instance.pause === "function") {
-            instance.pause();
+          if (typeof entry.instance.pause === "function") {
+            entry.instance.pause();
           }
         } catch (err) {
-          // ignore
-          swallow("runtime.adapters.animejs.site3", err);
+          swallow("runtime.adapters.animejs.site2", err);
         }
       }
     },
 
     play: () => {
-      const instances = (window as AnimeWindow).__hfAnime;
-      if (!instances || instances.length === 0) return;
-
-      for (const instance of instances) {
+      for (const entry of collectAnimeRegistrations()) {
         try {
-          if (typeof instance.play === "function") {
-            instance.play();
+          if (typeof entry.instance.play === "function") {
+            entry.instance.play();
           }
         } catch (err) {
-          // ignore
-          swallow("runtime.adapters.animejs.site4", err);
+          swallow("runtime.adapters.animejs.site3", err);
         }
       }
     },
 
     revert: () => {
-      // Don't clear __hfAnime — instances are owned by the composition.
+      // Do not clear __hfAnime; instances are owned by the composition.
+    },
+
+    getInferredDurationSeconds: () => {
+      let maxSeconds = 0;
+      for (const entry of collectAnimeRegistrations()) {
+        const durationMs = readDurationMs(entry.instance);
+        if (durationMs == null) continue;
+        maxSeconds = Math.max(maxSeconds, durationMs / 1000);
+      }
+      return maxSeconds > 0 ? maxSeconds : null;
     },
   };
 }
 
-// ── Minimal type shapes (no anime.js package dependency) ──────────────────────
+export function installHyperframesAnimeApi(): RuntimeAnimeApi {
+  const win: AnimeWindow = window;
+  if (win.hyperframesAnime) {
+    ensureAnimeRegistry();
+    if (win.__hyperframes) {
+      win.__hyperframes.hyperframesAnime = win.hyperframesAnime;
+    }
+    return win.hyperframesAnime;
+  }
 
-interface AnimeInstance {
-  seek: (timeMs: number) => void;
-  pause: () => void;
-  play: () => void;
-  duration?: number;
+  const api: RuntimeAnimeApi = {
+    register: (id, instance, options) => {
+      const registry = ensureAnimeRegistry();
+      if (Reflect.get(registry, id)) {
+        console.warn(`[hyperframes] Replacing anime.js registration "${id}"`);
+      }
+      const registration: RuntimeAnimeRegistration = {
+        id,
+        instance,
+        labels: normalizeLabels(options),
+      };
+      Reflect.set(registry, id, registration);
+      notifyAnimeRegistered(id);
+      return registration;
+    },
+    unregister: (id) => {
+      const registry = ensureAnimeRegistry();
+      Reflect.deleteProperty(registry, id);
+    },
+    get: (id) => collectAnimeRegistrations().find((entry) => entry.id === id) ?? null,
+    entries: () => collectAnimeRegistrations(),
+    resolveLabel: (id, label) => {
+      const entry = collectAnimeRegistrations().find((candidate) => candidate.id === id);
+      return resolveRuntimeLabelSeconds(entry?.labels, label);
+    },
+  };
+
+  ensureAnimeRegistry();
+  win.hyperframesAnime = api;
+  if (win.__hyperframes) {
+    win.__hyperframes.hyperframesAnime = api;
+  }
+  return api;
 }
 
-interface AnimeGlobal {
-  (params: unknown): AnimeInstance;
-  timeline?: (params?: unknown) => AnimeInstance;
-  running: AnimeInstance[];
+function ensureAnimeRegistry(): RuntimeAnimeRegistry {
+  const win: AnimeWindow = window;
+  if (win.__hfAnime) {
+    return win.__hfAnime;
+  }
+
+  const registry: RuntimeAnimeInstance[] = [];
+  win.__hfAnime = registry;
+  return registry;
 }
+
+function collectAnimeRegistrations(): RuntimeAnimeRegistration[] {
+  const win: AnimeWindow = window;
+  const registry = win.__hfAnime;
+  const entries: RuntimeAnimeRegistration[] = [];
+  if (!registry) return entries;
+
+  for (const [id, value] of Object.entries(registry)) {
+    const fallbackId = Array.isArray(registry) && isArrayIndexKey(id) ? `legacy-${id}` : id;
+    const normalized = normalizeRegistration(fallbackId, value);
+    if (normalized) entries.push(normalized);
+  }
+  return entries;
+}
+
+function isArrayIndexKey(value: string): boolean {
+  const index = Number(value);
+  return Number.isInteger(index) && index >= 0 && String(index) === value;
+}
+
+function normalizeRegistration(
+  fallbackId: string,
+  value: RuntimeAnimeRegistration | RuntimeAnimeInstance | undefined,
+): RuntimeAnimeRegistration | null {
+  if (!value) return null;
+  if (isAnimeRegistration(value)) {
+    return {
+      id: value.id || fallbackId,
+      instance: value.instance,
+      labels: value.labels,
+    };
+  }
+  if (isAnimeInstance(value)) {
+    return {
+      id: fallbackId,
+      instance: value,
+      labels: {},
+    };
+  }
+  return null;
+}
+
+function normalizeLabels(options: RuntimeAnimeRegisterOptions | undefined): RuntimeAnimeLabelMap {
+  const labels: RuntimeAnimeLabelMap = {};
+  const raw = options?.labels;
+  if (!raw) return labels;
+  for (const key of Object.keys(raw)) {
+    const seconds = resolveRuntimeLabelSeconds(raw, key);
+    if (seconds != null) labels[key] = seconds;
+  }
+  return labels;
+}
+
+function readDurationMs(instance: RuntimeAnimeInstance): number | null {
+  const totalDuration = readNumericProperty(instance, "totalDuration");
+  const duration = totalDuration ?? readNumericProperty(instance, "duration");
+  return duration != null && duration > 0 ? duration : null;
+}
+
+function readNumericProperty(instance: RuntimeAnimeInstance, key: "duration" | "totalDuration") {
+  const value = instance[key];
+  try {
+    const raw = typeof value === "function" ? value.call(instance) : value;
+    const numberValue = Number(raw);
+    return Number.isFinite(numberValue) ? numberValue : null;
+  } catch (err) {
+    swallow("runtime.adapters.animejs.duration", err);
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAnimeInstance(value: unknown): value is RuntimeAnimeInstance {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.seek === "function" ||
+    typeof value.pause === "function" ||
+    typeof value.play === "function" ||
+    "duration" in value ||
+    "totalDuration" in value
+  );
+}
+
+function isAnimeRegistration(value: unknown): value is RuntimeAnimeRegistration {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && isAnimeInstance(value.instance);
+}
+
+function notifyAnimeRegistered(id: string): void {
+  try {
+    window.dispatchEvent(new CustomEvent("hf-anime-registered", { detail: { id } }));
+  } catch (err) {
+    swallow("runtime.adapters.animejs.notify", err);
+  }
+}
+
+type AnimeGlobal = {
+  createTimeline?: (...args: unknown[]) => unknown;
+  animate?: (...args: unknown[]) => unknown;
+  engine?: unknown;
+};
 
 interface AnimeWindow extends Window {
   anime?: AnimeGlobal;
-  /** anime.js instances registered by compositions for the adapter to seek. */
-  __hfAnime?: AnimeInstance[];
+  __hfAnime?: RuntimeAnimeRegistry;
+  hyperframesAnime?: RuntimeAnimeApi;
+  __hyperframes?: {
+    hyperframesAnime?: RuntimeAnimeApi;
+  };
 }

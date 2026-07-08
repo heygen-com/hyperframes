@@ -3,6 +3,8 @@ export const HYPERFRAME_RUNTIME_GLOBALS = {
   playerReady: "__playerReady",
   renderReady: "__renderReady",
   timelines: "__timelines",
+  anime: "__hfAnime",
+  hyperframesAnime: "hyperframesAnime",
   clipManifest: "__clipManifest",
 } as const;
 

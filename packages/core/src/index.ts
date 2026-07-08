@@ -74,6 +74,7 @@ export {
 export { generateBaseHtml, getStageStyles } from "./templates/base";
 export {
   GSAP_CDN,
+  ANIME_CDN,
   BASE_STYLES,
   ELEMENT_BASE_STYLES,
   MEDIA_STYLES,
@@ -211,6 +212,7 @@ export {
   MEDIA_VISUAL_STYLE_PROPERTIES,
   copyMediaVisualStyles,
   quantizeTimeToFrame,
+  resolveRuntimeLabelSeconds,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
 export { redactTelemetryString } from "./telemetryRedaction";

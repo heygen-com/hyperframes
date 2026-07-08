@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "./parityContract.js";
+import {
+  quantizeTimeToFrame,
+  MEDIA_VISUAL_STYLE_PROPERTIES,
+  resolveRuntimeLabelSeconds,
+} from "./parityContract.js";
 
 describe("quantizeTimeToFrame", () => {
   it("quantizes a time to the nearest frame boundary at 30fps", () => {
@@ -53,5 +57,17 @@ describe("MEDIA_VISUAL_STYLE_PROPERTIES", () => {
     expect(MEDIA_VISUAL_STYLE_PROPERTIES).toContain("height");
     expect(MEDIA_VISUAL_STYLE_PROPERTIES).toContain("transform");
     expect(MEDIA_VISUAL_STYLE_PROPERTIES).toContain("opacity");
+  });
+});
+
+describe("resolveRuntimeLabelSeconds", () => {
+  it("resolves finite label values as seconds", () => {
+    expect(resolveRuntimeLabelSeconds({ intro: 1.25 }, "intro")).toBe(1.25);
+  });
+
+  it("returns null for missing or non-finite labels", () => {
+    expect(resolveRuntimeLabelSeconds({ intro: 1 }, "outro")).toBeNull();
+    expect(resolveRuntimeLabelSeconds({ loop: Infinity }, "loop")).toBeNull();
+    expect(resolveRuntimeLabelSeconds({ negative: -1 }, "negative")).toBeNull();
   });
 });

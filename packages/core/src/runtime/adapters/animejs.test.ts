@@ -1,14 +1,28 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createAnimeJsAdapter } from "./animejs";
+import { createAnimeJsAdapter, installHyperframesAnimeApi } from "./animejs";
+import type { RuntimeAnimeApi, RuntimeAnimeRegistry } from "../types";
 
-const animeWindow = window as Window & {
-  anime?: {
-    running: unknown[];
-  };
-  __hfAnime?: unknown[];
+type TestAnimeInstance = {
+  seek: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  play: ReturnType<typeof vi.fn>;
+  duration?: number | (() => number);
 };
 
-function createAnimeInstance(opts?: { duration?: number }) {
+type TestAnimeWindow = Window & {
+  anime?: {
+    createTimeline?: () => unknown;
+    animate?: () => unknown;
+    running?: unknown[];
+  };
+  __hfAnime?: RuntimeAnimeRegistry | TestAnimeInstance[];
+  hyperframesAnime?: RuntimeAnimeApi;
+};
+
+const animeWindow: TestAnimeWindow = window;
+
+function createAnimeInstance(opts?: { duration?: number | (() => number) }): TestAnimeInstance {
   return {
     seek: vi.fn(),
     pause: vi.fn(),
@@ -21,70 +35,122 @@ describe("animejs adapter", () => {
   beforeEach(() => {
     delete animeWindow.anime;
     delete animeWindow.__hfAnime;
+    delete animeWindow.hyperframesAnime;
   });
 
   afterEach(() => {
     delete animeWindow.anime;
     delete animeWindow.__hfAnime;
+    delete animeWindow.hyperframesAnime;
+    vi.restoreAllMocks();
   });
 
   it("has correct name", () => {
     expect(createAnimeJsAdapter().name).toBe("animejs");
   });
 
+  describe("registration helper", () => {
+    it("registers keyed anime instances on window.__hfAnime", () => {
+      const instance = createAnimeInstance();
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance, {
+        labels: { intro: 0.5, outro: 1.75 },
+      });
+
+      const entry = animeWindow.hyperframesAnime?.get("main");
+      expect(entry?.instance).toBe(instance);
+      expect(entry?.labels).toEqual({ intro: 0.5, outro: 1.75 });
+      expect(animeWindow.hyperframesAnime?.resolveLabel("main", "outro")).toBe(1.75);
+    });
+
+    it("keeps the last registration for duplicate ids and warns", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const first = createAnimeInstance();
+      const second = createAnimeInstance();
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", first);
+      animeWindow.hyperframesAnime?.register("main", second);
+
+      expect(animeWindow.hyperframesAnime?.get("main")?.instance).toBe(second);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[hyperframes] Replacing anime.js registration "main"'),
+      );
+    });
+
+    it("preserves legacy array registrations", () => {
+      const legacy = createAnimeInstance();
+      animeWindow.__hfAnime = [legacy];
+
+      installHyperframesAnimeApi();
+
+      expect(animeWindow.hyperframesAnime?.entries().map((entry) => entry.instance)).toContain(
+        legacy,
+      );
+    });
+
+    it("leaves legacy push registration available when installed before composition scripts", () => {
+      const legacy = createAnimeInstance();
+
+      installHyperframesAnimeApi();
+
+      expect(Array.isArray(animeWindow.__hfAnime)).toBe(true);
+      if (Array.isArray(animeWindow.__hfAnime)) {
+        animeWindow.__hfAnime.push(legacy);
+      }
+      expect(animeWindow.hyperframesAnime?.entries().map((entry) => entry.instance)).toContain(
+        legacy,
+      );
+    });
+  });
+
   describe("discover", () => {
-    it("auto-discovers from anime.running", () => {
-      const instance = createAnimeInstance();
-      animeWindow.anime = { running: [instance] };
-      animeWindow.__hfAnime = [];
+    it("installs the registration helper without relying on anime.running", () => {
+      animeWindow.anime = {
+        createTimeline: () => ({}),
+        animate: () => ({}),
+      };
       const adapter = createAnimeJsAdapter();
-      adapter.discover();
-      expect(animeWindow.__hfAnime).toContain(instance);
-    });
 
-    it("does not duplicate existing instances", () => {
-      const instance = createAnimeInstance();
-      animeWindow.anime = { running: [instance] };
-      animeWindow.__hfAnime = [instance];
-      const adapter = createAnimeJsAdapter();
-      adapter.discover();
-      expect(animeWindow.__hfAnime).toHaveLength(1);
-    });
-
-    it("handles no global anime", () => {
-      const adapter = createAnimeJsAdapter();
       expect(() => adapter.discover()).not.toThrow();
-    });
 
-    it("handles empty running array", () => {
-      animeWindow.anime = { running: [] };
-      const adapter = createAnimeJsAdapter();
-      expect(() => adapter.discover()).not.toThrow();
+      expect(animeWindow.hyperframesAnime).toBeDefined();
+      expect(animeWindow.__hfAnime).toBeDefined();
     });
   });
 
   describe("seek", () => {
-    it("seeks with time in milliseconds", () => {
+    it("seeks keyed instances with time in milliseconds", () => {
       const instance = createAnimeInstance();
-      animeWindow.__hfAnime = [instance];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
       const adapter = createAnimeJsAdapter();
+
       adapter.seek({ time: 2 });
+
       expect(instance.seek).toHaveBeenCalledWith(2000);
     });
 
     it("seeks fractional seconds accurately", () => {
       const instance = createAnimeInstance();
-      animeWindow.__hfAnime = [instance];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
       const adapter = createAnimeJsAdapter();
+
       adapter.seek({ time: 0.5 });
+
       expect(instance.seek).toHaveBeenCalledWith(500);
     });
 
     it("clamps negative time to 0", () => {
       const instance = createAnimeInstance();
-      animeWindow.__hfAnime = [instance];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
       const adapter = createAnimeJsAdapter();
+
       adapter.seek({ time: -3 });
+
       expect(instance.seek).toHaveBeenCalledWith(0);
     });
 
@@ -93,12 +159,16 @@ describe("animejs adapter", () => {
       expect(() => adapter.seek({ time: 1 })).not.toThrow();
     });
 
-    it("seeks multiple instances", () => {
+    it("seeks multiple keyed instances", () => {
       const a = createAnimeInstance();
       const b = createAnimeInstance();
-      animeWindow.__hfAnime = [a, b];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("a", a);
+      animeWindow.hyperframesAnime?.register("b", b);
       const adapter = createAnimeJsAdapter();
+
       adapter.seek({ time: 1.5 });
+
       expect(a.seek).toHaveBeenCalledWith(1500);
       expect(b.seek).toHaveBeenCalledWith(1500);
     });
@@ -112,20 +182,38 @@ describe("animejs adapter", () => {
         play: vi.fn(),
       };
       const good = createAnimeInstance();
-      animeWindow.__hfAnime = [bad, good];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("bad", bad);
+      animeWindow.hyperframesAnime?.register("good", good);
       const adapter = createAnimeJsAdapter();
+
       adapter.seek({ time: 1 });
+
       expect(good.seek).toHaveBeenCalledWith(1000);
+    });
+
+    it("seeks legacy array registrations", () => {
+      const legacy = createAnimeInstance();
+      animeWindow.__hfAnime = [legacy];
+      const adapter = createAnimeJsAdapter();
+
+      adapter.seek({ time: 1.25 });
+
+      expect(legacy.seek).toHaveBeenCalledWith(1250);
     });
   });
 
   describe("pause", () => {
-    it("pauses all instances", () => {
+    it("pauses all keyed instances", () => {
       const a = createAnimeInstance();
       const b = createAnimeInstance();
-      animeWindow.__hfAnime = [a, b];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("a", a);
+      animeWindow.hyperframesAnime?.register("b", b);
       const adapter = createAnimeJsAdapter();
+
       adapter.pause();
+
       expect(a.pause).toHaveBeenCalled();
       expect(b.pause).toHaveBeenCalled();
     });
@@ -137,19 +225,52 @@ describe("animejs adapter", () => {
   });
 
   describe("play", () => {
-    it("plays all instances", () => {
+    it("plays all keyed instances", () => {
       const a = createAnimeInstance();
-      animeWindow.__hfAnime = [a];
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("a", a);
       const adapter = createAnimeJsAdapter();
-      adapter.play!();
+
+      adapter.play?.();
+
       expect(a.play).toHaveBeenCalled();
+    });
+  });
+
+  describe("duration inference", () => {
+    it("returns the longest finite registered duration in seconds", () => {
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("short", createAnimeInstance({ duration: 1200 }));
+      animeWindow.hyperframesAnime?.register("long", createAnimeInstance({ duration: 3200 }));
+      const adapter = createAnimeJsAdapter();
+
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3.2);
+    });
+
+    it("supports duration functions", () => {
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", createAnimeInstance({ duration: () => 2500 }));
+      const adapter = createAnimeJsAdapter();
+
+      expect(adapter.getInferredDurationSeconds?.()).toBe(2.5);
+    });
+
+    it("ignores infinite durations so no-duration comps fail through the readiness guard", () => {
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register(
+        "loop",
+        createAnimeInstance({ duration: Number.POSITIVE_INFINITY }),
+      );
+      const adapter = createAnimeJsAdapter();
+
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
     });
   });
 
   describe("revert", () => {
     it("does not throw", () => {
       const adapter = createAnimeJsAdapter();
-      expect(() => adapter.revert!()).not.toThrow();
+      expect(() => adapter.revert?.()).not.toThrow();
     });
   });
 });

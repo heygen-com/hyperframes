@@ -1,4 +1,10 @@
-import type { RuntimeSeekOptions, RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeAnimeApi,
+  RuntimeAnimeRegistry,
+  RuntimeSeekOptions,
+  RuntimeTimelineMessage,
+  RuntimeTimelineLike,
+} from "./types";
 import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
@@ -81,23 +87,20 @@ declare global {
     };
     THREE?: ThreeLike;
     /**
-     * Global anime.js instance (set by including the anime.iife.min.js script).
-     * The adapter uses `anime.running` for auto-discovery.
+     * Global anime.js namespace object (set by including the v4 UMD bundle).
      */
     anime?: {
-      (params: unknown): unknown;
-      timeline?: (params?: unknown) => unknown;
-      running: unknown[];
+      createTimeline?: (...args: unknown[]) => unknown;
+      animate?: (...args: unknown[]) => unknown;
+      engine?: unknown;
     };
     /**
-     * anime.js instances registered by compositions.
-     * The adapter seeks all instances when the player is seeked.
-     *
-     * Push your animation or timeline instance here:
-     *   window.__hfAnime = window.__hfAnime || [];
-     *   window.__hfAnime.push(anim);
+     * anime.js registrations. New compositions should use
+     * `hyperframesAnime.register(id, instance, { labels })`; legacy
+     * `window.__hfAnime = [instance]` arrays are still read by the adapter.
      */
-    __hfAnime?: unknown[];
+    __hfAnime?: RuntimeAnimeRegistry;
+    hyperframesAnime?: RuntimeAnimeApi;
     /**
      * Global lottie-web instance (set by including the lottie.min.js script).
      * The adapter uses `lottie.getRegisteredAnimations()` for auto-discovery.

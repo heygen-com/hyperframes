@@ -1,7 +1,8 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installHyperframesAnimeApi } from "./adapters/animejs";
 import { initSandboxRuntimeModular } from "./init";
-import type { RuntimeTimelineLike } from "./types";
+import type { RuntimeAnimeApi, RuntimeAnimeRegistry, RuntimeTimelineLike } from "./types";
 
 function createMockTimeline(duration: number): RuntimeTimelineLike {
   const state = { time: 0, paused: true, duration };
@@ -87,6 +88,47 @@ function withStudioIframe(run: () => void): void {
   }
 }
 
+function withParentPostMessages(run: (postMessage: ReturnType<typeof vi.fn>) => void): void {
+  const originalParent = window.parent;
+  const postMessage = vi.fn();
+  Object.defineProperty(window, "parent", {
+    configurable: true,
+    value: { postMessage },
+  });
+  try {
+    run(postMessage);
+  } finally {
+    Object.defineProperty(window, "parent", {
+      configurable: true,
+      value: originalParent,
+    });
+  }
+}
+
+type InitAnimeWindow = Window & {
+  anime?: {
+    createTimeline?: () => unknown;
+    animate?: () => unknown;
+  };
+  __hfAnime?: RuntimeAnimeRegistry;
+  hyperframesAnime?: RuntimeAnimeApi;
+};
+
+const initAnimeWindow: InitAnimeWindow = window;
+
+function createMockAnimeInstance(duration: number | (() => number)) {
+  const state = { timeMs: 0 };
+  const instance = {
+    seek: vi.fn((timeMs: number) => {
+      state.timeMs = timeMs;
+    }),
+    pause: vi.fn(),
+    play: vi.fn(),
+    duration,
+  };
+  return { instance, state };
+}
+
 describe("initSandboxRuntimeModular", () => {
   const originalRequestAnimationFrame = window.requestAnimationFrame;
   const originalCancelAnimationFrame = window.cancelAnimationFrame;
@@ -111,6 +153,9 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__renderReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
     delete window.__hfTimelinesBuilding;
+    delete initAnimeWindow.anime;
+    delete initAnimeWindow.__hfAnime;
+    delete initAnimeWindow.hyperframesAnime;
     delete (window as { THREE?: unknown }).THREE;
     vi.restoreAllMocks();
     window.requestAnimationFrame = originalRequestAnimationFrame;
@@ -1499,6 +1544,161 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(5);
 
     delete (window as Window & { __hfLottie?: unknown[] }).__hfLottie;
+  });
+
+  it("binds and seeks a pure anime composition with data-duration", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "4");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const { instance, state } = createMockAnimeInstance(2000);
+    installHyperframesAnimeApi();
+    initAnimeWindow.hyperframesAnime?.register("main", instance, {
+      labels: { midpoint: 2 },
+    });
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(4);
+    expect(initAnimeWindow.hyperframesAnime?.resolveLabel("main", "midpoint")).toBe(2);
+
+    window.__player?.renderSeek(1.5);
+
+    expect(state.timeMs).toBe(1500);
+  });
+
+  it("infers hf.duration from the longest finite anime instance without data-duration", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    installHyperframesAnimeApi();
+    initAnimeWindow.hyperframesAnime?.register("short", createMockAnimeInstance(1200).instance);
+    initAnimeWindow.hyperframesAnime?.register("long", createMockAnimeInstance(3500).instance);
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(3.5);
+  });
+
+  it("posts a diagnostic for an infinite anime instance without data-duration", () => {
+    withParentPostMessages((postMessage) => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+
+      installHyperframesAnimeApi();
+      initAnimeWindow.hyperframesAnime?.register(
+        "loop",
+        createMockAnimeInstance(Number.POSITIVE_INFINITY).instance,
+      );
+      window.__timelines = {};
+
+      initSandboxRuntimeModular();
+
+      expect(window.__renderReady).toBe(true);
+      expect(window.__player?.getDuration()).toBe(0);
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "hf-preview",
+          type: "diagnostic",
+          code: "animejs_no_finite_duration",
+        }),
+        "*",
+      );
+    });
+  });
+
+  it("uses the max duration for mixed GSAP and anime compositions", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    installHyperframesAnimeApi();
+    initAnimeWindow.hyperframesAnime?.register("root", createMockAnimeInstance(5000).instance);
+    window.__timelines = { root: createMockTimeline(3) };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(5);
+  });
+
+  it("honors anime registration after DOMContentLoaded before first seek", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    window.__timelines = {};
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(true);
+    expect(window.__player?.getDuration()).toBe(0);
+
+    const { instance, state } = createMockAnimeInstance(2400);
+    initAnimeWindow.hyperframesAnime?.register("main", instance);
+
+    expect(window.__player?.getDuration()).toBe(2.4);
+
+    window.__player?.renderSeek(1);
+
+    expect(state.timeMs).toBe(1000);
+  });
+
+  it("posts a diagnostic when anime.js is present but no instance registered", () => {
+    withParentPostMessages((postMessage) => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+
+      initAnimeWindow.anime = {
+        createTimeline: () => ({}),
+        animate: () => ({}),
+      };
+      window.__timelines = {};
+
+      initSandboxRuntimeModular();
+
+      expect(window.__renderReady).toBe(true);
+      expect(window.__player?.getDuration()).toBe(0);
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "hf-preview",
+          type: "diagnostic",
+          code: "animejs_no_registered_instances",
+        }),
+        "*",
+      );
+    });
   });
 
   it("regression: a GSAP timeline's duration is unaffected by adapter duration inference", () => {

@@ -39,6 +39,15 @@ export function quantizeTimeToFrame(timeSeconds: number, fps: number): number {
   return frameIndex / safeFps;
 }
 
+export function resolveRuntimeLabelSeconds(
+  labels: Record<string, unknown> | null | undefined,
+  label: string,
+): number | null {
+  const raw = labels?.[label];
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
 export function copyMediaVisualStyles(
   targetStyle: CSSStyleDeclaration,
   sourceStyle: CSSStyleDeclaration,

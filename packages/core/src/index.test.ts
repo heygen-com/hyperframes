@@ -80,6 +80,9 @@ describe("@hyperframes/core public API exports", () => {
 
     it("exports template constants", () => {
       expect(core.GSAP_CDN).toBeDefined();
+      expect(core.ANIME_CDN).toBe(
+        "https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js",
+      );
       expect(core.BASE_STYLES).toBeDefined();
       expect(core.ELEMENT_BASE_STYLES).toBeDefined();
       expect(core.MEDIA_STYLES).toBeDefined();
@@ -152,6 +155,8 @@ describe("@hyperframes/core public API exports", () => {
 
     it("exports runtime contract constants", () => {
       expect(core.HYPERFRAME_RUNTIME_GLOBALS).toBeDefined();
+      expect(core.HYPERFRAME_RUNTIME_GLOBALS.anime).toBe("__hfAnime");
+      expect(core.HYPERFRAME_RUNTIME_GLOBALS.hyperframesAnime).toBe("hyperframesAnime");
       expect(core.HYPERFRAME_BRIDGE_SOURCES).toBeDefined();
       expect(core.HYPERFRAME_CONTROL_ACTIONS).toBeDefined();
     });
@@ -174,6 +179,11 @@ describe("@hyperframes/core public API exports", () => {
 
     it("exports quantizeTimeToFrame", () => {
       expect(typeof core.quantizeTimeToFrame).toBe("function");
+    });
+
+    it("exports resolveRuntimeLabelSeconds", () => {
+      expect(typeof core.resolveRuntimeLabelSeconds).toBe("function");
+      expect(core.resolveRuntimeLabelSeconds({ beat: 2 }, "beat")).toBe(2);
     });
   });
 

@@ -224,6 +224,45 @@ export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
 };
 
+export type RuntimeAnimeLabelMap = Record<string, number>;
+
+export type RuntimeAnimeRegisterOptions = {
+  labels?: Record<string, unknown>;
+};
+
+export type RuntimeAnimeInstance = {
+  seek?: (timeMs: number) => void;
+  pause?: () => void;
+  play?: () => void;
+  duration?: number | (() => number);
+  totalDuration?: number | (() => number);
+};
+
+export type RuntimeAnimeRegistration = {
+  id: string;
+  instance: RuntimeAnimeInstance;
+  labels: RuntimeAnimeLabelMap;
+};
+
+export type RuntimeAnimeRegistryObject = Record<
+  string,
+  RuntimeAnimeRegistration | RuntimeAnimeInstance | undefined
+>;
+
+export type RuntimeAnimeRegistry = RuntimeAnimeRegistryObject | RuntimeAnimeInstance[];
+
+export type RuntimeAnimeApi = {
+  register: (
+    id: string,
+    instance: RuntimeAnimeInstance,
+    options?: RuntimeAnimeRegisterOptions,
+  ) => RuntimeAnimeRegistration;
+  unregister: (id: string) => void;
+  get: (id: string) => RuntimeAnimeRegistration | null;
+  entries: () => RuntimeAnimeRegistration[];
+  resolveLabel: (id: string, label: string) => number | null;
+};
+
 export type RuntimeTimelineLike = {
   play: () => void;
   pause: () => void;
