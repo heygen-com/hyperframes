@@ -42,13 +42,6 @@ import {
 import { sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
-// ── Types ──
-
-export type TimelineFileDropHandler = (
-  files: File[],
-  placement?: { start: number; track: number },
-) => Promise<void>;
-
 // ── Hook ──
 
 export function useTimelineEditing({
@@ -501,7 +494,7 @@ export function useTimelineEditing({
       }
       const pid = projectIdRef.current;
       if (!pid) return;
-      const uploaded = await uploadProjectFiles(files);
+      const uploaded = await uploadProjectFiles(files, "assets");
       if (uploaded.length === 0) return;
       const durations: number[] = [];
       for (const assetPath of uploaded) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveTimelineDropPreview } from "./timelineDropPreview";
+import { resolveTimelineDropPreview, runtimeKindForElement } from "./timelineDropPreview";
 
 const baseDrop = {
   rectLeft: 0,
@@ -105,5 +105,89 @@ describe("resolveTimelineDropPreview", () => {
       snapEnabled: true,
     });
     expect(p.kind).toBe("unknown");
+  });
+});
+
+describe("kind-aware track retargeting", () => {
+  const drop = {
+    rectLeft: 0,
+    rectTop: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    pixelsPerSecond: 100,
+    duration: 60,
+    trackHeight: 48,
+    trackOrder: [0, 1],
+  };
+  const base = {
+    drop,
+    clientX: 32,
+    session: null,
+    fileItems: [{ kind: "file", type: "image/png" }],
+    snapTargets: [],
+    snapEnabled: true,
+  };
+
+  it("keeps the target track when the row already holds the same kind", () => {
+    const p = resolveTimelineDropPreview({
+      ...base,
+      clientY: 24, // row 0
+      trackKinds: new Map([[0, new Set(["image"])]]),
+    });
+    expect(p.track).toBe(0);
+    expect(p.isNewTrack).toBe(false);
+  });
+
+  it("retargets to a fresh track when the row holds a different kind (runtime would split it)", () => {
+    const p = resolveTimelineDropPreview({
+      ...base,
+      clientY: 24, // row 0 holds text elements
+      trackKinds: new Map([
+        [0, new Set(["element"])],
+        [1, new Set(["video"])],
+      ]),
+    });
+    expect(p.track).toBe(2); // max(trackOrder)+1
+    expect(p.isNewTrack).toBe(true);
+  });
+
+  it("blocks map to the composition kind for matching", () => {
+    const p = resolveTimelineDropPreview({
+      ...base,
+      fileItems: [],
+      session: { source: "block", blockName: "b", kind: "block", durationSec: 3, label: "B" },
+      clientY: 24,
+      trackKinds: new Map([[0, new Set(["composition"])]]),
+    });
+    expect(p.track).toBe(0);
+    expect(p.isNewTrack).toBe(false);
+  });
+
+  it("leaves unknown kinds and empty rows untouched", () => {
+    const unknown = resolveTimelineDropPreview({
+      ...base,
+      fileItems: [{ kind: "file", type: "application/pdf" }],
+      clientY: 24,
+      trackKinds: new Map([[0, new Set(["video"])]]),
+    });
+    expect(unknown.track).toBe(0);
+    const emptyRow = resolveTimelineDropPreview({
+      ...base,
+      clientY: 24,
+      trackKinds: new Map([[0, new Set()]]),
+    });
+    expect(emptyRow.track).toBe(0);
+  });
+});
+
+describe("runtimeKindForElement", () => {
+  it("classifies elements like the runtime does", () => {
+    expect(runtimeKindForElement({ tag: "video" })).toBe("video");
+    expect(runtimeKindForElement({ tag: "AUDIO" })).toBe("audio");
+    expect(runtimeKindForElement({ tag: "img" })).toBe("image");
+    expect(runtimeKindForElement({ tag: "div" })).toBe("element");
+    expect(runtimeKindForElement({ tag: "div", compositionSrc: "compositions/x.html" })).toBe(
+      "composition",
+    );
   });
 });

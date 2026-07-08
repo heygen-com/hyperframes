@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
-import type { TimelineFileDropHandler } from "./useTimelineEditing";
+import type { TimelineFileDropHandler } from "./useTimelineEditingTypes";
 import { usePlayerStore } from "../player";
 
 interface StudioContextInput {
