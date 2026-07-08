@@ -75,6 +75,7 @@ import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArg
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
+import { macosChromeCrashRemediation } from "../browser/macosChromeCrash.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   MAX_VP9_CPU_USED,
@@ -1634,6 +1635,11 @@ function handleRenderError(
   const remediation = chromeLaunchRemediation(message);
   if (remediation) {
     errorBox("Render failed — Chrome could not launch", message, remediation);
+    process.exit(1);
+  }
+  const macosRemediation = macosChromeCrashRemediation(message);
+  if (macosRemediation) {
+    errorBox("Render failed — Chrome could not launch", message, macosRemediation);
     process.exit(1);
   }
   errorBox("Render failed", message, hint);
