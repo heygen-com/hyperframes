@@ -2421,6 +2421,70 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+  const gsapCallbackTweenCache = new WeakMap<RuntimeTimelineLike, boolean>();
+  const GSAP_CALLBACK_NAMES = [
+    "onStart",
+    "onUpdate",
+    "onComplete",
+    "onReverseComplete",
+    "onRepeat",
+  ];
+
+  const readGsapDuration = (child: Record<string, unknown>, property: string): number | null => {
+    const getter = child[property];
+    if (typeof getter !== "function") return null;
+    try {
+      const value = Number(getter.call(child));
+      return Number.isFinite(value) ? value : null;
+    } catch (err) {
+      swallow("runtime.init.gsapCallbackDuration", err);
+      return null;
+    }
+  };
+
+  const hasZeroDurationCallbackTween = (timeline: RuntimeTimelineLike): boolean => {
+    const cached = gsapCallbackTweenCache.get(timeline);
+    if (cached != null) return cached;
+
+    if (!("getChildren" in timeline) || typeof timeline.getChildren !== "function") {
+      return false;
+    }
+
+    let children: unknown;
+    try {
+      children = timeline.getChildren(true, true, true);
+    } catch (err) {
+      swallow("runtime.init.gsapCallbackChildren", err);
+      gsapCallbackTweenCache.set(timeline, false);
+      return false;
+    }
+    if (!Array.isArray(children)) {
+      gsapCallbackTweenCache.set(timeline, false);
+      return false;
+    }
+
+    for (const child of children) {
+      if (!isObjectRecord(child) || !isObjectRecord(child.vars)) continue;
+      const hasCallback = GSAP_CALLBACK_NAMES.some(
+        (name) => typeof child.vars[name] === "function",
+      );
+      if (!hasCallback) continue;
+
+      const totalDuration = readGsapDuration(child, "totalDuration");
+      const duration = totalDuration ?? readGsapDuration(child, "duration");
+      if (duration != null && duration <= 0.000001) {
+        gsapCallbackTweenCache.set(timeline, true);
+        return true;
+      }
+    }
+
+    gsapCallbackTweenCache.set(timeline, false);
+    return false;
+  };
+
   const seekTimelineAndAdapters = (
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
@@ -2461,6 +2525,13 @@ export function initSandboxRuntimeModular(): void {
       try {
         if (typeof tl.totalTime === "function") {
           tl.totalTime(tlSeekTime, suppressEvents);
+          if (!suppressEvents && !hasZeroDurationCallbackTween(tl)) {
+            // Preserve GSAP's forced-render nudge for root timelines without
+            // firing callbacks a second time. The first seek is the only
+            // eventful one; the follow-up nudges only refresh computed styles.
+            tl.totalTime(tlSeekTime + 0.001, true);
+            tl.totalTime(tlSeekTime, true);
+          }
         } else {
           tl.seek(tlSeekTime, suppressEvents);
         }

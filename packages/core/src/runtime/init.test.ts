@@ -1031,7 +1031,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(hookHost.style.visibility).toBe("visible");
   });
 
-  it("does not seek the root GSAP timeline twice during renderSeek", () => {
+  it("keeps the root GSAP render nudge for normal frames but not silent probes", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -1041,11 +1041,11 @@ describe("initSandboxRuntimeModular", () => {
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
 
-    const seekCalls: number[] = [];
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
     const rootTimeline = createMockTimeline(10);
     const originalTotalTime = rootTimeline.totalTime;
     rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
-      seekCalls.push(time);
+      seekCalls.push({ time, suppressEvents });
       return originalTotalTime?.(time, suppressEvents);
     };
 
@@ -1055,7 +1055,52 @@ describe("initSandboxRuntimeModular", () => {
 
     window.__player?.renderSeek(2);
 
-    expect(seekCalls).toEqual([2]);
+    expect(seekCalls).toEqual([
+      { time: 2, suppressEvents: false },
+      { time: 2.001, suppressEvents: true },
+      { time: 2, suppressEvents: true },
+    ]);
+
+    seekCalls.length = 0;
+    window.__player?.renderSeek(3, { suppressEvents: true });
+
+    expect(seekCalls).toEqual([{ time: 3, suppressEvents: true }]);
+  });
+
+  it("does not nudge root GSAP timelines that contain zero-duration callbacks", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
+    const rootTimeline = createMockTimeline(10);
+    const originalTotalTime = rootTimeline.totalTime;
+    rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
+      seekCalls.push({ time, suppressEvents });
+      return originalTotalTime?.(time, suppressEvents);
+    };
+    Object.assign(rootTimeline, {
+      getChildren: () => [
+        {
+          vars: { onComplete: () => {} },
+          duration: () => 0,
+          totalDuration: () => 0,
+        },
+      ],
+    });
+
+    window.__timelines = { main: rootTimeline };
+    initSandboxRuntimeModular();
+    seekCalls.length = 0;
+
+    window.__player?.renderSeek(2);
+
+    expect(seekCalls).toEqual([{ time: 2, suppressEvents: false }]);
   });
 
   it("shows pip video at global start time even when host composition starts late", () => {
