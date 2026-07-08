@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#native", { translateX: 10, duration: 1000, ease: "outCubic" }, 0);
+      tl.add("#back", { scale: 1.2, duration: 1000, ease: "outBack(1.2)" }, 0);
+      tl.add("#elastic", { translateY: 20, duration: 1000, ease: "outElastic(1, .4)" }, 0);
+      tl.add("#expo", { opacity: 0, duration: 1000, ease: "outExpo" }, 0);
+      tl.add("#steps", { opacity: 1, duration: 1000, ease: "steps(4)" }, 0);
+      tl.add("#custom", { translateX: 20, duration: 1000, ease: "M0,0 L1,1" }, 0);
+      hyperframesAnime.register("eases", tl);
+    </script>
+  </body>
+</html>

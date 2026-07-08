@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.addLabel("intro", 0.5);
+      tl.to("#a", { x: 100, duration: 1 }, "intro");
+      tl.to("#b", { y: 50, duration: 0.5 }, "<");
+      tl.to("#c", { opacity: 1, duration: 0.25 }, "+=0.25");
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

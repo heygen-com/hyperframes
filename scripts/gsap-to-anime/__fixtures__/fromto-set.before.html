@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#card", { opacity: 0, scale: 0.8 }, 0);
+      tl.fromTo(
+        "#card",
+        { x: -50, opacity: 0 },
+        { x: 100, opacity: 1, duration: 0.75, ease: "back.out(1.5)" },
+        0.25,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["card"] = tl;
+    </script>
+  </body>
+</html>

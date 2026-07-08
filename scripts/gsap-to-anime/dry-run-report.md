@@ -1,0 +1,169 @@
+# GSAP to anime.js dry-run report
+
+## Totals
+
+- converted: 24
+- converted-with-warnings: 0
+- manual: 123
+- total: 147
+
+## Manual reason breakdown
+
+- computed-timeline: 102
+- unrecognized-postamble: 95
+- unsupported-property: 82
+- splitText: 13
+- unsupported-extra: 5
+- customEase-beyond-shim: 4
+- keyframes: 1
+- plugin:Flip: 1
+
+## Items
+
+- manual: blocks/app-showcase (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/apple-money-count (computed-timeline, unsupported-property)
+- manual: blocks/blue-sweater-intro-video (unsupported-extra, computed-timeline, keyframes)
+- manual: blocks/chromatic-radial-split (computed-timeline)
+- manual: blocks/cinematic-zoom (computed-timeline)
+- manual: blocks/code-3d-extrude (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-diff (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-highlight (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-morph (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-particle-assemble (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-scroll (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-shader-dissolve (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-basic (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-clear-dark (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-clear-light (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-grass (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-homebrew (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-man-page (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-novel (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-ocean (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-pro (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-red-sands (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-silver-aerogel (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-solid-colors (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-2026 (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-modern (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-plus (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-flight (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-high-contrast (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-high-contrast-light (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-light-2026 (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-light-modern (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-light-plus (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-monokai (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-solarized-light (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-visual-studio-dark (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-snippet-visual-studio-light (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/code-typing (computed-timeline, unrecognized-postamble)
+- manual: blocks/cross-warp-morph (computed-timeline)
+- manual: blocks/data-chart (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/domain-warp-dissolve (computed-timeline)
+- manual: blocks/flash-through-white (computed-timeline)
+- manual: blocks/flowchart (computed-timeline, unsupported-property, unsupported-extra, unrecognized-postamble)
+- manual: blocks/flowchart-vertical (computed-timeline, unsupported-property, unsupported-extra, unrecognized-postamble)
+- manual: blocks/glitch (computed-timeline)
+- manual: blocks/gravitational-lens (computed-timeline)
+- converted: blocks/instagram-follow
+- manual: blocks/ios26-liquid-glass (computed-timeline, unsupported-property, customEase-beyond-shim)
+- manual: blocks/light-leak (computed-timeline)
+- manual: blocks/liquid-glass-context-menu (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/liquid-glass-media-controls (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/liquid-glass-notification (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/liquid-glass-widgets (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/logo-outro (computed-timeline, unrecognized-postamble)
+- manual: blocks/lower-third-bild (unrecognized-postamble)
+- converted: blocks/lt-accent-underline
+- converted: blocks/lt-bold-block
+- converted: blocks/lt-clean-bar
+- converted: blocks/lt-color-block
+- converted: blocks/lt-dark-card
+- converted: blocks/lt-kicker-name
+- converted: blocks/lt-mask-reveal
+- converted: blocks/lt-side-rule
+- converted: blocks/lt-soft-pill
+- converted: blocks/lt-stack-bars
+- converted: blocks/macos-notification
+- manual: blocks/macos-tahoe-liquid-glass (computed-timeline, unsupported-property, customEase-beyond-shim)
+- manual: blocks/news-ticker (unsupported-property)
+- manual: blocks/north-korea-locked-down (unsupported-property)
+- manual: blocks/nyc-paris-flight (unsupported-property)
+- manual: blocks/reddit-post (computed-timeline, unsupported-property)
+- manual: blocks/ridged-burn (computed-timeline)
+- manual: blocks/ripple-waves (computed-timeline)
+- manual: blocks/sdf-iris (computed-timeline)
+- manual: blocks/spain-map (unsupported-property, unrecognized-postamble)
+- converted: blocks/spotify-card
+- manual: blocks/swirl-vortex (computed-timeline)
+- manual: blocks/thermal-distortion (computed-timeline)
+- converted: blocks/tiktok-follow
+- manual: blocks/transitions-3d (plugin:Flip, unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-blur (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-cover (unsupported-property, computed-timeline, unrecognized-postamble)
+- manual: blocks/transitions-destruction (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-dissolve (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-distortion (computed-timeline, unrecognized-postamble)
+- manual: blocks/transitions-grid (computed-timeline, unrecognized-postamble)
+- manual: blocks/transitions-light (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-mechanical (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-other (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-push (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-radial (unsupported-property, unrecognized-postamble)
+- manual: blocks/transitions-scale (unsupported-property, unrecognized-postamble)
+- manual: blocks/ui-3d-reveal (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/us-map (unsupported-property, unrecognized-postamble)
+- manual: blocks/us-map-bubble (unsupported-property, computed-timeline, unrecognized-postamble)
+- manual: blocks/us-map-flow (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/us-map-hex (computed-timeline, unrecognized-postamble)
+- manual: blocks/vfx-iphone-device (computed-timeline, unsupported-property, customEase-beyond-shim)
+- manual: blocks/vfx-liquid-background (splitText, computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/vfx-liquid-glass (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/vfx-magnetic (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/vfx-portal (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/vfx-shatter (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/vfx-text-cursor (computed-timeline, unsupported-property, customEase-beyond-shim, unrecognized-postamble)
+- manual: blocks/vpn-youtube-spot (unsupported-property)
+- manual: blocks/whip-pan (computed-timeline)
+- manual: blocks/world-map (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: blocks/x-post (computed-timeline)
+- converted: blocks/yt-lower-third
+- converted: components/caption-blend-difference
+- manual: components/caption-clip-wipe (computed-timeline, unrecognized-postamble)
+- manual: components/caption-editorial-emphasis (computed-timeline)
+- manual: components/caption-emoji-pop (computed-timeline, unrecognized-postamble)
+- manual: components/caption-glitch-rgb (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: components/caption-gradient-fill (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: components/caption-highlight (computed-timeline, unrecognized-postamble)
+- manual: components/caption-kinetic-slam (computed-timeline, unrecognized-postamble)
+- manual: components/caption-matrix-decode (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: components/caption-neon-accent (computed-timeline, unrecognized-postamble)
+- manual: components/caption-neon-glow (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: components/caption-parallax-layers (computed-timeline, unrecognized-postamble)
+- manual: components/caption-particle-burst (computed-timeline, unrecognized-postamble)
+- manual: components/caption-pill-karaoke (unrecognized-postamble)
+- manual: components/caption-texture (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: components/caption-weight-shift (computed-timeline, unsupported-property, unrecognized-postamble)
+- converted: components/grain-overlay
+- converted: components/grid-pixelate-wipe
+- manual: components/morph-text (computed-timeline, unsupported-property, unrecognized-postamble)
+- converted: components/motion-blur
+- converted: components/parallax-unzoom
+- converted: components/parallax-zoom
+- converted: components/shimmer-sweep
+- converted: components/texture-mask-text
+- converted: components/vignette
+- manual: examples/airbnb-deck (unrecognized-postamble)
+- manual: examples/decision-tree (computed-timeline, unsupported-property, unsupported-extra, unrecognized-postamble)
+- manual: examples/kinetic-type (unsupported-property)
+- manual: examples/motion-blur (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: examples/nyt-graph (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: examples/play-mode (computed-timeline, unrecognized-postamble)
+- manual: examples/product-promo (computed-timeline, unrecognized-postamble, unsupported-property, unsupported-extra)
+- manual: examples/slideshow-demo (unrecognized-postamble)
+- manual: examples/startup-pitch (unrecognized-postamble)
+- manual: examples/swiss-grid (computed-timeline, unsupported-property, unrecognized-postamble)
+- manual: examples/vignelli (computed-timeline, unrecognized-postamble, unsupported-property)
+- manual: examples/vscode-theme-visualizer (computed-timeline)
+- manual: examples/warm-grain (computed-timeline, unrecognized-postamble, unsupported-property)

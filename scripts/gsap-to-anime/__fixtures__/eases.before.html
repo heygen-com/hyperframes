@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#native", { x: 10, duration: 1, ease: "power2.out" }, 0);
+      tl.to("#back", { scale: 1.2, duration: 1, ease: "back.out(1.2)" }, 0);
+      tl.to("#elastic", { y: 20, duration: 1, ease: "elastic.out(1, 0.4)" }, 0);
+      tl.to("#expo", { opacity: 0, duration: 1, ease: "expo.out" }, 0);
+      tl.to("#steps", { opacity: 1, duration: 1, ease: "steps(4)" }, 0);
+      tl.to("#custom", { x: 20, duration: 1, ease: "M0,0 L1,1" }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["eases"] = tl;
+    </script>
+  </body>
+</html>

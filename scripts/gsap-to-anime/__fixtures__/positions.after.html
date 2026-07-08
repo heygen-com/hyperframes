@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#a", { translateX: 100, duration: 1000 }, 500);
+      tl.add("#b", { translateY: 50, duration: 500 }, 500);
+      tl.add("#c", { opacity: 1, duration: 250 }, 1750);
+      hyperframesAnime.register("main", tl, { labels: { intro: 0.5 } });
+    </script>
+  </body>
+</html>
