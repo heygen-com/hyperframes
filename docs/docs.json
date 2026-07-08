@@ -327,6 +327,7 @@
               "packages/core",
               "packages/parsers",
               "packages/lint",
+              "packages/browser-export",
               "packages/studio-server",
               "packages/sdk",
               "packages/engine",

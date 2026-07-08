@@ -22,7 +22,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.700.0",
         "@aws-sdk/client-sfn": "^3.700.0",
@@ -52,9 +52,24 @@
         "constructs",
       ],
     },
+    "packages/browser-export": {
+      "name": "@hyperframes/browser-export",
+      "version": "0.7.26",
+      "dependencies": {
+        "html-to-image": "^1.11.13",
+        "mediabunny": "^1.45.3",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.10",
+        "linkedom": "^0.18.12",
+        "tsup": "^8.0.0",
+        "typescript": "^5.0.0",
+        "vitest": "^3.2.4",
+      },
+    },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "bin": {
         "hyperframes": "./dist/cli.js",
       },
@@ -103,7 +118,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
         "@hyperframes/lint": "workspace:*",
@@ -128,7 +143,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@hono/node-server": "^1.13.0",
         "@hyperframes/core": "workspace:^",
@@ -146,7 +161,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -166,7 +181,7 @@
     },
     "packages/lint": {
       "name": "@hyperframes/lint",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
         "linkedom": "^0.18.12",
@@ -182,7 +197,7 @@
     },
     "packages/parsers": {
       "name": "@hyperframes/parsers",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "acorn": "^8.17.0",
@@ -202,7 +217,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -217,7 +232,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@fontsource/archivo-black": "^5.2.8",
         "@fontsource/eb-garamond": "^5.2.7",
@@ -261,7 +276,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -288,7 +303,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -300,7 +315,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@codemirror/autocomplete": "^6.20.1",
         "@codemirror/commands": "^6.10.3",
@@ -348,7 +363,7 @@
     },
     "packages/studio-server": {
       "name": "@hyperframes/studio-server",
-      "version": "0.7.22",
+      "version": "0.7.26",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -714,6 +729,8 @@
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 
     "@hyperframes/aws-lambda": ["@hyperframes/aws-lambda@workspace:packages/aws-lambda"],
+
+    "@hyperframes/browser-export": ["@hyperframes/browser-export@workspace:packages/browser-export"],
 
     "@hyperframes/cli": ["@hyperframes/cli@workspace:packages/cli"],
 
@@ -1588,6 +1605,8 @@
     "html-entities": ["html-entities@2.6.0", "", {}, "sha512-kig+rMn/QOVRvr7c86gQ8lWXq+Hkv6CbAH1hLu+RG338StTpE8Z0b44SDVaqVu7HGKf27frdmUYEs9hTUX/cLQ=="],
 
     "html-escaper": ["html-escaper@3.0.3", "", {}, "sha512-RuMffC89BOWQoY0WKGpIhn5gX3iI54O6nRA0yC124NYVtzjmFWBIiFd8M0x+ZdX0P9R4lADg1mgP8C7PxGOWuQ=="],
+
+    "html-to-image": ["html-to-image@1.11.13", "", {}, "sha512-cuOPoI7WApyhBElTTb9oqsawRvZ0rHhaHwghRLlTuffoD1B2aDemlCruLeZrUIIdvG7gs9xeELEPm6PhuASqrg=="],
 
     "html2canvas": ["html2canvas@1.4.1", "", { "dependencies": { "css-line-break": "^2.1.0", "text-segmentation": "^1.0.3" } }, "sha512-fPU6BHNpsyIhr8yyMpTLLxAbkaK8ArIBcmZIRiBLiDhjeqvXolaEmDGmELFuX9I4xDcaKKcJl+TKZLqruBbmWA=="],
 

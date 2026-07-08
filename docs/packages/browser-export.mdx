@@ -1,0 +1,66 @@
+---
+title: "@hyperframes/browser-export"
+description: "Render a composition to MP4/WebM entirely in the browser — no server, no FFmpeg, no headless Chrome."
+---
+
+`@hyperframes/browser-export` renders a **live** composition to video fully client-side: deterministic GSAP seeks, SVG `foreignObject` rasterization and WebCodecs encoding via [mediabunny](https://mediabunny.dev).
+
+```bash
+npm install @hyperframes/browser-export
+```
+
+## When to Use
+
+<Tip>
+  Reach for this package when running Node.js, FFmpeg or headless Chrome is not viable: browser-based editors, template SaaS frontends, quick previews and one-off exports delivered straight to the user's Downloads folder.
+</Tip>
+
+<Info>
+  This is a **complement** to `@hyperframes/producer`, not a replacement. The producer's headless-Chrome + FFmpeg pipeline remains the reference for deterministic, pixel-perfect production renders.
+</Info>
+
+## Quick Start
+
+```typescript
+import { exportComposition, downloadExport } from "@hyperframes/browser-export";
+
+const result = await exportComposition(document, {
+  fps: 30,
+  format: "mp4", // or "webm"
+  onProgress: ({ phase, fraction }) => {
+    console.log(`${phase}: ${(fraction * 100).toFixed(0)}%`);
+  },
+});
+
+downloadExport(result); // "<composition-id>.mp4"
+```
+
+The composition must be live in the current page (or a same-origin iframe document): GSAP timelines registered in `window.__timelines`, a root element carrying `data-composition-id` / `data-width` / `data-height`.
+
+## Pipeline
+
+1. **Plan** — locate the composition root, read dimensions, resolve the duration from the master timeline (or `options.duration`).
+2. **Audio** — parse `<audio>`/`<video>` clip metadata (`data-start`, `data-duration`/`data-end`, `data-media-start`, `data-volume`), decode and mix offline with `OfflineAudioContext`.
+3. **Video** — per frame: pause + seek every registered timeline at the quantized frame time (`Math.round(t·fps)/fps`, the producer's parity contract), await `<video>` layer seeks, rasterize the root to a canvas.
+4. **Encode** — WebCodecs via mediabunny (`avc`+`aac` in MP4, `vp9`+`opus` in WebM), finalized into a downloadable `Blob`.
+
+## API
+
+| Export | Description |
+| --- | --- |
+| `exportComposition(target, options?)` | Full pipeline → `ExportResult` |
+| `downloadExport(result, filename?)` | Trigger a client-side download |
+| `collectAudioClips(scope)`, `mixAudioClips(clips, duration)` | Audio pipeline pieces |
+| `seekTimelines(registry, t, fps)`, `quantizeTimeToFrame(t, fps)` | Deterministic seek pieces |
+| `findCompositionRoot(scope)`, `readCompositionMeta(root)` | Composition discovery |
+
+**`ExportOptions`:** `fps` (default 30), `format` (`"mp4"` \| `"webm"`), `duration`, `videoBitrate`, `audioBitrate`, `includeAudio`, `pixelRatio`, `keyFrameIntervalSeconds`, `signal`, `onProgress`.
+
+**`ExportResult`:** `blob`, `mimeType`, `width`, `height`, `fps`, `durationSeconds`, `frameCount`, `compositionId`.
+
+## Limitations
+
+- Requires WebCodecs (Chrome/Edge 94+, Safari 16.4+, Firefox 130+).
+- SVG `foreignObject` rasterization: cross-origin images and fonts must be CORS-readable; some CSS features (e.g. `backdrop-filter`) may differ from a real Chrome screenshot.
+- `<video>` layers are frame-aligned via async seeks with a 500 ms guard — long-GOP sources may land on the nearest decodable frame.
+- Rendering happens on the main thread; a 30 s / 30 fps export is ~900 sequential rasterizations.
