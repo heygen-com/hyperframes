@@ -154,12 +154,11 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           previewTrack: draggedClip.previewTrack,
         })
       : null;
-  // Magnetic vertical: the ghost's top quantizes to the target track's lane (it
-  // sits *in* a lane rather than floating under the cursor); horizontal stays
-  // pointer-following. Falls back to the raw pointer Y for a just-created edge
-  // track not yet in displayTrackOrder (indexOf === -1).
+  // The drag ghost follows the cursor freely (both axes) — CapCut-style. The
+  // "magnetic" affordance is a highlight on the destination lane (draggedRowIndex),
+  // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
   const draggedRowIndex =
-    draggedClip != null ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
+    draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const activeDraggedPosition =
     draggedClip?.started === true && activeDraggedElement && scrollRef.current
       ? {
@@ -169,12 +168,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             scrollRef.current.scrollLeft -
             draggedClip.pointerOffsetX,
           top:
-            draggedRowIndex >= 0
-              ? RULER_H + draggedRowIndex * TRACK_H + CLIP_Y
-              : draggedClip.pointerClientY -
-                scrollRef.current.getBoundingClientRect().top +
-                scrollRef.current.scrollTop -
-                draggedClip.pointerOffsetY,
+            draggedClip.pointerClientY -
+            scrollRef.current.getBoundingClientRect().top +
+            scrollRef.current.scrollTop -
+            draggedClip.pointerOffsetY,
         }
       : null;
 
@@ -489,6 +486,24 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           );
         })
       }
+
+      {/* Target-lane highlight — shows the destination track the ghost will drop
+          into; flips at the magnetic threshold while the ghost follows the cursor. */}
+      {draggedClip?.started && draggedRowIndex >= 0 && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: RULER_H + draggedRowIndex * TRACK_H,
+            left: GUTTER,
+            width: trackContentWidth,
+            height: TRACK_H,
+            border: "1px solid rgba(60,230,172,0.45)",
+            background: "rgba(60,230,172,0.06)",
+            borderRadius: 4,
+            zIndex: 30,
+          }}
+        />
+      )}
 
       {/* Snap guide for non-beat targets during clip drag */}
       {draggedClip?.started && draggedClip.snapTime != null && draggedClip.snapType !== "beat" && (
