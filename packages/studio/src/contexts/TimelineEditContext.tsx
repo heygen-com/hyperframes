@@ -32,6 +32,7 @@ export function TimelineEditProvider({
     [
       value.onMoveElement,
       value.onResizeElement,
+      value.onToggleTrackHidden,
       value.onBlockedEditAttempt,
       value.onSplitElement,
       value.onRazorSplit,

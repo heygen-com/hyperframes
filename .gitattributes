@@ -15,6 +15,7 @@ packages/producer/tests/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/*.mov filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/*.webm filter=lfs diff=lfs merge=lfs -text
 packages/producer/tests/**/*.png filter=lfs diff=lfs merge=lfs -text
+packages/producer/tests/**/output/compiled.html filter=lfs diff=lfs merge=lfs -text
 
 # ONNX models must ALWAYS use LFS regardless of location: a 31 MB ppmattingv2
 # model was once committed raw into skills/ then deleted — but a raw commit

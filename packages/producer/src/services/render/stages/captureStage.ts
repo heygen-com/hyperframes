@@ -46,6 +46,7 @@ import {
   captureFrameToBufferPipelined,
   writeCapturedFrame,
   closeCaptureSession,
+  completeDeferredDrawElementInit,
   createCaptureSession,
   getCapturePerfSummary,
   initializeSession,
@@ -260,6 +261,13 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     try {
       if (!session.isInitialized) {
         await initializeSession(session);
+      } else if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
+        // Deferred drawElement init (probe-initialized video comps). The disk
+        // path has no drain-time self-verification, so only an explicit opt-in
+        // completes it here — mirroring the orchestrator clamp that routes
+        // default-on drawElement renders to the screenshot baseline on this
+        // path. No-op unless the session is deferred with an injector attached.
+        await completeDeferredDrawElementInit(session);
       }
       assertNotAborted();
       lastBrowserConsole = session.browserConsoleBuffer;

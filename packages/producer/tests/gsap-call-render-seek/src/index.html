@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #06070a;
+      color: #f6f0e8;
+      font-family: sans-serif;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 120px 120px,
+        linear-gradient(0deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 120px 120px,
+        radial-gradient(circle at 50% 45%, #191b26 0, #06070a 62%);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .counter {
+      font-size: 360px;
+      line-height: 0.9;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      text-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    }
+
+    .label {
+      position: absolute;
+      top: 108px;
+      left: 128px;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #9fd8ff;
+    }
+
+    .rail {
+      position: absolute;
+      left: 320px;
+      right: 320px;
+      bottom: 160px;
+      height: 22px;
+      border: 1px solid rgba(246, 240, 232, 0.32);
+      background: rgba(246, 240, 232, 0.08);
+    }
+
+    .fill {
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, #9fd8ff, #f8d87a);
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="gsap-call-render-seek"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div id="counter-scene" class="clip" data-start="0" data-duration="6">
+      <div class="label">GSAP call render seek</div>
+      <div id="counter" class="counter">0</div>
+      <div class="rail"><div id="fill" class="fill"></div></div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+
+    var counter = 0;
+    var counterEl = document.getElementById("counter");
+
+    function bump() {
+      counter += 1;
+      counterEl.textContent = String(counter);
+    }
+
+    var tl = gsap.timeline({ paused: true });
+    tl.to("#fill", { width: "100%", duration: 6, ease: "none" }, 0);
+    tl.call(bump, null, 1);
+    tl.call(bump, null, 2);
+    tl.call(bump, null, 3);
+    tl.call(bump, null, 4);
+
+    window.__timelines["gsap-call-render-seek"] = tl;
+  </script>
+</body>
+</html>

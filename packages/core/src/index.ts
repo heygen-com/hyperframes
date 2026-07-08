@@ -232,6 +232,11 @@ export type { FitTextOptions, FitTextResult } from "./text/index.js";
 
 // Runtime helpers (composition-side)
 export { getVariables } from "./runtime/getVariables.js";
+export {
+  parseStartExpression,
+  parseNumeric,
+  type ReferenceExpression,
+} from "./runtime/startExpression.js";
 
 // Variable validation (CLI / tooling-side)
 export {

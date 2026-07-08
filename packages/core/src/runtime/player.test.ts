@@ -466,6 +466,20 @@ describe("createRuntimePlayer", () => {
       expect(deps.onRenderFrameSeek).toHaveBeenCalled();
     });
 
+    it("can suppress timeline events during administrative render seeks", () => {
+      const timeline = createMockTimeline({ duration: 10 });
+      const deps = createMockDeps(timeline);
+      const player = createRuntimePlayer(deps);
+      const renderSeek = player.renderSeek as (
+        time: number,
+        options?: { suppressEvents?: boolean },
+      ) => void;
+
+      renderSeek(5, { suppressEvents: true });
+
+      expect(timeline.totalTime).toHaveBeenCalledWith(5, true);
+    });
+
     it("renderSeek rearms paused siblings and keeps them active for export frames", () => {
       const { master, scene1, scene2, scene5 } = createNestedTimelineHarness();
       const deps = createMockDeps(master);

@@ -323,8 +323,9 @@ function patchAttributeByTarget(
 
   if (value === null) {
     // Remove the attribute if present
-    if (!attrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}=(["'])[^"']*\\1`);
+    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
+    if (!boolAttrPattern.test(tag)) return html;
+    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
     const newTag = tag.replace(removePattern, "");
     return replaceTagAtMatch(html, match, newTag);
   }
@@ -357,8 +358,9 @@ function patchAttribute(
   const attrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}=(["'])([^"']*)\\1`);
 
   if (value === null) {
-    if (!attrPattern.test(tag)) return html;
-    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}=(["'])[^"']*\\1`);
+    const boolAttrPattern = new RegExp(`\\b${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
+    if (!boolAttrPattern.test(tag)) return html;
+    const removePattern = new RegExp(`\\s+${escapeRegex(fullAttr)}(?:=(["'])[^"']*\\1)?`);
     const newTag = tag.replace(removePattern, "");
     return html.replace(tag, newTag);
   }

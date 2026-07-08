@@ -26,6 +26,15 @@ describe("applyPatchByTarget", () => {
     );
   });
 
+  it("removes a boolean data attribute by selector", () => {
+    const html = `<div class="headline clip" data-start="0" data-hidden></div>`;
+    const op: PatchOperation = { type: "attribute", property: "hidden", value: null };
+
+    expect(applyPatchByTarget(html, { selector: ".headline" }, op)).toBe(
+      `<div class="headline clip" data-start="0"></div>`,
+    );
+  });
+
   it("updates inline z-index by selector when the clip has no DOM id", () => {
     const html = `<div class="headline clip" style="position: absolute; opacity: 1" data-start="0"></div>`;
     const op: PatchOperation = { type: "inline-style", property: "z-index", value: "3" };
@@ -366,6 +375,7 @@ describe("motion attribute round-trip via sourcePatcher", () => {
       duration: 0.6,
       ease: "power2.out",
       from: { autoAlpha: 0, y: 32 },
+      // fallow-ignore-next-line code-duplication
       to: { autoAlpha: 1, y: 0 },
     };
 
@@ -420,6 +430,7 @@ describe("motion attribute round-trip via sourcePatcher", () => {
       duration: 1,
       ease: "none",
       from: { opacity: 0 },
+      // fallow-ignore-next-line code-duplication
       to: { opacity: 1 },
     };
 

@@ -237,6 +237,7 @@ export function resolveRuntimeTween(
   kind: "keyframe" | "set",
   compositionId?: string,
   channels?: string[],
+  // fallow-ignore-next-line code-duplication
 ): ResolvedRuntimeTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -261,6 +262,7 @@ export function resolveRuntimeTween(
   const wantChannels = channels && channels.length > 0 ? channels : null;
 
   let first: ResolvedRuntimeTween | null = null;
+  // fallow-ignore-next-line code-duplication
   let channelMatch: ResolvedRuntimeTween | null = null;
   for (const tlId of tlIds) {
     const timeline = timelines[tlId];
@@ -316,6 +318,7 @@ export function readRuntimeKeyframes(
   selector: string,
   compositionId?: string,
   requireChannels?: string[],
+  // fallow-ignore-next-line code-duplication
 ): ReadTween | null {
   const timelines = timelinesOf(iframe);
   if (!timelines) return null;
@@ -344,11 +347,13 @@ export function readRuntimeKeyframes(
   // (e.g. two non-overlapping gesture recordings → two separate `to()`s). The
   // overlay must draw the segment under the PLAYHEAD, not blindly the first one
   // — otherwise recording a second gesture leaves the path stuck on the first.
+  // fallow-ignore-next-line code-duplication
   let firstRead: ReadTween | null = null;
   for (const tlId of tlIds) {
     const timeline = timelines[tlId];
     if (!timeline?.getChildren) continue;
     const now = typeof timeline.time === "function" ? timeline.time() : null;
+    // fallow-ignore-next-line code-duplication
     for (const tween of timeline.getChildren(true)) {
       if (!tween.vars || !matchesElement(tween, targetEl)) continue;
       const dur = typeof tween.duration === "function" ? tween.duration() : 0;
@@ -377,12 +382,17 @@ export function readRuntimeKeyframes(
  * The drag's stale-parse guard needs this exact distinction — after a delete-all
  * only a hold may remain, and resurrecting the deleted tween from the stale parse
  * must be avoided.
+ * When `channels` is provided, only tweens carrying one of those keyframe
+ * properties count as non-hold motion (e.g. position channels), so a sibling
+ * rotation/scale tween doesn't make a static position hold enter the keyframe
+ * branch.
  */
 // fallow-ignore-next-line complexity
 export function hasNonHoldTweenForElement(
   iframe: HTMLIFrameElement | null,
   selector: string,
   compositionId?: string,
+  channels?: string[],
 ): boolean {
   const timelines = timelinesOf(iframe);
   if (!timelines) return false;
@@ -401,11 +411,13 @@ export function hasNonHoldTweenForElement(
   }
   if (!targetEl) return false;
 
+  // fallow-ignore-next-line code-duplication
   for (const tween of timeline.getChildren(true)) {
     if (!tween.vars || !matchesElement(tween, targetEl)) continue;
     const dur = typeof tween.duration === "function" ? tween.duration() : 0;
     if (isZeroDurationSet(dur)) continue; // skip hold/set tweens (see isZeroDurationSet)
-    if (readTween(tween.vars)) return true;
+    const read = readTween(tween.vars);
+    if (read && (!channels || readCarriesChannel(read, channels))) return true;
   }
   return false;
 }

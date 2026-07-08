@@ -66,6 +66,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     if (!el) return;
 
     const measured = el.parentElement?.clientWidth || el.clientWidth;
+    // fallow-ignore-next-line code-duplication
     setContainerWidth(measured);
 
     const target = el.parentElement || el;
@@ -130,17 +131,19 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
         </div>
       )}
 
-      <div className="absolute left-3 top-0 bottom-0 flex items-center" style={{ zIndex: 10 }}>
-        <span
-          className="block max-w-full truncate text-[10px] font-semibold leading-none"
-          style={{
-            color: labelColor,
-            textShadow: loaded ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
-          }}
-        >
-          {label}
-        </span>
-      </div>
+      {label && (
+        <div className="absolute left-3 top-0 bottom-0 flex items-center" style={{ zIndex: 10 }}>
+          <span
+            className="block max-w-full truncate text-[10px] font-semibold leading-none"
+            style={{
+              color: labelColor,
+              textShadow: loaded ? "0 1px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6)" : "none",
+            }}
+          >
+            {label}
+          </span>
+        </div>
+      )}
     </div>
   );
 });

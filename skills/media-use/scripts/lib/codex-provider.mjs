@@ -62,10 +62,20 @@ function codexUnavailableReason() {
     const which = process.platform === "win32" ? "where" : "which";
     execFileSync(which, ["codex"], { stdio: ["ignore", "ignore", "ignore"], timeout: 5000 });
   } catch {
-    return "codex CLI not on PATH";
+    // A shell alias (e.g. `codex → /Applications/Codex.app/...`) is NOT enough:
+    // aliases live only in the interactive shell, so a spawned subprocess's PATH
+    // lookup can't see them. Symlink the real binary onto PATH.
+    return 'codex CLI not reachable on PATH (a shell alias won\'t work — spawned processes can\'t see aliases; symlink the real binary onto PATH, e.g. ln -s "$(readlink -f "$(command -v codex)")" ~/.local/bin/codex)';
   }
-  const login = codexRun(["login", "status"]);
-  if (!login || !/logged in/i.test(login)) return "codex not logged in (run: codex login)";
+  // Auth marker: presence of the credentials file, NOT `codex login status`.
+  // That command prints "Logged in using ChatGPT" only to a human stream
+  // (stderr / TTY) and exits 0, so its piped stdout — how media-use spawns it —
+  // is empty, and the gate falsely reported "not logged in", blocking codex
+  // image gen in every headless / CI / agent run even when fully authed.
+  // auth.json is the durable, TTY-independent signal; token validity is proven
+  // by the exec itself, which fails cleanly if the login is stale.
+  const authPath = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "auth.json");
+  if (!existsSync(authPath)) return "codex not logged in (run: codex login)";
   const feats = codexRun(["features", "list"]);
   if (feats == null) return "could not read `codex features list`";
   if (!/\bimage_generation\b/.test(feats)) return "codex image_generation feature unavailable";

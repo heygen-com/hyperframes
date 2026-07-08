@@ -31,6 +31,7 @@ import {
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { readAllowedCompositionFpsFromDir } from "../utils/compositionFps.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -499,7 +500,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun render] --width and --height are required.");
     process.exit(1);
   }
-  const fps = parseIntFlag(args.fps) ?? 30;
+  const fps =
+    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
   if (fps !== 24 && fps !== 30 && fps !== 60) {
     console.error(`[cloudrun render] --fps must be 24, 30, or 60; got ${fps}.`);
     process.exit(1);
@@ -609,7 +611,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun render-batch] --width and --height are required.");
     process.exit(1);
   }
-  const fps = parseIntFlag(args.fps) ?? 30;
+  const fps =
+    parseIntFlag(args.fps) ?? readAllowedCompositionFpsFromDir(projectDir, [24, 30, 60]) ?? 30;
   if (fps !== 24 && fps !== 30 && fps !== 60) {
     console.error(`[cloudrun render-batch] --fps must be 24, 30, or 60; got ${fps}.`);
     process.exit(1);

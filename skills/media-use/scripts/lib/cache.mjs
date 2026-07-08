@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { readManifest, appendRecord } from "./manifest.mjs";
+import { readManifest, appendRecord, normalizePrompt } from "./manifest.mjs";
 
 const SCHEMA_PREFIX = "mu-v1-";
 const KEY_HEX_CHARS = 16;
@@ -33,8 +33,30 @@ function markComplete(entryDir) {
 // global manifest must be addressed by HOME, not by globalMediaDir() — passing
 // the latter nested it at ~/.media/.media/manifest.jsonl, invisible to the
 // Studio /api/assets/global route (which reads the documented flat path).
-function readGlobalManifest() {
+export function readGlobalManifest() {
   return readManifest(homedir());
+}
+
+// Resolve a content-sha (full or unambiguous prefix) to a reusable global-cache
+// record, for `resolve --reuse <sha>`. Returns null on no match, or
+// { ambiguous: true, count } when a prefix matches multiple distinct entries.
+// Completeness (the .hf-complete sentinel) is left to importFromCache so the
+// caller can surface an "incomplete cache entry" error distinctly from a miss.
+export function findGlobalBySha(shaPrefix) {
+  const p = String(shaPrefix || "")
+    .toLowerCase()
+    .trim();
+  if (!p) return null;
+  const matches = readGlobalManifest().filter(
+    (r) => r.reusable && typeof r.sha === "string" && r.sha.startsWith(p),
+  );
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    const exact = matches.find((r) => r.sha === p);
+    if (exact) return exact;
+    return { ambiguous: true, count: matches.length };
+  }
+  return matches[0];
 }
 
 function validateCacheHit(match) {
@@ -43,9 +65,14 @@ function validateCacheHit(match) {
 }
 
 export function cacheGet(prompt, type) {
+  const key = normalizePrompt(prompt);
+  if (!key) return null;
   return validateCacheHit(
     readGlobalManifest().find(
-      (r) => r.reusable && r.provenance?.prompt === prompt && (type == null || r.type === type),
+      (r) =>
+        r.reusable &&
+        normalizePrompt(r.provenance?.prompt) === key &&
+        (type == null || r.type === type),
     ),
   );
 }

@@ -636,8 +636,8 @@ const HF_BRIDGE_SCRIPT = `(function() {
         return d > 0 ? d : getDeclaredDuration();
       },
     });
-    hf.seek = function(t) {
-      p.renderSeek(t);
+    hf.seek = function(t, options) {
+      p.renderSeek(t, options);
       var nextTimeMs = (Math.max(0, Number(t) || 0)) * 1000;
       if (window.__HF_VIRTUAL_TIME__ && typeof window.__HF_VIRTUAL_TIME__.seekToTime === "function") {
         window.__HF_VIRTUAL_TIME__.seekToTime(nextTimeMs);

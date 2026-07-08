@@ -42,6 +42,8 @@ export interface RenderCaptureObservability {
   browserGpuMode?: string;
   /** drawElement per-render self-verification tripped → whole render re-ran via screenshot. */
   deSelfVerifyFallback?: boolean;
+  /** Auto-parallel inversion outcome: "inverted" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
+  deWorkerInversion?: "inverted" | "reverted";
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;

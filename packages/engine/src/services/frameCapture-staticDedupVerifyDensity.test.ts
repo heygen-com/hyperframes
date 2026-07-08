@@ -147,4 +147,40 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
     expect(result?.budgetExhausted).toBe(false);
     expect(result?.badFrame).toBe(changeAt);
   });
+
+  it("uses silent verification seeks and restores the playhead to frame zero", async () => {
+    const seekCalls: Array<{ t: number; options?: { suppressEvents?: boolean } }> = [];
+    const page = {
+      evaluate: vi.fn(async (fn: (tt: number) => void, t: number) => {
+        const globalWithWindow = globalThis as typeof globalThis & { window?: unknown };
+        const previousWindow = globalWithWindow.window;
+        globalWithWindow.window = {
+          __hf: {
+            seek: (seekTime: number, options?: { suppressEvents?: boolean }) => {
+              seekCalls.push({ t: seekTime, options });
+            },
+          },
+        };
+        try {
+          fn(t);
+        } finally {
+          if (previousWindow === undefined) delete globalWithWindow.window;
+          else globalWithWindow.window = previousWindow;
+        }
+      }),
+    };
+    vi.mocked(pageScreenshotCapture).mockImplementation(async () => Buffer.from("same"));
+
+    const result = await verifyStaticFramesSafe(
+      { options: {} } as unknown as CaptureSession,
+      page as unknown as Parameters<typeof verifyStaticFramesSafe>[1],
+      new Set([1, 2]),
+      fps,
+      3,
+    );
+
+    expect(result).toBeNull();
+    expect(seekCalls.map((call) => Math.round(call.t * fps))).toEqual([0, 1, 2, 0]);
+    expect(seekCalls.every((call) => call.options?.suppressEvents === true)).toBe(true);
+  });
 });

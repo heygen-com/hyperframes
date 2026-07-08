@@ -1,13 +1,10 @@
 ---
 name: general-video
 description: >
-  The fallback workflow for authoring custom HyperFrames video compositions at
-  any length or format — longer or multi-scene pieces, brand / sizzle reels,
-  montages, title cards, static loops, and freeform compositions. Input- and
-  length-agnostic. If a specialized workflow clearly fits the input — a
-  marketed product, a website, a topic explainer, a GitHub PR, existing
-  footage, a short motion graphic, or a Remotion port — prefer it (see
-  /hyperframes); use this only as the general fallback when none fit.
+  The fallback workflow for authoring or editing any custom HyperFrames composition at any
+  length or format — longer / multi-scene pieces, brand and sizzle reels,
+  montages, title cards, static loops, freeform builds. Use only when no
+  specialized workflow fits the input; routing table at /hyperframes.
 metadata: { "tags": "orchestrator, general-video, fallback, freeform, composition-authoring" }
 ---
 

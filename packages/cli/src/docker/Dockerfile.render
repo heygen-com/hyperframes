@@ -1,10 +1,17 @@
 FROM node:22-bookworm-slim
 
 ARG HYPERFRAMES_VERSION=latest
-# Set automatically by `docker build --platform` (BuildKit); we use it to
-# decide whether to install chrome-headless-shell, which only ships for
-# linux64 (see https://googlechromelabs.github.io/chrome-for-testing/).
+# Set automatically by `docker build --platform` (BuildKit); selects the
+# chrome-headless-shell source below (chrome-for-testing ships linux64 only,
+# see https://googlechromelabs.github.io/chrome-for-testing/).
 ARG TARGETARCH=amd64
+# Pinned Playwright release used to fetch a known-good, arch-native
+# chrome-headless-shell on arm64. chrome-for-testing publishes no linux-arm64
+# build, so arm64 used to fall back to Debian's *unpinned, rolling* `chromium`
+# package — whose bookworm arm64 build SIGTRAPs at startup (exit 133), breaking
+# every containerized render (issue #2039). Playwright ships a pinned
+# linux-arm64 headless-shell (Google's build, not Debian's). Bump deliberately.
+ARG PLAYWRIGHT_VERSION=1.61.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl unzip ffmpeg chromium \
@@ -20,37 +27,36 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV CONTAINER=true
 
-# chrome-headless-shell unlocks BeginFrame-based deterministic capture but the
-# project only publishes a linux64 binary. On arm64 we skip the install and
-# let the engine fall back to system chromium (set via
-# PUPPETEER_EXECUTABLE_PATH above). The wrapper script below only sets
-# PRODUCER_HEADLESS_SHELL_PATH when the binary is actually present.
+# chrome-headless-shell unlocks BeginFrame-based deterministic capture. Install
+# it on both arches from a pinned source so a build can never silently pick up a
+# broken browser update:
+#   amd64  -> chrome-for-testing (linux64) via @puppeteer/browsers
+#   arm64  -> Playwright's pinned linux-arm64 headless-shell (chrome-for-testing
+#            has no arm64 build; Debian's rolling `chromium` SIGTRAPs — #2039)
+# The wrapper script below wires whichever binary landed into
+# PRODUCER_HEADLESS_SHELL_PATH, or fails the build loudly if neither did.
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
       npx --yes @puppeteer/browsers install chrome-headless-shell@stable \
         --path /root/.cache/puppeteer; \
     else \
-      echo "Skipping chrome-headless-shell install on ${TARGETARCH} (linux64-only); using system chromium."; \
+      npx --yes playwright-core@${PLAYWRIGHT_VERSION} install chromium-headless-shell; \
     fi
 
 RUN npm install -g hyperframes@${HYPERFRAMES_VERSION}
 
-# Wrapper script: resolves chrome-headless-shell path at build time when
-# available so the engine uses BeginFrame rendering. On arm64 (no
-# chrome-headless-shell) it leaves PRODUCER_HEADLESS_SHELL_PATH unset, so the
-# engine falls back to PUPPETEER_EXECUTABLE_PATH (system chromium).
-#
-# If TARGETARCH=amd64 and the binary is missing, fail the build loudly — the
-# previous (pre-PR) wrapper used an `&&` chain that crashed `docker build` in
-# this case, and silently downgrading to system chromium on amd64 would mask
-# golden-baseline regressions.
-RUN SHELL_PATH=$(find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f 2>/dev/null | head -1); \
+# Wrapper script: resolves the chrome-headless-shell path installed above and
+# exports it as PRODUCER_HEADLESS_SHELL_PATH so the engine uses BeginFrame
+# rendering. @puppeteer/browsers names the binary `chrome-headless-shell`;
+# Playwright names it `headless_shell` — match either, in either cache dir.
+# If neither is present the browser install step failed: fail the build loudly
+# rather than silently downgrading to the (arm64-broken) Debian chromium.
+RUN SHELL_PATH=$(find /root/.cache/puppeteer /root/.cache/ms-playwright \
+      \( -name "chrome-headless-shell" -o -name "headless_shell" \) -type f 2>/dev/null | head -1); \
     if [ -n "$SHELL_PATH" ]; then \
       printf '#!/bin/sh\nexport PRODUCER_HEADLESS_SHELL_PATH=%s\nexec hyperframes render "$@"\n' "$SHELL_PATH" > /usr/local/bin/hf-render; \
-    elif [ "$TARGETARCH" = "amd64" ]; then \
-      echo "ERROR: chrome-headless-shell binary not found on amd64 — @puppeteer/browsers install must have failed or moved its cache layout." >&2; \
-      exit 1; \
     else \
-      printf '#!/bin/sh\nexec hyperframes render "$@"\n' > /usr/local/bin/hf-render; \
+      echo "ERROR: chrome-headless-shell binary not found for ${TARGETARCH} — the browser install step above must have failed." >&2; \
+      exit 1; \
     fi \
     && chmod +x /usr/local/bin/hf-render
 

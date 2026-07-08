@@ -3,7 +3,7 @@ name: hyperframes
 description: >
   READ THIS FIRST for any request to make, create, edit, animate, or render a
   video, animation, or motion graphic — a promo, explainer, captioned clip,
-  title card, overlay, or any composition. HyperFrames renders video from HTML;
+  title card, overlay, slideshow / interactive deck, or any composition. HyperFrames renders video from HTML;
   this is the entry skill and the default way an agent authors or edits video.
   It routes the request to the right specialized workflow and points to the
   HyperFrames domain skills, so read it before any other video or animation
@@ -19,11 +19,11 @@ metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-r
 
 HyperFrames **renders video from HTML** — a composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework. The full authoring contract lives in `/hyperframes-core`; read it before writing composition HTML.
 
-Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (pick a workflow for any "make me a video" request).
+Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (pick a workflow for any "make me a…" request — usually a video, but also a navigable deck or a composition port). The split is ownership, not output type: a **workflow owns an end-to-end deliverable** (its own project dir, gated steps, sub-agents, final artifact); a **domain skill is a capability layer** a workflow pulls in mid-flight and never owns the task.
 
 ## Capability map — the domain skills
 
-Atomic capabilities you load **on demand** — not full video workflows. For "make me a video", use the intent router below.
+Atomic capabilities you load **on demand** — not full workflows; they never own the end-to-end task. For "make me a…" intent, use the intent router below.
 
 | You want to…                                                                                                                                                            | Skill                    |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
@@ -34,7 +34,7 @@ Atomic capabilities you load **on demand** — not full video workflows. For "ma
 | **Media** — resolve/generate BGM, SFX, image, icon, voice; TTS voiceover, transcription, background removal, captions; cross-project reuse                              | `/media-use`             |
 | **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
 | **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
-| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion, shaders (MCP)                                               | `/figma`                 |
+| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion (MCP), shaders (MCP source / native export)                  | `/figma`                 |
 
 ---
 
@@ -52,19 +52,19 @@ Routing needs to know **what the video is about** — its input and subject. If 
 
 ## Workflow cheat-sheet
 
-| Workflow                   | Use it for                                                                                                                                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/product-launch-video`    | **Selling a product** (SaaS, app, company / product site) — from a URL, brief, or script → a **promo**. The default for any commercial URL, even if the site is only named.                         |
-| `/website-to-video`        | **Showing a site itself** — a tour / showcase built from the site's own screenshots. For non-commercial sites (portfolio, blog, docs, personal, event), or when the user wants a tour, not a promo. |
-| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                       |
-| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                               |
-| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                               |
-| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                              |
-| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                                                          |
-| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                              |
-| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                          |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                      |
-| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                       |
+| Workflow                   | Use it for                                                                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | **Selling a product** (SaaS, app, company / product site) — from a URL, brief, or script → a **promo**. The default for any commercial URL, even if the site is only named.                                                                         |
+| `/website-to-video`        | **Showing a site itself** — a tour / showcase built from the site's own screenshots. For non-commercial sites (portfolio, blog, docs, personal, event), or when the user wants a tour, not a promo.                                                 |
+| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                                                                       |
+| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                                                                               |
+| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                                                                               |
+| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                                                                              |
+| `/motion-graphics`         | A short (~under 10s), **unnarrated** piece where the **motion _is_ the message** — kinetic type, a stat / chart hit, a logo sting, an animated map, an animated tweet / headline, a **standalone** lower-third / overlay (MP4 or transparent alpha) |
+| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                                                                              |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                                                                          |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                                                                      |
+| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                                                                       |
 
 **Disambiguation (only where confusable):**
 
@@ -130,8 +130,8 @@ The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` 
 
 ### `/embedded-captions`
 
-- **Input:** An existing **talking-head video** (MP4) to caption — actual footage, not a URL or brief. Transcribed locally (Whisper, no API key) and matted (RVM) so the subject can occlude captions.
-- **Output:** the same footage **untouched**, with a caption layer — **Standard** (verbatim lower-third rail + an embedded climax behind the subject) or **Cinematic** (every caption composited behind the subject). Any length.
+- **Input:** An existing **talking-head video** (MP4) to caption — actual footage, not a URL or brief. Transcribed and matted locally (no API key) so the subject can occlude captions.
+- **Output:** the same footage **untouched**, with a caption layer — one visual identity picked from its catalog (36, from a quiet verbatim rail to full VFX constitutions); the subject occludes the embedded captions. Any length.
 - **Triggers:** "add captions / subtitles to this video", "captions behind the subject", "cinematic captions for my clip".
 
 ### `/talking-head-recut`
@@ -142,7 +142,7 @@ The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` 
 
 ### `/motion-graphics`
 
-- **Input:** A short, design-led motion graphic where the **motion is the message** — typically under ~10s, no narration. Genres: kinetic typography, a stat / number count-up, a chart hit, a logo sting, a lower-third / overlay, or a search-driven page / tweet / headline shot.
+- **Input:** A short, design-led motion graphic where the **motion is the message** — typically under ~10s, no narration. Genres: kinetic typography, a stat / number count-up, a chart hit, a logo sting, a lower-third / overlay, an animated map (regions / routes / zoom-to-place), a search-driven page / tweet / news-article shot, or asset-fusion (a real image's geometry becomes the chart).
 - **Output:** a short motion graphic → MP4 or a **transparent overlay** (alpha WebM / MOV) for a lower-third / callout.
 - **Triggers:** "an 8s logo sting", "animate this stat", "a kinetic-type intro", "turn this tweet into a motion graphic", "a transparent lower-third overlay".
 

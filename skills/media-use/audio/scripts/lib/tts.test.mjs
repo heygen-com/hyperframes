@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
-import { parseFfmpegDurationBanner, ffprobeDuration } from "./tts.mjs";
+import { parseFfmpegDurationBanner, ffprobeDuration, synthesizeOne } from "./tts.mjs";
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
   const stderr = [
@@ -61,6 +61,29 @@ test("ffprobeDuration returns NaN when neither ffprobe nor ffmpeg resolve", () =
     assert.ok(Number.isNaN(ffprobeDuration("/does/not/matter.wav")));
   } finally {
     process.env.PATH = originalPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("synthesizeOne(elevenlabs) creates the output dir before writing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tts-el-mkdir-"));
+  const wavAbs = join(dir, "assets", "voice", "line-0.wav"); // nested, not yet created
+  const savedKey = process.env.ELEVENLABS_API_KEY;
+  try {
+    // Unset the key so the Python side fails fast — the mkdir must run before
+    // the spawn regardless, which is what this guards.
+    delete process.env.ELEVENLABS_API_KEY;
+    await synthesizeOne({
+      provider: "elevenlabs",
+      text: "hi",
+      voiceId: "v",
+      wavAbs,
+      hyperframesDir: dir,
+    });
+    assert.ok(existsSync(dirname(wavAbs)), "output directory should be created");
+  } finally {
+    if (savedKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = savedKey;
     rmSync(dir, { recursive: true, force: true });
   }
 });

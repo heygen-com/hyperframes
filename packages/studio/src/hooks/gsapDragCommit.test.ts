@@ -5,6 +5,7 @@ import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
+  findExistingPositionWrite,
   parkPlayheadOnKeyframe,
   type GsapDragCommitCallbacks,
 } from "./gsapDragCommit";
@@ -75,6 +76,7 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
   });
 
   it("extends the existing tween (never spawns a parallel one) when dragged OUTSIDE its range", async () => {
+    // fallow-ignore-next-line code-duplication
     usePlayerStore.setState({ currentTime: 6 }); // outside [1.2, 3.4]
     const { types, callbacks } = recordingCallbacks();
 
@@ -94,7 +96,9 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
   });
 
   it("adds a keyframe at the playhead when dragged INSIDE its range", async () => {
+    // fallow-ignore-next-line code-duplication
     usePlayerStore.setState({ currentTime: 2 }); // inside [1.2, 3.4]
+    // fallow-ignore-next-line code-duplication
     const { types, callbacks } = recordingCallbacks();
 
     await commitGsapPositionFromDrag(
@@ -115,6 +119,7 @@ describe("commitGsapPositionFromDrag — flat tween", () => {
     // User clicked the 100% diamond (activeKeyframePct=100), playhead drifted past
     // the end. Expect: convert + add-keyframe AT 100% — not replace-with-keyframes.
     usePlayerStore.setState({ currentTime: 6, activeKeyframePct: 100 }); // outside [1.2, 3.4]
+    // fallow-ignore-next-line code-duplication
     const { types, mutations, callbacks } = recordingCallbacks();
 
     await commitGsapPositionFromDrag(
@@ -338,6 +343,7 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
     await commitStaticGsapPosition(
       selection(),
       { x: -50, y: 30 },
+      // fallow-ignore-next-line code-duplication
       { x: 0, y: 0 },
       "#puck-a",
       null, // no existing set → `add` a new base gsap.set
@@ -349,6 +355,55 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
     expect((commits[0].mutation as { global?: boolean }).global).toBe(true);
     const patch = commits[0].options.instantPatch as { change: { kind: string } } | undefined;
     expect(patch?.change.kind).toBe("global-set");
+  });
+});
+
+// A degenerate `tl.to("#el",{keyframes:{...},duration:0})` — what a pre-fix drag
+// left behind when it routed a STATIC position hold (sitting beside a keyframed
+// rotation) into the keyframe branch. A duration-0 keyframed tween renders its
+// final keyframe at every playhead, so the element froze and "couldn't move".
+const keyframedZeroDurationHold = (): GsapAnimation =>
+  ({
+    id: "#puck-a-frozen",
+    targetSelector: "#puck-a",
+    method: "to",
+    propertyGroup: "position",
+    duration: 0,
+    keyframes: {
+      keyframes: [
+        { percentage: 0, properties: { x: 100, y: 50 } },
+        { percentage: 100, properties: { x: -260, y: -70 } },
+      ],
+    },
+    properties: {},
+  }) as unknown as GsapAnimation;
+
+describe("static position hold recognition + heal (frozen duration-0 keyframed tween)", () => {
+  beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
+
+  it("findExistingPositionWrite recognizes a keyframed zero-duration position hold", () => {
+    const found = findExistingPositionWrite([keyframedZeroDurationHold()], "#puck-a");
+    expect(found?.id).toBe("#puck-a-frozen");
+  });
+
+  it("commitStaticGsapPosition heals a keyframed hold by delete + clean add-set (never update-property)", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapPosition(
+      selection(),
+      { x: -50, y: 30 },
+      { x: 0, y: 0 },
+      "#puck-a",
+      keyframedZeroDurationHold(),
+      callbacks,
+    );
+
+    const types = commits.map((c) => c.mutation.type);
+    // Can't update-property into keyframes — must delete the frozen tween and
+    // write a clean static set, so the element becomes freely movable.
+    expect(types).toEqual(["delete", "add"]);
+    expect(types).not.toContain("update-property");
+    expect((commits[1].mutation as { method?: string }).method).toBe("set");
   });
 });
 
@@ -377,6 +432,7 @@ describe("commitStaticGsapRotation — instantPatch (value-only set)", () => {
   it("ADDS a global gsap.set with a global-set instantPatch (off-timeline, no flash)", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
+    // fallow-ignore-next-line code-duplication
     await commitStaticGsapRotation(selection(), 42, "#puck-a", null, callbacks);
 
     expect(commits).toHaveLength(1);

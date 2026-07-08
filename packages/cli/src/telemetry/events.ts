@@ -1,5 +1,6 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import { trackEvent } from "./client.js";
+import { readConfig } from "./config.js";
 
 export interface RenderObservabilityTelemetryPayload {
   observabilityRenderJobId?: string;
@@ -119,6 +120,8 @@ export function trackRenderComplete(
     deCaptureMode?: string;
     deCompileGate?: string;
     deClampReason?: string;
+    deWorkerInversion?: string;
+    dePreInversionWorkers?: number;
     deGateReason?: string;
     deWorkerEncode?: boolean;
     deVerifyArmed?: number;
@@ -143,6 +146,10 @@ export function trackRenderComplete(
     // Processing efficiency
     speedRatio?: number;
     captureAvgMs?: number;
+    /** Warmup-robust per-frame capture median (basis for speedup estimates). */
+    captureP50Ms?: number;
+    /** <video> element count (speedup segmentation: injection comps read lower). */
+    videoCount?: number;
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
@@ -191,6 +198,8 @@ export function trackRenderComplete(
       de_capture_mode: props.deCaptureMode,
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
+      de_worker_inversion: props.deWorkerInversion,
+      de_pre_inversion_workers: props.dePreInversionWorkers,
       de_gate_reason: props.deGateReason,
       de_worker_encode: props.deWorkerEncode,
       de_verify_armed: props.deVerifyArmed,
@@ -211,6 +220,8 @@ export function trackRenderComplete(
       total_frames: props.totalFrames,
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
+      capture_p50_ms: props.captureP50Ms,
+      video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,
@@ -381,6 +392,18 @@ export function trackAuthLoginFailed(
   trackEvent("auth_login_failed", { method, reason }, distinctId);
 }
 
+// Associate this install with the signed-in HeyGen account after a completed
+// sign-in. Emits a PostHog `$identify` alias whose `$anon_distinct_id` is the
+// install's anonymousId, so events recorded before sign-in stitch to the same
+// person instead of stranding as a separate anonymous profile. Routed through
+// trackEvent so it shares the opt-out gate and flush path — a no-op when
+// telemetry is disabled. `distinctId` is the account email (else username);
+// see the privacy notice in showTelemetryNotice and docs/packages/cli.mdx.
+export function identifyUser(distinctId: string): void {
+  if (!distinctId) return;
+  trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
+}
+
 // A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
 // before any browser/ffmpeg work. Counts the "caught early" saves on dashboard
 // 1783183, distinct from deep render failures. `kind` is the low-cardinality
@@ -424,6 +447,7 @@ export function trackFigmaImport(props: {
   entryCount?: number;
   unresolvedBindings?: number;
   rasterizedNodes?: number;
+  rasterizeFailures?: number;
 }): void {
   trackEvent("figma_import", {
     phase: props.phase,
@@ -435,6 +459,9 @@ export function trackFigmaImport(props: {
       ? { unresolved_bindings: props.unresolvedBindings }
       : {}),
     ...(props.rasterizedNodes !== undefined ? { rasterized_nodes: props.rasterizedNodes } : {}),
+    ...(props.rasterizeFailures !== undefined
+      ? { rasterize_failures: props.rasterizeFailures }
+      : {}),
   });
 }
 

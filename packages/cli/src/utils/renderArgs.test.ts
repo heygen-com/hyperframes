@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Stats } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type Stats } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
   parseBrowserTimeoutMsArg,
   parseCompositionEntryArg,
   parseGifLoopArg,
+  resolveDefaultFpsArg,
   type BrowserTimeoutParseResult,
   type CompositionEntryParseResult,
 } from "./renderArgs.js";
@@ -170,6 +172,70 @@ describe("parseCompositionEntryArg", () => {
       parseCompositionEntryArg("../proj-evil/x.html", PROJECT, siblingStat),
     );
     expect(err.kind).toBe("outside-project");
+  });
+});
+
+describe("resolveDefaultFpsArg", () => {
+  function writeComposition(path: string, fps: string): void {
+    writeFileSync(
+      path,
+      `<!DOCTYPE html><html><body><div data-composition-id="root" data-root="true" data-fps="${fps}">x</div></body></html>`,
+    );
+  }
+
+  function makeProject(): {
+    dir: string;
+    indexPath: string;
+    entryFile: string;
+    cleanup: () => void;
+  } {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-render-fps-"));
+    const indexPath = join(dir, "index.html");
+    const entryFile = "compositions/intro.html";
+    const entryPath = join(dir, entryFile);
+    writeComposition(indexPath, "24");
+    mkdirSync(dirname(entryPath), { recursive: true });
+    return {
+      dir,
+      indexPath,
+      entryFile,
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    };
+  }
+
+  it("reads data-fps from the --composition target instead of index.html", () => {
+    const project = makeProject();
+    try {
+      writeComposition(join(project.dir, project.entryFile), "60");
+
+      expect(
+        resolveDefaultFpsArg(undefined, project.dir, project.indexPath, project.entryFile),
+      ).toBe("60");
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it("falls back to index.html data-fps when --composition is not set", () => {
+    const project = makeProject();
+    try {
+      expect(resolveDefaultFpsArg(undefined, project.dir, project.indexPath, undefined)).toBe("24");
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it("keeps an explicit --fps value ahead of any composition default", () => {
+    const project = makeProject();
+    try {
+      writeComposition(join(project.dir, project.entryFile), "60");
+
+      expect(resolveDefaultFpsArg("120", project.dir, project.indexPath, project.entryFile)).toBe(
+        "120",
+      );
+    } finally {
+      project.cleanup();
+    }
   });
 });
 

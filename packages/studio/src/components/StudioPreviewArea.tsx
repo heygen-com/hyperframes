@@ -58,6 +58,7 @@ export interface StudioPreviewAreaProps {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
+  handleToggleTrackHidden: (track: number, hidden: boolean) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
@@ -85,6 +86,7 @@ export function StudioPreviewArea({
   handleTimelineFileDrop,
   handleTimelineElementMove,
   handleTimelineElementResize,
+  handleToggleTrackHidden,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -165,6 +167,7 @@ export function StudioPreviewArea({
   // diamond reports a clip-% but the script ops key on the tween-%. Prefers the
   // anim in the keyframe's property group, falling back to the first keyframed one.
   const resolveKeyframeTarget = useCallback(
+    // fallow-ignore-next-line complexity
     (pct: number): { animId: string; tweenPct: number } | null => {
       const cached = usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
       const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
@@ -182,6 +185,7 @@ export function StudioPreviewArea({
     () => ({
       onMoveElement: handleTimelineElementMove,
       onResizeElement: handleTimelineElementResize,
+      onToggleTrackHidden: handleToggleTrackHidden,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
@@ -210,6 +214,7 @@ export function StudioPreviewArea({
       // drop past the boundary (last keyframe past the end, first before the start)
       // resizes the tween — position/duration grow so the dragged keyframe lands at
       // the drop while every other keyframe keeps its absolute time (value+ease too).
+      // fallow-ignore-next-line complexity
       onMoveKeyframe: (_elId: string, fromClipPct: number, toClipPct: number) => {
         const target = resolveKeyframeTarget(fromClipPct);
         const sel = domEditSelection;
@@ -280,6 +285,7 @@ export function StudioPreviewArea({
     [
       handleTimelineElementMove,
       handleTimelineElementResize,
+      handleToggleTrackHidden,
       handleBlockedTimelineEdit,
       handleTimelineElementSplit,
       handleRazorSplit,

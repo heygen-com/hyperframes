@@ -99,7 +99,7 @@ async function runOAuthLogin(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function reportIdentity(): Promise<void> {
-  const { trackAuthLoginCompleted, trackAuthLoginFailed } =
+  const { trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
     await import("../../telemetry/index.js");
   const credential = await tryResolveCredential();
   if (!credential) {
@@ -107,10 +107,6 @@ async function reportIdentity(): Promise<void> {
     console.error(c.warn("Sign-in completed but no credential was persisted."));
     process.exit(1);
   }
-  // A resolvable credential IS the success signal: the tokens are on disk and
-  // usable. The `/v3/users/me` probe below only fetches a display name, so its
-  // outcome is cosmetic and does not gate completion.
-  trackAuthLoginCompleted("oauth");
   // Wire the refresh hook here too — a freshly-minted token shouldn't
   // need it, but a fast IdP-side rotation (or a misconfigured short
   // TTL) shouldn't punish the user with a hard failure when the
@@ -124,18 +120,40 @@ async function reportIdentity(): Promise<void> {
     // `auth status` can show "Logged in as ..." without re-hitting
     // /v3/users/me. Best-effort — a persist failure never fails the login.
     await persistUserInfo(user);
+    // Attribute this install to the signed-in account (and stitch its prior
+    // anonymous usage) before recording completion, so the completed event
+    // carries the identity. Both no-op under the telemetry opt-out.
+    const id = identityKey(user);
+    if (id) identifyUser(id);
+    trackAuthLoginCompleted("oauth", id);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
   } catch (err) {
     // Don't roll back — the OAuth tokens are valid on disk; this is a
-    // transient verify-side issue. The identity probe failed, so any
-    // stale user block from a prior login (possibly a DIFFERENT account)
-    // is cleared so `auth status` can't surface the wrong identity.
+    // transient verify-side issue. The credential is persisted and usable, so
+    // the sign-in still COMPLETED; we just have no resolved identity to
+    // attribute it to. The stale user block from a prior login (possibly a
+    // DIFFERENT account) is cleared so `auth status` can't surface it.
     await clearUserInfoBestEffort();
+    trackAuthLoginCompleted("oauth");
     console.error(
       c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
     );
   }
+}
+
+/**
+ * The stable key we associate this install with in telemetry after sign-in.
+ * `/v3/users/me` exposes no opaque user_id, so we key on the HeyGen account
+ * EMAIL — the canonical account identifier and the reliable join key back to
+ * billing — falling back to username only when the account exposes no email.
+ * (Username is NOT a privacy win — HeyGen usernames are frequently email-shaped
+ * — it is purely a fallback so an emailless account is still attributable.)
+ * The privacy notice (showTelemetryNotice) and docs/packages/cli.mdx disclose
+ * both, so keep them in sync with whatever this returns.
+ */
+function identityKey(user: UserInfo): string | undefined {
+  return user.email ?? user.username;
 }
 
 /** Project the API `/v3/users/me` view onto the on-disk identity block. */
@@ -179,7 +197,7 @@ async function clearUserInfoBestEffort(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function runApiKeyLogin(inlineKey: string): Promise<void> {
-  const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed } =
+  const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
     await import("../../telemetry/index.js");
   trackAuthLoginStarted("api_key");
 
@@ -218,13 +236,15 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
   const next: Credentials = { ...previous, api_key: key };
   await writeStore(next);
 
-  const verifyOk = await verifyAndReport(key);
-  if (!verifyOk) {
+  const user = await verifyAndReport(key);
+  if (!user) {
     trackAuthLoginFailed("api_key", "rejected");
     await rollback(previous);
     process.exit(1);
   }
-  trackAuthLoginCompleted("api_key");
+  const id = identityKey(user);
+  if (id) identifyUser(id);
+  trackAuthLoginCompleted("api_key", id);
 }
 
 async function snapshotStore(): Promise<Credentials> {
@@ -258,8 +278,11 @@ async function rollback(previous: Credentials): Promise<void> {
   }
 }
 
+// Returns the verified user on success (so the caller can attribute the
+// completed sign-in to that identity), or null when the backend rejects the
+// key. Other errors propagate.
 // fallow-ignore-next-line complexity
-async function verifyAndReport(key: string): Promise<boolean> {
+async function verifyAndReport(key: string): Promise<UserInfo | null> {
   const client = new AuthClient();
   try {
     const user = await client.getCurrentUser({ type: "api_key", key, source: "file_json" });
@@ -268,7 +291,7 @@ async function verifyAndReport(key: string): Promise<boolean> {
     await persistUserInfo(user);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ API key saved. Authenticated as ${identity}.`));
-    return true;
+    return user;
   } catch (err) {
     if (isAuthError(err) && err.code === "UNAUTHENTICATED") {
       console.error(
@@ -276,7 +299,7 @@ async function verifyAndReport(key: string): Promise<boolean> {
           `  ${c.dim(err.message)}\n` +
           `Run ${c.accent("hyperframes auth login --api-key")} again with a valid key.`,
       );
-      return false;
+      return null;
     }
     throw err;
   }

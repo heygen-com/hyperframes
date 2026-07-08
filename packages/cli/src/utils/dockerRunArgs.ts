@@ -22,9 +22,9 @@ export interface DockerRunArgsInput {
    * resolves to the host architecture via `resolveDockerPlatform()`. Pinning
    * to `linux/amd64` on an arm64 host (the legacy default) forces qemu
    * emulation of chrome-headless-shell, which segfaults or stalls on Apple
-   * Silicon — see issue #1193. Native `linux/arm64` falls back to the
-   * system chromium baked into the image at the cost of byte-for-byte
-   * parity with amd64 renders.
+   * Silicon — see issue #1193. Native `linux/arm64` uses Playwright's pinned
+   * arm64 chrome-headless-shell baked into the image at the cost of
+   * byte-for-byte parity with amd64 renders.
    */
   platform?: string;
   options: DockerRenderOptions;

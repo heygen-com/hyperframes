@@ -48,6 +48,10 @@ function setupMocks(opts: {
       installCommand: () => opts.installer.command,
       reason: "test",
     }),
+    // scheduleBackgroundInstall now also derives the argv form; mirror the real
+    // helper (null for skip, a {bin,args} pair otherwise).
+    installInvocation: (kind: string, version: string) =>
+      kind === "skip" ? null : { bin: kind, args: ["add", "-g", `hyperframes@${version}`] },
   }));
 
   const spawnSpy = vi.fn(() => ({

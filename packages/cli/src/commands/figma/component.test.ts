@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runComponentImport } from "./component.js";
-import { appendBinding, type FigmaClient } from "@hyperframes/core/figma";
+import { FigmaClientError, appendBinding, type FigmaClient } from "@hyperframes/core/figma";
 
 let dir = "";
 beforeEach(() => {
@@ -93,5 +93,64 @@ describe("runComponentImport", () => {
     expect(item.type).toBe("hyperframes:component");
     expect(item.files.some((f) => f.type === "hyperframes:snippet")).toBe(true);
     expect(out.name).toBe("hero-card");
+  });
+
+  it("skips nodes figma refuses to render instead of aborting the import", async () => {
+    const failing: FigmaClient = {
+      ...client(),
+      renderNode: () =>
+        Promise.reject(
+          new FigmaClientError("RENDER_FAILED", "figma could not render node 1:3 as svg"),
+        ),
+    };
+    const out = await runComponentImport("FILE:1-1", {
+      projectDir: dir,
+      client: failing,
+      download: () => Promise.resolve(SVG),
+    });
+    const html = readFileSync(join(dir, out.htmlPath), "utf8");
+    expect(html).toContain("data-figma-rasterize=");
+    expect(html).not.toContain("src=");
+    const registry = JSON.parse(
+      readFileSync(join(dir, "compositions", "components", out.name, "registry-item.json"), "utf8"),
+    );
+    expect(registry.files).toHaveLength(1);
+  });
+
+  it("recovers a node via png when svg render fails", async () => {
+    let calls = 0;
+    const svgFailsPngWorks: FigmaClient = {
+      ...client(),
+      renderNode: (_ref, opts) => {
+        calls++;
+        if (opts.format === "svg")
+          return Promise.reject(new FigmaClientError("RENDER_FAILED", "no svg for you"));
+        return Promise.resolve({ url: "https://cdn/x.png", ext: "png" });
+      },
+    };
+    const out = await runComponentImport("FILE:1-1", {
+      projectDir: dir,
+      client: svgFailsPngWorks,
+      download: () => Promise.resolve(SVG),
+    });
+    expect(out.failedRasterize).toHaveLength(0);
+    const html = readFileSync(join(dir, out.htmlPath), "utf8");
+    expect(html).toContain('src="');
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("propagates non-RENDER_FAILED errors instead of skipping", async () => {
+    const rateLimited: FigmaClient = {
+      ...client(),
+      renderNode: () =>
+        Promise.reject(new FigmaClientError("RATE_LIMITED", "figma rate limit hit (429)", 429)),
+    };
+    await expect(
+      runComponentImport("FILE:1-1", {
+        projectDir: dir,
+        client: rateLimited,
+        download: () => Promise.resolve(SVG),
+      }),
+    ).rejects.toThrow(/rate limit/);
   });
 });

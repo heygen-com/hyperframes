@@ -7,36 +7,36 @@ HyperFrames ships AI agent skills via [vercel-labs/skills](https://github.com/ve
 
 The skills split into three groups:
 
-- **Router** — the entry skill that picks a workflow for any "make me a video" request.
-- **Creation workflows** — one per input shape (URL, PR, music track, captions, etc.). Read by the router; you can also invoke directly if you already know which one fits.
-- **Domain skills** — atomic capabilities (animation, media, CLI, registry) the workflows compose against. Load one when you need that specific layer.
+- **Router** — the entry skill that picks a workflow for any "make me a…" request — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`).
+- **Creation workflows** — one per input shape (URL, PR, music track, captions, etc.). Each owns its task end-to-end: project setup, gated steps, and the final deliverable. Read by the router; you can also invoke directly if you already know which one fits.
+- **Domain skills** — atomic capabilities (animation, media, CLI, registry) the workflows compose against; they never own the end-to-end task. Load one when you need that specific layer.
 
 ## Install
 
 <Steps>
   <Step title="Pick what to install (interactive picker)">
     ```bash
-    npx skills add heygen-com/hyperframes
+    npx skills add heygen-com/hyperframes --full-depth
     ```
 
-    Opens a picker so you can choose which skills to add. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
+    Opens a picker so you can choose which skills to add. Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours, so you may get an older copy of a skill. Works with [Claude Code](https://claude.ai/claude-code), [Cursor](https://cursor.sh), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [Codex CLI](https://github.com/openai/codex), [GitHub Copilot CLI](/guides/copilot-cli), and [Google Antigravity](/guides/antigravity).
   </Step>
-  <Step title="Or install all 21 at once (skip the picker)">
+  <Step title="Or install everything at once (skip the picker)">
     ```bash
-    npx skills add heygen-com/hyperframes --all
+    npx skills add heygen-com/hyperframes --all --full-depth
     ```
 
     Writes every skill to your project in one shot. Recommended when you want the full set without selecting from the picker.
   </Step>
   <Step title="Or install one skill at a time">
     ```bash
-    npx skills add heygen-com/hyperframes --skill <name>
+    npx skills add heygen-com/hyperframes --skill <name> --full-depth
     ```
 
     Pass the bare skill name (no leading `/`) — e.g. `--skill hyperframes-animation`. Useful when you want a single capability without the full set.
   </Step>
   <Step title="Read /hyperframes first">
-    Once installed, invoke `/hyperframes` in your agent. It's the capability map for everything below and routes "make me a video" intent to the right creation workflow based on your input.
+    Once installed, invoke `/hyperframes` in your agent. It's the capability map for everything below and routes "make me a…" intent — a video, a deck, or a composition port — to the right creation workflow based on your input.
   </Step>
 </Steps>
 
@@ -80,10 +80,10 @@ Atomic capabilities the creation workflows compose against — pull one when you
 | `/hyperframes-animation` | All animation knowledge — atomic motion rules, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU).         |
 | `/hyperframes-keyframes` | Seek-safe keyframe authoring across runtimes — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth — plus `hyperframes keyframes` diagnostics for rendered motion. |
 | `/hyperframes-creative`  | Non-animation creative direction — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive visuals, composition patterns.            |
-| `/media-use`             | The media OS — resolve any media need (BGM, SFX, image, icon, voice) into a frozen local file + ledger record, generate via TTS/music when the catalog misses, transcribe, remove backgrounds, and reuse assets across projects. One shared audio engine + manifest tracking.          |
+| `/media-use`             | The media OS — resolve any media need (BGM, SFX, image, icon, voice) into a frozen local file + ledger record, generate via TTS/music/image models when the catalog misses, transcribe, caption, remove backgrounds, and reuse assets across projects. One shared audio engine + manifest tracking.          |
 | `/hyperframes-cli`       | CLI dev loop — `init`, `lint`, `validate`, `inspect`, `preview`, `render`, `publish`, `doctor`, plus AWS Lambda cloud rendering (`lambda deploy / render / progress / destroy / policies`). |
 | `/hyperframes-registry`  | Install and wire registry blocks and components into compositions via `hyperframes add`. Authoring a new block or component to contribute upstream.                   |
-| `/figma`                 | Import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations and shaders (MCP) into a composition.                                                                        |
+| `/figma`                 | Import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition. |
 
 ## Source of truth
 

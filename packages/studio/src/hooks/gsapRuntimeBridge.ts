@@ -38,6 +38,23 @@ import {
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
 
+// Position channels — used to scope the "has a live position tween?" check so a
+// sibling rotation/scale animation never forces a static position hold into the
+// keyframe branch (which corrupts it into a frozen duration-0 keyframed tween).
+const POSITION_CHANNELS = [
+  "x",
+  "y",
+  "xPercent",
+  "yPercent",
+  "left",
+  "top",
+  // GSAP normalizes translateX/Y to x/y at play time, but readTween reads the
+  // AUTHORED shape — include them so a hand-authored translateX/Y position tween
+  // still counts as a live position tween.
+  "translateX",
+  "translateY",
+];
+
 // ── Property-group tween resolution ───────────────────────────────────────
 
 /**
@@ -185,7 +202,7 @@ export async function tryGsapDragIntercept(
   // `tl.set("#el",{x,y})`, not a keyframe conversion: re-nudge an existing set in
   // place (idempotent), else add a new one. This also covers the stale-cache
   // phantom — committing a set is correct because the element genuinely has no live motion.
-  const hasNonHold = hasNonHoldTweenForElement(iframe, selector);
+  const hasNonHold = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
   // A KEYFRAMED position tween — even one that's currently a flat constant ("hold",
   // e.g. 0% and 100% identical) — is still an animation the user is building, so a
   // drag must add/update a keyframe, NOT fall back to a static `set`. Without this,
@@ -193,7 +210,9 @@ export async function tryGsapDragIntercept(
   // fights the tween (the "drag didn't create a keyframe / didn't persist" bug). The
   // static path is only for elements with NO keyframed position tween (truly static,
   // or just a leftover position-hold `set`).
-  const hasKeyframedPosTween = !!posAnim?.keyframes;
+  // A zero-duration keyframed tween is a static HOLD, not a live animation —
+  // treat it as static so the drag heals it instead of feeding it more keyframes.
+  const hasKeyframedPosTween = !!posAnim?.keyframes && resolveTweenDuration(posAnim) > 0;
   if (!hasNonHold && !hasKeyframedPosTween) {
     const existingSet =
       posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
@@ -362,6 +381,7 @@ export async function tryGsapResizeIntercept(
   const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01); // Convert flat tweens to keyframes only for in-range resizes.
   // Outside-range uses the extend path which handles everything atomically.
   if (!outsideRange) {
+    // fallow-ignore-next-line code-duplication
     if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
       const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
       if (newId) anim = { ...anim, id: newId };
@@ -530,6 +550,7 @@ export async function tryGsapRotationIntercept(
     return true;
   }
 
+  // fallow-ignore-next-line code-duplication
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
     if (newId) anim = { ...anim, id: newId };
