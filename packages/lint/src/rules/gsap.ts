@@ -618,6 +618,57 @@ export const gsapRules: LintRule<LintContext>[] = [
         }
       }
 
+      // gsap_repeated_fromto_without_baseline
+      const fromToWindowsBySelector = new Map<string, GsapWindow[]>();
+      for (const win of gsapWindows) {
+        if (win.method !== "fromTo") continue;
+        if (win.targetSelector === UNRESOLVED_TARGET) continue;
+        const windows = fromToWindowsBySelector.get(win.targetSelector) ?? [];
+        windows.push(win);
+        fromToWindowsBySelector.set(win.targetSelector, windows);
+      }
+
+      const repeatedFromToSelectors = [...fromToWindowsBySelector.values()].filter(
+        (windows) => windows.length >= 2,
+      );
+      const standaloneSetSelectors =
+        repeatedFromToSelectors.length > 0
+          ? new Set(
+              extractStandaloneGsapTransformCalls(stripJsComments(script.content))
+                .filter((call) => call.method === "set")
+                .map((call) => call.selector),
+            )
+          : new Set<string>();
+
+      for (const fromToWindows of repeatedFromToSelectors) {
+        const selector = fromToWindows[0]?.targetSelector;
+        if (!selector) continue;
+        const firstFromToPosition = Math.min(...fromToWindows.map((win) => win.position));
+        const hasTimelineBaseline = gsapWindows.some(
+          (candidate) =>
+            candidate.method === "set" &&
+            candidate.targetSelector === selector &&
+            candidate.position <= firstFromToPosition,
+        );
+        if (hasTimelineBaseline || standaloneSetSelectors.has(selector)) continue;
+
+        findings.push({
+          code: "gsap_repeated_fromto_without_baseline",
+          severity: "warning",
+          message:
+            `${fromToWindows.length} tl.fromTo() calls target "${selector}" with no earlier tl.set() baseline. ` +
+            `The last-authored fromTo "from" values become the element's resting state for any seek before ` +
+            `the first tween actually runs, because GSAP applies fromTo from-values at authoring time ` +
+            `(immediateRender), not at tween position.`,
+          selector,
+          fixHint:
+            `Add \`tl.set("${selector}", { ...safe resting values... }, 0)\` as an explicit baseline before ` +
+            `the first fromTo, so pre-first-tween seeks have a defined, deterministic resting state instead ` +
+            `of inheriting whichever fromTo call happened to author last.`,
+          snippet: truncateSnippet(fromToWindows.map((win) => win.raw).join("\n")),
+        });
+      }
+
       // gsap_exit_missing_hard_kill
       if (clipStartBoundaries.length > 0) {
         for (const win of gsapWindows) {

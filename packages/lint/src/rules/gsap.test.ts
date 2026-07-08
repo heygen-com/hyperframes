@@ -978,6 +978,91 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("warns when repeated tl.fromTo calls target one selector without a tl.set baseline", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0">
+    <div id="overlay"><div class="cell"></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#overlay .cell", { opacity: 0, zIndex: 999 }, { opacity: 1, duration: 0.25 }, 1);
+    tl.fromTo("#overlay .cell", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.25 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeated_fromto_without_baseline");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.selector).toBe("#overlay .cell");
+  });
+
+  it("does not warn when repeated tl.fromTo calls have an earlier tl.set baseline", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0">
+    <div id="overlay"><div class="cell"></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#overlay .cell", { opacity: 0, scale: 1 }, 0);
+    tl.fromTo("#overlay .cell", { opacity: 0, zIndex: 999 }, { opacity: 1, duration: 0.25 }, 1);
+    tl.fromTo("#overlay .cell", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.25 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeated_fromto_without_baseline");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not warn for a single tl.fromTo call on a selector", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0">
+    <div id="overlay"><div class="cell"></div></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#overlay .cell", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.25 }, 1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeated_fromto_without_baseline");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not warn when tl.fromTo calls target different selectors", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0">
+    <div id="overlay">
+      <div class="cell-a"></div>
+      <div class="cell-b"></div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#overlay .cell-a", { opacity: 0, zIndex: 999 }, { opacity: 1, duration: 0.25 }, 1);
+    tl.fromTo("#overlay .cell-b", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.25 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_repeated_fromto_without_baseline");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when an opacity exit ends at a clip start boundary without a hard kill", async () => {
     const html = `
 <html><body>
