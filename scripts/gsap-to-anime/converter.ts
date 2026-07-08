@@ -1,6 +1,7 @@
 import { resolveEase } from "@hyperframes/core";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/parsers";
 import { extractGsapLabels } from "@hyperframes/parsers/gsap-parser-acorn";
+import { parseAttrWrapper, type AttrEntry } from "./attr.ts";
 import { parseRegistrationPostamble, stripLegacyRegistrySetup } from "./registration.ts";
 
 interface AnimeProperty {
@@ -16,18 +17,27 @@ const PROP_RENAMES = new Map([
   ["rotationX", "rotateX"],
   ["rotationY", "rotateY"],
   ["rotationZ", "rotateZ"],
-  // anime.js v4 animates CSS perspective directly; GSAP's transformPerspective
-  // is folded into that CSS property and separately classified with a warning.
+  // anime.js v4 uses transformOrigin and perspective unchanged. GSAP's
+  // transformPerspective alias is folded into CSS perspective and warned on.
   ["transformPerspective", "perspective"],
 ]);
 
 export function convertGsapScript(script: string, parsed: ParsedGsap): string {
   const registration = parseRegistrationPostamble(parsed.postamble, parsed.timelineVar);
   const registrationId = registration?.id ?? "main";
-  const lines = [
-    convertPreamble(parsed.preamble, parsed.timelineVar),
-    ...parsed.animations.map((animation) => convertAnimation(animation, parsed.timelineVar)),
+  const rawPreamble = convertPreamble(parsed.preamble, parsed.timelineVar);
+  const bodyIndent = wrapperBodyIndent(rawPreamble);
+  const preamble = bodyIndent ? indentPreambleBody(rawPreamble, bodyIndent) : rawPreamble;
+  const registrationCall = `${indentBlock(
     renderRegistration(registrationId, parsed.timelineVar, extractGsapLabels(script)),
+    bodyIndent,
+  )}${renderTrailingCloser(registration?.trailing ?? "")}`;
+  const lines = [
+    preamble,
+    ...parsed.animations.map((animation) =>
+      indentBlock(convertAnimation(animation, parsed.timelineVar), bodyIndent),
+    ),
+    registrationCall,
   ];
   return `\n${lines.filter((line) => line.length > 0).join("\n")}\n`;
 }
@@ -53,6 +63,26 @@ function rewriteGsapToArray(source: string): string {
     /gsap\.utils\.toArray\s*\(\s*(["'][^"']+["'])\s*\)/g,
     "[...document.querySelectorAll($1)]",
   );
+}
+
+function wrapperBodyIndent(preamble: string): string {
+  const firstLine = preamble.split("\n").find((line) => line.trim().length > 0);
+  return firstLine?.trimEnd().endsWith("{") ? "  " : "";
+}
+
+function indentPreambleBody(preamble: string, indent: string): string {
+  const lines = preamble.split("\n");
+  return lines
+    .map((line, index) => (index === 0 || line.trim().length === 0 ? line : `${indent}${line}`))
+    .join("\n");
+}
+
+function indentBlock(block: string, indent: string): string {
+  if (indent.length === 0) return block;
+  return block
+    .split("\n")
+    .map((line) => (line.trim().length === 0 ? line : `${indent}${line}`))
+    .join("\n");
 }
 
 function convertAnimation(animation: GsapAnimation, timelineVar: string): string {
@@ -84,12 +114,40 @@ function pushConvertedProperty(
   key: string,
   value: number | string,
 ): void {
+  if (key === "attr") {
+    pushAttrProperties(entries, animation, value);
+    return;
+  }
   if (key === "autoAlpha") {
     pushAutoAlpha(entries, animation, value);
     return;
   }
   const animeKey = PROP_RENAMES.get(key) ?? key;
   entries.push({ key: animeKey, code: renderTweenValue(animation, key, value) });
+}
+
+function pushAttrProperties(
+  entries: AnimeProperty[],
+  animation: GsapAnimation,
+  value: number | string,
+): void {
+  const attrs = parseAttrWrapper(value);
+  if (attrs === null) return;
+  const fromAttrs = parseAttrWrapper(animation.fromProperties?.attr);
+  for (const attr of attrs) {
+    entries.push({ key: attr.key, code: renderAttrTweenValue(animation.method, attr, fromAttrs) });
+  }
+}
+
+function renderAttrTweenValue(
+  method: GsapAnimation["method"],
+  attr: AttrEntry,
+  fromAttrs: AttrEntry[] | null,
+): string {
+  const from = fromAttrs?.find((entry) => entry.key === attr.key);
+  if (method === "fromTo" && from) return serializeArray([from.value, attr.value]);
+  if (method === "from") return serializeArray([attr.value, identityValue(attr.key)]);
+  return serializeValue(attr.value);
 }
 
 function pushAutoAlpha(
@@ -227,6 +285,11 @@ function renderRegistration(
     (label) => `${safeKey(label.name)}: ${formatNumber(label.position)}`,
   );
   return `hyperframesAnime.register(${JSON.stringify(id)}, ${timelineVar}, { labels: { ${labelEntries.join(", ")} } });`;
+}
+
+function renderTrailingCloser(trailing: string): string {
+  const closer = trailing.trim();
+  return closer.length === 0 ? "" : `\n${closer}`;
 }
 
 function serializeProperties(properties: AnimeProperty[]): string {

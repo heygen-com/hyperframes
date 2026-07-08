@@ -23,7 +23,7 @@ export function parseRegistrationPostamble(
   timelineVar: string,
 ): RegistrationInfo | null {
   const trimmed = stripComments(postamble).trim();
-  if (trimmed === "") return { id: "main" };
+  if (trimmed === "") return { id: "main", trailing: "" };
 
   const withoutSetup = removeRegistrySetup(trimmed);
   const escapedVar = escapeRegExp(timelineVar);
@@ -38,9 +38,13 @@ export function parseRegistrationPostamble(
     return "";
   });
   consumed = consumed.replace(push, "");
-  return consumed.trim() === "" ? { id } : null;
+  return isClosingTail(consumed) ? { id, trailing: consumed } : null;
 }
 
 export function stripLegacyRegistrySetup(preamble: string): string {
   return removeRegistrySetup(preamble);
+}
+
+function isClosingTail(source: string): boolean {
+  return /^[\s});(]*$/.test(source);
 }

@@ -1,9 +1,9 @@
 {
   "root": "/Users/miguel07code/dev/hyperframes-oss/.claude/worktrees/animejs-u9/registry",
   "totals": {
-    "converted": 24,
-    "converted-with-warnings": 0,
-    "manual": 123
+    "converted": 39,
+    "converted-with-warnings": 3,
+    "manual": 105
   },
   "items": [
     {
@@ -16,14 +16,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -41,14 +33,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -72,8 +56,8 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: value"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -88,8 +72,8 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: value"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -159,7 +143,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -171,7 +155,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -187,7 +171,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -199,7 +183,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -214,12 +198,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotY"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -234,12 +214,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotY"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -262,6 +238,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -276,6 +256,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -298,6 +282,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -312,6 +300,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -331,7 +323,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "multiple or unsupported timelines"
         },
         {
           "code": "unrecognized-postamble",
@@ -347,7 +339,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "multiple or unsupported timelines"
             },
             {
               "code": "unrecognized-postamble",
@@ -367,11 +359,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "unresolved selector or keyframes"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: value"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -387,11 +379,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "unresolved selector or keyframes"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: value"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -414,6 +406,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -428,6 +424,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -447,11 +447,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "unresolved selector or keyframes"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: value"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -467,11 +467,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "unresolved selector or keyframes"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: value"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -498,10 +498,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -520,10 +516,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -550,10 +542,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -572,10 +560,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -602,10 +586,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -624,10 +604,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -654,10 +630,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -676,10 +648,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -706,10 +674,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -728,10 +692,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -758,10 +718,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -780,10 +736,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -810,10 +762,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -832,10 +780,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -862,10 +806,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -884,10 +824,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -914,10 +850,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -936,10 +868,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -966,10 +894,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -988,10 +912,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -1018,10 +938,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1040,10 +956,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -1070,10 +982,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: text"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1092,10 +1000,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: text"
             },
             {
               "code": "unrecognized-postamble",
@@ -1118,10 +1022,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1141,10 +1041,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1172,10 +1068,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1195,10 +1087,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1226,10 +1114,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1249,10 +1133,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1280,6 +1160,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1294,6 +1178,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -1316,10 +1204,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1339,10 +1223,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1370,10 +1250,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1393,10 +1269,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1424,10 +1296,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1447,10 +1315,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1478,10 +1342,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1501,10 +1361,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1532,10 +1388,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1555,10 +1407,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1586,10 +1434,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1609,10 +1453,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1640,10 +1480,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1663,10 +1499,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1694,10 +1526,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1717,10 +1545,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1748,10 +1572,6 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: rotateY"
-        },
-        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1771,10 +1591,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: rotateY"
             },
             {
               "code": "unrecognized-postamble",
@@ -1802,6 +1618,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -1816,6 +1636,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -1835,7 +1659,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -1847,7 +1671,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -1866,12 +1690,12 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: attr"
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
         },
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -1886,12 +1710,12 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: attr"
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
             },
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -1907,7 +1731,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -1919,7 +1743,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -1935,7 +1759,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -1947,7 +1771,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -1966,16 +1790,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
           "code": "unsupported-extra",
           "message": "Unsupported GSAP extra: overwrite"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -1990,16 +1806,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
               "code": "unsupported-extra",
               "message": "Unsupported GSAP extra: overwrite"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -2018,16 +1826,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
           "code": "unsupported-extra",
           "message": "Unsupported GSAP extra: overwrite"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -2042,16 +1842,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
               "code": "unsupported-extra",
               "message": "Unsupported GSAP extra: overwrite"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -2067,7 +1859,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2079,7 +1871,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2095,7 +1887,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2107,7 +1899,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2141,11 +1933,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: p"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "customEase-beyond-shim",
@@ -2161,11 +1953,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: p"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "customEase-beyond-shim",
@@ -2185,7 +1977,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2197,7 +1989,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2212,16 +2004,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: top"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -2232,16 +2016,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: top"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -2260,12 +2036,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: top"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -2280,12 +2052,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: top"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -2304,12 +2072,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: left"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -2324,12 +2088,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: left"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -2348,12 +2108,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: top"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -2368,12 +2124,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: top"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -2390,10 +2142,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -2406,10 +2154,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -2420,26 +2164,16 @@
       "kind": "block",
       "name": "lower-third-bild",
       "path": "blocks/lower-third-bild",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/lower-third-bild/lower-third-bild.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -2651,11 +2385,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: p"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "customEase-beyond-shim",
@@ -2671,11 +2405,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: p"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "customEase-beyond-shim",
@@ -2690,26 +2424,16 @@
       "kind": "block",
       "name": "news-ticker",
       "path": "blocks/news-ticker",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: boxShadow"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/news-ticker/news-ticker.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: boxShadow"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -2718,14 +2442,9 @@
       "kind": "block",
       "name": "north-korea-locked-down",
       "path": "blocks/north-korea-locked-down",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        }
-      ],
+      "status": "converted-with-warnings",
+      "changed": true,
+      "reasons": [],
       "warnings": [
         {
           "code": "ease-shim-divergence",
@@ -2735,14 +2454,9 @@
       "files": [
         {
           "path": "blocks/north-korea-locked-down/north-korea-locked-down.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            }
-          ],
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
           "warnings": [
             {
               "code": "ease-shim-divergence",
@@ -2756,14 +2470,9 @@
       "kind": "block",
       "name": "nyc-paris-flight",
       "path": "blocks/nyc-paris-flight",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        }
-      ],
+      "status": "converted-with-warnings",
+      "changed": true,
+      "reasons": [],
       "warnings": [
         {
           "code": "ease-shim-divergence",
@@ -2773,14 +2482,9 @@
       "files": [
         {
           "path": "blocks/nyc-paris-flight/nyc-paris-flight.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            }
-          ],
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
           "warnings": [
             {
               "code": "ease-shim-divergence",
@@ -2800,10 +2504,6 @@
         {
           "code": "computed-timeline",
           "message": "timeline callback properties need manual review"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: attr"
         }
       ],
       "warnings": [],
@@ -2816,10 +2516,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline callback properties need manual review"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: attr"
             }
           ],
           "warnings": []
@@ -2835,7 +2531,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2847,7 +2543,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2863,7 +2559,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2875,7 +2571,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2891,7 +2587,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2903,7 +2599,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -2914,34 +2610,16 @@
       "kind": "block",
       "name": "spain-map",
       "path": "blocks/spain-map",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: stroke"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/spain-map/spain-map.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: stroke"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -2973,7 +2651,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -2985,7 +2663,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -3001,7 +2679,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -3013,7 +2691,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -3048,14 +2726,6 @@
         {
           "code": "plugin:Flip",
           "message": "Flip plugin usage needs manual review"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -3068,14 +2738,6 @@
             {
               "code": "plugin:Flip",
               "message": "Flip plugin usage needs manual review"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -3086,34 +2748,16 @@
       "kind": "block",
       "name": "transitions-blur",
       "path": "blocks/transitions-blur",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-blur/transitions-blur.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3126,16 +2770,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: textContent"
-        },
-        {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -3146,16 +2782,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: textContent"
-            },
-            {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -3174,12 +2802,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -3194,12 +2818,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -3210,34 +2830,16 @@
       "kind": "block",
       "name": "transitions-dissolve",
       "path": "blocks/transitions-dissolve",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-dissolve/transitions-dissolve.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3252,10 +2854,6 @@
         {
           "code": "computed-timeline",
           "message": "timeline call/add/addPause is not rewritten safely"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -3268,10 +2866,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -3288,10 +2882,6 @@
         {
           "code": "computed-timeline",
           "message": "timeline call/add/addPause is not rewritten safely"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -3304,10 +2894,6 @@
             {
               "code": "computed-timeline",
               "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -3318,34 +2904,16 @@
       "kind": "block",
       "name": "transitions-light",
       "path": "blocks/transitions-light",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: textContent"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-light/transitions-light.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: textContent"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3354,34 +2922,16 @@
       "kind": "block",
       "name": "transitions-mechanical",
       "path": "blocks/transitions-mechanical",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-mechanical/transitions-mechanical.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3390,34 +2940,16 @@
       "kind": "block",
       "name": "transitions-other",
       "path": "blocks/transitions-other",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-other/transitions-other.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3426,34 +2958,16 @@
       "kind": "block",
       "name": "transitions-push",
       "path": "blocks/transitions-push",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-push/transitions-push.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3462,34 +2976,16 @@
       "kind": "block",
       "name": "transitions-radial",
       "path": "blocks/transitions-radial",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-radial/transitions-radial.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3498,34 +2994,16 @@
       "kind": "block",
       "name": "transitions-scale",
       "path": "blocks/transitions-scale",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: zIndex"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-scale/transitions-scale.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: zIndex"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3540,14 +3018,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -3565,14 +3035,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -3588,34 +3050,16 @@
       "kind": "block",
       "name": "us-map",
       "path": "blocks/us-map",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: stroke"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/us-map/us-map.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: stroke"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -3628,16 +3072,12 @@
       "changed": false,
       "reasons": [
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
         },
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
         }
       ],
       "warnings": [],
@@ -3648,16 +3088,12 @@
           "changed": false,
           "reasons": [
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
             },
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
             }
           ],
           "warnings": []
@@ -3676,12 +3112,8 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -3696,12 +3128,8 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -3718,10 +3146,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -3734,10 +3158,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -3753,11 +3173,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: p"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "customEase-beyond-shim",
@@ -3773,11 +3193,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: p"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "customEase-beyond-shim",
@@ -3801,11 +3221,11 @@
         },
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: value"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -3825,11 +3245,11 @@
             },
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: value"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -3848,12 +3268,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: _"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -3868,12 +3284,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: _"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -3896,8 +3308,8 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: progress"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -3916,8 +3328,8 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: progress"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -3937,11 +3349,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: energyIntensity"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -3957,11 +3369,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: energyIntensity"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -3981,11 +3393,11 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: t"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -4001,11 +3413,11 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: t"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -4028,16 +3440,12 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: logoY"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "customEase-beyond-shim",
           "message": "Unrecognized or fallback ease needs manual review: __raw:entryEase"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -4057,16 +3465,12 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: logoY"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "customEase-beyond-shim",
               "message": "Unrecognized or fallback ease needs manual review: __raw:entryEase"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -4082,26 +3486,16 @@
       "kind": "block",
       "name": "vpn-youtube-spot",
       "path": "blocks/vpn-youtube-spot",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: outlineWidth"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/vpn-youtube-spot/vpn-youtube-spot.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: outlineWidth"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -4115,7 +3509,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline callback properties need manual review"
+          "message": "timeline is not a simple identifier"
         }
       ],
       "warnings": [],
@@ -4127,7 +3521,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline callback properties need manual review"
+              "message": "timeline is not a simple identifier"
             }
           ],
           "warnings": []
@@ -4144,14 +3538,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: stroke"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4164,14 +3550,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: stroke"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4252,10 +3630,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4268,10 +3642,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4288,6 +3658,10 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -4300,6 +3674,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -4316,10 +3694,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4332,10 +3706,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4352,14 +3722,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: textShadow"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4372,14 +3734,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: textShadow"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4396,14 +3750,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: backgroundPosition"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4416,14 +3762,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: backgroundPosition"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4440,10 +3778,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4456,10 +3790,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4476,10 +3806,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -4497,10 +3823,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -4522,14 +3844,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: display"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4542,14 +3856,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: display"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4566,10 +3872,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4582,10 +3884,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4602,14 +3900,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: textShadow"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -4627,14 +3917,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: textShadow"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -4658,6 +3940,10 @@
           "message": "unresolved selector or keyframes"
         },
         {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -4672,6 +3958,10 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -4692,10 +3982,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4708,10 +3994,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4722,26 +4004,16 @@
       "kind": "component",
       "name": "caption-pill-karaoke",
       "path": "components/caption-pill-karaoke",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "components/caption-pill-karaoke/caption-pill-karaoke.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -4756,14 +4028,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: --mask-position"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4776,14 +4040,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: --mask-position"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4800,14 +4056,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: fontWeight"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -4820,14 +4068,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: fontWeight"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -4882,12 +4122,8 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: t"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -4902,12 +4138,8 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: t"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -5030,8 +4262,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -5049,8 +4281,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -5069,16 +4301,8 @@
           "message": "timeline call/add/addPause is not rewritten safely"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: strokeDashoffset"
-        },
-        {
           "code": "unsupported-extra",
           "message": "Unsupported GSAP extra: overwrite"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [],
@@ -5093,16 +4317,8 @@
               "message": "timeline call/add/addPause is not rewritten safely"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: strokeDashoffset"
-            },
-            {
               "code": "unsupported-extra",
               "message": "Unsupported GSAP extra: overwrite"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -5120,14 +4336,9 @@
       "kind": "example",
       "name": "kinetic-type",
       "path": "examples/kinetic-type",
-      "status": "manual",
+      "status": "converted-with-warnings",
       "changed": true,
-      "reasons": [
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: xPercent"
-        }
-      ],
+      "reasons": [],
       "warnings": [
         {
           "code": "ease-shim-divergence",
@@ -5137,14 +4348,9 @@
       "files": [
         {
           "path": "examples/kinetic-type/compositions/main-graphics.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: xPercent"
-            }
-          ],
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
           "warnings": [
             {
               "code": "ease-shim-divergence",
@@ -5173,8 +4379,8 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: t"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         },
         {
           "code": "unrecognized-postamble",
@@ -5193,8 +4399,8 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: t"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             },
             {
               "code": "unrecognized-postamble",
@@ -5217,12 +4423,12 @@
           "message": "timeline callback properties need manual review"
         },
         {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: attr"
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
         },
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -5237,12 +4443,12 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: attr"
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
             },
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -5261,15 +4467,11 @@
       "name": "play-mode",
       "path": "examples/play-mode",
       "status": "manual",
-      "changed": false,
+      "changed": true,
       "reasons": [
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -5287,10 +4489,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -5308,10 +4506,6 @@
             {
               "code": "computed-timeline",
               "message": "GSAP delay is not represented in parsed placement data"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
@@ -5324,24 +4518,15 @@
             {
               "code": "computed-timeline",
               "message": "timeline callback properties need manual review"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
         },
         {
           "path": "examples/play-mode/index.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -5351,23 +4536,19 @@
       "name": "product-promo",
       "path": "examples/product-promo",
       "status": "manual",
-      "changed": false,
+      "changed": true,
       "reasons": [
         {
           "code": "computed-timeline",
           "message": "GSAP delay is not represented in parsed placement data"
         },
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: xPercent"
-        },
-        {
           "code": "unsupported-extra",
           "message": "Unsupported GSAP extra: overwrite"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [
@@ -5385,10 +4566,6 @@
             {
               "code": "computed-timeline",
               "message": "GSAP delay is not represented in parsed placement data"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -5408,16 +4585,12 @@
               "message": "timeline callback properties need manual review"
             },
             {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: xPercent"
-            },
-            {
               "code": "unsupported-extra",
               "message": "Unsupported GSAP extra: overwrite"
             },
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": [
@@ -5435,24 +4608,15 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
         },
         {
           "path": "examples/product-promo/index.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -5461,26 +4625,16 @@
       "kind": "example",
       "name": "slideshow-demo",
       "path": "examples/slideshow-demo",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "examples/slideshow-demo/index.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -5493,8 +4647,8 @@
       "changed": false,
       "reasons": [
         {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
         }
       ],
       "warnings": [],
@@ -5512,8 +4666,8 @@
           "changed": false,
           "reasons": [
             {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
             }
           ],
           "warnings": []
@@ -5530,14 +4684,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: display"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
         }
       ],
       "warnings": [
@@ -5555,40 +4701,22 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: display"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
         },
         {
           "path": "examples/swiss-grid/compositions/graphics.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         },
         {
           "path": "examples/swiss-grid/compositions/intro.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         },
         {
@@ -5615,14 +4743,6 @@
         {
           "code": "computed-timeline",
           "message": "unresolved selector or keyframes"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: xPercent"
         }
       ],
       "warnings": [
@@ -5640,10 +4760,6 @@
             {
               "code": "computed-timeline",
               "message": "unresolved selector or keyframes"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": [
@@ -5667,14 +4783,9 @@
         },
         {
           "path": "examples/vignelli/index.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: xPercent"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -5712,19 +4823,11 @@
       "name": "warm-grain",
       "path": "examples/warm-grain",
       "status": "manual",
-      "changed": false,
+      "changed": true,
       "reasons": [
         {
           "code": "computed-timeline",
           "message": "timeline callback properties need manual review"
-        },
-        {
-          "code": "unrecognized-postamble",
-          "message": "postamble is not only timeline registration"
-        },
-        {
-          "code": "unsupported-property",
-          "message": "Unsupported GSAP property: xPercent"
         }
       ],
       "warnings": [],
@@ -5737,52 +4840,29 @@
             {
               "code": "computed-timeline",
               "message": "timeline callback properties need manual review"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
             }
           ],
           "warnings": []
         },
         {
           "path": "examples/warm-grain/compositions/graphics.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         },
         {
           "path": "examples/warm-grain/compositions/intro.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: xPercent"
-            },
-            {
-              "code": "unrecognized-postamble",
-              "message": "postamble is not only timeline registration"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         },
         {
           "path": "examples/warm-grain/index.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "unsupported-property",
-              "message": "Unsupported GSAP property: xPercent"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]

@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <body>
+    <svg>
+      <path id="path"></path>
+    </svg>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#path", { strokeDashoffset: 0, x2: 120, "stroke-width": 4, duration: 1000 }, 0);
+      hyperframesAnime.register("svg", tl);
+    </script>
+  </body>
+</html>

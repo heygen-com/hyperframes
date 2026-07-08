@@ -1,11 +1,10 @@
 import { resolveEase } from "@hyperframes/core";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/parsers";
-import { SUPPORTED_PROPS } from "@hyperframes/parsers/gsap-constants";
+import { parseAttrWrapper } from "./attr.ts";
 import { addUniqueNote, note, statusFor } from "./notes.ts";
 import { parseRegistrationPostamble } from "./registration.ts";
 import type { ClassificationNote, CodemodClassification } from "./types.ts";
 
-const SUPPORTED_PROP_SET = new Set<string>(SUPPORTED_PROPS);
 const ALLOWED_EXTRAS = new Set(["stagger", "repeat", "yoyo"]);
 const PLUGIN_NAMES = [
   "ScrollTrigger",
@@ -22,7 +21,7 @@ export function classifyGsapScript(script: string, parsed: ParsedGsap): CodemodC
   const reasons: ClassificationNote[] = [];
   const warnings: ClassificationNote[] = [];
 
-  addRawSourceReasons(script, reasons);
+  addRawSourceReasons(script, parsed, reasons);
   addParsedReasons(parsed, reasons);
   addAnimationReasons(parsed.animations, reasons, warnings);
   if (parseRegistrationPostamble(parsed.postamble, parsed.timelineVar) === null) {
@@ -40,7 +39,11 @@ export function classifyGsapScript(script: string, parsed: ParsedGsap): CodemodC
   };
 }
 
-function addRawSourceReasons(script: string, reasons: ClassificationNote[]): void {
+function addRawSourceReasons(
+  script: string,
+  parsed: ParsedGsap,
+  reasons: ClassificationNote[],
+): void {
   if (/SplitText/i.test(script) || hasHandRolledTextSplit(script)) {
     addUniqueNote(
       reasons,
@@ -59,25 +62,113 @@ function addRawSourceReasons(script: string, reasons: ClassificationNote[]): voi
   if (hasAdvancedGsapUtils(script)) {
     addUniqueNote(reasons, note("gsap-utils-advanced", "gsap.utils usage beyond toArray"));
   }
-  if (/(\.call|\.add|\.addPause)\s*\(/.test(script)) {
+  if (hasTimelineControlCall(script, parsed.timelineVar)) {
     addUniqueNote(
       reasons,
       note("computed-timeline", "timeline call/add/addPause is not rewritten safely"),
     );
   }
-  if (/\b(onComplete|onStart|onUpdate|onRepeat|onReverseComplete)\s*:/.test(script)) {
+  const tweenBodies = gsapTweenArgumentSources(script, parsed.timelineVar);
+  if (tweenBodies.some(hasTweenCallback)) {
     addUniqueNote(
       reasons,
       note("computed-timeline", "timeline callback properties need manual review"),
     );
   }
-  if (/\bdelay\s*:/.test(script)) {
+  if (tweenBodies.some((body) => /\bdelay\s*:/.test(body))) {
     addUniqueNote(
       reasons,
       note("computed-timeline", "GSAP delay is not represented in parsed placement data"),
     );
   }
   addPluginReasons(script, reasons);
+}
+
+function hasTimelineControlCall(script: string, timelineVar: string): boolean {
+  const escapedVar = escapeRegExp(timelineVar);
+  return new RegExp(`\\b${escapedVar}\\s*\\.\\s*(?:call|add|addPause)\\s*\\(`).test(script);
+}
+
+function gsapTweenArgumentSources(script: string, timelineVar: string): string[] {
+  const escapedVar = escapeRegExp(timelineVar);
+  const calls = new RegExp(
+    `(?:\\b${escapedVar}\\s*\\.\\s*(?:fromTo|from|to|set)|\\bgsap\\s*\\.\\s*set)\\s*\\(`,
+    "g",
+  );
+  const bodies: string[] = [];
+  for (const match of script.matchAll(calls)) {
+    const start = match.index ?? 0;
+    const open = script.indexOf("(", start);
+    const close = findMatchingParen(script, open);
+    if (close !== null) bodies.push(script.slice(open + 1, close));
+  }
+  return bodies;
+}
+
+function findMatchingParen(source: string, open: number): number | null {
+  if (open < 0) return null;
+  let depth = 0;
+  let state: "code" | "lineComment" | "blockComment" | "string" = "code";
+  let quote = "";
+  let escaped = false;
+
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+    const stateResult = updateScanState(state, char, next, quote, escaped);
+    state = stateResult.state;
+    quote = stateResult.quote;
+    escaped = stateResult.escaped;
+    if (stateResult.skipNext) index += 1;
+    if (state !== "code") continue;
+    if (char === "(") depth += 1;
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return null;
+}
+
+function updateScanState(
+  state: "code" | "lineComment" | "blockComment" | "string",
+  char: string,
+  next: string,
+  quote: string,
+  escaped: boolean,
+): {
+  state: "code" | "lineComment" | "blockComment" | "string";
+  quote: string;
+  escaped: boolean;
+  skipNext: boolean;
+} {
+  if (state === "lineComment") {
+    return char === "\n" || char === "\r"
+      ? { state: "code", quote, escaped: false, skipNext: false }
+      : { state, quote, escaped: false, skipNext: false };
+  }
+  if (state === "blockComment") {
+    return char === "*" && next === "/"
+      ? { state: "code", quote, escaped: false, skipNext: true }
+      : { state, quote, escaped: false, skipNext: false };
+  }
+  if (state === "string") {
+    if (escaped) return { state, quote, escaped: false, skipNext: false };
+    if (char === "\\") return { state, quote, escaped: true, skipNext: false };
+    if (char === quote) return { state: "code", quote: "", escaped: false, skipNext: false };
+    return { state, quote, escaped: false, skipNext: false };
+  }
+  if (char === "/" && next === "/")
+    return { state: "lineComment", quote, escaped: false, skipNext: true };
+  if (char === "/" && next === "*")
+    return { state: "blockComment", quote, escaped: false, skipNext: true };
+  if (char === "'" || char === '"' || char === "`")
+    return { state: "string", quote: char, escaped: false, skipNext: false };
+  return { state, quote, escaped: false, skipNext: false };
+}
+
+function hasTweenCallback(source: string): boolean {
+  return /\b(onComplete|onStart|onUpdate|onRepeat|onReverseComplete)\s*(?::|\()/.test(source);
 }
 
 function hasHandRolledTextSplit(script: string): boolean {
@@ -146,6 +237,12 @@ function addAnimationReasons(
     if (animation.provenance && animation.provenance.kind !== "literal") {
       addUniqueNote(reasons, note("computed-timeline", "computed timeline construction"));
     }
+    if (isNonSelectorTarget(animation.targetSelector)) {
+      addUniqueNote(
+        reasons,
+        note("non-selector-target", "tween target is not a CSS selector string"),
+      );
+    }
     addPropertyReasons(animation, reasons, warnings);
     addExtraReasons(animation, reasons, warnings);
     addEaseReasons(animation, reasons, warnings);
@@ -161,9 +258,9 @@ function addPropertyReasons(
   reasons: ClassificationNote[],
   warnings: ClassificationNote[],
 ): void {
-  for (const key of propertyKeys(animation)) {
-    if (!SUPPORTED_PROP_SET.has(key)) {
-      addUniqueNote(reasons, note("unsupported-property", `Unsupported GSAP property: ${key}`));
+  for (const [key, value] of propertyEntries(animation)) {
+    if (key === "attr" && parseAttrWrapper(value) === null) {
+      addUniqueNote(reasons, note("attr-wrapper", "GSAP attr wrapper is not statically literal"));
     }
     if (key === "autoAlpha") {
       addUniqueNote(
@@ -180,10 +277,15 @@ function addPropertyReasons(
   }
 }
 
-function propertyKeys(animation: GsapAnimation): string[] {
-  const keys = new Set<string>(Object.keys(animation.properties));
-  for (const key of Object.keys(animation.fromProperties ?? {})) keys.add(key);
-  return [...keys];
+function propertyEntries(animation: GsapAnimation): Array<[string, number | string]> {
+  return [
+    ...Object.entries(animation.properties),
+    ...Object.entries(animation.fromProperties ?? {}),
+  ];
+}
+
+function isNonSelectorTarget(selector: string): boolean {
+  return selector === "dwell/hold" || selector.startsWith("proxy ");
 }
 
 function addExtraReasons(
@@ -255,4 +357,8 @@ function rawText(value: unknown): string | null {
     return value.startsWith("__raw:") ? value.slice(6).trim() : value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -63,6 +63,34 @@ describe("gsap-to-anime transform", () => {
     assert.equal(result.html, fixture("repeat-yoyo.after.html"));
   });
 
+  it("ignores unrelated .add calls outside the parsed timeline", () => {
+    const result = transformHtml(fixture("unrelated-add.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("unrelated-add.after.html"));
+  });
+
+  it("passes through arbitrary properties and unwraps GSAP attr wrappers", () => {
+    const result = transformHtml(fixture("passthrough-properties.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("passthrough-properties.after.html"));
+  });
+
+  it("preserves a trailing IIFE close after timeline registration", () => {
+    const result = transformHtml(fixture("iife-postamble.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("iife-postamble.after.html"));
+  });
+
+  it("scopes callback and delay scans to GSAP tween arguments", () => {
+    const result = transformHtml(fixture("unrelated-callback-config.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("unrelated-callback-config.after.html"));
+  });
+
   it("classifies motionPath as manual and leaves the file unchanged", () => {
     const before = fixture("motionpath-manual.before.html");
     const result = transformHtml(before);
@@ -80,6 +108,17 @@ describe("gsap-to-anime transform", () => {
     assert.equal(result.classification.status, "manual");
     assert.deepEqual(reasonCodes(result), ["splitText"]);
     assert.equal(result.changed, false);
+    assert.equal(result.html, before);
+  });
+
+  it("classifies real tween callbacks as manual", () => {
+    const before = fixture("onupdate-manual.before.html");
+    const result = transformHtml(before);
+
+    assert.equal(result.classification.status, "manual");
+    assert.equal(result.changed, false);
+    assert.ok(reasonCodes(result).includes("computed-timeline"));
+    assert.ok(reasonCodes(result).includes("non-selector-target"));
     assert.equal(result.html, before);
   });
 

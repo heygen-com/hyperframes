@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      const observerConfig = { delay: 120, onUpdate: "local-option" };
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#card", { opacity: 1, duration: 500 }, 0);
+      hyperframesAnime.register("callback-config", tl);
+    </script>
+  </body>
+</html>

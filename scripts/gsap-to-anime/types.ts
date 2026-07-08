@@ -28,6 +28,7 @@ export interface ScriptBlock {
 
 export interface RegistrationInfo {
   id: string;
+  trailing: string;
 }
 
 export interface RegistryFileReport {
