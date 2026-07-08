@@ -111,6 +111,9 @@ interface PlayerState {
   /** Timeline magnet toggle — when false, clip drags/trims/drops never snap. */
   timelineSnapEnabled: boolean;
   setTimelineSnapEnabled: (enabled: boolean) => void;
+  /** Transport + ruler readout: timecode ("time") or frame number ("frame"). */
+  timeDisplayMode: "time" | "frame";
+  setTimeDisplayMode: (mode: "time" | "frame") => void;
   /** Work-area in-point (seconds). When set, loop starts here and A jumps here. */
   inPoint: number | null;
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
@@ -263,6 +266,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
+  setTimeDisplayMode: (mode) => {
+    writeStudioUiPreferences({ timeDisplayMode: mode });
+    set({ timeDisplayMode: mode });
+  },
   timelineSnapEnabled: readStudioUiPreferences().timelineSnapEnabled ?? true,
   setTimelineSnapEnabled: (enabled) => {
     writeStudioUiPreferences({ timelineSnapEnabled: enabled });

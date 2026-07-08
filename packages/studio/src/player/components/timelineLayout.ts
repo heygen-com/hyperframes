@@ -54,15 +54,15 @@ function getMajorTickInterval(duration: number, pixelsPerSecond?: number): numbe
   return durationIntervals.find((interval) => interval >= target) ?? 60;
 }
 
-function getMinorTickInterval(majorInterval: number, pixelsPerSecond?: number): number {
-  if (
-    Number.isFinite(pixelsPerSecond) &&
-    (pixelsPerSecond ?? 0) > 0 &&
-    (majorInterval / 2) * (pixelsPerSecond ?? 0) < 12
-  ) {
-    return 0;
-  }
-  return majorInterval / 2;
+// How many equal parts to split each major interval into for minor ticks. Prefer
+// quarters (4) so the midpoint stays a minor tick; fall back to halves (2) then
+// none (0) as ticks get too dense to read (< ~8px apart).
+function getMinorSubdivisions(majorInterval: number, pixelsPerSecond?: number): number {
+  const pps = Number.isFinite(pixelsPerSecond) ? (pixelsPerSecond ?? 0) : 0;
+  if (pps <= 0) return 4; // no zoom info (duration-fit mode): quarter ticks
+  if ((majorInterval / 4) * pps >= 8) return 4;
+  if ((majorInterval / 2) * pps >= 8) return 2;
+  return 0;
 }
 
 export function generateTicks(
@@ -72,16 +72,18 @@ export function generateTicks(
   if (duration <= 0 || !Number.isFinite(duration) || duration > 7200)
     return { major: [], minor: [] };
   const majorInterval = getMajorTickInterval(duration, pixelsPerSecond);
-  const minorInterval = getMinorTickInterval(majorInterval, pixelsPerSecond);
+  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond);
+  const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000; // Safety cap to prevent runaway tick generation
   for (let t = 0; t <= duration + 0.001 && major.length < maxTicks; t += majorInterval) {
     const rounded = Math.round(t * 100) / 100;
     major.push(rounded);
-    if (minorInterval > 0 && major.length + minor.length < maxTicks) {
-      const midpoint = Math.round((t + minorInterval) * 100) / 100;
-      if (midpoint <= duration + 0.001) minor.push(midpoint);
+    // Emit the (subdivisions - 1) minor ticks between this major and the next.
+    for (let k = 1; k < subdivisions && major.length + minor.length < maxTicks; k++) {
+      const m = Math.round((t + k * minorInterval) * 100) / 100;
+      if (m <= duration + 0.001) minor.push(m);
     }
   }
   return { major, minor };

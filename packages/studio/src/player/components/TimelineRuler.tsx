@@ -1,6 +1,8 @@
 import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import { GUTTER, RULER_H, formatTimelineTickLabel } from "./timelineLayout";
+import { usePlayerStore } from "../store/playerStore";
+import { secondsToFrame } from "../lib/time";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 
 interface TimelineRulerProps {
@@ -26,6 +28,7 @@ export const TimelineRuler = memo(function TimelineRuler({
   theme,
   beatAnalysis,
 }: TimelineRulerProps) {
+  const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const beatTimes = beatAnalysis?.beatTimes ?? [];
   const beatStrengths = beatAnalysis?.beatStrengths ?? [];
 
@@ -109,7 +112,9 @@ export const TimelineRuler = memo(function TimelineRuler({
                 fontSize: 10,
               }}
             >
-              {formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
+              {timeDisplayMode === "frame"
+                ? secondsToFrame(t)
+                : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
             </span>
             <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
           </div>

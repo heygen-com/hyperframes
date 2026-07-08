@@ -18,6 +18,8 @@ export interface StudioUiPreferences {
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
   timelineSnapEnabled?: boolean;
+  /** Transport + ruler readout mode: timecode or frame number. */
+  timeDisplayMode?: "time" | "frame";
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -92,6 +94,9 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.timelineSnapEnabled === "boolean") {
       preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
+    }
+    if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
+      preferences.timeDisplayMode = parsed.timeDisplayMode;
     }
     return preferences;
   } catch {
