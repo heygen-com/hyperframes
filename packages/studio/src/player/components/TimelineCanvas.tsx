@@ -5,6 +5,8 @@ import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineRuler } from "./TimelineRuler";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
+import { DropPreviewOverlay } from "./timelineDropPreviewOverlay";
+import type { TimelineDropPreview } from "./timelineDropPreview";
 import { PlayheadIndicator } from "./PlayheadIndicator";
 import {
   getTimelineEditCapabilities,
@@ -93,6 +95,7 @@ interface TimelineCanvasProps {
   ) => void;
   onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
   beatAnalysis?: MusicBeatAnalysis | null;
+  dropPreview: TimelineDropPreview | null;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas({
@@ -140,6 +143,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onMoveKeyframe,
   onContextMenuClip,
   beatAnalysis,
+  dropPreview,
 }: TimelineCanvasProps) {
   const { onResizeElement, onMoveElement, onToggleTrackHidden, onRazorSplit, onRazorSplitAll } =
     useTimelineEditContextOptional();
@@ -202,7 +206,9 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
-            draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
+            (draggedClip?.started === true || dropPreview?.isNewTrack === true) &&
+            !trackOrder.includes(trackNum) &&
+            els.length === 0;
           const rowBackground =
             displayTrackOrder.indexOf(trackNum) % 2 === 0 ? theme.rowBackground : "#0D0E12";
           // The beat-dot strip occupies the top of this track's lane (active track,
@@ -220,7 +226,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               className="relative flex"
               style={{
                 height: TRACK_H,
-                background: rowBackground,
+                background:
+                  dropPreview?.track === trackNum ? "rgba(60, 230, 172, 0.06)" : rowBackground,
                 borderBottom: `1px solid ${theme.rowBorder}`,
               }}
             >
@@ -498,6 +505,15 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                 : "0 0 6px rgba(255,255,255,0.4)",
             zIndex: 60,
           }}
+        />
+      )}
+
+      {/* External drag-over drop preview */}
+      {dropPreview && (
+        <DropPreviewOverlay
+          preview={dropPreview}
+          pps={pps}
+          trackIdx={displayTrackOrder.indexOf(dropPreview.track)}
         />
       )}
 
