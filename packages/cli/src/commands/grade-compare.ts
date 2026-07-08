@@ -328,7 +328,7 @@ export function buildGradeCompareHtml(options: GradeCompareHtmlOptions): string 
       const top = GRID_PADDING + row * (metrics.cellImageHeight + LABEL_HEIGHT + GRID_PADDING);
       return `      <figure class="grade-cell" style="left:${left}px;top:${top}px;width:${metrics.cellImageWidth}px;height:${metrics.cellImageHeight + LABEL_HEIGHT}px">
         <figcaption>${label}</figcaption>
-        <img src="${escapeSingleQuotedAttr(options.frameSrc)}" ${HF_COLOR_GRADING_ATTR}='${serialized}' alt="${label}" />
+        <img src="${escapeXml(options.frameSrc)}" ${HF_COLOR_GRADING_ATTR}='${serialized}' alt="${label}" />
       </figure>`;
     })
     .join("\n");

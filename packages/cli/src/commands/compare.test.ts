@@ -32,15 +32,11 @@ describe("parseCompareArgs", () => {
       "/work/project",
     );
 
-    expect(parsed.variants).toEqual([
-      { label: "warm", inputPath: "/work/project/looks/warm", displayPath: "./looks/warm" },
-      {
-        label: "cool",
-        inputPath: "/work/project/looks/cool.html",
-        displayPath: "./looks/cool.html",
-      },
-      { label: "hero.alt", inputPath: "/tmp/hero.alt.html", displayPath: "/tmp/hero.alt.html" },
-    ]);
+    // Labels are the subject here — derived cross-platform via path.basename.
+    // (inputPath/displayPath are absolute/relative resolutions that differ by OS
+    // — separators + drive letter on Windows — and are covered by the resolution
+    // tests; asserting them literally here made this a POSIX-only test.)
+    expect(parsed.variants.map((v) => v.label)).toEqual(["warm", "cool", "hero.alt"]);
   });
 });
 
