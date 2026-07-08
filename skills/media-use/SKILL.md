@@ -1,6 +1,6 @@
 ---
 name: media-use
-description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, or voice into a frozen local file + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Keeps search noise on disk, hands the agent a path. Use for any audio, image, icon, voiceover, caption, or media-asset need.
+description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, or voice into a frozen local file + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Keeps search noise on disk, hands the agent a path. Use for any audio, image, icon, voiceover, caption, or media-asset need.
 ---
 
 # media-use
@@ -14,6 +14,7 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 | HyperFrames gap                            | media-use owns it via                                                                                                                       |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                          |
+| No third-party brand logos                 | `resolve --type logo` (svgl → simple-icons → GitHub org avatar → domain favicon)                                                            |
 | No voice / audio generation                | `resolve --type voice` + the audio engine (`audio/scripts/audio.mjs`)                                                                       |
 | Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                          |
 | No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                           |
@@ -26,7 +27,7 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 
 ## When to use
 
-Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to Parakeet (better than whisper.cpp: 6.05% vs 7.44% WER, 5-10x faster) via `scripts/transcribe.mjs`, with whisper.cpp auto-fallback (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
+Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, brand logos, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to Parakeet (better than whisper.cpp: 6.05% vs 7.44% WER, 5-10x faster) via `scripts/transcribe.mjs`, with whisper.cpp auto-fallback (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
 
 ## Resolve
 
@@ -38,13 +39,14 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 
 ### Types
 
-| Type    | What it finds       | Provider                                 |
-| ------- | ------------------- | ---------------------------------------- |
-| `bgm`   | Background music    | HeyGen audio catalog (10k+ tracks)       |
-| `sfx`   | Sound effects       | Bundled 19-file library + HeyGen catalog |
-| `image` | Photos, backgrounds | HeyGen asset search (75k+ vectors)       |
-| `icon`  | Icons, logos        | HeyGen asset search (type=icon)          |
-| `voice` | TTS voiceover       | Local Kokoro (free); HeyGen TTS upsell   |
+| Type    | What it finds        | Provider                                                 |
+| ------- | -------------------- | -------------------------------------------------------- |
+| `bgm`   | Background music     | HeyGen audio catalog (10k+ tracks)                       |
+| `sfx`   | Sound effects        | Bundled 19-file library + HeyGen catalog                 |
+| `image` | Photos, backgrounds  | HeyGen asset search (75k+ vectors)                       |
+| `icon`  | Icons, symbols       | HeyGen asset search (type=icon)                          |
+| `logo`  | Official brand marks | svgl → simple-icons → GitHub org avatar → domain favicon |
+| `voice` | TTS voiceover        | Local Kokoro (free); HeyGen TTS upsell                   |
 
 ### Examples
 
@@ -64,6 +66,10 @@ node <SKILL_DIR>/scripts/resolve.mjs --type image --intent "gradient tech backgr
 # Icon
 node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 # → resolved icon_001 → .media/images/icon_001.png (icon, transparent)
+
+# Brand logo (official mark — never redrawn by hand)
+node <SKILL_DIR>/scripts/resolve.mjs --type logo --entity linkedin --intent "LinkedIn logo" --project .
+# → resolved logo_001 → .media/images/logo_001.svg (logo, official mark)
 ```
 
 ### Flags
@@ -117,6 +123,7 @@ ladder, `describeModelLadder`); the agent can see the ladder and override.
 | image         | heygen search, then local mflux (best FLUX for your RAM), then codex `image_gen` upsell |
 | voice         | local **Kokoro** (free, on-device), then **heygen tts** paid upsell                     |
 | icon          | heygen asset search                                                                     |
+| logo          | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)         |
 | video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,

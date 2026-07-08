@@ -309,7 +309,7 @@ Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual desig
 2. Use only filenames listed there; write as `assets/<basename>`.
 3. One line, candidates separated by semicolons, a short description after `—`.
 4. Prefer `[video]` assets when motion proves the product better than a still.
-5. Use content assets (UI, screenshots, product photos, charts, demos). Skip tiny icons, favicons, badges, decorative chrome, repeated logo variants — unless the beat needs them.
+5. Use content assets (UI, screenshots, product photos, charts, demos). Skip tiny icons, favicons, badges, decorative chrome, repeated logo variants — unless the beat needs them. Partner / third-party logos come from `/media-use` (`resolve --type logo --entity <brand>`) — never redrawn by hand.
 6. Pure-typography beats may use an empty asset list. Do not use nested lists.
 
 Example:

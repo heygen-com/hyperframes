@@ -462,6 +462,7 @@ const DEFAULT_EXT = {
   voice: ".wav",
   image: ".jpg",
   icon: ".svg",
+  logo: ".svg",
   brand: ".png",
 };
 

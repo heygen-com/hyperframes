@@ -23,6 +23,12 @@ import { bgmProvider } from "./bgm-provider.mjs";
 import { sfxProvider } from "./sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
+import {
+  svglSearch,
+  simpleIconsSearch,
+  githubAvatarSearch,
+  faviconSearch,
+} from "./logo-provider.mjs";
 import { heygenTtsGenerate } from "./voice-provider.mjs";
 import { localTtsGenerate } from "./tts-local-provider.mjs";
 import { codexImageGenerate } from "./codex-provider.mjs";
@@ -50,6 +56,16 @@ const REGISTRY = {
     N("codex.image_gen", { generate: codexImageGenerate }),
   ],
   icon: [N("heygen.asset.search", { search: iconProvider.search })],
+  logo: [
+    // Official brand marks. Tiers verified by a 54-brand stress test (100%
+    // cascade hit); HeyGen asset search is deliberately absent — it returns
+    // generic look-alike icons for brand queries. All free, all network →
+    // --local-only leaves only the cache rungs.
+    N("svgl", { search: svglSearch }),
+    N("simple-icons", { search: simpleIconsSearch }),
+    N("github.avatar", { search: githubAvatarSearch }),
+    N("favicon.ddg", { search: faviconSearch }),
+  ],
   voice: [
     // Local Kokoro first (free, private, on-device via the hyperframes CLI, kept
     // under --local-only), then HeyGen TTS as the higher-quality paid upsell and
