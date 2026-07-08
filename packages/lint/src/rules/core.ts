@@ -10,6 +10,8 @@ import {
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
+  ANIME_REGISTER_CALL_PATTERN,
+  ANIME_HFANIME_ASSIGN_PATTERN,
   INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
@@ -245,6 +247,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
+  // fallow-ignore-next-line complexity
   ({ source, rawSource, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
@@ -254,13 +257,17 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     if (
       !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
       !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
+      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source) &&
+      !ANIME_REGISTER_CALL_PATTERN.test(source) &&
+      !ANIME_HFANIME_ASSIGN_PATTERN.test(source)
     ) {
       findings.push({
         code: "missing_timeline_registry",
         severity: "error",
-        message: "Missing `window.__timelines` registration.",
-        fixHint: "Register each composition timeline on `window.__timelines[compositionId]`.",
+        message:
+          "Missing animation timeline registration via `window.__timelines` or `hyperframesAnime.register(...)`.",
+        fixHint:
+          "Register each GSAP timeline on `window.__timelines[compositionId]`, or register each anime.js instance with `hyperframesAnime.register(id, instance, { labels })`.",
       });
     }
     if (

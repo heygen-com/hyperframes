@@ -4,6 +4,7 @@ import { readAttr, truncateSnippet } from "./utils";
 import { coreRules } from "./rules/core";
 import { mediaRules } from "./rules/media";
 import { gsapRules } from "./rules/gsap";
+import { animejsRules } from "./rules/animejs";
 import { captionRules } from "./rules/captions";
 import { compositionRules } from "./rules/composition";
 import { adapterRules } from "./rules/adapters";
@@ -15,6 +16,7 @@ const ALL_RULES = [
   ...coreRules,
   ...mediaRules,
   ...gsapRules,
+  ...animejsRules,
   ...captionRules,
   ...compositionRules,
   ...adapterRules,
