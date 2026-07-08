@@ -62,11 +62,9 @@ describe("prependBaselineCell", () => {
     const candidates = resolveLutCells("/tmp/luts/film.cube");
     const withBaseline = prependBaselineCell(candidates);
     expect(withBaseline).toHaveLength(candidates.length + 1);
-    expect(withBaseline[0].label).toBe("original");
     // empty grading (no preset / no lut) → normalizes to inactive → renders the
     // source frame untouched, giving a reference to judge candidates against
-    expect(withBaseline[0].grading.preset ?? null).toBeNull();
-    expect(withBaseline[0].grading.lut ?? null).toBeNull();
+    expect(withBaseline.at(0)).toEqual({ label: "original", grading: {} });
     expect(withBaseline.slice(1)).toEqual(candidates);
   });
 });
