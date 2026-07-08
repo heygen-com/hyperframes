@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
 import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { TimelineFileDropHandler } from "./useTimelineEditing";
 import { usePlayerStore } from "../player";
 
 interface StudioContextInput {
@@ -139,13 +140,8 @@ function useDragOverlay(onImportFiles: (files: FileList) => void) {
   return { active, onDragOver, onDragEnter, onDragLeave, onDrop };
 }
 
-type HandleTimelineFileDrop = (
-  files: File[],
-  placement?: { start: number; track: number },
-) => Promise<void>;
-
 /** Global OS file drop: imports and places at the playhead position. */
-export function useGlobalFileDrop(handleTimelineFileDrop: HandleTimelineFileDrop) {
+export function useGlobalFileDrop(handleTimelineFileDrop: TimelineFileDropHandler) {
   const onDrop = useCallback(
     (files: FileList) => {
       const start = usePlayerStore.getState().currentTime;
