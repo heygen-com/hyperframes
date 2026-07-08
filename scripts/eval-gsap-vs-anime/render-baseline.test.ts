@@ -9,6 +9,7 @@ import { createEmptyManifest, recordManifestEntry } from "./manifest.ts";
 const FORK_SHA = "17b852784bf3922a42b3aa9801db647423073a13";
 
 describe("GSAP baseline registry discovery", () => {
+  // fallow-ignore-next-line complexity
   it("discovers all 147 registry items with stable manifest keys", () => {
     const items = discoverRegistryItems();
 

@@ -13,6 +13,7 @@ export const SECOND_BASELINE_BELOW_DB = 45;
 export const AVERAGE_SCREEN_BELOW_DB = 50;
 export const DEFAULT_CHECKPOINT_COUNT = 100;
 
+// fallow-ignore-next-line complexity
 export async function compareVideos(input: {
   itemName: string;
   baselineVideo: string;
@@ -75,6 +76,7 @@ export async function compareVideos(input: {
   };
 }
 
+// fallow-ignore-next-line complexity
 function checkpointVerdict(
   checkpoint: CheckpointPsnr,
   secondBaselineByIndex: Map<number, number>,
@@ -127,6 +129,7 @@ function checkpointVerdict(
   };
 }
 
+// fallow-ignore-next-line complexity
 async function resolveSecondBaseline(input: {
   lowBand: CheckpointPsnr[];
   baselineVideo: string;

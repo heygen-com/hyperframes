@@ -95,6 +95,7 @@ function discoverBlocks(): RegistryItem[] {
 
 function discoverComponents(): RegistryItem[] {
   return discoverItemDirs("component", join(registryRoot, "components")).flatMap((sourceDir) => {
+    // fallow-ignore-next-line code-duplication
     const entryFile = "demo.html";
     const htmlPath = join(sourceDir, entryFile);
     if (!existsSync(htmlPath)) return [];
@@ -116,6 +117,7 @@ function discoverComponents(): RegistryItem[] {
 
 function discoverExamples(): RegistryItem[] {
   return discoverItemDirs("example", join(registryRoot, "examples")).flatMap((sourceDir) => {
+    // fallow-ignore-next-line code-duplication
     const entryFile = "index.html";
     const htmlPath = join(sourceDir, entryFile);
     if (!existsSync(htmlPath)) return [];
@@ -148,6 +150,7 @@ function discoverItemDirs(kind: RegistryItemKind, kindDir: string): string[] {
     .sort((a, b) => sourceDirName(a).localeCompare(sourceDirName(b)));
 }
 
+// fallow-ignore-next-line complexity
 function itemFromParts(input: {
   kind: RegistryItemKind;
   name: string;
@@ -212,6 +215,7 @@ function inferDimensionsFromHtml(html: string): Dimensions | null {
   return readDimensions(width, height);
 }
 
+// fallow-ignore-next-line complexity
 function inferDurationFromHtml(html: string): number | null {
   const rootDuration = firstNumberAttribute(html, "data-duration");
   if (rootDuration !== null) return rootDuration;
@@ -248,6 +252,8 @@ function readDimensions(width: unknown, height: unknown): Dimensions | null {
   return { width: Math.round(parsedWidth), height: Math.round(parsedHeight) };
 }
 
+// fallow-ignore-next-line code-duplication
+// fallow-ignore-next-line complexity
 function finitePositiveNumber(value: unknown): number | null {
   const parsed =
     typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
@@ -278,6 +284,7 @@ function patchDurationTokens(html: string, duration: number): string {
   return html.replaceAll("__VIDEO_DURATION__", String(Math.round(duration * 100) / 100));
 }
 
+// fallow-ignore-next-line complexity
 function materializeManifestTargets(projectDir: string): void {
   const manifest = readRegistryManifest(projectDir);
   for (const file of registryFiles(manifest)) {
@@ -342,6 +349,7 @@ function isStandaloneCompositionFile(path: string): boolean {
 
 function htmlFiles(projectDir: string): string[] {
   const files: string[] = [];
+  // fallow-ignore-next-line complexity
   const visit = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);

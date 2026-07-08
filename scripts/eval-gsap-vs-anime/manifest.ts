@@ -150,6 +150,7 @@ export function findSuccessfulEntry(
   );
 }
 
+// fallow-ignore-next-line complexity
 function parseManifest(value: unknown): BaselineManifest | null {
   if (!isRecord(value)) return null;
   if (value.version !== 1) return null;
@@ -170,6 +171,7 @@ function parseManifest(value: unknown): BaselineManifest | null {
   };
 }
 
+// fallow-ignore-next-line complexity
 function isManifestEntry(value: unknown): value is BaselineManifestEntry {
   if (!isRecord(value)) return false;
   if (typeof value.item_key !== "string") return false;

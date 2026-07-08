@@ -166,3 +166,21 @@ network); generate them with `bun run --cwd packages/producer docker:test:update
 (Docker) or `bun run --cwd packages/producer test:update <fixture-name>` (host, non-hermetic) once
 the runtime fix above is decided, so the baselines capture the agreed-upon behavior rather than
 today's known-broken pre-start rendering.
+
+
+## Re-run 2026-07-08 (post U1 priming fix)
+
+All 8 fixtures PASS (springs, morph, drawable, split-text, nested-sync,
+seeded-stagger, backward-seek, animejs-adapter). The priming pass in
+`hyperframesAnime.register` / adapter discovery resolves the cold-seek
+finding; duck-typed wrappers without readable duration prime via a large
+clamped seek (PRIME_FALLBACK_MS).
+
+New authoring contract rule surfaced by the animejs-adapter fixture: one
+property owner per element across registered instances. Two independently
+registered timelines animating the same property on the same element is
+order-dependent under independent seeks (true for GSAP as well) and is
+forbidden for render-critical motion; the fixture was corrected
+accordingly. Skills (U11) must carry this rule.
+
+No features are scoped out of the v1 authoring contract.

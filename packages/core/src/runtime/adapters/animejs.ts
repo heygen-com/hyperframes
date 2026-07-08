@@ -192,12 +192,17 @@ function normalizeRegistration(
   return null;
 }
 
+// Fallback priming distance for duck-typed wrappers that expose seek() but no
+// readable duration (legacy `window.__hfAnime.push({seek,pause,play})`
+// registrations). anime.js clamps seek to the timeline duration, so a large
+// value engages every child regardless of actual length.
+const PRIME_FALLBACK_MS = 36_000_000;
+
 function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
   if (primedAnimeInstances.has(instance)) return;
   primedAnimeInstances.add(instance);
   if (typeof instance.seek !== "function") return;
-  const durationMs = readDurationMs(instance);
-  if (durationMs == null) return;
+  const durationMs = readDurationMs(instance) ?? PRIME_FALLBACK_MS;
   try {
     // anime.js 4.5.0: a timeline child added at position > 0 is not rendered
     // to its "from" value until the timeline has been sought to/past that

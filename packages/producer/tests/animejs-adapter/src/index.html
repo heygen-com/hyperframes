@@ -55,7 +55,7 @@
     const tl2 = anime.createTimeline({ autoplay: false });
     tl2
       .add('#box-a', { rotate: 360, duration: 2000, ease: 'inOut(2)' }, 2000)
-      .add('#box-b', { skewX: 25, scale: 1.3, duration: 1500, ease: 'inOut(3)' }, 2200)
+      .add('#box-b', { skewX: 25, translateY: -40, duration: 1500, ease: 'inOut(3)' }, 2200)
       .add('#box-c', { rotate: -180, translateX: 100, duration: 1800, ease: 'inOut(2)' }, 2400);
 
     // Timeline 3: stagger wave on dots (3-6s), authored at global positions.
