@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldDisableTimelineWhileCompositionLoading } from "./NLELayout";
+import { shouldDisableTimelineWhileCompositionLoading } from "./NLEContext";
 
 describe("timeline loading disable state", () => {
   it("disables the timeline while the composition loading overlay is visible", () => {
