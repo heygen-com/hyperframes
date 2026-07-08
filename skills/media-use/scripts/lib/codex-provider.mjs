@@ -62,7 +62,10 @@ function codexUnavailableReason() {
     const which = process.platform === "win32" ? "where" : "which";
     execFileSync(which, ["codex"], { stdio: ["ignore", "ignore", "ignore"], timeout: 5000 });
   } catch {
-    return "codex CLI not on PATH";
+    // A shell alias (e.g. `codex → /Applications/Codex.app/...`) is NOT enough:
+    // aliases live only in the interactive shell, so a spawned subprocess's PATH
+    // lookup can't see them. Symlink the real binary onto PATH.
+    return 'codex CLI not reachable on PATH (a shell alias won\'t work — spawned processes can\'t see aliases; symlink the real binary onto PATH, e.g. ln -s "$(readlink -f "$(command -v codex)")" ~/.local/bin/codex)';
   }
   // Auth marker: presence of the credentials file, NOT `codex login status`.
   // That command prints "Logged in using ChatGPT" only to a human stream
