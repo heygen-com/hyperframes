@@ -360,11 +360,11 @@ async function readAnimeEngineActivity(page: Page): Promise<AnimeEngineActivity>
   return page.evaluate(() => {
     const anime = Reflect.get(window, "anime");
     if (!anime || typeof anime !== "object") {
-      return { checked: false, reason: "window.anime missing" };
+      return { checked: false as const, reason: "window.anime missing" };
     }
     const engine = Reflect.get(anime, "engine");
     if (!engine || typeof engine !== "object") {
-      return { checked: false, reason: "anime.engine missing or not inspectable" };
+      return { checked: false as const, reason: "anime.engine missing or not inspectable" };
     }
     const reqIdValue = Reflect.get(engine, "reqId");
     const reqId =
@@ -373,7 +373,7 @@ async function readAnimeEngineActivity(page: Page): Promise<AnimeEngineActivity>
     const pausedValue = Reflect.get(engine, "paused");
     const hasChildren = Boolean(head);
     return {
-      checked: true,
+      checked: true as const,
       active: Boolean(hasChildren || reqId),
       reqId,
       hasChildren,
