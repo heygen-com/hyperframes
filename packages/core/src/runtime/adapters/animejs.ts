@@ -29,6 +29,8 @@ import { swallow } from "../diagnostics";
  * `window.__hfAnime = [instance]` is still read as a legacy compatibility
  * source, but keyed registration is the authoritative runtime contract.
  */
+const primedAnimeInstances = new WeakSet<RuntimeAnimeInstance>();
+
 export function createAnimeJsAdapter(): RuntimeDeterministicAdapter {
   return {
     name: "animejs",
@@ -106,6 +108,7 @@ export function installHyperframesAnimeApi(): RuntimeAnimeApi {
       if (Reflect.get(registry, id)) {
         console.warn(`[hyperframes] Replacing anime.js registration "${id}"`);
       }
+      primeAnimeInstance(instance);
       const registration: RuntimeAnimeRegistration = {
         id,
         instance,
@@ -171,6 +174,7 @@ function normalizeRegistration(
 ): RuntimeAnimeRegistration | null {
   if (!value) return null;
   if (isAnimeRegistration(value)) {
+    primeAnimeInstance(value.instance);
     return {
       id: value.id || fallbackId,
       instance: value.instance,
@@ -178,6 +182,7 @@ function normalizeRegistration(
     };
   }
   if (isAnimeInstance(value)) {
+    primeAnimeInstance(value);
     return {
       id: fallbackId,
       instance: value,
@@ -185,6 +190,27 @@ function normalizeRegistration(
     };
   }
   return null;
+}
+
+function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
+  if (primedAnimeInstances.has(instance)) return;
+  primedAnimeInstances.add(instance);
+  if (typeof instance.seek !== "function") return;
+  const durationMs = readDurationMs(instance);
+  if (durationMs == null) return;
+  try {
+    // anime.js 4.5.0: a timeline child added at position > 0 is not rendered
+    // to its "from" value until the timeline has been sought to/past that
+    // position once. A cold seek to an earlier time, such as frame 0 capture,
+    // leaves it untouched. Prime once at discovery so every child is engaged
+    // before any real seek. See U3-GATE-RESULT.md "Critical finding". This
+    // mirrors the GSAP totalTime nudge in runtime/init.ts for its analogous
+    // no-render-at-creation-position edge case.
+    instance.seek(durationMs);
+    instance.seek(0);
+  } catch (err) {
+    swallow("runtime.adapters.animejs.prime", err);
+  }
 }
 
 function normalizeLabels(options: RuntimeAnimeRegisterOptions | undefined): RuntimeAnimeLabelMap {

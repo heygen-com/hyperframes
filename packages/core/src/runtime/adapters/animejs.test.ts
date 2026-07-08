@@ -8,6 +8,7 @@ type TestAnimeInstance = {
   pause: ReturnType<typeof vi.fn>;
   play: ReturnType<typeof vi.fn>;
   duration?: number | (() => number);
+  totalDuration?: number | (() => number);
 };
 
 type TestAnimeWindow = Window & {
@@ -126,6 +127,59 @@ describe("animejs adapter", () => {
 
       expect(animeWindow.hyperframesAnime).toBeDefined();
       expect(animeWindow.__hfAnime).toBeDefined();
+    });
+  });
+
+  describe("priming (U1 fix for U3 gate cold-seek bug)", () => {
+    it("primes a fresh registered instance to duration then back to zero before real seeks", () => {
+      const instance = createAnimeInstance({ duration: 4000 });
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+
+      expect(instance.seek.mock.calls).toEqual([[4000], [0]]);
+    });
+
+    it("does not double-prime registered instances when later collected", () => {
+      const instance = createAnimeInstance({ duration: 4000 });
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+      instance.seek.mockClear();
+      const adapter = createAnimeJsAdapter();
+
+      adapter.seek({ time: 1 });
+
+      expect(instance.seek.mock.calls).toEqual([[1000]]);
+    });
+
+    it("primes legacy array registrations on first collection before the real seek", () => {
+      const legacy = createAnimeInstance({ duration: 4400 });
+      animeWindow.__hfAnime = [legacy];
+      const adapter = createAnimeJsAdapter();
+
+      adapter.seek({ time: 0 });
+
+      expect(legacy.seek.mock.calls).toEqual([[4400], [0], [0]]);
+    });
+
+    it("regresses the U3 gate backward-seek cold seek for late-position children", () => {
+      const rawState = "untouched";
+      const fromState = "rotate(-8deg) translateY(90px)";
+      let renderedState = rawState;
+      let engaged = false;
+      const instance = {
+        duration: 4400,
+        seek: vi.fn((timeMs: number) => {
+          if (timeMs >= 1200) engaged = true;
+          renderedState = engaged ? fromState : rawState;
+        }),
+      };
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+      createAnimeJsAdapter().seek({ time: 0 });
+
+      expect(renderedState).toBe(fromState);
     });
   });
 
