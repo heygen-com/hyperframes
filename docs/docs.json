@@ -173,6 +173,7 @@
           {
             "group": "Social Overlays",
             "pages": [
+              "catalog/blocks/imessage-chat",
               "catalog/blocks/instagram-follow",
               "catalog/blocks/macos-notification",
               "catalog/blocks/reddit-post",
