@@ -113,15 +113,8 @@ export function StudioPreviewArea({
   blockPreview,
   gestureOverlay,
 }: StudioPreviewAreaProps) {
-  const {
-    projectId,
-    activeCompPath,
-    setActiveCompPath,
-    previewIframeRef,
-    handlePreviewIframeRef,
-    timelineVisible,
-    toggleTimelineVisibility,
-  } = useStudioShellContext();
+  const { projectId, activeCompPath, setActiveCompPath, previewIframeRef, handlePreviewIframeRef } =
+    useStudioShellContext();
   const {
     refreshKey,
     captionEditMode,
@@ -489,8 +482,6 @@ export function StudioPreviewArea({
                 </div>
               ) : undefined
             }
-            timelineVisible={timelineVisible}
-            onToggleTimeline={toggleTimelineVisibility}
           />
         </TimelineEditProvider>
       </div>

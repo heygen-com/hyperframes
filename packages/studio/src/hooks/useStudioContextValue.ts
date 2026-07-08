@@ -36,8 +36,6 @@ interface StudioContextInput {
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
   refreshPreviewDocumentVersion: () => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -63,8 +61,6 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     waitForPendingDomEditSaves: input.waitForPendingDomEditSaves,
     handlePreviewIframeRef: input.handlePreviewIframeRef,
     refreshPreviewDocumentVersion: input.refreshPreviewDocumentVersion,
-    timelineVisible: input.timelineVisible,
-    toggleTimelineVisibility: input.toggleTimelineVisibility,
   };
 }
 

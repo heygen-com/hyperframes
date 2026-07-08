@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { usePlayerStore } from "../player/store/playerStore";
 import { TimelineToolbar } from "./TimelineToolbar";
 
@@ -18,7 +18,7 @@ function renderToolbar() {
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<TimelineToolbar toggleTimelineVisibility={vi.fn()} />);
+    root.render(<TimelineToolbar />);
   });
   return { host, root };
 }

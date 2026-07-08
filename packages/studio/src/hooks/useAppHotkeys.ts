@@ -4,7 +4,7 @@ import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
-import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
+import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { STUDIO_RAZOR_TOOL_ENABLED } from "../components/editor/manualEditingAvailability";
@@ -96,7 +96,6 @@ interface EditHistoryHandle {
 }
 
 interface UseAppHotkeysParams {
-  toggleTimelineVisibility: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
@@ -135,7 +134,6 @@ interface UseAppHotkeysParams {
 // ── Extracted keydown dispatch (pure function, no hooks) ──
 
 interface HotkeyCallbacks {
-  toggleTimelineVisibility: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
@@ -317,7 +315,6 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
 // ── Hook ──
 
 export function useAppHotkeys({
-  toggleTimelineVisibility,
   handleTimelineElementDelete,
   handleTimelineElementSplit,
   handleDomEditElementDelete,
@@ -345,15 +342,6 @@ export function useAppHotkeys({
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const previewHistoryCleanupRef = useRef<(() => void) | null>(null);
-
-  const handleTimelineToggleHotkey = useCallback(
-    (event: KeyboardEvent) => {
-      if (!shouldHandleTimelineToggleHotkey(event)) return;
-      event.preventDefault();
-      toggleTimelineVisibility();
-    },
-    [toggleTimelineVisibility],
-  );
 
   // ── Undo / Redo ──
 
@@ -421,7 +409,6 @@ export function useAppHotkeys({
 
   const cbRef = useRef<HotkeyCallbacks>(null!);
   cbRef.current = {
-    toggleTimelineVisibility,
     handleTimelineElementDelete,
     handleTimelineElementSplit,
     handleDomEditElementDelete,
@@ -444,11 +431,6 @@ export function useAppHotkeys({
 
   const handleAppKeyDown = useCallback((event: KeyboardEvent) => {
     const cb = cbRef.current;
-    if (shouldHandleTimelineToggleHotkey(event)) {
-      event.preventDefault();
-      cb.toggleTimelineVisibility();
-      return;
-    }
     const key = event.key.toLowerCase();
     if (event.metaKey || event.ctrlKey) {
       dispatchModifierKey(event, key, cb);
@@ -537,6 +519,5 @@ export function useAppHotkeys({
     handleRedo,
     syncPreviewTimelineHotkey,
     syncPreviewHistoryHotkey,
-    handleTimelineToggleHotkey,
   };
 }

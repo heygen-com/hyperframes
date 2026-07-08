@@ -12,7 +12,6 @@ import {
   getTimelineZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
-import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
 import { usePlayerStore, type TimelineElement } from "../player";
 import {
   STUDIO_KEYFRAMES_ENABLED,
@@ -31,7 +30,6 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
 }
 
 interface TimelineToolbarProps {
-  toggleTimelineVisibility: () => void;
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
 }
@@ -73,11 +71,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({
-  toggleTimelineVisibility,
-  domEditSession,
-  onSplitElement,
-}: TimelineToolbarProps) {
+export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
@@ -371,29 +365,6 @@ export function TimelineToolbar({
               className="h-7 w-7 rounded-md border border-neutral-800 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
             >
               +
-            </button>
-          </Tooltip>
-          <Tooltip label={getTimelineToggleTitle(true)}>
-            <button
-              type="button"
-              onClick={toggleTimelineVisibility}
-              className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
-              aria-label="Hide timeline editor"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M5 7h14" />
-                <path d="m8 11 4 4 4-4" />
-              </svg>
             </button>
           </Tooltip>
         </div>

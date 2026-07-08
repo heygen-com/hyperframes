@@ -19,10 +19,6 @@ import { useCompositionStack } from "./useCompositionStack";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
-import {
-  TIMELINE_TOGGLE_SHORTCUT_LABEL,
-  getTimelineToggleTitle,
-} from "../../utils/timelineDiscovery";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -69,10 +65,6 @@ interface NLELayoutProps {
   onSelectTimelineElement?: (element: TimelineElement | null) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
-  /** Whether the timeline panel is visible (default: true) */
-  timelineVisible?: boolean;
-  /** Callback to toggle timeline visibility */
-  onToggleTimeline?: () => void;
   /** Notifies parent when composition loading state changes */
   onCompositionLoadingChange?: (loading: boolean) => void;
 }
@@ -114,8 +106,6 @@ export const NLELayout = memo(function NLELayout({
   onBlockedEditAttempt,
   onSelectTimelineElement,
   onCompIdToSrcChange,
-  timelineVisible,
-  onToggleTimeline,
   onCompositionLoadingChange: onCompositionLoadingChangeParent,
 }: NLELayoutProps) {
   const {
@@ -393,7 +383,6 @@ export const NLELayout = memo(function NLELayout({
   }, [compositionLoading, onCompositionLoadingChangeParent]);
 
   const fullscreenElement = useSyncExternalStore(subscribeFullscreen, getFullscreenElement);
-  const isTimelineVisible = timelineVisible ?? true;
   const containerRef = useRef<HTMLDivElement>(null);
   const isFullscreen = fullscreenElement === containerRef.current && fullscreenElement != null;
 
@@ -493,7 +482,7 @@ export const NLELayout = memo(function NLELayout({
         </div>
       </div>
 
-      {!isFullscreen && isTimelineVisible ? (
+      {!isFullscreen && (
         <>
           <TimelineResizeDivider
             timelineH={timelineH}
@@ -552,42 +541,7 @@ export const NLELayout = memo(function NLELayout({
             )}
           </div>
         </>
-      ) : !isFullscreen && onToggleTimeline ? (
-        <div className="flex-shrink-0 border-t border-neutral-800/50 bg-neutral-950/96">
-          <div className="flex h-10 items-center justify-between px-3">
-            <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-              Timeline
-            </div>
-            <button
-              type="button"
-              onClick={onToggleTimeline}
-              className="flex h-7 items-center gap-1.5 rounded-md border border-neutral-800 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-100"
-              title={getTimelineToggleTitle(false)}
-              aria-label="Show timeline editor"
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="3" y="13" width="18" height="8" rx="1" />
-                <path d="M7 9h10" />
-                <path d="M8 5h8" />
-              </svg>
-              <span>Show</span>
-              <span className="hidden rounded bg-white/5 px-1 py-0.5 font-mono text-[9px] text-neutral-500 sm:inline">
-                {TIMELINE_TOGGLE_SHORTCUT_LABEL}
-              </span>
-            </button>
-          </div>
-        </div>
-      ) : null}
+      )}
     </div>
   );
 });
