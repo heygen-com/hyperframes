@@ -16,6 +16,7 @@ import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
 import { VariablesPanel } from "./panels/VariablesPanel";
 import { PanelTabButton } from "./PanelTabButton";
+import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
@@ -421,6 +422,9 @@ export function StudioRightPanel({
           format,
           resolution,
           composition,
+          // Render what the user is previewing: active variable overrides
+          // from the Variables panel ride along (undefined = defaults).
+          variables: usePreviewVariablesStore.getState().values ?? undefined,
         });
       }}
       compositionDimensions={compositionDimensions}

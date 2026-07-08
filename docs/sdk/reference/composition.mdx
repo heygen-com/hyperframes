@@ -110,6 +110,59 @@ comp.setVariableValue("brandFont", { name: "Inter", source: "https://fonts.googl
 comp.setVariableValue("heroImage", { url: "/assets/hero.jpg", fit: "cover" });
 ```
 
+### `declareVariable` / `updateVariableDeclaration` / `removeVariableDeclaration`
+
+```typescript
+declareVariable(declaration: CompositionVariable): void
+updateVariableDeclaration(id: string, declaration: CompositionVariable): void
+removeVariableDeclaration(id: string): void
+```
+
+Manage the `data-composition-variables` schema itself. `declareVariable` adds a new
+typed declaration (creating the attribute when the composition has none);
+`updateVariableDeclaration` replaces an existing declaration wholesale — the id is
+immutable, rename by remove + declare; `removeVariableDeclaration` deletes a
+declaration (the last removal drops the whole attribute). All three validate via
+`can()` (`E_DUPLICATE_VARIABLE`, `E_VARIABLE_NOT_FOUND`, `E_INVALID_ARGS`,
+`E_FRAGMENT_COMPOSITION` — fragment sources have no `<html>` to carry the schema).
+
+```typescript
+comp.declareVariable({ id: "title", type: "string", label: "Title", default: "Hello" });
+comp.updateVariableDeclaration("title", { id: "title", type: "string", label: "Headline", default: "Hello" });
+comp.removeVariableDeclaration("title");
+```
+
+### `getVariableDeclarations` / `getVariableValues` / `validateVariableValues` / `getVariableUsage`
+
+```typescript
+getVariableDeclarations(): CompositionVariable[]
+getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown>
+validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[]
+getVariableUsage(): VariableUsageReport
+```
+
+Read-only variable APIs (no dispatch). `getVariableDeclarations` returns the typed
+schema (same strict filter the render pipeline uses). `getVariableValues` resolves
+values exactly like the runtime's `getVariables()` — declared defaults merged under
+the given overrides — so callers can predict what a composition script will read for
+a given `--variables` payload. `validateVariableValues` runs the same checks as
+`--strict-variables` (`undeclared` / `type-mismatch` / `enum-out-of-range`).
+`getVariableUsage` statically scans every inline script for `getVariables()` reads
+and cross-references the schema: `{ usedIds, unusedDeclarations, undeclaredReads,
+scanIncomplete }` — `scanIncomplete` flips when scripts access variables dynamically,
+making `usedIds` a lower bound.
+
+### `setPreviewVariables`
+
+```typescript
+setPreviewVariables(values: Record<string, unknown> | null): boolean
+```
+
+Apply ephemeral variable values to the preview surface (never persisted — use
+`setVariableValue` to change a default). Pass `null` to restore declared defaults.
+Delegates to the preview adapter's optional `setPreviewVariables`; returns `false`
+when no adapter support is available.
+
 ### `getElementTimings`
 
 ```typescript

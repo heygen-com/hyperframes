@@ -17,7 +17,13 @@ import {
   EMPTY_DRAFT,
 } from "./VariablesDeclarationForm";
 import { PreviewValueControl } from "./VariablesValueControls";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { isScalarVariableValue as isScalar } from "@hyperframes/core/variables";
+
+/** POSIX single-quote escaping so the copied command survives quotes in values. */
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 
 interface VariablesPanelProps {
   sdkSession: Composition | null;
@@ -209,6 +215,45 @@ function PreviewModeHeader({
   );
 }
 
+/**
+ * Developer/agent handoff: copy the effective values as JSON or as a
+ * ready-to-run render command mirroring exactly what the preview shows.
+ */
+function HandoffFooter({
+  effectiveValues,
+  compPath,
+  onCopy,
+}: {
+  effectiveValues: Record<string, unknown>;
+  compPath: string;
+  onCopy: (text: string, what: string) => void;
+}) {
+  const json = JSON.stringify(effectiveValues);
+  const command = `npx hyperframes render ${shellSingleQuote(compPath)} --variables ${shellSingleQuote(json)}`;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-neutral-800/70 bg-neutral-900/40 p-2">
+      <p className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
+        Use this template
+      </p>
+      <code className="block truncate font-mono text-[9px] text-neutral-500" title={command}>
+        {command}
+      </code>
+      <div className="flex items-center gap-2">
+        <RowAction
+          label="Copy render command"
+          title="CLI command rendering exactly what the preview shows"
+          onClick={() => onCopy(command, "Render command")}
+        />
+        <RowAction
+          label="Copy values JSON"
+          title="Effective values (defaults merged with preview overrides)"
+          onClick={() => onCopy(json, "Values JSON")}
+        />
+      </div>
+    </div>
+  );
+}
+
 const EMPTY_STATE = (
   <p className="text-[10px] leading-relaxed text-neutral-500">
     No variables declared. Variables make parts of this composition dynamic — declare them here (or
@@ -268,6 +313,24 @@ export const VariablesPanel = memo(function VariablesPanel({
     () => (previewValues && sdkSession ? sdkSession.validateVariableValues(previewValues) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sdkSession, previewValues, refreshKey, revision],
+  );
+  const effectiveValues = useMemo(
+    () => sdkSession?.getVariableValues(previewValues ?? undefined) ?? {},
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sdkSession, previewValues, refreshKey, revision],
+  );
+
+  const copyToClipboard = useCallback(
+    (text: string, what: string) => {
+      // Shared helper carries the execCommand fallback Safari needs.
+      void copyTextToClipboard(text).then((ok) =>
+        showToast(
+          ok ? `${what} copied` : `Couldn't copy ${what.toLowerCase()}`,
+          ok ? "info" : "error",
+        ),
+      );
+    },
+    [showToast],
   );
 
   const dropPreviewOverride = useCallback(
@@ -423,6 +486,13 @@ export const VariablesPanel = memo(function VariablesPanel({
           <p className="text-[9px] text-neutral-600">
             Scripts access variables dynamically — usage info may be incomplete.
           </p>
+        )}
+        {declarations.length > 0 && (
+          <HandoffFooter
+            effectiveValues={effectiveValues}
+            compPath={activeCompPath ?? "index.html"}
+            onCopy={copyToClipboard}
+          />
         )}
         {addOpen ? (
           <DeclarationForm

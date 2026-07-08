@@ -107,6 +107,12 @@
     // convention documented in CLAUDE.md. This is a namespace barrel, not a
     // collision.
     { "file": "packages/cli/src/commands/*.ts", "exports": ["examples"] },
+    // Options type for the render-queue hook's public startRender callback —
+    // consumed structurally by callers (StudioRightPanel), not by import.
+    {
+      "file": "packages/studio/src/components/renders/useRenderQueue.ts",
+      "exports": ["StartRenderOptions"],
+    },
     // Independent ML model managers each declare their own DEFAULT_MODEL /
     // MODELS_DIR / ensureModel for their model namespace.
     {

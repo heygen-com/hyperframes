@@ -34,6 +34,12 @@ export interface StartRenderOptions {
   resolution?: ResolutionPreset | "auto";
   /** Render a specific composition file instead of index.html. */
   composition?: string;
+  /**
+   * Composition-variable overrides ({variableId: value}), forwarded to the
+   * render route and injected as window.__hfVariables — the same channel
+   * `hyperframes render --variables` uses.
+   */
+  variables?: Record<string, unknown>;
 }
 
 // "Hide" (formerly "Clear") is a view operation, not a delete: hidden ids are
@@ -126,7 +132,9 @@ export function useRenderQueue(projectId: string | null) {
   }, [loadRenders]);
 
   // Start a render and track progress via SSE
+  // Pre-existing branchy fetch/poll flow — the variables passthrough added one branch.
   const startRender = useCallback(
+    // fallow-ignore-next-line complexity
     async (opts: StartRenderOptions = {}) => {
       if (!projectId) return;
 
@@ -154,6 +162,7 @@ export function useRenderQueue(projectId: string | null) {
         format: string;
         resolution?: string;
         composition?: string;
+        variables?: Record<string, unknown>;
         telemetryDistinctId: string;
       } = {
         fps,
@@ -166,6 +175,9 @@ export function useRenderQueue(projectId: string | null) {
       };
       if (resolution && resolution !== "auto") body.resolution = resolution;
       if (composition) body.composition = composition;
+      if (opts.variables && Object.keys(opts.variables).length > 0) {
+        body.variables = opts.variables;
+      }
       let res: Response;
       try {
         res = await fetch(`/api/projects/${projectId}/render`, {

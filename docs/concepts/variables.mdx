@@ -300,7 +300,25 @@ const { variables } = extractCompositionMetadata(html);
 // variables is CompositionVariable[]
 ```
 
-This is the same API the Studio editing UI uses to build the variables panel for each composition.
+This is the same API the Studio Variables panel uses to build its editor for each composition.
+
+## Variables in Studio
+
+The Studio's **Variables** tab (right inspector panel) is a full UI over this
+system:
+
+- **Declare and edit** — add, edit, and remove declarations without touching the
+  HTML by hand; edits persist into `data-composition-variables` with undo support.
+- **Preview with values** — type-appropriate inputs write ephemeral overrides that
+  are injected into the preview as `window.__hfVariables`, exactly like render-time
+  injection, so what you preview is what `--variables` renders. A header pill shows
+  whether you're previewing defaults or custom values.
+- **Render with values** — renders started from the Renders tab carry the active
+  preview overrides.
+- **Handoff** — copy the effective values as JSON or as a ready-to-run
+  `hyperframes render --variables` command.
+- **Usage** — declarations no script reads are badged `unused`; ids read by scripts
+  but missing from the schema get a one-click Declare action.
 
 ## Next Steps
 
