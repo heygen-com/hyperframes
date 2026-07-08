@@ -44,6 +44,24 @@ The skills split into three groups:
   **Don't see a slash command after install?** Open a new agent session, or run `/skills` (Copilot CLI) / restart your agent's skill loader. Most agents pick up new skills on the next prompt.
 </Tip>
 
+## Keeping skills current
+
+After the first install, skills stay lean and current on their own — nothing re-pulls the full set behind your back:
+
+- **Core set** — the `/hyperframes` router, the `hyperframes-*` domain skills, and `/media-use`. `npx hyperframes init` (which every creation workflow runs when scaffolding) refreshes the core set plus anything else you already have installed. It never _expands_ the install — workflow skills you haven't used are not pulled — and re-running `init` on an up-to-date machine is a no-op. Offline (or rate-limited) it degrades gracefully and never hard-fails.
+- **Workflow skills** (and `/figma`) — install **on demand**, when their workflow is first triggered. The `/hyperframes` router runs `npx hyperframes skills update <workflow>` before entering a workflow, so the one it routes to is guaranteed present.
+
+Check or refresh manually anytime:
+
+```bash
+npx hyperframes skills check          # non-zero exit if installed skills are stale or the core set is incomplete
+npx hyperframes skills update         # refresh the core set + everything installed (never expands)
+npx hyperframes skills update <name>  # also install a specific workflow / domain skill on demand
+npx hyperframes skills                # install the full set explicitly
+```
+
+`skills check` reports workflow skills you haven't installed as _available on demand_, not as a failure.
+
 ## Router
 
 The single entry point. Read `/hyperframes` before invoking anything else — it knows what's available and which workflow fits your request.

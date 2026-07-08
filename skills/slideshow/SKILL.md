@@ -9,6 +9,8 @@ description: >
   Unclear → /hyperframes.
 ---
 
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
 # Slideshow authoring contract
 
 A HyperFrames slideshow is a normal HyperFrames composition — scenes, clips, GSAP timelines — with one extra ingredient: a **JSON island** that declares which scenes are slides and how they connect. The player's `SlideshowController` reads the island and turns the continuous GSAP timeline into a discrete, navigable deck.

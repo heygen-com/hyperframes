@@ -344,6 +344,7 @@ export const FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = "FORMAT_NOT_SUPPORTED_IN_DIST
  * gate.
  */
 export class FormatNotSupportedInDistributedError extends Error {
+  // fallow-ignore-next-line unused-class-member
   readonly code: typeof FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED = FORMAT_NOT_SUPPORTED_IN_DISTRIBUTED;
   readonly format: string;
   readonly reason: string;
@@ -808,6 +809,7 @@ export async function plan(
     // Distributed renders must not capture host-specific system fonts —
     // the Lambda/worker filesystem won't have the same fonts installed.
     allowSystemFontCapture: false,
+    variables: config.variables,
   });
   let compiled = compileResult.compiled;
   const composition = compileResult.composition;

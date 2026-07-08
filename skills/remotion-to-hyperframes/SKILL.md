@@ -3,6 +3,8 @@ name: remotion-to-hyperframes
 description: 'Port an existing Remotion (React) composition''s source to HyperFrames HTML. Use ONLY on an explicit ask to port/convert/migrate/translate a Remotion source — one-way, Remotion-only. A passing Remotion mention, reference-only code, or "make something like my Remotion video" is a fresh build (/general-video). Unclear → /hyperframes.'
 ---
 
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update remotion-to-hyperframes`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
 # Remotion to HyperFrames
 
 > **Confirm the route before you build.** Use this **only** to port an existing **Remotion** (React) composition's source into HyperFrames. Authoring a **new** composition (even one inspired by a Remotion video) → the creation workflows / `/general-video`. **Out of scope** (one-way, Remotion-only): no reverse export (HyperFrames → Remotion or any framework), and a **non-Remotion** source (After Effects, Framer Motion, plain React / CSS) has no Remotion source to translate → re-create via `/general-video`. Unsure, or only a passing Remotion mention? **Read `/hyperframes` first.**

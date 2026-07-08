@@ -3,6 +3,8 @@ name: figma
 description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI), Figma Motion animations (MCP), and shaders (MCP source / native export). Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
 ---
 
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update figma`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
 # Figma → HyperFrames
 
 Bring the user's Figma work into a composition. **Split by capability** (design spec §2):
@@ -63,6 +65,10 @@ hyperframes figma tokens <fileKey>
 Imports variables as composition brand-variable entries + `figma-tokens.json` sidecar + binding-index records (`.media/figma-bindings.jsonl`). Variables are Enterprise-gated upstream: on other plans the command degrades to published-style metadata (values resolve at component-import time). Add the printed entries to the composition's `data-composition-variables`.
 
 **Import tokens before components** when both are wanted — that's what lets component colors link to brand variables instead of baking duplicates.
+
+**Non-Enterprise variables path (field-tested):** REST variables are Enterprise-gated, but the Figma MCP `get_variable_defs` is not. When `tokens` reports `REQUIRES_ENTERPRISE` and the user has the MCP connector, you can build the index yourself: (1) `get_variable_defs` on the scene's parent node — ONE call, cache the raw JSON to `.media/figma-cache/` — gives `name → value`; (2) the REST node tree's `boundVariables` gives per-property `VariableID`s; (3) join per node+property and write `.media/figma-bindings.jsonl` rows (`{kind:"binding", figmaId, sourceFileKey, compositionVariableId: "figma:<name>", version}`) plus the composition-variable entries. Everything downstream (component `var()` resolution, refresh, runtime CSS variables) is the shipped machinery. Label it for the user: "tokens via the Figma connector — Enterprise plans get this from `hyperframes figma tokens` directly."
+
+The runtime defines every declared composition variable as a CSS custom property (document root + sub-comp hosts), so imported `var(--slug, literal)` fills recolor when the variable default changes — updating one value in `data-composition-variables` re-brands every imported component without re-importing anything. `hyperframes render --variables '<json>'` overrides them at render time.
 
 ## Components (Phase 3 — CLI)
 

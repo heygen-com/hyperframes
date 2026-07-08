@@ -55,6 +55,8 @@ HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first —
 
 Run `npx skills add heygen-com/hyperframes --full-depth` for the interactive picker, `npx skills add heygen-com/hyperframes --all --full-depth` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name> --full-depth` for just one (bare name, no leading `/`). Keep `--full-depth` — it installs the current `main`; without it `skills add` fetches the skills.sh blob, which lags by hours.
 
+Installs stay lean after that: `npx hyperframes init` keeps the **core set** fresh (the router, the `hyperframes-*` domain skills, and `media-use` — plus whatever is already installed; `/figma` stays on demand) and never expands a partial install; the creation workflows install **on demand** — the router runs `npx hyperframes skills update <workflow>` before entering one. Nothing re-pulls the full set behind your back.
+
 ### Router
 
 | Skill          | Use when                                                                                                                                                                                                  |

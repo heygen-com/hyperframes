@@ -6,7 +6,10 @@ import { buildNpxCommand } from "../utils/npxCommand.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
+  FALLBACK_CORE_SKILLS,
   hyperframesSkillNames,
+  isCoreSkill,
+  presentSkills,
   SKILLS_CLI_LOCK_PATHS_VERIFIED_AT,
   type SkillDiff,
   type SkillsCheckResult,
@@ -19,7 +22,8 @@ export const examples: Example[] = [
   ["Install all HyperFrames skills", "hyperframes skills"],
   ["Check whether installed skills are up to date", "hyperframes skills check"],
   ["Check, machine-readable (for agents / CI)", "hyperframes skills check --json"],
-  ["Update all skills to the latest (installs any missing)", "hyperframes skills update"],
+  ["Update the core set + everything already installed", "hyperframes skills update"],
+  ["Also install one workflow (on-demand install)", "hyperframes skills update pr-to-video"],
 ];
 
 function hasNpx(): boolean {
@@ -52,7 +56,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
     const child = spawn(npx.command, npx.args, {
       stdio: "inherit",
       // We install with --full-depth (a full `git clone` of the repo, the only
-      // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS),
+      // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS_TAIL),
       // which is heavier than the blob fetch, so allow more headroom.
       timeout: 300_000,
       cwd: opts.cwd,
@@ -94,9 +98,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
 // skills.sh registry blob, which lags GitHub main by hours, so a fresh install
 // would read as several skills "outdated" (verified: blob → ~9 outdated;
 // --full-depth → all current).
-const GLOBAL_INSTALL_ARGS = [
-  "--skill",
-  "*",
+const GLOBAL_INSTALL_ARGS_TAIL = [
   "--global",
   "--agent",
   "claude-code",
@@ -106,11 +108,25 @@ const GLOBAL_INSTALL_ARGS = [
   "--yes",
 ];
 
+/** All skills, or an explicit list of skill names to install. */
+type SkillSelection = "*" | readonly string[];
+
+// The upstream CLI takes one `--skill` flag per name (`--skill a --skill b`),
+// with `'*'` meaning "all skills" — see vercel-labs/skills `add --skill`.
+function skillSelectionArgs(selection: SkillSelection): string[] {
+  const names = selection === "*" ? ["*"] : selection;
+  return names.flatMap((name) => ["--skill", name]);
+}
+
 function runSkillsAdd(
   source: string,
-  opts: { cwd?: string; extraArgs?: string[] } = {},
+  selection: SkillSelection,
+  opts: { cwd?: string } = {},
 ): Promise<void> {
-  return spawnNpx(["skills", "add", source, ...(opts.extraArgs ?? GLOBAL_INSTALL_ARGS)], opts);
+  return spawnNpx(
+    ["skills", "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
+    opts,
+  );
 }
 
 // Skill names are kebab-case directory names. Refuse anything that isn't one
@@ -135,7 +151,7 @@ function runSkillsRemove(names: string[], opts: { global: boolean }): Promise<vo
 }
 
 // Use the full GitHub URL (not the `owner/repo` slug) as the clone source. The
-// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS), which clones the
+// freshness comes from --full-depth (see GLOBAL_INSTALL_ARGS_TAIL), which clones the
 // repo at latest `main`; the URL just names what to clone. Our freshness check
 // resolves "latest" straight from GitHub too, so install and check agree.
 const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hyperframes" }];
@@ -203,9 +219,27 @@ function skillsToolingReady(strict: boolean): boolean {
   return true;
 }
 
-export async function installAllSkills(
-  opts: { cwd?: string; extraArgs?: string[]; strict?: boolean } = {},
+// Skill names can originate from a fetched manifest or agent argv, and each is
+// spread into a spawn as a `--skill` value — apply the same slug guard as
+// runSkillsRemove so a flag-like name can't smuggle into the command. Returns
+// null when nothing valid is left to install.
+function sanitizeSelection(selection: SkillSelection): SkillSelection | null {
+  if (selection === "*") return selection;
+  const rejected = selection.filter((n) => !PLAIN_SKILL_NAME.test(n));
+  if (rejected.length) {
+    clack.log.warn(c.warn(`Skipping unexpected skill name(s): ${rejected.join(", ")}`));
+  }
+  const safe = selection.filter((n) => PLAIN_SKILL_NAME.test(n));
+  return safe.length > 0 ? safe : null;
+}
+
+async function installSkills(
+  selection: SkillSelection,
+  opts: { cwd?: string; strict?: boolean } = {},
 ): Promise<void> {
+  const safeSelection = sanitizeSelection(selection);
+  if (safeSelection === null) return;
+
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
   for (const source of SOURCES) {
@@ -213,7 +247,7 @@ export async function installAllSkills(
     console.log(c.bold(`Installing ${source.name} skills...`));
     console.log();
     try {
-      await runSkillsAdd(source.url, opts);
+      await runSkillsAdd(source.url, safeSelection, opts);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       console.log(c.dim(`${source.name} skills skipped`));
@@ -221,6 +255,174 @@ export async function installAllSkills(
   }
 
   mirrorToInstalledAgents();
+}
+
+// ── targeted install engine ───────────────────────────────────────────────────────────────────
+
+/** What an `updateSkills` run guaranteed, and what it had to do to get there. */
+export interface UpdateSkillsResult {
+  /** Every skill this run guaranteed: requested + core (+ installed, when refreshing). */
+  targets: string[];
+  /** Targets that were (re)installed by this run. */
+  installed: string[];
+  /** Targets that were already current — nothing fetched for them. */
+  current: string[];
+  /**
+   * Requested names the latest manifest doesn't ship (typo, or renamed
+   * upstream). Only ever non-empty on a non-strict run: a strict run throws on
+   * unknown names before returning, so strict callers never observe this — a
+   * future caller reading `unknown` should not expect it under `strict: true`.
+   */
+  unknown: string[];
+  /** True when freshness couldn't be checked (offline) and only presence was verified. */
+  presenceOnly: boolean;
+}
+
+/**
+ * The targeted install engine behind `init` and `skills update [names...]` —
+ * the replacement for "anything stale ⇒ re-pull the full skill set". It
+ * guarantees a small, explicit set is installed and current:
+ *
+ *   - the requested names (a workflow being routed to, e.g. `pr-to-video`),
+ *   - the core set (entry router + shared domain skills — see skillsManifest),
+ *   - with `refreshInstalled`, whatever is already installed (refreshed, so an
+ *     update never *expands* a deliberate partial install).
+ *
+ * Only targets that are actually missing or outdated are passed to
+ * `skills add` (one spawn, one `--skill` flag per name); when everything is
+ * current the call is a fast no-op with no install. When the manifest is
+ * unreachable, freshness is unknowable and the run degrades to the presence
+ * half of the guarantee — see updateSkillsOffline.
+ */
+export async function updateSkills(
+  opts: {
+    requested?: readonly string[];
+    refreshInstalled?: boolean;
+    strict?: boolean;
+    cwd?: string;
+  } = {},
+): Promise<UpdateSkillsResult> {
+  const requested = [...new Set(opts.requested ?? [])];
+  const strict = opts.strict ?? false;
+
+  let check: SkillsCheckResult | null = null;
+  try {
+    check = await checkSkills({ cwd: opts.cwd });
+  } catch {
+    check = null; // manifest unreachable (offline / rate-limited) — presence mode below
+  }
+  if (!check) return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
+
+  // "removed" entries are lock-attributed leftovers, not manifest skills —
+  // they are `skills update`'s prune concern, never an update target.
+  const manifestSkills = check.skills.filter((s) => s.status !== "removed");
+  const manifestNames = new Set(manifestSkills.map((s) => s.name));
+
+  const unknown = requested.filter((name) => !manifestNames.has(name));
+  if (unknown.length) {
+    const message =
+      `Unknown skill(s): ${unknown.join(", ")}. ` +
+      `Available: ${[...manifestNames].sort().join(", ")}`;
+    if (strict) throw new Error(message);
+    clack.log.warn(c.warn(message));
+  }
+
+  const targets = manifestSkills.filter(
+    (s) =>
+      requested.includes(s.name) ||
+      isCoreSkill(s.name) ||
+      (opts.refreshInstalled === true && s.status !== "missing"),
+  );
+  const toInstall = targets.filter((s) => s.status === "missing" || s.status === "outdated");
+  const result: UpdateSkillsResult = {
+    targets: targets.map((s) => s.name),
+    installed: toInstall.map((s) => s.name),
+    current: targets.filter((s) => s.status === "current").map((s) => s.name),
+    unknown,
+    presenceOnly: false,
+  };
+
+  if (toInstall.length > 0) {
+    await installSkills(result.installed, { cwd: opts.cwd, strict });
+    verifyInstalled(result.installed, { strict, cwd: opts.cwd });
+  }
+  return result;
+}
+
+/**
+ * The presence half of the guarantee, after an install claims success: every
+ * name must now exist on disk. Catches the "install exited 0 but delivered
+ * nothing" failure mode, which would otherwise surface much later as a
+ * workflow reading skill files that aren't there.
+ *
+ * Strictness mirrors the caller's tolerance: a strict run (the `check ||
+ * update` CI contract, the router's trigger-time guarantee) throws so the
+ * failure is loud; a non-strict run (init) only warns and proceeds, since a
+ * skills hiccup must never break scaffolding.
+ */
+function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?: string }): void {
+  const present = new Set(presentSkills(names, { cwd: opts.cwd }));
+  const absent = names.filter((name) => !present.has(name));
+  if (absent.length === 0) return;
+  const message = `Skill(s) still missing after install: ${absent.join(", ")}`;
+  if (opts.strict) throw new Error(message);
+  clack.log.warn(c.warn(message));
+}
+
+/**
+ * Offline degradation for updateSkills: the manifest is unreachable, so
+ * freshness is unknowable. What can still be honored is the PRESENCE half of
+ * the guarantee, extended to the pinned FALLBACK_CORE_SKILLS list so the
+ * router / preamble promise ("this workflow plus the core set it depends on")
+ * doesn't silently shrink to just the named skill on degraded networks —
+ * raw.githubusercontent.com blocked while `git clone` works is a real
+ * corporate-proxy shape, which is exactly when the blind install below can
+ * still succeed.
+ *
+ *   - Named run (`update <workflow>`): presence-check requested + fallback
+ *     core, blind-install whatever is absent (a truly dead network fails the
+ *     clone fast, and `strict` decides how loudly). Stale-but-present
+ *     proceeds — blocking a build on a network hiccup is worse than running
+ *     one release behind.
+ *   - Bare run (nothing requested): the whole job was freshness, and presence
+ *     can't prove it. strict — the documented `check || update` CI contract —
+ *     must fail loudly rather than exit 0 while everything stays stale.
+ *     Non-strict (init) still presence-checks the fallback core, so a fresh
+ *     machine gets a best-effort core install instead of nothing.
+ */
+async function updateSkillsOffline(
+  requested: readonly string[],
+  opts: { strict: boolean; cwd?: string },
+): Promise<UpdateSkillsResult> {
+  if (requested.length === 0 && opts.strict) {
+    throw new Error(
+      "can't check skills freshness (GitHub manifest unreachable) — refusing to report success. Retry when online.",
+    );
+  }
+
+  const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])];
+  const present = new Set(presentSkills(targets, { cwd: opts.cwd }));
+  const absent = targets.filter((name) => !present.has(name));
+
+  console.log(
+    c.dim(
+      absent.length === 0
+        ? "Skills freshness check unavailable (offline?) — installed skills found, continuing without a refresh."
+        : `Skills freshness check unavailable (offline?) — attempting a blind install of: ${absent.join(", ")}`,
+    ),
+  );
+
+  if (absent.length > 0) {
+    await installSkills(absent, { cwd: opts.cwd, strict: opts.strict });
+    verifyInstalled(absent, opts);
+  }
+  return {
+    targets,
+    installed: absent,
+    current: [...present],
+    unknown: [],
+    presenceOnly: true,
+  };
 }
 
 // ── check ────────────────────────────────────────────────────────────────────
@@ -232,8 +434,9 @@ function printSkillSection(
   title: string,
   mark: string,
   color: (s: string) => string,
+  filter: (s: SkillDiff) => boolean = () => true,
 ): void {
-  const items = result.skills.filter((s) => s.status === status);
+  const items = result.skills.filter((s) => s.status === status && filter(s));
   if (!items.length) return;
   console.log();
   console.log(`  ${color(title)}`);
@@ -256,14 +459,31 @@ function renderCheck(result: SkillsCheckResult): void {
   console.log(`  ${c.bold("Location")}  ${c.dim(result.location)} ${c.dim(`(${result.agent})`)}`);
   console.log();
 
+  const onDemandMissing = summary.missing - summary.coreMissing;
   const parts = [c.success(`✓ ${summary.current} current`)];
   if (summary.outdated) parts.push(c.warn(`↑ ${summary.outdated} outdated`));
-  if (summary.missing) parts.push(c.dim(`◦ ${summary.missing} not installed`));
+  if (summary.coreMissing) parts.push(c.warn(`◦ ${summary.coreMissing} core not installed`));
+  if (onDemandMissing) parts.push(c.dim(`◦ ${onDemandMissing} available on demand`));
   if (summary.removed) parts.push(c.warn(`✗ ${summary.removed} removed upstream`));
   console.log(`  ${parts.join("   ")}`);
 
   printSkillSection(result, "outdated", "Outdated:", "↑", c.warn);
-  printSkillSection(result, "missing", "Not installed:", "◦", c.dim);
+  printSkillSection(
+    result,
+    "missing",
+    "Core not installed (skills update installs these):",
+    "◦",
+    c.warn,
+    (s) => isCoreSkill(s.name),
+  );
+  printSkillSection(
+    result,
+    "missing",
+    "Available on demand (installed when their workflow first runs):",
+    "◦",
+    c.dim,
+    (s) => !isCoreSkill(s.name),
+  );
   printSkillSection(
     result,
     "removed",
@@ -321,17 +541,75 @@ const checkCommand = defineCommand({
 
 // ── update ───────────────────────────────────────────────────────────────────
 
+/**
+ * Positional skill names from argv, split into plain-slug names and rejected
+ * tokens — each name is spread into a spawn as a `--skill` value, so
+ * flag-like tokens are refused up front (the caller reports and exits).
+ */
+function requestedNamesFrom(positionals: readonly unknown[]): {
+  requested: string[];
+  rejected: string[];
+} {
+  const names = positionals.map(String).filter((n) => n.length > 0);
+  return {
+    requested: names.filter((n) => PLAIN_SKILL_NAME.test(n)),
+    rejected: names.filter((n) => !PLAIN_SKILL_NAME.test(n)),
+  };
+}
+
+/** Result line(s) for `skills update` — JSON for agents, one calm line for humans. */
+function reportUpdate(
+  result: UpdateSkillsResult,
+  requested: readonly string[],
+  json: boolean,
+): void {
+  if (json) {
+    console.log(JSON.stringify(withMeta(result), null, 2));
+    return;
+  }
+  if (result.installed.length > 0) {
+    console.log(
+      c.success(
+        `Installed/updated ${result.installed.length} skill(s): ${result.installed.join(", ")}`,
+      ),
+    );
+  } else if (result.presenceOnly) {
+    // Freshness was never checked (offline degrade) — "up to date" would be a
+    // claim we can't back. Presence is all that was verified.
+    console.log(c.warn("Freshness unknown (GitHub unreachable) — verified presence only."));
+  } else {
+    console.log(c.success("Installed skills are already up to date."));
+  }
+  // The named skills are the caller's actual question ("is my workflow ready?")
+  // — answer it explicitly, whatever the install had to do.
+  if (requested.length) console.log(c.success(`◇ Ready: ${requested.join(", ")}`));
+}
+
+/**
+ * Failure line for `skills update`. In --json mode the failure must land on
+ * stdout as JSON (an agent piping to a parser gets structure, not clack
+ * prose); the human path keeps the clack error.
+ */
+function reportUpdateFailure(message: string, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify(withMeta({ error: message }), null, 2));
+    return;
+  }
+  clack.log.error(c.error(message));
+}
+
 const updateCommand = defineCommand({
   meta: {
     name: "update",
     description:
-      "Update all HyperFrames skills to the latest — installs any not yet present, removes any no longer published",
+      "Update the core set plus every installed HyperFrames skill to the latest, and remove any no longer published. Pass skill names to also install those (how workflow skills install on demand) — without names it never expands a partial install",
   },
   // Mirror `check`'s flags: the prune step runs the same removed-detection, so it
   // must respect the same overrides. Without these, `update`'s internal
   // checkSkills() fell back to defaults — pruning the auto-detected install
   // against the default manifest even when the user pointed `check` elsewhere.
   args: {
+    json: { type: "boolean", description: "Output as JSON", default: false },
     dir: {
       type: "string",
       description:
@@ -347,27 +625,44 @@ const updateCommand = defineCommand({
     const dir = args.dir;
     const source = args.source;
 
-    // The install re-fetches every skill to the latest AND installs ones not yet
-    // present — so "update" pulls the full set, not just what is already
-    // installed. This is where `init` and the stale-skills nudge both lead.
-    // runSkillsAdd resolves the agent target set itself (existing project
-    // folders → installed CLIs → a Claude-Code + `.agents` floor); we no longer
-    // spray to every agent via `--all`.
+    // Positional skill names (e.g. `hyperframes skills update pr-to-video`) are
+    // the ONLY way update expands an install: each named skill is guaranteed
+    // present and current. This is the router's trigger-time step — the
+    // /hyperframes router runs it after picking a workflow, before reading the
+    // workflow's skill.
+    const { requested, rejected } = requestedNamesFrom(args._ ?? []);
+    if (rejected.length) {
+      reportUpdateFailure(`Invalid skill name(s): ${rejected.join(", ")}`, args.json === true);
+      process.exitCode = 1;
+      return;
+    }
+
+    // Targeted, not full-set: refresh the core set (entry router + shared
+    // domain skills) plus whatever is already installed, plus anything named
+    // above. Without names a deliberate partial install stays partial
+    // (refreshed, but never expanded) — the end-user workflow skills install
+    // on demand, when their workflow is
+    // triggered. This is where `init` and the stale-skills nudge both lead;
+    // pulling the complete skill set here is exactly what users complained
+    // about. Explicit full set: `hyperframes skills` or `npx skills add
+    // heygen-com/hyperframes --all`.
     //
     // Note: the upstream `skills add` CLI has no `--dir` flag (it installs into
     // the resolved agent dirs), so `--dir` here scopes only the *prune* detection
     // below, not the install. `--source` likewise drives where the prune's
     // "latest" manifest comes from; the install always targets the canonical
-    // HyperFrames repo so `update` reliably pulls the published set.
+    // HyperFrames repo so `update` reliably refreshes the published skills.
     //
     // strict: this is the documented recovery path for the agent/CI contract
-    // `hyperframes skills check || hyperframes skills update`. If the install
-    // fails (no npx, `skills add` exits non-zero) it must exit non-zero too —
-    // otherwise the `||` chain passes while nothing actually changed.
+    // `hyperframes skills check || hyperframes skills update`, and the router's
+    // trigger-time guarantee. If the install fails (no npx, `skills add` exits
+    // non-zero, a named skill still absent afterwards) it must exit non-zero
+    // too — otherwise the `||` chain passes while nothing actually changed.
     try {
-      await installAllSkills({ strict: true });
+      const result = await updateSkills({ requested, refreshInstalled: true, strict: true });
+      reportUpdate(result, requested, args.json === true);
     } catch (err) {
-      clack.log.error(c.error(`Update failed: ${(err as Error).message}`));
+      reportUpdateFailure(`Update failed: ${(err as Error).message}`, args.json === true);
       process.exitCode = 1;
       return;
     }
@@ -413,6 +708,6 @@ export default defineCommand({
     // citty runs this parent handler even when a subcommand matches; guard on
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
-    if (!args._?.[0]) await installAllSkills();
+    if (!args._?.[0]) await installSkills("*");
   },
 });

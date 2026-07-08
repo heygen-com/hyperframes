@@ -210,6 +210,11 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
       const html = readFileSync(filePath, "utf-8");
       const compSrcPath = `compositions/${file}`;
       allHtmlSources.push({ html, compSrcPath });
+      // Mountable fragments (figma component imports, registry snippets) are
+      // not standalone compositions — composition-root rules don't apply.
+      // Anchored to the file's ROOT element so a real composition that merely
+      // inlines snippet markup (or mentions the token in text) is still linted.
+      if (isSnippetFragment(html)) continue;
       const result = await lintHyperframeHtml(html, {
         filePath,
         isSubComposition: true,
@@ -609,4 +614,12 @@ function lintMissingOrEmptySubComposition(
   }
 
   return findings;
+}
+
+/** True when the file's first element carries data-hf-snippet — i.e. the file
+ * IS a mountable fragment, not a composition that merely contains one. */
+function isSnippetFragment(html: string): boolean {
+  const firstTag = html.match(/<[a-zA-Z][^>]*>/);
+  if (!firstTag) return false;
+  return /\bdata-hf-snippet\b/.test(firstTag[0]);
 }

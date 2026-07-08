@@ -3,6 +3,8 @@ name: product-launch-video
 description: "Turn a product or marketing URL, pasted script, or brief into a product launch / promo video — SaaS promos, feature reveals, product demos, app and company launches. Use when the user wants to market, launch, promote, or reveal a product; the default for any commercial URL. Not a general site tour (/website-to-video). Unclear → /hyperframes."
 ---
 
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update product-launch-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
 > **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
 
 # Product Launch to HyperFrames

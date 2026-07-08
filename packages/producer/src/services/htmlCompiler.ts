@@ -27,6 +27,9 @@ import {
 import {
   inlineSubCompositions as inlineSubCompositionsShared,
   prepareFlattenedInnerRoot,
+  emitRootCompositionVariableStyles,
+  readDeclaredDefaults,
+  parseHostVariableValues,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -761,18 +764,32 @@ function inlineSubCompositions(
   html: string,
   subCompositions: Map<string, string>,
   projectDir: string,
+  variableOverrides: Record<string, unknown> = {},
 ): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
-  if (!hosts.length) return html;
+  if (!hosts.length) {
+    // Even with no sub-compositions, declared composition variables need a
+    // compile-time stylesheet so eval-time reads (GSAP .from immediateRender,
+    // top-level script getComputedStyle) resolve var(--slug) — the runtime's
+    // DOMContentLoaded injection is too late for those.
+    const emitted = emitRootCompositionVariableStyles(
+      document as unknown as Document,
+      {},
+      variableOverrides,
+    );
+    return emitted ? document.toString() : html;
+  }
 
   const result = inlineSubCompositionsShared(
     document as unknown as Document,
     hosts as unknown as Element[],
     {
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
       resolveHtml: (srcPath: string) => {
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
@@ -871,6 +888,15 @@ function inlineSubCompositions(
     scriptEl.textContent = result.scripts.join("\n;\n");
     body.appendChild(scriptEl);
   }
+
+  // Compile-time CSS custom properties (mirrors the preview bundler): root
+  // declarers plus one scoped rule per sub-composition host, so var(--slug)
+  // resolves at script eval time, not just after runtime injection.
+  emitRootCompositionVariableStyles(
+    document as unknown as Document,
+    result.variablesByComp,
+    variableOverrides,
+  );
 
   return document.toString();
 }
@@ -1547,6 +1573,13 @@ export interface CompileForRenderOptions {
   animatedGifCacheDir?: string;
   /** FFmpeg timeout for animated GIF transcodes. */
   ffmpegProcessTimeout?: number;
+  /**
+   * Render-time variable overrides (`--variables`). Layered over declared
+   * defaults in the compile-time CSS custom-property stylesheet so eval-time
+   * reads (GSAP .from immediateRender) see the overridden value — the
+   * `window.__hfVariables` injection covers script reads, not var() in CSS.
+   */
+  variables?: Record<string, unknown>;
 }
 
 const GSAP_CDN_BASE = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/";
@@ -1611,7 +1644,12 @@ export async function compileForRender(
   // Inline sub-compositions into the main HTML so the runtime takes the same
   // synchronous code path as the bundled preview (no async fetch of
   // data-composition-src). This mirrors what htmlBundler.ts does for preview.
-  const inlinedHtml = inlineSubCompositions(fullHtml, subCompositions, projectDir);
+  const inlinedHtml = inlineSubCompositions(
+    fullHtml,
+    subCompositions,
+    projectDir,
+    options.variables ?? {},
+  );
 
   // Strip preload="none" from media elements — the renderer needs to load all
   // media upfront for frame capture. Users add this to reduce browser memory in

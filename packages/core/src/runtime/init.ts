@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage } from "./bridge";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
+import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
 import { createGsapAdapter } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
@@ -139,6 +140,15 @@ export function initSandboxRuntimeModular(): void {
     document.body.style.margin = "0";
     document.body.style.padding = "0";
     document.body.style.overflow = "hidden";
+  }
+
+  // figma brand-token chain: define declared composition variables as CSS
+  // custom properties so imported var(--slug, literal) fills resolve from the
+  // live variable instead of always falling back to the frozen literal.
+  try {
+    injectCompositionCssVariables(document);
+  } catch (err) {
+    swallow("runtime.init.cssVariables", err);
   }
 
   window.__timelines = window.__timelines || {};

@@ -1,5 +1,12 @@
 import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
-import { readDeclaredDefaults } from "./getVariables";
+import { markFlattenedInnerRoot } from "./flattenedRoot";
+import {
+  applyCssVariables,
+  clearAppliedCssVariables,
+  parseHostVariableValues,
+  readDeclaredDefaults,
+  readRenderOverrides,
+} from "./getVariables";
 
 type LoadExternalCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -172,30 +179,9 @@ function resetCompositionHost(host: Element) {
   host.textContent = "";
 }
 
-const FLATTENED_INNER_ROOT_STRIP_ATTRS = [
-  "data-composition-id",
-  "data-composition-file",
-  "data-start",
-  "data-duration",
-  "data-end",
-  "data-track-index",
-  "data-track",
-  "data-composition-src",
-  "data-hf-authored-duration",
-  "data-hf-authored-end",
-];
-
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   const prepared = document.importNode(innerRoot, true) as HTMLElement;
-  const authoredRootId = prepared.getAttribute("id")?.trim();
-  for (const attrName of FLATTENED_INNER_ROOT_STRIP_ATTRS) {
-    prepared.removeAttribute(attrName);
-  }
-  if (authoredRootId) {
-    prepared.removeAttribute("id");
-    prepared.setAttribute("data-hf-authored-id", authoredRootId);
-  }
-  prepared.setAttribute("data-hf-inner-root", "true");
+  markFlattenedInnerRoot(prepared);
   const w = prepared.getAttribute("data-width");
   const h = prepared.getAttribute("data-height");
   prepared.style.width = w ? `${w}px` : "100%";
@@ -218,19 +204,6 @@ function resolveScriptSourceUrl(scriptSrc: string, compositionUrl: URL | null): 
   } catch {
     return scriptSrc;
   }
-}
-
-function parseHostVariableValues(host: Element): Record<string, unknown> {
-  const raw = host.getAttribute("data-variable-values");
-  if (!raw) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-  return parsed as Record<string, unknown>;
 }
 
 type HostCompositionIdentity = {
@@ -423,10 +396,8 @@ async function mountCompositionContent(params: {
     }
   }
 
-  // Inject <head> styles from non-template sub-compositions first (they define
-  // element styles like backgrounds and positioning that the composition needs).
-  if (params.headStyles) {
-    for (const style of params.headStyles) {
+  const injectScopedStyles = (styleEls: Iterable<HTMLStyleElement>): void => {
+    for (const style of styleEls) {
       const clonedStyle = style.cloneNode(true);
       if (!(clonedStyle instanceof HTMLStyleElement)) continue;
       if (authoredScopeCompositionId) {
@@ -440,23 +411,12 @@ async function mountCompositionContent(params: {
       document.head.appendChild(clonedStyle);
       params.injectedStyles.push(clonedStyle);
     }
-  }
-
-  const styles = Array.from(contentNode.querySelectorAll<HTMLStyleElement>("style"));
-  for (const style of styles) {
-    const clonedStyle = style.cloneNode(true);
-    if (!(clonedStyle instanceof HTMLStyleElement)) continue;
-    if (authoredScopeCompositionId) {
-      clonedStyle.textContent = scopeCssToComposition(
-        clonedStyle.textContent || "",
-        authoredScopeCompositionId,
-        runtimeScopeSelector,
-        authoredRootId,
-      );
-    }
-    document.head.appendChild(clonedStyle);
-    params.injectedStyles.push(clonedStyle);
-  }
+  };
+  // Inject <head> styles from non-template sub-compositions first (they define
+  // element styles like backgrounds and positioning that the composition needs),
+  // then the content styles.
+  if (params.headStyles) injectScopedStyles(params.headStyles);
+  injectScopedStyles(Array.from(contentNode.querySelectorAll<HTMLStyleElement>("style")));
 
   // Collect head scripts first (e.g. GSAP CDN loaded in <head> of non-template sub-comps),
   // then content scripts. Head scripts must execute before content scripts.
@@ -536,16 +496,7 @@ async function mountCompositionContent(params: {
   // `window.__hfVariablesByComp[compId]`, so this table must be populated
   // before the wrapped IIFE evaluates.
   if (runtimeScopeCompositionId) {
-    const merged = {
-      ...(params.declaredVariableDefaults ?? {}),
-      ...parseHostVariableValues(params.host),
-    };
-    if (Object.keys(merged).length > 0) {
-      if (!window.__hfVariablesByComp) window.__hfVariablesByComp = {};
-      window.__hfVariablesByComp[runtimeScopeCompositionId] = merged;
-    } else if (window.__hfVariablesByComp) {
-      delete window.__hfVariablesByComp[runtimeScopeCompositionId];
-    }
+    stashInstanceVariables(params, contentNode, runtimeScopeCompositionId);
   }
 
   for (const scriptPayload of scriptPayloads) {
@@ -760,4 +711,36 @@ export async function loadExternalCompositions(
       }
     }),
   );
+}
+
+/**
+ * Stash per-instance variables BEFORE running scripts (the scoped
+ * getVariables() reads window.__hfVariablesByComp[compId]) and mirror them
+ * as CSS custom properties on the host so imported var(--slug, literal)
+ * fills inside the sub-comp resolve per instance (cascade beats the document
+ * root). Inline templates carry declared defaults on the content root;
+ * external loads pass them explicitly. Render-time overrides (--variables)
+ * always win. Stale custom properties from a previous mount are cleared
+ * before (re)applying.
+ */
+function stashInstanceVariables(
+  params: { host: Element; declaredVariableDefaults?: Record<string, unknown> },
+  contentNode: Node,
+  runtimeScopeCompositionId: string,
+): void {
+  const declaredDefaults =
+    params.declaredVariableDefaults ??
+    (contentNode instanceof Element ? readDeclaredDefaults(contentNode) : {});
+  const merged = {
+    ...declaredDefaults,
+    ...parseHostVariableValues(params.host),
+  };
+  clearAppliedCssVariables(params.host);
+  if (Object.keys(merged).length > 0) {
+    if (!window.__hfVariablesByComp) window.__hfVariablesByComp = {};
+    window.__hfVariablesByComp[runtimeScopeCompositionId] = merged;
+    applyCssVariables(params.host, { ...merged, ...readRenderOverrides() });
+  } else if (window.__hfVariablesByComp) {
+    delete window.__hfVariablesByComp[runtimeScopeCompositionId];
+  }
 }

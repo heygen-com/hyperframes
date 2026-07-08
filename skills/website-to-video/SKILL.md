@@ -3,6 +3,8 @@ name: website-to-video
 description: "Capture a general website/URL and turn it into a video OF the site — tour, showcase, or social clip built from captured screenshots and the site's own brand assets. Use for portfolio / blog / docs / landing-page showcases. Not a product launch or promo, even from a URL (/product-launch-video). Unclear → /hyperframes."
 ---
 
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update website-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
 > **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
 
 # Website to HyperFrames

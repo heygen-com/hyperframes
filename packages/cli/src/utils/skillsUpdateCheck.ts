@@ -42,13 +42,15 @@ async function refreshSkillsCache(): Promise<SkillsUpdateMeta> {
     config.lastSkillsCheck = new Date().toISOString();
     config.skillsUpdateAvailable = result.updateAvailable;
     config.skillsOutdatedCount = result.summary.outdated;
-    config.skillsMissingCount = result.summary.missing;
+    // Core-missing only: skills that install on demand (workflows not yet
+    // triggered on this machine) are not "missing" worth nagging about.
+    config.skillsMissingCount = result.summary.coreMissing;
     writeConfig(config);
   }
   return {
     updateAvailable: result.updateAvailable,
     outdated: result.summary.outdated,
-    missing: result.summary.missing,
+    missing: result.summary.coreMissing,
   };
 }
 
