@@ -20,6 +20,9 @@ import { validateCubeFile } from "./lib/cube-validate.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
+// The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
+// test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.
+const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
 let tmp;
 
 function setup() {
@@ -377,6 +380,10 @@ test("grade resolves a library LUT look and freezes a validated cube", () => {
 });
 
 test("smart grade merges measured adjust and keeps stdout valid JSON", () => {
+  if (!HAS_FFMPEG) {
+    console.log("  (skipped: ffmpeg not on PATH)");
+    return;
+  }
   setup();
   const frame = makeFrame(tmp, "under.png", "0x202020");
   const proc = spawnResolve([

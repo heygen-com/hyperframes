@@ -62,16 +62,16 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 
 ### Types
 
-| Type    | What it finds                    | Provider / cascade                             |
-| ------- | -------------------------------- | ---------------------------------------------- |
-| `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)             |
-| `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog       |
-| `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)             |
-| `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                |
+| Type    | What it finds                    | Provider / cascade                                       |
+| ------- | -------------------------------- | -------------------------------------------------------- |
+| `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)                       |
+| `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog                 |
+| `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)                       |
+| `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                          |
 | `logo`  | Official brand marks             | svgl → simple-icons → GitHub org avatar → domain favicon |
-| `voice` | TTS voiceover                    | Local Kokoro (free); HeyGen TTS upsell         |
-| `grade` | HyperFrames color-grading blocks | Core preset → bundled LUT → deterministic cube |
-| `lut`   | Reusable `.cube` LUT files       | Bundled LUT → deterministic cube               |
+| `voice` | TTS voiceover                    | Local Kokoro (free); HeyGen TTS upsell                   |
+| `grade` | HyperFrames color-grading blocks | Core preset → bundled LUT → deterministic cube           |
+| `lut`   | Reusable `.cube` LUT files       | Bundled LUT → deterministic cube                         |
 
 ### Examples
 

@@ -1,10 +1,18 @@
 import { strict as assert } from "node:assert";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { analyzeMediaGrade, formatMeasuredNote, statsToAdjust } from "./grade-analyzer.mjs";
+
+// The "Test: skills" CI job runs bare `node --test` with no ffmpeg on PATH (by
+// design — skills tests are meant to be node-builtin-only). Tests that shell to
+// ffmpeg skip there and run wherever ffmpeg is present (locally, dev).
+const FFMPEG_SKIP =
+  spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0
+    ? false
+    : "ffmpeg not on PATH";
 
 const ADJUST_LIMITS = {
   exposure: { min: -2, max: 2 },
@@ -49,7 +57,7 @@ function assertWithinLimits(adjust) {
   }
 }
 
-test("under-exposed synthetic frame suggests positive exposure", () => {
+test("under-exposed synthetic frame suggests positive exposure", { skip: FFMPEG_SKIP }, () => {
   const dir = mkdtempSync(join(tmpdir(), "mu-grade-under-"));
   try {
     const file = makeFrame(dir, "under.png", "0x202020");
@@ -62,7 +70,7 @@ test("under-exposed synthetic frame suggests positive exposure", () => {
   }
 });
 
-test("over-exposed synthetic frame pulls exposure and whites down", () => {
+test("over-exposed synthetic frame pulls exposure and whites down", { skip: FFMPEG_SKIP }, () => {
   const dir = mkdtempSync(join(tmpdir(), "mu-grade-over-"));
   try {
     const file = makeFrame(dir, "over.png", "white");
@@ -75,17 +83,21 @@ test("over-exposed synthetic frame pulls exposure and whites down", () => {
   }
 });
 
-test("warm-cast synthetic frame suggests negative temperature correction", () => {
-  const dir = mkdtempSync(join(tmpdir(), "mu-grade-warm-"));
-  try {
-    const file = makeFrame(dir, "warm.png", "orange");
-    const { adjust } = analyzeMediaGrade(file);
-    assert.ok(adjust.temperature < 0, `expected cooling correction, got ${adjust.temperature}`);
-    assertWithinLimits(adjust);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+test(
+  "warm-cast synthetic frame suggests negative temperature correction",
+  { skip: FFMPEG_SKIP },
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "mu-grade-warm-"));
+    try {
+      const file = makeFrame(dir, "warm.png", "orange");
+      const { adjust } = analyzeMediaGrade(file);
+      assert.ok(adjust.temperature < 0, `expected cooling correction, got ${adjust.temperature}`);
+      assertWithinLimits(adjust);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("low-spread stats suggest positive contrast", () => {
   const { adjust } = statsToAdjust({
@@ -107,20 +119,26 @@ test("malformed media fails cleanly", () => {
   );
 });
 
-test("media path with shell metacharacters is passed as argv, not a shell string", () => {
-  const dir = mkdtempSync(join(tmpdir(), "mu-grade-shell-"));
-  const sentinel = join(process.cwd(), "mu-grade-shell-sentinel.png");
-  try {
-    if (existsSync(sentinel)) unlinkSync(sentinel);
-    const file = makeFrame(dir, "frame; touch mu-grade-shell-sentinel.png", "orange");
-    const result = analyzeMediaGrade(file);
-    assert.ok(result.measured.frames >= 1);
-    assert.equal(existsSync(sentinel), false);
-  } finally {
-    if (existsSync(sentinel)) unlinkSync(sentinel);
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+test(
+  "media path with shell metacharacters is passed as argv, not a shell string",
+  {
+    skip: FFMPEG_SKIP,
+  },
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "mu-grade-shell-"));
+    const sentinel = join(process.cwd(), "mu-grade-shell-sentinel.png");
+    try {
+      if (existsSync(sentinel)) unlinkSync(sentinel);
+      const file = makeFrame(dir, "frame; touch mu-grade-shell-sentinel.png", "orange");
+      const result = analyzeMediaGrade(file);
+      assert.ok(result.measured.frames >= 1);
+      assert.equal(existsSync(sentinel), false);
+    } finally {
+      if (existsSync(sentinel)) unlinkSync(sentinel);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test("measured note is a stderr-safe single-line summary", () => {
   const note = formatMeasuredNote("/tmp/frame.png", {
