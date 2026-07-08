@@ -26,7 +26,7 @@ describe("nodeToHtml", () => {
     expect(out.html).toContain("width: 800px");
     expect(out.html).toContain("height: 600px");
     expect(out.html).toContain("position: relative");
-    expect(out.html).toContain("background: #FFFFFF");
+    expect(out.html).toContain("background-color: #FFFFFF");
   });
 
   it("absolutely positions children relative to the root frame", () => {
@@ -49,7 +49,7 @@ describe("nodeToHtml", () => {
     expect(out.html).toContain("width: 120px");
     expect(out.html).toContain("border-radius: 8px");
     expect(out.html).toContain("opacity: 0.9");
-    expect(out.html).toContain("background: #0066FF");
+    expect(out.html).toContain("background-color: #0066FF");
   });
 
   it("emits var() with literal fallback for resolved bindings", () => {
@@ -75,7 +75,7 @@ describe("nodeToHtml", () => {
         unresolved: [],
       },
     );
-    expect(out.html).toContain("background: var(--figma-blue-500, #0066FF)");
+    expect(out.html).toContain("background-color: var(--figma-blue-500, #0066FF)");
   });
 
   it("bakes literals and flags unresolved bindings — never a dangling var()", () => {
@@ -94,7 +94,7 @@ describe("nodeToHtml", () => {
         unresolved: [{ nodeId: "1:2", property: "fills", figmaId: "VariableID:9:9" }],
       },
     );
-    expect(out.html).toContain("background: #0066FF");
+    expect(out.html).toContain("background-color: #0066FF");
     expect(out.html).not.toContain("var(");
     expect(out.html).toContain('data-figma-unresolved="fills"');
   });
@@ -168,7 +168,7 @@ describe("nodeToHtml", () => {
     );
     expect(out.html).not.toContain("1:5");
     expect(out.html).toContain('data-figma-id="1:6"');
-    expect(out.html).not.toContain("background: #0066FF");
+    expect(out.html).not.toContain("background-color: #0066FF");
   });
 
   it("maps linear gradients and drop shadows", () => {

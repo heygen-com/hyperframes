@@ -15,6 +15,7 @@ import {
   slugify,
   type BindingSite,
   type FigmaClient,
+  type NodeToHtmlResult,
   type RasterizeRequest,
 } from "@hyperframes/core/figma";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -27,7 +28,7 @@ function escapeAttr(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-import { runAssetImport } from "./asset.js";
+import { runAssetImport, type AssetImportResult } from "./asset.js";
 import { downloadRender } from "./download.js";
 import { withFigmaErrors } from "./cliError.js";
 
@@ -35,6 +36,9 @@ export interface ComponentImportDeps {
   projectDir: string;
   client: FigmaClient;
   download: (url: string) => Promise<Uint8Array>;
+  /** override the component name — figma variant frames are often all named
+   * "Platform=Desktop", which would slug-collide across imports */
+  name?: string;
 }
 
 export interface ComponentImportResult {
@@ -55,9 +59,9 @@ export async function runComponentImport(
 
   const tree = await deps.client.nodeTree(ref);
   const bindings = resolveBindings(tree, readBindings(deps.projectDir));
-  const mapped = nodeToHtml(tree, bindings);
+  const mapped = nodeToHtml(tree, bindings, { rootName: deps.name });
 
-  const name = slugify(tree.name);
+  const name = slugify(deps.name ?? tree.name);
   const componentDir = join(deps.projectDir, "compositions", "components", name);
   if (existsSync(componentDir))
     console.warn(
@@ -65,52 +69,12 @@ export async function runComponentImport(
     );
   mkdirSync(componentDir, { recursive: true });
 
-  // Rasterize fallback: export each unmappable node via Phase 1 and point
-  // the placeholder img at the frozen file (path relative to the component).
-  // The search key must match the EMITTED (html-escaped) node id, and
-  // replaceAll covers the same node appearing twice in the tree.
-  let html = mapped.html;
-  const frozenAssets: string[] = [];
-  const failedRasterize: string[] = [];
-  for (const req of mapped.rasterize) {
-    // figma sometimes refuses to render a node (nested instances commonly
-    // fail as svg) — retry once as png, then skip THIS node and keep the
-    // import: one unrenderable node must not abort the whole component. The
-    // placeholder keeps its data-figma-rasterize marker (no src) so the gap
-    // is visible and hand-fixable.
-    let asset = null;
-    for (const format of ["svg", "png"] as const) {
-      try {
-        asset = await runAssetImport(
-          `${ref.fileKey}:${req.nodeId}`,
-          { format, description: req.name },
-          { projectDir: deps.projectDir, client: deps.client, download: deps.download },
-        );
-        break;
-      } catch (err) {
-        if (!(err instanceof FigmaClientError) || err.code !== "RENDER_FAILED") throw err;
-      }
-    }
-    if (asset === null) {
-      failedRasterize.push(req.nodeId);
-      console.warn(
-        `could not render node ${req.nodeId} ("${req.name}") as svg or png — leaving its placeholder without src`,
-      );
-      continue;
-    }
-    frozenAssets.push(asset.record.path);
-    // src is a URL — always forward slashes, even when relative() yields
-    // windows separators.
-    const srcRel = relative(componentDir, join(deps.projectDir, asset.record.path)).replaceAll(
-      "\\",
-      "/",
-    );
-    const emittedId = escapeAttr(req.nodeId);
-    html = html.replaceAll(
-      `data-figma-rasterize="${emittedId}" `,
-      `data-figma-rasterize="${emittedId}" src="${escapeAttr(srcRel)}" `,
-    );
-  }
+  const { html, frozenAssets, failedRasterize } = await rasterizeFallback(
+    mapped,
+    ref.fileKey,
+    componentDir,
+    deps,
+  );
 
   const htmlFile = join(componentDir, `${name}.html`);
   writeFileSync(htmlFile, html + "\n");
@@ -148,10 +112,83 @@ export async function runComponentImport(
   };
 }
 
+interface RasterizeOutcome {
+  html: string;
+  frozenAssets: string[];
+  failedRasterize: string[];
+}
+
+/**
+ * Rasterize fallback: export each unmappable node via Phase 1 and point the
+ * placeholder img at the frozen file (path relative to the component). figma
+ * sometimes refuses to render a node (nested instances commonly fail as svg)
+ * — retry once as png, then skip THAT node and keep the import: one
+ * unrenderable node must not abort the whole component. Skipped placeholders
+ * keep their data-figma-rasterize marker (no src) so the gap is visible.
+ */
+async function rasterizeFallback(
+  mapped: NodeToHtmlResult,
+  fileKey: string,
+  componentDir: string,
+  deps: ComponentImportDeps,
+): Promise<RasterizeOutcome> {
+  let html = mapped.html;
+  const frozenAssets: string[] = [];
+  const failedRasterize: string[] = [];
+  for (const req of mapped.rasterize) {
+    const asset = await renderWithPngRetry(fileKey, req, deps);
+    if (asset === null) {
+      failedRasterize.push(req.nodeId);
+      console.warn(
+        `could not render node ${req.nodeId} ("${req.name}") as svg or png — leaving its placeholder without src`,
+      );
+      continue;
+    }
+    frozenAssets.push(asset.record.path);
+    // src is a URL — always forward slashes, even when relative() yields
+    // windows separators.
+    const srcRel = relative(componentDir, join(deps.projectDir, asset.record.path)).replaceAll(
+      "\\",
+      "/",
+    );
+    // The search key must match the EMITTED (html-escaped) node id, and
+    // replaceAll covers the same node appearing twice in the tree.
+    const emittedId = escapeAttr(req.nodeId);
+    html = html.replaceAll(
+      `data-figma-rasterize="${emittedId}" `,
+      `data-figma-rasterize="${emittedId}" src="${escapeAttr(srcRel)}" `,
+    );
+  }
+  return { html, frozenAssets, failedRasterize };
+}
+
+async function renderWithPngRetry(
+  fileKey: string,
+  req: RasterizeRequest,
+  deps: ComponentImportDeps,
+): Promise<AssetImportResult | null> {
+  for (const format of ["svg", "png"] as const) {
+    try {
+      return await runAssetImport(
+        `${fileKey}:${req.nodeId}`,
+        { format, description: req.name },
+        { projectDir: deps.projectDir, client: deps.client, download: deps.download },
+      );
+    } catch (err) {
+      if (!(err instanceof FigmaClientError) || err.code !== "RENDER_FAILED") throw err;
+    }
+  }
+  return null;
+}
+
 export default defineCommand({
   meta: { name: "component", description: "Import a figma frame as an editable HTML component" },
   args: {
     ref: { type: "positional", description: "figma URL or fileKey:nodeId", required: true },
+    name: {
+      type: "string",
+      description: "component name override (variant frames often share a name and would collide)",
+    },
     dir: { type: "string", description: "project directory", default: "." },
   },
   async run({ args }) {
@@ -162,6 +199,7 @@ export default defineCommand({
         projectDir: args.dir,
         client,
         download: downloadRender,
+        name: args.name,
       });
       console.log(`imported component "${result.name}" → ${result.htmlPath}`);
       if (result.rasterized.length > 0) {

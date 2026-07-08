@@ -83,6 +83,8 @@ export interface CompileStageInput {
    * on the local filesystem and embedded. Distributed renders pass `false`.
    */
   allowSystemFontCapture?: boolean;
+  /** Render-time variable overrides (`--variables`); see CompileForRenderOptions.variables. */
+  variables?: Record<string, unknown>;
 }
 
 export interface CompileStageResult {
@@ -127,6 +129,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     log,
     failClosedFontFetch: failClosedFontFetch === true,
     allowSystemFontCapture,
+    variables: input.variables,
     animatedGifCacheDir: cfg.extractCacheDir
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,

@@ -1,3 +1,7 @@
+import { markFlattenedInnerRoot } from "../runtime/flattenedRoot";
+export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
+import { parseHostVariableValues } from "../runtime/getVariables";
+import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
 import { join, resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
@@ -392,43 +396,9 @@ function assignBundledRuntimeCompositionIds(
   return identities;
 }
 
-function parseHostVariableValues(host: Element): Record<string, unknown> {
-  const raw = host.getAttribute("data-variable-values");
-  if (!raw) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-  return parsed as Record<string, unknown>;
-}
-
-export const FLATTENED_INNER_ROOT_STRIP_ATTRS = [
-  "data-composition-id",
-  "data-composition-file",
-  "data-start",
-  "data-duration",
-  "data-end",
-  "data-track-index",
-  "data-track",
-  "data-composition-src",
-  "data-hf-authored-duration",
-  "data-hf-authored-end",
-];
-
 export function prepareFlattenedInnerRoot(innerRoot: Element): Element {
   const prepared = innerRoot.cloneNode(true) as Element;
-  const authoredRootId = prepared.getAttribute("id")?.trim();
-  for (const attrName of FLATTENED_INNER_ROOT_STRIP_ATTRS) {
-    prepared.removeAttribute(attrName);
-  }
-  if (authoredRootId) {
-    prepared.removeAttribute("id");
-    prepared.setAttribute("data-hf-authored-id", authoredRootId);
-  }
-  prepared.setAttribute("data-hf-inner-root", "true");
+  markFlattenedInnerRoot(prepared);
   const w = prepared.getAttribute("data-width");
   const h = prepared.getAttribute("data-height");
   const widthVal = w ? `${w}px` : "100%";
@@ -890,6 +860,13 @@ export async function bundleToSingleHtml(
       if (runtimeCompId && Object.keys(mergedVariables).length > 0) {
         compVariablesByComp[runtimeCompId] = mergedVariables;
       }
+      pushSubCompVariableStyles(
+        innerDoc,
+        innerRoot,
+        mergedVariables,
+        runtimeScope,
+        compStyleChunks,
+      );
 
       if (innerRoot) {
         // Hoist styles into the collected style chunks
@@ -973,6 +950,8 @@ export async function bundleToSingleHtml(
     document.body.appendChild(compScript);
   }
 
+  emitRootCompositionVariableStyles(document, compVariablesByComp);
+
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
@@ -1013,4 +992,160 @@ export async function bundleToSingleHtml(
   }
 
   return document.toString();
+}
+
+/** One stylesheet rule defining primitive composition variables under `selector`. */
+function compositionVariablesCssBlock(
+  variables: Record<string, unknown>,
+  selector: string,
+): string | null {
+  const lines: string[] = [];
+  for (const [id, value] of Object.entries(variables)) {
+    if ((typeof value === "string" && value !== "") || typeof value === "number") {
+      lines.push(`  ${cssVariableName(id)}: ${String(value)};`);
+    }
+  }
+  if (lines.length === 0) return null;
+  return `${selector} {\n${lines.join("\n")}\n}`;
+}
+
+/**
+ * Compile-time counterpart of the runtime's injectCompositionCssVariables:
+ * every element declaring data-composition-variables gets a scoped stylesheet
+ * rule so var(--slug, literal) references resolve during body parse. The
+ * runtime injection remains define-if-absent, so it won't double-apply.
+ *
+ * `variablesByComp` (host-merged sub-composition values, keyed by runtime
+ * composition id) adds one rule per scope — the flattened inner root loses
+ * its data-composition-id, so the host selector is the only stable anchor.
+ * Exported for the producer's render compiler, which inlines sub-compositions
+ * through the shared module rather than this bundler.
+ * Returns whether a style element was appended.
+ */
+export function emitRootCompositionVariableStyles(
+  document: Document,
+  variablesByComp: Record<string, Record<string, unknown>> = {},
+  overrides: Record<string, unknown> = {},
+): boolean {
+  const layerFor = makeVariableLayer(document, overrides);
+  const rules = [
+    ...hostScopedVariableRules(variablesByComp, overrides),
+    ...rootDeclaredVariableRules(document, layerFor),
+    ...declarerVariableRules(document, layerFor),
+  ];
+  if (rules.length === 0) return false;
+  const style = document.createElement("style");
+  style.setAttribute("data-hf-composition-variables", "");
+  style.textContent = rules.join("\n\n");
+  document.head.appendChild(style);
+  return true;
+}
+
+type VariableLayer = (
+  declared: Record<string, unknown>,
+  hostValues: Record<string, unknown>,
+) => Record<string, unknown>;
+
+/**
+ * Layering for one declarer: authored stylesheet definitions win over
+ * declared defaults (the runtime's define-if-absent, applied statically) —
+ * a var already defined in any authored <style> block is not emitted. Host
+ * values and --variables overrides are explicit intent, never filtered.
+ */
+function makeVariableLayer(document: Document, overrides: Record<string, unknown>): VariableLayer {
+  const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
+    .map((s) => s.textContent || "")
+    .join("\n");
+  const authoredDefines = (id: string): boolean =>
+    new RegExp(`${cssVariableName(id)}\\s*:`).test(authoredCss);
+  return (declared, hostValues) => {
+    const out: Record<string, unknown> = {};
+    for (const [id, value] of Object.entries(declared)) {
+      if (!authoredDefines(id)) out[id] = value;
+    }
+    for (const [id, value] of Object.entries(hostValues)) {
+      if (id in declared) out[id] = value;
+    }
+    for (const [id, value] of Object.entries(overrides)) {
+      if (id in declared || id in hostValues) out[id] = value;
+    }
+    return out;
+  };
+}
+
+/** Host-scoped rules: per-instance values inherited by the host's subtree. */
+function hostScopedVariableRules(
+  variablesByComp: Record<string, Record<string, unknown>>,
+  overrides: Record<string, unknown>,
+): string[] {
+  const rules: string[] = [];
+  for (const [compId, vars] of Object.entries(variablesByComp)) {
+    const withOverrides = { ...vars };
+    for (const [id, value] of Object.entries(overrides)) {
+      if (id in vars) withOverrides[id] = value;
+    }
+    const rule = compositionVariablesCssBlock(
+      withOverrides,
+      cssAttributeSelector("data-composition-id", compId),
+    );
+    if (rule) rules.push(rule);
+  }
+  return rules;
+}
+
+function rootDeclaredVariableRules(document: Document, layerFor: VariableLayer): string[] {
+  const htmlDeclared = readDeclaredDefaults(document.documentElement);
+  const htmlRule = compositionVariablesCssBlock(layerFor(htmlDeclared, {}), ":root");
+  return htmlRule ? [htmlRule] : [];
+}
+
+/**
+ * Declarer rules anchor on a per-instance marker attribute, not the
+ * composition id: two inlined instances of one sub-composition share a
+ * data-composition-id, and a shared selector would let instance A's rule
+ * restyle instance B. The nearest ancestor host's data-variable-values
+ * layer over the declared defaults (mirrors the runtime loader).
+ */
+function declarerVariableRules(document: Document, layerFor: VariableLayer): string[] {
+  const rules: string[] = [];
+  let markerSeq = 0;
+  for (const el of [...document.querySelectorAll("[data-composition-variables]")]) {
+    const declared = readDeclaredDefaults(el);
+    const hostEl =
+      typeof el.closest === "function" ? el.parentElement?.closest("[data-variable-values]") : null;
+    const hostValues = hostEl ? parseHostVariableValues(hostEl) : {};
+    const vars = layerFor(declared, hostValues);
+    if (Object.keys(vars).length === 0) continue;
+    markerSeq += 1;
+    el.setAttribute("data-hf-var-scope", String(markerSeq));
+    const rule = compositionVariablesCssBlock(vars, `[data-hf-var-scope="${markerSeq}"]`);
+    if (rule) rules.push(rule);
+  }
+  return rules;
+}
+
+/**
+ * Compile-time CSS custom properties for a sub-comp scope: declared defaults
+ * layered under per-instance host values, emitted as a stylesheet rule on the
+ * host selector. A stylesheet in <head> is in effect while the body parses,
+ * so eval-time reads (GSAP .from immediateRender, canvas tinting) see the
+ * right values — the runtime's DOMContentLoaded injection is too late for
+ * those on compiled pages.
+ */
+function pushSubCompVariableStyles(
+  innerDoc: Document,
+  innerRoot: Element | null,
+  mergedVariables: Record<string, unknown>,
+  runtimeScope: string,
+  compStyleChunks: string[],
+): void {
+  if (!runtimeScope) return;
+  const declaredForCss = readDeclaredDefaults(innerDoc.documentElement);
+  const innerRootForVars = innerRoot ?? innerDoc.querySelector("[data-composition-variables]");
+  if (innerRootForVars) Object.assign(declaredForCss, readDeclaredDefaults(innerRootForVars));
+  const cssVars = compositionVariablesCssBlock(
+    { ...declaredForCss, ...mergedVariables },
+    runtimeScope,
+  );
+  if (cssVars) compStyleChunks.push(cssVars);
 }

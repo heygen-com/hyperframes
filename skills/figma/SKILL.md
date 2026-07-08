@@ -66,6 +66,10 @@ Imports variables as composition brand-variable entries + `figma-tokens.json` si
 
 **Import tokens before components** when both are wanted — that's what lets component colors link to brand variables instead of baking duplicates.
 
+**Non-Enterprise variables path (field-tested):** REST variables are Enterprise-gated, but the Figma MCP `get_variable_defs` is not. When `tokens` reports `REQUIRES_ENTERPRISE` and the user has the MCP connector, you can build the index yourself: (1) `get_variable_defs` on the scene's parent node — ONE call, cache the raw JSON to `.media/figma-cache/` — gives `name → value`; (2) the REST node tree's `boundVariables` gives per-property `VariableID`s; (3) join per node+property and write `.media/figma-bindings.jsonl` rows (`{kind:"binding", figmaId, sourceFileKey, compositionVariableId: "figma:<name>", version}`) plus the composition-variable entries. Everything downstream (component `var()` resolution, refresh, runtime CSS variables) is the shipped machinery. Label it for the user: "tokens via the Figma connector — Enterprise plans get this from `hyperframes figma tokens` directly."
+
+The runtime defines every declared composition variable as a CSS custom property (document root + sub-comp hosts), so imported `var(--slug, literal)` fills recolor when the variable default changes — updating one value in `data-composition-variables` re-brands every imported component without re-importing anything. `hyperframes render --variables '<json>'` overrides them at render time.
+
 ## Components (Phase 3 — CLI)
 
 ```bash

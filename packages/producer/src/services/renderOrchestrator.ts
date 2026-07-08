@@ -1292,6 +1292,7 @@ export async function executeRenderJob(
         needsAlpha,
         log,
         assertNotAborted,
+        variables: job.config.variables,
       }),
     );
     let compiled = compileResult.compiled;

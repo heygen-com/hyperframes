@@ -65,17 +65,8 @@ function boxOf(node: FigmaNodeDocument): Box | null {
   return null;
 }
 
-export function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug.length > 0 ? slug : "node";
-}
-
-function cssVarName(compositionVariableId: string): string {
-  return `--${slugify(compositionVariableId)}`;
-}
+export { slugify } from "../tokenSlug";
+import { cssVariableName as cssVarName, slugify } from "../tokenSlug";
 
 function escapeHtml(text: string): string {
   return text
@@ -217,6 +208,17 @@ function geometryCss(node: FigmaNodeDocument, ctx: RenderContext, isRoot: boolea
   return styles;
 }
 
+function shapeCss(node: FigmaNodeDocument, styles: string[]): void {
+  if (node.type === "ELLIPSE") {
+    styles.push("border-radius: 50%");
+  } else if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
+    styles.push(`border-radius: ${round(node.cornerRadius)}px`);
+  }
+  if (node.clipsContent === true) styles.push("overflow: hidden");
+  if (typeof node.opacity === "number" && node.opacity < 1)
+    styles.push(`opacity: ${round(node.opacity)}`);
+}
+
 function decorationCss(node: FigmaNodeDocument, ctx: RenderContext): string[] {
   const styles: string[] = [];
   // backgroundValue is the binding-aware path (var(--slug, literal)) — TEXT
@@ -226,16 +228,13 @@ function decorationCss(node: FigmaNodeDocument, ctx: RenderContext): string[] {
     if (bg !== null) styles.push(`color: ${bg}`);
     textCss(node, styles);
   } else if (bg !== null) {
-    styles.push(`background: ${bg}`);
+    // background-color (longhand) for solid fills, never the shorthand: GSAP
+    // backgroundColor tweens can't read a var() through the shorthand (its
+    // pending-substitution longhands serialize empty), so .from/.to on an
+    // imported node would settle on transparent instead of the token color.
+    styles.push(bg.includes("gradient(") ? `background: ${bg}` : `background-color: ${bg}`);
   }
-  if (node.type === "ELLIPSE") {
-    styles.push("border-radius: 50%");
-  } else if (typeof node.cornerRadius === "number" && node.cornerRadius > 0) {
-    styles.push(`border-radius: ${round(node.cornerRadius)}px`);
-  }
-  if (node.clipsContent === true) styles.push("overflow: hidden");
-  if (typeof node.opacity === "number" && node.opacity < 1)
-    styles.push(`opacity: ${round(node.opacity)}`);
+  shapeCss(node, styles);
   effectsCss(node, styles);
   return styles;
 }
@@ -264,7 +263,10 @@ function renderNodeHtml(
   const style = escapeHtml(
     [...geometryCss(node, ctx, isRoot), ...decorationCss(node, ctx)].join("; "),
   );
-  const idAttrs = `id="${slug}" data-figma-id="${escapeHtml(node.id)}"${unresolvedAttr(node, ctx)}`;
+  // data-hf-snippet marks the file as a mountable fragment, not a standalone
+  // composition — the project linter skips composition-root rules for it.
+  const snippetAttr = isRoot ? ' data-hf-snippet=""' : "";
+  const idAttrs = `id="${slug}"${snippetAttr} data-figma-id="${escapeHtml(node.id)}"${unresolvedAttr(node, ctx)}`;
 
   if (RASTERIZE_TYPES.has(node.type)) {
     ctx.rasterize.push({ nodeId: node.id, name: node.name, slug });
@@ -279,12 +281,21 @@ function renderNodeHtml(
   return `<div ${idAttrs} style="${style}">${renderChildren(node, ctx, depth)}</div>`;
 }
 
+export interface NodeToHtmlOptions {
+  /** override for the ROOT element's slug/id — variant frames are often all
+   * named "Platform=Desktop", so the caller's --name must reach the DOM id,
+   * not just the output directory */
+  rootName?: string;
+}
+
 export function nodeToHtml(
   root: FigmaNodeDocument,
   bindings: ResolveBindingsResult,
+  opts: NodeToHtmlOptions = {},
 ): NodeToHtmlResult {
   const origin = boxOf(root) ?? { x: 0, y: 0, width: 0, height: 0 };
   const ctx: RenderContext = { origin, bindings, rasterize: [], usedSlugs: new Set() };
-  const html = renderNodeHtml(root, ctx, true);
+  const rootForRender = opts.rootName !== undefined ? { ...root, name: opts.rootName } : root;
+  const html = renderNodeHtml(rootForRender, ctx, true);
   return { html, rasterize: ctx.rasterize };
 }
