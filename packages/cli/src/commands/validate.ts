@@ -57,7 +57,7 @@ export function navigationTimeoutHint(err: unknown, navTimeoutMs: number): Error
   if (!/navigation timeout/i.test(msg)) return null;
   return new Error(
     `Page navigation timed out after ${navTimeoutMs}ms. A blocking external <script> ` +
-      `(e.g. GSAP loaded from a CDN) can delay page load past this budget even when the ` +
+      `(e.g. GSAP or anime.js loaded from a CDN) can delay page load past this budget even when the ` +
       `full render succeeds. Vendor the script locally (recommended for deterministic ` +
       `renders), or re-run with a longer --timeout.`,
   );
@@ -164,6 +164,7 @@ export function raceMediaReady(
   deadlineMs: number,
 ): Promise<void> {
   if (Number.isFinite(el.duration) && el.duration > 0) return Promise.resolve();
+  // fallow-ignore-next-line code-duplication
   return new Promise<void>((resolve) => {
     const onReady = () => {
       el.removeEventListener("loadedmetadata", onReady);

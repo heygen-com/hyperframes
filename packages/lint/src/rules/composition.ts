@@ -6,6 +6,9 @@ import {
   stripJsComments,
   truncateSnippet,
   WINDOW_TIMELINE_ASSIGN_PATTERN,
+  ANIME_REGISTER_CALL_PATTERN,
+  ANIME_HFANIME_ASSIGN_PATTERN,
+  extractScriptTextsAndSrcs,
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
 
@@ -847,7 +850,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // `.animate(...)` call or `/* animation: spin 2s infinite; */` must not
     // satisfy the "has a duration source" check, or the composition still
     // fails at render with zero duration despite lint passing.
-    const allScriptTexts = scripts.map((s) => stripJsComments(s.content));
+    const scriptContent = extractScriptTextsAndSrcs(scripts);
+    const allScriptTexts = scriptContent.texts.map((text) => stripJsComments(text));
     const hasGsapTimeline = allScriptTexts.some((t) => /gsap\.timeline\s*\(/.test(t));
     const hasRegisteredTimeline = allScriptTexts.some((t) =>
       WINDOW_TIMELINE_ASSIGN_PATTERN.test(t),
@@ -855,6 +859,19 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // A GSAP timeline drives duration via window.__timelines regardless of
     // data-duration — nothing to flag once one is registered.
     if (hasGsapTimeline && hasRegisteredTimeline) return [];
+
+    const hasAnimeRegistration = allScriptTexts.some(
+      (t) => ANIME_REGISTER_CALL_PATTERN.test(t) || ANIME_HFANIME_ASSIGN_PATTERN.test(t),
+    );
+    const usesAnime =
+      hasAnimeRegistration ||
+      scriptContent.srcs.some((src) =>
+        /(?:^|[/.@-])anime(?:js)?(?:[/.@-]|$)|anime\.umd/i.test(src),
+      ) ||
+      allScriptTexts.some((t) => /\banime\s*\.\s*(?:createTimeline|animate)\s*\(/.test(t));
+    // The anime.js adapter can infer duration from finite registered
+    // first-party instances, same as GSAP can infer from window.__timelines.
+    if (usesAnime && hasAnimeRegistration) return [];
 
     const allCss = styles.map((s) => s.content).join("\n");
     const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
@@ -873,7 +890,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const hasInfiniteCssAnimation =
       /\banimation(?:-iteration-count)?\s*:[^;{}]*(?<![\w-])infinite(?![\w-])/.test(combinedCss);
 
-    const hasAnyNonGsapSignal = usesLottie || usesThree || usesWaapi || hasCssAnimationName;
+    const hasAnyNonGsapSignal =
+      usesLottie || usesThree || usesWaapi || hasCssAnimationName || usesAnime;
 
     if (!hasAnyNonGsapSignal) {
       // No GSAP timeline, no data-duration, and nothing for any adapter to

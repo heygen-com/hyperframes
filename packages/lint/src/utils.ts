@@ -28,6 +28,12 @@ export const TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN =
   /window\.__timelines\s*=\s*\{\s*(?:["'][^"']+["']|[A-Za-z_$][\w$]*)\s*:/i;
 export const TIMELINE_REGISTRY_ASSIGN_PATTERN =
   /window\.__timelines(?:\[[^\]]+\]|\.[A-Za-z_$][\w$]*)\s*=/i;
+// First-party anime.js runtime registration helper, e.g.
+// `hyperframesAnime.register("main", timeline, { labels })`.
+export const ANIME_REGISTER_CALL_PATTERN = /\bhyperframesAnime\s*\.\s*register\s*\(/i;
+// Legacy/compat anime.js registry forms, e.g. `window.__hfAnime = [...]` or
+// `window.__hfAnime.push({ id, instance })`.
+export const ANIME_HFANIME_ASSIGN_PATTERN = /window\.__hfAnime\s*(?:=|\.\s*push\s*\()/i;
 // The bracket branch accepts either a quoted string key (`["root"]`) or a
 // computed key (`[spec.id]`, `[id]`) — a bare-identifier-only bracket branch
 // missed `window.__timelines[spec.id] = tl`, a pattern the shipped
