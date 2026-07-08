@@ -14,6 +14,7 @@ import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
   type DirectTimelineAdapter,
   type PlaybackDurationAdapter,
+  buildAnimeDirectTimelineAdapter,
   isDirectTimelineAdapter,
   isObjectRecord,
   isRuntimeDurationAdapter,
@@ -156,7 +157,6 @@ export class CompositionProbe {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member
   resolveDirectTimelineAdapterFromWindow(win: Window): DirectTimelineAdapter | null {
     return this._resolveDirectTimelineAdapterFromWindow(win);
   }
@@ -184,18 +184,34 @@ export class CompositionProbe {
   private _resolveDirectTimelineAdapterFromWindow(win: Window): DirectTimelineAdapter | null {
     if (this.hasRuntimeBridge(win)) return null;
 
+    const rootId = this._readRootCompositionId();
+
     const timelines = Reflect.get(win, "__timelines");
-    if (!isObjectRecord(timelines)) return null;
+    if (isObjectRecord(timelines)) {
+      const keys = Object.keys(timelines);
+      if (keys.length > 0) {
+        const key = rootId && rootId in timelines ? rootId : keys[keys.length - 1];
+        const timeline = timelines[key];
+        if (isDirectTimelineAdapter(timeline)) return timeline;
+      }
+    }
 
-    const keys = Object.keys(timelines);
-    if (keys.length === 0) return null;
+    return (
+      buildAnimeDirectTimelineAdapter(Reflect.get(win, "hyperframesAnime"), rootId) ??
+      buildAnimeDirectTimelineAdapter(Reflect.get(win, "__hfAnime"), rootId)
+    );
+  }
 
-    const rootId = this._iframe.contentDocument
-      ?.querySelector("[data-composition-id]")
-      ?.getAttribute("data-composition-id");
-    const key = rootId && rootId in timelines ? rootId : keys[keys.length - 1];
-    const timeline = timelines[key];
-    return isDirectTimelineAdapter(timeline) ? timeline : null;
+  private _readRootCompositionId(): string | null {
+    try {
+      return (
+        this._iframe.contentDocument
+          ?.querySelector("[data-composition-id]")
+          ?.getAttribute("data-composition-id") ?? null
+      );
+    } catch {
+      return null;
+    }
   }
 
   private _resolvePlaybackDurationAdapter(win: Window): PlaybackDurationAdapter | null {

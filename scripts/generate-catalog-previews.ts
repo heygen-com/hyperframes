@@ -42,6 +42,7 @@ import {
   createRenderJob,
   executeRenderJob,
 } from "../packages/producer/src/index.js";
+import { ANIME_CDN } from "../packages/core/src/templates/constants.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -69,6 +70,7 @@ interface CatalogItem {
 
 // ── Discovery ──────────────────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 function discoverItems(kindFilter: ItemKind | null, nameFilter: string | null): CatalogItem[] {
   const items: CatalogItem[] = [];
 
@@ -123,6 +125,15 @@ function outputDir(kind: ItemKind): string {
   return resolve(repoRoot, "docs/images/catalog", typeDir);
 }
 
+function hasStandaloneTimelineRegistration(html: string): boolean {
+  return (
+    html.includes("__timelines") ||
+    html.includes("hyperframesAnime.register") ||
+    html.includes("__hfAnime")
+  );
+}
+
+// fallow-ignore-next-line complexity
 function prepareProjectDir(item: CatalogItem): string {
   const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
@@ -134,7 +145,7 @@ function prepareProjectDir(item: CatalogItem): string {
   // just rename it to index.html. Otherwise create a wrapper.
   if (!existsSync(join(tmpDir, "index.html")) && existsSync(join(tmpDir, item.entryFile))) {
     const entryContent = readFileSync(join(tmpDir, item.entryFile), "utf-8");
-    const hasTimeline = entryContent.includes("__timelines");
+    const hasTimeline = hasStandaloneTimelineRegistration(entryContent);
     if (hasTimeline) {
       // Standalone block — copy to index.html and render directly.
       // For social overlays with transparent backgrounds, inject a dark bg
@@ -201,7 +212,7 @@ function prepareProjectDir(item: CatalogItem): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=${width}, height=${height}" />
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="${ANIME_CDN}"></script>
   <style>* { margin: 0; padding: 0; } html, body { width: ${width}px; height: ${height}px; overflow: hidden; background: ${bgColor}; }</style>
 </head>
 <body>
@@ -209,8 +220,13 @@ function prepareProjectDir(item: CatalogItem): string {
     <div data-composition-id="${item.name}" data-composition-src="${item.entryFile}" data-start="0" data-duration="${duration}" data-track-index="0" data-width="${width}" data-height="${height}"></div>
   </div>
   <script>
-    window.__timelines = window.__timelines || {};
-    window.__timelines["preview-root"] = gsap.timeline({ paused: true });
+    window.__hfAnime = window.__hfAnime || {};
+    const tl = anime.createTimeline({ autoplay: false });
+    if (window.hyperframesAnime && typeof window.hyperframesAnime.register === "function") {
+      window.hyperframesAnime.register("preview-root", tl);
+    } else {
+      window.__hfAnime["preview-root"] = { id: "preview-root", instance: tl, labels: {} };
+    }
   </script>
 </body>
 </html>`;
@@ -233,6 +249,7 @@ async function generateThumbnail(item: CatalogItem, projectDir: string): Promise
   const wMatch = wrapperHtml.match(/data-width="(\d+)"/);
   const hMatch = wrapperHtml.match(/data-height="(\d+)"/);
   if (wMatch) width = parseInt(wMatch[1], 10);
+  // fallow-ignore-next-line code-duplication
   if (hMatch) height = parseInt(hMatch[1], 10);
 
   const framesDir = join(projectDir, "_thumb_frames");
@@ -290,6 +307,7 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 function parseArgs(): { only: string | null; type: ItemKind | null; skipVideo: boolean } {
   let only: string | null = null;
   let type: ItemKind | null = null;
@@ -317,6 +335,7 @@ function parseArgs(): { only: string | null; type: ItemKind | null; skipVideo: b
   return { only, type, skipVideo };
 }
 
+// fallow-ignore-next-line complexity
 async function main(): Promise<void> {
   const { only, type, skipVideo } = parseArgs();
   const items = discoverItems(type, only);

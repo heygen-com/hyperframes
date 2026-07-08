@@ -1,5 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { computeSnapshotTimes, tailFrameTime } from "./snapshot.js";
+import { describe, expect, it, vi } from "vitest";
+import { computeSnapshotTimes, seekSnapshotPage, tailFrameTime } from "./snapshot.js";
+
+// fallow-ignore-next-line code-duplication
+function withWindowValue(value: unknown, run: () => void): void {
+  const hadWindow = Reflect.has(globalThis, "window");
+  const previousWindow = Reflect.get(globalThis, "window");
+  Reflect.set(globalThis, "window", value);
+  try {
+    run();
+  } finally {
+    if (hadWindow) {
+      Reflect.set(globalThis, "window", previousWindow);
+    } else {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  }
+}
 
 describe("tailFrameTime", () => {
   it("backs off ~3% of duration so the final frame isn't the blank exact-end", () => {
@@ -57,5 +73,44 @@ describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {
     });
     expect(times).toEqual([1, 2]);
     expect(appendedTail).toBe(false);
+  });
+});
+
+describe("seekSnapshotPage", () => {
+  it("flushes GSAP ticker after seeking when GSAP is present", () => {
+    const renderSeek = vi.fn();
+    const tick = vi.fn();
+    const animeUpdate = vi.fn();
+    withWindowValue(
+      {
+        __player: { renderSeek },
+        gsap: { ticker: { tick } },
+        anime: { engine: { update: animeUpdate } },
+      },
+      () => {
+        seekSnapshotPage(1.5);
+      },
+    );
+
+    expect(renderSeek).toHaveBeenCalledWith(1.5);
+    expect(tick).toHaveBeenCalledTimes(1);
+    expect(animeUpdate).not.toHaveBeenCalled();
+  });
+
+  it("flushes anime engine when GSAP ticker is unavailable", () => {
+    const seek = vi.fn();
+    const update = vi.fn();
+    withWindowValue(
+      {
+        __player: { seek },
+        anime: { engine: { update } },
+      },
+      () => {
+        seekSnapshotPage(2);
+      },
+    );
+
+    expect(seek).toHaveBeenCalledWith(2);
+    expect(update).toHaveBeenCalledTimes(1);
   });
 });

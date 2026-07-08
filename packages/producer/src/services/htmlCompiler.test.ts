@@ -3,6 +3,7 @@ import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ANIME_CDN } from "@hyperframes/core";
 import { parseHTML } from "linkedom";
 import {
   collectExternalAssets,
@@ -490,6 +491,113 @@ describe("detectRenderModeHints", () => {
 
       expect(result.renderModeHints.recommendScreenshot).toBe(false);
       expect(result.renderModeHints.reasons).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rewrites a missing local anime script to the pinned CDN and inlines it", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-anime-rewrite-missing-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head><script src="./anime.min.js"></script></head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1"></div>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      hyperframesAnime.register("root", tl);
+    </script>
+  </body>
+</html>`,
+    );
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => {
+      return new Response("window.anime = { createTimeline: function(){ return {}; } };", {
+        status: 200,
+      });
+    });
+    globalThis.fetch = fetchMock;
+
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(compiled.html).toContain(`/* inlined: ${ANIME_CDN} */`);
+      expect(compiled.html).toContain("window.anime =");
+      expect(compiled.html).not.toContain("./anime.min.js");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("leaves an existing local anime script untouched", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-anime-rewrite-present-"));
+    writeFileSync(join(projectDir, "anime.min.js"), "window.anime = {};");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head><script src="./anime.min.js"></script></head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1"></div>
+  </body>
+</html>`,
+    );
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => {
+      throw new Error("local anime script should not be fetched");
+    });
+    globalThis.fetch = fetchMock;
+
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(compiled.html).toContain('src="./anime.min.js"');
+      expect(compiled.html).not.toContain(ANIME_CDN);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps the existing missing GSAP rewrite path working", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-gsap-rewrite-missing-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head><script src="./node_modules/gsap/dist/gsap.min.js"></script></head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1"></div>
+  </body>
+</html>`,
+    );
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => new Response("window.gsap = {};", { status: 200 }));
+    globalThis.fetch = fetchMock;
+
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(compiled.html).toContain(
+        "/* inlined: https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js */",
+      );
+      expect(compiled.html).toContain("window.gsap = {};");
+      expect(compiled.html).not.toContain("./node_modules/gsap/dist/gsap.min.js");
     } finally {
       globalThis.fetch = originalFetch;
     }

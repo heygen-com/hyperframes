@@ -177,6 +177,22 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
+export function seekSnapshotPage(t: number): void {
+  const player = (window as any).__player;
+  if (!player) return;
+  const safe = Math.max(0, Number(t) || 0);
+  if (typeof player.renderSeek === "function") {
+    player.renderSeek(safe);
+  } else if (typeof player.seek === "function") {
+    player.seek(safe);
+  }
+  if ((window as any).gsap?.ticker?.tick) {
+    (window as any).gsap.ticker.tick();
+  } else if (typeof (window as any).anime?.engine?.update === "function") {
+    (window as any).anime.engine.update();
+  }
+}
+
 /**
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
@@ -406,19 +422,7 @@ async function captureSnapshots(
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
-        await page.evaluate((t: number) => {
-          const player = (window as any).__player;
-          if (!player) return;
-          const safe = Math.max(0, Number(t) || 0);
-          if (typeof player.renderSeek === "function") {
-            player.renderSeek(safe);
-          } else if (typeof player.seek === "function") {
-            player.seek(safe);
-          }
-          if ((window as any).gsap?.ticker?.tick) {
-            (window as any).gsap.ticker.tick();
-          }
-        }, time);
+        await page.evaluate(seekSnapshotPage, time);
 
         await page.evaluate(`new Promise(function(r) {
           var settled = false;

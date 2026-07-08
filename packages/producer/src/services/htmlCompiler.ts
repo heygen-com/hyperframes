@@ -21,6 +21,7 @@ import {
   shouldClampMediaDuration,
   CSS_URL_RE,
   isNonRelativeUrl,
+  ANIME_CDN,
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
@@ -998,7 +999,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
     } else {
       defaultLogger.warn(
         `[Compiler] WARNING: Failed to download CDN script: ${src} — ${download.reason}. ` +
-          `The render may fail if this script is required (e.g. GSAP). ` +
+          `The render may fail if this script is a required animation runtime library. ` +
           `Consider bundling it locally in your project.`,
       );
     }
@@ -1599,6 +1600,27 @@ function rewriteUnresolvableGsapToCdn(html: string, projectDir: string): string 
   );
 }
 
+function isLocalAnimeScriptSrc(src: string): boolean {
+  const pathWithoutQuery = src.split(/[?#]/, 1)[0] ?? src;
+  return basename(pathWithoutQuery).toLowerCase().includes("anime");
+}
+
+function rewriteUnresolvableAnimeToCdn(html: string, projectDir: string): string {
+  return html.replace(
+    /(<script\b[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi,
+    (full, prefix, src, suffix) => {
+      if (/^https?:\/\//i.test(src)) return full;
+      if (!isLocalAnimeScriptSrc(src)) return full;
+      const absPath = resolve(projectDir, src);
+      if (existsSync(absPath)) return full;
+      defaultLogger.info(
+        `[Compiler] Rewriting missing anime.js script to CDN: ${src} → ${ANIME_CDN}`,
+      );
+      return `${prefix}${ANIME_CDN}${suffix}`;
+    },
+  );
+}
+
 /**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
@@ -1610,7 +1632,10 @@ export async function compileForRender(
   downloadDir: string,
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
-  const rawHtml = rewriteUnresolvableGsapToCdn(readFileSync(htmlPath, "utf-8"), projectDir);
+  const rawHtml = rewriteUnresolvableAnimeToCdn(
+    rewriteUnresolvableGsapToCdn(readFileSync(htmlPath, "utf-8"), projectDir),
+    projectDir,
+  );
 
   // Pre-flight: every data-composition-src reference must resolve to a
   // usable file before we spend any time compiling, launching a browser, or
