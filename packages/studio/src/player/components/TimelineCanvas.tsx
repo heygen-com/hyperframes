@@ -487,18 +487,19 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         })
       }
 
-      {/* Target-lane highlight — shows the destination track the ghost will drop
-          into; flips at the magnetic threshold while the ghost follows the cursor. */}
+      {/* Drop placeholder — a clip-sized slot at the exact landing spot (target
+          lane + snapped start), parallel to the ghost, so you see where it lands
+          while the ghost follows the cursor. */}
       {draggedClip?.started && draggedRowIndex >= 0 && (
         <div
           className="absolute pointer-events-none"
           style={{
-            top: RULER_H + draggedRowIndex * TRACK_H,
-            left: GUTTER,
-            width: trackContentWidth,
-            height: TRACK_H,
-            border: "1px solid rgba(60,230,172,0.45)",
-            background: "rgba(60,230,172,0.06)",
+            top: RULER_H + draggedRowIndex * TRACK_H + CLIP_Y,
+            left: GUTTER + draggedClip.previewStart * pps,
+            width: Math.max(draggedClip.element.duration * pps, 4),
+            height: TRACK_H - CLIP_Y * 2,
+            border: "1px solid rgba(60,230,172,0.55)",
+            background: "rgba(60,230,172,0.12)",
             borderRadius: 4,
             zIndex: 30,
           }}
