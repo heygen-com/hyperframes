@@ -23,31 +23,62 @@ export function trackCommandFailures(
   load: () => Promise<AnyCommandDef>,
   onFailure: (err: unknown) => void | Promise<void>,
 ): () => Promise<AnyCommandDef> {
-  return () =>
-    load().then((cmd) => {
-      const run = cmd.run;
-      if (typeof run !== "function") return cmd;
-      return {
-        ...cmd,
-        run: async (ctx: Parameters<typeof run>[0]) => {
-          // Reject unknown flags before the command runs: citty silently ignores
-          // them otherwise, dropping the value (e.g. `render --out x` fell back
-          // to the default output path). A leaf command with a `run` is the right
-          // place — nested command groups delegate to their own subcommands.
-          assertKnownFlags(cmd, ctx?.rawArgs ?? []);
-          try {
-            return await run(ctx);
-          } catch (err) {
-            try {
-              await onFailure(err);
-            } catch {
-              // Telemetry must never mask the real command failure.
-            }
-            throw err;
-          }
-        },
-      };
-    });
+  return () => load().then((cmd) => wrapCommand(cmd, onFailure));
+}
+
+/**
+ * Wrap a resolved command's `run` (assert-flags + report-failure) AND
+ * recursively wrap every entry in its `subCommands`. Two HF#2033 fixes live
+ * here:
+ *   1. `assertKnownFlags` runs INSIDE the try, so an unknown-flag throw is
+ *      routed through `onFailure` (telemetry) like any other failure — it
+ *      used to throw before the try and lose the event entirely.
+ *   2. Recursion covers nested command groups (`cloud/*`, `auth/*`, `figma/*`,
+ *      `lambda/*`, `capture/*`, `skills`). cli.ts only wraps the top-level
+ *      loaders, so before this a `hyperframes cloud render --badflag` silently
+ *      ignored the flag and reported nothing — citty dispatches to the leaf,
+ *      whose `run` was never wrapped.
+ */
+function wrapCommand(
+  cmd: AnyCommandDef,
+  onFailure: (err: unknown) => void | Promise<void>,
+): AnyCommandDef {
+  const run = cmd.run;
+  // Nothing to wrap (no run, no nested subcommands) — preserve identity.
+  if (typeof run !== "function" && !cmd.subCommands) return cmd;
+
+  const wrapped: AnyCommandDef = { ...cmd };
+  if (typeof run === "function") {
+    wrapped.run = async (ctx: Parameters<typeof run>[0]) => {
+      try {
+        // Reject unknown flags before the command body: citty silently ignores
+        // them otherwise, dropping the value (e.g. `render --out x` fell back to
+        // the default output path). Inside the try so the rejection is reported.
+        assertKnownFlags(cmd, ctx?.rawArgs ?? []);
+        return await run(ctx);
+      } catch (err) {
+        try {
+          await onFailure(err);
+        } catch {
+          // Telemetry must never mask the real command failure.
+        }
+        throw err;
+      }
+    };
+  }
+  if (cmd.subCommands) {
+    const wrappedSubs: Record<string, () => Promise<AnyCommandDef>> = {};
+    for (const [name, sub] of Object.entries(cmd.subCommands)) {
+      // citty subCommands are Resolvable<CommandDef>: a def, a promise, or a
+      // (possibly async) loader. Normalize to a loader that resolves then wraps.
+      wrappedSubs[name] = () =>
+        Promise.resolve(typeof sub === "function" ? (sub as () => unknown)() : sub).then((c) =>
+          wrapCommand(c as AnyCommandDef, onFailure),
+        );
+    }
+    wrapped.subCommands = wrappedSubs;
+  }
+  return wrapped;
 }
 
 /**

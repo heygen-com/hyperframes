@@ -59,6 +59,46 @@ describe("trackCommandFailures", () => {
     const cmd = await wrapped();
     await expect((cmd.run as () => Promise<unknown>)()).rejects.toBe(boom);
   });
+
+  it("REPORTS an unknown-flag rejection to onFailure (HF#2033: assertion inside the try)", async () => {
+    // The flag assertion used to run before the try/catch, so an unknown-flag
+    // throw skipped telemetry. It must now be reported like any other failure.
+    const onFailure = vi.fn();
+    const cmd = {
+      meta: { name: "render" },
+      args: { output: { type: "string", alias: "o" } },
+      run: vi.fn(() => Promise.resolve()),
+    } as unknown as CommandDef;
+    const wrapped = trackCommandFailures(() => Promise.resolve(cmd), onFailure);
+
+    const resolved = await wrapped();
+    await expect(
+      (resolved.run as (ctx: unknown) => Promise<unknown>)({ rawArgs: ["--nope", "x"] }),
+    ).rejects.toThrow(/unknown flag/i);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(cmd.run).not.toHaveBeenCalled(); // body never ran — flag rejected first
+  });
+
+  it("recursively wraps nested subcommands so their failures report too (HF#2033)", async () => {
+    // cli.ts wraps only top-level loaders; a group's leaves (cloud/*, auth/*, …)
+    // were never wrapped, silently dropping unknown-flag + failure telemetry.
+    const onFailure = vi.fn();
+    const boom = new Error("nested boom");
+    const group: CommandDef = {
+      meta: { name: "cloud" },
+      subCommands: {
+        render: defineRun(() => Promise.reject(boom)),
+      },
+    };
+    const wrapped = trackCommandFailures(() => Promise.resolve(group), onFailure);
+
+    const resolvedGroup = await wrapped();
+    const subLoader = (resolvedGroup.subCommands as Record<string, () => Promise<CommandDef>>)
+      .render;
+    const leaf = await subLoader();
+    await expect((leaf.run as () => Promise<unknown>)()).rejects.toBe(boom);
+    expect(onFailure).toHaveBeenCalledWith(boom);
+  });
 });
 
 describe("reportCommandFailure", () => {
