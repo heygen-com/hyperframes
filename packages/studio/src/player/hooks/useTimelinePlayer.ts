@@ -36,6 +36,7 @@ import {
   mergeTimelineElementsPreservingDowngrades,
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
+import { normalizeToZones } from "../components/timelineZones";
 import {
   setPreviewMediaMuted,
   setPreviewPlaybackRate,
@@ -90,12 +91,17 @@ export function useTimelinePlayer() {
       // applyCachedSourceDurations re-applies the cached probe duration: re-derived
       // elements (e.g. after a clip move) can arrive without sourceDuration, which
       // otherwise makes trimmed waveforms lose their window.
-      const mergedElements = applyCachedSourceDurations(
-        mergeTimelineElementsPreservingDowngrades(
-          state.elements,
-          elements,
-          state.duration,
-          resolvedDuration,
+      // Enforced CapCut zoning (overlay → main → audio): normalize track indices
+      // on every discovery. Idempotent — already-zoned input is returned as-is, so
+      // drops persist zoned indices and reloads re-zone to the same (no drift).
+      const mergedElements = normalizeToZones(
+        applyCachedSourceDurations(
+          mergeTimelineElementsPreservingDowngrades(
+            state.elements,
+            elements,
+            state.duration,
+            resolvedDuration,
+          ),
         ),
       );
 

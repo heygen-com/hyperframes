@@ -4,7 +4,7 @@ const AUDIO_TIMELINE_TAGS = new Set(["audio", "music", "sfx", "sound", "narratio
 const AUDIO_SOURCE_EXT_RE = /\.(aac|flac|m4a|mp3|ogg|opus|wav)(?:[?#].*)?$/i;
 const MUSIC_ID_RE = /\b(music|bgm|soundtrack|background[-_]?music)\b/i;
 
-function isAudioTimelineElement(
+export function isAudioTimelineElement(
   element: Pick<TimelineElement, "tag" | "src"> | null | undefined,
 ): boolean {
   if (!element) return false;
