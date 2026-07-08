@@ -157,6 +157,35 @@ function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | nul
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // duplicate_composition_id catches meta-tag/root collisions that create duplicate composition entries.
+  ({ tags }) => {
+    const tagsByCompositionId = new Map<string, string[]>();
+    for (const tag of tags) {
+      const compositionId = readAttr(tag.raw, "data-composition-id");
+      if (!compositionId || compositionId.trim().length === 0) continue;
+
+      const matchingTags = tagsByCompositionId.get(compositionId) ?? [];
+      matchingTags.push(tag.raw);
+      tagsByCompositionId.set(compositionId, matchingTags);
+    }
+
+    const findings: HyperframeLintFinding[] = [];
+    for (const [compositionId, matchingTags] of tagsByCompositionId) {
+      if (matchingTags.length < 2) continue;
+
+      findings.push({
+        code: "duplicate_composition_id",
+        severity: "error",
+        message: `Composition id "${compositionId}" is used by ${matchingTags.length} elements. Each data-composition-id value must be unique within a composition file.`,
+        fixHint:
+          "Keep data-composition-id on exactly one element, the composition root. Remove it from metadata or duplicate hosts, especially a <meta> tag carrying the same data-composition-id as the root <div>, which causes a silent duplicate-id collision.",
+        snippet: truncateSnippet(matchingTags[0] ?? ""),
+      });
+    }
+
+    return findings;
+  },
+
   // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
   // href, inline-style url(), and <style> url() asset references on
   // compositions. Sub-compositions live under compositions/ but are served

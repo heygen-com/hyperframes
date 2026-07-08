@@ -190,6 +190,53 @@ describe("composition rules", () => {
     });
   });
 
+  describe("duplicate_composition_id", () => {
+    it("flags a meta tag and root div sharing the same data-composition-id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="composition-id" data-composition-id="x">
+</head>
+<body>
+  <div data-composition-id="x" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+    });
+
+    it("does not flag a single valid composition id", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="1" data-no-timeline></div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+
+    it("does not flag distinct composition ids in one file", async () => {
+      const html = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="5" data-no-timeline>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="5"></div>
+  </div>
+</body>
+</html>`;
+
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "duplicate_composition_id");
+      expect(finding).toBeUndefined();
+    });
+  });
+
   it("reports error when querySelector uses template literal variable", async () => {
     const html = `
 <html><body>
