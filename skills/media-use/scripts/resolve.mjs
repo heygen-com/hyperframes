@@ -29,6 +29,7 @@ const { values: args } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
+    params: { type: "string" },
     for: { type: "string" },
     "local-only": { type: "boolean", default: false },
     provider: { type: "string" },
@@ -57,6 +58,7 @@ Options:
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
+  --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
   --local-only    Offline: skip every network provider
@@ -66,9 +68,13 @@ Options:
   process.exit(0);
 }
 
+const projectDir = resolve(args.project);
+const type = args.type;
+const intent = args.intent;
+const entity = args.entity || null;
+
 if (args.adopt) {
   const { adoptExistingAssets } = await import("./lib/adopt.mjs");
-  const projectDir = resolve(args.project);
   const adopted = adoptExistingAssets(projectDir);
   if (args.json) {
     console.log(JSON.stringify({ ok: true, adopted: adopted.length, assets: adopted }));
@@ -104,6 +110,23 @@ if (args.from) {
   process.exit(0);
 }
 
+if (args.params !== undefined) {
+  if (type !== "lut" && type !== "grade") {
+    exitError(
+      type
+        ? `--params only supports --type lut or grade (got ${type})`
+        : "--params requires --type lut or grade",
+      2,
+    );
+  }
+  try {
+    await runParams();
+    process.exit(0);
+  } catch (err) {
+    exitError(err.message, 1);
+  }
+}
+
 if (!args.type || !args.intent || !args.intent.trim()) {
   console.error("error: --type and a non-empty --intent are required");
   process.exit(2);
@@ -123,11 +146,6 @@ if (args.provider && !providerMatches(args.type, args.provider)) {
   );
   process.exit(2);
 }
-
-const projectDir = resolve(args.project);
-const type = args.type;
-const intent = args.intent;
-const entity = args.entity || null;
 
 function recordAvailable(projectDir, record) {
   if (!record) return false;
@@ -351,7 +369,15 @@ function mergeSmartAdjust(block) {
   };
 }
 
-function freezeGeneratedLut(params, { projectDir, type }) {
+function freezeGeneratedLut(
+  params,
+  {
+    projectDir,
+    type,
+    description = "parametric color grade",
+    validationErrorPrefix = "generated LUT failed validation",
+  },
+) {
   const { id, localPath } = allocateId(projectDir, type, ".cube");
   const fullPath = join(projectDir, localPath);
   try {
@@ -360,7 +386,7 @@ function freezeGeneratedLut(params, { projectDir, type }) {
     if (!check.ok) throw new Error(check.error);
   } catch (err) {
     rmSync(fullPath, { force: true });
-    throw new Error(`generated LUT failed validation: ${err.message}`);
+    throw new Error(`${validationErrorPrefix}: ${err.message}`);
   }
   return {
     id,
@@ -368,12 +394,59 @@ function freezeGeneratedLut(params, { projectDir, type }) {
     fullPath,
     lut: { src: localPath, intensity: 1 },
     source: "generated",
-    description: "parametric color grade",
+    description,
     metadata: {
       provider: "cube_lut.builder",
       provenance: { params },
     },
   };
+}
+
+function exitError(message, status = 1) {
+  if (args.json) {
+    console.log(JSON.stringify({ ok: false, error: message }));
+  } else {
+    console.error(`error: ${message}`);
+  }
+  process.exit(status);
+}
+
+function parseExplicitParams() {
+  try {
+    return JSON.parse(args.params);
+  } catch (err) {
+    throw new Error(`invalid --params JSON: ${err.message}`);
+  }
+}
+
+async function runParams() {
+  if (type === "lut" && args.for) {
+    throw new Error("--for is only supported with --type grade");
+  }
+  const params = parseExplicitParams();
+  const description =
+    typeof intent === "string" && intent.trim()
+      ? intent.trim()
+      : `custom parametric ${type === "lut" ? "lut" : "grade"}`;
+  const frozen = freezeGeneratedLut(params, {
+    projectDir,
+    type,
+    description,
+    validationErrorPrefix: "--params produced an invalid LUT",
+  });
+  const record = {
+    id: frozen.id,
+    type,
+    path: frozen.localPath,
+    source: frozen.source,
+    description: frozen.description,
+    ...(type === "grade" && { grading: mergeSmartAdjust({ intensity: 1, lut: frozen.lut }) }),
+    provenance: {
+      provider: frozen.metadata.provider,
+      ...frozen.metadata.provenance,
+    },
+  };
+  return finalizeColorRecord(record, frozen.source, frozen.fullPath);
 }
 
 async function finalizeColorRecord(record, source, fullPath = null) {
@@ -526,8 +599,6 @@ async function resolveColor(type, intent, options) {
 }
 
 async function ingest(src) {
-  const projectDir = resolve(args.project);
-  const type = args.type;
   if (!type || !listTypes().includes(type)) {
     console.error(`error: --from requires --type (one of: ${listTypes().join(", ")})`);
     process.exit(2);
@@ -554,6 +625,15 @@ async function ingest(src) {
   const fullPath = join(projectDir, localPath);
   if (isUrl) await freezeUrl(src, fullPath);
   else freezeLocalFile(resolve(src), fullPath);
+  if (type === "lut" || type === "grade") {
+    try {
+      const check = validateCubeFile(fullPath);
+      if (!check.ok) throw new Error(check.error);
+    } catch (err) {
+      rmSync(fullPath, { force: true });
+      exitError(`ingested LUT is invalid: ${err.message}`, 1);
+    }
+  }
   const record = {
     id,
     type,

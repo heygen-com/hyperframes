@@ -1,5 +1,13 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -426,6 +434,74 @@ test("lut resolves only the frozen cube path", () => {
   assert.match(parsed.path, /^\.media\/luts\/lut_001\.cube$/);
   assert.equal(parsed.grading, undefined);
   assert.equal(validateCubeFile(join(tmp, parsed.path)).ok, true);
+  cleanup();
+});
+
+test("lut --params builds, validates, and freezes a cube", () => {
+  setup();
+  const params = { contrast: 0.2, temperature: -0.3 };
+  const out = runResolve(["-t", "lut", "--params", JSON.stringify(params), "-p", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "lut");
+  assert.match(parsed.path, /^\.media\/luts\/lut_001\.cube$/);
+  assert.equal(parsed.description, "custom parametric lut");
+  assert.equal(parsed.provenance.provider, "cube_lut.builder");
+  assert.deepEqual(parsed.provenance.params, params);
+  assert.ok(existsSync(join(tmp, parsed.path)));
+  assert.equal(validateCubeFile(join(tmp, parsed.path)).ok, true);
+  cleanup();
+});
+
+test("grade --params returns a grading block with a frozen valid cube", () => {
+  setup();
+  const out = runResolve([
+    "-t",
+    "grade",
+    "--params",
+    JSON.stringify({ exposure: 0.2 }),
+    "-p",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "grade");
+  assert.equal(parsed.grading.intensity, 1);
+  assert.match(parsed.grading.lut.src, /^\.media\/luts\/grade_001\.cube$/);
+  assert.equal(parsed.lut.src, parsed.grading.lut.src);
+  assert.equal(parsed.path, parsed.grading.lut.src);
+  assert.equal(validateCubeFile(join(tmp, parsed.grading.lut.src)).ok, true);
+  cleanup();
+});
+
+test("--params malformed JSON errors cleanly without freezing a cube", () => {
+  setup();
+  const proc = spawnResolve(["-t", "lut", "--params", "{not json", "-p", tmp, "--json"]);
+  assert.equal(proc.status, 1, proc.stderr);
+  const parsed = JSON.parse(proc.stdout);
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /^invalid --params JSON:/);
+  assert.equal(readManifest(tmp).length, 0);
+  assert.equal(existsSync(join(tmp, ".media/luts")), false);
+  cleanup();
+});
+
+// buildCube clamps every accepted parameter and resolve.mjs does not expose
+// the size argument, so there is no CLI input that can make --params emit a
+// structurally invalid cube. Invalid cube cleanup is covered through --from.
+test("--from rejects invalid lut cube without registering or leaving a frozen file", () => {
+  setup();
+  const broken = join(tmp, "broken.cube");
+  writeFileSync(broken, "LUT_3D_SIZE 999\n");
+  const proc = spawnResolve(["--from", broken, "-t", "lut", "-p", tmp, "--json"]);
+  assert.equal(proc.status, 1, proc.stderr);
+  const parsed = JSON.parse(proc.stdout);
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 64/);
+  assert.equal(readManifest(tmp).length, 0);
+  const lutDir = join(tmp, ".media/luts");
+  assert.deepEqual(existsSync(lutDir) ? readdirSync(lutDir) : [], []);
   cleanup();
 });
 
