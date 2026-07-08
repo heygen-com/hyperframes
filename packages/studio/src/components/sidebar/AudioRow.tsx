@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ContextMenu } from "./AssetContextMenu";
 import { basename, getAudioSubtype } from "./assetHelpers";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import { beginDragSession, endDragSession } from "../../utils/dragSession";
 
 export function AudioRow({
   projectId,
@@ -114,7 +115,15 @@ export function AudioRow({
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
           e.dataTransfer.setData("text/plain", asset);
+          beginDragSession({
+            source: "asset",
+            path: asset,
+            kind: "audio",
+            durationSec: meta?.duration ?? null,
+            label: name,
+          });
         }}
+        onDragEnd={endDragSession}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });

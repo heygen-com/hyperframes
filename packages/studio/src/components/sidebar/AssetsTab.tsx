@@ -3,6 +3,7 @@ import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import { beginDragSession, endDragSession } from "../../utils/dragSession";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -65,7 +66,15 @@ function ImageCard({
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
           e.dataTransfer.setData("text/plain", asset);
+          beginDragSession({
+            source: "asset",
+            path: asset,
+            kind: isVideo ? "video" : "image",
+            durationSec: null,
+            label: name,
+          });
         }}
+        onDragEnd={endDragSession}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });
@@ -505,7 +514,6 @@ export const AssetsTab = memo(function AssetsTab({
         )}
       </div>
 
-      {/* Asset list */}
       <div className="flex-1 overflow-y-auto mt-1">
         {viewMode === "global" ? (
           <GlobalAssetsView searchQuery={searchQuery} />
