@@ -192,10 +192,10 @@ export async function extractHdrVideoFrames(args: {
     const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
     const rawPath = join(frameDir, "frames.rgb48le");
     const ffmpegArgs = [
-      "-ss",
-      String(video.mediaStart),
       "-i",
       srcPath,
+      "-ss",
+      String(video.mediaStart),
       "-t",
       String(duration),
       "-r",

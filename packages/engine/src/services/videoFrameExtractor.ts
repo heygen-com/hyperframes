@@ -277,56 +277,17 @@ export async function extractVideoFramesRange(
   const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${format}`;
   const outputPattern = join(videoOutputDir, framePattern);
 
-  // When extracting from HDR source, tone-map to SDR in FFmpeg rather than
-  // letting Chrome's uncontrollable tone-mapper handle it (which washes out).
-  // macOS: VideoToolbox hardware decoder does HDR→SDR natively on Apple Silicon.
-  // Linux: zscale filter (when available) or colorspace filter as fallback.
-  const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
-  const isMacOS = process.platform === "darwin";
-
-  const args: string[] = [];
-  if (isHdr && isMacOS) {
-    args.push("-hwaccel", "videotoolbox");
-  }
-  // Always force the alpha-aware decoder on codecs that can carry alpha. The
-  // alternative — gating on `metadata.hasAlpha` — relies on tag detection that
-  // has at least three known failure modes: case-sensitivity across ffmpeg
-  // versions (`alpha_mode` vs `ALPHA_MODE`), missing tags from older muxers,
-  // and mp4-as-webm rewraps that drop the sidecar. A wrong negative there
-  // silently strips alpha during decode and the bug doesn't surface until
-  // the rendered video is missing layers. Codec-based default has no such
-  // ambiguity: libvpx-vp9 reads the alpha sidecar when present and decodes
-  // normally when it isn't.
-  if (codecMayHaveAlpha(metadata.videoCodec)) {
-    args.push("-c:v", decoderForCodec(metadata.videoCodec));
-  }
-  args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
-
-  const vfFilters: string[] = [];
-  if (isHdr && isMacOS) {
-    // VideoToolbox tone-maps during decode; force output to bt709 SDR format
-    vfFilters.push("format=nv12");
-  }
-  if (!metadata.isVFR) {
-    vfFilters.push(`fps=${fps}`);
-  }
-  if (options.sdrToHdrTransfer) {
-    // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
-    // kept frames are converted. The remap is pointwise per-frame, so the
-    // output is identical either way for the SDR (BT.709, 8-bit) inputs this
-    // flag is set for. If format=nv12 (macOS HDR-source decode) ever combines
-    // with this flag, revisit: nv12 subsampling before a BT.2020 remap is an
-    // untested interaction (today the flags are mutually exclusive — the
-    // remap only applies to SDR sources, nv12 only to HDR sources).
-    vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
-  }
-  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
-  if (metadata.isVFR) args.push("-fps_mode", "cfr", "-r", String(fps));
-
-  args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
-  // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
-  if (format === "png") args.push("-compression_level", "1");
-  args.push("-y", outputPattern);
+  const args = buildVideoFrameExtractionArgs({
+    videoPath,
+    startTime,
+    duration,
+    fps,
+    outputPattern,
+    format,
+    quality,
+    metadata,
+    sdrToHdrTransfer: options.sdrToHdrTransfer,
+  });
 
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn(getFfmpegBinary(), args);
@@ -445,6 +406,62 @@ export function resolveFrameFormat(
   if (metadata.hasAlpha || codecMayHaveAlpha(metadata.videoCodec)) return "png";
   if (requested === "png" || requested === "jpg") return requested;
   return "jpg";
+}
+
+export interface VideoFrameExtractionArgsInput {
+  videoPath: string;
+  startTime: number;
+  duration: number;
+  fps: number;
+  outputPattern: string;
+  format: CacheFrameFormat;
+  quality: number;
+  metadata: VideoMetadata;
+  sdrToHdrTransfer?: HdrTransfer;
+}
+
+export function buildVideoFrameExtractionArgs(input: VideoFrameExtractionArgsInput): string[] {
+  const {
+    videoPath,
+    startTime,
+    duration,
+    fps,
+    outputPattern,
+    format,
+    quality,
+    metadata,
+    sdrToHdrTransfer,
+  } = input;
+  const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
+  const isMacOS = process.platform === "darwin";
+
+  const args: string[] = [];
+  if (isHdr && isMacOS) {
+    args.push("-hwaccel", "videotoolbox");
+  }
+  if (codecMayHaveAlpha(metadata.videoCodec)) {
+    args.push("-c:v", decoderForCodec(metadata.videoCodec));
+  }
+  args.push("-i", videoPath, "-ss", String(startTime), "-t", String(duration));
+
+  const vfFilters: string[] = [];
+  if (isHdr && isMacOS) {
+    vfFilters.push("format=nv12");
+  }
+  if (!metadata.isVFR) {
+    vfFilters.push(`fps=${fps}`);
+  }
+  if (sdrToHdrTransfer) {
+    vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
+  }
+  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
+  if (metadata.isVFR) args.push("-fps_mode", "cfr", "-r", String(fps));
+
+  args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
+  if (format === "png") args.push("-compression_level", "1");
+  args.push("-y", outputPattern);
+
+  return args;
 }
 
 type PreparedExtraction = {

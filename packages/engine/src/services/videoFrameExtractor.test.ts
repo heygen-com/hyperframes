@@ -21,6 +21,7 @@ import {
   createFrameLookupTable,
   resolveProjectRelativeSrc,
   resolveFrameFormat,
+  buildVideoFrameExtractionArgs,
   codecMayHaveAlpha,
   decoderForCodec,
   getFrameAtTime,
@@ -113,6 +114,48 @@ describe("resolveFrameFormat", () => {
   it("forces png when alpha is present or the codec can carry alpha", () => {
     expect(resolveFrameFormat(metadata({ hasAlpha: true }), "jpg")).toBe("png");
     expect(resolveFrameFormat(metadata({ videoCodec: "vp9" }), "jpg")).toBe("png");
+  });
+});
+
+describe("buildVideoFrameExtractionArgs", () => {
+  function metadata(overrides: Partial<VideoMetadata> = {}): VideoMetadata {
+    return {
+      durationSeconds: 4,
+      width: 320,
+      height: 240,
+      fps: 30,
+      hasAudio: false,
+      videoCodec: "h264",
+      colorSpace: {
+        colorTransfer: "bt709",
+        colorPrimaries: "bt709",
+        colorSpace: "bt709",
+      },
+      isVFR: false,
+      hasAlpha: false,
+      ...overrides,
+    };
+  }
+
+  it("places seek after input so long-GOP clips decode to the requested frame", () => {
+    const args = buildVideoFrameExtractionArgs({
+      videoPath: "/videos/single-keyframe.mp4",
+      startTime: 1.25,
+      duration: 2,
+      fps: 30,
+      outputPattern: "/frames/frame_%05d.jpg",
+      format: "jpg",
+      quality: 95,
+      metadata: metadata(),
+    });
+
+    const inputIndex = args.indexOf("-i");
+    const seekIndex = args.indexOf("-ss");
+
+    expect(inputIndex).toBeGreaterThanOrEqual(0);
+    expect(seekIndex).toBeGreaterThan(inputIndex);
+    expect(args.slice(inputIndex, inputIndex + 2)).toEqual(["-i", "/videos/single-keyframe.mp4"]);
+    expect(args.slice(seekIndex, seekIndex + 2)).toEqual(["-ss", "1.25"]);
   });
 });
 
