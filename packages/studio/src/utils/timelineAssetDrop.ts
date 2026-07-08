@@ -79,25 +79,43 @@ export function buildTimelineFileDropPlacements(
   });
 }
 
-export function resolveTimelineAssetInitialGeometry(source: string): {
-  left: number;
-  top: number;
+export function resolveTimelineAssetCompositionSize(source: string): {
   width: number;
   height: number;
 } {
   const width = Number.parseFloat(source.match(/\bdata-width=(["'])([^"']+)\1/i)?.[2] ?? "");
   const height = Number.parseFloat(source.match(/\bdata-height=(["'])([^"']+)\1/i)?.[2] ?? "");
-
   return {
-    left: 0,
-    top: 0,
     width: Number.isFinite(width) && width > 0 ? Math.round(width) : 640,
     height: Number.isFinite(height) && height > 0 ? Math.round(height) : 360,
   };
 }
 
+/**
+ * CapCut-style placement: natural size when it fits, scaled-to-fit when
+ * oversized, always centered. Unknown natural size → full-frame.
+ */
+export function fitTimelineAssetGeometry(
+  natural: { width: number; height: number } | null,
+  comp: { width: number; height: number },
+): { left: number; top: number; width: number; height: number } {
+  if (!natural || natural.width <= 0 || natural.height <= 0) {
+    return { left: 0, top: 0, width: comp.width, height: comp.height };
+  }
+  const scale = Math.min(1, comp.width / natural.width, comp.height / natural.height);
+  const width = Math.round(natural.width * scale);
+  const height = Math.round(natural.height * scale);
+  return {
+    left: Math.round((comp.width - width) / 2),
+    top: Math.round((comp.height - height) / 2),
+    width,
+    height,
+  };
+}
+
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
+  hfId: string;
   assetPath: string;
   kind: TimelineAssetKind;
   start: number;
@@ -106,7 +124,7 @@ export function buildTimelineAssetInsertHtml(input: {
   zIndex: number;
   geometry?: { left: number; top: number; width: number; height: number };
 }): string {
-  const sharedAttrs = `id="${input.id}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
+  const sharedAttrs = `id="${input.id}" data-hf-id="${input.hfId}" class="clip" src="${input.assetPath}" data-start="${input.start}" data-duration="${input.duration}" data-track-index="${input.track}"`;
   const geometry = input.geometry ?? { left: 0, top: 0, width: 640, height: 360 };
   const visualStyles = `position: absolute; left: ${geometry.left}px; top: ${geometry.top}px; width: ${geometry.width}px; height: ${geometry.height}px; object-fit: contain; z-index: ${input.zIndex}`;
 
@@ -118,7 +136,7 @@ export function buildTimelineAssetInsertHtml(input: {
     return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
   }
 
-  return `<audio ${sharedAttrs} style="z-index: ${input.zIndex}"></audio>`;
+  return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;
 }
 
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {

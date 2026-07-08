@@ -308,3 +308,65 @@ export async function resolveDroppedAssetDuration(
   media.load();
   return duration;
 }
+
+export async function resolveDroppedAssetDimensions(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<{ width: number; height: number } | null> {
+  if (kind === "audio") return null;
+  const src = `/api/projects/${projectId}/preview/${assetPath}`;
+
+  if (kind === "image") {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const timeout = window.setTimeout(() => resolve(null), 3000);
+      img.addEventListener(
+        "load",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(
+            img.naturalWidth > 0 && img.naturalHeight > 0
+              ? { width: img.naturalWidth, height: img.naturalHeight }
+              : null,
+          );
+        },
+        { once: true },
+      );
+      img.addEventListener(
+        "error",
+        () => {
+          window.clearTimeout(timeout);
+          resolve(null);
+        },
+        { once: true },
+      );
+      img.src = src;
+    });
+  }
+
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const timeout = window.setTimeout(() => resolve(null), 3000);
+    const finalize = (value: { width: number; height: number } | null) => {
+      window.clearTimeout(timeout);
+      video.src = "";
+      video.load();
+      resolve(value);
+    };
+    video.addEventListener(
+      "loadedmetadata",
+      () => {
+        finalize(
+          video.videoWidth > 0 && video.videoHeight > 0
+            ? { width: video.videoWidth, height: video.videoHeight }
+            : null,
+        );
+      },
+      { once: true },
+    );
+    video.addEventListener("error", () => finalize(null), { once: true });
+    video.src = src;
+  });
+}

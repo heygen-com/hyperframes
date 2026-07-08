@@ -2,7 +2,7 @@ import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
   insertTimelineAssetIntoSource,
-  resolveTimelineAssetInitialGeometry,
+  resolveTimelineAssetCompositionSize,
 } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
@@ -120,7 +120,9 @@ export async function addBlockToProject(
       );
 
       const isBlock = block.type === "hyperframes:block";
-      const hostDims = resolveTimelineAssetInitialGeometry(originalContent);
+      const { width: hostWidth, height: hostHeight } =
+        resolveTimelineAssetCompositionSize(originalContent);
+      const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
 
       const currentTime = opts.currentTime ?? 0;
       const start = placement

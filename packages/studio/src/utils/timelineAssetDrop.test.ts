@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimelineFileDropPlacements,
   buildTimelineAssetInsertHtml,
+  fitTimelineAssetGeometry,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
-  resolveTimelineAssetInitialGeometry,
+  resolveTimelineAssetCompositionSize,
   resolveTimelineAssetSrc,
 } from "./timelineAssetDrop";
 
@@ -22,6 +23,7 @@ describe("buildTimelineAssetInsertHtml", () => {
   it("builds an image clip with explicit timing and track", () => {
     const html = buildTimelineAssetInsertHtml({
       id: "photo_asset",
+      hfId: "hf-abc123",
       assetPath: "assets/photo.png",
       kind: "image",
       start: 1.25,
@@ -40,6 +42,7 @@ describe("buildTimelineAssetInsertHtml", () => {
   it("builds an audio clip without visual layout styles", () => {
     const html = buildTimelineAssetInsertHtml({
       id: "music_asset",
+      hfId: "hf-xyz789",
       assetPath: "assets/music.wav",
       kind: "audio",
       start: 0.5,
@@ -52,15 +55,13 @@ describe("buildTimelineAssetInsertHtml", () => {
   });
 });
 
-describe("resolveTimelineAssetInitialGeometry", () => {
+describe("resolveTimelineAssetCompositionSize", () => {
   it("uses the target composition dimensions for visual media", () => {
     expect(
-      resolveTimelineAssetInitialGeometry(
+      resolveTimelineAssetCompositionSize(
         `<div data-composition-id="main" data-width="330" data-height="228"></div>`,
       ),
     ).toEqual({
-      left: 0,
-      top: 0,
       width: 330,
       height: 228,
     });
@@ -157,5 +158,59 @@ describe("insertTimelineAssetIntoSource", () => {
 
     expect(html).toContain('data-composition-id="main">');
     expect(html).toContain('<img id="photo_asset" data-start="0" data-duration="3" />');
+  });
+});
+
+describe("buildTimelineAssetInsertHtml markup quality", () => {
+  const base = {
+    id: "clip_1",
+    hfId: "hf-test-1",
+    assetPath: "assets/a.mp4",
+    start: 1,
+    duration: 4,
+    track: 2,
+    zIndex: 3,
+  };
+
+  it("stamps data-hf-id on all kinds", () => {
+    for (const kind of ["image", "video", "audio"] as const) {
+      expect(buildTimelineAssetInsertHtml({ ...base, kind })).toContain('data-hf-id="hf-test-1"');
+    }
+  });
+
+  it("audio gets an explicit data-volume", () => {
+    expect(buildTimelineAssetInsertHtml({ ...base, kind: "audio" })).toContain('data-volume="1"');
+  });
+});
+
+describe("fitTimelineAssetGeometry", () => {
+  const comp = { width: 1920, height: 1080 };
+
+  it("centers a smaller-than-comp asset at natural size", () => {
+    expect(fitTimelineAssetGeometry({ width: 640, height: 360 }, comp)).toEqual({
+      left: 640,
+      top: 360,
+      width: 640,
+      height: 360,
+    });
+  });
+
+  it("scales an oversized asset down to fit, preserving aspect, centered", () => {
+    // 4000x1000 → capped to 1920 wide → 1920x480, centered vertically
+    expect(fitTimelineAssetGeometry({ width: 4000, height: 1000 }, comp)).toEqual({
+      left: 0,
+      top: 300,
+      width: 1920,
+      height: 480,
+    });
+  });
+
+  it("falls back to full-frame when natural size is unknown", () => {
+    expect(fitTimelineAssetGeometry(null, comp)).toEqual({
+      left: 0,
+      top: 0,
+      width: 1920,
+      height: 1080,
+    });
   });
 });

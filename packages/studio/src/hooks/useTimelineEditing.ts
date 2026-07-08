@@ -7,9 +7,10 @@ import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
   buildTimelineFileDropPlacements,
+  fitTimelineAssetGeometry,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
-  resolveTimelineAssetInitialGeometry,
+  resolveTimelineAssetCompositionSize,
   resolveTimelineAssetSrc,
 } from "../utils/timelineAssetDrop";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -17,7 +18,9 @@ import {
   getTimelineElementLabel,
   collectHtmlIds,
   resolveDroppedAssetDuration,
+  resolveDroppedAssetDimensions,
 } from "../utils/studioHelpers";
+import { generateId } from "../utils/generateId";
 import {
   applyTimelineStackingReorder,
   buildPatchTarget,
@@ -457,6 +460,10 @@ export function useTimelineEditing({
             : await resolveDroppedAssetDuration(pid, assetPath, kind);
         const normalizedDuration = Number(formatTimelineAttributeNumber(duration));
         const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
+        const hfId = `hf-${generateId()}`;
+        const compSize = resolveTimelineAssetCompositionSize(originalContent);
+        const natural =
+          kind === "audio" ? null : await resolveDroppedAssetDimensions(pid, assetPath, kind);
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
         const resolvedTargetPath = targetPath || "index.html";
@@ -469,13 +476,14 @@ export function useTimelineEditing({
           originalContent,
           buildTimelineAssetInsertHtml({
             id: newId,
+            hfId,
             assetPath: resolvedAssetSrc,
             kind,
             start: normalizedStart,
             duration: normalizedDuration,
             track: placement.track,
             zIndex: newElementZIndex,
-            geometry: resolveTimelineAssetInitialGeometry(originalContent),
+            geometry: fitTimelineAssetGeometry(natural, compSize),
           }),
         );
 
