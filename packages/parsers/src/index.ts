@@ -3,6 +3,7 @@ export * from "./gsapParserExports.js";
 export { generateSpringEaseData } from "./springEase.js";
 export * from "./htmlParser.js";
 export * from "./hfIds.js";
+export * from "./animationRuntimeDetection.js";
 export * from "./subCompositionValidity.js";
 export * from "./outputResolutionCompatibility.js";
 export { unrollComputedTimeline } from "./gsapUnroll.js";
