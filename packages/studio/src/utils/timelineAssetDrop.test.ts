@@ -101,49 +101,13 @@ describe("buildTimelineFileDropPlacements", () => {
     ]);
   });
 
-  it("moves the spaced sequence to a clear track when the dropped row is occupied", () => {
-    expect(
-      buildTimelineFileDropPlacements(
-        { start: 1.5, track: 2 },
-        [1.2, 1.6, 1.1],
-        [
-          { start: 0, duration: 8, track: 2 },
-          { start: 0, duration: 4, track: 5 },
-        ],
-      ),
-    ).toEqual([
-      { start: 1.5, track: 6 },
-      { start: 2.7, track: 6 },
-      { start: 4.3, track: 6 },
-    ]);
-  });
-
-  it("keeps a requested track above occupied rows when that track is clear", () => {
-    expect(
-      buildTimelineFileDropPlacements(
-        { start: 1.5, track: 8 },
-        [1.2, 1.6],
-        [
-          { start: 0, duration: 8, track: 2 },
-          { start: 0, duration: 4, track: 5 },
-        ],
-      ),
-    ).toEqual([
-      { start: 1.5, track: 8 },
-      { start: 2.7, track: 8 },
-    ]);
-  });
-
-  it("moves a default-track drop to a clear row when track 0 is occupied at time 0", () => {
-    expect(
-      buildTimelineFileDropPlacements(
-        { start: 0, track: 0 },
-        [1.2, 1.6],
-        [{ start: 0, duration: 8, track: 0 }],
-      ),
-    ).toEqual([
-      { start: 0, track: 1 },
-      { start: 1.2, track: 1 },
+  it("keeps every file on the dropped track even when that track is occupied", () => {
+    // A clip placed onto an occupied track stays there (overlap is allowed); it is
+    // NOT bumped to a new track — that produced surprise empty tracks for users.
+    expect(buildTimelineFileDropPlacements({ start: 1.5, track: 2 }, [1.2, 1.6, 1.1])).toEqual([
+      { start: 1.5, track: 2 },
+      { start: 2.7, track: 2 },
+      { start: 4.3, track: 2 },
     ]);
   });
 });

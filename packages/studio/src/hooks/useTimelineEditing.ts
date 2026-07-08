@@ -505,17 +505,6 @@ export function useTimelineEditing({
       const placements = buildTimelineFileDropPlacements(
         placement ?? { start: 0, track: 0 },
         durations,
-        timelineElements
-          .filter(
-            (te) =>
-              (te.sourceFile || activeCompPath || "index.html") ===
-              (activeCompPath || "index.html"),
-          )
-          .map((te) => ({
-            start: te.start,
-            duration: te.duration,
-            track: te.track,
-          })),
       );
       for (const [index, assetPath] of uploaded.entries()) {
         await handleTimelineAssetDrop(
@@ -525,14 +514,7 @@ export function useTimelineEditing({
         );
       }
     },
-    [
-      activeCompPath,
-      handleTimelineAssetDrop,
-      timelineElements,
-      uploadProjectFiles,
-      isRecordingRef,
-      showToast,
-    ],
+    [handleTimelineAssetDrop, uploadProjectFiles, isRecordingRef, showToast],
   );
 
   const handleAddAssetAtPlayhead = useCallback(
@@ -546,20 +528,10 @@ export function useTimelineEditing({
       }
       const start = usePlayerStore.getState().currentTime;
       const duration = await resolveDroppedAssetDuration(pid, assetPath, kind);
-      const resolvedTargetPath = activeCompPath || "index.html";
-      const occupied = timelineElements
-        .filter((te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath)
-        .map((te) => ({ start: te.start, duration: te.duration, track: te.track }));
-      // Reuse the file-drop placement rule: target track 0, bump to a clear
-      // track when the span overlaps (FCP-style "never reject").
-      const [placement] = buildTimelineFileDropPlacements(
-        { start, track: 0 },
-        [duration],
-        occupied,
-      );
-      await handleTimelineAssetDrop(assetPath, placement, duration);
+      // Add on track 0 at the playhead (no bump — placing onto an occupied track is fine).
+      await handleTimelineAssetDrop(assetPath, { start, track: 0 }, duration);
     },
-    [activeCompPath, handleTimelineAssetDrop, showToast, timelineElements],
+    [handleTimelineAssetDrop, showToast],
   );
 
   const handleBlockedTimelineEdit = useCallback(

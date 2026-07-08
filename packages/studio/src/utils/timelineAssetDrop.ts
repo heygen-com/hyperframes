@@ -48,34 +48,26 @@ export function resolveTimelineAssetSrc(targetPath: string, assetPath: string): 
   return relative || assetPath.split("/").pop() || assetPath;
 }
 
+/**
+ * Sequence one or more dropped files end-to-end starting at the drop point, all on
+ * the track the user dropped onto. The clip lands where the ghost showed it — we do
+ * NOT bump to a different track on overlap (that produced surprise "new tracks" and,
+ * because it jumped past high indices like a grain-overlay track, wild numbers).
+ * HyperFrames allows time-overlap on a track; the user can nudge if they want a gap.
+ */
 export function buildTimelineFileDropPlacements(
   placement: { start: number; track: number },
   durations: number[],
-  occupiedClips: Array<{ start: number; duration: number; track: number }> = [],
 ): Array<{ start: number; track: number }> {
   let nextStart = roundToCenti(Math.max(0, placement.start));
-  const sequenceStart = nextStart;
-  const resolvedDurations = durations.map((duration) =>
-    Number.isFinite(duration) && duration > 0 ? duration : FALLBACK_TIMELINE_FILE_DROP_DURATION,
-  );
-  const sequenceEnd = resolvedDurations.reduce(
-    (end, duration) => roundToCenti(end + duration),
-    sequenceStart,
-  );
-  const overlapsDropTrack = occupiedClips.some((clip) => {
-    if (clip.track !== placement.track) return false;
-    const clipStart = Math.max(0, clip.start);
-    const clipEnd = clipStart + Math.max(0, clip.duration);
-    return sequenceStart < clipEnd && sequenceEnd > clipStart;
-  });
-  const track = overlapsDropTrack
-    ? Math.max(placement.track, ...occupiedClips.map((clip) => clip.track)) + 1
-    : placement.track;
-
-  return resolvedDurations.map((duration) => {
+  return durations.map((rawDuration) => {
+    const duration =
+      Number.isFinite(rawDuration) && rawDuration > 0
+        ? rawDuration
+        : FALLBACK_TIMELINE_FILE_DROP_DURATION;
     const start = nextStart;
     nextStart = roundToCenti(nextStart + duration);
-    return { start, track };
+    return { start, track: placement.track };
   });
 }
 
