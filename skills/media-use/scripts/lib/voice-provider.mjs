@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { reportHeygenFailure } from "./heygen-cli.mjs";
 
 // Voice / TTS generation via the HeyGen CLI — the only external CLI media-use
 // shells (CLI-only invariant: media-use holds no keys; the CLI owns auth).
@@ -13,9 +14,7 @@ function runJson(bin, argv, label) {
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (err) {
-    console.error(
-      `media-use: \`${bin}\` ${label} failed: ${err.stderr?.toString().trim() || err.message}`,
-    );
+    reportHeygenFailure(err, `${bin} ${label}`);
     return null;
   }
   try {

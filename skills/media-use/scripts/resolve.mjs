@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import { resolve, join, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
@@ -21,6 +22,14 @@ import {
   isLibraryLutOfflineMiss,
   matchColorLook,
 } from "./lib/lut-preset-provider.mjs";
+import {
+  HEYGEN_AUTH_COMMAND,
+  HEYGEN_INSTALL_COMMAND,
+  HEYGEN_MIN_VERSION,
+  HEYGEN_UPDATE_COMMAND,
+  firstSemver,
+  versionLessThan,
+} from "./lib/heygen-cli.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -30,6 +39,7 @@ const { values: args } = parseArgs({
     project: { type: "string", short: "p", default: "." },
     adopt: { type: "boolean", default: false },
     candidates: { type: "boolean", default: false },
+    doctor: { type: "boolean", default: false },
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
@@ -59,6 +69,7 @@ Options:
   --adopt         Adopt all existing assets/ files into the manifest
   --candidates    List reusable assets (project + global cache) for --type; no
                   download, no mutation. Read them and decide reuse yourself.
+  --doctor        Check local CLI dependencies; no manifest changes.
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
@@ -97,6 +108,16 @@ if (args.adopt) {
 if (args.candidates || args["dry-run"]) {
   await showCandidates();
   process.exit(0);
+}
+
+if (args.doctor) {
+  const doctor = runDoctor();
+  if (args.json) {
+    console.log(JSON.stringify({ ok: doctor.ok, checks: doctor.checks }));
+  } else {
+    printDoctor(doctor.checks);
+  }
+  process.exit(doctor.ok ? 0 : 1);
 }
 
 // Reuse: import a specific global-cache asset (by content sha/prefix, taken
@@ -707,6 +728,143 @@ async function showCandidates() {
   } else {
     console.log(formatCandidates(candidates, { truncated, total }));
   }
+}
+
+function runDoctor() {
+  const checks = [];
+  const heygenVersionProbe = runCommand("heygen", ["--version"]);
+  const heygenOnPath = heygenVersionProbe.status === 0;
+  const heygenVersionText = commandText(heygenVersionProbe);
+  const heygenVersion = firstSemver(heygenVersionText);
+
+  checks.push({
+    name: "heygen on PATH",
+    ok: heygenOnPath,
+    detail: heygenOnPath
+      ? `heygen ${heygenVersion ? `v${heygenVersion}` : "found"}`
+      : "heygen not found",
+    fix: heygenOnPath ? "" : HEYGEN_INSTALL_COMMAND,
+  });
+
+  if (!heygenOnPath) {
+    checks.push({
+      name: "heygen version",
+      ok: false,
+      detail: "heygen version unavailable",
+      fix: HEYGEN_INSTALL_COMMAND,
+    });
+    checks.push({
+      name: "heygen authenticated",
+      ok: false,
+      detail: "heygen auth status unavailable",
+      fix: HEYGEN_INSTALL_COMMAND,
+    });
+  } else if (heygenVersion) {
+    const versionOk = !versionLessThan(heygenVersion, HEYGEN_MIN_VERSION);
+    checks.push({
+      name: "heygen version",
+      ok: versionOk,
+      detail: `heygen v${heygenVersion} (need >= v${HEYGEN_MIN_VERSION})`,
+      fix: versionOk ? "" : HEYGEN_UPDATE_COMMAND,
+    });
+
+    const authProbe = runCommand("heygen", ["auth", "status"]);
+    const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
+    checks.push({
+      name: "heygen authenticated",
+      ok: !!email,
+      detail: email ? `heygen authenticated as ${email}` : "heygen not authenticated",
+      fix: email ? "" : HEYGEN_AUTH_COMMAND,
+    });
+  } else {
+    checks.push({
+      name: "heygen version",
+      ok: true,
+      detail: "heygen version did not include semver",
+      fix: "",
+    });
+
+    const authProbe = runCommand("heygen", ["auth", "status"]);
+    const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
+    checks.push({
+      name: "heygen authenticated",
+      ok: !!email,
+      detail: email ? `heygen authenticated as ${email}` : "heygen not authenticated",
+      fix: email ? "" : HEYGEN_AUTH_COMMAND,
+    });
+  }
+
+  const ffmpegProbe = runCommand("ffmpeg", ["-version"]);
+  checks.push({
+    name: "ffmpeg on PATH",
+    ok: ffmpegProbe.status === 0,
+    detail: ffmpegProbe.status === 0 ? firstLine(ffmpegProbe.stdout) : "ffmpeg not found",
+    fix: ffmpegProbe.status === 0 ? "" : "brew install ffmpeg",
+  });
+
+  const ffprobeProbe = runCommand("ffprobe", ["-version"]);
+  checks.push({
+    name: "ffprobe on PATH",
+    ok: ffprobeProbe.status === 0,
+    detail: ffprobeProbe.status === 0 ? firstLine(ffprobeProbe.stdout) : "ffprobe not found",
+    fix: ffprobeProbe.status === 0 ? "" : "brew install ffmpeg",
+  });
+
+  checks.push({
+    name: "node version",
+    ok: true,
+    detail: process.version,
+    fix: "",
+  });
+
+  const ffmpeg = checks.find((check) => check.name === "ffmpeg on PATH");
+  return { ok: !!ffmpeg?.ok, checks };
+}
+
+function printDoctor(checks) {
+  const heygenChecks = new Set(["heygen on PATH", "heygen version", "heygen authenticated"]);
+  for (const check of checks) {
+    const prefix = check.ok ? "✓" : "✗";
+    const freePath = heygenChecks.has(check.name)
+      ? " — free-usage path: bgm/image/voice/avatar-video"
+      : "";
+    const fix = check.ok || !check.fix ? "" : ` — fix: ${check.fix}`;
+    console.log(`${prefix} ${check.detail}${freePath}${fix}`);
+  }
+}
+
+function runCommand(bin, argv) {
+  return spawnSync(bin, argv, {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+}
+
+function commandText(result) {
+  return [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+}
+
+function firstLine(text) {
+  return (
+    String(text || "")
+      .trim()
+      .split(/\r?\n/)[0] || ""
+  );
+}
+
+function emailFromAuthStatus(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed?.data?.email || parsed?.email || null;
+    } catch {
+      return null;
+    }
+  }
+  const match = trimmed.match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
+  return match ? match[0] : null;
 }
 
 async function reuseGlobal(shaArg) {

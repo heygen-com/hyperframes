@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { reportHeygenFailure } from "./heygen-cli.mjs";
 
 export function heygenSearch(subcommand, query, { type, limit = 5, minScore } = {}) {
   // execFileSync with an argv array (no shell), so query/type/etc. are passed as
@@ -28,8 +29,7 @@ export function heygenSearch(subcommand, query, { type, limit = 5, minScore } = 
   } catch (err) {
     // Don't swallow a broken command / auth failure as "no results" — that turns
     // a typo or expired key into a silent dead end. Surface it, then give up.
-    const detail = err.stderr?.toString().trim() || err.stdout?.toString().trim() || err.message;
-    console.error(`media-use: \`heygen ${subcommand}\` failed: ${detail}`);
+    reportHeygenFailure(err, `heygen ${subcommand}`);
     return null;
   }
 

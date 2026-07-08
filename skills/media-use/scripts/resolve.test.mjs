@@ -118,6 +118,10 @@ function normalizeWithCoreSource(grading) {
   );
 }
 
+function runResolveStatus(args) {
+  return spawnResolve(args);
+}
+
 const tests = [];
 function test(name, fn) {
   tests.push({ name, fn });
@@ -328,6 +332,37 @@ test("--json returns error JSON on stub provider failure", () => {
     assert.ok(parsed.error.includes("no provider"));
   }
   cleanup();
+});
+
+test("--doctor --json reports dependency checks and top-level ok follows ffmpeg only", () => {
+  const result = runResolveStatus(["--doctor", "--json"]);
+  assert.match(result.stdout.trim(), /^\{/);
+  assert.equal(result.stderr, "");
+  assert.ok(result.status === 0 || result.status === 1);
+
+  const parsed = JSON.parse(result.stdout.trim());
+  assert.ok(Array.isArray(parsed.checks));
+
+  const expected = [
+    "heygen on PATH",
+    "heygen version",
+    "heygen authenticated",
+    "ffmpeg on PATH",
+    "ffprobe on PATH",
+    "node version",
+  ];
+  const byName = new Map(parsed.checks.map((check) => [check.name, check]));
+  for (const name of expected) {
+    assert.ok(byName.has(name), `missing check: ${name}`);
+    const check = byName.get(name);
+    assert.equal(typeof check.ok, "boolean", `${name}.ok`);
+    assert.equal(typeof check.detail, "string", `${name}.detail`);
+    assert.ok("fix" in check, `${name}.fix`);
+  }
+
+  const ffmpeg = byName.get("ffmpeg on PATH");
+  assert.equal(parsed.ok, ffmpeg.ok);
+  assert.equal(result.status, ffmpeg.ok ? 0 : 1);
 });
 
 test("one-line output format matches contract", () => {
