@@ -310,16 +310,19 @@ async function seekPage(page: Page, seconds: number): Promise<void> {
 async function captureSnapshot(page: Page): Promise<DeterminismSnapshot> {
   return page.evaluate(
     (selector, styleProperties, attributeNames) => {
-      function roundNumber(value: number): number {
-        if (!Number.isFinite(value)) return 0;
-        return Math.round(value * 1_000_000) / 1_000_000;
-      }
-
       const targets = Array.from(document.querySelectorAll(selector));
       return {
         targetCount: targets.length,
         targets: targets.map((element, index) => {
           const rect = element.getBoundingClientRect();
+          const rectX = Number.isFinite(rect.x) ? Math.round(rect.x * 1_000_000) / 1_000_000 : 0;
+          const rectY = Number.isFinite(rect.y) ? Math.round(rect.y * 1_000_000) / 1_000_000 : 0;
+          const rectWidth = Number.isFinite(rect.width)
+            ? Math.round(rect.width * 1_000_000) / 1_000_000
+            : 0;
+          const rectHeight = Number.isFinite(rect.height)
+            ? Math.round(rect.height * 1_000_000) / 1_000_000
+            : 0;
           const styles: Record<string, string> = {};
           const computed = window.getComputedStyle(element);
           for (const property of styleProperties) {
@@ -341,10 +344,10 @@ async function captureSnapshot(page: Page): Promise<DeterminismSnapshot> {
             attributes,
             styles,
             rect: {
-              x: roundNumber(rect.x),
-              y: roundNumber(rect.y),
-              width: roundNumber(rect.width),
-              height: roundNumber(rect.height),
+              x: rectX,
+              y: rectY,
+              width: rectWidth,
+              height: rectHeight,
             },
           };
         }),
