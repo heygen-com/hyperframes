@@ -51,6 +51,68 @@ export function readVariableDeclarations(document: Document): CompositionVariabl
 }
 
 /**
+ * Find the raw declaration entry for a variable id, verbatim (unvalidated).
+ * Returns undefined when the attribute is absent, the JSON is invalid, or no
+ * entry matches the id.
+ */
+export function findVariableDeclaration(document: Document, id: string): VariableDecl | undefined {
+  const decls = readDecls(document);
+  if (!decls) return undefined;
+  const idx = indexOfId(decls.arr, id);
+  return idx < 0 ? undefined : decls.arr[idx];
+}
+
+/**
+ * Upsert a whole variable declaration by its id. Creates the
+ * `data-composition-variables` attribute when absent; replaces an unparseable
+ * attribute with a fresh single-entry array (the prior content was invisible
+ * to every reader anyway). Returns false only when the document has no root
+ * element to carry the attribute.
+ *
+ * Accepts raw (unvalidated) entries as well as typed declarations: the patch
+ * REPLAY path must faithfully restore whatever entry the inverse patch
+ * captured — including loose hand-authored declarations the strict parser
+ * would drop — or undo silently diverges from history.
+ */
+export function writeVariableDeclaration(
+  document: Document,
+  declaration: CompositionVariable | ({ id: string } & Record<string, unknown>),
+): boolean {
+  const htmlEl = getHtmlEl(document);
+  if (!htmlEl) return false;
+  const decls = readDecls(document);
+  const arr = decls?.arr ?? [];
+  const idx = indexOfId(arr, declaration.id);
+  const entry: VariableDecl = { ...declaration };
+  if (idx < 0) {
+    arr.push(entry);
+  } else {
+    arr[idx] = entry;
+  }
+  (decls?.htmlEl ?? htmlEl).setAttribute("data-composition-variables", JSON.stringify(arr));
+  return true;
+}
+
+/**
+ * Remove a variable declaration by id. Drops the whole attribute when the
+ * last declaration is removed (an empty `[]` is noise in authored HTML).
+ * No-ops (returns false) when the attribute or the entry is absent.
+ */
+export function removeVariableDeclarationEntry(document: Document, id: string): boolean {
+  const decls = readDecls(document);
+  if (!decls) return false;
+  const idx = indexOfId(decls.arr, id);
+  if (idx < 0) return false;
+  decls.arr.splice(idx, 1);
+  if (decls.arr.length === 0) {
+    decls.htmlEl.removeAttribute("data-composition-variables");
+  } else {
+    decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
+  }
+  return true;
+}
+
+/**
  * Read the current `default` value for a variable id. Returns undefined when
  * the attribute is absent, the JSON is invalid, or no entry matches the id.
  */

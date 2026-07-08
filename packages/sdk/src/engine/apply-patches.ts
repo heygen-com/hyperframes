@@ -19,7 +19,21 @@ import {
   setStyleSheet,
 } from "./model.js";
 import { keyToPath, stylePath } from "./patches.js";
-import { writeVariableDefault, clearVariableDefault } from "./variableModel.js";
+import {
+  writeVariableDefault,
+  clearVariableDefault,
+  writeVariableDeclaration,
+  removeVariableDeclarationEntry,
+} from "./variableModel.js";
+
+function isRawDeclarationEntry(value: unknown): value is { id: string } & Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -32,6 +46,7 @@ interface ParsedPath {
     | "hold"
     | "element"
     | "variable"
+    | "variableDeclaration"
     | "metadata"
     | "script"
     | "stylesheet";
@@ -64,6 +79,9 @@ function parsePath(path: string): ParsedPath | null {
 
   const elemM = /^\/elements\/([^/]+)$/.exec(path);
   if (elemM) return { type: "element", id: elemM[1] };
+
+  const varDeclM = /^\/variableDeclarations\/(.+)$/.exec(path);
+  if (varDeclM) return { type: "variableDeclaration", id: varDeclM[1] };
 
   const varM = /^\/variables\/(.+)$/.exec(path);
   if (varM) return { type: "variable", id: varM[1] };
@@ -225,6 +243,20 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
         const children = Array.from(parent.children);
         const ref = children[v.siblingIndex] ?? null;
         parent.insertBefore(node, ref);
+      }
+      break;
+    }
+
+    case "variableDeclaration": {
+      if (!p.id) return;
+      if (patch.op === "remove") {
+        removeVariableDeclarationEntry(parsed.document, p.id);
+      } else if (isRawDeclarationEntry(patch.value)) {
+        // Replay is faithful, not strict: inverse patches capture raw entries
+        // (loose hand-authored declarations included) and undo must restore
+        // them verbatim — gating on isCompositionVariable here would make
+        // undo of a remove/update on a loose entry silently no-op.
+        writeVariableDeclaration(parsed.document, patch.value);
       }
       break;
     }

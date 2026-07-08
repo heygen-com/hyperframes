@@ -40,6 +40,7 @@ import {
   holdPath,
   elementPath,
   variablePath,
+  variableDeclPath,
   metaPath,
   gsapScriptPath,
   styleSheetPath,
@@ -76,7 +77,18 @@ import {
   unrollDynamicAnimations,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
-import { readVariableDefault, writeVariableDefault } from "./variableModel.js";
+import {
+  readVariableDefault,
+  writeVariableDefault,
+  findVariableDeclaration,
+  writeVariableDeclaration,
+  removeVariableDeclarationEntry,
+} from "./variableModel.js";
+import {
+  isCompositionVariable,
+  isScalarVariableValue as isScalar,
+} from "@hyperframes/core/variables";
+import type { CompositionVariable } from "@hyperframes/core/variables";
 import {
   URI_BEARING_ATTRS,
   DANGEROUS_URI_SCHEMES,
@@ -288,6 +300,12 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
       return handleSetCompositionMetadata(parsed, op);
     case "setVariableValue":
       return handleSetVariableValue(parsed, op.id, op.value);
+    case "declareVariable":
+      return handleDeclareVariable(parsed, op.declaration);
+    case "updateVariableDeclaration":
+      return handleUpdateVariableDeclaration(parsed, op.id, op.declaration);
+    case "removeVariableDeclaration":
+      return handleRemoveVariableDeclaration(parsed, op.id);
     case "setClassStyle":
       return handleSetClassStyle(parsed, op.selector, op.styles);
     case "addLabel":
@@ -883,6 +901,169 @@ function handleSetVariableValue(
   }
 
   return { forward, inverse };
+}
+
+/**
+ * Keep the `--{id}` CSS compat custom property on the root in sync with a
+ * scalar default (same secondary channel handleSetVariableValue maintains).
+ * Pass null to clear. Returns the patch pair, or null when there is no root
+ * or nothing to change.
+ */
+function cssCompatChange(
+  parsed: ParsedDocument,
+  id: string,
+  newVal: string | null,
+): { forward: JsonPatchOp; inverse: JsonPatchOp } | null {
+  const root = findRoot(parsed.document);
+  const rootId = root?.getAttribute("data-hf-id");
+  if (!root || !rootId) return null;
+  const cssVar = `--${id}`;
+  const oldCssValue = getElementStyles(root)[cssVar] ?? null;
+  if (newVal !== null) {
+    if (oldCssValue === newVal) return null;
+    setElementStyles(root, { [cssVar]: newVal });
+    return scalarChange(stylePath(rootId, cssVar), oldCssValue, newVal);
+  }
+  if (oldCssValue === null) return null;
+  setElementStyles(root, { [cssVar]: null });
+  return scalarDelete(stylePath(rootId, cssVar), oldCssValue);
+}
+
+/**
+ * Declaration ops require a real `<html>` in the source: fragment inputs get
+ * a synthetic wrapper that serialize() strips, so a declaration written there
+ * would silently vanish on save.
+ */
+function fragmentCompositionErr(parsed: ParsedDocument): CanResult | null {
+  if (!parsed.wrapped) return null;
+  return canErr(
+    "E_FRAGMENT_COMPOSITION",
+    "Fragment compositions cannot carry variable declarations.",
+    "data-composition-variables lives on the <html> element — convert the composition to a full HTML document first.",
+  );
+}
+
+function invalidDeclarationErr(): CanResult {
+  return canErr(
+    "E_INVALID_ARGS",
+    "Not a valid variable declaration.",
+    "Requires id, label, type (string|number|color|boolean|enum|font|image), and a default matching the type; enum also requires options[].",
+  );
+}
+
+// A variable id becomes a CSS custom-property name (`--{id}`), a `data-var-*`
+// attribute value, and a CLI `--variables` key. isCompositionVariable only
+// checks it is a non-empty string, so the SDK — the last gate before Studio /
+// CSS / CLI make those assumptions — enforces a safe identifier shape here.
+const VALID_VARIABLE_ID = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+function isValidVariableId(id: string): boolean {
+  return VALID_VARIABLE_ID.test(id);
+}
+
+function invalidVariableIdErr(id: string): CanResult {
+  return canErr(
+    "E_INVALID_VARIABLE_ID",
+    `Variable id ${JSON.stringify(id)} is not a valid identifier.`,
+    "Ids must match /^[A-Za-z_][A-Za-z0-9_-]*$/ — they become CSS custom-property names (--id), data-var-* attribute values, and CLI --variables keys.",
+  );
+}
+
+/**
+ * Shared can() precondition for declareVariable/updateVariableDeclaration:
+ * refuse fragment compositions, non-declaration shapes, and malformed ids.
+ * Returns the CanResult to surface, or null when the declaration is well-formed.
+ * The shape check runs before the id access so a null/non-object declaration
+ * yields a CanResult, not a TypeError.
+ */
+function declarationPreconditionErr(
+  parsed: ParsedDocument,
+  declaration: CompositionVariable,
+): CanResult | null {
+  const fragmentErr = fragmentCompositionErr(parsed);
+  if (fragmentErr) return fragmentErr;
+  if (!isCompositionVariable(declaration)) return invalidDeclarationErr();
+  if (!isValidVariableId(declaration.id)) return invalidVariableIdErr(declaration.id);
+  return null;
+}
+
+function handleDeclareVariable(
+  parsed: ParsedDocument,
+  declaration: CompositionVariable,
+): MutationResult {
+  // Defensive re-check of can(): never write an invalid or duplicate
+  // declaration into the schema. Fragment sources have no <html> of their
+  // own — writing to the synthetic wrapper would be lost on serialize.
+  if (parsed.wrapped) return EMPTY;
+  if (!isCompositionVariable(declaration)) return EMPTY;
+  if (!isValidVariableId(declaration.id)) return EMPTY;
+  if (findVariableDeclaration(parsed.document, declaration.id) !== undefined) return EMPTY;
+  if (!writeVariableDeclaration(parsed.document, declaration)) return EMPTY;
+  const path = variableDeclPath(declaration.id);
+  const result: MutationResult = {
+    forward: [patchAdd(path, declaration)],
+    inverse: [patchRemove(path)],
+  };
+  // Same CSS compat channel every other variable op maintains — a composition
+  // CSS-bound to var(--id) must resolve regardless of which op set the value.
+  if (isScalar(declaration.default)) {
+    const css = cssCompatChange(parsed, declaration.id, String(declaration.default));
+    if (css) {
+      result.forward.push(css.forward);
+      result.inverse.push(css.inverse);
+    }
+  }
+  return result;
+}
+
+function handleUpdateVariableDeclaration(
+  parsed: ParsedDocument,
+  id: string,
+  declaration: CompositionVariable,
+): MutationResult {
+  if (parsed.wrapped) return EMPTY;
+  if (!isCompositionVariable(declaration) || declaration.id !== id) return EMPTY;
+  const old = findVariableDeclaration(parsed.document, id);
+  if (old === undefined) return EMPTY;
+  writeVariableDeclaration(parsed.document, declaration);
+  const p = valueChange(variableDeclPath(id), old, declaration);
+  const result: MutationResult = { forward: [p.forward], inverse: [p.inverse] };
+
+  // Default changed → keep the CSS compat prop in sync (set for scalars,
+  // clear when the new default is object-valued font/image), and emit the
+  // paired /variables value patch so the T3 override-set's var.{id} entry
+  // agrees with the varDecl.{id} snapshot regardless of replay order.
+  const oldDefault = old.default;
+  const newDefault = declaration.default;
+  if (JSON.stringify(oldDefault) !== JSON.stringify(newDefault)) {
+    const valueP = valueChange(variablePath(id), oldDefault ?? null, newDefault);
+    result.forward.push(valueP.forward);
+    result.inverse.push(valueP.inverse);
+    const css = cssCompatChange(parsed, id, isScalar(newDefault) ? String(newDefault) : null);
+    if (css) {
+      result.forward.push(css.forward);
+      result.inverse.push(css.inverse);
+    }
+  }
+  return result;
+}
+
+function handleRemoveVariableDeclaration(parsed: ParsedDocument, id: string): MutationResult {
+  if (parsed.wrapped) return EMPTY;
+  const old = findVariableDeclaration(parsed.document, id);
+  if (old === undefined) return EMPTY;
+  removeVariableDeclarationEntry(parsed.document, id);
+  const path = variableDeclPath(id);
+  const result: MutationResult = {
+    forward: [patchRemove(path)],
+    inverse: [patchAdd(path, old)],
+  };
+  const css = cssCompatChange(parsed, id, null);
+  if (css) {
+    result.forward.push(css.forward);
+    result.inverse.push(css.inverse);
+  }
+  return result;
 }
 
 // ─── GSAP selector helpers ───────────────────────────────────────────────────
@@ -1494,6 +1675,45 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
       if (findRoot(parsed.document) === null)
         return canErr("E_NO_ROOT", "Composition root element not found.");
       return CAN_OK;
+    case "declareVariable": {
+      const preErr = declarationPreconditionErr(parsed, op.declaration);
+      if (preErr) return preErr;
+      if (findVariableDeclaration(parsed.document, op.declaration.id) !== undefined)
+        return canErr(
+          "E_DUPLICATE_VARIABLE",
+          `Variable "${op.declaration.id}" is already declared.`,
+          "Use updateVariableDeclaration to change it, or setVariableValue to change its default.",
+        );
+      return CAN_OK;
+    }
+    case "updateVariableDeclaration": {
+      const preErr = declarationPreconditionErr(parsed, op.declaration);
+      if (preErr) return preErr;
+      if (op.declaration.id !== op.id)
+        return canErr(
+          "E_INVALID_ARGS",
+          `declaration.id ("${op.declaration.id}") must match id ("${op.id}").`,
+          "Variable ids are immutable — rename via removeVariableDeclaration + declareVariable.",
+        );
+      if (findVariableDeclaration(parsed.document, op.id) === undefined)
+        return canErr(
+          "E_VARIABLE_NOT_FOUND",
+          `Variable "${op.id}" is not declared.`,
+          "Check comp.getVariableDeclarations(), or add it with declareVariable.",
+        );
+      return CAN_OK;
+    }
+    case "removeVariableDeclaration": {
+      const fragmentErr = fragmentCompositionErr(parsed);
+      if (fragmentErr) return fragmentErr;
+      if (findVariableDeclaration(parsed.document, op.id) === undefined)
+        return canErr(
+          "E_VARIABLE_NOT_FOUND",
+          `Variable "${op.id}" is not declared.`,
+          "Check comp.getVariableDeclarations().",
+        );
+      return CAN_OK;
+    }
     case "setCompositionMetadata":
     case "setClassStyle":
       return CAN_OK;

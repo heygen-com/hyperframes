@@ -156,6 +156,18 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "setVariableValue", id, value });
   }
 
+  declareVariable(declaration: CompositionVariable): void {
+    this.dispatch({ type: "declareVariable", declaration });
+  }
+
+  updateVariableDeclaration(id: string, declaration: CompositionVariable): void {
+    this.dispatch({ type: "updateVariableDeclaration", id, declaration });
+  }
+
+  removeVariableDeclaration(id: string): void {
+    this.dispatch({ type: "removeVariableDeclaration", id });
+  }
+
   getVariableDeclarations(): CompositionVariable[] {
     return readVariableDeclarations(this.parsed.document);
   }

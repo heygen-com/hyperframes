@@ -21,6 +21,7 @@ export type {
 export {
   COMPOSITION_VARIABLE_TYPES,
   parseCompositionVariables,
+  isCompositionVariable,
   isScalarVariableValue,
 } from "@hyperframes/parsers/composition";
 
