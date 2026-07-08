@@ -508,8 +508,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         />
       )}
 
-      {/* External drag-over drop preview */}
-      {dropPreview && (
+      {/* External drag-over drop preview. Guard against a target track not yet in
+          displayTrackOrder (transient race) — a -1 index would place the ghost
+          above the ruler, off-canvas. */}
+      {dropPreview && displayTrackOrder.indexOf(dropPreview.track) >= 0 && (
         <DropPreviewOverlay
           preview={dropPreview}
           pps={pps}

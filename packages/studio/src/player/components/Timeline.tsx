@@ -29,7 +29,6 @@ import {
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
-import { runtimeKindForElement } from "./timelineDropPreview";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
 
@@ -209,18 +208,6 @@ export const Timeline = memo(function Timeline({
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
 
-  // Runtime clip kinds per track, so drops can retarget away from rows the
-  // runtime would split anyway (mixed-kind track normalization).
-  const trackKinds = useMemo(() => {
-    const map = new Map<number, Set<string>>();
-    for (const [trackNum, els] of tracks) {
-      map.set(trackNum, new Set(els.map((el) => runtimeKindForElement(el))));
-    }
-    return map;
-  }, [tracks]);
-  const trackKindsRef = useRef(trackKinds);
-  trackKindsRef.current = trackKinds;
-
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
@@ -254,7 +241,6 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
-      trackKindsRef,
       onFileDrop,
       onAssetDrop,
       onBlockDrop,

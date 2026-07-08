@@ -37,52 +37,6 @@ function kindFromMime(mime: string): TimelineDropPreviewKind {
   return "unknown";
 }
 
-/**
- * Runtime clip kind for a timeline element, mirroring the runtime's own
- * classification (normalizeTrackAssignments in @hyperframes/core).
- */
-export function runtimeKindForElement(el: { tag: string; compositionSrc?: string }): string {
-  if (el.compositionSrc) return "composition";
-  const tag = el.tag.toLowerCase();
-  if (tag === "video") return "video";
-  if (tag === "audio") return "audio";
-  if (tag === "img") return "image";
-  return "element";
-}
-
-/** Map a drop-preview kind to the runtime clip kind used for track normalization. */
-const RUNTIME_KIND: Record<TimelineDropPreviewKind, string | null> = {
-  image: "image",
-  video: "video",
-  audio: "audio",
-  block: "composition",
-  unknown: null,
-};
-
-/**
- * The runtime splits any track whose clips mix kinds (normalizeTrackAssignments),
- * so dropping e.g. an image onto a row of text elements would silently land on a
- * different row after reload. Resolve that up front: when the target row's kinds
- * don't include the dragged kind, retarget to a fresh track below everything so
- * the ghost shows where the clip will actually live.
- */
-function resolveKindAwareTrack(input: {
-  track: number;
-  kind: TimelineDropPreviewKind;
-  trackOrder: readonly number[];
-  trackKinds: ReadonlyMap<number, ReadonlySet<string>> | null;
-}): { track: number; isNewTrack: boolean } {
-  const isNewTrack = !input.trackOrder.includes(input.track);
-  const runtimeKind = RUNTIME_KIND[input.kind];
-  if (isNewTrack || !runtimeKind || !input.trackKinds) return { track: input.track, isNewTrack };
-  const kinds = input.trackKinds.get(input.track);
-  if (!kinds || kinds.size === 0 || kinds.has(runtimeKind)) {
-    return { track: input.track, isNewTrack };
-  }
-  const maxTrack = input.trackOrder.length > 0 ? Math.max(...input.trackOrder) : -1;
-  return { track: maxTrack + 1, isNewTrack: true };
-}
-
 export function resolveTimelineDropPreview(input: {
   drop: Parameters<typeof resolveTimelineAssetDrop>[0];
   clientX: number;
@@ -91,8 +45,6 @@ export function resolveTimelineDropPreview(input: {
   fileItems: ReadonlyArray<{ kind: string; type: string }>;
   snapTargets: readonly TimelineSnapTarget[];
   snapEnabled: boolean;
-  /** Runtime clip kinds present per track, for kind-aware retargeting. */
-  trackKinds?: ReadonlyMap<number, ReadonlySet<string>> | null;
 }): TimelineDropPreview {
   const placement = resolveTimelineAssetDrop(input.drop, input.clientX, input.clientY);
   const files = input.fileItems.filter((item) => item.kind === "file");
@@ -127,17 +79,10 @@ export function resolveTimelineDropPreview(input: {
     }
   }
 
-  const target = resolveKindAwareTrack({
-    track: placement.track,
-    kind,
-    trackOrder: input.drop.trackOrder,
-    trackKinds: input.trackKinds ?? null,
-  });
-
   return {
     start,
-    track: target.track,
-    isNewTrack: target.isNewTrack,
+    track: placement.track,
+    isNewTrack: !input.drop.trackOrder.includes(placement.track),
     durationSec,
     kind,
     label,
