@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #08111f;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #e2e8f0;
+      background:
+        linear-gradient(115deg, #08111f 0%, #17324d 48%, #3f1d38 100%);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #f9c74f;
+    }
+
+    #sync-parent {
+      position: absolute;
+      left: 310px;
+      top: 340px;
+      width: 280px;
+      height: 280px;
+      border: 4px solid rgba(249, 199, 79, 0.7);
+      background: rgba(249, 199, 79, 0.14);
+    }
+
+    #sync-child {
+      position: absolute;
+      left: 720px;
+      top: 400px;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: #43aa8b;
+      box-shadow: 0 30px 80px rgba(67, 170, 139, 0.28);
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-nested-sync"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / nested sync</div>
+      <div id="sync-parent" data-det-target="sync-parent"></div>
+      <div id="sync-child" data-det-target="sync-child"></div>
+    </div>
+  </div>
+
+  <script>
+    const child = anime.createTimeline({ autoplay: false });
+    child
+      .add("#sync-child", { translateX: [0, 540], scale: [1, 1.35], duration: 2400, ease: "linear" }, 0)
+      .add("#sync-child", { rotate: [0, 180], backgroundColor: "#f94144", duration: 1300, ease: "inOut(2)" }, 800);
+
+    const parent = anime.createTimeline({ autoplay: false });
+    parent
+      .add("#sync-parent", { translateX: [0, 220], rotate: [0, 20], duration: 1800, ease: "out(3)" }, 0)
+      .sync(child, 1800)
+      .add("#sync-parent", { translateX: [220, 620], rotate: [20, -16], duration: 1800, ease: "inOut(2)" }, 3900);
+
+    hyperframesAnime.register("nested-sync", parent, {
+      labels: { parent: 0, child: 1.8, end: 6 },
+    });
+  </script>
+</body>
+</html>

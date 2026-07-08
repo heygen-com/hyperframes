@@ -1,0 +1,13 @@
+{
+  "name": "animejs-determinism-backward-seek",
+  "description": "Anime.js 4.5 determinism fixture for seeking forward, then backward to exact time zero before delayed animations start.",
+  "tags": ["regression", "determinism", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

@@ -71,6 +71,67 @@ bun run --cwd packages/producer docker:test font-variant-numeric
 bun run --cwd packages/producer docker:test -- --sequential
 ```
 
+## Anime.js determinism gate
+
+The `animejs-determinism-*` fixture family is not only a PSNR baseline
+suite. These fixtures also feed a direct browser conformance gate that
+drives the compiled pages through `window.__hf.seek(t)` and compares DOM
+state snapshots. Run it before any registry or content porting work
+depends on anime.js behavior:
+
+```bash
+bun run --cwd packages/producer check:runtime-conformance
+```
+
+`check:runtime-conformance` first verifies the built HyperFrames runtime
+manifest and producer file-server injection wiring, then runs the anime.js
+determinism gate across `animejs-adapter` and all
+`animejs-determinism-*` fixtures. To run only the browser gate:
+
+```bash
+bun run --cwd packages/producer check:animejs-determinism
+```
+
+The browser gate differs from the Docker PSNR flow above. It does not
+render MP4 output or compare video frames. Instead it compiles each fixture
+through the producer compiler, serves it through the render file server so
+the real runtime bridge is injected, opens isolated Puppeteer pages, and
+asserts:
+
+- same-frame repeatability on the same page
+- random seek order `[90, 10, 50, 10]` followed by direct equivalence at
+  frame `42`
+- forward seek followed by backward seek to exact `0`
+- negative seek clamping to the `0` state
+- past-duration seek matching the fixture end state for finite anime
+  instances
+- no active anime.js engine work remains, plus prompt `page.close()`
+
+The timer leak check is intentionally scoped: the HyperFrames runtime owns a
+transport `requestAnimationFrame` loop, so the gate does not claim every page
+timer handle is absent. It introspects `anime.engine` for active anime.js
+work and separately asserts that each throwaway page closes promptly.
+
+The fixture targets are:
+
+- `animejs-determinism-springs` — spring easing on transform state
+- `animejs-determinism-morph` — `anime.svg.morphTo` path interpolation
+- `animejs-determinism-drawable` — `anime.svg.createDrawable` line draw
+- `animejs-determinism-split-text` — `anime.text.split` per-character
+  animation
+- `animejs-determinism-nested-sync` — parent timeline driving a child
+  timeline through `.sync()`
+- `animejs-determinism-seeded-stagger` — fixed-grid `anime.stagger`
+  delays with no random seed or wall-clock input
+- `animejs-determinism-backward-seek` — delayed animation state after
+  forward-then-backward seek
+
+If a fixture fails this gate, do not relax the check to make the fixture
+pass. Record the fixture, check name, and expected/actual snapshot artifact
+paths from `.debug/animejs-determinism-gate/`; that feature should be
+scoped out of the v1 anime.js authoring contract until the failure is
+understood.
+
 ## Harness modes
 
 `--mode=<value>` chooses which render path the harness exercises:

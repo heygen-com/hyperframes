@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #f8fafc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #0f172a;
+      background:
+        linear-gradient(90deg, rgba(15, 23, 42, 0.08) 1px, transparent 1px) 0 0 / 128px 128px,
+        linear-gradient(0deg, rgba(15, 23, 42, 0.08) 1px, transparent 1px) 0 0 / 128px 128px,
+        #f8fafc;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #334155;
+    }
+
+    #stagger-grid {
+      position: absolute;
+      left: 530px;
+      top: 250px;
+      display: grid;
+      grid-template-columns: repeat(5, 126px);
+      grid-template-rows: repeat(4, 126px);
+      gap: 36px;
+    }
+
+    .cell {
+      width: 126px;
+      height: 126px;
+      border-radius: 18px;
+      background: #94a3b8;
+      transform-origin: center;
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-seeded-stagger"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / fixed stagger grid</div>
+      <div id="stagger-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    const grid = document.getElementById("stagger-grid");
+    for (let index = 0; index < 20; index++) {
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.id = `cell-${index}`;
+      cell.dataset.detTarget = "stagger-cell";
+      grid.appendChild(cell);
+    }
+
+    const staggerTimeline = anime.createTimeline({ autoplay: false });
+    staggerTimeline
+      .add(
+        ".cell",
+        {
+          translateY: [0, -120],
+          scale: [1, 1.24],
+          backgroundColor: "#0ea5e9",
+          duration: 1400,
+          delay: anime.stagger(65, { grid: [5, 4], from: "center" }),
+          ease: "inOut(2)",
+        },
+        400,
+      )
+      .add(
+        ".cell",
+        {
+          translateY: [-120, 80],
+          rotate: [0, 45],
+          backgroundColor: "#f97316",
+          duration: 1800,
+          delay: anime.stagger(40, { grid: [5, 4], from: "first" }),
+          ease: "out(3)",
+        },
+        2600,
+      );
+
+    hyperframesAnime.register("seeded-stagger", staggerTimeline, {
+      labels: { firstWave: 0.4, secondWave: 2.6, end: 6 },
+    });
+  </script>
+</body>
+</html>
