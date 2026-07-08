@@ -82,6 +82,22 @@ describe("getVariableUsage", () => {
     expect(usage.unusedDeclarations).toContain("accent");
   });
 
+  it("counts declarative data-var-src / data-var-text bindings as usage", async () => {
+    const comp = await openComposition(`<!DOCTYPE html>
+<html data-composition-variables='${DECLS}'>
+<body>
+<div data-hf-id="hf-stage" data-hf-root data-duration="5">
+  <img data-hf-id="hf-img" data-var-src="accent" src="x.jpg" />
+  <h1 data-hf-id="hf-h" data-var-text="title">t</h1>
+</div>
+</body>
+</html>`);
+    const usage = comp.getVariableUsage();
+    expect(usage.usedIds).toEqual(expect.arrayContaining(["accent", "title"]));
+    expect(usage.unusedDeclarations).toEqual(["orphan"]);
+    expect(usage.scanIncomplete).toBe(false);
+  });
+
   it("handles compositions with no declarations and no scripts", async () => {
     const comp = await openComposition(
       `<!DOCTYPE html><html><body><div data-hf-id="hf-stage" data-hf-root data-duration="5"><p data-hf-id="hf-p">x</p></div></body></html>`,

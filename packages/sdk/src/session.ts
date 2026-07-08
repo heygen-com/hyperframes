@@ -235,6 +235,18 @@ class CompositionImpl implements Composition {
         }
       }
     }
+    // Declarative bindings (data-var-src / data-var-text) are direct reads.
+    for (const el of Array.from(
+      this.parsed.document.querySelectorAll("[data-var-src], [data-var-text]"),
+    )) {
+      for (const attr of ["data-var-src", "data-var-text"]) {
+        const id = el.getAttribute(attr)?.trim();
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          usedIds.push(id);
+        }
+      }
+    }
     this._variableUsageScanCache = freshCache;
     const declaredIds = this.getVariableDeclarations().map((d) => d.id);
     // The CSS compat channel counts as usage: a variable consumed only via

@@ -296,3 +296,24 @@ describe("media rules", () => {
     expect(finding).toBeUndefined();
   });
 });
+
+describe("media_variable_src_no_fallback", () => {
+  it("downgrades missing src to a warning when data-var-src is present", async () => {
+    const html = `<html><body>
+<video id="clip" data-start="0" data-duration="2" data-var-src="media"></video>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "media_missing_src")).toBe(false);
+    const finding = result.findings.find((f) => f.code === "media_variable_src_no_fallback");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+  });
+
+  it("keeps the hard error when neither src nor data-var-src exists", async () => {
+    const html = `<html><body>
+<video id="clip" data-start="0" data-duration="2"></video>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.some((f) => f.code === "media_missing_src")).toBe(true);
+  });
+});

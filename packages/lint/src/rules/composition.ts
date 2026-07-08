@@ -107,6 +107,25 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
   return offenders;
 }
 
+/** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
+function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
+  const declared = new Set<string>();
+  const raw = readJsonAttr(htmlTagRaw, "data-composition-variables");
+  if (!raw) return declared;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return declared;
+  for (const entry of parsed) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    if (typeof id === "string") declared.add(id);
+  }
+  return declared;
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
   // href, inline-style url(), and <style> url() asset references on
@@ -589,6 +608,37 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
             'data-variable-values must be a JSON object keyed by variable id (e.g. {"title":"Hello"}).',
           fixHint:
             "Replace the value with a JSON object whose keys are variable ids declared in the sub-composition's data-composition-variables.",
+          elementId: readAttr(tag.raw, "id") || undefined,
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
+  // unknown_variable_binding
+  // data-var-src / data-var-text bind an element to a declared variable id;
+  // the runtime silently keeps the authored fallback when the id resolves to
+  // nothing, so a typo'd binding is invisible until a customer's override
+  // does nothing. Skipped for fragment files (no <html>): their values come
+  // from a host's data-variable-values, which this file can't see.
+  ({ source, tags }) => {
+    const htmlTag = findHtmlTag(source);
+    if (!htmlTag) return [];
+    const declared = collectDeclaredVariableIds(htmlTag.raw);
+    // null = unparseable declarations; invalid_composition_variables_declaration
+    // reports that failure, so this rule stays quiet.
+    if (declared === null) return [];
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      for (const attr of ["data-var-src", "data-var-text"]) {
+        const id = readAttr(tag.raw, attr)?.trim();
+        if (!id || declared.has(id)) continue;
+        findings.push({
+          code: "unknown_variable_binding",
+          severity: "warning",
+          message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables — the binding will silently keep the authored fallback.`,
+          fixHint: `Declare the variable on <html>: data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
           elementId: readAttr(tag.raw, "id") || undefined,
           snippet: truncateSnippet(tag.raw),
         });

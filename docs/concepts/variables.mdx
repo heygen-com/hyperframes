@@ -196,6 +196,51 @@ Inside any composition script, call `window.__hyperframes.getVariables()` to get
 
 `__hyperframes.getVariables()` is a shorthand for `window.__hyperframes.getVariables()` and works in both top-level and sub-composition scripts. The runtime automatically scopes sub-compositions so each instance sees its own resolved values.
 
+## Declarative Bindings (No Script Required)
+
+For the common cases — replaceable media, dynamic text, and CSS-driven styling — you don't need a script at all. The runtime resolves these bindings once at load, identically in preview and render:
+
+- **`data-var-src="id"`** — sets the element's `src` from the variable value (a URL string, or an image value's `{url}`). The authored `src` stays as the fallback when the variable resolves to nothing:
+
+  ```html
+  <img class="clip" data-start="0" data-duration="5"
+       data-var-src="heroImage" src="fallback.jpg" />
+  ```
+
+  <Note>
+  `data-var-src` is only honored on media elements (`img`, `video`, `audio`,
+  `source`) and only for safe URL protocols (`http(s):`, `blob:`, relative
+  paths, and `data:image/…`). A binding on a script-executing tag such as
+  `<iframe>`/`<script>`, or a value using `javascript:`/`data:text/html`, is
+  ignored — variable values may be attacker-influenced, so this prevents them
+  from becoming a script-injection sink. Scalar values applied as CSS custom
+  properties are likewise stripped of declaration-smuggling characters
+  (`; { } < >`).
+  </Note>
+
+- **`data-var-text="id"`** — sets the element's text content from a scalar variable:
+
+  ```html
+  <h1 class="clip" data-start="0" data-duration="5" data-var-text="title">Fallback title</h1>
+  ```
+
+- **CSS custom properties** — every scalar variable is applied as `--{id}` on its composition root (font values apply their family name), so plain CSS bindings respond to render/preview overrides:
+
+  ```css
+  .card-title { color: var(--accent); font-family: var(--brandFont), sans-serif; }
+  ```
+
+Bindings resolve against the element's owning composition, so sub-composition instances see their own per-instance values. The Studio Variables panel counts these bindings as usage. Use `getVariables()` in a script only when you need logic beyond direct substitution (loops, conditionals, derived values).
+
+<Note>
+**Content Security Policy.** The preview server injects override values via an
+inline `<script>window.__hfVariables=…</script>` tag. If you embed the preview
+behind a strict CSP (`script-src 'self'` with no `'unsafe-inline'`), that tag is
+blocked and the preview silently falls back to declared defaults — allow it with
+a nonce or hash. The declarative-binding runtime itself emits no inline scripts,
+and the final rendered output is unaffected.
+</Note>
+
 ## Per-instance Overrides (Sub-compositions)
 
 When embedding a composition inside another, use `data-variable-values` on the host element to pass a JSON object of override values for that particular instance:

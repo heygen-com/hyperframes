@@ -753,6 +753,37 @@ describe("composition rules", () => {
     });
   });
 
+  describe("unknown_variable_binding", () => {
+    it("warns when data-var-src references an undeclared variable", async () => {
+      const html = `<html data-composition-variables='[{"id":"hero","type":"image","label":"Hero","default":"a.jpg"}]'><body>
+<img id="i" data-start="0" data-duration="2" data-var-src="heroImge" src="a.jpg" />
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "unknown_variable_binding");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toMatch(/heroImge/);
+    });
+
+    it("stays quiet for declared binding ids and for fragment files", async () => {
+      const declared = `<html data-composition-variables='[{"id":"title","type":"string","label":"T","default":"x"}]'><body>
+<h1 data-var-text="title">x</h1>
+</body></html>`;
+      expect(
+        (await lintHyperframeHtml(declared)).findings.some(
+          (f) => f.code === "unknown_variable_binding",
+        ),
+      ).toBe(false);
+
+      const fragment = `<div class="clip" data-start="0" data-duration="2" data-var-text="hostProvided">x</div>`;
+      expect(
+        (await lintHyperframeHtml(fragment)).findings.some(
+          (f) => f.code === "unknown_variable_binding",
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe("invalid_variable_values_json", () => {
     it("warns when data-variable-values is unparseable JSON", async () => {
       const html = `<html><body>

@@ -40,12 +40,14 @@ Timed child elements are clips. **`class="clip"` is required on visible timed el
 
 When a clip is a sub-composition host (loads another composition file):
 
-| Attribute                    | Required | Meaning                                                                |
-| ---------------------------- | -------- | ---------------------------------------------------------------------- |
-| `data-composition-id`        | Yes      | The internal composition ID of the loaded file.                        |
-| `data-composition-src`       | Yes      | Path to the sub-composition HTML file.                                 |
-| `data-width` / `data-height` | Yes      | Render dimensions for the sub-composition instance.                    |
-| `data-variable-values`       | No       | Per-instance variable overrides as JSON. See `variables-and-media.md`. |
+| Attribute                    | Required | Meaning                                                                                                  |
+| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `data-composition-id`        | Yes      | The internal composition ID of the loaded file.                                                          |
+| `data-composition-src`       | Yes      | Path to the sub-composition HTML file.                                                                   |
+| `data-width` / `data-height` | Yes      | Render dimensions for the sub-composition instance.                                                      |
+| `data-variable-values`       | No       | Per-instance variable overrides as JSON. See `variables-and-media.md`.                                   |
+| `data-var-src`               | No       | Binds the element's `src` to a declared variable id (media/image substitution, authored src = fallback). |
+| `data-var-text`              | No       | Binds the element's own text to a scalar variable id; children are preserved.                            |
 
 See `sub-compositions.md` for the full wiring pattern.
 

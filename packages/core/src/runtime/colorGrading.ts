@@ -4,7 +4,6 @@ import {
   isHfColorGradingActive,
   normalizeHfColorGrading,
   normalizeHfColorGradingWithVariables,
-  type HfColorGradingVariableMap,
   type HfColorGradingTarget,
   type NormalizedHfColorGrading,
 } from "../colorGrading";
@@ -16,6 +15,7 @@ import {
   type CubeLutVec3,
 } from "../colorLuts";
 import { copyMediaVisualStyles } from "../inline-scripts/parityContract";
+import { readVariablesForElement } from "./variableScope";
 import { swallow } from "./diagnostics";
 
 type ColorGradingMediaElement = HTMLVideoElement | HTMLImageElement;
@@ -206,20 +206,6 @@ const DEFAULT_COMPARE: RuntimeColorGradingCompareState = {
   softness: 0,
   lineWidth: 2,
 };
-
-function readVariablesForElement(element: Element): HfColorGradingVariableMap {
-  const win = window as WindowWithColorGrading;
-  const scope = element.closest("[data-composition-id]");
-  const compositionId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
-  const scoped = compositionId ? win.__hfVariablesByComp?.[compositionId] : undefined;
-  if (scoped) return scoped;
-
-  const fromHelper = win.__hyperframes?.getVariables?.();
-  if (fromHelper && typeof fromHelper === "object") {
-    return fromHelper;
-  }
-  return win.__hfVariables ?? {};
-}
 
 function readColorGradingAttribute(element: Element): NormalizedHfColorGrading | null {
   const raw = element.getAttribute(HF_COLOR_GRADING_ATTR);

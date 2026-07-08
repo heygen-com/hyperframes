@@ -30,6 +30,7 @@ import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits } from "./positionEdits";
+import { applyVariableBindings } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -85,6 +86,10 @@ export function initSandboxRuntimeModular(): void {
   // parsed their tweens, so GSAP (when present) won't fold the translate.
   // Re-applied on every timeline bind for the rebind/soft-reload paths.
   applyPositionEdits(document);
+  // Declarative variable bindings (data-var-src / data-var-text / --{id} CSS
+  // custom props) — values are fixed for the page's lifetime, so applying
+  // once at init keeps renders deterministic and seeks safe.
+  applyVariableBindings(document);
   const exportRenderFps = resolveExportRenderFps();
   state.canonicalFps = exportRenderFps.fps ?? state.canonicalFps;
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
@@ -2015,6 +2020,10 @@ export function initSandboxRuntimeModular(): void {
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
         applyCaptionOverrides();
+        // Runtime-loaded sub-compositions (and their per-instance scoped
+        // values) don't exist at the init-time binding pass — re-apply so
+        // data-var-* / --{id} bindings inside them resolve. Idempotent.
+        applyVariableBindings(document);
         maybePublishRenderReady();
       });
   } else {
