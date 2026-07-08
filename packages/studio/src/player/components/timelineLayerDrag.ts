@@ -296,96 +296,6 @@ function resolveDragPlacement(
     : null;
 }
 
-function buildInsertionPlacement(
-  layers: readonly StackingTimelineLayer[],
-  insertionIndex: number,
-): TimelineLayerDropPlacement | null {
-  const first = layers[0];
-  const last = layers[layers.length - 1];
-  if (!first || !last) return null;
-  if (insertionIndex <= 0) return { type: "above", layerId: first.id };
-  if (insertionIndex >= layers.length) return { type: "below", layerId: last.id };
-  const before = layers[insertionIndex - 1];
-  const after = layers[insertionIndex];
-  return before && after
-    ? { type: "between", beforeLayerId: before.id, afterLayerId: after.id }
-    : null;
-}
-
-interface ValidPlacementCandidate {
-  placement: TimelineLayerDropPlacement;
-  position: number;
-  kind: "onto" | "insert";
-}
-
-function comparePlacementCandidates(input: {
-  targetPosition: number;
-  currentIndex: number;
-  a: ValidPlacementCandidate;
-  b: ValidPlacementCandidate;
-}): number {
-  const distanceA = Math.abs(input.a.position - input.targetPosition);
-  const distanceB = Math.abs(input.b.position - input.targetPosition);
-  if (distanceA !== distanceB) return distanceA - distanceB;
-
-  const direction = Math.sign(input.targetPosition - input.currentIndex);
-  if (direction !== 0) {
-    const biasA =
-      direction < 0
-        ? input.a.position <= input.targetPosition
-        : input.a.position >= input.targetPosition;
-    const biasB =
-      direction < 0
-        ? input.b.position <= input.targetPosition
-        : input.b.position >= input.targetPosition;
-    if (biasA !== biasB) return biasA ? -1 : 1;
-  }
-
-  if (input.a.kind !== input.b.kind) return input.a.kind === "onto" ? -1 : 1;
-  return input.a.position - input.b.position;
-}
-
-function resolveNearestValidPlacement(input: {
-  layers: readonly StackingTimelineLayer[];
-  element: TimelineStackingElement;
-  draggedKey: string;
-  targetPosition: number;
-  currentIndex: number;
-}): TimelineLayerDropPlacement | null {
-  const candidates: ValidPlacementCandidate[] = [];
-
-  input.layers.forEach((layer, index) => {
-    if (!layerConflictsWithElement(layer, input.element, input.draggedKey)) {
-      candidates.push({
-        placement: { type: "onto", layerId: layer.id },
-        position: index,
-        kind: "onto",
-      });
-    }
-  });
-
-  for (let insertionIndex = 0; insertionIndex <= input.layers.length; insertionIndex += 1) {
-    const placement = buildInsertionPlacement(input.layers, insertionIndex);
-    if (!placement) continue;
-    candidates.push({
-      placement,
-      position: insertionIndex - 0.5,
-      kind: "insert",
-    });
-  }
-
-  return (
-    candidates.sort((a, b) =>
-      comparePlacementCandidates({
-        targetPosition: input.targetPosition,
-        currentIndex: input.currentIndex,
-        a,
-        b,
-      }),
-    )[0]?.placement ?? null
-  );
-}
-
 function resolveLaneAwareDragPlacement(input: {
   layers: readonly StackingTimelineLayer[];
   element: TimelineStackingElement;
@@ -398,7 +308,13 @@ function resolveLaneAwareDragPlacement(input: {
   const target = findLayer(input.layers, input.placement.layerId);
   if (!target) return null;
   if (!layerConflictsWithElement(target, input.element, input.draggedKey)) return input.placement;
-  return resolveNearestValidPlacement(input);
+  if (input.targetPosition < input.currentIndex) {
+    return { type: "above", layerId: target.id };
+  }
+  if (input.targetPosition > input.currentIndex) {
+    return { type: "below", layerId: target.id };
+  }
+  return input.placement;
 }
 
 function getPreviewLayerId(

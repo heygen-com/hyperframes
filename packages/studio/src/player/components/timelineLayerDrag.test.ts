@@ -129,7 +129,7 @@ describe("resolveTimelineLayerZIndexChanges", () => {
 });
 
 describe("resolveTimelineLayerStackingMove", () => {
-  it("snaps a blocked onto-lane drop to the nearest new lane instead of committing the conflict", () => {
+  it("places an upward onto-lane drop above the overlapping target lane", () => {
     const front = element({ id: "front", zIndex: 10, start: 0, duration: 2 });
     const dragged = element({ id: "dragged", zIndex: 1, start: 0.5, duration: 1 });
     const layers = [layer("front", 10, [front]), layer("dragged", 1, [dragged])];
@@ -139,7 +139,7 @@ describe("resolveTimelineLayerStackingMove", () => {
         element: dragged,
         layers,
         layerOrder: layers.map((item) => item.id),
-        trackDeltaRaw: -1,
+        trackDeltaRaw: -0.8,
       }),
     ).toEqual({
       previewLayerId: "preview:dragged:above:front",
@@ -148,6 +148,52 @@ describe("resolveTimelineLayerStackingMove", () => {
         contextKey: "root",
         placement: { type: "above", layerId: "front" },
         zIndexChanges: [{ key: "dragged", zIndex: 11 }],
+      },
+    });
+  });
+
+  it("places a downward onto-lane drop below the overlapping target lane", () => {
+    const dragged = element({ id: "dragged", zIndex: 10, start: 0.5, duration: 1 });
+    const back = element({ id: "back", zIndex: 1, start: 0, duration: 2 });
+    const layers = [layer("dragged", 10, [dragged]), layer("back", 1, [back])];
+
+    expect(
+      resolveTimelineLayerStackingMove({
+        element: dragged,
+        layers,
+        layerOrder: layers.map((item) => item.id),
+        trackDeltaRaw: 0.8,
+      }),
+    ).toEqual({
+      previewLayerId: "preview:dragged:below:back",
+      previewLayerIndex: 2,
+      stackingReorder: {
+        contextKey: "root",
+        placement: { type: "below", layerId: "back" },
+        zIndexChanges: [{ key: "dragged", zIndex: 0 }],
+      },
+    });
+  });
+
+  it("keeps a non-overlapping onto-lane drop joined to the target lane", () => {
+    const front = element({ id: "front", zIndex: 10, start: 0, duration: 1 });
+    const dragged = element({ id: "dragged", zIndex: 1, start: 2, duration: 1 });
+    const layers = [layer("front", 10, [front]), layer("dragged", 1, [dragged])];
+
+    expect(
+      resolveTimelineLayerStackingMove({
+        element: dragged,
+        layers,
+        layerOrder: layers.map((item) => item.id),
+        trackDeltaRaw: -0.8,
+      }),
+    ).toEqual({
+      previewLayerId: "front",
+      previewLayerIndex: 0,
+      stackingReorder: {
+        contextKey: "root",
+        placement: { type: "onto", layerId: "front" },
+        zIndexChanges: [{ key: "dragged", zIndex: 10 }],
       },
     });
   });
