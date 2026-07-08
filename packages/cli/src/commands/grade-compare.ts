@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
+  isHfColorGradingActive,
   normalizeHfColorGrading,
+  parseCubeLut,
   serializeHfColorGrading,
 } from "@hyperframes/core";
 import { defineCommand } from "citty";
@@ -27,6 +29,7 @@ import { withMeta } from "../utils/updateCheck.js";
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
 const DEFAULT_CELL_WIDTH = 560;
+const MAX_CANDIDATE_CELLS = 16;
 const MAX_COLUMNS = 4;
 const GRID_PADDING = 16;
 const LABEL_HEIGHT = 32;
@@ -49,6 +52,20 @@ interface PreparedGradeCompareProject {
   tempDir: string;
   html: string;
   cells: GradeCompareCell[];
+}
+
+export interface CandidateCellCapResult {
+  cells: GradeCompareCell[];
+  truncated: boolean;
+  total: number;
+}
+
+export interface GradeCompareSuccessPayload {
+  ok: true;
+  sheet: string;
+  cells: number;
+  truncated?: true;
+  total?: number;
 }
 
 interface GradeCompareHtmlOptions {
@@ -130,6 +147,41 @@ function validateCell(label: string, grading: unknown): GradeCompareCell {
     throw new Error(`Invalid color grading for cell "${label}"`);
   }
   return { label, grading };
+}
+
+export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): void {
+  for (const cell of cells) {
+    const normalized = normalizeHfColorGrading(cell.grading);
+    if (!isHfColorGradingActive(normalized)) {
+      console.error(
+        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+      );
+    }
+  }
+}
+
+export function capCandidateCells(cells: readonly GradeCompareCell[]): CandidateCellCapResult {
+  const total = cells.length;
+  if (total <= MAX_CANDIDATE_CELLS) {
+    return { cells: [...cells], truncated: false, total };
+  }
+  console.error(
+    c.warn(
+      `Warning: ${total} candidate grades exceed the ${MAX_CANDIDATE_CELLS}-cell cap — rendering the first ${MAX_CANDIDATE_CELLS} of ${total}; re-run with fewer grades or split into multiple runs.`,
+    ),
+  );
+  return { cells: cells.slice(0, MAX_CANDIDATE_CELLS), truncated: true, total };
+}
+
+export function buildGradeCompareSuccessPayload(
+  sheet: string,
+  cells: number,
+  capResult: CandidateCellCapResult,
+): GradeCompareSuccessPayload {
+  if (!capResult.truncated) {
+    return { ok: true, sheet, cells };
+  }
+  return { ok: true, sheet, cells, truncated: true, total: capResult.total };
 }
 
 function serializedGradingForCell(cell: GradeCompareCell): string {
@@ -400,6 +452,14 @@ export async function prepareGradeCompareTempProject(opts: {
       if (!existsSync(sourcePath)) {
         throw new Error(`LUT file not found for "${cell.label}": ${sourcePath}`);
       }
+      const lutText = readFileSync(sourcePath, "utf-8");
+      try {
+        parseCubeLut(lutText, { maxSize: 64 });
+      } catch (err) {
+        throw new Error(
+          `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
+        );
+      }
       const lutExt = extname(sourcePath) || ".cube";
       const stagedName = `lut-${lutIndex}${lutExt}`;
       lutIndex += 1;
@@ -575,6 +635,9 @@ export default defineCommand({
       if (cells.length === 0) {
         throw new Error("At least one grade candidate is required");
       }
+      const capResult = capCandidateCells(cells);
+      cells = capResult.cells;
+      warnInactiveGradingCells(cells);
       if (args.baseline !== false) {
         cells = prependBaselineCell(cells);
       }
@@ -603,7 +666,7 @@ export default defineCommand({
 
       const sheet = displayPath(parsed.projectDir, parsed.outPath);
       if (parsed.json) {
-        printJson({ ok: true, sheet, cells: prepared.cells.length });
+        printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
         console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
       }

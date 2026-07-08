@@ -188,6 +188,7 @@ export {
   type HfColorGradingVariableMap,
   type NormalizedHfColorGrading,
 } from "./colorGrading";
+export { parseCubeLut, CubeLutParseError, type ParseCubeLutOptions } from "./colorLuts";
 
 // Inline scripts
 export {
