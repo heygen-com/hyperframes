@@ -1,54 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { pixelFormatHasAlpha, webmAlphaAdvisory } from "./webmAlphaCheck.js";
-
-describe("pixelFormatHasAlpha", () => {
-  it("recognizes alpha-capable pixel formats", () => {
-    for (const f of [
-      "yuva420p",
-      "yuva444p10le",
-      "gbrap",
-      "gbrap10le",
-      "rgba",
-      "bgra",
-      "argb",
-      "abgr",
-      "ya8",
-      "ya16le",
-    ]) {
-      expect(pixelFormatHasAlpha(f), f).toBe(true);
-    }
-  });
-
-  it("rejects opaque pixel formats", () => {
-    for (const f of ["yuv420p", "yuv444p", "yuv420p10le", "gbrp", "rgb24", "bgr0", ""]) {
-      expect(pixelFormatHasAlpha(f), f).toBe(false);
-    }
-  });
-
-  it("is case- and whitespace-insensitive", () => {
-    expect(pixelFormatHasAlpha("  YUVA420P \n")).toBe(true);
-    expect(pixelFormatHasAlpha(" YUV420P ")).toBe(false);
-  });
-});
+import { webmAlphaAdvisory } from "./webmAlphaCheck.js";
 
 describe("webmAlphaAdvisory", () => {
-  it("warns when a webm output lost its requested alpha", () => {
-    const msg = webmAlphaAdvisory("webm", "yuv420p");
+  it("warns when a probed webm lacks the ALPHA_MODE sidecar tag", () => {
+    // A build that dropped the alpha sidecar: ffprobe reported a stream but no
+    // ALPHA_MODE=1 tag. (pix_fmt is irrelevant — libvpx-vp9 always reports
+    // yuv420p; the sidecar tag is the real signal.)
+    const msg = webmAlphaAdvisory("webm", { probed: true, alphaMode: false });
     expect(msg).toBeDefined();
-    expect(msg).toContain("yuv420p");
+    expect(msg).toContain("ALPHA_MODE");
     expect(msg).toContain("--format mov");
   });
 
-  it("stays silent when the webm output kept alpha", () => {
-    expect(webmAlphaAdvisory("webm", "yuva420p")).toBeUndefined();
+  it("stays SILENT when the webm carries ALPHA_MODE=1 (working transparent WebM)", () => {
+    // Regression guard for the #2044 R1 blocker: a correct transparent WebM
+    // reports pix_fmt=yuv420p BUT ALPHA_MODE=1 — it must NOT warn.
+    expect(webmAlphaAdvisory("webm", { probed: true, alphaMode: true })).toBeUndefined();
   });
 
-  it("stays silent for non-webm formats (mp4 is intentionally opaque)", () => {
-    expect(webmAlphaAdvisory("mp4", "yuv420p")).toBeUndefined();
-    expect(webmAlphaAdvisory("mov", "yuva444p10le")).toBeUndefined();
+  it("stays silent when the output could not be probed", () => {
+    expect(webmAlphaAdvisory("webm", { probed: false, alphaMode: false })).toBeUndefined();
   });
 
-  it("stays silent when the pixel format could not be probed", () => {
-    expect(webmAlphaAdvisory("webm", undefined)).toBeUndefined();
+  it("stays silent for non-webm formats (mp4 opaque; mov carries alpha natively)", () => {
+    expect(webmAlphaAdvisory("mp4", { probed: true, alphaMode: false })).toBeUndefined();
+    expect(webmAlphaAdvisory("mov", { probed: true, alphaMode: false })).toBeUndefined();
   });
 });
