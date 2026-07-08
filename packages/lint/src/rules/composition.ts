@@ -126,6 +126,37 @@ function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
   return declared;
 }
 
+/**
+ * Union declared variable ids from every element carrying
+ * `data-composition-variables`: full-document comps hold it on `<html>`;
+ * template/fragment sub-comps hold it on their composition root div. Returns
+ * null if any occurrence has unparseable JSON.
+ */
+function collectAllDeclaredVariableIds(source: string): Set<string> | null {
+  const all = new Set<string>();
+  const tagRe = /<[a-zA-Z][^>]*\bdata-composition-variables\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = tagRe.exec(source)) !== null) {
+    const ids = collectDeclaredVariableIds(match[0]);
+    if (ids === null) return null;
+    for (const id of ids) all.add(id);
+  }
+  return all;
+}
+
+/**
+ * Declared ids to validate `data-var-*` bindings against, or null to skip the
+ * file: unparseable declarations (reported elsewhere), or a fragment with no
+ * `<html>` and no declarations of its own (its values come from a host's
+ * data-variable-values, which this file can't see).
+ */
+function declaredIdsForBindingCheck(source: string): Set<string> | null {
+  const declared = collectAllDeclaredVariableIds(source);
+  if (declared === null) return null;
+  if (declared.size === 0 && !findHtmlTag(source)) return null;
+  return declared;
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // invalid_parent_traversal_in_asset_path — catches `../` traversal in src,
   // href, inline-style url(), and <style> url() asset references on
@@ -623,12 +654,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // does nothing. Skipped for fragment files (no <html>): their values come
   // from a host's data-variable-values, which this file can't see.
   ({ source, tags }) => {
-    const htmlTag = findHtmlTag(source);
-    if (!htmlTag) return [];
-    const declared = collectDeclaredVariableIds(htmlTag.raw);
-    // null = unparseable declarations; invalid_composition_variables_declaration
-    // reports that failure, so this rule stays quiet.
-    if (declared === null) return [];
+    // Declarations live on <html> (full-document comps) OR the composition root
+    // div (template/fragment sub-comps); declaredIdsForBindingCheck unions both
+    // and returns null for files this rule should skip.
+    const declared = declaredIdsForBindingCheck(source);
+    if (!declared) return [];
     const findings: HyperframeLintFinding[] = [];
     for (const tag of tags) {
       for (const attr of ["data-var-src", "data-var-text"]) {
@@ -638,7 +668,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           code: "unknown_variable_binding",
           severity: "warning",
           message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables — the binding will silently keep the authored fallback.`,
-          fixHint: `Declare the variable on <html>: data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
+          fixHint: `Declare the variable on the composition root (<html>, or the [data-composition-id] root element for a template/fragment comp): data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
           elementId: readAttr(tag.raw, "id") || undefined,
           snippet: truncateSnippet(tag.raw),
         });

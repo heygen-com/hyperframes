@@ -1,6 +1,8 @@
 /**
  * Shared helpers for the composition variable JSON model
- * (`data-composition-variables` on `document.documentElement`).
+ * (`data-composition-variables`). The declaration-carrying element is resolved
+ * by the caller (`declarationElement` in model.ts): `<html>` for full-document
+ * comps, the composition root div for wrapped template/fragment comps.
  *
  * Single source for the parse → find-by-id → read/write/clear logic so the
  * forward-mutation path (engine/mutate.ts) and the patch-replay path
@@ -14,15 +16,10 @@ import type { CompositionVariable } from "@hyperframes/core/variables";
 
 type VariableDecl = { id: string; default?: unknown; [key: string]: unknown };
 
-function getHtmlEl(document: Document): Element | null {
-  return (document as Document & { documentElement?: Element }).documentElement ?? null;
-}
-
 /** Parse the variable declaration array, or null when absent/invalid. */
-function readDecls(document: Document): { htmlEl: Element; arr: VariableDecl[] } | null {
-  const htmlEl = getHtmlEl(document);
-  if (!htmlEl) return null;
-  const raw = htmlEl.getAttribute("data-composition-variables");
+function readDecls(declEl: Element | null): { declEl: Element; arr: VariableDecl[] } | null {
+  if (!declEl) return null;
+  const raw = declEl.getAttribute("data-composition-variables");
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -31,7 +28,7 @@ function readDecls(document: Document): { htmlEl: Element; arr: VariableDecl[] }
     return null;
   }
   if (!Array.isArray(parsed)) return null;
-  return { htmlEl, arr: parsed as VariableDecl[] };
+  return { declEl, arr: parsed as VariableDecl[] };
 }
 
 function indexOfId(arr: VariableDecl[], id: string): number {
@@ -42,12 +39,11 @@ function indexOfId(arr: VariableDecl[], id: string): number {
  * Read the typed variable declarations from `data-composition-variables`.
  * Delegates to the canonical parser (same filter the render pipeline uses),
  * so malformed entries are dropped rather than surfaced. Returns `[]` when
- * the document has no root element or no declarations.
+ * the declaration element is absent or has no declarations.
  */
-export function readVariableDeclarations(document: Document): CompositionVariable[] {
-  const htmlEl = getHtmlEl(document);
-  if (!htmlEl) return [];
-  return parseCompositionVariables(htmlEl);
+export function readVariableDeclarations(declEl: Element | null): CompositionVariable[] {
+  if (!declEl) return [];
+  return parseCompositionVariables(declEl);
 }
 
 /**
@@ -55,8 +51,11 @@ export function readVariableDeclarations(document: Document): CompositionVariabl
  * Returns undefined when the attribute is absent, the JSON is invalid, or no
  * entry matches the id.
  */
-export function findVariableDeclaration(document: Document, id: string): VariableDecl | undefined {
-  const decls = readDecls(document);
+export function findVariableDeclaration(
+  declEl: Element | null,
+  id: string,
+): VariableDecl | undefined {
+  const decls = readDecls(declEl);
   if (!decls) return undefined;
   const idx = indexOfId(decls.arr, id);
   return idx < 0 ? undefined : decls.arr[idx];
@@ -66,7 +65,7 @@ export function findVariableDeclaration(document: Document, id: string): Variabl
  * Upsert a whole variable declaration by its id. Creates the
  * `data-composition-variables` attribute when absent; replaces an unparseable
  * attribute with a fresh single-entry array (the prior content was invisible
- * to every reader anyway). Returns false only when the document has no root
+ * to every reader anyway). Returns false only when there is no declaration
  * element to carry the attribute.
  *
  * Accepts raw (unvalidated) entries as well as typed declarations: the patch
@@ -75,12 +74,11 @@ export function findVariableDeclaration(document: Document, id: string): Variabl
  * would drop — or undo silently diverges from history.
  */
 export function writeVariableDeclaration(
-  document: Document,
+  declEl: Element | null,
   declaration: CompositionVariable | ({ id: string } & Record<string, unknown>),
 ): boolean {
-  const htmlEl = getHtmlEl(document);
-  if (!htmlEl) return false;
-  const decls = readDecls(document);
+  if (!declEl) return false;
+  const decls = readDecls(declEl);
   const arr = decls?.arr ?? [];
   const idx = indexOfId(arr, declaration.id);
   const entry: VariableDecl = { ...declaration };
@@ -89,7 +87,7 @@ export function writeVariableDeclaration(
   } else {
     arr[idx] = entry;
   }
-  (decls?.htmlEl ?? htmlEl).setAttribute("data-composition-variables", JSON.stringify(arr));
+  declEl.setAttribute("data-composition-variables", JSON.stringify(arr));
   return true;
 }
 
@@ -98,16 +96,16 @@ export function writeVariableDeclaration(
  * last declaration is removed (an empty `[]` is noise in authored HTML).
  * No-ops (returns false) when the attribute or the entry is absent.
  */
-export function removeVariableDeclarationEntry(document: Document, id: string): boolean {
-  const decls = readDecls(document);
+export function removeVariableDeclarationEntry(declEl: Element | null, id: string): boolean {
+  const decls = readDecls(declEl);
   if (!decls) return false;
   const idx = indexOfId(decls.arr, id);
   if (idx < 0) return false;
   decls.arr.splice(idx, 1);
   if (decls.arr.length === 0) {
-    decls.htmlEl.removeAttribute("data-composition-variables");
+    decls.declEl.removeAttribute("data-composition-variables");
   } else {
-    decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
+    decls.declEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
   }
   return true;
 }
@@ -116,8 +114,8 @@ export function removeVariableDeclarationEntry(document: Document, id: string): 
  * Read the current `default` value for a variable id. Returns undefined when
  * the attribute is absent, the JSON is invalid, or no entry matches the id.
  */
-export function readVariableDefault(document: Document, id: string): unknown {
-  const decls = readDecls(document);
+export function readVariableDefault(declEl: Element | null, id: string): unknown {
+  const decls = readDecls(declEl);
   if (!decls) return undefined;
   const idx = indexOfId(decls.arr, id);
   return idx < 0 ? undefined : decls.arr[idx]?.default;
@@ -129,13 +127,17 @@ export function readVariableDefault(document: Document, id: string): unknown {
  * for undeclared variables, keeping the schema authoritative. Returns true when
  * the attribute was updated.
  */
-export function writeVariableDefault(document: Document, id: string, newDefault: unknown): boolean {
-  const decls = readDecls(document);
+export function writeVariableDefault(
+  declEl: Element | null,
+  id: string,
+  newDefault: unknown,
+): boolean {
+  const decls = readDecls(declEl);
   if (!decls) return false;
   const idx = indexOfId(decls.arr, id);
   if (idx < 0) return false; // variable not declared — don't auto-add
   decls.arr[idx] = { ...decls.arr[idx]!, default: newDefault };
-  decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
+  decls.declEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
   return true;
 }
 
@@ -146,13 +148,13 @@ export function writeVariableDefault(document: Document, id: string, newDefault:
  * default-less variable round-trips. No-ops when the decl or key is absent.
  * Returns true when the attribute was updated.
  */
-export function clearVariableDefault(document: Document, id: string): boolean {
-  const decls = readDecls(document);
+export function clearVariableDefault(declEl: Element | null, id: string): boolean {
+  const decls = readDecls(declEl);
   if (!decls) return false;
   const idx = indexOfId(decls.arr, id);
   if (idx < 0 || !(decls.arr[idx]! && "default" in decls.arr[idx]!)) return false;
   const { default: _drop, ...rest } = decls.arr[idx]!;
   decls.arr[idx] = rest as VariableDecl;
-  decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
+  decls.declEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
   return true;
 }

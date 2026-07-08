@@ -124,7 +124,15 @@ typed declaration (creating the attribute when the composition has none);
 immutable, rename by remove + declare; `removeVariableDeclaration` deletes a
 declaration (the last removal drops the whole attribute). All three validate via
 `can()` (`E_DUPLICATE_VARIABLE`, `E_VARIABLE_NOT_FOUND`, `E_INVALID_ARGS`,
-`E_FRAGMENT_COMPOSITION` — fragment sources have no `<html>` to carry the schema).
+`E_INVALID_VARIABLE_ID` — the id must match `/^[A-Za-z_][A-Za-z0-9_-]*$/` since it
+becomes a CSS custom-property name, `data-var-*` value, and CLI `--variables` key;
+and `E_FRAGMENT_COMPOSITION`). Declarations live on the composition's declaration
+root: the `<html>` element for a full document, or the composition root element
+(`[data-composition-id]`) for a template / fragment sub-composition. Despite its
+name, `E_FRAGMENT_COMPOSITION` now fires only when the source has **no** root
+element at all to carry the schema — a fragment that has a composition root
+accepts declarations. (The code is kept for compatibility; the fix is "add a
+composition root element", not necessarily "add an `<html>`".)
 
 ```typescript
 comp.declareVariable({ id: "title", type: "string", label: "Title", default: "Hello" });

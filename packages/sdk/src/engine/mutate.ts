@@ -21,6 +21,7 @@ import {
   resolveScoped,
   escapeHfId,
   findRoot,
+  declarationElement,
   getElementStyles,
   setElementStyles,
   toCamel,
@@ -865,9 +866,10 @@ function handleSetVariableValue(
 ): MutationResult {
   const root = findRoot(parsed.document);
   if (!root) return EMPTY;
+  const declEl = declarationElement(parsed.document, parsed.wrapped);
 
   const modelPath = variablePath(id);
-  const oldVarDefault = readVariableDefault(parsed.document, id);
+  const oldVarDefault = readVariableDefault(declEl, id);
 
   // Update the JSON model (B1 — drives the runtime) and keep the CSS custom
   // prop as secondary / compat for compositions that CSS-bind directly to
@@ -875,7 +877,7 @@ function handleSetVariableValue(
   // values (LOCKED §7) — cssCompatChange clears any stale scalar prop instead.
   // Emitting separate model + style patches keeps apply-patches.ts pure per
   // path type, so inverse patches restore the exact pre-call state.
-  writeVariableDefault(parsed.document, id, value);
+  writeVariableDefault(declEl, id, value);
   const modelP = valueChange(modelPath, oldVarDefault ?? null, value);
   const forward: JsonPatchOp[] = [modelP.forward];
   const inverse: JsonPatchOp[] = [modelP.inverse];
@@ -916,16 +918,18 @@ function cssCompatChange(
 }
 
 /**
- * Declaration ops require a real `<html>` in the source: fragment inputs get
- * a synthetic wrapper that serialize() strips, so a declaration written there
- * would silently vanish on save.
+ * Declaration ops need an element that survives serialize() to carry
+ * `data-composition-variables`. Full-document comps use `<html>`; wrapped
+ * template/fragment comps use their composition root div (the synthetic
+ * `<html>` is stripped on save). Only a wrapped input with no root element at
+ * all (an empty body) has nowhere durable to write.
  */
 function fragmentCompositionErr(parsed: ParsedDocument): CanResult | null {
-  if (!parsed.wrapped) return null;
+  if (declarationElement(parsed.document, parsed.wrapped)) return null;
   return canErr(
     "E_FRAGMENT_COMPOSITION",
     "Fragment compositions cannot carry variable declarations.",
-    "data-composition-variables lives on the <html> element — convert the composition to a full HTML document first.",
+    "The composition has no root element to hold data-composition-variables — add a composition root or convert to a full HTML document.",
   );
 }
 
@@ -978,13 +982,15 @@ function handleDeclareVariable(
   declaration: CompositionVariable,
 ): MutationResult {
   // Defensive re-check of can(): never write an invalid or duplicate
-  // declaration into the schema. Fragment sources have no <html> of their
-  // own — writing to the synthetic wrapper would be lost on serialize.
-  if (parsed.wrapped) return EMPTY;
+  // declaration into the schema. Resolve the element that survives serialize
+  // (root div for wrapped template comps, <html> otherwise); no element = a
+  // bare fragment where a declaration would be lost on save.
+  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration)) return EMPTY;
   if (!isValidVariableId(declaration.id)) return EMPTY;
-  if (findVariableDeclaration(parsed.document, declaration.id) !== undefined) return EMPTY;
-  if (!writeVariableDeclaration(parsed.document, declaration)) return EMPTY;
+  if (findVariableDeclaration(declEl, declaration.id) !== undefined) return EMPTY;
+  if (!writeVariableDeclaration(declEl, declaration)) return EMPTY;
   const path = variableDeclPath(declaration.id);
   const result: MutationResult = {
     forward: [patchAdd(path, declaration)],
@@ -1007,11 +1013,12 @@ function handleUpdateVariableDeclaration(
   id: string,
   declaration: CompositionVariable,
 ): MutationResult {
-  if (parsed.wrapped) return EMPTY;
+  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  if (!declEl) return EMPTY;
   if (!isCompositionVariable(declaration) || declaration.id !== id) return EMPTY;
-  const old = findVariableDeclaration(parsed.document, id);
+  const old = findVariableDeclaration(declEl, id);
   if (old === undefined) return EMPTY;
-  writeVariableDeclaration(parsed.document, declaration);
+  writeVariableDeclaration(declEl, declaration);
   const p = valueChange(variableDeclPath(id), old, declaration);
   const result: MutationResult = { forward: [p.forward], inverse: [p.inverse] };
 
@@ -1035,10 +1042,11 @@ function handleUpdateVariableDeclaration(
 }
 
 function handleRemoveVariableDeclaration(parsed: ParsedDocument, id: string): MutationResult {
-  if (parsed.wrapped) return EMPTY;
-  const old = findVariableDeclaration(parsed.document, id);
+  const declEl = declarationElement(parsed.document, parsed.wrapped);
+  if (!declEl) return EMPTY;
+  const old = findVariableDeclaration(declEl, id);
   if (old === undefined) return EMPTY;
-  removeVariableDeclarationEntry(parsed.document, id);
+  removeVariableDeclarationEntry(declEl, id);
   const path = variableDeclPath(id);
   const result: MutationResult = {
     forward: [patchRemove(path)],
@@ -1666,7 +1674,12 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "declareVariable": {
       const preErr = declarationPreconditionErr(parsed, op.declaration);
       if (preErr) return preErr;
-      if (findVariableDeclaration(parsed.document, op.declaration.id) !== undefined)
+      if (
+        findVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped),
+          op.declaration.id,
+        ) !== undefined
+      )
         return canErr(
           "E_DUPLICATE_VARIABLE",
           `Variable "${op.declaration.id}" is already declared.`,
@@ -1683,7 +1696,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           `declaration.id ("${op.declaration.id}") must match id ("${op.id}").`,
           "Variable ids are immutable — rename via removeVariableDeclaration + declareVariable.",
         );
-      if (findVariableDeclaration(parsed.document, op.id) === undefined)
+      if (
+        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
+        undefined
+      )
         return canErr(
           "E_VARIABLE_NOT_FOUND",
           `Variable "${op.id}" is not declared.`,
@@ -1694,7 +1710,10 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
     case "removeVariableDeclaration": {
       const fragmentErr = fragmentCompositionErr(parsed);
       if (fragmentErr) return fragmentErr;
-      if (findVariableDeclaration(parsed.document, op.id) === undefined)
+      if (
+        findVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), op.id) ===
+        undefined
+      )
         return canErr(
           "E_VARIABLE_NOT_FOUND",
           `Variable "${op.id}" is not declared.`,

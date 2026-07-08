@@ -7,7 +7,7 @@ Variables let you declare named, typed slots in a composition and fill them at r
 
 ## Declaring Variables
 
-Add `data-composition-variables` to the `<html>` root of any composition. Its value is a JSON array of variable declarations — one object per variable:
+Add `data-composition-variables` to a composition's declaration root. For a full-document composition that's the `<html>` element; for a template / fragment sub-composition (which has no `<html>` shell of its own) it's the composition root element — the `[data-composition-id]` div. Its value is a JSON array of variable declarations — one object per variable:
 
 ```html compositions/card.html
 <html data-composition-variables='[
@@ -310,7 +310,7 @@ Variable values are resolved by merging three sources, lowest to highest precede
 
 | Source | Precedence | Where declared |
 |--------|-----------|---------------|
-| Declared defaults | Lowest | `data-composition-variables` on `<html>` |
+| Declared defaults | Lowest | `data-composition-variables` on the declaration root (`<html>`, or the composition root div for template/fragment comps) |
 | Per-instance host overrides | Middle | `data-variable-values` on the sub-comp host element |
 | CLI `--variables` flag | Highest | `hyperframes render --variables '{...}'` |
 

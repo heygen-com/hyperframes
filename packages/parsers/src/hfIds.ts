@@ -103,15 +103,24 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
 }
 
 /**
- * True for a `<template data-composition-id>` — the sub-composition authoring
- * pattern whose content the studio preview unwraps into the served body. Only
- * these templates are treated as transparent containers for hf-id purposes.
- * A plain `<template>` (runtime clone-source: list item, particle, etc.) must
- * NOT get inner ids: its content is cloned N times into the live DOM, so a
- * persisted inner id would be duplicated across every clone.
+ * True for a sub-composition authoring template whose content the studio preview
+ * unwraps into the served body. Two accepted forms:
+ *   A) `<template data-composition-id="X">…` — the id on the template itself.
+ *   B) `<template id="X-template"><div data-composition-id="X">…` — the id on the
+ *      wrapped root div (the form `hyperframes add` scaffolds and registry blocks use).
+ * Only these are treated as transparent containers for hf-id purposes. A plain
+ * `<template>` (runtime clone-source: list item, particle, etc.) must NOT get
+ * inner ids — its content is cloned N times into the live DOM, so a persisted
+ * inner id would be duplicated across every clone. Form B is distinguished from
+ * a clone-source by the presence of a direct `[data-composition-id]` child.
  */
 export function isCompositionTemplate(el: Element): boolean {
-  return el.tagName.toLowerCase() === "template" && el.getAttribute("data-composition-id") !== null;
+  if (el.tagName.toLowerCase() !== "template") return false;
+  if (el.getAttribute("data-composition-id") !== null) return true;
+  for (const child of Array.from(el.children)) {
+    if (child.getAttribute("data-composition-id") !== null) return true;
+  }
+  return false;
 }
 
 /**

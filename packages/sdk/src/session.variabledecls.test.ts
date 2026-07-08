@@ -107,14 +107,27 @@ describe("declareVariable", () => {
     expect(comp.getVariableDeclarations()).toEqual([TITLE_DECL]);
   });
 
-  it("refuses fragment compositions (no <html> to carry the schema)", async () => {
+  // fallow-ignore-next-line code-duplication
+  it("supports fragment compositions with a root element (schema on the root div)", async () => {
+    // A fragment (no <html>) still has a composition root; declarations live on
+    // that root div, which survives serialize — so template/sub-comp files are
+    // first-class editable, not refused.
     const comp = await openComposition(BARE_HTML);
+    expect(comp.can({ type: "declareVariable", declaration: TITLE_DECL })).toMatchObject({
+      ok: true,
+    });
+    comp.declareVariable(TITLE_DECL);
+    expect(comp.getVariableDeclarations()).toEqual([TITLE_DECL]);
+    expect(comp.serialize()).toContain("data-composition-variables");
+  });
+
+  it("refuses a fragment with no root element (nowhere durable to write)", async () => {
+    const comp = await openComposition("just text, no element");
     expect(comp.can({ type: "declareVariable", declaration: TITLE_DECL })).toMatchObject({
       ok: false,
       code: "E_FRAGMENT_COMPOSITION",
     });
     comp.declareVariable(TITLE_DECL);
-    // Nothing written, nothing lost on serialize.
     expect(comp.getVariableDeclarations()).toEqual([]);
     expect(comp.serialize()).not.toContain("data-composition-variables");
   });

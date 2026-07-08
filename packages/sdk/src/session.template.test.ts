@@ -79,3 +79,48 @@ describe("template-based sub-comp compositions", () => {
     expect(comp.getElement("hf-dup")?.text).toBe("tpl");
   });
 });
+
+// The authored sub-comp form `hyperframes add` scaffolds: the composition id is
+// on the wrapped root div, and the <template> is keyed by `id="X-template"`.
+const AUTHORED_TEMPLATE_HTML = `
+<template id="card-template">
+  <div data-composition-id="card" data-width="1280" data-height="720" data-duration="5">
+    <h1 class="title" style="color: rgb(255, 0, 0)">Headline</h1>
+  </div>
+</template>
+`.trim();
+
+describe("authored template sub-comps (id on the wrapped root div)", () => {
+  it("enumerates and resolves inner elements", async () => {
+    const comp = await openComposition(AUTHORED_TEMPLATE_HTML);
+    const title = comp.getElements().find((e) => e.classNames.includes("title"));
+    expect(title).toBeTruthy();
+    expect(comp.getElement(title!.id)?.text).toBe("Headline");
+  });
+
+  it("declares a variable on the root div and round-trips through serialize", async () => {
+    const comp = await openComposition(AUTHORED_TEMPLATE_HTML);
+    comp.declareVariable({
+      id: "title-color",
+      type: "color",
+      label: "Title color",
+      default: "#ff0000",
+    });
+    expect(comp.getVariableDeclarations().map((d) => d.id)).toEqual(["title-color"]);
+    const serialized = comp.serialize();
+    expect(serialized).toContain("data-composition-variables");
+    // Survives a re-open (declaration is on the root div, not a stripped <html>).
+    const reopened = await openComposition(serialized);
+    expect(reopened.getVariableDeclarations().map((d) => d.id)).toEqual(["title-color"]);
+  });
+
+  it("does not treat a plain clone-source template as a composition", async () => {
+    const comp = await openComposition(
+      `<div data-composition-id="c" data-width="100" data-height="100" data-duration="1" data-start="0">` +
+        `<template id="particle"><span class="dot">·</span></template></div>`,
+    );
+    // The particle template's inner <span> must NOT be enumerated (it is cloned
+    // N times at runtime; a persisted inner id would duplicate across clones).
+    expect(comp.getElements().some((e) => e.classNames.includes("dot"))).toBe(false);
+  });
+});

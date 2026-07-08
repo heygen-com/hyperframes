@@ -13,6 +13,7 @@ import type { ParsedDocument } from "./model.js";
 import {
   findById,
   findRoot,
+  declarationElement,
   setElementStyles,
   setOwnText,
   setGsapScript,
@@ -105,11 +106,11 @@ function parsePath(path: string): ParsedPath | null {
  * the matching declaration's `default`. No-ops when the attr/decl is absent.
  * Shares the model logic with mutate.ts via ./variableModel.ts.
  */
-function applyVariableDefault(document: Document, id: string, newDefault: unknown): void {
+function applyVariableDefault(declEl: Element | null, id: string, newDefault: unknown): void {
   if (newDefault === null) {
-    clearVariableDefault(document, id);
+    clearVariableDefault(declEl, id);
   } else {
-    writeVariableDefault(document, id, newDefault);
+    writeVariableDefault(declEl, id, newDefault);
   }
 }
 
@@ -263,13 +264,13 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
     case "variableDeclaration": {
       if (!p.id) return;
       if (patch.op === "remove") {
-        removeVariableDeclarationEntry(parsed.document, p.id);
+        removeVariableDeclarationEntry(declarationElement(parsed.document, parsed.wrapped), p.id);
       } else if (isRawDeclarationEntry(patch.value)) {
         // Replay is faithful, not strict: inverse patches capture raw entries
         // (loose hand-authored declarations included) and undo must restore
         // them verbatim — gating on isCompositionVariable here would make
         // undo of a remove/update on a loose entry silently no-op.
-        writeVariableDeclaration(parsed.document, patch.value);
+        writeVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), patch.value);
       }
       break;
     }
@@ -280,7 +281,11 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       // getVariables() returns the correct value in both preview and render.
       // CSS compat is handled by explicit style-path patches emitted by mutate.ts,
       // so we do NOT write CSS here — the style case above handles those patches.
-      applyVariableDefault(parsed.document, p.id, patch.op === "remove" ? null : patch.value);
+      applyVariableDefault(
+        declarationElement(parsed.document, parsed.wrapped),
+        p.id,
+        patch.op === "remove" ? null : patch.value,
+      );
       break;
     }
 

@@ -345,7 +345,7 @@ export function StudioRightPanel({
   const propertyPanel = (
     <DesignPanelPromoteProvider
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
-      sdkSession={sdkSession}
+      projectId={projectId}
       activeCompPath={activeCompPath}
       readProjectFile={readProjectFile}
       writeProjectFile={writeProjectFile}
