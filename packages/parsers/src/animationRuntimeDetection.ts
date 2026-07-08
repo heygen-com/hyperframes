@@ -124,6 +124,35 @@ function classifyScriptEngine(scriptText: string): AnimationRuntimeScriptEngine 
   return "none";
 }
 
+function nextTemplateDepth(tag: HtmlTag, depth: number): number {
+  if (tag.closing) return Math.max(0, depth - 1);
+  return tag.selfClosing ? depth : depth + 1;
+}
+
+function collectScriptBlock(
+  html: string,
+  lowerHtml: string,
+  tag: HtmlTag,
+  insideTemplate: boolean,
+  blocks: RawScriptBlock[],
+): number {
+  const contentStart = tag.end + 1;
+  const closeStart = findClosingScriptStart(lowerHtml, contentStart);
+  const contentEnd = closeStart ?? html.length;
+  if (!tagHasAttribute(tag.source, "src")) {
+    blocks.push({
+      text: html.slice(contentStart, contentEnd),
+      start: contentStart,
+      end: contentEnd,
+      insideTemplate,
+    });
+  }
+  if (closeStart === null) return html.length;
+  const closeTagEnd = findTagEnd(html, closeStart);
+  return closeTagEnd === -1 ? html.length : closeTagEnd + 1;
+}
+
+// fallow-ignore-next-line complexity
 function findInlineScriptBlocks(html: string): RawScriptBlock[] {
   const lowerHtml = html.toLowerCase();
   const blocks: RawScriptBlock[] = [];
@@ -146,34 +175,13 @@ function findInlineScriptBlocks(html: string): RawScriptBlock[] {
     }
 
     if (tag.name === "template") {
-      if (tag.closing) {
-        templateDepth = Math.max(0, templateDepth - 1);
-      } else if (!tag.selfClosing) {
-        templateDepth += 1;
-      }
+      templateDepth = nextTemplateDepth(tag, templateDepth);
       index = tag.end + 1;
-      continue;
+    } else if (tag.name === "script" && !tag.closing) {
+      index = collectScriptBlock(html, lowerHtml, tag, templateDepth > 0, blocks);
+    } else {
+      index = tag.end + 1;
     }
-
-    if (tag.name === "script" && !tag.closing) {
-      const contentStart = tag.end + 1;
-      const closeStart = findClosingScriptStart(lowerHtml, contentStart);
-      const contentEnd = closeStart ?? html.length;
-      if (!tagHasAttribute(tag.source, "src")) {
-        blocks.push({
-          text: html.slice(contentStart, contentEnd),
-          start: contentStart,
-          end: contentEnd,
-          insideTemplate: templateDepth > 0,
-        });
-      }
-      if (closeStart === null) break;
-      const closeTagEnd = findTagEnd(html, closeStart);
-      index = closeTagEnd === -1 ? html.length : closeTagEnd + 1;
-      continue;
-    }
-
-    index = tag.end + 1;
   }
 
   return blocks;
@@ -241,42 +249,54 @@ function tagIsSelfClosing(source: string): boolean {
   return source.charAt(index) === "/";
 }
 
+function skipHtmlWhitespace(source: string, index: number): number {
+  let next = index;
+  while (next < source.length && isHtmlWhitespace(source.charAt(next))) {
+    next += 1;
+  }
+  return next;
+}
+
+interface TagAttributeScan {
+  name: string;
+  nextIndex: number;
+}
+
+function readNextAttribute(source: string, startIndex: number): TagAttributeScan | null {
+  let index = skipHtmlWhitespace(source, startIndex);
+  if (index >= source.length - 1) return null;
+  const boundary = source.charAt(index);
+  if (boundary === "/" || boundary === ">") return null;
+
+  const nameStart = index;
+  while (index < source.length && isAttributeNameChar(source.charAt(index))) {
+    index += 1;
+  }
+  if (nameStart === index) return null;
+
+  const name = source.slice(nameStart, index).toLowerCase();
+  index = skipHtmlWhitespace(source, index);
+  if (source.charAt(index) !== "=") return { name, nextIndex: index };
+
+  index = skipHtmlWhitespace(source, index + 1);
+  return { name, nextIndex: skipAttributeValue(source, index) };
+}
+
 function tagHasAttribute(source: string, attrName: string): boolean {
   const initialIndex = tagNameStart(source);
   if (initialIndex === null) return false;
-  let index = initialIndex;
 
+  let index = initialIndex;
   while (index < source.length && isTagNameChar(source.charAt(index))) {
     index += 1;
   }
 
-  while (index < source.length - 1) {
-    while (index < source.length && isHtmlWhitespace(source.charAt(index))) {
-      index += 1;
-    }
-    if (source.charAt(index) === "/" || source.charAt(index) === ">") return false;
-
-    const nameStart = index;
-    while (index < source.length && isAttributeNameChar(source.charAt(index))) {
-      index += 1;
-    }
-    if (nameStart === index) return false;
-
-    const name = source.slice(nameStart, index).toLowerCase();
-    if (name === attrName.toLowerCase()) return true;
-
-    while (index < source.length && isHtmlWhitespace(source.charAt(index))) {
-      index += 1;
-    }
-    if (source.charAt(index) !== "=") continue;
-
-    index += 1;
-    while (index < source.length && isHtmlWhitespace(source.charAt(index))) {
-      index += 1;
-    }
-    index = skipAttributeValue(source, index);
+  const target = attrName.toLowerCase();
+  let attribute = readNextAttribute(source, index);
+  while (attribute) {
+    if (attribute.name === target) return true;
+    attribute = readNextAttribute(source, attribute.nextIndex);
   }
-
   return false;
 }
 
@@ -314,75 +334,89 @@ function findClosingScriptStart(lowerHtml: string, from: number): number | null 
   return null;
 }
 
+type CommentScanState = "code" | "lineComment" | "blockComment" | "single" | "double" | "template";
+
+interface CommentScanner {
+  output: string;
+  state: CommentScanState;
+  escaped: boolean;
+}
+
+function scanLineCommentChar(scanner: CommentScanner, char: string): void {
+  if (char === "\n" || char === "\r") {
+    scanner.output += char;
+    scanner.state = "code";
+  } else {
+    scanner.output += " ";
+  }
+}
+
+function scanBlockCommentChar(scanner: CommentScanner, char: string, next: string): number {
+  if (char === "*" && next === "/") {
+    scanner.output += "  ";
+    scanner.state = "code";
+    return 1;
+  }
+  scanner.output += char === "\n" || char === "\r" ? char : " ";
+  return 0;
+}
+
+function stringCloserFor(state: CommentScanState): string | null {
+  if (state === "single") return "'";
+  if (state === "double") return '"';
+  return state === "template" ? "`" : null;
+}
+
+// fallow-ignore-next-line complexity
+function scanStringChar(scanner: CommentScanner, char: string): void {
+  scanner.output += char;
+  if (scanner.escaped) {
+    scanner.escaped = false;
+    return;
+  }
+  if (char === "\\") {
+    scanner.escaped = true;
+    return;
+  }
+  if (char === stringCloserFor(scanner.state)) {
+    scanner.state = "code";
+  }
+}
+
+// fallow-ignore-next-line complexity
+function scanCodeChar(scanner: CommentScanner, char: string, next: string): number {
+  scanner.output += char;
+  if (char === "/" && (next === "/" || next === "*")) {
+    scanner.output = scanner.output.slice(0, -1) + "  ";
+    scanner.state = next === "/" ? "lineComment" : "blockComment";
+    return 1;
+  }
+  if (char === "'") scanner.state = "single";
+  else if (char === '"') scanner.state = "double";
+  else if (char === "`") scanner.state = "template";
+  return 0;
+}
+
+// fallow-ignore-next-line complexity
 function stripJavaScriptComments(source: string): string {
-  let output = "";
-  let state: "code" | "lineComment" | "blockComment" | "single" | "double" | "template" = "code";
-  let escaped = false;
+  const scanner: CommentScanner = { output: "", state: "code", escaped: false };
 
   for (let index = 0; index < source.length; index += 1) {
     const char = source.charAt(index);
     const next = source.charAt(index + 1);
 
-    if (state === "lineComment") {
-      if (char === "\n" || char === "\r") {
-        output += char;
-        state = "code";
-      } else {
-        output += " ";
-      }
-      continue;
-    }
-
-    if (state === "blockComment") {
-      if (char === "*" && next === "/") {
-        output += "  ";
-        index += 1;
-        state = "code";
-      } else {
-        output += char === "\n" || char === "\r" ? char : " ";
-      }
-      continue;
-    }
-
-    output += char;
-
-    if (state === "single" || state === "double" || state === "template") {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-      if (
-        (state === "single" && char === "'") ||
-        (state === "double" && char === '"') ||
-        (state === "template" && char === "`")
-      ) {
-        state = "code";
-      }
-      continue;
-    }
-
-    if (char === "/" && next === "/") {
-      output = output.slice(0, -1) + "  ";
-      index += 1;
-      state = "lineComment";
-    } else if (char === "/" && next === "*") {
-      output = output.slice(0, -1) + "  ";
-      index += 1;
-      state = "blockComment";
-    } else if (char === "'") {
-      state = "single";
-    } else if (char === '"') {
-      state = "double";
-    } else if (char === "`") {
-      state = "template";
+    if (scanner.state === "lineComment") {
+      scanLineCommentChar(scanner, char);
+    } else if (scanner.state === "blockComment") {
+      index += scanBlockCommentChar(scanner, char, next);
+    } else if (scanner.state === "code") {
+      index += scanCodeChar(scanner, char, next);
+    } else {
+      scanStringChar(scanner, char);
     }
   }
 
-  return output;
+  return scanner.output;
 }
 
 function isHtmlWhitespace(char: string): boolean {

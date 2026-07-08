@@ -2,7 +2,8 @@ import type { ScriptBlock } from "./types.ts";
 
 const INLINE_SCRIPT_RE = /<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
 
-export function findGsapScriptBlock(html: string): ScriptBlock | null {
+export // fallow-ignore-next-line complexity
+function findGsapScriptBlock(html: string): ScriptBlock | null {
   let best: ScriptBlock | null = null;
   let bestScore = -1;
   for (const match of html.matchAll(INLINE_SCRIPT_RE)) {

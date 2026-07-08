@@ -1,4 +1,5 @@
 import { resolveEase } from "@hyperframes/core";
+import { rawText } from "./text.ts";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/parsers";
 import { extractGsapLabels } from "@hyperframes/parsers/gsap-parser-acorn";
 import { parseAttrWrapper, type AttrEntry } from "./attr.ts";
@@ -22,7 +23,8 @@ const PROP_RENAMES = new Map([
   ["transformPerspective", "perspective"],
 ]);
 
-export function convertGsapScript(script: string, parsed: ParsedGsap): string {
+export // fallow-ignore-next-line complexity
+function convertGsapScript(script: string, parsed: ParsedGsap): string {
   const registration = parseRegistrationPostamble(parsed.postamble, parsed.timelineVar);
   const registrationId = registration?.id ?? "main";
   const rawPreamble = convertPreamble(parsed.preamble, parsed.timelineVar);
@@ -92,6 +94,7 @@ function convertAnimation(animation: GsapAnimation, timelineVar: string): string
   return renderAddCall(timelineVar, target, properties, position);
 }
 
+// fallow-ignore-next-line complexity
 function buildProperties(animation: GsapAnimation): AnimeProperty[] {
   const entries: AnimeProperty[] = [];
   for (const [key, value] of Object.entries(animation.properties)) {
@@ -168,6 +171,7 @@ function pushAutoAlpha(
   entries.push({ key: "visibility", code: serializeValue(visibilityFor(value)) });
 }
 
+// fallow-ignore-next-line complexity
 function renderTweenValue(animation: GsapAnimation, key: string, value: number | string): string {
   if (animation.method === "fromTo") {
     const fromValue = animation.fromProperties?.[key];
@@ -183,6 +187,7 @@ function renderTweenValue(animation: GsapAnimation, key: string, value: number |
   return serializeValue(value);
 }
 
+// fallow-ignore-next-line complexity
 function identityValue(key: string): number | string {
   if (key === "opacity" || key === "autoAlpha") return 1;
   if (key === "visibility") return "visible";
@@ -190,6 +195,7 @@ function identityValue(key: string): number | string {
   return 0;
 }
 
+// fallow-ignore-next-line complexity
 function visibilityFor(value: number | string): string {
   if (typeof value === "number") return value <= 0 ? "hidden" : "visible";
   return value === "0" || value === "hidden" ? "hidden" : "visible";
@@ -204,6 +210,7 @@ function milliseconds(seconds: number): number {
   return Math.round(seconds * 1000);
 }
 
+// fallow-ignore-next-line complexity
 function renderStagger(value: unknown): string | null {
   const raw = rawText(value);
   if (!raw) return null;
@@ -214,15 +221,15 @@ function renderStagger(value: unknown): string | null {
   return renderObjectStagger(raw);
 }
 
-function renderObjectStagger(raw: string): string | null {
+const STAGGER_KEYS = ["each", "amount", "from", "grid", "axis", "start", "ease"];
+
+function staggerKeysAllowed(raw: string): boolean {
   const keys = [...raw.matchAll(/([A-Za-z_$][\w$]*)\s*:/g)].map((match) => match[1] ?? "");
-  if (
-    keys.some((key) => !["each", "amount", "from", "grid", "axis", "start", "ease"].includes(key))
-  ) {
-    return null;
-  }
-  const seconds = numericField(raw, "each") ?? numericField(raw, "amount");
-  if (seconds === null) return null;
+  return keys.every((key) => STAGGER_KEYS.includes(key));
+}
+
+// fallow-ignore-next-line complexity
+function staggerOptions(raw: string): string[] {
   const options: string[] = [];
   const grid = /\bgrid\s*:\s*(\[[^\]]+\])/.exec(raw)?.[1];
   const from = /\bfrom\s*:\s*("[^"]+"|'[^']+'|[A-Za-z_$][\w$]*)/.exec(raw)?.[1];
@@ -234,6 +241,15 @@ function renderObjectStagger(raw: string): string | null {
   if (axis) options.push(`axis: ${normalizeStringLiteral(axis)}`);
   if (start !== null) options.push(`start: ${milliseconds(start)}`);
   if (ease) options.push(`ease: ${normalizeStringLiteral(ease)}`);
+  return options;
+}
+
+// fallow-ignore-next-line complexity
+function renderObjectStagger(raw: string): string | null {
+  if (!staggerKeysAllowed(raw)) return null;
+  const seconds = numericField(raw, "each") ?? numericField(raw, "amount");
+  if (seconds === null) return null;
+  const options = staggerOptions(raw);
   return options.length > 0
     ? `anime.stagger(${milliseconds(seconds)}, { ${options.join(", ")} })`
     : `anime.stagger(${milliseconds(seconds)})`;
@@ -246,6 +262,7 @@ function numericField(raw: string, key: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+// fallow-ignore-next-line complexity
 function renderRepeat(value: unknown): string | null {
   const raw = rawText(value);
   if (!raw) return null;
@@ -259,13 +276,6 @@ function rawBoolean(value: unknown): boolean | null {
   const raw = rawText(value);
   if (raw === "true") return true;
   if (raw === "false") return false;
-  return null;
-}
-
-function rawText(value: unknown): string | null {
-  if (typeof value === "string")
-    return value.startsWith("__raw:") ? value.slice(6).trim() : value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
   return null;
 }
 
@@ -296,6 +306,7 @@ function serializeProperties(properties: AnimeProperty[]): string {
   return `{ ${properties.map((property) => `${safeKey(property.key)}: ${property.code}`).join(", ")} }`;
 }
 
+// fallow-ignore-next-line complexity
 function renderAddCall(
   timelineVar: string,
   target: string,

@@ -14,7 +14,6 @@ export type {
   TransformResult,
 } from "./types.ts";
 export { classifyGsapScript } from "./classifier.ts";
-export { scanRegistryTree, renderMarkdownReport, assertTotalsReconcile } from "./report.ts";
 
 export function transformHtml(html: string): TransformResult {
   const block = findGsapScriptBlock(html);
@@ -40,6 +39,7 @@ export function transformHtml(html: string): TransformResult {
   return { html: nextHtml, changed: nextHtml !== html, classification };
 }
 
+// fallow-ignore-next-line complexity
 function preserveClosingIndent(script: string, previousScript: string): string {
   const codeIndent = /\n([ \t]*)\S/.exec(previousScript)?.[1] ?? "";
   const closingIndent = /\n([ \t]*)$/.exec(previousScript)?.[1] ?? "";

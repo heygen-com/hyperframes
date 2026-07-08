@@ -6,6 +6,11 @@ import {
   wrapScopedCompositionScript,
 } from "./compositionScoping";
 
+const readTargetText = (targets: Element[] | string) =>
+  typeof targets === "string"
+    ? [`raw:${targets}`]
+    : Array.from(targets).map((target) => target.textContent || "");
+
 describe("composition scoping", () => {
   it("scopes regular selectors while preserving global at-rules", () => {
     const scoped = scopeCssToComposition(
@@ -277,10 +282,6 @@ window.__timelines.scene = tl;
       <div data-composition-id="scene-b"><h1 class="hero">Beta</h1></div>
     `);
     const timelineTargets: string[][] = [];
-    const readTargetText = (targets: Element[] | string) =>
-      typeof targets === "string"
-        ? [`raw:${targets}`]
-        : Array.from(targets).map((target) => target.textContent || "");
     const fakeAnime = {
       createTimeline: () => ({
         add(targets: Element[] | string) {
@@ -503,10 +504,6 @@ window.__rawAnimeReads[window.__currentInstanceName] =
     const svgTargets: string[][] = [];
     const textTargets: string[][] = [];
     const staggerValues: unknown[] = [];
-    const readTargetText = (targets: Element[] | string) =>
-      typeof targets === "string"
-        ? [`raw:${targets}`]
-        : Array.from(targets).map((target) => target.textContent || "");
     const fakeAnime = {
       svg: {
         morphTo(targets: Element[] | string) {

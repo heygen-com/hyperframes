@@ -29,6 +29,24 @@ function runInit(args: string[]): { status: number; stdout: string; stderr: stri
   };
 }
 
+function expectDefaultPackageScripts(target: string): void {
+  const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
+    private?: boolean;
+    type?: string;
+    scripts?: Record<string, string>;
+  };
+  expect(pkg.private).toBe(true);
+  expect(pkg.type).toBe("module");
+  expect(pkg.scripts).toMatchObject({
+    dev: "npx --yes hyperframes preview",
+    check:
+      "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
+    render: "npx --yes hyperframes render",
+    publish: "npx --yes hyperframes publish",
+  });
+  expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+}
+
 describe("hyperframes init flag rename", () => {
   it("--example blank scaffolds a bundled project with npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
@@ -41,21 +59,12 @@ describe("hyperframes init flag rename", () => {
       expect(res.stdout).toContain("npm run check");
       expect(res.stdout).toContain("npm run render");
 
-      const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
-        private?: boolean;
-        type?: string;
-        scripts?: Record<string, string>;
-      };
-      expect(pkg.private).toBe(true);
-      expect(pkg.type).toBe("module");
-      expect(pkg.scripts).toMatchObject({
-        dev: "npx --yes hyperframes preview",
-        check:
-          "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
-        render: "npx --yes hyperframes render",
-        publish: "npx --yes hyperframes publish",
-      });
-      expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toContain("anime.createTimeline({ autoplay: false })");
+      expect(html).toContain('hyperframesAnime.register("main", tl, { labels: {} });');
+      expect(html.toLowerCase()).not.toContain("gsap");
+
+      expectDefaultPackageScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -79,17 +88,7 @@ describe("hyperframes init flag rename", () => {
       expect(html).toContain(tailwindScript);
       expect(html).toContain("window.__tailwindReady");
 
-      const pkg = JSON.parse(readFileSync(join(target, "package.json"), "utf-8")) as {
-        scripts?: Record<string, string>;
-      };
-      expect(pkg.scripts).toMatchObject({
-        dev: "npx --yes hyperframes preview",
-        check:
-          "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
-        render: "npx --yes hyperframes render",
-        publish: "npx --yes hyperframes publish",
-      });
-      expect(Object.keys(pkg.scripts ?? {}).sort()).toEqual(["check", "dev", "publish", "render"]);
+      expectDefaultPackageScripts(target);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

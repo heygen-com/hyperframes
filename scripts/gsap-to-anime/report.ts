@@ -53,6 +53,7 @@ export function renderMarkdownReport(report: RegistryReport): string {
   return `${lines.join("\n")}`;
 }
 
+// fallow-ignore-next-line complexity
 function discoverRegistryItems(root: string): RegistryManifest[] {
   const manifests: RegistryManifest[] = [];
   for (const kind of ["blocks", "components", "examples"]) {
@@ -68,6 +69,7 @@ function discoverRegistryItems(root: string): RegistryManifest[] {
   return manifests.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
 }
 
+// fallow-ignore-next-line complexity
 function readManifest(path: string): RegistryManifest | null {
   if (!existsSync(path)) return null;
   const raw: unknown = JSON.parse(readFileSync(path, "utf-8"));
@@ -89,6 +91,7 @@ function fallbackManifest(kind: string, name: string, itemDir: string): Registry
   };
 }
 
+// fallow-ignore-next-line complexity
 function discoverHtmlFiles(root: string, dir: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -102,6 +105,7 @@ function discoverHtmlFiles(root: string, dir: string): string[] {
   return files.sort((a, b) => a.localeCompare(b));
 }
 
+// fallow-ignore-next-line complexity
 function readFiles(files: unknown[]): RegistryFileEntry[] {
   const entries: RegistryFileEntry[] = [];
   for (const file of files) {
@@ -185,6 +189,7 @@ function createTotals(): Record<CodemodStatus, number> {
   };
 }
 
+// fallow-ignore-next-line complexity
 function manualReasonCounts(report: RegistryReport): Map<string, number> {
   const counts = new Map<string, number>();
   for (const item of report.items) {

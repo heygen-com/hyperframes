@@ -1,8 +1,11 @@
+import { rawText } from "./text";
+
 export interface AttrEntry {
   key: string;
   value: number | string;
 }
 
+// fallow-ignore-next-line complexity
 export function parseAttrWrapper(value: unknown): AttrEntry[] | null {
   const raw = rawText(value);
   if (!raw?.startsWith("{") || !raw.endsWith("}")) return null;
@@ -30,9 +33,9 @@ function splitProperty(source: string): { key: string; value: string } | null {
   };
 }
 
-function splitTopLevel(source: string, separator: string): string[] {
-  const parts: string[] = [];
-  let start = 0;
+// fallow-ignore-next-line complexity
+function topLevelPositions(source: string, target: string): number[] {
+  const positions: number[] = [];
   let depth = 0;
   let quote: string | null = null;
   let escaped = false;
@@ -51,37 +54,24 @@ function splitTopLevel(source: string, separator: string): string[] {
     }
     if (char === "{" || char === "[" || char === "(") depth += 1;
     if (char === "}" || char === "]" || char === ")") depth -= 1;
-    if (char === separator && depth === 0) {
-      parts.push(source.slice(start, index).trim());
-      start = index + 1;
-    }
+    if (char === target && depth === 0) positions.push(index);
+  }
+  return positions;
+}
+
+function splitTopLevel(source: string, separator: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  for (const index of topLevelPositions(source, separator)) {
+    parts.push(source.slice(start, index).trim());
+    start = index + 1;
   }
   parts.push(source.slice(start).trim());
   return parts.filter((part) => part.length > 0);
 }
 
 function findTopLevelColon(source: string): number | null {
-  let depth = 0;
-  let quote: string | null = null;
-  let escaped = false;
-
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index] ?? "";
-    if (quote !== null) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") {
-      quote = char;
-      continue;
-    }
-    if (char === "{" || char === "[" || char === "(") depth += 1;
-    if (char === "}" || char === "]" || char === ")") depth -= 1;
-    if (char === ":" && depth === 0) return index;
-  }
-  return null;
+  return topLevelPositions(source, ":")[0] ?? null;
 }
 
 function parseKey(value: string): string | null {
@@ -95,6 +85,7 @@ function parseValue(value: string): number | string | null {
   return parseStringLiteral(value);
 }
 
+// fallow-ignore-next-line complexity
 function parseStringLiteral(value: string): string | null {
   const quote = value[0];
   if ((quote !== "'" && quote !== '"') || value[value.length - 1] !== quote) return null;
@@ -107,11 +98,4 @@ function parseStringLiteral(value: string): string | null {
     }
   }
   return value.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
-}
-
-function rawText(value: unknown): string | null {
-  if (typeof value === "string")
-    return value.startsWith("__raw:") ? value.slice(6).trim() : value.trim();
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return null;
 }

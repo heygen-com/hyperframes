@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { motionToGsap } from "./motionToGsap";
+import { motionToGsap, motionToTimeline } from "./motionToGsap";
 import type { MotionDoc } from "./types";
 
 const headline: MotionDoc = {
@@ -57,5 +57,32 @@ describe("motionToGsap", () => {
         tracks: [{ property: "x", values: [0, 1], times: [0], ease: ["linear"], duration: 1 }],
       }),
     ).toThrow();
+  });
+});
+
+describe("motionToTimeline", () => {
+  it("derives an anime.js timeline spec with mapped named and custom eases", () => {
+    const spec = motionToTimeline({
+      selector: "#card",
+      tracks: [
+        {
+          property: "x",
+          values: [0, 40, 80],
+          times: [0, 0.5, 1],
+          ease: ["easeOut", [0.539, 0, 0.312, 0.995]],
+          duration: 2,
+          repeat: Infinity,
+        },
+      ],
+    });
+
+    expect(spec.timelineId).toBe("figma-card");
+    expect(spec.tweens[0]?.steps[0]?.duration).toBe(1);
+    expect(spec.tweens[0]?.steps[0]?.ease).toBe("outCubic");
+    expect(spec.customEases).toHaveLength(1);
+    expect(spec.tweens[0]?.steps[1]?.ease).toBe(spec.customEases[0]?.name);
+    expect(spec.customEases[0]?.ease).toBe("anime.cubicBezier(0.539, 0, 0.312, 0.995)");
+    expect(spec.customEases[0]?.ease).not.toContain("M0,0");
+    expect(spec.tweens[0]?.repeat).toBe(0);
   });
 });

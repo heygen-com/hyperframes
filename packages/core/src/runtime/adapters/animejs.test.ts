@@ -31,6 +31,15 @@ function createAnimeInstance(opts?: { duration?: number | (() => number) }): Tes
   };
 }
 
+function registerInstancePair() {
+  const a = createAnimeInstance();
+  const b = createAnimeInstance();
+  installHyperframesAnimeApi();
+  animeWindow.hyperframesAnime?.register("a", a);
+  animeWindow.hyperframesAnime?.register("b", b);
+  return { a, b, adapter: createAnimeJsAdapter() };
+}
+
 describe("animejs adapter", () => {
   beforeEach(() => {
     delete animeWindow.anime;
@@ -160,12 +169,7 @@ describe("animejs adapter", () => {
     });
 
     it("seeks multiple keyed instances", () => {
-      const a = createAnimeInstance();
-      const b = createAnimeInstance();
-      installHyperframesAnimeApi();
-      animeWindow.hyperframesAnime?.register("a", a);
-      animeWindow.hyperframesAnime?.register("b", b);
-      const adapter = createAnimeJsAdapter();
+      const { a, b, adapter } = registerInstancePair();
 
       adapter.seek({ time: 1.5 });
 
@@ -205,12 +209,7 @@ describe("animejs adapter", () => {
 
   describe("pause", () => {
     it("pauses all keyed instances", () => {
-      const a = createAnimeInstance();
-      const b = createAnimeInstance();
-      installHyperframesAnimeApi();
-      animeWindow.hyperframesAnime?.register("a", a);
-      animeWindow.hyperframesAnime?.register("b", b);
-      const adapter = createAnimeJsAdapter();
+      const { a, b, adapter } = registerInstancePair();
 
       adapter.pause();
 

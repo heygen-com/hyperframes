@@ -61,6 +61,8 @@ export type MappedEase =
   | { kind: "named"; ease: string }
   | { kind: "bezier"; bezier: [number, number, number, number] };
 
+export type ResolvedMotionEase = { kind: "named"; ease: string } | { kind: "custom"; ease: string };
+
 export interface CustomEaseRef {
   name: string;
   bezier: [number, number, number, number];
@@ -87,4 +89,32 @@ export interface TimelineSpec {
   timelineId: string;
   tweens: GsapTween[];
   customEases: CustomEaseRef[];
+}
+
+export interface TimelineCustomEaseRef {
+  name: string;
+  ease: string;
+}
+
+export interface TimelineKeyframeStep {
+  value: number | string;
+  /** seconds */
+  duration: number;
+  /** anime.js ease string or a local custom ease variable name */
+  ease: string;
+}
+
+export interface TimelineTween {
+  selector: string;
+  property: string;
+  initial: number | string;
+  steps: TimelineKeyframeStep[];
+  /** finite; 0 = play once */
+  repeat: number;
+}
+
+export interface MotionTimelineSpec {
+  timelineId: string;
+  tweens: TimelineTween[];
+  customEases: TimelineCustomEaseRef[];
 }

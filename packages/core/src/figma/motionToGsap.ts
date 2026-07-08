@@ -1,10 +1,14 @@
-import { mapEase } from "./motionEase";
+import { mapEase, resolveMotionEase } from "./motionEase";
 import type {
   CustomEaseRef,
   GsapKeyframeStep,
   GsapTween,
+  MotionTimelineSpec,
   MotionDoc,
   MotionTrack,
+  TimelineCustomEaseRef,
+  TimelineKeyframeStep,
+  TimelineTween,
   TimelineSpec,
 } from "./types";
 
@@ -44,12 +48,27 @@ function resolveStepEase(
   return mapped.ease;
 }
 
-function buildSteps(
-  track: MotionTrack,
-  customEases: CustomEaseRef[],
+function resolveTimelineStepEase(
+  rawEase: string | [number, number, number, number],
+  customEases: TimelineCustomEaseRef[],
   counter: CustomEaseCounter,
-): GsapKeyframeStep[] {
-  const steps: GsapKeyframeStep[] = [];
+): string {
+  const mapped = resolveMotionEase(rawEase);
+  if (mapped.kind === "custom") {
+    const name = `hfCe${counter.value}`;
+    counter.value += 1;
+    customEases.push({ name, ease: mapped.ease });
+    return name;
+  }
+  return mapped.ease;
+}
+
+function buildTrackSteps<TStep>(
+  track: MotionTrack,
+  resolveEaseForStep: (rawEase: MotionTrack["ease"][number]) => string,
+  makeStep: (value: number | string, duration: number, ease: string) => TStep,
+): TStep[] {
+  const steps: TStep[] = [];
 
   for (let i = 1; i < track.values.length; i += 1) {
     const tPrev = track.times[i - 1];
@@ -58,11 +77,41 @@ function buildSteps(
     if (tPrev === undefined || tCur === undefined || value === undefined) continue;
 
     const rawEase = track.ease[i - 1] ?? "linear";
-    const ease = resolveStepEase(rawEase, customEases, counter);
-    steps.push({ value, duration: (tCur - tPrev) * track.duration, ease });
+    const ease = resolveEaseForStep(rawEase);
+    steps.push(makeStep(value, (tCur - tPrev) * track.duration, ease));
   }
 
   return steps;
+}
+
+function assertTrackInitial(track: MotionTrack, context: string): number | string {
+  if (track.values.length < 2 || track.times.length !== track.values.length) {
+    throw new Error(`${context}: invalid track "${track.property}" (values/times mismatch)`);
+  }
+  const initial = track.values[0];
+  if (initial === undefined) throw new Error(`${context}: empty track "${track.property}"`);
+  return initial;
+}
+
+function buildTweenFields<TStep>(
+  track: MotionTrack,
+  selector: string,
+  initial: number | string,
+  steps: TStep[],
+): {
+  selector: string;
+  property: string;
+  initial: number | string;
+  steps: TStep[];
+  repeat: number;
+} {
+  return {
+    selector,
+    property: track.property,
+    initial,
+    steps,
+    repeat: clampRepeat(track.repeat),
+  };
 }
 
 function buildTween(
@@ -71,24 +120,42 @@ function buildTween(
   customEases: CustomEaseRef[],
   counter: CustomEaseCounter,
 ): GsapTween {
-  if (track.values.length < 2 || track.times.length !== track.values.length) {
-    throw new Error(`motionToGsap: invalid track "${track.property}" (values/times mismatch)`);
-  }
-  const initial = track.values[0];
-  if (initial === undefined) throw new Error(`motionToGsap: empty track "${track.property}"`);
+  const initial = assertTrackInitial(track, "motionToGsap");
+  const steps = buildTrackSteps(
+    track,
+    (rawEase) => resolveStepEase(rawEase, customEases, counter),
+    (value, duration, ease): GsapKeyframeStep => ({ value, duration, ease }),
+  );
+  return buildTweenFields(track, selector, initial, steps);
+}
 
-  return {
-    selector,
-    property: track.property,
-    initial,
-    steps: buildSteps(track, customEases, counter),
-    repeat: clampRepeat(track.repeat),
-  };
+function buildTimelineTween(
+  track: MotionTrack,
+  selector: string,
+  customEases: TimelineCustomEaseRef[],
+  counter: CustomEaseCounter,
+): TimelineTween {
+  const initial = assertTrackInitial(track, "motionToTimeline");
+  const steps = buildTrackSteps(
+    track,
+    (rawEase) => resolveTimelineStepEase(rawEase, customEases, counter),
+    (value, duration, ease): TimelineKeyframeStep => ({ value, duration, ease }),
+  );
+  return buildTweenFields(track, selector, initial, steps);
 }
 
 export function motionToGsap(doc: MotionDoc): TimelineSpec {
   const customEases: CustomEaseRef[] = [];
   const counter: CustomEaseCounter = { value: 0 };
   const tweens = doc.tracks.map((track) => buildTween(track, doc.selector, customEases, counter));
+  return { timelineId: deriveId(doc.selector), tweens, customEases };
+}
+
+export function motionToTimeline(doc: MotionDoc): MotionTimelineSpec {
+  const customEases: TimelineCustomEaseRef[] = [];
+  const counter: CustomEaseCounter = { value: 0 };
+  const tweens = doc.tracks.map((track) =>
+    buildTimelineTween(track, doc.selector, customEases, counter),
+  );
   return { timelineId: deriveId(doc.selector), tweens, customEases };
 }

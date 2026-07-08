@@ -6,8 +6,9 @@ import {
   isCompositionElement,
 } from "../core.types";
 import type { GsapAnimation } from "@hyperframes/parsers";
-import { serializeGsapAnimations, keyframesToGsapAnimations } from "@hyperframes/parsers";
-import { GSAP_CDN, BASE_STYLES, ZOOM_CONTAINER_STYLES } from "../templates/constants";
+import { keyframesToGsapAnimations } from "@hyperframes/parsers";
+import { resolveEase } from "../animation/easeMap";
+import { ANIME_CDN, BASE_STYLES, ZOOM_CONTAINER_STYLES } from "../templates/constants";
 
 const GOOGLE_FONTS_BASE = "https://fonts.googleapis.com/css2";
 const FONT_WEIGHTS: Record<string, string> = {
@@ -52,12 +53,86 @@ export interface SerializeOptions {
   includeStyles?: boolean;
 }
 
+type AnimePrimitive = string | number | boolean;
+type AnimeValue = AnimePrimitive | readonly AnimePrimitive[];
+
+function roundForScript(value: number): number {
+  return Math.round(value * 1000000) / 1000000;
+}
+
+function secondsToMs(seconds: number): number {
+  return roundForScript(seconds * 1000);
+}
+
+function serializeAnimeValue(value: AnimeValue): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(serializeAnimeValue).join(", ")}]`;
+  }
+  if (typeof value === "string") return JSON.stringify(value);
+  return String(value);
+}
+
+function serializeAnimeObject(properties: Record<string, AnimeValue>): string {
+  const entries = Object.entries(properties).map(
+    ([key, value]) => `${key}: ${serializeAnimeValue(value)}`,
+  );
+  return `{ ${entries.join(", ")} }`;
+}
+
+function positionToAnimePosition(position: number | string): string {
+  return typeof position === "number" ? String(secondsToMs(position)) : JSON.stringify(position);
+}
+
+function maybeAnimeEase(gsapEase: string | undefined): string | undefined {
+  return gsapEase ? resolveEase(gsapEase).animeEase : undefined;
+}
+
+function withAnimeTimeline(
+  body: string,
+  options: { compositionId: string; includeMediaSync: boolean },
+): string {
+  const timeline = createAnimeTimeline(options.includeMediaSync);
+  const registration = `    hyperframesAnime.register(${JSON.stringify(options.compositionId)}, tl, { labels: {} });`;
+  return `${timeline}
+${body}
+${registration}`;
+}
+
+function createAnimeTimeline(includeMediaSync: boolean): string {
+  if (!includeMediaSync) {
+    return "    const tl = anime.createTimeline({ autoplay: false });";
+  }
+
+  return `    const tl = anime.createTimeline({
+      autoplay: false,
+      onUpdate: function(self) {
+        // Sync media playback
+        const time = (Number(self.currentTime) || 0) / 1000;
+        document.querySelectorAll("video[data-start], audio[data-start]").forEach(function(media) {
+          const start = parseFloat(media.dataset.start);
+          const end = parseFloat(media.dataset.end) || Infinity;
+          const mediaTime = time - start;
+          if (time >= start && time < end) {
+            if (Math.abs(media.currentTime - mediaTime) > 0.1) {
+              media.currentTime = mediaTime;
+            }
+            if (media.paused && self.paused !== true) {
+              media.play().catch(function() {});
+            }
+          } else if (!media.paused) {
+            media.pause();
+          }
+        });
+      },
+    });`;
+}
+
 /**
  * Stage Positioning Conventions:
  *
  * 1. All elements are absolutely positioned relative to the #stage container
  * 2. The #stage has position: relative and fixed dimensions (1920x1080 or 1080x1920)
- * 3. Elements start with opacity: 0 and are revealed via GSAP animations
+ * 3. Elements start with opacity: 0 and are revealed via timeline animations
  *
  * Media Elements (video, image):
  * - position: absolute (relative to #stage)
@@ -174,6 +249,7 @@ export function generateGsapTimelineScript(
     resolution = "landscape",
     keyframes,
     stageZoomKeyframes,
+    compositionId = "main",
   } = options;
 
   const { width, height } = CANVAS_DIMENSIONS[resolution];
@@ -181,7 +257,7 @@ export function generateGsapTimelineScript(
 
   const hasMedia = sortedElements.some((el) => el.type === "video" || el.type === "audio");
 
-  // Convert keyframes to GSAP animations
+  // Convert keyframes to intermediate animation records
   let keyframeAnimations: GsapAnimation[] = [];
   if (keyframes) {
     for (const element of sortedElements) {
@@ -204,8 +280,7 @@ export function generateGsapTimelineScript(
     }
   }
 
-  // Generate zoom keyframes GSAP animations
-  const zoomAnimations = generateZoomGsapAnimations(stageZoomKeyframes || [], width, height);
+  const zoomAnimations = generateZoomAnimeAnimations(stageZoomKeyframes || [], width, height);
 
   // Generate initial position/scale set() calls for all elements
   // This must be included regardless of keyframe animations
@@ -218,64 +293,46 @@ export function generateGsapTimelineScript(
     keyframes,
   );
 
-  let gsapScript: string;
+  let body: string;
   if (animations && animations.length > 0) {
-    // Merge provided animations with keyframe animations
     const allAnimations = [...animations, ...keyframeAnimations];
-    gsapScript = serializeGsapAnimations(allAnimations, "tl", {
-      includeMediaSync: hasMedia,
-    });
-    // Prepend initial positions and visibility for elements without keyframes, append zoom animations
-    const prependAnimations = [initialPositionSets, visibilityAnimations]
+    body = [
+      initialPositionSets,
+      visibilityAnimations,
+      serializeAsAnimeCalls(allAnimations),
+      zoomAnimations,
+    ]
       .filter(Boolean)
       .join("\n");
-    if (prependAnimations) {
-      gsapScript = gsapScript.replace(
-        "const tl = gsap.timeline({ paused: true });",
-        `const tl = gsap.timeline({ paused: true });\n${prependAnimations}`,
-      );
-    }
-    if (zoomAnimations) {
-      gsapScript += "\n" + zoomAnimations;
-    }
   } else if (keyframeAnimations.length > 0) {
-    // Use only keyframe animations
-    gsapScript = serializeGsapAnimations(keyframeAnimations, "tl", {
-      includeMediaSync: hasMedia,
-    });
-    // Prepend initial positions and visibility for elements without keyframes, append zoom animations
-    const prependAnimations = [initialPositionSets, visibilityAnimations]
+    body = [
+      initialPositionSets,
+      visibilityAnimations,
+      serializeAsAnimeCalls(keyframeAnimations),
+      zoomAnimations,
+    ]
       .filter(Boolean)
       .join("\n");
-    if (prependAnimations) {
-      gsapScript = gsapScript.replace(
-        "const tl = gsap.timeline({ paused: true });",
-        `const tl = gsap.timeline({ paused: true });\n${prependAnimations}`,
-      );
-    }
-    if (zoomAnimations) {
-      gsapScript += "\n" + zoomAnimations;
-    }
   } else if (generateDefaultAnimations) {
-    gsapScript = generateDefaultGsapAnimations(
+    return generateDefaultAnimeAnimations(
       sortedElements,
       totalDuration,
       stageZoomKeyframes,
       width,
       height,
+      compositionId,
     );
   } else {
-    gsapScript = `
-    const tl = gsap.timeline({ paused: true });
-${initialPositionSets ? initialPositionSets + "\n" : ""}    tl.to({}, { duration: ${totalDuration || 1} });
-    `;
-    // Append zoom animations
-    if (zoomAnimations) {
-      gsapScript += "\n" + zoomAnimations;
-    }
+    body = [
+      initialPositionSets,
+      `    tl.add({ duration: ${secondsToMs(totalDuration || 1)} }, 0);`,
+      zoomAnimations,
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
-  return gsapScript;
+  return withAnimeTimeline(body, { compositionId, includeMediaSync: hasMedia });
 }
 
 export function generateHyperframesHtml(
@@ -341,21 +398,22 @@ export function generateHyperframesHtml(
       .join("\n");
   }
 
-  const gsapScript = includeScripts
+  const animeScript = includeScripts
     ? generateGsapTimelineScript(sortedElements, totalDuration, {
         animations,
         generateDefaultAnimations,
         resolution,
+        compositionId,
         keyframes,
         stageZoomKeyframes,
       })
     : "";
 
-  const gsapCdnTag = includeScripts ? `  <script src="${GSAP_CDN}"></script>` : "";
+  const animeCdnTag = includeScripts ? `  <script src="${ANIME_CDN}"></script>` : "";
 
-  const gsapScriptTag = includeScripts
+  const animeScriptTag = includeScripts
     ? `  <script>
-${gsapScript}
+${animeScript}
   </script>`
     : "";
 
@@ -371,7 +429,7 @@ ${gsapScript}
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   ${googleFontsLink}
-  ${gsapCdnTag}
+  ${animeCdnTag}
 ${styleTags ? `  ${styleTags}` : ""}
 </head>
 <body>
@@ -380,7 +438,7 @@ ${styleTags ? `  ${styleTags}` : ""}
       ${elementsHtml}
     </div>
   </div>
-  ${gsapScriptTag}
+  ${animeScriptTag}
 </body>
 </html>`;
 }
@@ -399,7 +457,44 @@ function calculateZoomTransform(
   return { x, y };
 }
 
-function generateZoomGsapAnimations(
+function animationPropertiesForAnime(animation: GsapAnimation): Record<string, AnimeValue> {
+  const properties: Record<string, AnimeValue> = { ...animation.properties };
+  if (animation.method === "fromTo" && animation.fromProperties) {
+    for (const [key, toValue] of Object.entries(animation.properties)) {
+      const fromValue = animation.fromProperties[key];
+      if (fromValue !== undefined) {
+        properties[key] = [fromValue, toValue];
+      }
+    }
+  }
+  if (animation.duration !== undefined) properties.duration = secondsToMs(animation.duration);
+  const ease = maybeAnimeEase(animation.ease);
+  if (ease) properties.ease = ease;
+  return properties;
+}
+
+function animationStart(animation: GsapAnimation): number {
+  return (
+    animation.resolvedStart ??
+    (typeof animation.position === "number" ? animation.position : Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function serializeAsAnimeCalls(animations: GsapAnimation[]): string {
+  const sorted = [...animations].sort((a, b) => animationStart(a) - animationStart(b));
+
+  return sorted
+    .map((animation) => {
+      const selector = JSON.stringify(animation.targetSelector);
+      const properties = serializeAnimeObject(animationPropertiesForAnime(animation));
+      const position = positionToAnimePosition(animation.position);
+      const method = animation.method === "set" ? "set" : "add";
+      return `    tl.${method}(${selector}, ${properties}, ${position});`;
+    })
+    .join("\n");
+}
+
+function generateZoomAnimeAnimations(
   zoomKeyframes: StageZoomKeyframe[],
   canvasWidth: number,
   canvasHeight: number,
@@ -426,15 +521,16 @@ function generateZoomGsapAnimations(
 
     if (i === 0) {
       animations.push(
-        `    tl.set("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y} }, ${kf.time});`,
+        `    tl.set("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y} }, ${secondsToMs(kf.time)});`,
       );
     } else {
       const prevKf = sortedKeyframes[i - 1];
       if (!prevKf) continue;
       const duration = kf.time - prevKf.time;
-      const ease = kf.ease ? `, ease: "${kf.ease}"` : "";
+      const ease = maybeAnimeEase(kf.ease);
+      const easeProp = ease ? `, ease: "${ease}"` : "";
       animations.push(
-        `    tl.to("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y}, duration: ${duration}${ease} }, ${prevKf.time});`,
+        `    tl.add("#stage-zoom-container", { scale: ${kf.zoom.scale}, x: ${x}, y: ${y}, duration: ${secondsToMs(duration)}${easeProp} }, ${secondsToMs(prevKf.time)});`,
       );
     }
   }
@@ -632,13 +728,35 @@ function generateInitialPositionSets(
 
     // Set position and scale (xPercent/yPercent applied at player init)
     if (scaleVal !== 1) {
-      sets.push(`    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal}, scale: ${scaleVal} }, 0);`);
+      sets.push(
+        `    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal}, scale: ${scaleVal} }, ${secondsToMs(0)});`,
+      );
     } else if (xVal !== 0 || yVal !== 0) {
-      sets.push(`    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal} }, 0);`);
+      sets.push(`    tl.set("#${el.id}", { x: ${xVal}, y: ${yVal} }, ${secondsToMs(0)});`);
     }
   }
 
   return sets.length > 0 ? sets.join("\n") : "";
+}
+
+function appendVisibilityBookends(
+  animations: string[],
+  element: TimelineElement,
+  options: { opacity: number; includeOpacity: boolean },
+): void {
+  const start = element.startTime;
+  const end = element.startTime + element.duration;
+  animations.push(`    tl.set("#${element.id}", { visibility: "hidden" }, ${secondsToMs(0)});`);
+  if (options.includeOpacity) {
+    animations.push(
+      `    tl.set("#${element.id}", { visibility: "visible", opacity: ${options.opacity} }, ${secondsToMs(start)});`,
+    );
+  } else {
+    animations.push(
+      `    tl.set("#${element.id}", { visibility: "visible" }, ${secondsToMs(start)});`,
+    );
+  }
+  animations.push(`    tl.set("#${element.id}", { visibility: "hidden" }, ${secondsToMs(end)});`);
 }
 
 /**
@@ -658,12 +776,9 @@ function generateVisibilityForElementsWithoutKeyframes(
     const elementKeyframes = keyframes?.[el.id];
     const opacityKeyframes =
       elementKeyframes?.filter((kf) => kf.properties.opacity !== undefined) || [];
-    const start = el.startTime;
-    const end = el.startTime + el.duration;
 
     const safeName = el.name.replace(/[\r\n]+/g, " ");
     animations.push(`    // ${safeName} (visibility)`);
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, 0);`);
 
     let elementOpacity = el.opacity ?? 1;
     if (opacityKeyframes.length > 0) {
@@ -674,32 +789,30 @@ function generateVisibilityForElementsWithoutKeyframes(
     }
     // Only include opacity in visibility bookend if non-default or has opacity keyframes
     const needsOpacity = elementOpacity !== 1 || opacityKeyframes.length > 0;
-    if (needsOpacity) {
-      animations.push(
-        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
-      );
-    } else {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
-    }
-
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, ${end});`);
+    appendVisibilityBookends(animations, el, {
+      opacity: elementOpacity,
+      includeOpacity: needsOpacity,
+    });
   }
 
   return animations.length > 0 ? animations.join("\n") : "";
 }
 
-function generateDefaultGsapAnimations(
+function generateDefaultAnimeAnimations(
   elements: TimelineElement[],
   totalDuration: number,
   stageZoomKeyframes?: StageZoomKeyframe[],
   canvasWidth?: number,
   canvasHeight?: number,
+  compositionId = "main",
 ): string {
+  const hasMedia = elements.some((el) => el.type === "video" || el.type === "audio");
+
   if (elements.length === 0 && (!stageZoomKeyframes || stageZoomKeyframes.length === 0)) {
-    return `
-    const tl = gsap.timeline({ paused: true });
-    tl.to({}, { duration: ${totalDuration || 1} });
-    `;
+    return withAnimeTimeline(`    tl.add({ duration: ${secondsToMs(totalDuration || 1)} }, 0);`, {
+      compositionId,
+      includeMediaSync: hasMedia,
+    });
   }
 
   const animations: string[] = [];
@@ -711,58 +824,20 @@ function generateDefaultGsapAnimations(
   }
 
   for (const el of elements) {
-    const start = el.startTime;
-    const end = el.startTime + el.duration;
-
     const safeName = el.name.replace(/[\r\n]+/g, " ");
     const elementOpacity = el.opacity ?? 1;
     animations.push(`    // ${safeName}`);
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, 0);`);
-    // Only include opacity if non-default
-    if (elementOpacity !== 1) {
-      animations.push(
-        `    tl.set("#${el.id}", { visibility: "visible", opacity: ${elementOpacity} }, ${start});`,
-      );
-    } else {
-      animations.push(`    tl.set("#${el.id}", { visibility: "visible" }, ${start});`);
-    }
-    animations.push(`    tl.set("#${el.id}", { visibility: "hidden" }, ${end});`);
+    appendVisibilityBookends(animations, el, {
+      opacity: elementOpacity,
+      includeOpacity: elementOpacity !== 1,
+    });
   }
 
-  const mediaElements = elements.filter((el) => el.type === "video" || el.type === "audio");
-  const mediaSync =
-    mediaElements.length > 0
-      ? `
-    // Sync media playback
-    tl.eventCallback("onUpdate", function() {
-      const time = tl.time();
-      document.querySelectorAll("video[data-start], audio[data-start]").forEach(function(media) {
-        const start = parseFloat(media.dataset.start);
-        const end = parseFloat(media.dataset.end) || Infinity;
-        const mediaTime = time - start;
-        if (time >= start && time < end) {
-          if (Math.abs(media.currentTime - mediaTime) > 0.1) {
-            media.currentTime = mediaTime;
-          }
-          if (media.paused && !tl.paused()) {
-            media.play().catch(function() {});
-          }
-        } else if (!media.paused) {
-          media.pause();
-        }
-      });
-    });`
-      : "";
-
-  // Generate zoom animations if present
   const zoomAnimations =
     stageZoomKeyframes && stageZoomKeyframes.length > 0 && canvasWidth && canvasHeight
-      ? "\n" + generateZoomGsapAnimations(stageZoomKeyframes, canvasWidth, canvasHeight)
+      ? generateZoomAnimeAnimations(stageZoomKeyframes, canvasWidth, canvasHeight)
       : "";
 
-  return `
-    const tl = gsap.timeline({ paused: true });
-${animations.join("\n")}
-    ${mediaSync}${zoomAnimations}
-  `;
+  const body = [animations.join("\n"), zoomAnimations].filter(Boolean).join("\n");
+  return withAnimeTimeline(body, { compositionId, includeMediaSync: hasMedia });
 }

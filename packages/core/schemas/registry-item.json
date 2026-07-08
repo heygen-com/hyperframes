@@ -58,6 +58,11 @@
       "minLength": 1,
       "description": "If set, the item is deprecated; the value is the reason or migration note."
     },
+    "runtime": {
+      "type": "string",
+      "enum": ["animejs", "gsap"],
+      "description": "Animation runtime used by the item. If omitted, the item is treated as gsap."
+    },
     "dimensions": {
       "type": "object",
       "required": ["width", "height"],

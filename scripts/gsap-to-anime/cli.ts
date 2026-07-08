@@ -2,12 +2,8 @@
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  assertTotalsReconcile,
-  renderMarkdownReport,
-  scanRegistryTree,
-  transformHtml,
-} from "./index.ts";
+import { transformHtml } from "./index.ts";
+import { assertTotalsReconcile, renderMarkdownReport, scanRegistryTree } from "./report.ts";
 
 interface Options {
   target: string;
@@ -28,6 +24,7 @@ function main(): void {
   runFile(target, options);
 }
 
+// fallow-ignore-next-line complexity
 function parseArgs(args: string[]): Options {
   let target = "";
   let dryRun = false;

@@ -16,6 +16,9 @@ const MANIFEST: RegistryManifest = {
     { name: "deprecated-block", type: "hyperframes:block" },
     { name: "future-block", type: "hyperframes:block" },
     { name: "dep-block", type: "hyperframes:block" },
+    { name: "anime-block", type: "hyperframes:block" },
+    { name: "gsap-block", type: "hyperframes:block" },
+    { name: "legacy-block", type: "hyperframes:block" },
     { name: "base-component", type: "hyperframes:component" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
@@ -122,6 +125,47 @@ const DEP_BLOCK_ITEM: RegistryItem = {
   ],
 };
 
+const ANIME_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "anime-block",
+  title: "Anime Block",
+  runtime: "animejs",
+  files: [
+    {
+      path: "anime-block.html",
+      target: "compositions/anime-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
+const GSAP_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "gsap-block",
+  title: "GSAP Block",
+  runtime: "gsap",
+  files: [
+    {
+      path: "gsap-block.html",
+      target: "compositions/gsap-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
+const LEGACY_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "legacy-block",
+  title: "Legacy Block",
+  files: [
+    {
+      path: "legacy-block.html",
+      target: "compositions/legacy-block.html",
+      type: "hyperframes:composition",
+    },
+  ],
+};
+
 const EXAMPLE_ITEM: RegistryItem = {
   $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
   name: "my-example",
@@ -138,6 +182,9 @@ const ITEM_BY_NAME: Record<string, RegistryItem> = {
   "deprecated-block": DEPRECATED_BLOCK_ITEM,
   "future-block": FUTURE_BLOCK_ITEM,
   "dep-block": DEP_BLOCK_ITEM,
+  "anime-block": ANIME_BLOCK_ITEM,
+  "gsap-block": GSAP_BLOCK_ITEM,
+  "legacy-block": LEGACY_BLOCK_ITEM,
   "base-component": BASE_COMPONENT_ITEM,
   "my-component": COMPONENT_ITEM,
   "my-example": EXAMPLE_ITEM,
@@ -193,6 +240,32 @@ function writeRegistryConfig(
     }),
     "utf-8",
   );
+}
+
+const ANIME_PROJECT_HTML = `
+<div data-composition-id="main" data-duration="2"></div>
+<script>
+  const tl = anime.createTimeline({ autoplay: false });
+  hyperframesAnime.register("main", tl, { labels: {} });
+</script>`;
+
+const GSAP_PROJECT_HTML = `
+<div data-composition-id="main" data-duration="2"></div>
+<script>
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = gsap.timeline({ paused: true });
+</script>`;
+
+const MIXED_PROJECT_HTML = `
+<script>
+  const tl = anime.createTimeline({ autoplay: false });
+  window.__timelines = window.__timelines || {};
+</script>`;
+
+const NONE_PROJECT_HTML = `<script>console.log("no animation runtime");</script>`;
+
+function writeProjectIndex(dir: string, html: string): void {
+  writeFileSync(join(dir, "index.html"), html, "utf-8");
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -294,6 +367,102 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(existsSync(join(dir, "compositions/deprecated-block.html"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("warns but still installs a gsap item into an animejs project", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+      writeProjectIndex(dir, ANIME_PROJECT_HTML);
+
+      const result = await runAdd({ name: "gsap-block", projectDir: dir, skipClipboard: true });
+      expect(result.warnings).toContain(
+        'Registry item "gsap-block" uses gsap but this project appears to use animejs. Installing unchanged; no automatic runtime conversion is performed.',
+      );
+      expect(existsSync(join(dir, "compositions/gsap-block.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("warns but still installs an animejs item into a gsap project", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+      writeProjectIndex(dir, GSAP_PROJECT_HTML);
+
+      const result = await runAdd({ name: "anime-block", projectDir: dir, skipClipboard: true });
+      expect(result.warnings).toContain(
+        'Registry item "anime-block" uses animejs but this project appears to use gsap. Installing unchanged; no automatic runtime conversion is performed.',
+      );
+      expect(existsSync(join(dir, "compositions/anime-block.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not warn when item and project runtimes match", async () => {
+    const animeDir = tmp();
+    const gsapDir = tmp();
+    try {
+      writeRegistryConfig(animeDir);
+      writeProjectIndex(animeDir, ANIME_PROJECT_HTML);
+      const animeResult = await runAdd({
+        name: "anime-block",
+        projectDir: animeDir,
+        skipClipboard: true,
+      });
+      expect(animeResult.warnings).toEqual([]);
+
+      writeRegistryConfig(gsapDir);
+      writeProjectIndex(gsapDir, GSAP_PROJECT_HTML);
+      const gsapResult = await runAdd({
+        name: "legacy-block",
+        projectDir: gsapDir,
+        skipClipboard: true,
+      });
+      expect(gsapResult.warnings).toEqual([]);
+    } finally {
+      rmSync(animeDir, { recursive: true, force: true });
+      rmSync(gsapDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips runtime warnings when the project runtime is absent, mixed, or none", async () => {
+    const noIndexDir = tmp();
+    const mixedDir = tmp();
+    const noneDir = tmp();
+    try {
+      writeRegistryConfig(noIndexDir);
+      const noIndexResult = await runAdd({
+        name: "anime-block",
+        projectDir: noIndexDir,
+        skipClipboard: true,
+      });
+      expect(noIndexResult.warnings).toEqual([]);
+
+      writeRegistryConfig(mixedDir);
+      writeProjectIndex(mixedDir, MIXED_PROJECT_HTML);
+      const mixedResult = await runAdd({
+        name: "anime-block",
+        projectDir: mixedDir,
+        skipClipboard: true,
+      });
+      expect(mixedResult.warnings).toEqual([]);
+
+      writeRegistryConfig(noneDir);
+      writeProjectIndex(noneDir, NONE_PROJECT_HTML);
+      const noneResult = await runAdd({
+        name: "anime-block",
+        projectDir: noneDir,
+        skipClipboard: true,
+      });
+      expect(noneResult.warnings).toEqual([]);
+    } finally {
+      rmSync(noIndexDir, { recursive: true, force: true });
+      rmSync(mixedDir, { recursive: true, force: true });
+      rmSync(noneDir, { recursive: true, force: true });
     }
   });
 

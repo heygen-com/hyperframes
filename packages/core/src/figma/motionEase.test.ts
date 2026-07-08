@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { mapEase } from "./motionEase";
+import { mapEase, resolveMotionEase } from "./motionEase";
 
 describe("mapEase", () => {
   it("maps linear to none", () => {
@@ -28,7 +28,8 @@ describe("mapEase", () => {
 
 describe("mapEase validation + coverage", () => {
   it("rejects malformed bezier arrays (wrong length / NaN) to linear", () => {
-    expect(mapEase([0.5, 0, 0.3] as unknown as [number, number, number, number])).toEqual({
+    // @ts-expect-error Runtime validation covers malformed plugin payloads.
+    expect(mapEase([0.5, 0, 0.3])).toEqual({
       kind: "named",
       ease: "none",
     });
@@ -41,5 +42,28 @@ describe("mapEase validation + coverage", () => {
     expect(mapEase("elasticOut")).toEqual({ kind: "named", ease: "elastic.out" });
     expect(mapEase("anticipate")).toEqual({ kind: "named", ease: "back.in" });
     expect(mapEase("spring")).toEqual({ kind: "named", ease: "elastic.out" });
+  });
+});
+
+describe("resolveMotionEase", () => {
+  it("maps named motion eases to anime.js equivalents through the GSAP ease map", () => {
+    expect(resolveMotionEase("linear")).toEqual({ kind: "named", ease: "linear" });
+    expect(resolveMotionEase("easeOut")).toEqual({ kind: "named", ease: "outCubic" });
+    expect(resolveMotionEase("EASE_IN_AND_OUT")).toEqual({
+      kind: "named",
+      ease: "inOutCubic",
+    });
+    expect(resolveMotionEase("backOut")).toEqual({
+      kind: "named",
+      ease: "outBack(1.70158)",
+    });
+    expect(resolveMotionEase("HOLD")).toEqual({ kind: "named", ease: "steps(1)" });
+  });
+
+  it("maps a bezier array to an executable anime cubicBezier ease", () => {
+    const mapped = resolveMotionEase([0.539, 0, 0.312, 0.995]);
+    expect(mapped.kind).toBe("custom");
+    expect(mapped.ease).toBe("anime.cubicBezier(0.539, 0, 0.312, 0.995)");
+    expect(mapped.ease).not.toContain("M0,0");
   });
 });

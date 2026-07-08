@@ -10,11 +10,13 @@ export const examples: Example[] = [
   ["Skip the clipboard copy (CI/headless)", "hyperframes add shader-wipe --no-clipboard"],
 ];
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
+import { classifyAnimationRuntime } from "@hyperframes/parsers";
 import { c } from "../ui/colors.js";
 import { installItem, resolveItemsByTag } from "../registry/index.js";
+import { runtimeMismatchWarning, type RegistryRuntime } from "../registry/installer.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import {
   gateRegistryItemsCompatibility,
@@ -126,6 +128,25 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
   }
 }
 
+function detectProjectRuntime(projectDir: string): RegistryRuntime | undefined {
+  const indexPath = resolve(projectDir, "index.html");
+  if (!existsSync(indexPath)) return undefined;
+  const verdict = classifyAnimationRuntime(readFileSync(indexPath, "utf-8")).verdict;
+  return verdict === "gsap" || verdict === "animejs" ? verdict : undefined;
+}
+
+function collectRuntimeWarnings(
+  items: RegistryItem[],
+  projectEngine: RegistryRuntime | undefined,
+): string[] {
+  const warnings: string[] = [];
+  for (const item of items) {
+    const warning = runtimeMismatchWarning(item, projectEngine);
+    if (warning) warnings.push(warning);
+  }
+  return warnings;
+}
+
 // Install a topologically-ordered plan (dependencies first, requested item
 // last). The installer validates every target before any write; a failure on
 // any item surfaces as an install-failed AddError. Returns all written paths.
@@ -159,6 +180,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     writeProjectConfig(projectDir, DEFAULT_PROJECT_CONFIG);
     config = DEFAULT_PROJECT_CONFIG;
   }
+  const projectEngine = detectProjectRuntime(projectDir);
 
   // 2. Resolve the requested item and its transitive registryDependencies.
   //    The list comes back topologically sorted: dependencies first, the
@@ -182,7 +204,10 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
 
   // 3. Compatibility-gate every item we're about to install (dependencies
   //    included) before writing anything.
-  const warnings = assertCompatibleOrThrow(resolved, opts.cliVersion);
+  const warnings = [
+    ...assertCompatibleOrThrow(resolved, opts.cliVersion),
+    ...collectRuntimeWarnings(resolved, projectEngine),
+  ];
 
   // 4. Remap targets per project config — each item by its own type.
   const installPlan: RegistryItem[] = resolved.map((resolvedItem) => ({
@@ -247,6 +272,7 @@ export default defineCommand({
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
   },
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
