@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="count"></div>
+    <script>
+      const counter = { val: 0 };
+      const tl = gsap.timeline({ paused: true });
+      tl.to(
+        counter,
+        {
+          val: 100,
+          duration: 1,
+          onUpdate() {
+            document.querySelector("#count").textContent = String(counter.val);
+          },
+        },
+        0,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["counter"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      const observerConfig = { delay: 120, onUpdate: "local-option" };
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#card", { opacity: 1, duration: 0.5 }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["callback-config"] = tl;
+    </script>
+  </body>
+</html>

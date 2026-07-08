@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="box"></div>
+    <script>
+      const scene = { add() {} };
+      const slab = {};
+      scene.add(slab);
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#box", { opacity: 1, duration: 0.4 }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["unrelated-add"] = tl;
+    </script>
+  </body>
+</html>

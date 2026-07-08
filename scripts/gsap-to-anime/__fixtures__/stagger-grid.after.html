@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const cells = [...document.querySelectorAll(".cell")];
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        ".cell",
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 600,
+          delay: anime.stagger(100, { grid: [2, 2], from: "center", axis: "x" }),
+        },
+        0,
+      );
+      hyperframesAnime.register("grid", tl);
+    </script>
+  </body>
+</html>

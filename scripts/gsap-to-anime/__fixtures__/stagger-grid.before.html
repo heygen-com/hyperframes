@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const cells = gsap.utils.toArray(".cell");
+      const tl = gsap.timeline({ paused: true });
+      tl.to(
+        cells,
+        {
+          opacity: 1,
+          scale: 1,
+          duration: 0.6,
+          stagger: { each: 0.1, grid: [2, 2], from: "center", axis: "x" },
+        },
+        0,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["grid"] = tl;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      (function () {
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add("#card", { opacity: 1, duration: 500 }, 0);
+        hyperframesAnime.register("iife-card", tl);
+      })();
+    </script>
+  </body>
+</html>

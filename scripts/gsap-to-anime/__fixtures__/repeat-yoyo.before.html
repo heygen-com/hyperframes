@@ -1,0 +1,11 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#pulse", { scale: 1.25, duration: 0.4, repeat: 2, yoyo: true }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["pulse"] = tl;
+    </script>
+  </body>
+</html>

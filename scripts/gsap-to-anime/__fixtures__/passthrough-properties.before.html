@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <body>
+    <svg>
+      <path id="path"></path>
+    </svg>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#path", { strokeDashoffset: 0, attr: { x2: 120, "stroke-width": 4 }, duration: 1 }, 0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["svg"] = tl;
+    </script>
+  </body>
+</html>

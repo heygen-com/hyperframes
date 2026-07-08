@@ -1,0 +1,10 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#pulse", { scale: 1.25, duration: 400, loop: 3, alternate: true }, 0);
+      hyperframesAnime.register("pulse", tl);
+    </script>
+  </body>
+</html>

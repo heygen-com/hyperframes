@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#card", { opacity: 1, duration: 0.5 }, 0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["iife-card"] = tl;
+      })();
+    </script>
+  </body>
+</html>

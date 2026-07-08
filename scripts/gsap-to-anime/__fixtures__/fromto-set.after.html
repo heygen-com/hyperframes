@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="card"></div>
+    <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#card", { opacity: 0, scale: 0.8, duration: 0 }, 0);
+      tl.add(
+        "#card",
+        { translateX: [-50, 100], opacity: [0, 1], duration: 750, ease: "outBack(1.5)" },
+        250,
+      );
+      hyperframesAnime.register("card", tl);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,170 @@
+# GSAP to anime.js dry-run report
+
+## Totals
+
+- converted: 39
+- converted-with-warnings: 3
+- manual: 105
+- total: 147
+
+## Manual reason breakdown
+
+- computed-timeline: 99
+- unrecognized-postamble: 40
+- non-selector-target: 33
+- splitText: 13
+- unsupported-extra: 5
+- customEase-beyond-shim: 4
+- attr-wrapper: 3
+- keyframes: 1
+- plugin:Flip: 1
+
+## Items
+
+- manual: blocks/app-showcase (computed-timeline)
+- manual: blocks/apple-money-count (computed-timeline, non-selector-target)
+- manual: blocks/blue-sweater-intro-video (unsupported-extra, computed-timeline, keyframes)
+- manual: blocks/chromatic-radial-split (computed-timeline)
+- manual: blocks/cinematic-zoom (computed-timeline)
+- manual: blocks/code-3d-extrude (non-selector-target, unrecognized-postamble)
+- manual: blocks/code-diff (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-highlight (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-morph (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-particle-assemble (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-scroll (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-shader-dissolve (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-basic (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-clear-dark (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-clear-light (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-grass (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-homebrew (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-man-page (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-novel (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-ocean (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-pro (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-red-sands (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-silver-aerogel (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-apple-terminal-solid-colors (splitText, computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-2026 (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-modern (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-dark-plus (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-flight (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/code-snippet-high-contrast (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-high-contrast-light (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-light-2026 (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-light-modern (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-light-plus (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-monokai (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-solarized-light (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-visual-studio-dark (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-snippet-visual-studio-light (computed-timeline, unrecognized-postamble)
+- manual: blocks/code-typing (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/cross-warp-morph (computed-timeline)
+- manual: blocks/data-chart (computed-timeline, attr-wrapper, non-selector-target)
+- manual: blocks/domain-warp-dissolve (computed-timeline)
+- manual: blocks/flash-through-white (computed-timeline)
+- manual: blocks/flowchart (computed-timeline, unsupported-extra)
+- manual: blocks/flowchart-vertical (computed-timeline, unsupported-extra)
+- manual: blocks/glitch (computed-timeline)
+- manual: blocks/gravitational-lens (computed-timeline)
+- converted: blocks/instagram-follow
+- manual: blocks/ios26-liquid-glass (computed-timeline, non-selector-target, customEase-beyond-shim)
+- manual: blocks/light-leak (computed-timeline)
+- manual: blocks/liquid-glass-context-menu (non-selector-target)
+- manual: blocks/liquid-glass-media-controls (computed-timeline, non-selector-target)
+- manual: blocks/liquid-glass-notification (computed-timeline, non-selector-target)
+- manual: blocks/liquid-glass-widgets (computed-timeline, non-selector-target)
+- manual: blocks/logo-outro (computed-timeline)
+- converted: blocks/lower-third-bild
+- converted: blocks/lt-accent-underline
+- converted: blocks/lt-bold-block
+- converted: blocks/lt-clean-bar
+- converted: blocks/lt-color-block
+- converted: blocks/lt-dark-card
+- converted: blocks/lt-kicker-name
+- converted: blocks/lt-mask-reveal
+- converted: blocks/lt-side-rule
+- converted: blocks/lt-soft-pill
+- converted: blocks/lt-stack-bars
+- converted: blocks/macos-notification
+- manual: blocks/macos-tahoe-liquid-glass (computed-timeline, non-selector-target, customEase-beyond-shim)
+- converted: blocks/news-ticker
+- converted-with-warnings: blocks/north-korea-locked-down
+- converted-with-warnings: blocks/nyc-paris-flight
+- manual: blocks/reddit-post (computed-timeline)
+- manual: blocks/ridged-burn (computed-timeline)
+- manual: blocks/ripple-waves (computed-timeline)
+- manual: blocks/sdf-iris (computed-timeline)
+- converted: blocks/spain-map
+- converted: blocks/spotify-card
+- manual: blocks/swirl-vortex (computed-timeline)
+- manual: blocks/thermal-distortion (computed-timeline)
+- converted: blocks/tiktok-follow
+- manual: blocks/transitions-3d (plugin:Flip)
+- converted: blocks/transitions-blur
+- manual: blocks/transitions-cover (computed-timeline)
+- manual: blocks/transitions-destruction (computed-timeline, non-selector-target)
+- converted: blocks/transitions-dissolve
+- manual: blocks/transitions-distortion (computed-timeline)
+- manual: blocks/transitions-grid (computed-timeline)
+- converted: blocks/transitions-light
+- converted: blocks/transitions-mechanical
+- converted: blocks/transitions-other
+- converted: blocks/transitions-push
+- converted: blocks/transitions-radial
+- converted: blocks/transitions-scale
+- manual: blocks/ui-3d-reveal (computed-timeline)
+- converted: blocks/us-map
+- manual: blocks/us-map-bubble (computed-timeline, attr-wrapper)
+- manual: blocks/us-map-flow (computed-timeline, non-selector-target)
+- manual: blocks/us-map-hex (computed-timeline)
+- manual: blocks/vfx-iphone-device (computed-timeline, non-selector-target, customEase-beyond-shim)
+- manual: blocks/vfx-liquid-background (splitText, computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/vfx-liquid-glass (non-selector-target, unrecognized-postamble)
+- manual: blocks/vfx-magnetic (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/vfx-portal (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/vfx-shatter (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: blocks/vfx-text-cursor (computed-timeline, non-selector-target, customEase-beyond-shim)
+- converted: blocks/vpn-youtube-spot
+- manual: blocks/whip-pan (computed-timeline)
+- manual: blocks/world-map (computed-timeline)
+- manual: blocks/x-post (computed-timeline)
+- converted: blocks/yt-lower-third
+- converted: components/caption-blend-difference
+- manual: components/caption-clip-wipe (computed-timeline)
+- manual: components/caption-editorial-emphasis (computed-timeline, non-selector-target)
+- manual: components/caption-emoji-pop (computed-timeline)
+- manual: components/caption-glitch-rgb (computed-timeline)
+- manual: components/caption-gradient-fill (computed-timeline)
+- manual: components/caption-highlight (computed-timeline)
+- manual: components/caption-kinetic-slam (computed-timeline)
+- manual: components/caption-matrix-decode (computed-timeline)
+- manual: components/caption-neon-accent (computed-timeline)
+- manual: components/caption-neon-glow (computed-timeline)
+- manual: components/caption-parallax-layers (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: components/caption-particle-burst (computed-timeline)
+- converted: components/caption-pill-karaoke
+- manual: components/caption-texture (computed-timeline)
+- manual: components/caption-weight-shift (computed-timeline)
+- converted: components/grain-overlay
+- converted: components/grid-pixelate-wipe
+- manual: components/morph-text (computed-timeline, non-selector-target)
+- converted: components/motion-blur
+- converted: components/parallax-unzoom
+- converted: components/parallax-zoom
+- converted: components/shimmer-sweep
+- converted: components/texture-mask-text
+- converted: components/vignette
+- manual: examples/airbnb-deck (non-selector-target)
+- manual: examples/decision-tree (computed-timeline, unsupported-extra)
+- converted-with-warnings: examples/kinetic-type
+- manual: examples/motion-blur (computed-timeline, non-selector-target, unrecognized-postamble)
+- manual: examples/nyt-graph (computed-timeline, attr-wrapper, non-selector-target)
+- manual: examples/play-mode (computed-timeline)
+- manual: examples/product-promo (computed-timeline, unsupported-extra, non-selector-target)
+- converted: examples/slideshow-demo
+- manual: examples/startup-pitch (non-selector-target)
+- manual: examples/swiss-grid (computed-timeline)
+- manual: examples/vignelli (computed-timeline)
+- manual: examples/vscode-theme-visualizer (computed-timeline)
+- manual: examples/warm-grain (computed-timeline)

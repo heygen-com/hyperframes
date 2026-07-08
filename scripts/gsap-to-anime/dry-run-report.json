@@ -1,0 +1,4871 @@
+{
+  "root": "/Users/miguel07code/dev/hyperframes-oss/.claude/worktrees/animejs-u9/registry",
+  "totals": {
+    "converted": 39,
+    "converted-with-warnings": 3,
+    "manual": 105
+  },
+  "items": [
+    {
+      "kind": "block",
+      "name": "app-showcase",
+      "path": "blocks/app-showcase",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/app-showcase/app-showcase.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "apple-money-count",
+      "path": "blocks/apple-money-count",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/apple-money-count/apple-money-count.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "blue-sweater-intro-video",
+      "path": "blocks/blue-sweater-intro-video",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "unsupported-extra",
+          "message": "Unsupported GSAP extra: overwrite"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "keyframes",
+          "message": "native GSAP keyframes need manual review"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/blue-sweater-intro-video/blue-sweater-intro-video.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "unsupported-extra",
+              "message": "Unsupported GSAP extra: overwrite"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "keyframes",
+              "message": "native GSAP keyframes need manual review"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "chromatic-radial-split",
+      "path": "blocks/chromatic-radial-split",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/chromatic-radial-split/chromatic-radial-split.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "cinematic-zoom",
+      "path": "blocks/cinematic-zoom",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/cinematic-zoom/cinematic-zoom.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-3d-extrude",
+      "path": "blocks/code-3d-extrude",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-3d-extrude/code-3d-extrude.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-diff",
+      "path": "blocks/code-diff",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-diff/code-diff.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-highlight",
+      "path": "blocks/code-highlight",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-highlight/code-highlight.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-morph",
+      "path": "blocks/code-morph",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "multiple or unsupported timelines"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-morph/code-morph.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "multiple or unsupported timelines"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-particle-assemble",
+      "path": "blocks/code-particle-assemble",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-particle-assemble/code-particle-assemble.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-scroll",
+      "path": "blocks/code-scroll",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-scroll/code-scroll.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-shader-dissolve",
+      "path": "blocks/code-shader-dissolve",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-shader-dissolve/code-shader-dissolve.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-basic",
+      "path": "blocks/code-snippet-apple-terminal-basic",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-basic/code-snippet-apple-terminal-basic.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-clear-dark",
+      "path": "blocks/code-snippet-apple-terminal-clear-dark",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-clear-dark/code-snippet-apple-terminal-clear-dark.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-clear-light",
+      "path": "blocks/code-snippet-apple-terminal-clear-light",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-clear-light/code-snippet-apple-terminal-clear-light.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-grass",
+      "path": "blocks/code-snippet-apple-terminal-grass",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-grass/code-snippet-apple-terminal-grass.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-homebrew",
+      "path": "blocks/code-snippet-apple-terminal-homebrew",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-homebrew/code-snippet-apple-terminal-homebrew.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-man-page",
+      "path": "blocks/code-snippet-apple-terminal-man-page",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-man-page/code-snippet-apple-terminal-man-page.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-novel",
+      "path": "blocks/code-snippet-apple-terminal-novel",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-novel/code-snippet-apple-terminal-novel.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-ocean",
+      "path": "blocks/code-snippet-apple-terminal-ocean",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-ocean/code-snippet-apple-terminal-ocean.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-pro",
+      "path": "blocks/code-snippet-apple-terminal-pro",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-pro/code-snippet-apple-terminal-pro.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-red-sands",
+      "path": "blocks/code-snippet-apple-terminal-red-sands",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-red-sands/code-snippet-apple-terminal-red-sands.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-silver-aerogel",
+      "path": "blocks/code-snippet-apple-terminal-silver-aerogel",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-silver-aerogel/code-snippet-apple-terminal-silver-aerogel.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-apple-terminal-solid-colors",
+      "path": "blocks/code-snippet-apple-terminal-solid-colors",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-apple-terminal-solid-colors/code-snippet-apple-terminal-solid-colors.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-dark-2026",
+      "path": "blocks/code-snippet-dark-2026",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-dark-2026/code-snippet-dark-2026.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-dark-modern",
+      "path": "blocks/code-snippet-dark-modern",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-dark-modern/code-snippet-dark-modern.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-dark-plus",
+      "path": "blocks/code-snippet-dark-plus",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-dark-plus/code-snippet-dark-plus.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-flight",
+      "path": "blocks/code-snippet-flight",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-snippet-flight/code-snippet-flight.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-high-contrast",
+      "path": "blocks/code-snippet-high-contrast",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-high-contrast/code-snippet-high-contrast.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-high-contrast-light",
+      "path": "blocks/code-snippet-high-contrast-light",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-high-contrast-light/code-snippet-high-contrast-light.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-light-2026",
+      "path": "blocks/code-snippet-light-2026",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-light-2026/code-snippet-light-2026.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-light-modern",
+      "path": "blocks/code-snippet-light-modern",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-light-modern/code-snippet-light-modern.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-light-plus",
+      "path": "blocks/code-snippet-light-plus",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-light-plus/code-snippet-light-plus.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-monokai",
+      "path": "blocks/code-snippet-monokai",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-monokai/code-snippet-monokai.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-solarized-light",
+      "path": "blocks/code-snippet-solarized-light",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-solarized-light/code-snippet-solarized-light.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-visual-studio-dark",
+      "path": "blocks/code-snippet-visual-studio-dark",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-visual-studio-dark/code-snippet-visual-studio-dark.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-snippet-visual-studio-light",
+      "path": "blocks/code-snippet-visual-studio-light",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/code-snippet-visual-studio-light/code-snippet-visual-studio-light.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "code-typing",
+      "path": "blocks/code-typing",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/code-typing/code-typing.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "cross-warp-morph",
+      "path": "blocks/cross-warp-morph",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/cross-warp-morph/cross-warp-morph.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "data-chart",
+      "path": "blocks/data-chart",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/data-chart/data-chart.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "domain-warp-dissolve",
+      "path": "blocks/domain-warp-dissolve",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/domain-warp-dissolve/domain-warp-dissolve.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "flash-through-white",
+      "path": "blocks/flash-through-white",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/flash-through-white/flash-through-white.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "flowchart",
+      "path": "blocks/flowchart",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unsupported-extra",
+          "message": "Unsupported GSAP extra: overwrite"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/flowchart/flowchart.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unsupported-extra",
+              "message": "Unsupported GSAP extra: overwrite"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "flowchart-vertical",
+      "path": "blocks/flowchart-vertical",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unsupported-extra",
+          "message": "Unsupported GSAP extra: overwrite"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/flowchart-vertical/flowchart-vertical.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unsupported-extra",
+              "message": "Unsupported GSAP extra: overwrite"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "glitch",
+      "path": "blocks/glitch",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/glitch/glitch.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "gravitational-lens",
+      "path": "blocks/gravitational-lens",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/gravitational-lens/gravitational-lens.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "instagram-follow",
+      "path": "blocks/instagram-follow",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/instagram-follow/instagram-follow.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "ios26-liquid-glass",
+      "path": "blocks/ios26-liquid-glass",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "customEase-beyond-shim",
+          "message": "Unrecognized or fallback ease needs manual review: __raw:driftEase"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/ios26-liquid-glass/ios26-liquid-glass.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "customEase-beyond-shim",
+              "message": "Unrecognized or fallback ease needs manual review: __raw:driftEase"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "light-leak",
+      "path": "blocks/light-leak",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/light-leak/light-leak.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "liquid-glass-context-menu",
+      "path": "blocks/liquid-glass-context-menu",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/liquid-glass-context-menu/liquid-glass-context-menu.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "liquid-glass-media-controls",
+      "path": "blocks/liquid-glass-media-controls",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/liquid-glass-media-controls/liquid-glass-media-controls.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "liquid-glass-notification",
+      "path": "blocks/liquid-glass-notification",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/liquid-glass-notification/liquid-glass-notification.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "liquid-glass-widgets",
+      "path": "blocks/liquid-glass-widgets",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/liquid-glass-widgets/liquid-glass-widgets.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "logo-outro",
+      "path": "blocks/logo-outro",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/logo-outro/logo-outro.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lower-third-bild",
+      "path": "blocks/lower-third-bild",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lower-third-bild/lower-third-bild.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-accent-underline",
+      "path": "blocks/lt-accent-underline",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-accent-underline/lt-accent-underline.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-bold-block",
+      "path": "blocks/lt-bold-block",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-bold-block/lt-bold-block.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-clean-bar",
+      "path": "blocks/lt-clean-bar",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-clean-bar/lt-clean-bar.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-color-block",
+      "path": "blocks/lt-color-block",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-color-block/lt-color-block.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-dark-card",
+      "path": "blocks/lt-dark-card",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-dark-card/lt-dark-card.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-kicker-name",
+      "path": "blocks/lt-kicker-name",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-kicker-name/lt-kicker-name.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-mask-reveal",
+      "path": "blocks/lt-mask-reveal",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-mask-reveal/lt-mask-reveal.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-side-rule",
+      "path": "blocks/lt-side-rule",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-side-rule/lt-side-rule.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-soft-pill",
+      "path": "blocks/lt-soft-pill",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-soft-pill/lt-soft-pill.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "lt-stack-bars",
+      "path": "blocks/lt-stack-bars",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/lt-stack-bars/lt-stack-bars.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "macos-notification",
+      "path": "blocks/macos-notification",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/macos-notification/macos-notification.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "macos-tahoe-liquid-glass",
+      "path": "blocks/macos-tahoe-liquid-glass",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "customEase-beyond-shim",
+          "message": "Unrecognized or fallback ease needs manual review: __raw:driftEase"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/macos-tahoe-liquid-glass/macos-tahoe-liquid-glass.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "customEase-beyond-shim",
+              "message": "Unrecognized or fallback ease needs manual review: __raw:driftEase"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "news-ticker",
+      "path": "blocks/news-ticker",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/news-ticker/news-ticker.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "north-korea-locked-down",
+      "path": "blocks/north-korea-locked-down",
+      "status": "converted-with-warnings",
+      "changed": true,
+      "reasons": [],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/north-korea-locked-down/north-korea-locked-down.html",
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "nyc-paris-flight",
+      "path": "blocks/nyc-paris-flight",
+      "status": "converted-with-warnings",
+      "changed": true,
+      "reasons": [],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/nyc-paris-flight/nyc-paris-flight.html",
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "reddit-post",
+      "path": "blocks/reddit-post",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/reddit-post/reddit-post.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "ridged-burn",
+      "path": "blocks/ridged-burn",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/ridged-burn/ridged-burn.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "ripple-waves",
+      "path": "blocks/ripple-waves",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/ripple-waves/ripple-waves.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "sdf-iris",
+      "path": "blocks/sdf-iris",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/sdf-iris/sdf-iris.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "spain-map",
+      "path": "blocks/spain-map",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/spain-map/spain-map.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "spotify-card",
+      "path": "blocks/spotify-card",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/spotify-card/spotify-card.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "swirl-vortex",
+      "path": "blocks/swirl-vortex",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/swirl-vortex/swirl-vortex.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "thermal-distortion",
+      "path": "blocks/thermal-distortion",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/thermal-distortion/thermal-distortion.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "tiktok-follow",
+      "path": "blocks/tiktok-follow",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/tiktok-follow/tiktok-follow.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-3d",
+      "path": "blocks/transitions-3d",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "plugin:Flip",
+          "message": "Flip plugin usage needs manual review"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-3d/transitions-3d.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "plugin:Flip",
+              "message": "Flip plugin usage needs manual review"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-blur",
+      "path": "blocks/transitions-blur",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-blur/transitions-blur.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-cover",
+      "path": "blocks/transitions-cover",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-cover/transitions-cover.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-destruction",
+      "path": "blocks/transitions-destruction",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-destruction/transitions-destruction.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-dissolve",
+      "path": "blocks/transitions-dissolve",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-dissolve/transitions-dissolve.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-distortion",
+      "path": "blocks/transitions-distortion",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-distortion/transitions-distortion.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-grid",
+      "path": "blocks/transitions-grid",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-grid/transitions-grid.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-light",
+      "path": "blocks/transitions-light",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-light/transitions-light.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-mechanical",
+      "path": "blocks/transitions-mechanical",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-mechanical/transitions-mechanical.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-other",
+      "path": "blocks/transitions-other",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-other/transitions-other.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-push",
+      "path": "blocks/transitions-push",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-push/transitions-push.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-radial",
+      "path": "blocks/transitions-radial",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-radial/transitions-radial.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "transitions-scale",
+      "path": "blocks/transitions-scale",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/transitions-scale/transitions-scale.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "ui-3d-reveal",
+      "path": "blocks/ui-3d-reveal",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/ui-3d-reveal/ui-3d-reveal.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "us-map",
+      "path": "blocks/us-map",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/us-map/us-map.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "us-map-bubble",
+      "path": "blocks/us-map-bubble",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/us-map-bubble/us-map-bubble.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "us-map-flow",
+      "path": "blocks/us-map-flow",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/us-map-flow/us-map-flow.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "us-map-hex",
+      "path": "blocks/us-map-hex",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/us-map-hex/us-map-hex.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-iphone-device",
+      "path": "blocks/vfx-iphone-device",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "customEase-beyond-shim",
+          "message": "Unrecognized or fallback ease needs manual review: __raw:breatheEase"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-iphone-device/vfx-iphone-device.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "customEase-beyond-shim",
+              "message": "Unrecognized or fallback ease needs manual review: __raw:breatheEase"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-liquid-background",
+      "path": "blocks/vfx-liquid-background",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "splitText",
+          "message": "SplitText or hand-rolled text splitting feeds the timeline"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-liquid-background/vfx-liquid-background.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "splitText",
+              "message": "SplitText or hand-rolled text splitting feeds the timeline"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-liquid-glass",
+      "path": "blocks/vfx-liquid-glass",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-liquid-glass/vfx-liquid-glass.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-magnetic",
+      "path": "blocks/vfx-magnetic",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-magnetic/vfx-magnetic.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-portal",
+      "path": "blocks/vfx-portal",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-portal/vfx-portal.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-shatter",
+      "path": "blocks/vfx-shatter",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vfx-shatter/vfx-shatter.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vfx-text-cursor",
+      "path": "blocks/vfx-text-cursor",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "customEase-beyond-shim",
+          "message": "Unrecognized or fallback ease needs manual review: __raw:entryEase"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "blocks/vfx-text-cursor/vfx-text-cursor.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "customEase-beyond-shim",
+              "message": "Unrecognized or fallback ease needs manual review: __raw:entryEase"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "vpn-youtube-spot",
+      "path": "blocks/vpn-youtube-spot",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/vpn-youtube-spot/vpn-youtube-spot.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "whip-pan",
+      "path": "blocks/whip-pan",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/whip-pan/whip-pan.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "world-map",
+      "path": "blocks/world-map",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/world-map/world-map.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "x-post",
+      "path": "blocks/x-post",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/x-post/x-post.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "block",
+      "name": "yt-lower-third",
+      "path": "blocks/yt-lower-third",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "blocks/yt-lower-third/yt-lower-third.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-blend-difference",
+      "path": "components/caption-blend-difference",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-blend-difference/caption-blend-difference.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-clip-wipe",
+      "path": "components/caption-clip-wipe",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-clip-wipe/caption-clip-wipe.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-editorial-emphasis",
+      "path": "components/caption-editorial-emphasis",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-editorial-emphasis/caption-editorial-emphasis.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-emoji-pop",
+      "path": "components/caption-emoji-pop",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-emoji-pop/caption-emoji-pop.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-glitch-rgb",
+      "path": "components/caption-glitch-rgb",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-glitch-rgb/caption-glitch-rgb.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-gradient-fill",
+      "path": "components/caption-gradient-fill",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-gradient-fill/caption-gradient-fill.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-highlight",
+      "path": "components/caption-highlight",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-highlight/caption-highlight.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-kinetic-slam",
+      "path": "components/caption-kinetic-slam",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "components/caption-kinetic-slam/caption-kinetic-slam.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-matrix-decode",
+      "path": "components/caption-matrix-decode",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-matrix-decode/caption-matrix-decode.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-neon-accent",
+      "path": "components/caption-neon-accent",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-neon-accent/caption-neon-accent.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-neon-glow",
+      "path": "components/caption-neon-glow",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "components/caption-neon-glow/caption-neon-glow.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-parallax-layers",
+      "path": "components/caption-parallax-layers",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-parallax-layers/caption-parallax-layers.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-particle-burst",
+      "path": "components/caption-particle-burst",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-particle-burst/caption-particle-burst.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-pill-karaoke",
+      "path": "components/caption-pill-karaoke",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-pill-karaoke/caption-pill-karaoke.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-texture",
+      "path": "components/caption-texture",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-texture/caption-texture.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "caption-weight-shift",
+      "path": "components/caption-weight-shift",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/caption-weight-shift/caption-weight-shift.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "grain-overlay",
+      "path": "components/grain-overlay",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/grain-overlay/grain-overlay.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "grid-pixelate-wipe",
+      "path": "components/grid-pixelate-wipe",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/grid-pixelate-wipe/grid-pixelate-wipe.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "morph-text",
+      "path": "components/morph-text",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/morph-text/morph-text.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "motion-blur",
+      "path": "components/motion-blur",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/motion-blur/motion-blur.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "parallax-unzoom",
+      "path": "components/parallax-unzoom",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/parallax-unzoom/parallax-unzoom.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "parallax-zoom",
+      "path": "components/parallax-zoom",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/parallax-zoom/parallax-zoom.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "shimmer-sweep",
+      "path": "components/shimmer-sweep",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/shimmer-sweep/shimmer-sweep.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "texture-mask-text",
+      "path": "components/texture-mask-text",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/texture-mask-text/texture-mask-text.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "component",
+      "name": "vignette",
+      "path": "components/vignette",
+      "status": "converted",
+      "changed": false,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "components/vignette/vignette.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "airbnb-deck",
+      "path": "examples/airbnb-deck",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/airbnb-deck/demo.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/airbnb-deck/index.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "decision-tree",
+      "path": "examples/decision-tree",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline call/add/addPause is not rewritten safely"
+        },
+        {
+          "code": "unsupported-extra",
+          "message": "Unsupported GSAP extra: overwrite"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/decision-tree/compositions/decision_tree.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline call/add/addPause is not rewritten safely"
+            },
+            {
+              "code": "unsupported-extra",
+              "message": "Unsupported GSAP extra: overwrite"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/decision-tree/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "kinetic-type",
+      "path": "examples/kinetic-type",
+      "status": "converted-with-warnings",
+      "changed": true,
+      "reasons": [],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "examples/kinetic-type/compositions/main-graphics.html",
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        },
+        {
+          "path": "examples/kinetic-type/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "motion-blur",
+      "path": "examples/motion-blur",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        },
+        {
+          "code": "unrecognized-postamble",
+          "message": "postamble is not only timeline registration"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/motion-blur/index.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "unrecognized-postamble",
+              "message": "postamble is not only timeline registration"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "nyt-graph",
+      "path": "examples/nyt-graph",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        },
+        {
+          "code": "attr-wrapper",
+          "message": "GSAP attr wrapper is not statically literal"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/nyt-graph/compositions/nyt-chart.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "attr-wrapper",
+              "message": "GSAP attr wrapper is not statically literal"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/nyt-graph/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "play-mode",
+      "path": "examples/play-mode",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "autoAlpha-expansion",
+          "message": "autoAlpha expands to opacity and visibility"
+        }
+      ],
+      "files": [
+        {
+          "path": "examples/play-mode/compositions/captions.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "autoAlpha-expansion",
+              "message": "autoAlpha expands to opacity and visibility"
+            }
+          ]
+        },
+        {
+          "path": "examples/play-mode/compositions/intro.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "GSAP delay is not represented in parsed placement data"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/play-mode/compositions/stats.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/play-mode/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "product-promo",
+      "path": "examples/product-promo",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "GSAP delay is not represented in parsed placement data"
+        },
+        {
+          "code": "unsupported-extra",
+          "message": "Unsupported GSAP extra: overwrite"
+        },
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "examples/product-promo/compositions/scene1-logo-intro.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "GSAP delay is not represented in parsed placement data"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        },
+        {
+          "path": "examples/product-promo/compositions/scene2-4-canvas.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            },
+            {
+              "code": "unsupported-extra",
+              "message": "Unsupported GSAP extra: overwrite"
+            },
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        },
+        {
+          "path": "examples/product-promo/compositions/scene5-logo-outro.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/product-promo/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "slideshow-demo",
+      "path": "examples/slideshow-demo",
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/slideshow-demo/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "startup-pitch",
+      "path": "examples/startup-pitch",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "non-selector-target",
+          "message": "tween target is not a CSS selector string"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/startup-pitch/demo.html",
+          "status": "converted",
+          "changed": false,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/startup-pitch/index.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "non-selector-target",
+              "message": "tween target is not a CSS selector string"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "swiss-grid",
+      "path": "examples/swiss-grid",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "examples/swiss-grid/compositions/captions.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/swiss-grid/compositions/graphics.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/swiss-grid/compositions/intro.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/swiss-grid/index.html",
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "vignelli",
+      "path": "examples/vignelli",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "ease-shim-divergence",
+          "message": "ease shim divergence"
+        }
+      ],
+      "files": [
+        {
+          "path": "examples/vignelli/compositions/captions.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        },
+        {
+          "path": "examples/vignelli/compositions/overlays.html",
+          "status": "converted-with-warnings",
+          "changed": true,
+          "reasons": [],
+          "warnings": [
+            {
+              "code": "ease-shim-divergence",
+              "message": "ease shim divergence"
+            }
+          ]
+        },
+        {
+          "path": "examples/vignelli/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "vscode-theme-visualizer",
+      "path": "examples/vscode-theme-visualizer",
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline is not a simple identifier"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/vscode-theme-visualizer/index.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline is not a simple identifier"
+            }
+          ],
+          "warnings": []
+        }
+      ]
+    },
+    {
+      "kind": "example",
+      "name": "warm-grain",
+      "path": "examples/warm-grain",
+      "status": "manual",
+      "changed": true,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "timeline callback properties need manual review"
+        }
+      ],
+      "warnings": [],
+      "files": [
+        {
+          "path": "examples/warm-grain/compositions/captions.html",
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "timeline callback properties need manual review"
+            }
+          ],
+          "warnings": []
+        },
+        {
+          "path": "examples/warm-grain/compositions/graphics.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/warm-grain/compositions/intro.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        },
+        {
+          "path": "examples/warm-grain/index.html",
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
+          "warnings": []
+        }
+      ]
+    }
+  ]
+}
