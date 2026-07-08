@@ -118,6 +118,42 @@ describe("keyframes runtime surfacing", () => {
     expect(anime[0]!.durations).toContain(900);
   });
 
+  it("surfaces Anime.js labels, eases, and per-tween timing depth", () => {
+    const html = wrap(`
+      const tl = anime.createTimeline({ autoplay: false, defaults: { ease: "outQuad" } });
+      tl.label("intro", 0);
+      tl.add(".hero", { opacity: [0, 1], duration: 300, ease: "outCubic" }, "intro");
+      tl.label("reveal", 400);
+      tl.add(".chip", { scale: [{ to: 1.2, duration: 120 }, { to: 1, duration: 160, ease: "outBack" }] }, "reveal");
+      hyperframesAnime.register("scene", tl, { labels: { intro: 0, reveal: 0.4 } });
+    `);
+
+    const { anime } = surfaceComposition(html, "index.html", "index.html");
+
+    expect(anime).toHaveLength(1);
+    expect(anime[0]!.kind).toBe("timeline");
+    expect(anime[0]!.registered).toBe(true);
+    expect(anime[0]!.targets).toEqual([".hero", ".chip"]);
+    expect(anime[0]!.durations).toEqual([300, 280]);
+    expect(anime[0]!.labels).toEqual({ intro: 0, reveal: 400 });
+    expect(anime[0]!.tweens).toEqual([
+      expect.objectContaining({
+        target: ".hero",
+        method: "add",
+        start: 0,
+        duration: 300,
+        ease: "outCubic",
+      }),
+      expect.objectContaining({
+        target: ".chip",
+        method: "add",
+        start: 400,
+        duration: 280,
+        ease: "outBack",
+      }),
+    ]);
+  });
+
   it("uses CSS and Anime targets as onion-shot candidates", () => {
     const cssHtml = `<!doctype html><html><head><style>
       .dot { animation: rise 1200ms ease-out both; }

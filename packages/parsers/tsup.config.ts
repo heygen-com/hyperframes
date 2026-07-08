@@ -4,9 +4,13 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     gsapParserExports: "src/gsapParserExports.ts",
+    animejsParserExports: "src/animejsParserExports.ts",
     gsapParserAcorn: "src/gsapParserAcorn.ts",
     gsapWriterAcorn: "src/gsapWriterAcorn.ts",
     gsapConstants: "src/gsapConstants.ts",
+    animejsParserAcorn: "src/animejsParserAcorn.ts",
+    animejsWriterAcorn: "src/animejsWriterAcorn.ts",
+    animejsConstants: "src/animejsConstants.ts",
     springEase: "src/springEase.ts",
     hfIds: "src/hfIds.ts",
     gsapParser: "src/gsapParser.ts",

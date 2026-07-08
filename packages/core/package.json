@@ -173,11 +173,23 @@
       "import": "./src/parsers/gsapParserExports.ts",
       "types": "./src/parsers/gsapParserExports.ts"
     },
+    "./animejs-parser": {
+      "bun": "./src/parsers/animejsParserExports.ts",
+      "node": "./dist/parsers/animejsParserExports.js",
+      "import": "./src/parsers/animejsParserExports.ts",
+      "types": "./src/parsers/animejsParserExports.ts"
+    },
     "./gsap-parser-acorn": {
       "bun": "./src/parsers/gsapParserAcorn.ts",
       "node": "./dist/parsers/gsapParserAcorn.js",
       "import": "./src/parsers/gsapParserAcorn.ts",
       "types": "./src/parsers/gsapParserAcorn.ts"
+    },
+    "./animejs-parser-acorn": {
+      "bun": "./src/parsers/animejsParserAcorn.ts",
+      "node": "./dist/parsers/animejsParserAcorn.js",
+      "import": "./src/parsers/animejsParserAcorn.ts",
+      "types": "./src/parsers/animejsParserAcorn.ts"
     },
     "./gsap-writer-acorn": {
       "bun": "./src/parsers/gsapWriterAcorn.ts",
@@ -185,11 +197,23 @@
       "import": "./src/parsers/gsapWriterAcorn.ts",
       "types": "./src/parsers/gsapWriterAcorn.ts"
     },
+    "./animejs-writer-acorn": {
+      "bun": "./src/parsers/animejsWriterAcorn.ts",
+      "node": "./dist/parsers/animejsWriterAcorn.js",
+      "import": "./src/parsers/animejsWriterAcorn.ts",
+      "types": "./src/parsers/animejsWriterAcorn.ts"
+    },
     "./gsap-constants": {
       "bun": "./src/parsers/gsapConstants.ts",
       "node": "./dist/parsers/gsapConstants.js",
       "import": "./src/parsers/gsapConstants.ts",
       "types": "./src/parsers/gsapConstants.ts"
+    },
+    "./animejs-constants": {
+      "bun": "./src/parsers/animejsConstants.ts",
+      "node": "./dist/parsers/animejsConstants.js",
+      "import": "./src/parsers/animejsConstants.ts",
+      "types": "./src/parsers/animejsConstants.ts"
     },
     "./spring-ease": {
       "bun": "./src/parsers/springEase.ts",
@@ -327,17 +351,33 @@
         "import": "./dist/parsers/gsapParserExports.js",
         "types": "./dist/parsers/gsapParserExports.d.ts"
       },
+      "./animejs-parser": {
+        "import": "./dist/parsers/animejsParserExports.js",
+        "types": "./dist/parsers/animejsParserExports.d.ts"
+      },
       "./gsap-parser-acorn": {
         "import": "./dist/parsers/gsapParserAcorn.js",
         "types": "./dist/parsers/gsapParserAcorn.d.ts"
+      },
+      "./animejs-parser-acorn": {
+        "import": "./dist/parsers/animejsParserAcorn.js",
+        "types": "./dist/parsers/animejsParserAcorn.d.ts"
       },
       "./gsap-writer-acorn": {
         "import": "./dist/parsers/gsapWriterAcorn.js",
         "types": "./dist/parsers/gsapWriterAcorn.d.ts"
       },
+      "./animejs-writer-acorn": {
+        "import": "./dist/parsers/animejsWriterAcorn.js",
+        "types": "./dist/parsers/animejsWriterAcorn.d.ts"
+      },
       "./gsap-constants": {
         "import": "./dist/parsers/gsapConstants.js",
         "types": "./dist/parsers/gsapConstants.d.ts"
+      },
+      "./animejs-constants": {
+        "import": "./dist/parsers/animejsConstants.js",
+        "types": "./dist/parsers/animejsConstants.d.ts"
       },
       "./spring-ease": {
         "import": "./dist/parsers/springEase.js",

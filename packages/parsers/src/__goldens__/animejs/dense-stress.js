@@ -1,0 +1,16 @@
+const tl = anime.createTimeline({ autoplay: false, defaults: { ease: "outQuad" } });
+tl.label("intro", 0);
+tl.add(".layer-0", { translateX: [0, 40], translateY: [12, 0], opacity: [0, 1], duration: 240 }, "intro");
+tl.add(".layer-1", { translateX: [0, 55], translateY: [18, 0], opacity: [0, 1], duration: 260 }, "+=40");
+tl.add(".layer-2", { translateX: [0, 70], translateY: [24, 0], opacity: [0, 1], duration: 280 }, "+=40");
+tl.add(".layer-3", { translateX: [0, 85], translateY: [30, 0], opacity: [0, 1], duration: 300 }, "+=40");
+tl.add(".layer-4", { translateX: [0, 100], translateY: [36, 0], opacity: [0, 1], duration: 320 }, "+=40");
+tl.add(".layer-5", { translateX: [0, 115], translateY: [42, 0], opacity: [0, 1], duration: 340 }, "+=40");
+tl.label("burst", 620);
+tl.add(".card-a", { scale: [{ to: 1.08, duration: 120 }, { to: 1, duration: 160, ease: "outBack" }], rotate: [0, 4] }, "burst");
+tl.add(".card-b", { scale: [{ to: 1.12, duration: 140 }, { to: 1, duration: 180, ease: "outBack" }], rotate: [0, -5] }, "burst+=80");
+tl.add(".card-c", { scale: [{ to: 1.16, duration: 160 }, { to: 1, duration: 200, ease: "outBack" }], rotate: [0, 6] }, "burst+=160");
+tl.add([".spark-a", ".spark-b", ".spark-c"], { translateY: anime.stagger(-18), opacity: [0, 1], duration: 420, ease: "outElastic(1,0.3)" }, "burst+=120");
+tl.set(".badge", { opacity: 1, translateX: 16 }, 1100);
+tl.add(".outro", { opacity: [0, 1], translateY: [22, 0], duration: 380, ease: "M0,0 C0.2,0 0.8,1 1,1" }, 1200);
+hyperframesAnime.register("dense", tl, { labels: { intro: 0, burst: 0.62 } });
