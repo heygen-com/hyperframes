@@ -7,6 +7,11 @@
  * (engine/apply-patches.ts) can never disagree on the model's shape.
  */
 
+// Browser-safe subpath — the core/parsers root entries pull Node-only modules
+// and would break browser bundles that include the SDK (e.g. Studio).
+import { parseCompositionVariables } from "@hyperframes/core/variables";
+import type { CompositionVariable } from "@hyperframes/core/variables";
+
 type VariableDecl = { id: string; default?: unknown; [key: string]: unknown };
 
 function getHtmlEl(document: Document): Element | null {
@@ -31,6 +36,18 @@ function readDecls(document: Document): { htmlEl: Element; arr: VariableDecl[] }
 
 function indexOfId(arr: VariableDecl[], id: string): number {
   return arr.findIndex((v) => typeof v === "object" && v !== null && v.id === id);
+}
+
+/**
+ * Read the typed variable declarations from `data-composition-variables`.
+ * Delegates to the canonical parser (same filter the render pipeline uses),
+ * so malformed entries are dropped rather than surfaced. Returns `[]` when
+ * the document has no root element or no declarations.
+ */
+export function readVariableDeclarations(document: Document): CompositionVariable[] {
+  const htmlEl = getHtmlEl(document);
+  if (!htmlEl) return [];
+  return parseCompositionVariables(htmlEl);
 }
 
 /**

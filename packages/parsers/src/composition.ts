@@ -10,3 +10,4 @@ export {
   resolveAliasDisplayName,
 } from "./fontAliases.js";
 export { decodeUrlPathVariants } from "./utils/urlPath.js";
+export { parseCompositionVariables, isScalarVariableValue } from "./compositionVariables.js";

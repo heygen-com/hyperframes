@@ -12,6 +12,7 @@ import type {
   ValidationResult,
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
+import { parseCompositionVariables } from "./compositionVariables.js";
 import { ensureHfIds } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
@@ -791,49 +792,7 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   };
 }
 
-function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
-  const variablesAttr = htmlEl.getAttribute("data-composition-variables");
-  if (!variablesAttr) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(variablesAttr);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((v): v is CompositionVariable => {
-      if (typeof v !== "object" || v === null) return false;
-      if (typeof v.id !== "string" || typeof v.label !== "string") return false;
-      if (!["string", "number", "color", "boolean", "enum", "font", "image"].includes(v.type))
-        return false;
-
-      switch (v.type) {
-        case "string":
-          return typeof v.default === "string";
-        case "number":
-          return typeof v.default === "number";
-        case "color":
-          return typeof v.default === "string";
-        case "boolean":
-          return typeof v.default === "boolean";
-        case "enum":
-          return typeof v.default === "string" && Array.isArray(v.options);
-        case "font":
-          // default is the font-family name string; extra metadata fields are optional
-          return typeof v.default === "string";
-        case "image":
-          // default is the fallback image URL string; extra metadata fields are optional
-          return typeof v.default === "string";
-        default:
-          return false;
-      }
-    });
-  } catch {
-    return [];
-  }
-}
+export { parseCompositionVariables };
 
 export function validateCompositionHtml(html: string): ValidationResult {
   const errors: string[] = [];

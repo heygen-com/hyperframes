@@ -1,3 +1,5 @@
+import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
+
 // ─── Document model ───────────────────────────────────────────────────────────
 
 /** Full DOM-level view of one editable element. Built by the SDK adaptation layer. */
@@ -405,6 +407,33 @@ export interface Composition {
    */
   addElement(parent: HfId | null, index: number, html: string): HfId;
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void;
+  /**
+   * Read the typed variable declarations from `data-composition-variables`
+   * (the canonical schema — same filter the render pipeline uses; malformed
+   * entries are dropped). Read-only — does not dispatch.
+   */
+  getVariableDeclarations(): CompositionVariable[];
+  /**
+   * Resolve this composition's variable values: its declared defaults merged
+   * with `overrides` (overrides win, undeclared override keys pass through).
+   * Read-only — does not dispatch.
+   *
+   * Scope: reads THIS composition file's own declaration element, not a union of
+   * every `[data-composition-variables]` in a bundled document. The runtime's
+   * `getVariables()` additionally walks inlined sub-composition declarers because
+   * it runs on the fully-bundled document; the SDK models one composition file,
+   * so per-file scope is intentional (and is what Studio needs to predict a
+   * single file's `--variables` payload). For the common single-`<html>`
+   * composition the two agree; they diverge only when sub-comp declarers are
+   * inlined into one document.
+   */
+  getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown>;
+  /**
+   * Validate a values map against the declared schema. Returns undeclared /
+   * type-mismatch / enum-out-of-range issues (same checks as the CLI's
+   * `--strict-variables`). Read-only — does not dispatch.
+   */
+  validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[];
   /**
    * Read enter/exit times and GSAP labels for every timed element (WS-C).
    * Derives enterAt/exitAt using the same data-duration vs data-end preference

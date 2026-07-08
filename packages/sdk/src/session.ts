@@ -38,6 +38,9 @@ import { getGsapScript, resolveScoped } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
+import { readDeclaredDefaults, validateVariables } from "@hyperframes/core/variables";
+import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
+import { readVariableDeclarations } from "./engine/variableModel.js";
 import { serializeDocument } from "./engine/serialize.js";
 import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
@@ -151,6 +154,29 @@ class CompositionImpl implements Composition {
 
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void {
     this.dispatch({ type: "setVariableValue", id, value });
+  }
+
+  getVariableDeclarations(): CompositionVariable[] {
+    return readVariableDeclarations(this.parsed.document);
+  }
+
+  getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown> {
+    // THIS composition's own declared defaults (loose extraction: any entry with
+    // a string id + a `default` key, even ones the strict declaration parser
+    // drops) spread under the overrides. Scope note: this reads the composition's
+    // single declaration element only — NOT a union of every `[data-composition-
+    // variables]` in the document. The runtime's getVariables()
+    // (core/runtime/getVariables.ts) additionally walks inlined sub-composition
+    // declarers because it operates on the bundled multi-composition document;
+    // the SDK models one composition file, so per-file scope is intended.
+    const documentEl =
+      (this.parsed.document as Document & { documentElement?: Element }).documentElement ?? null;
+    const defaults = readDeclaredDefaults(documentEl);
+    return { ...defaults, ...(overrides ?? {}) };
+  }
+
+  validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[] {
+    return validateVariables(values, this.getVariableDeclarations());
   }
 
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
