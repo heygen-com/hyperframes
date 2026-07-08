@@ -105,6 +105,23 @@ export {
   extractCompositionMetadata,
 } from "@hyperframes/parsers";
 
+// Animation
+export type {
+  AnimeEaseMapping,
+  CustomEasePoint,
+  EaseFunction,
+  ParsedCustomEase,
+  ResolvedEase,
+} from "./animation/easeMap";
+
+export {
+  GSAP_TO_ANIME_EASE,
+  parseCustomEase,
+  parseCustomEasePath,
+  resolveEase,
+  serializeCustomEase,
+} from "./animation/easeMap";
+
 // Generators
 export type { SerializeOptions } from "./generators/hyperframes";
 

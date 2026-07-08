@@ -1,5 +1,6 @@
 export * from "./types.js";
 export * from "./gsapParserExports.js";
+export { generateSpringEaseData } from "./springEase.js";
 export * from "./htmlParser.js";
 export * from "./hfIds.js";
 export * from "./subCompositionValidity.js";
