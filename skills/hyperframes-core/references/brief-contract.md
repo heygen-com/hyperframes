@@ -10,7 +10,7 @@ There are two modes. Default: **collaborative**.
 
 - **Ongoing autonomous signals** — "autonomous", "surprise me", "decide for me", "just build it", "don't ask, just go", "LFG": the whole flow switches to autonomous from this point on.
 - **One-time acceptance** — a bare "go" / "looks good" at a gate accepts only that gate's defaults; the mode does not change.
-- The mode is set **once** — by a signal in the request, or by the brief's first question (§ 3) — and **carries forward. No later step asks again.** Once a storyboard exists, record it in `STORYBOARD.md` frontmatter (`mode: autonomous`) so resumed sessions inherit it.
+- The mode is set **once** — by a signal in the request, or by the brief's first question (§ 3) — and **carries forward. No later step asks again.** Once a storyboard exists, record it in `STORYBOARD.md` frontmatter (`mode: autonomous`). When resuming an existing project, read `mode` from that frontmatter first — a recorded mode counts as already set, so don't ask again.
 - **Mid-run switch**: "stop asking / just finish it" → autonomous for the rest of the run. Clear feedback on a heads-up → collaborative resumes at the next gate.
 
 **Gate types.** Autonomous mode changes only the first two types:
