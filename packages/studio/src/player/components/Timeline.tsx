@@ -235,7 +235,7 @@ export const Timeline = memo(function Timeline({
     setRangeSelectionRef,
   });
 
-  const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview, dropPreview } =
+  const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview } =
     useTimelineAssetDrop({
       scrollRef,
       ppsRef,
@@ -247,16 +247,9 @@ export const Timeline = memo(function Timeline({
     });
 
   const displayTrackOrder = useMemo(() => {
-    const pendingTracks: number[] = [];
-    if (draggedClip?.started && !trackOrder.includes(draggedClip.previewTrack)) {
-      pendingTracks.push(draggedClip.previewTrack);
-    }
-    if (dropPreview?.isNewTrack && !trackOrder.includes(dropPreview.track)) {
-      pendingTracks.push(dropPreview.track);
-    }
-    if (trackOrder.length === 0 || pendingTracks.length === 0) return trackOrder;
-    return [...new Set([...trackOrder, ...pendingTracks])].sort((a, b) => a - b);
-  }, [draggedClip, dropPreview, trackOrder]);
+    if (!draggedClip?.started || trackOrder.includes(draggedClip.previewTrack)) return trackOrder;
+    return [...trackOrder, draggedClip.previewTrack].sort((a, b) => a - b);
+  }, [draggedClip, trackOrder]);
 
   const totalH = getTimelineCanvasHeight(displayTrackOrder.length);
   const keyframeCache = usePlayerStore((s) => s.keyframeCache);
@@ -472,7 +465,6 @@ export const Timeline = memo(function Timeline({
           selectedKeyframes={selectedKeyframes}
           currentTime={currentTime}
           beatAnalysis={adjustedBeatAnalysis}
-          dropPreview={dropPreview}
           onClickKeyframe={(el, pct) => {
             usePlayerStore.getState().clearSelectedKeyframes();
             const elKey = el.key ?? el.id;

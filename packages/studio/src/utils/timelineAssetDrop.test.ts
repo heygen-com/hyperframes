@@ -85,7 +85,9 @@ describe("buildTimelineFileDropPlacements", () => {
     expect(buildTimelineFileDropPlacements({ start: 1.5, track: 2 }, [])).toEqual([]);
   });
 
-  it("uses the dropped start and spaces multiple files by duration on the same track", () => {
+  it("spaces multiple files by duration and keeps every one on the dropped track", () => {
+    // A clip placed onto an occupied track stays there (overlap is allowed); it is
+    // NOT bumped to a new track — that produced surprise empty tracks for users.
     expect(buildTimelineFileDropPlacements({ start: 1.5, track: 2 }, [1.2, 1.6, 1.1])).toEqual([
       { start: 1.5, track: 2 },
       { start: 2.7, track: 2 },
@@ -98,16 +100,6 @@ describe("buildTimelineFileDropPlacements", () => {
       { start: 1.5, track: 2 },
       { start: 2.7, track: 2 },
       { start: 7.7, track: 2 },
-    ]);
-  });
-
-  it("keeps every file on the dropped track even when that track is occupied", () => {
-    // A clip placed onto an occupied track stays there (overlap is allowed); it is
-    // NOT bumped to a new track — that produced surprise empty tracks for users.
-    expect(buildTimelineFileDropPlacements({ start: 1.5, track: 2 }, [1.2, 1.6, 1.1])).toEqual([
-      { start: 1.5, track: 2 },
-      { start: 2.7, track: 2 },
-      { start: 4.3, track: 2 },
     ]);
   });
 });
