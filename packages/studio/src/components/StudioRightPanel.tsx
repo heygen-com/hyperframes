@@ -24,6 +24,7 @@ import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailabil
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
+import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -342,63 +343,74 @@ export function StudioRightPanel({
   );
 
   const propertyPanel = (
-    <PropertyPanel
-      projectId={projectId}
-      projectDir={projectDir}
-      assets={assets}
-      element={domEditGroupSelections.length > 1 ? null : domEditSelection}
-      multiSelectCount={domEditGroupSelections.length}
-      copiedAgentPrompt={copiedAgentPrompt}
-      onClearSelection={clearDomSelection}
-      onToggleElementHidden={onToggleElementHidden}
-      onUngroup={handleUngroupSelection}
-      onSetStyle={handleDomStyleCommit}
-      onSetAttribute={handleDomAttributeCommit}
-      onSetAttributeLive={handleDomAttributeLiveCommit}
-      onApplyColorGradingScope={handleApplyColorGradingScope}
-      onSetHtmlAttribute={handleDomHtmlAttributeCommit}
-      onRemoveBackground={handleRemoveBackground}
-      onSetManualOffset={handleDomPathOffsetCommit}
-      onSetManualSize={handleDomBoxSizeCommit}
-      onSetManualRotation={handleDomRotationCommit}
-      onSetText={handleDomTextCommit}
-      onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-      onAddTextField={handleDomAddTextField}
-      onRemoveTextField={handleDomRemoveTextField}
-      onAskAgent={handleAskAgent}
-      onImportAssets={handleImportFiles}
-      fontAssets={fontAssets}
-      onImportFonts={handleImportFonts}
-      previewIframeRef={previewIframeRef}
-      gsapAnimations={selectedGsapAnimations}
-      gsapMultipleTimelines={gsapMultipleTimelines}
-      gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-      onUpdateGsapProperty={handleGsapUpdateProperty}
-      onUpdateGsapMeta={handleGsapUpdateMeta}
-      onDeleteGsapAnimation={handleGsapDeleteAnimation}
-      onAddGsapProperty={handleGsapAddProperty}
-      onRemoveGsapProperty={handleGsapRemoveProperty}
-      onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
-      onAddGsapFromProperty={handleGsapAddFromProperty}
-      onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
-      onAddGsapAnimation={handleGsapAddAnimation}
-      onCommitAnimatedProperty={commitAnimatedProperty}
-      onCommitAnimatedProperties={commitAnimatedProperties}
-      onAddKeyframe={handleGsapAddKeyframe}
-      onRemoveKeyframe={handleGsapRemoveKeyframe}
-      onConvertToKeyframes={(animId, duration) =>
-        handleGsapConvertToKeyframes(animId, undefined, duration)
-      }
-      onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
-      onSetArcPath={handleSetArcPath}
-      onUpdateArcSegment={handleUpdateArcSegment}
-      onUnroll={handleUnroll}
-      onUpdateKeyframeEase={handleUpdateKeyframeEase}
-      onSetAllKeyframeEases={handleSetAllKeyframeEases}
-      recordingState={recordingState}
-      recordingDuration={recordingDuration}
-      onToggleRecording={onToggleRecording}
-    />
+    <DesignPanelPromoteProvider
+      selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
+      sdkSession={sdkSession}
+      activeCompPath={activeCompPath}
+      readProjectFile={readProjectFile}
+      writeProjectFile={writeProjectFile}
+      recordEdit={recordEdit}
+      reloadPreview={reloadPreview}
+      domEditSaveTimestampRef={domEditSaveTimestampRef}
+    >
+      <PropertyPanel
+        projectId={projectId}
+        projectDir={projectDir}
+        assets={assets}
+        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+        multiSelectCount={domEditGroupSelections.length}
+        copiedAgentPrompt={copiedAgentPrompt}
+        onClearSelection={clearDomSelection}
+        onToggleElementHidden={onToggleElementHidden}
+        onUngroup={handleUngroupSelection}
+        onSetStyle={handleDomStyleCommit}
+        onSetAttribute={handleDomAttributeCommit}
+        onSetAttributeLive={handleDomAttributeLiveCommit}
+        onApplyColorGradingScope={handleApplyColorGradingScope}
+        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+        onRemoveBackground={handleRemoveBackground}
+        onSetManualOffset={handleDomPathOffsetCommit}
+        onSetManualSize={handleDomBoxSizeCommit}
+        onSetManualRotation={handleDomRotationCommit}
+        onSetText={handleDomTextCommit}
+        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+        onAddTextField={handleDomAddTextField}
+        onRemoveTextField={handleDomRemoveTextField}
+        onAskAgent={handleAskAgent}
+        onImportAssets={handleImportFiles}
+        fontAssets={fontAssets}
+        onImportFonts={handleImportFonts}
+        previewIframeRef={previewIframeRef}
+        gsapAnimations={selectedGsapAnimations}
+        gsapMultipleTimelines={gsapMultipleTimelines}
+        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+        onUpdateGsapProperty={handleGsapUpdateProperty}
+        onUpdateGsapMeta={handleGsapUpdateMeta}
+        onDeleteGsapAnimation={handleGsapDeleteAnimation}
+        onAddGsapProperty={handleGsapAddProperty}
+        onRemoveGsapProperty={handleGsapRemoveProperty}
+        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+        onAddGsapFromProperty={handleGsapAddFromProperty}
+        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+        onAddGsapAnimation={handleGsapAddAnimation}
+        onCommitAnimatedProperty={commitAnimatedProperty}
+        onCommitAnimatedProperties={commitAnimatedProperties}
+        onAddKeyframe={handleGsapAddKeyframe}
+        onRemoveKeyframe={handleGsapRemoveKeyframe}
+        onConvertToKeyframes={(animId, duration) =>
+          handleGsapConvertToKeyframes(animId, undefined, duration)
+        }
+        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+        onSetArcPath={handleSetArcPath}
+        onUpdateArcSegment={handleUpdateArcSegment}
+        onUnroll={handleUnroll}
+        onUpdateKeyframeEase={handleUpdateKeyframeEase}
+        onSetAllKeyframeEases={handleSetAllKeyframeEases}
+        recordingState={recordingState}
+        recordingDuration={recordingDuration}
+        onToggleRecording={onToggleRecording}
+      />
+    </DesignPanelPromoteProvider>
   );
 
   const renderQueuePanel = (

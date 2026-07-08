@@ -43,7 +43,7 @@ function sanitizeId(raw: string): string {
  * #000000, which the picker can at least display. Unrecognized formats pass
  * through verbatim.
  */
-function rgbToHex(value: string): string {
+export function rgbToHex(value: string): string {
   const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+\s*)?\)$/.exec(value);
   if (!m) return value;
   return `#${m
@@ -58,7 +58,10 @@ function firstFontFamily(value: string): string {
 }
 
 // fallow-ignore-next-line complexity
-function buildBindActions(selection: DomEditSelection, sdkSession: Composition): BindAction[] {
+export function buildBindActions(
+  selection: DomEditSelection,
+  sdkSession: Composition,
+): BindAction[] {
   const hfId = selection.hfId;
   if (!hfId) return [];
   // No snapshot = the session can't resolve this element (e.g. a sub-comp

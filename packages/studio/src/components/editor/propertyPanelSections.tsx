@@ -6,6 +6,7 @@ import { FIELD, LABEL, normalizeTextMetricValue, RESPONSIVE_GRID } from "./prope
 import { MetricField, Section, SelectField } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
+import { PromotableControl } from "./PromotableControl";
 
 /* ------------------------------------------------------------------ */
 /*  Text helpers (used only by text section components)                */
@@ -280,20 +281,31 @@ function TextFieldEditor({
           </button>
         )}
       </div>
-      <TextAreaField
-        key={field.key}
-        label="Content"
-        value={field.value}
-        disabled={false}
-        autoFocus={showRemove}
-        onCommit={(next) => onSetText(next, field.key)}
-      />
-      <ColorField
-        label="Text color"
-        value={getTextFieldColor(field, styles)}
-        disabled={false}
-        onCommit={(next) => onSetTextFieldStyle(field.key, "color", next)}
-      />
+      <PromotableControl channel={{ kind: "text" }} enabled={field.source === "self"}>
+        {({ value, onCommit }) => (
+          <TextAreaField
+            key={field.key}
+            label="Content"
+            value={value ?? field.value}
+            disabled={false}
+            autoFocus={showRemove}
+            onCommit={onCommit ?? ((next) => onSetText(next, field.key))}
+          />
+        )}
+      </PromotableControl>
+      <PromotableControl
+        channel={{ kind: "style", prop: "color" }}
+        enabled={field.source === "self"}
+      >
+        {({ value, onCommit }) => (
+          <ColorField
+            label="Text color"
+            value={value ?? getTextFieldColor(field, styles)}
+            disabled={false}
+            onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
+          />
+        )}
+      </PromotableControl>
       <div className={RESPONSIVE_GRID}>
         <MetricField
           label="Size"
@@ -309,13 +321,22 @@ function TextFieldEditor({
           onCommit={(next) => onSetTextFieldStyle(field.key, "font-weight", next)}
         />
       </div>
-      <FontFamilyField
-        value={field.computedStyles["font-family"] || styles["font-family"] || "inherit"}
-        disabled={false}
-        importedFonts={fontAssets}
-        onImportFonts={onImportFonts}
-        onCommit={(next) => onSetTextFieldStyle(field.key, "font-family", next)}
-      />
+      <PromotableControl
+        channel={{ kind: "style", prop: "font-family" }}
+        enabled={field.source === "self"}
+      >
+        {({ value, onCommit }) => (
+          <FontFamilyField
+            value={
+              value ?? (field.computedStyles["font-family"] || styles["font-family"] || "inherit")
+            }
+            disabled={false}
+            importedFonts={fontAssets}
+            onImportFonts={onImportFonts}
+            onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "font-family", next))}
+          />
+        )}
+      </PromotableControl>
       <AdvancedTextControls
         field={field}
         inheritedStyles={styles}
