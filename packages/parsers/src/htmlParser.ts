@@ -782,6 +782,10 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   const durationStr = htmlEl.getAttribute("data-composition-duration");
   const compositionDuration = durationStr ? parseFloat(durationStr) : null;
 
+  // TODO(template-var-carriers): reads `<html>` only. A template/fragment comp
+  // that declares variables on its `[data-composition-id]` root div (the
+  // dual-carrier contract from #2081) reports no variables when its metadata is
+  // extracted standalone (e.g. CLI --variables validation of a sub-comp file).
   const variables = parseCompositionVariables(htmlEl);
 
   return {

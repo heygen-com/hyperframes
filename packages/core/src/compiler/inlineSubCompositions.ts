@@ -149,6 +149,7 @@ function defaultBuildScopeSelector(compId: string): string {
  * 10. Remove `data-composition-src` from host
  * 11. Inject the content into the host element
  */
+// fallow-ignore-next-line complexity
 export function inlineSubCompositions(
   document: Document,
   hosts: Element[],
@@ -236,10 +237,14 @@ export function inlineSubCompositions(
     const scopeCompId = compId || inferredCompId;
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
-    // Variable merging (bundler feature)
+    // Variable merging (bundler feature). Read declared defaults from the
+    // document element (full-document sub-comps) AND the inner composition root
+    // (template/fragment sub-comps store their schema on the root div, not a
+    // synthetic <html>), then let per-instance host values override.
     if (readVariableDefaults && parseHostVariables && runtimeCompId) {
       const mergedVariables = {
         ...readVariableDefaults(compDoc.documentElement),
+        ...(innerRoot ? readVariableDefaults(innerRoot) : {}),
         ...parseHostVariables(hostEl),
       };
       if (Object.keys(mergedVariables).length > 0) {

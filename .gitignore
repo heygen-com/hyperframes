@@ -81,7 +81,10 @@ docs/plans/
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
-.hyperframes/backup/
+# Studio project state (hf-id backups, per-file state) — always runtime-generated,
+# never committed. Broadened from .hyperframes/backup/ after preview-generated state
+# leaked into a fixture commit.
+.hyperframes/
 examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { inlineSubCompositions } from "./inlineSubCompositions";
+import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
 
@@ -356,5 +357,48 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toMatch(
       /\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]\s+\.title/,
     );
+  });
+});
+
+describe("inlineSubCompositions – variable defaults on a template sub-comp root div", () => {
+  const SUB_COMP_WITH_VAR = `<template id="card-template">
+  <div id="card" data-composition-id="card" data-width="1920" data-height="1080"
+       data-composition-variables='[{"id":"headline","type":"string","label":"Headline","default":"Hi there"}]'>
+    <h1 class="title" data-var-text="headline">Hi there</h1>
+  </div>
+</template>`;
+
+  function hostDoc() {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div data-composition-id="card" data-composition-src="card.html"
+             data-start="0" data-duration="4" data-track-index="0"></div>
+      </div></body></html>`);
+    return document;
+  }
+
+  it("aggregates defaults declared on the inner root div (template comps have no <html> to hold them)", () => {
+    const document = hostDoc();
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
+  });
+
+  it("lets a per-instance host value override the declared default", () => {
+    const document = hostDoc();
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    host.setAttribute("data-variable-values", JSON.stringify({ headline: "Overridden" }));
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
   });
 });

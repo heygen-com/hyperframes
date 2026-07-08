@@ -698,6 +698,10 @@ export async function loadExternalCompositions(
           headStyles,
           headScripts,
           headLinks,
+          // TODO(template-var-carriers): reads `<html>` only. A template/fragment
+          // sub-comp that declares on its `[data-composition-id]` root div (the
+          // dual-carrier contract from #2081) loses its defaults on this lazy
+          // external-load path — see inlineSubCompositions for the fixed path.
           declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
           onDiagnostic: params.onDiagnostic,
         });
