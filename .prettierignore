@@ -1,5 +1,6 @@
 docs/
 DOCS_GUIDELINES.md
+U3-GATE-RESULT.md
 packages/producer/tests/
 *.generated.ts
 
