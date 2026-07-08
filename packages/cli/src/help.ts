@@ -45,6 +45,7 @@ const GROUPS: Group[] = [
         "grade-compare",
         "Render candidate color grades onto a reference frame as one labeled comparison PNG",
       ],
+      ["compare", "Render composition variants into one labeled comparison sheet"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["docs", "View inline documentation in the terminal"],

@@ -116,6 +116,32 @@ export async function openSettledCompositionPage(
   }
 }
 
+export async function seekCompositionTimeline(
+  page: Pick<Page, "evaluate">,
+  timeSeconds: number,
+): Promise<void> {
+  await page.evaluate((t: number) => {
+    const player = (window as any).__player;
+    if (!player) return;
+    const safe = Math.max(0, Number(t) || 0);
+    if (typeof player.renderSeek === "function") {
+      player.renderSeek(safe);
+    } else if (typeof player.seek === "function") {
+      player.seek(safe);
+    }
+    if ((window as any).gsap?.ticker?.tick) {
+      (window as any).gsap.ticker.tick();
+    }
+  }, timeSeconds);
+
+  await page.evaluate(`new Promise(function(r) {
+    var settled = false;
+    function finish() { if (settled) return; settled = true; r(); }
+    window.setTimeout(finish, 100);
+    requestAnimationFrame(function() { requestAnimationFrame(finish); });
+  })`);
+}
+
 export async function runFfmpegOnce(
   ffmpegPath: string,
   args: readonly string[],

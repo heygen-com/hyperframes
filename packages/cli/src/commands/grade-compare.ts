@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
   isHfColorGradingActive,
@@ -23,6 +23,7 @@ import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCom
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 
@@ -107,22 +108,6 @@ function cloneRecord(record: Record<string, unknown>): Record<string, unknown> {
     next[key] = value;
   }
   return next;
-}
-
-function readOptionalString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function resolveFromBase(baseDir: string, input: string): string {
-  return isAbsolute(input) ? input : resolve(baseDir, input);
-}
-
-function displayPath(projectDir: string, filePath: string): string {
-  const rel = relative(projectDir, filePath);
-  if (rel && !rel.startsWith("..") && !isAbsolute(rel)) return rel;
-  return filePath;
 }
 
 function escapeXml(value: string): string {
@@ -664,7 +649,7 @@ export default defineCommand({
       mkdirSync(dirname(parsed.outPath), { recursive: true });
       copyFileSync(tempSheet, parsed.outPath);
 
-      const sheet = displayPath(parsed.projectDir, parsed.outPath);
+      const sheet = displayPathFromBase(parsed.projectDir, parsed.outPath);
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {

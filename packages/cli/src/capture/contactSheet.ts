@@ -93,17 +93,20 @@ export async function createContactSheet(
     overlays.push({ input: labelSvg, left: x, top: y });
   }
 
-  await sharp({
+  const sheet = sharp({
     create: {
       width: totalW,
       height: totalH,
       channels: 3,
       background: { r: 26, g: 26, b: 26 },
     },
-  })
-    .composite(overlays)
-    .jpeg({ quality })
-    .toFile(outputPath);
+  }).composite(overlays);
+
+  if (extname(outputPath).toLowerCase() === ".png") {
+    await sheet.png().toFile(outputPath);
+  } else {
+    await sheet.jpeg({ quality }).toFile(outputPath);
+  }
 
   return outputPath;
 }
@@ -263,6 +266,7 @@ export async function createAssetContactSheet(
  * parent assets/ root (for external SVGs downloaded as <img src="*.svg">).
  * Files are deduplicated by basename so duplicates across dirs are collapsed.
  */
+// fallow-ignore-next-line complexity
 export async function createSvgContactSheet(
   svgsDir: string,
   outputPath: string,

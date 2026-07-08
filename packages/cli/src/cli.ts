@@ -140,6 +140,7 @@ const commandLoaders = {
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
+  compare: () => import("./commands/compare.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),

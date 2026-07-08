@@ -3,7 +3,11 @@ import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
-import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
+import {
+  openSettledCompositionPage,
+  runFfmpegOnce,
+  seekCompositionTimeline,
+} from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -320,26 +324,7 @@ async function captureSnapshots(
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
-        await page.evaluate((t: number) => {
-          const player = (window as any).__player;
-          if (!player) return;
-          const safe = Math.max(0, Number(t) || 0);
-          if (typeof player.renderSeek === "function") {
-            player.renderSeek(safe);
-          } else if (typeof player.seek === "function") {
-            player.seek(safe);
-          }
-          if ((window as any).gsap?.ticker?.tick) {
-            (window as any).gsap.ticker.tick();
-          }
-        }, time);
-
-        await page.evaluate(`new Promise(function(r) {
-          var settled = false;
-          function finish() { if (settled) return; settled = true; r(); }
-          window.setTimeout(finish, 100);
-          requestAnimationFrame(function() { requestAnimationFrame(finish); });
-        })`);
+        await seekCompositionTimeline(page, time);
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
