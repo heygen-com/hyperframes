@@ -5,6 +5,15 @@
 > placement, (3) main-track designation, (4) main-track no-overlap + ripple.
 > Brainstormed 2026-07-08. User approved staged approach, magnetic ghost first.
 
+> **REVISED after live feedback (2026-07-08):** the first build lane-_locked_ the ghost
+> (quantized its `top` to lanes). Dragging it, the user found that wrong — CapCut lets the
+> clip **follow the cursor freely**; the magnet is about _where it lands_, not caging the
+> ghost. Final behavior: ghost follows the cursor (both axes), and a **target-lane
+> highlight** marks the destination track (flips at the threshold). Section 3.2 below
+> describes the superseded lane-lock; the shipped behavior is the highlight. Threshold kept
+> at 0.5 (user: "keep it"). Commits: e7481905a (lane-lock, superseded) → b0bb95aa1 (follow +
+> highlight, final).
+
 ## 1. Goal
 
 Make moving a clip vertically feel like CapCut: the drag ghost **quantizes to track
