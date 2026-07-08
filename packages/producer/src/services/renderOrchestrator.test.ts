@@ -113,6 +113,44 @@ describe("extractStandaloneEntryFromIndex", () => {
 
     expect(extracted).toBeNull();
   });
+
+  it("re-points the wrapper duration at the scene's own, not the master's", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="2"></div></template>`;
+
+    const extracted = extractStandaloneEntryFromIndex(
+      indexHtml,
+      "compositions/scene1.html",
+      sceneHtml,
+    );
+
+    // The extracted standalone advertises the scene's 2s, not the master's 12s.
+    expect(extracted).toContain('data-duration="2"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
+
+  it("falls back to the mount's data-duration when the scene file isn't supplied", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+    const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/scene1.html");
+
+    expect(extracted).toContain('data-duration="2"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
 });
 
 describe("captureAttemptMadeProgress", () => {

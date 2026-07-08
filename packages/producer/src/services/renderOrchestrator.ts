@@ -946,7 +946,27 @@ function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-function createStandaloneEntryRenderClone(root: Element, host: Element): Element {
+/**
+ * Read the `data-duration` off a scene file's `<template>` root — the scene's
+ * own authored length. linkedom does not implement inert `<template>` content,
+ * so we re-parse `template.innerHTML` (the pattern htmlBundler uses) to reach
+ * the composition root inside it. Returns null when the file has no template
+ * or the root declares no duration.
+ */
+function readSceneRootDuration(entryHtml: string | undefined): string | null {
+  if (!entryHtml) return null;
+  const { document } = parseHTML(entryHtml);
+  const template = document.querySelector("template");
+  const scope = template ? parseHTML(template.innerHTML).document : document;
+  const root = scope.querySelector("[data-composition-id]") as Element | null;
+  return root?.getAttribute("data-duration") ?? null;
+}
+
+function createStandaloneEntryRenderClone(
+  root: Element,
+  host: Element,
+  sceneDuration: string | null,
+): Element {
   // linkedom's cloneNode returns `any` (not `Node`), so the Element cast
   // is needed to access setAttribute/appendChild without losing type safety.
   const hostClone = host.cloneNode(true) as Element;
@@ -955,6 +975,18 @@ function createStandaloneEntryRenderClone(root: Element, host: Element): Element
   if (root === host) return hostClone;
 
   const rootClone = root.cloneNode(false) as Element;
+  // The standalone composition IS the mounted scene, not the master shell that
+  // wraps it. A shallow clone of the master root otherwise keeps the master's
+  // data-duration (the whole project's length), so `render -c <scene>` rendered
+  // the scene for the entire project duration — or threw "Composition has zero
+  // duration" when the master derived its length from siblings now removed.
+  // Re-point the wrapper's duration at the scene's own; drop it (derive from the
+  // single child) only when the scene declared none.
+  if (sceneDuration != null) {
+    rootClone.setAttribute("data-duration", sceneDuration);
+  } else {
+    rootClone.removeAttribute("data-duration");
+  }
   rootClone.appendChild(hostClone);
   return rootClone;
 }
@@ -1269,6 +1301,7 @@ export function shouldDiscardProbeSessionForPageSideCompositing(args: {
 export function extractStandaloneEntryFromIndex(
   indexHtml: string,
   entryFile: string,
+  entryHtml?: string,
 ): string | null {
   const normalizedEntryFile = normalizeCompositionSrcPath(entryFile);
   const { document } = parseHTML(indexHtml);
@@ -1294,7 +1327,12 @@ export function extractStandaloneEntryFromIndex(
     ) ?? null;
   if (!root) return null;
 
-  const renderClone = createStandaloneEntryRenderClone(root, host);
+  // The scene file is the source of truth for its own duration; fall back to the
+  // mount's data-duration (its window in the master timeline) when the scene
+  // file content isn't supplied.
+  const sceneDuration = readSceneRootDuration(entryHtml) ?? host.getAttribute("data-duration");
+
+  const renderClone = createStandaloneEntryRenderClone(root, host, sceneDuration);
   replaceBodyWithRenderClone(body, renderClone);
 
   return document.toString();
@@ -1471,6 +1509,7 @@ export async function executeRenderJob(
       const standaloneHtml = extractStandaloneEntryFromIndex(
         readFileSync(projectIndexPath, "utf-8"),
         entryFile,
+        rawEntry,
       );
       if (!standaloneHtml) {
         throw new Error(
