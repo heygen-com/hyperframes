@@ -46,6 +46,12 @@
       "import": "./src/editing/affordances.ts",
       "types": "./src/editing/affordances.ts"
     },
+    "./variables": {
+      "bun": "./src/variables.ts",
+      "node": "./dist/variables.js",
+      "import": "./src/variables.ts",
+      "types": "./src/variables.ts"
+    },
     "./slideshow": {
       "bun": "./src/slideshow/index.ts",
       "node": "./dist/slideshow/index.js",
@@ -261,6 +267,10 @@
       "./lint": {
         "import": "./dist/lint/index.js",
         "types": "./dist/lint/index.d.ts"
+      },
+      "./variables": {
+        "import": "./dist/variables.js",
+        "types": "./dist/variables.d.ts"
       },
       "./slideshow": {
         "import": "./dist/slideshow/index.js",

@@ -20,9 +20,15 @@ export type {
   CanResult,
 } from "./types.js";
 
-export type { CompositionVariable } from "@hyperframes/core";
-
 export { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
+
+// Variable schema types — re-exported so SDK consumers (Studio, embedders)
+// can type declarations without a direct @hyperframes/core dependency.
+export type {
+  CompositionVariable,
+  CompositionVariableType,
+  VariableValidationIssue,
+} from "@hyperframes/core/variables";
 
 export { UnsupportedOpError } from "./engine/mutate.js";
 
