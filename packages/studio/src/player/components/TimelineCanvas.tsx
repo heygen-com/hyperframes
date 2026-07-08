@@ -154,6 +154,12 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           previewTrack: draggedClip.previewTrack,
         })
       : null;
+  // Magnetic vertical: the ghost's top quantizes to the target track's lane (it
+  // sits *in* a lane rather than floating under the cursor); horizontal stays
+  // pointer-following. Falls back to the raw pointer Y for a just-created edge
+  // track not yet in displayTrackOrder (indexOf === -1).
+  const draggedRowIndex =
+    draggedClip != null ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
   const activeDraggedPosition =
     draggedClip?.started === true && activeDraggedElement && scrollRef.current
       ? {
@@ -163,10 +169,12 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             scrollRef.current.scrollLeft -
             draggedClip.pointerOffsetX,
           top:
-            draggedClip.pointerClientY -
-            scrollRef.current.getBoundingClientRect().top +
-            scrollRef.current.scrollTop -
-            draggedClip.pointerOffsetY,
+            draggedRowIndex >= 0
+              ? RULER_H + draggedRowIndex * TRACK_H + CLIP_Y
+              : draggedClip.pointerClientY -
+                scrollRef.current.getBoundingClientRect().top +
+                scrollRef.current.scrollTop -
+                draggedClip.pointerOffsetY,
         }
       : null;
 
