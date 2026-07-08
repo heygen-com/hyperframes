@@ -10,7 +10,12 @@ import { spawn } from "child_process";
 import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
-import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
+import {
+  decodeUrlPathVariants,
+  MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
+  parseNumeric,
+  parseStartExpression,
+} from "@hyperframes/core";
 import { trackChildProcess } from "../utils/processTracker.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
@@ -148,9 +153,102 @@ export interface ExtractionResult {
   phaseBreakdown: ExtractionPhaseBreakdown;
 }
 
+// Minimal structural DOM shape the reference resolver needs, so it works
+// against linkedom (Node) without pulling in lib.dom types.
+interface RefResolverEl {
+  getAttribute(name: string): string | null;
+}
+interface RefResolverDoc {
+  getElementById(id: string): RefResolverEl | null;
+  querySelector(selector: string): RefResolverEl | null;
+}
+
+/**
+ * Find the element a relative `data-start` reference points at — by `id`
+ * first, then by `data-composition-id` (a sub-composition can be referenced).
+ * The reference-id grammar (see parseStartExpression) is restricted to
+ * `[A-Za-z0-9_.:-]`, none of which need escaping inside a quoted attribute
+ * selector, so no CSS.escape (absent in linkedom) is required.
+ */
+function findReferenceTargetEl(doc: RefResolverDoc, refId: string): RefResolverEl | null {
+  return doc.getElementById(refId) ?? doc.querySelector(`[data-composition-id="${refId}"]`);
+}
+
+/**
+ * Resolve an element's absolute start time (seconds) the same way the browser
+ * runtime's startResolver does, so `<video data-start="intro">` (a relative
+ * reference to another clip's end) renders at the right time instead of
+ * producing NaN and compositing blank. Durations come from `data-duration` or
+ * `data-end` here; the natural-media-duration fallback isn't known at parse
+ * time, so — exactly like the runtime — an unknown-duration reference falls
+ * back to the target's start and an unknown target falls back to 0 (never NaN).
+ */
+function resolveReferencedStart(
+  doc: RefResolverDoc,
+  el: RefResolverEl,
+  startCache: Map<RefResolverEl, number>,
+  visiting: Set<RefResolverEl>,
+): number {
+  const cached = startCache.get(el);
+  if (cached !== undefined) return cached;
+  if (visiting.has(el)) return 0; // cycle guard (A -> B -> A)
+  visiting.add(el);
+  try {
+    const expression = parseStartExpression(el.getAttribute("data-start"));
+    if (!expression) {
+      startCache.set(el, 0);
+      return 0;
+    }
+    if (expression.kind === "absolute") {
+      const value = Math.max(0, expression.value);
+      startCache.set(el, value);
+      return value;
+    }
+    const target = findReferenceTargetEl(doc, expression.refId);
+    if (!target) {
+      startCache.set(el, 0);
+      return 0;
+    }
+    const targetStart = resolveReferencedStart(doc, target, startCache, visiting);
+    const targetDuration = resolveReferencedDuration(doc, target, startCache, visiting);
+    const resolved =
+      targetDuration != null && targetDuration > 0
+        ? Math.max(0, targetStart + targetDuration + expression.offset)
+        : Math.max(0, targetStart + expression.offset);
+    startCache.set(el, resolved);
+    return resolved;
+  } finally {
+    visiting.delete(el);
+  }
+}
+
+/**
+ * Duration of a referenced clip, from `data-duration` or `data-end - start`.
+ * Returns null when only the natural media duration would settle it (unknown
+ * at parse time) — the caller then treats the reference as duration-0.
+ */
+function resolveReferencedDuration(
+  doc: RefResolverDoc,
+  el: RefResolverEl,
+  startCache: Map<RefResolverEl, number>,
+  visiting: Set<RefResolverEl>,
+): number | null {
+  const durationAttr = parseNumeric(el.getAttribute("data-duration"));
+  if (durationAttr != null && durationAttr > 0) return durationAttr;
+  const endAttr = parseNumeric(el.getAttribute("data-end"));
+  if (endAttr != null) {
+    const start = resolveReferencedStart(doc, el, startCache, visiting);
+    const delta = endAttr - start;
+    if (Number.isFinite(delta) && delta > 0) return delta;
+  }
+  return null;
+}
+
 export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
 
   const videoEls = document.querySelectorAll("video[src]");
   let autoIdCounter = 0;
@@ -170,7 +268,12 @@ export function parseVideoElements(html: string): VideoElement[] {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const hasAudioAttr = el.getAttribute("data-has-audio");
 
-    const start = startAttr ? parseFloat(startAttr) : 0;
+    // Resolve data-start, including relative references ("intro", "intro + 2")
+    // to another clip's end — the browser runtime resolves these but a raw
+    // parseFloat here would yield NaN, placing the clip at NaN so it composites
+    // blank in the final render. `startAttr` may be a plain number or a
+    // reference; the resolver handles both.
+    const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
     // The caller (htmlCompiler) clamps Infinity to the composition's absoluteEnd.
     let end = 0;
@@ -206,6 +309,8 @@ export interface ImageElement {
 export function parseImageElements(html: string): ImageElement[] {
   const images: ImageElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
 
   const imgEls = document.querySelectorAll("img[src]");
   let autoIdCounter = 0;
@@ -222,7 +327,9 @@ export function parseImageElements(html: string): ImageElement[] {
     const endAttr = el.getAttribute("data-end");
     const durationAttr = el.getAttribute("data-duration");
 
-    const start = startAttr ? parseFloat(startAttr) : 0;
+    // Resolve relative data-start references (see parseVideoElements) so a
+    // referenced image start doesn't become NaN and drop the image from the render.
+    const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     let end = 0;
     if (endAttr) {
       end = parseFloat(endAttr);

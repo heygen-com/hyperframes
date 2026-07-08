@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback, useState, useEffect, memo, type ReactNode } from "react";
+import { useRef, useMemo, useCallback, useState, useEffect, memo } from "react";
 import { useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
@@ -6,9 +6,10 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { EditPopover } from "./EditModal";
-import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
+import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
+import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { type TrackVisualStyle, getTrackStyle } from "./timelineIcons";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
 import { useTimelineZoom } from "./useTimelineZoom";
@@ -21,17 +22,15 @@ import {
 } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { ClipContextMenu } from "./ClipContextMenu";
+import { TimelineShortcutHint } from "./TimelineShortcutHint";
 import {
   GUTTER,
   generateTicks,
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
-import type { TimelineDropCallbacks } from "./timelineCallbacks";
-import {
-  useResolvedTimelineEditCallbacks,
-  type TimelineEditOverrides,
-} from "./useResolvedTimelineEditCallbacks";
+import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
+import type { TimelineProps } from "./TimelineTypes";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -47,19 +46,6 @@ export {
   shouldHandleTimelineDeleteKey,
   getDefaultDroppedTrack,
 } from "./timelineLayout";
-
-interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
-  onSeek?: (time: number) => void;
-  onDrillDown?: (element: TimelineElement) => void;
-  renderClipContent?: (
-    element: TimelineElement,
-    style: { clip: string; label: string },
-  ) => ReactNode;
-  renderClipOverlay?: (element: TimelineElement) => ReactNode;
-  onDeleteElement?: (element: TimelineElement) => Promise<void> | void;
-  onSelectElement?: (element: TimelineElement | null) => void;
-  theme?: Partial<TimelineTheme>;
-}
 
 export const Timeline = memo(function Timeline({
   onSeek,
@@ -162,20 +148,26 @@ export const Timeline = memo(function Timeline({
     });
   }, [syncShortcutHintVisibility]);
 
-  const setContainerRef = useCallback(
+  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+  }, []);
+
+  const setScrollRef = useCallback(
     (el: HTMLDivElement | null) => {
       if (roRef.current) {
         roRef.current.disconnect();
         roRef.current = null;
       }
-      containerRef.current = el;
+      scrollRef.current = el;
       if (!el) return;
-      setViewportWidth(el.clientWidth);
-      scheduleShortcutHintVisibilitySync();
-      roRef.current = new ResizeObserver(([entry]) => {
-        setViewportWidth(entry.contentRect.width);
+
+      const syncScrollViewport = () => {
+        setViewportWidth(el.clientWidth);
         scheduleShortcutHintVisibilitySync();
-      });
+      };
+
+      syncScrollViewport();
+      roRef.current = new ResizeObserver(syncScrollViewport);
       roRef.current.observe(el);
     },
     [scheduleShortcutHintVisibilitySync],
@@ -273,6 +265,13 @@ export const Timeline = memo(function Timeline({
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
+  const clipStateVersion = useMemo(
+    () =>
+      expandedElements
+        .map((el) => `${el.key ?? el.id}:${el.start}:${el.duration}:${el.track}`)
+        .join("|"),
+    [expandedElements],
+  );
   const zoomModeRef = useRef(zoomMode);
   zoomModeRef.current = zoomMode;
   const manualZoomPercentRef = useRef(manualZoomPercent);
@@ -300,6 +299,11 @@ export const Timeline = memo(function Timeline({
     setZoomMode,
     setManualZoomPercent,
     onSeek,
+  });
+  useTimelineActiveClips({
+    scrollRef,
+    currentTime,
+    clipStateVersion,
   });
 
   const {
@@ -340,8 +344,7 @@ export const Timeline = memo(function Timeline({
     () => generateTicks(effectiveDuration, pps),
     [effectiveDuration, pps],
   );
-  const majorTickInterval =
-    major.length >= 2 ? Math.max(0.25, major[1] - major[0]) : effectiveDuration;
+  const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
 
   useEffect(() => {
     syncShortcutHintVisibility();
@@ -406,7 +409,7 @@ export const Timeline = memo(function Timeline({
       }}
     >
       <div
-        ref={scrollRef}
+        ref={setScrollRef}
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
         onDragOver={handleAssetDragOver}
@@ -434,7 +437,6 @@ export const Timeline = memo(function Timeline({
           totalH={totalH}
           effectiveDuration={effectiveDuration}
           majorTickInterval={majorTickInterval}
-          shiftHeld={shiftHeld}
           rangeSelection={rangeSelection}
           theme={theme}
           displayTrackOrder={displayTrackOrder}
@@ -472,6 +474,9 @@ export const Timeline = memo(function Timeline({
             const elKey = el.key ?? el.id;
             setSelectedElementId(elKey);
             onSelectElement?.(el);
+            // Visually select the clicked diamond (matches shift-click / motion-path
+            // selection); cleared above so this single-selects it.
+            toggleSelectedKeyframe(`${elKey}:${pct}`);
             const absTime = el.start + (pct / 100) * el.duration;
             onSeek?.(absTime);
             const kfData = keyframeCache?.get(elKey);
@@ -519,22 +524,7 @@ export const Timeline = memo(function Timeline({
       </div>
 
       {showShortcutHint && !showPopover && !rangeSelection && (
-        <div className="absolute bottom-2 right-3 pointer-events-none z-20">
-          <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md border"
-            style={{ background: "rgba(17,23,35,0.84)", borderColor: theme.gutterBorder }}
-          >
-            <kbd
-              className="text-[9px] font-mono px-1 py-0.5 rounded"
-              style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.06)" }}
-            >
-              Shift
-            </kbd>
-            <span className="text-[9px]" style={{ color: theme.textSecondary }}>
-              + drag/click to edit range
-            </span>
-          </div>
-        </div>
+        <TimelineShortcutHint theme={theme} />
       )}
 
       {showPopover && rangeSelection && (

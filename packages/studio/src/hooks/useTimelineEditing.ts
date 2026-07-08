@@ -20,7 +20,6 @@ import {
   collectHtmlIds,
   resolveDroppedAssetDuration,
 } from "../utils/studioHelpers";
-import type { EditHistoryKind } from "../utils/editHistory";
 import {
   buildPatchTarget,
   patchIframeDomTiming,
@@ -33,36 +32,12 @@ import {
   scaleGsapPositions,
 } from "./timelineEditingHelpers";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
+import {
+  useTimelineElementVisibilityEditing,
+  useTimelineTrackVisibilityEditing,
+} from "./timelineTrackVisibility";
 import { sdkTimingPersist } from "../utils/sdkCutover";
-import type { Composition } from "@hyperframes/sdk";
-
-// ── Types ──
-
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
-
-interface UseTimelineEditingOptions {
-  projectId: string | null;
-  activeCompPath: string | null;
-  timelineElements: TimelineElement[];
-  showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  reloadPreview: () => void;
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
-  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
-  uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
-  isRecordingRef?: React.RefObject<boolean>;
-  /** Stage 7 §3.2: SDK session for routing timing ops through setTiming. */
-  sdkSession?: Composition | null;
-  /** Resync the SDK session after a server-authoritative timeline write. */
-  forceReloadSdkSession?: () => void;
-}
+import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
 // ── Hook ──
 
@@ -323,6 +298,34 @@ export function useTimelineEditing({
     ],
   );
 
+  const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
+
+  const handleToggleElementHidden = useTimelineElementVisibilityEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
+
   // fallow-ignore-next-line complexity
   const handleTimelineElementDelete = useCallback(
     // fallow-ignore-next-line complexity
@@ -562,6 +565,8 @@ export function useTimelineEditing({
   return {
     handleTimelineElementMove,
     handleTimelineElementResize,
+    handleToggleTrackHidden,
+    handleToggleElementHidden,
     handleTimelineElementDelete,
     handleTimelineElementSplit: handleRazorSplit,
     handleRazorSplit,

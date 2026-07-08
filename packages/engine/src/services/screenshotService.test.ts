@@ -6,6 +6,7 @@ import { type Page } from "puppeteer-core";
 import {
   pageScreenshotCapture,
   cdpSessionCache,
+  ensureRenderFrameSiblings,
   applyDomLayerMask,
   removeDomLayerMask,
   injectVideoFramesBatch,
@@ -742,5 +743,92 @@ describe("video-frame injection respects ancestor visibility", () => {
     } finally {
       teardown();
     }
+  });
+});
+
+describe("ensureRenderFrameSiblings", () => {
+  function passthroughPage(): Page {
+    return {
+      evaluate: async (fn: (...args: unknown[]) => unknown, ...args: unknown[]) =>
+        Promise.resolve((fn as (...a: unknown[]) => unknown)(...args)),
+    } as unknown as Page;
+  }
+
+  function withGlobalDom(setup: { window: Window; document: Document }): { teardown: () => void } {
+    const globals = globalThis as unknown as { window?: Window; document?: Document };
+    const previousWindow = globals.window;
+    const previousDocument = globals.document;
+    globals.window = setup.window;
+    globals.document = setup.document;
+    return {
+      teardown: () => {
+        globals.window = previousWindow;
+        globals.document = previousDocument;
+      },
+    };
+  }
+
+  it("creates a hidden __render_frame__ sibling for every video[data-start]", async () => {
+    const { window, document } = parseHTML(
+      `<html><body>
+        <div id="root">
+          <video id="v1" data-start="0" data-duration="2"></video>
+          <video id="v2" data-start="2" data-duration="2"></video>
+        </div>
+      </body></html>`,
+    );
+    const { teardown } = withGlobalDom({ window, document });
+    try {
+      await ensureRenderFrameSiblings(passthroughPage());
+    } finally {
+      teardown();
+    }
+
+    for (const id of ["v1", "v2"]) {
+      const video = document.getElementById(id) as HTMLVideoElement;
+      const sibling = video.nextElementSibling as HTMLElement | null;
+      expect(sibling).not.toBeNull();
+      expect(sibling?.tagName.toLowerCase()).toBe("img");
+      expect(sibling?.classList.contains("__render_frame__")).toBe(true);
+      expect(sibling?.id).toBe(`__render_frame_${id}__`);
+      expect(sibling?.style.visibility).toBe("hidden");
+    }
+  });
+
+  it("skips videos that already have a __render_frame__ sibling", async () => {
+    const { window, document } = parseHTML(
+      `<html><body>
+        <div id="root">
+          <video id="clip" data-start="0" data-duration="2"></video>
+          <img id="__render_frame_clip__" class="__render_frame__">
+        </div>
+      </body></html>`,
+    );
+    const preExisting = document.getElementById("__render_frame_clip__") as HTMLImageElement;
+    const { teardown } = withGlobalDom({ window, document });
+    try {
+      await ensureRenderFrameSiblings(passthroughPage());
+    } finally {
+      teardown();
+    }
+
+    const video = document.getElementById("clip") as HTMLVideoElement;
+    expect(video.nextElementSibling).toBe(preExisting);
+    expect(document.querySelectorAll(".__render_frame__").length).toBe(1);
+  });
+
+  it("does not touch <video> elements without data-start", async () => {
+    const { window, document } = parseHTML(
+      `<html><body><div id="root"><video id="raw"></video></div></body></html>`,
+    );
+    const { teardown } = withGlobalDom({ window, document });
+    try {
+      await ensureRenderFrameSiblings(passthroughPage());
+    } finally {
+      teardown();
+    }
+
+    const video = document.getElementById("raw") as HTMLVideoElement;
+    expect(video.nextElementSibling).toBeNull();
   });
 });

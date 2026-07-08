@@ -513,6 +513,48 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
   });
 }
 
+/**
+ * True when `err` is a corrupt/truncated-archive extraction failure, as opposed
+ * to a network error or a genuine platform problem. A partially-downloaded or
+ * interrupted browser archive left in the cache makes `install()`'s extraction
+ * throw "invalid end-of-central-directory" (a zip whose central directory is
+ * missing/truncated). Left unhandled, that hard-blocks every render on the box
+ * until the user manually clears the cache — so we detect it and re-download.
+ */
+export function isCorruptArchiveError(err: unknown): boolean {
+  const msg = normalizeErrorMessage(err).toLowerCase();
+  return (
+    msg.includes("end of central directory") ||
+    msg.includes("end-of-central-directory") ||
+    msg.includes("invalid or corrupt") ||
+    msg.includes("corrupt zip") ||
+    msg.includes("not a zip") ||
+    msg.includes("unexpected end of") ||
+    msg.includes("corrupted")
+  );
+}
+
+/**
+ * Run a browser install; if it fails because the cached archive is corrupt,
+ * clear the cache (dropping the bad archive) and retry the download exactly
+ * once. Non-corruption errors propagate unchanged, and a second corruption
+ * propagates too (no infinite retry).
+ */
+export async function installWithCorruptArchiveRecovery<T>(
+  runInstall: () => Promise<T>,
+  clearCache: () => void,
+  onRecover?: (err: unknown) => void,
+): Promise<T> {
+  try {
+    return await runInstall();
+  } catch (err) {
+    if (!isCorruptArchiveError(err)) throw err;
+    onRecover?.(err);
+    clearCache();
+    return await runInstall();
+  }
+}
+
 async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
   if (isLinuxArm()) {
     return ensureLinuxArmBrowser(options);
@@ -525,13 +567,26 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
   }
 
-  const installed = await install({
-    cacheDir: CACHE_DIR,
-    browser: Browser.CHROMEHEADLESSSHELL,
-    buildId: CHROME_VERSION,
-    platform,
-    downloadProgressCallback: options?.onProgress,
-  });
+  const runInstall = () =>
+    install({
+      cacheDir: CACHE_DIR,
+      browser: Browser.CHROMEHEADLESSSHELL,
+      buildId: CHROME_VERSION,
+      platform,
+      downloadProgressCallback: options?.onProgress,
+    });
+
+  const installed = await installWithCorruptArchiveRecovery(
+    runInstall,
+    () => {
+      rmSync(CACHE_DIR, { recursive: true, force: true });
+      mkdirSync(CACHE_DIR, { recursive: true });
+    },
+    (err) =>
+      console.warn(
+        `[hyperframes] Cached browser archive was corrupt (${normalizeErrorMessage(err)}); clearing the cache and re-downloading.`,
+      ),
+  );
 
   return { executablePath: installed.executablePath, source: "download" };
 }

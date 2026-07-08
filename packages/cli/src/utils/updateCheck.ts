@@ -2,6 +2,20 @@ import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
+import { detectInstaller } from "./installerDetection.js";
+
+/**
+ * True when `v` is a strict semver-shaped string. Registry-supplied versions
+ * flow into commands that are displayed AND executed (the `upgrade` command and
+ * the background auto-installer both run them), so a poisoned `latest` carrying
+ * shell metacharacters must never reach them. This is enforced at the registry
+ * boundary in `checkForUpdate` — an unsafe `data.version` is never cached — so
+ * every consumer (notice, upgrade, background auto-install, and any future one)
+ * is covered by this single gate; the per-consumer checks are defense in depth.
+ */
+export function isSafeVersion(v: string): boolean {
+  return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(v);
+}
 
 const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -38,7 +52,14 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   const config = readConfig();
   const now = Date.now();
 
-  if (!force && config.lastUpdateCheck && config.latestVersion) {
+  // Also guard the cache read: a cache written before this boundary guard
+  // existed could hold an unsafe latestVersion — re-validate before trusting it.
+  if (
+    !force &&
+    config.lastUpdateCheck &&
+    config.latestVersion &&
+    isSafeVersion(config.latestVersion)
+  ) {
     const lastCheck = new Date(config.lastUpdateCheck).getTime();
     if (now - lastCheck < CHECK_INTERVAL_MS) {
       return {
@@ -60,8 +81,17 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
 
     if (!res.ok) return fallbackResult(config.latestVersion);
 
-    const data = (await res.json()) as { version?: string };
-    const latest = data.version ?? VERSION;
+    const data = (await res.json()) as { version?: unknown };
+    // Registry boundary guard: only a strict-semver STRING is trusted. This
+    // value is cached and later flows into an install command that the
+    // background auto-updater executes, so a poisoned or non-string
+    // data.version (e.g. "1.2.3; rm -rf /") must never be persisted. Reject it
+    // and fall back to the last known-good version. Closes the injection class
+    // for every consumer at one point.
+    if (typeof data.version !== "string" || !isSafeVersion(data.version)) {
+      return fallbackResult(config.latestVersion);
+    }
+    const latest = data.version;
 
     config.lastUpdateCheck = new Date().toISOString();
     config.latestVersion = latest;
@@ -74,10 +104,13 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
 }
 
 function fallbackResult(cachedLatest?: string): UpdateCheckResult {
+  // Only surface a cached version we can prove is safe — a pre-existing
+  // poisoned cache must not leak through the fallback path either.
+  const safeCached = cachedLatest && isSafeVersion(cachedLatest) ? cachedLatest : undefined;
   return {
     current: VERSION,
-    latest: cachedLatest ?? VERSION,
-    updateAvailable: cachedLatest ? isNewerSemver(cachedLatest, VERSION) : false,
+    latest: safeCached ?? VERSION,
+    updateAvailable: safeCached ? isNewerSemver(safeCached, VERSION) : false,
   };
 }
 
@@ -125,8 +158,17 @@ export function printUpdateNotice(): void {
   const meta = getUpdateMeta();
   if (!meta.updateAvailable || !meta.latestVersion) return;
 
+  // Show the command that updates *this* install: the detected package
+  // manager's upgrade for owned global installs (npm/bun/pnpm/brew), and the
+  // universal `npx hyperframes@latest` for ephemeral/unknown installs (where a
+  // manager command wouldn't apply). detectInstaller() only runs here, after
+  // the suppression + update-available gates, so it adds no cost to normal runs.
+  const safeLatest = isSafeVersion(meta.latestVersion);
+  const managerCommand = safeLatest ? detectInstaller().installCommand(meta.latestVersion) : null;
+  const command = managerCommand ?? "npx hyperframes@latest";
+
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +
-      `  Run: npx hyperframes@latest\n\n`,
+      `  Run: ${command}\n\n`,
   );
 }

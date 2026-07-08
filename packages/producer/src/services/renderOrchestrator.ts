@@ -110,10 +110,16 @@ import {
 import { type HdrPerfCollector, type HdrPerfSummary } from "./render/hdrPerf.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
-import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import {
+  runExtractVideosStage,
+  shouldCopyExtractedFrames,
+} from "./render/stages/extractVideosStage.js";
 import { runAudioStage } from "./render/stages/audioStage.js";
 import { runCaptureStage } from "./render/stages/captureStage.js";
-import { runCaptureStreamingStage } from "./render/stages/captureStreamingStage.js";
+import {
+  type CaptureStreamingStageResult,
+  runCaptureStreamingStage,
+} from "./render/stages/captureStreamingStage.js";
 import { runCaptureHdrStage } from "./render/stages/captureHdrStage.js";
 import { runEncodeStage } from "./render/stages/encodeStage.js";
 import { runAssembleStage } from "./render/stages/assembleStage.js";
@@ -370,6 +376,10 @@ export interface RenderPerfSummary {
     compileGate?: string;
     /** Producer clamp that disabled default DE: parallel | disk_path. */
     clampReason?: string;
+    /** Auto-parallel inversion outcome: "inverted" (fired, held), "reverted" (fired, self-verify retry rolled back), "none". */
+    workerInversion?: string;
+    /** Worker count the auto-resolution chose BEFORE the inversion pinned it to 1 — the parallel counterfactual for speedup math. Only set when the inversion fired. */
+    preInversionWorkers?: number;
     /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Worker-encode drain (the verified path) was active. */
@@ -947,6 +957,98 @@ export function shouldUseStreamingEncode(
   return workerCount === 1;
 }
 
+/**
+ * DE priority inversion predicate: should an AUTO-resolved multi-worker render
+ * drop to single-worker verified drawElement streaming?
+ *
+ * Benchmarked 2026-07-08: above ~900 frames DE-single beats screenshot-parallel
+ * at every worker count (2,380f: 66s vs 109–127s at W2–W5); below it DE's fixed
+ * init cost (verify + dedup arming) loses by a small margin. Only fires for the
+ * exact benchmarked configuration: default-on DE, mp4, streaming-eligible,
+ * no compile gate, no forced screenshot, workers not explicitly requested.
+ */
+export function shouldPreferSingleWorkerDrawElement(args: {
+  workerCount: number;
+  /** job.config.workers — a number means the user explicitly chose. */
+  requestedWorkers: number | "auto" | undefined;
+  useDrawElement: boolean;
+  deCompileGate: string | undefined;
+  forceScreenshot: boolean;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  totalFrames: number;
+  /** Amortization threshold; <=0 disables the inversion. */
+  minFrames: number;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site. */
+  singleWorkerStreamingOk: boolean;
+  /**
+   * Comp routes to the layered-composite / page-side-compositing paths
+   * (HDR content or shader transitions) — those force screenshots and never
+   * run drawElement or streaming, so an inversion would only mislabel
+   * telemetry and keep the probe session alive through the heaviest stage.
+   */
+  layeredOrEffectRoute: boolean;
+  /** deviceScaleFactor > 1 — the engine's supersampling gate blocks DE. */
+  supersampling: boolean;
+  /**
+   * The probe session already ran the engine's init-time DE gates and DE did
+   * NOT engage (not drawelement mode, not a deferred video comp) — inverting
+   * would pin a known-screenshot render to one worker.
+   */
+  probeDeGated: boolean;
+  /**
+   * PRODUCER_EXPERIMENTAL_FAST_CAPTURE=true is an explicit opt-in that
+   * deliberately allows parallel drawElement (bypassing the downstream
+   * clamp) — honor it like an explicit --workers request.
+   */
+  experimentalParallelDeOptIn: boolean;
+}): boolean {
+  return (
+    args.workerCount > 1 &&
+    typeof args.requestedWorkers !== "number" &&
+    args.useDrawElement &&
+    !args.deCompileGate &&
+    !args.forceScreenshot &&
+    args.outputFormat === "mp4" &&
+    args.minFrames > 0 &&
+    args.totalFrames >= args.minFrames &&
+    args.singleWorkerStreamingOk &&
+    !args.layeredOrEffectRoute &&
+    !args.supersampling &&
+    !args.probeDeGated &&
+    !args.experimentalParallelDeOptIn
+  );
+}
+
+/**
+ * Plan the self-verify retry for an inverted render: the inversion bet on
+ * drawElement and lost, so the re-render returns to the pre-inversion parallel
+ * screenshot path (streaming re-resolved for that worker count — multi-worker
+ * routes to the disk stage). Returns null when the render was not inverted.
+ */
+export function resolveInversionRetryPlan(args: {
+  deWorkerInversion: "inverted" | "reverted" | undefined;
+  preInversionWorkerCount: number;
+  cfg: Pick<EngineConfig, "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds">;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  durationSeconds: number;
+}): {
+  workerCount: number;
+  useStreamingEncode: boolean;
+  deWorkerInversion: "reverted";
+} | null {
+  if (args.deWorkerInversion !== "inverted") return null;
+  return {
+    workerCount: args.preInversionWorkerCount,
+    useStreamingEncode: shouldUseStreamingEncode(
+      args.cfg,
+      args.outputFormat,
+      args.preInversionWorkerCount,
+      args.durationSeconds,
+    ),
+    deWorkerInversion: "reverted",
+  };
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -1214,6 +1316,9 @@ export async function executeRenderJob(
     // whether self-verify fell back, and the drain-side counters.
     const deCompileGate = compileResult.deCompileGate;
     let deClampReason: string | undefined;
+    // "inverted" = fired and held; "reverted" = fired but the self-verify
+    // retry rolled back to the parallel path; undefined = never fired.
+    let deWorkerInversion: "inverted" | "reverted" | undefined;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -1350,6 +1455,9 @@ export async function executeRenderJob(
           composition,
           abortSignal,
           assertNotAborted,
+          // Copy (don't symlink) extracted frames on Windows — symlinkSync throws
+          // EPERM there without Developer Mode/admin, which failed local renders.
+          materializeSymlinks: shouldCopyExtractedFrames(process.platform),
         }),
     );
     const {
@@ -1544,11 +1652,53 @@ export async function executeRenderJob(
     const htmlInCanvasDetected = compiled.renderModeHints.reasons.some(
       (r) => r.code === "htmlInCanvas",
     );
+    // Only use the HDR encoder preset when there's HDR content to pass through —
+    // either native HDR videos OR native HDR images. For SDR-only compositions,
+    // auto mode stays SDR since H.265 10-bit causes browser color management
+    // issues (orange shift) with no quality benefit. (Computed here, ahead of
+    // worker resolution, because the DE inversion below must not fire for
+    // comps that route to the layered/HDR paths.)
+    const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
+    const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
+    // DE priority inversion eligibility — evaluated BEFORE capture calibration
+    // because when every multi-worker resolution would be inverted to 1 anyway,
+    // the calibration stage (a throwaway Chrome launch + timeline-spread sample
+    // captures, seconds of wall clock) buys nothing and is skipped.
+    // Threshold override: HF_DE_SINGLE_MIN_FRAMES (0 disables the inversion;
+    // a set-but-empty var falls back to the default, it is NOT the kill switch).
+    const deSingleMinFramesRaw = process.env.HF_DE_SINGLE_MIN_FRAMES;
+    const deSingleMinFramesNum =
+      deSingleMinFramesRaw === undefined || deSingleMinFramesRaw.trim() === ""
+        ? 900
+        : Number(deSingleMinFramesRaw);
+    const deSingleMinFrames = Number.isFinite(deSingleMinFramesNum) ? deSingleMinFramesNum : 900;
+    // "Would ANY multi-worker resolution be inverted?" — if workers resolve
+    // to 1 naturally the outcome is identical either way.
+    const WOULD_RESOLVE_MULTI_WORKER = 2;
+    const deInversionEligible = shouldPreferSingleWorkerDrawElement({
+      workerCount: WOULD_RESOLVE_MULTI_WORKER,
+      requestedWorkers: job.config.workers,
+      useDrawElement: cfg.useDrawElement,
+      deCompileGate,
+      forceScreenshot: captureForceScreenshot,
+      outputFormat,
+      totalFrames,
+      minFrames: deSingleMinFrames,
+      singleWorkerStreamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
+      supersampling: deviceScaleFactor > 1,
+      probeDeGated:
+        probeSession !== null &&
+        probeSession.captureMode !== "drawelement" &&
+        !probeSession.deInitDeferred,
+      experimentalParallelDeOptIn: process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true",
+    });
     if (
       job.config.workers === undefined &&
       totalFrames >= 60 &&
       !htmlInCanvasDetected &&
-      !cfg.lowMemoryMode
+      !cfg.lowMemoryMode &&
+      !deInversionEligible
     ) {
       const outcome = await observeRenderStage(
         observability,
@@ -1587,6 +1737,7 @@ export async function executeRenderJob(
         totalFrames,
         htmlInCanvasDetected,
         lowMemoryMode: Boolean(cfg.lowMemoryMode),
+        deInversionEligible,
       });
     }
 
@@ -1600,8 +1751,30 @@ export async function executeRenderJob(
       log,
       captureCalibration?.estimate,
     );
-    updateCaptureObservability({ workerCount });
-    observability.checkpoint("worker_resolution", "resolved", { workerCount });
+    // DE priority inversion — see shouldPreferSingleWorkerDrawElement for the
+    // policy and benchmark rationale (eligibility resolved above, before
+    // calibration). Comps that pass every static check but hit an engine
+    // INIT-time gate at capture (css-effects / at-risk, ~1.5% of local
+    // renders) render single-worker screenshot streaming — slower than
+    // parallel would have been, accepted for the routing win everywhere else.
+    // `preInversionWorkerCount` lets the self-verify retry return to the
+    // parallel path when the drawElement bet loses.
+    const preInversionWorkerCount = workerCount;
+    if (deInversionEligible && workerCount > 1) {
+      deWorkerInversion = "inverted";
+      log.info(
+        "[Render] Fast capture: single-worker drawElement streaming preferred over " +
+          `${workerCount}-worker screenshot capture (${totalFrames} frames >= ` +
+          `${deSingleMinFrames}; verified path, measured faster at every worker count). ` +
+          "Set HF_DE_SINGLE_MIN_FRAMES=0 or --workers N to override.",
+      );
+      workerCount = 1;
+    }
+    updateCaptureObservability({ workerCount, deWorkerInversion });
+    observability.checkpoint("worker_resolution", "resolved", {
+      workerCount,
+      deWorkerInversion: deWorkerInversion ?? "none",
+    });
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
@@ -1666,12 +1839,8 @@ export async function executeRenderJob(
     };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
-    // Only use the HDR encoder preset when there's HDR content to pass through —
-    // either native HDR videos OR native HDR images. For SDR-only compositions,
-    // auto mode stays SDR since H.265 10-bit causes browser color management
-    // issues (orange shift) with no quality benefit.
-    const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
-    const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
+    // (nativeHdrIds / hasHdrContent are computed above, ahead of worker
+    // resolution, for the DE inversion eligibility check.)
     // Page-side compositing opt-in: when the engine is configured to run the
     // shader blend inside Chrome via a page-side WebGL canvas, the layered
     // Node-side composite path is unnecessary for SDR shader transitions.
@@ -1905,9 +2074,41 @@ export async function executeRenderJob(
             deSelfVerifyFallback: true,
           });
           probeSession = null;
-          streamingRes = await invokeStreaming();
+          const inversionRetryPlan = resolveInversionRetryPlan({
+            deWorkerInversion,
+            preInversionWorkerCount,
+            cfg,
+            outputFormat,
+            durationSeconds: job.duration,
+          });
+          if (inversionRetryPlan) {
+            // The inversion bet on drawElement and lost — re-render on the
+            // pre-inversion parallel screenshot path instead of single-worker
+            // screenshot streaming (the slowest capture shape for this size).
+            // "reverted" (not cleared) so telemetry keeps the lost-inversion
+            // cohort distinguishable from renders that never inverted.
+            deWorkerInversion = inversionRetryPlan.deWorkerInversion;
+            workerCount = inversionRetryPlan.workerCount;
+            useStreamingEncode = inversionRetryPlan.useStreamingEncode;
+            updateCaptureObservability({
+              workerCount,
+              useStreamingEncode,
+              deWorkerInversion,
+            });
+            log.info(
+              `[Render] Reverting worker inversion for the retry: ${workerCount} workers, ` +
+                `streaming=${useStreamingEncode}.`,
+            );
+          }
+          if (useStreamingEncode) {
+            streamingRes = await invokeStreaming();
+          } else {
+            // Parallel retry goes through the disk path below.
+            streamingRes = { success: false } satisfies CaptureStreamingStageResult;
+          }
           // The first attempt's error marked the phase failed; the retry
-          // recovered it — don't brand the render as failed in telemetry.
+          // recovered it (or was rerouted to disk) — don't brand the render
+          // as failed in telemetry.
           observability.clearFailure("capture_streaming");
         }
         const captureFrameMs = Date.now() - captureFrameStart;
@@ -1929,6 +2130,29 @@ export async function executeRenderJob(
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
         } else {
           useStreamingEncode = false;
+          // The disk path has no drain-time self-verification — clamp
+          // default-on drawElement here exactly like the pre-capture clamp
+          // (verified-path confinement). Skipped when screenshots are already
+          // forced (nothing to clamp) or under the explicit experimental
+          // opt-in, mirroring the clamp above.
+          if (
+            cfg.useDrawElement &&
+            !captureForceScreenshot &&
+            process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE !== "true"
+          ) {
+            cfg.useDrawElement = false;
+            deClampReason = deClampReason ?? "disk_path";
+            log.info(
+              "[Render] Fast capture: drawElement disabled for the disk fallback — " +
+                "streaming encoder spawn failed and the disk path has no runtime " +
+                "self-verification.",
+            );
+            if (probeSession && probeSession.captureMode === "drawelement") {
+              lastBrowserConsole = probeSession.browserConsoleBuffer;
+              await closeCaptureSession(probeSession);
+              probeSession = null;
+            }
+          }
           updateCaptureObservability({ useStreamingEncode });
           observability.checkpoint("capture_streaming", "spawn failed; falling back to disk");
         }
@@ -2085,6 +2309,8 @@ export async function executeRenderJob(
       drawElement: {
         compileGate: deCompileGate,
         clampReason: deClampReason,
+        workerInversion: deWorkerInversion,
+        preInversionWorkers: deWorkerInversion ? preInversionWorkerCount : undefined,
         selfVerifyFallback: deSelfVerifyFallback,
         fallbackReason: deFallbackReason,
         drainStats: deDrainStats,
@@ -2177,10 +2403,14 @@ export async function executeRenderJob(
       errorMessage.includes("Waiting failed") ||
       errorMessage.includes("timeout exceeded") ||
       errorMessage.includes("Navigation timeout");
-    const wasParallel = job.config.workers !== 1;
+    // Use the RESOLVED worker count (auto renders — and inverted ones — may
+    // have run single-worker even though job.config.workers is unset), so the
+    // "--workers 1" advisory never points at the configuration that just failed.
+    const wasParallel =
+      (captureObservability.workerCount ?? (job.config.workers === 1 ? 1 : 2)) > 1;
     if (isTimeoutError && wasParallel) {
       log.warn(
-        `Parallel capture timed out with ${job.config.workers ?? "auto"} workers. ` +
+        `Parallel capture timed out with ${captureObservability.workerCount ?? "auto"} workers. ` +
           `Video-heavy compositions often need sequential capture. Retry with --workers 1`,
       );
     }

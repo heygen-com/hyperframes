@@ -65,6 +65,7 @@ function resolveClipTag(clip: ClipManifestClip): string {
   return clip.tagName || clip.kind || "div";
 }
 
+// fallow-ignore-next-line complexity
 export function createTimelineElementFromManifestClip(params: {
   clip: ClipManifestClip;
   fallbackIndex: number;
@@ -120,6 +121,7 @@ export function createTimelineElementFromManifestClip(params: {
 
   if (hostEl) {
     applyMediaMetadataFromElement(entry, hostEl);
+    if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
   }
@@ -234,6 +236,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
   const els: TimelineElement[] = [];
   let trackCounter = 0;
 
+  // fallow-ignore-next-line complexity
   nodes.forEach((node) => {
     if (node === rootComp) return;
     if (isTimelineIgnoredElement(node)) return;
@@ -256,6 +259,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     const trackStr = el.getAttribute("data-track-index");
     const track = trackStr != null ? parseInt(trackStr, 10) : trackCounter++;
+    // fallow-ignore-next-line code-duplication
     const compId = el.getAttribute("data-composition-id");
     const selector = getTimelineElementSelector(el);
     const sourceFile = getTimelineElementSourceFile(el);
@@ -307,6 +311,9 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
 
     if (el.hasAttribute("data-timeline-locked")) {
       entry.timelineLocked = true;
+    }
+    if (el.hasAttribute("data-hidden")) {
+      entry.hidden = true;
     }
 
     const timelineRole = el.getAttribute("data-timeline-role");

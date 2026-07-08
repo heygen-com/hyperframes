@@ -202,6 +202,7 @@ async function commitFlatViaKeyframes(
   }
 
   const coalesceKey = `gsap:convert-drag:${anim.id}`;
+  // fallow-ignore-next-line code-duplication
   await callbacks.commitMutation(
     selection,
     {
@@ -229,6 +230,7 @@ async function commitFlatViaKeyframes(
   if (editedSelected) parkPlayheadOnKeyframe(anim, pct);
 }
 
+// fallow-ignore-next-line code-duplication
 // fallow-ignore-next-line complexity
 export async function commitGsapPositionFromDrag(
   selection: DomEditSelection,
@@ -240,6 +242,7 @@ export async function commitGsapPositionFromDrag(
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
   const el = selection.element;
+  // fallow-ignore-next-line code-duplication
   const { newX, newY, baseGsapX, baseGsapY } = computeDraggedGsapPosition(
     el,
     studioOffset,

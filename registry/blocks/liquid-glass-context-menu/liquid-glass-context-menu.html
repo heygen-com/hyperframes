@@ -543,7 +543,10 @@
         y: -8,
         transformOrigin: "0% 18%",
       });
-      gsap.set([gf, fileCard], { top: 372, opacity: 1, scale: 1, transformOrigin: "78% 54%" });
+      // glass (#glass-file) is html-in-canvas — stays on left/top (exempt, no stutter)
+      gsap.set(gf, { top: 372, opacity: 1, scale: 1, transformOrigin: "78% 54%" });
+      // plain DOM (#context-file) — CSS resting top is 340px, so top:372 becomes y:32
+      gsap.set(fileCard, { y: 32, opacity: 1, scale: 1, transformOrigin: "78% 54%" });
       gsap.set([gsm, "#submenu-preview"], {
         left: 1980,
         opacity: 0,
@@ -552,13 +555,16 @@
         transformOrigin: "0% 50%",
       });
       gsap.set(".menu-item", { y: -4, opacity: 0 });
-      gsap.set("#menu-highlight", { top: 17, opacity: 0 });
+      // #menu-highlight plain DOM — CSS resting top:17; top:17 seed is y:0, tweens use y
+      gsap.set("#menu-highlight", { y: 0, opacity: 0 });
 
-      tl.to([gf, fileCard], { top: 340, duration: 0.38, ease: "power3.out" }, 0.1);
+      tl.to(gf, { top: 340, duration: 0.38, ease: "power3.out" }, 0.1);
+      tl.to(fileCard, { y: 0, duration: 0.38, ease: "power3.out" }, 0.1);
+      // #pointer plain DOM — CSS resting left:778 top:395; convert left/top → x/y offsets
       tl.fromTo(
         pointer,
-        { left: 620, top: 520 },
-        { left: 778, top: 395, duration: 0.55, ease: "power3.out" },
+        { x: -158, y: 125 },
+        { x: 0, y: 0, duration: 0.55, ease: "power3.out" },
         0.35,
       );
       tl.set("#click-ring", { left: 756, top: 372, scale: 0.72 }, 0.84);
@@ -578,9 +584,9 @@
       );
 
       tl.to("#menu-highlight", { opacity: 1, duration: 0.12, ease: "none" }, 1.35);
-      tl.to("#menu-highlight", { top: 69, duration: 0.22, ease: "power2.out" }, 2.0);
-      tl.to(pointer, { left: 1128, top: 468, duration: 0.46, ease: "power3.inOut" }, 2.48);
-      tl.to("#menu-highlight", { top: 187, duration: 0.22, ease: "power2.out" }, 2.58);
+      tl.to("#menu-highlight", { y: 52, duration: 0.22, ease: "power2.out" }, 2.0);
+      tl.to(pointer, { x: 350, y: 73, duration: 0.46, ease: "power3.inOut" }, 2.48);
+      tl.to("#menu-highlight", { y: 170, duration: 0.22, ease: "power2.out" }, 2.58);
       tl.set([gsm, "#submenu-preview"], { left: 1236 }, 3.04);
       tl.fromTo(
         [gsm, "#submenu-preview"],
@@ -588,7 +594,7 @@
         { scale: 1, opacity: 1, x: 0, duration: 0.24, ease: "back.out(1.04)" },
         3.08,
       );
-      tl.to(pointer, { left: 1318, top: 484, duration: 0.5, ease: "power3.inOut" }, 3.32);
+      tl.to(pointer, { x: 540, y: 89, duration: 0.5, ease: "power3.inOut" }, 3.32);
       tl.set("#click-ring", { left: 1295, top: 461, scale: 0.72 }, 3.86);
       tl.to(
         "#click-ring",

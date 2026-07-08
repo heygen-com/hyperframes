@@ -643,6 +643,49 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(sandbox.window.__hf?.duration).toBe(30);
   });
 
+  it("forwards suppressEvents from __hf.seek to renderSeek", () => {
+    const renderSeekCalls: Array<[number, { suppressEvents?: boolean } | undefined]> = [];
+    const sandbox: {
+      window: Record<string, unknown> & {
+        __hf?: {
+          seek?: (t: number, options?: { suppressEvents?: boolean }) => void;
+          duration?: number;
+        };
+        __player?: {
+          renderSeek: (t: number, options?: { suppressEvents?: boolean }) => void;
+          getDuration: () => number;
+        };
+        setInterval: typeof setInterval;
+        clearInterval: typeof clearInterval;
+      };
+      document: { querySelector: () => null };
+    } = {
+      window: {
+        setInterval: globalThis.setInterval,
+        clearInterval: globalThis.clearInterval,
+      },
+      document: { querySelector: () => null },
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.window.document = sandbox.document;
+    sandbox.window.__renderReady = true;
+    sandbox.window.__player = {
+      renderSeek: (time, options) => {
+        renderSeekCalls.push([time, options]);
+      },
+      getDuration: () => 10,
+    };
+
+    new Function("window", "document", `with (window) {\n${HF_BRIDGE_SCRIPT}\n}`)(
+      sandbox.window,
+      sandbox.document,
+    );
+
+    sandbox.window.__hf?.seek?.(5, { suppressEvents: true });
+
+    expect(renderSeekCalls).toEqual([[5, { suppressEvents: true }]]);
+  });
+
   it("keeps render-time timeline seeks synchronous during large renders", () => {
     const sandbox: {
       window: Record<string, unknown> & {

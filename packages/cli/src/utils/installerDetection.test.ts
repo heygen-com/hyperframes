@@ -123,3 +123,36 @@ describe("detectInstaller", () => {
     expect(info.reason).toMatch(/Unknown install layout/);
   });
 });
+
+import { installInvocation } from "./installerDetection.js";
+
+describe("installInvocation", () => {
+  it("returns the npm global argv for kind npm", () => {
+    expect(installInvocation("npm", "1.2.3")).toEqual({
+      bin: "npm",
+      args: ["install", "-g", "hyperframes@1.2.3"],
+    });
+  });
+
+  it("returns bun/pnpm add -g argv for those managers", () => {
+    expect(installInvocation("bun", "1.2.3")).toEqual({
+      bin: "bun",
+      args: ["add", "-g", "hyperframes@1.2.3"],
+    });
+    expect(installInvocation("pnpm", "1.2.3")).toEqual({
+      bin: "pnpm",
+      args: ["add", "-g", "hyperframes@1.2.3"],
+    });
+  });
+
+  it("returns a version-less brew upgrade for kind brew", () => {
+    expect(installInvocation("brew", "1.2.3")).toEqual({
+      bin: "brew",
+      args: ["upgrade", "hyperframes"],
+    });
+  });
+
+  it("returns null for kind skip (ephemeral / project-local / unknown)", () => {
+    expect(installInvocation("skip", "1.2.3")).toBeNull();
+  });
+});

@@ -68,17 +68,41 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 
 ### Flags
 
-| Flag            | Description                                                     |
-| --------------- | --------------------------------------------------------------- |
-| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                        |
-| `--intent, -i`  | What you need (natural language)                                |
-| `--entity, -e`  | Entity name for cache matching (optional)                       |
-| `--project, -p` | Project directory (default: .)                                  |
-| `--from`        | Freeze a local file or direct public URL (ingest)               |
-| `--local-only`  | Offline: skip every network provider (cache + local only)       |
-| `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`) |
-| `--adopt`       | Bulk-import existing assets/ into manifest                      |
-| `--json`        | Output JSON instead of one-line result                          |
+| Flag            | Description                                                                          |
+| --------------- | ------------------------------------------------------------------------------------ |
+| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                                             |
+| `--intent, -i`  | What you need (natural language)                                                     |
+| `--entity, -e`  | Entity name for cache matching (optional)                                            |
+| `--project, -p` | Project directory (default: .)                                                       |
+| `--candidates`  | List reusable assets (project + global cache) for `--type`; no download, no mutation |
+| `--reuse <sha>` | Import a specific global-cache asset (by content sha/prefix, from `--candidates`)    |
+| `--from`        | Freeze a local file or direct public URL (ingest)                                    |
+| `--local-only`  | Offline: skip every network provider (cache + local only)                            |
+| `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`)                      |
+| `--adopt`       | Bulk-import existing assets/ into manifest                                           |
+| `--json`        | Output JSON instead of one-line result                                               |
+
+## Reuse before you resolve
+
+Before resolving bgm/sfx/image/icon, **check what already exists and reuse it when it fits.** media-use does not semantically match for you — you are the judge. It surfaces candidates; you decide.
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type bgm --intent "upbeat tech launch" --candidates --project .
+#   [project] upbeat tech launch (25s, heygen.audio.sounds)
+#           .media/audio/bgm/bgm_001.wav
+#   [global]  energetic tech intro (22s, heygen.audio.sounds)
+#           --reuse 06e052c075fd2b80
+```
+
+Read the list and judge semantic fit yourself — "upbeat tech launch" ≈ "energetic tech intro" is a call only you can make from the descriptions. Then:
+
+- **A project candidate fits** → just reference its path in your composition. Nothing else to run.
+- **A global candidate fits** → `resolve --type bgm --reuse <sha>` copies it into this project (self-contained render) and records it.
+- **Nothing fits** → resolve fresh (`--type ... --intent ...`).
+
+**Trust guardrail — when unsure, resolve fresh.** A redundant download is cheap; shipping the wrong asset is not. Judge fit from description + prompt + type + duration/dims. For **brand/entity** assets, reuse a _global_ candidate only when the entity matches exactly — the global cache aggregates every project you have worked on, so a `--candidates` list can surface another client's brand mark and its prompt text. Never reuse a cross-project brand asset on a loose match.
+
+The deterministic floor still runs automatically: an identical (case/whitespace-insensitive) repeat auto-reuses with no `--candidates` step. `--candidates` is only for the semantic layer above that floor — and a fuzzy match is **never** auto-applied; reuse is always your explicit call. On a resolve that misses the floor and is about to fetch, media-use prints a one-line stderr hint when similar cached assets exist, pointing you back here.
 
 ## Providers
 
@@ -111,13 +135,15 @@ leaving the project + global cache and any local provider.
 
 ## How it works
 
-1. Check project `.media/manifest.jsonl` for exact-prompt match
-2. Scan existing `assets/` directory for unregistered files matching the need
-3. Check global cache `~/.media/` for reusable asset
-4. Search via provider (HeyGen audio catalog, HeyGen asset search)
-5. Freeze file to `.media/<type>/`, register in manifest, regenerate `index.md`
+`resolve` runs an automatic floor, then falls through to fetching:
 
-The agent gets back **one line**. Candidates, scores, provenance stay on disk.
+1. Check project `.media/manifest.jsonl` for a prompt match (case- and whitespace-insensitive) — auto-reuse
+2. Scan existing `assets/` directory for unregistered files that share a word with the need
+3. Check global cache `~/.media/` for a reusable asset matched on the same normalized prompt — auto-reuse
+4. Search via provider (HeyGen audio catalog, HeyGen asset search), then generate
+5. Freeze file to `.media/<type>/`, register in manifest, regenerate `index.md`, auto-promote to `~/.media/`
+
+Steps 1 and 3 are the **deterministic floor**: they only auto-reuse an exact-normalized match, never a fuzzy one. Semantic reuse ("close enough") is the agent's explicit call via [Reuse before you resolve](#reuse-before-you-resolve) — it never happens automatically. The agent gets back **one line**; candidates, scores, provenance stay on disk.
 
 ## Adopt existing projects
 
@@ -148,7 +174,9 @@ icon_001   icon   -     200×200    .media/images/icon_001.png    rocket
 
 ## Cross-project reuse
 
-Assets are cached automatically on resolve. Every resolved/ingested asset is auto-promoted to the global cache at `~/.media/`, so subsequent resolves for the same prompt, in any project, hit the cache with no re-download and no provider call.
+Assets are cached automatically on resolve. Every resolved/ingested asset is auto-promoted to the global cache at `~/.media/`, so subsequent resolves for the same (or near-identical) prompt, in any project, hit the cache with no re-download and no provider call.
+
+For a _semantically_ similar (not identical) need in another project, the exact-match floor won't fire — use [Reuse before you resolve](#reuse-before-you-resolve): `--candidates` lists the global assets, and `--reuse <sha>` imports the one you pick. This is how a track resolved in one project gets reused in the next when the wording differs.
 
 ## Files
 

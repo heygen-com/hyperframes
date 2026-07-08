@@ -65,6 +65,7 @@ Surfaced here; full rationale in the linked reference. Do not violate:
 - Read the files first. Preserve unrelated timing, tracks, IDs, variables, media paths.
 - Match existing composition IDs and timeline keys.
 - Adding a clip: pick a non-overlapping `data-track-index` or adjust surrounding timing intentionally.
+- `data-hidden` on any composition element hides it in BOTH preview and render, overriding its time window; it is non-destructive/reversible and toggled by Studio's timeline eye icon.
 - Adding a sub-composition: verify its internal `data-composition-id` before wiring the host.
 
 ## Validation

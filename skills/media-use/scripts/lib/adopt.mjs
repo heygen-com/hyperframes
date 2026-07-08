@@ -3,6 +3,7 @@ import { join, extname, basename } from "node:path";
 import { readManifest, appendRecord, nextId } from "./manifest.mjs";
 import { regenerateIndex } from "./index-gen.mjs";
 import { probe } from "./probe.mjs";
+import { matchTokens } from "./match.mjs";
 
 const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
@@ -53,6 +54,12 @@ export function scanExistingAssets(projectDir) {
     if (!type) continue;
     const fullPath = join(assetsDir, rel);
     const stat = statSync(fullPath);
+    if (stat.size === 0) {
+      // A 0-byte asset would register clean but fail at render — skip it loudly
+      // rather than adopt a broken file.
+      console.error(`media-use: skipping 0-byte asset assets/${rel}`);
+      continue;
+    }
     const meta = probe(fullPath);
     found.push({
       relativePath: `assets/${rel}`,
@@ -96,16 +103,25 @@ export function adoptExistingAssets(projectDir) {
   return adopted;
 }
 
+// Adopt a pre-existing assets/ file only when it shares a meaningful word with
+// the intent. The old test — `name.includes(intent) || intent.includes(name)` —
+// silently returned the WRONG file: "whoosh" grabbed a stray who.mp3, and a
+// one-letter filename matched every intent. A false negative just falls through
+// to a catalog search (safe); a false positive ships the wrong asset. So bias to
+// precision: require a shared token, don't guess from substrings.
 export function findExistingAsset(projectDir, intent, type) {
   const assetsDir = join(projectDir, "assets");
   if (!existsSync(assetsDir)) return null;
-  const lower = intent.toLowerCase();
+  const intentTokens = matchTokens(intent);
+  if (intentTokens.size === 0) return null;
   for (const rel of walkDir(assetsDir)) {
     const t = inferType(rel);
     if (!t || (type && t !== type)) continue;
-    const name = basename(rel, extname(rel)).toLowerCase().replace(/[-_]/g, " ");
-    if (name.includes(lower) || lower.includes(name)) {
-      return { relativePath: `assets/${rel}`, type: t, name: basename(rel, extname(rel)) };
+    const stem = basename(rel, extname(rel));
+    for (const tok of matchTokens(stem)) {
+      if (intentTokens.has(tok)) {
+        return { relativePath: `assets/${rel}`, type: t, name: stem };
+      }
     }
   }
   return null;

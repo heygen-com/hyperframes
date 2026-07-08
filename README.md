@@ -38,8 +38,10 @@ HyperFrames is an open-source framework for turning HTML, CSS, media, and seekab
 Install the HyperFrames skills, then describe the video you want:
 
 ```bash
-npx skills add heygen-com/hyperframes --yes
+npx skills add heygen-com/hyperframes --full-depth --yes
 ```
+
+> `--full-depth` does a full clone of the repo's current `main`. Without it, `skills add` fetches the skills.sh registry blob, which lags `main` by hours — you'd get an older copy of a skill. (`hyperframes skills update` already installs full-depth.)
 
 Try a prompt like:
 
@@ -51,7 +53,7 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
 
-Run `npx skills add heygen-com/hyperframes` for the interactive picker, `npx skills add heygen-com/hyperframes --all` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
+Run `npx skills add heygen-com/hyperframes --full-depth` for the interactive picker, `npx skills add heygen-com/hyperframes --all --full-depth` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name> --full-depth` for just one (bare name, no leading `/`). Keep `--full-depth` — it installs the current `main`; without it `skills add` fetches the skills.sh blob, which lags by hours.
 
 ### Router
 

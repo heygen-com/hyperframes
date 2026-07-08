@@ -360,7 +360,6 @@ export function StudioApp() {
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
   const dragOverlay = useDragOverlay(fileManager.handleImportFiles);
-  // Gesture recording
   const handleToggleRecordingRef = useRef<() => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
@@ -531,6 +530,7 @@ export function StudioApp() {
                       handleTimelineFileDrop={timelineEditing.handleTimelineFileDrop}
                       handleTimelineElementMove={timelineEditing.handleTimelineElementMove}
                       handleTimelineElementResize={timelineEditing.handleTimelineElementResize}
+                      handleToggleTrackHidden={timelineEditing.handleToggleTrackHidden}
                       handleBlockedTimelineEdit={timelineEditing.handleBlockedTimelineEdit}
                       handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                       handleRazorSplit={timelineEditing.handleRazorSplit}
@@ -572,6 +572,7 @@ export function StudioApp() {
                         domEditSaveTimestampRef={domEditSaveTimestampRef}
                         recordEdit={editHistory.recordEdit}
                         {...cropModeProps}
+                        onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                       />
                     )}
                   </div>

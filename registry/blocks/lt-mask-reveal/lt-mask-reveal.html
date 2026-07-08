@@ -48,6 +48,7 @@
         position: absolute;
         top: 0;
         bottom: 0;
+        left: 0;
         width: 8px;
         background: #ffd23f;
       }
@@ -92,12 +93,17 @@
       var role = document.getElementById("lt-role");
 
       // An accent sweep crosses left→right; the name is revealed by a clip-path wipe behind it; role fades up.
+      // Sweep travel: left:"100%" was parent-relative (offsetParent = .lt-namewrap). Since the sweep is
+      // only 8px wide, xPercent would travel just 8px, so translate by the container width in pixels instead.
+      // The .lt-namewrap shrink-wraps the name "Dr. Maya Chen" to 536px (no horizontal padding/border, so
+      // clientWidth == content width), which is exactly what left:"100%" resolved to.
+      var SWEEP_TRAVEL = 536;
       gsap.set(nameEl, { clipPath: "inset(0 100% 0 0)" });
-      gsap.set(sweep, { left: "0%", opacity: 0 });
+      gsap.set(sweep, { x: 0, opacity: 0 });
       gsap.set(role, { y: 14, opacity: 0 });
 
       tl.to(sweep, { opacity: 1, duration: 0.12, ease: "none" }, 0.1);
-      tl.to(sweep, { left: "100%", duration: 0.55, ease: "power2.inOut" }, 0.12);
+      tl.to(sweep, { x: SWEEP_TRAVEL, duration: 0.55, ease: "power2.inOut" }, 0.12);
       tl.to(nameEl, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power2.inOut" }, 0.16);
       tl.to(sweep, { opacity: 0, duration: 0.15, ease: "none" }, 0.6);
       tl.to(role, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.55);

@@ -1,6 +1,5 @@
 import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
-import type { TimelineRangeSelection } from "./timelineEditing";
 import { GUTTER, RULER_H, formatTimelineTickLabel } from "./timelineLayout";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 
@@ -12,8 +11,6 @@ interface TimelineRulerProps {
   totalH: number;
   effectiveDuration: number;
   majorTickInterval: number;
-  shiftHeld: boolean;
-  rangeSelection: TimelineRangeSelection | null;
   theme: TimelineTheme;
   beatAnalysis?: MusicBeatAnalysis | null;
 }
@@ -26,8 +23,6 @@ export const TimelineRuler = memo(function TimelineRuler({
   totalH,
   effectiveDuration,
   majorTickInterval,
-  shiftHeld,
-  rangeSelection,
   theme,
   beatAnalysis,
 }: TimelineRulerProps) {
@@ -87,35 +82,34 @@ export const TimelineRuler = memo(function TimelineRuler({
       {/* Ruler */}
       <div
         className="relative overflow-hidden"
-        style={{ height: RULER_H, marginLeft: GUTTER, width: trackContentWidth }}
+        style={{
+          height: RULER_H,
+          marginLeft: GUTTER,
+          width: trackContentWidth,
+          background: theme.gutterBackground,
+          borderBottom: `1px solid ${theme.rulerBorder}`,
+        }}
       >
-        {shiftHeld && !rangeSelection && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-            <span className="text-[9px] font-medium" style={{ color: theme.textSecondary }}>
-              Drag or click a clip to edit range
-            </span>
-          </div>
-        )}
-
         {minor.map((t) => (
           <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
-            <div className="w-px h-[3px]" style={{ background: theme.tickMinor }} />
+            <div className="w-px h-2" style={{ background: theme.tickMinor }} />
           </div>
         ))}
 
         {major.map((t) => (
-          <div
-            key={`M-${t}`}
-            className="absolute bottom-0 flex flex-col items-center"
-            style={{ left: t * pps }}
-          >
+          <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
             <span
-              className="text-[9px] font-mono tabular-nums leading-none mb-0.5"
-              style={{ color: theme.tickText }}
+              className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
+              style={{
+                color: theme.tickText,
+                left: 5,
+                top: 5,
+                fontSize: 10,
+              }}
             >
               {formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
             </span>
-            <div className="w-px h-[5px]" style={{ background: theme.tickMajor }} />
+            <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
           </div>
         ))}
       </div>

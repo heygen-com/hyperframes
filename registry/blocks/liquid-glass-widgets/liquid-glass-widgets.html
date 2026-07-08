@@ -629,16 +629,35 @@
       var batteryCounter = { value: 87 };
       var stepsCounter = { value: 8.2 };
 
-      var allPanels = [s1g, s1t, s2g, s2t, s3g, s3t, scg, sct, p1g, p1t, p2g, p2t, p3g, p3t];
-      gsap.set(allPanels, { opacity: 1, top: 1160 });
+      // Glass panels (rasterized by the html-in-canvas API) animate top — the API
+      // reads sub-pixel getComputedStyle().top, so layout-prop motion does not
+      // stutter and the lint rule exempts them. Plain-DOM text overlays DO stutter on
+      // layout props, so they animate the transform equivalent (y). y is relative to
+      // each text element's CSS resting top (stats 300, showcase 380, pills 720), so the
+      // initial seed to visual 1160 is y = 1160 - restingTop.
+      var glassPanels = [s1g, s2g, s3g, scg, p1g, p2g, p3g];
+      var statText = [s1t, s2t, s3t];
+      var showcaseText = sct;
+      var pillText = [p1t, p2t, p3t];
+      gsap.set(glassPanels, { opacity: 1, top: 1160 });
+      gsap.set(statText, { opacity: 1, y: 860 }); // 1160 - 300
+      gsap.set(showcaseText, { opacity: 1, y: 780 }); // 1160 - 380
+      gsap.set(pillText, { opacity: 1, y: 440 }); // 1160 - 720
 
-      tl.to([s1g, s1t], { top: 300, duration: 0.46, ease: "power3.out" }, 0.12);
-      tl.to([s2g, s2t], { top: 300, duration: 0.46, ease: "power3.out" }, 0.24);
-      tl.to([s3g, s3t], { top: 300, duration: 0.46, ease: "power3.out" }, 0.36);
-      tl.to([scg, sct], { top: 380, duration: 0.5, ease: "power3.out" }, 0.5);
-      tl.to([p1g, p1t], { top: 720, duration: 0.32, ease: "power3.out" }, 0.9);
-      tl.to([p2g, p2t], { top: 720, duration: 0.32, ease: "power3.out" }, 1.0);
-      tl.to([p3g, p3t], { top: 720, duration: 0.32, ease: "power3.out" }, 1.1);
+      tl.to(s1g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.12);
+      tl.to(s1t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.12); // 300 - 300
+      tl.to(s2g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.24);
+      tl.to(s2t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.24); // 300 - 300
+      tl.to(s3g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.36);
+      tl.to(s3t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.36); // 300 - 300
+      tl.to(scg, { top: 380, duration: 0.5, ease: "power3.out" }, 0.5);
+      tl.to(sct, { y: 0, duration: 0.5, ease: "power3.out" }, 0.5); // 380 - 380
+      tl.to(p1g, { top: 720, duration: 0.32, ease: "power3.out" }, 0.9);
+      tl.to(p1t, { y: 0, duration: 0.32, ease: "power3.out" }, 0.9); // 720 - 720
+      tl.to(p2g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.0);
+      tl.to(p2t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.0); // 720 - 720
+      tl.to(p3g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.1);
+      tl.to(p3t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.1); // 720 - 720
 
       tl.to("#temp-meter", { width: "76%", duration: 1.7, ease: "power2.out" }, 0.9);
       tl.to(
@@ -698,11 +717,8 @@
         null,
         5.2,
       );
-      tl.to(
-        [scg, sct],
-        { top: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
-        5.2,
-      );
+      tl.to(scg, { top: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
+      tl.to(sct, { y: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
       tl.to(
         ".pill-dot",
         { scale: 1.55, duration: 0.2, ease: "power2.out", stagger: 0.12, yoyo: true, repeat: 3 },
@@ -710,11 +726,25 @@
       );
 
       tl.to(
-        [s1g, s1t, s2g, s2t, s3g, s3t],
+        [s1g, s2g, s3g],
         { top: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
         5.7,
       );
-      tl.to(allPanels, { top: "+=760", duration: 0.42, ease: "power2.in" }, 6.74);
+      tl.to(
+        [s1t, s2t, s3t],
+        { y: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.7,
+      );
+      tl.to(
+        [s1g, s2g, s3g, scg, p1g, p2g, p3g],
+        { top: "+=760", duration: 0.42, ease: "power2.in" },
+        6.74,
+      );
+      tl.to(
+        [s1t, s2t, s3t, sct, p1t, p2t, p3t],
+        { y: "+=760", duration: 0.42, ease: "power2.in" },
+        6.74,
+      );
 
       /* Duration driver */
       tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);

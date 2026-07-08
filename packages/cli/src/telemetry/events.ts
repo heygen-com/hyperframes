@@ -120,6 +120,8 @@ export function trackRenderComplete(
     deCaptureMode?: string;
     deCompileGate?: string;
     deClampReason?: string;
+    deWorkerInversion?: string;
+    dePreInversionWorkers?: number;
     deGateReason?: string;
     deWorkerEncode?: boolean;
     deVerifyArmed?: number;
@@ -196,6 +198,8 @@ export function trackRenderComplete(
       de_capture_mode: props.deCaptureMode,
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
+      de_worker_inversion: props.deWorkerInversion,
+      de_pre_inversion_workers: props.dePreInversionWorkers,
       de_gate_reason: props.deGateReason,
       de_worker_encode: props.deWorkerEncode,
       de_verify_armed: props.deVerifyArmed,
@@ -443,6 +447,7 @@ export function trackFigmaImport(props: {
   entryCount?: number;
   unresolvedBindings?: number;
   rasterizedNodes?: number;
+  rasterizeFailures?: number;
 }): void {
   trackEvent("figma_import", {
     phase: props.phase,
@@ -454,6 +459,9 @@ export function trackFigmaImport(props: {
       ? { unresolved_bindings: props.unresolvedBindings }
       : {}),
     ...(props.rasterizedNodes !== undefined ? { rasterized_nodes: props.rasterizedNodes } : {}),
+    ...(props.rasterizeFailures !== undefined
+      ? { rasterize_failures: props.rasterizeFailures }
+      : {}),
   });
 }
 

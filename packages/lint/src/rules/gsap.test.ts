@@ -1444,4 +1444,258 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
     expect(finding).toBeUndefined();
   });
+
+  it("gsap_non_transform_motion: errors on layout-prop tweens (left/marginLeft) and roundProps", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="a"></div><div id="b"></div><div id="c"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#a", { left: 0 }, { left: 1300, duration: 5, ease: "expo.out" }, 0);
+    tl.fromTo("#b", { marginLeft: 0 }, { marginLeft: 1300, duration: 5, ease: "expo.out" }, 0);
+    tl.fromTo("#c", { x: 0 }, { x: 1300, duration: 5, ease: "expo.out", roundProps: "x" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_non_transform_motion");
+    expect(findings).toHaveLength(3);
+    expect(findings.every((f) => f.severity === "error")).toBe(true);
+  });
+
+  it("gsap_non_transform_motion: does NOT fire on transform x/y", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#a", { x: 0 }, { x: 1300, duration: 5, ease: "expo.out" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_non_transform_motion: does NOT fire on tl.set() (instantaneous, no stutter)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#a", { left: 100 }, 0);
+    tl.fromTo("#a", { x: 0 }, { x: 1300, duration: 5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_non_transform_motion: one tween with both a layout prop AND roundProps reports once", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#a", { left: 0 }, { left: 1300, duration: 5, roundProps: "left" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_non_transform_motion");
+    expect(findings).toHaveLength(1);
+  });
+
+  it("gsap_non_transform_motion: catches standalone gsap.to() animating a layout prop", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#a", { opacity: 1, duration: 1 }, 0);
+    gsap.to("#a", { left: 1300, duration: 5 });
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (f) => f.code === "gsap_non_transform_motion" && f.selector === "#a",
+    );
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: does NOT fire on html-in-canvas elements (<canvas layoutsubtree>)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas layoutsubtree width="1920" height="1080">
+      <div class="liquid-glass" id="gp1"></div>
+    </canvas>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#gp1", { left: 1340, duration: 5, ease: "expo.out" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_non_transform_motion: still fires on a grouped tween that also targets a plain-DOM element", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas layoutsubtree width="1920" height="1080">
+      <div class="liquid-glass" id="gp1"></div>
+    </canvas>
+    <div id="txt1">card</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to(["#gp1", "#txt1"], { left: 1340, duration: 5, ease: "expo.out" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: fires on a label-positioned tl tween (non-numeric timeline position)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="cursor"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.addLabel("hold6", 6);
+    tl.to("#cursor", { left: 500, top: 580, duration: 1 }, "hold6");
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: fires on a tl tween whose vars contain a nested {} (onComplete body)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#a", { left: 1300, duration: 5, onComplete: function () { window.done = true; } }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: roundProps on an html-in-canvas element still fires (not exempt)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas layoutsubtree width="1920" height="1080">
+      <div class="liquid-glass" id="gp1"></div>
+    </canvas>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#gp1", { x: 100, duration: 5, roundProps: "x" }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: fires on a layout/reflow prop that appears only in a fromTo's from-object", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="t"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#t", { left: 100, letterSpacing: "0.3em" }, { opacity: 1, duration: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: fires on text-reflow props (letterSpacing / fontSize)", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="t"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#t", { letterSpacing: "-4px", duration: 4, ease: "power1.out" }, 0);
+    tl.to("#t", { fontSize: 80, duration: 4 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_non_transform_motion");
+    expect(findings).toHaveLength(2);
+    expect(findings.every((f) => f.severity === "error")).toBe(true);
+  });
+
+  it("gsap_non_transform_motion: text-reflow props are NOT html-in-canvas-exempt", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas layoutsubtree width="1920" height="1080">
+      <div class="liquid-glass" id="gp1">label</div>
+    </canvas>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#gp1", { letterSpacing: "-4px", duration: 4 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeDefined();
+  });
+
+  it("gsap_non_transform_motion: does NOT fire on the literal text 'roundProps:' inside a string", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"><div id="a"></div></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const label = "roundProps: see the docs";
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#a", { x: 0 }, { x: 1300, duration: 5 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
+    expect(finding).toBeUndefined();
+  });
 });

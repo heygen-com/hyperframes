@@ -22,7 +22,7 @@
       "files": 1
     },
     "hyperframes-animation": {
-      "hash": "0d0bd375f292a04a",
+      "hash": "373da1c37ee2bd36",
       "files": 116
     },
     "hyperframes-cli": {
@@ -30,11 +30,11 @@
       "files": 7
     },
     "hyperframes-core": {
-      "hash": "c1a1f45d57d65019",
+      "hash": "5b3a61fad4106c76",
       "files": 14
     },
     "hyperframes-creative": {
-      "hash": "1aabfdbfeb06fe45",
+      "hash": "a5bccc25d291899d",
       "files": 69
     },
     "hyperframes-keyframes": {
@@ -46,15 +46,15 @@
       "files": 10
     },
     "media-use": {
-      "hash": "db5787c5ff2bd852",
-      "files": 97
+      "hash": "b982d0f7c710bf23",
+      "files": 101
     },
     "motion-graphics": {
       "hash": "2f7d2bd5a7576141",
       "files": 23
     },
     "music-to-video": {
-      "hash": "889cc05c8aa968ec",
+      "hash": "349fbbe958eb1682",
       "files": 132
     },
     "pr-to-video": {
@@ -78,7 +78,7 @@
       "files": 27
     },
     "website-to-video": {
-      "hash": "e227830484883145",
+      "hash": "886d3f32388a22db",
       "files": 32
     }
   }

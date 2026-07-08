@@ -156,3 +156,34 @@ export function detectInstaller(): InstallerInfo {
     reason: `Unknown install layout at ${realEntry}`,
   };
 }
+
+/** Argv-shaped install command for a no-shell `execFile`. */
+export interface InstallInvocation {
+  bin: string;
+  args: string[];
+}
+
+/**
+ * The argv form of {@link InstallerInfo.installCommand}, kept next to the
+ * detector so the command we *run* (execFile, no shell) and the command we
+ * *display* (installCommand string) can never drift. Returns `null` for `skip`
+ * kinds (ephemeral npx/bunx, workspace links, project-local, unknown layouts):
+ * the caller must print a manual instruction rather than run a guessed command
+ * (running the wrong manager is worse than running nothing).
+ */
+export function installInvocation(kind: InstallerKind, version: string): InstallInvocation | null {
+  switch (kind) {
+    case "npm":
+      return { bin: "npm", args: ["install", "-g", `hyperframes@${version}`] };
+    case "bun":
+      return { bin: "bun", args: ["add", "-g", `hyperframes@${version}`] };
+    case "pnpm":
+      return { bin: "pnpm", args: ["add", "-g", `hyperframes@${version}`] };
+    case "brew":
+      // brew has no per-version install; `brew upgrade` moves to the tap's
+      // current formula (a no-op if the tap hasn't caught up).
+      return { bin: "brew", args: ["upgrade", "hyperframes"] };
+    case "skip":
+      return null;
+  }
+}

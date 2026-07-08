@@ -402,23 +402,20 @@
         var renderStatus = document.getElementById("render-status");
         var renderCopy = document.getElementById("render-copy");
 
-        gsap.set(["#gp1", "#txt1", "#gp2", "#txt2"], { left: "1980px", opacity: 0 });
+        gsap.set(["#gp1", "#gp2"], { left: "1980px", opacity: 0 });
+        gsap.set(["#txt1", "#txt2"], { x: 640, opacity: 0 });
         gsap.set("#reply-actions", { y: 8, opacity: 0 });
         gsap.set("#typing-dots span", { opacity: 0.35 });
 
-        tl.to(
-          ["#gp1", "#txt1"],
-          { left: "1326px", opacity: 1, duration: 0.38, ease: "power3.out" },
-          0.18,
-        );
-        tl.to(["#gp1", "#txt1"], { left: "1340px", duration: 0.16, ease: "power2.out" }, 0.56);
+        tl.to("#gp1", { left: "1326px", opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
+        tl.to("#txt1", { x: -14, opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
+        tl.to("#gp1", { left: "1340px", duration: 0.16, ease: "power2.out" }, 0.56);
+        tl.to("#txt1", { x: 0, duration: 0.16, ease: "power2.out" }, 0.56);
 
-        tl.to(
-          ["#gp2", "#txt2"],
-          { left: "1326px", opacity: 1, duration: 0.36, ease: "power3.out" },
-          0.82,
-        );
-        tl.to(["#gp2", "#txt2"], { left: "1340px", duration: 0.16, ease: "power2.out" }, 1.18);
+        tl.to("#gp2", { left: "1326px", opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
+        tl.to("#txt2", { x: -14, opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
+        tl.to("#gp2", { left: "1340px", duration: 0.16, ease: "power2.out" }, 1.18);
+        tl.to("#txt2", { x: 0, duration: 0.16, ease: "power2.out" }, 1.18);
 
         tl.to("#render-progress", { width: "100%", duration: 3.4, ease: "none" }, 0.82);
         tl.to(
@@ -439,8 +436,10 @@
           },
           1.2,
         );
-        tl.to(["#gp2", "#txt2"], { top: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
-        tl.to(["#gp2", "#txt2"], { top: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
+        tl.to("#gp2", { top: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
+        tl.to("#txt2", { y: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
+        tl.to("#gp2", { top: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
+        tl.to("#txt2", { y: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
         tl.to("#reply-actions", { y: 0, opacity: 1, duration: 0.24, ease: "power2.out" }, 2.72);
         tl.to(
           "#status-dot",
@@ -460,21 +459,20 @@
           4.25,
         );
         tl.to(
-          ["#gp1", "#txt1"],
+          "#gp1",
           { top: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
           4.25,
         );
+        tl.to(
+          "#txt1",
+          { y: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
+          4.25,
+        );
 
-        tl.to(
-          ["#gp1", "#txt1"],
-          { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" },
-          6.72,
-        );
-        tl.to(
-          ["#gp2", "#txt2"],
-          { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" },
-          6.9,
-        );
+        tl.to("#gp1", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
+        tl.to("#txt1", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
+        tl.to("#gp2", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
+        tl.to("#txt2", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
 
         window.__timelines["liquid-glass-notification"] = tl;
       })();

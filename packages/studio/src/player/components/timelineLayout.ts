@@ -11,9 +11,9 @@ const TIMELINE_SCROLL_BUFFER = 20;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
 function getMajorTickInterval(duration: number, pixelsPerSecond?: number): number {
-  const zoomIntervals = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+  const zoomIntervals = [0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
   if (Number.isFinite(pixelsPerSecond) && (pixelsPerSecond ?? 0) > 0) {
-    const targetMajorPx = 128;
+    const targetMajorPx = 88;
     return (
       zoomIntervals.find((interval) => interval * (pixelsPerSecond ?? 0) >= targetMajorPx) ?? 600
     );
@@ -24,20 +24,14 @@ function getMajorTickInterval(duration: number, pixelsPerSecond?: number): numbe
 }
 
 function getMinorTickInterval(majorInterval: number, pixelsPerSecond?: number): number {
-  let interval = majorInterval / 2;
-  if (majorInterval >= 30) interval = majorInterval / 6;
-  else if (majorInterval >= 15) interval = majorInterval / 3;
-  else if (majorInterval >= 5) interval = majorInterval / 5;
-  else if (majorInterval >= 1) interval = majorInterval / 4;
-
   if (
     Number.isFinite(pixelsPerSecond) &&
     (pixelsPerSecond ?? 0) > 0 &&
-    interval * (pixelsPerSecond ?? 0) < 20
+    (majorInterval / 2) * (pixelsPerSecond ?? 0) < 12
   ) {
-    return Math.max(0.25, majorInterval / 2);
+    return 0;
   }
-  return Math.max(0.25, interval);
+  return majorInterval / 2;
 }
 
 export function generateTicks(
@@ -51,17 +45,13 @@ export function generateTicks(
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000; // Safety cap to prevent runaway tick generation
-  for (
-    let t = 0;
-    t <= duration + 0.001 && major.length + minor.length < maxTicks;
-    t += minorInterval
-  ) {
+  for (let t = 0; t <= duration + 0.001 && major.length < maxTicks; t += majorInterval) {
     const rounded = Math.round(t * 100) / 100;
-    const isMajor =
-      Math.abs(rounded % majorInterval) < 0.01 ||
-      Math.abs((rounded % majorInterval) - majorInterval) < 0.01;
-    if (isMajor) major.push(rounded);
-    else minor.push(rounded);
+    major.push(rounded);
+    if (minorInterval > 0 && major.length + minor.length < maxTicks) {
+      const midpoint = Math.round((t + minorInterval) * 100) / 100;
+      if (midpoint <= duration + 0.001) minor.push(midpoint);
+    }
   }
   return { major, minor };
 }
@@ -69,6 +59,12 @@ export function generateTicks(
 export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number) {
   if (!Number.isFinite(time)) return "0:00";
   const safeTime = Math.max(0, time);
+  if (majorInterval < 0.1) {
+    const totalHundredths = Math.round(safeTime * 100);
+    const wholeSeconds = Math.floor(totalHundredths / 100);
+    const hundredth = totalHundredths % 100;
+    return `${formatTime(wholeSeconds)}.${hundredth.toString().padStart(2, "0")}`;
+  }
   if (majorInterval < 1) {
     const totalTenths = Math.round(safeTime * 10);
     const wholeSeconds = Math.floor(totalTenths / 10);
@@ -101,7 +97,7 @@ export function getTimelineScrollLeftForZoomTransition(
   nextZoomMode: ZoomMode,
   currentScrollLeft: number,
 ): number {
-  if (previousZoomMode === "manual" && nextZoomMode === "fit") return 0;
+  if (nextZoomMode === "fit") return 0;
   return currentScrollLeft;
 }
 

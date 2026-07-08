@@ -1,4 +1,4 @@
-import type { RuntimePlayer, RuntimeTimelineLike } from "./types";
+import type { RuntimePlayer, RuntimeSeekOptions, RuntimeTimelineLike } from "./types";
 import { quantizeTimeToFrame } from "../inline-scripts/parityContract";
 import { swallow } from "./diagnostics";
 
@@ -41,7 +41,7 @@ type PlayerDeps = {
   getCanonicalFps: () => number;
   onSyncMedia: (timeSeconds: number, playing: boolean) => void;
   onStatePost: (force: boolean) => void;
-  onDeterministicSeek: (timeSeconds: number) => void;
+  onDeterministicSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   onDeterministicPause: () => void;
   onDeterministicPlay: () => void;
   onRenderFrameSeek: (timeSeconds: number) => void;
@@ -79,13 +79,15 @@ function seekTimelineDeterministically(
   timeline: RuntimeTimelineLike,
   timeSeconds: number,
   canonicalFps: number,
+  options?: RuntimeSeekOptions,
 ): number {
   const quantized = quantizeTimeToFrame(timeSeconds, canonicalFps);
+  const suppressEvents = options?.suppressEvents === true;
   safeVoid(timeline, "pause");
   if (typeof timeline.totalTime === "function") {
-    timeline.totalTime(quantized, false);
+    timeline.totalTime(quantized, suppressEvents);
   } else {
-    if (typeof timeline.seek === "function") timeline.seek(quantized, false);
+    if (typeof timeline.seek === "function") timeline.seek(quantized, suppressEvents);
   }
   return quantized;
 }
@@ -95,6 +97,7 @@ function seekMasterAndSiblingTimelinesDeterministically(
   master: RuntimeTimelineLike,
   timeSeconds: number,
   canonicalFps: number,
+  options?: RuntimeSeekOptions,
 ): number {
   const rearmedSiblings: RuntimeTimelineLike[] = [];
   forEachSiblingTimeline(registry, master, (tl) => {
@@ -102,7 +105,7 @@ function seekMasterAndSiblingTimelinesDeterministically(
     rearmedSiblings.push(tl);
   });
   try {
-    return seekTimelineDeterministically(master, timeSeconds, canonicalFps);
+    return seekTimelineDeterministically(master, timeSeconds, canonicalFps, options);
   } finally {
     for (const tl of rearmedSiblings) {
       try {
@@ -206,7 +209,7 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       deps.onRenderFrameSeek(quantized);
       deps.onStatePost(true);
     },
-    renderSeek: (timeSeconds: number) => {
+    renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => {
       const timeline = deps.getTimeline();
       const canonicalFps = deps.getCanonicalFps();
       // When a composition has no GSAP timeline (pure CSS / WAAPI / Lottie /
@@ -219,10 +222,10 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
             // If nested siblings stay paused, GSAP collapses the root back to the
             // authored master duration and later frames clamp incorrectly.
             activateSiblingTimelines(deps.getTimelineRegistry?.(), timeline);
-            return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps);
+            return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps, options);
           })()
         : quantizeTimeToFrame(Math.max(0, Number(timeSeconds) || 0), canonicalFps);
-      deps.onDeterministicSeek(quantized);
+      deps.onDeterministicSeek(quantized, options);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);
       deps.onRenderFrameSeek(quantized);

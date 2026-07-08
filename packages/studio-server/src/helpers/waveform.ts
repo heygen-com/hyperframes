@@ -18,6 +18,7 @@ function computePeaks(floats: Float32Array, count: number): number[] {
     const end = Math.min(Math.floor((i + 1) * step), floats.length);
     let max = 0;
     for (let j = start; j < end; j++) {
+      // fallow-ignore-next-line code-duplication
       const abs = Math.abs(floats[j] ?? 0);
       if (abs > max) max = abs;
     }

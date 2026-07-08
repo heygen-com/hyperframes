@@ -21,6 +21,7 @@ import {
 import { RULER_H, TRACK_H } from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
+import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,6 +31,7 @@ afterEach(() => {
 });
 
 describe("Timeline provider boundary", () => {
+  // fallow-ignore-next-line code-duplication
   it("renders the public Timeline export without TimelineEditProvider", () => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -51,6 +53,99 @@ describe("Timeline provider boundary", () => {
         root.render(React.createElement(Timeline));
       });
     }).not.toThrow();
+
+    act(() => root.unmount());
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("renders the gutter without legacy icons or hue dots", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: 640,
+    });
+
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "clip-1", tag: "div", start: 0, duration: 2, track: 0 }],
+    });
+
+    const root = createRoot(host);
+    act(() => {
+      root.render(React.createElement(Timeline));
+    });
+
+    const hueDot = Array.from(host.querySelectorAll("div")).find(
+      (node) =>
+        node.style.width === "6px" &&
+        node.style.height === "6px" &&
+        node.style.borderRadius === "9999px",
+    );
+
+    expect(host.querySelector('img[src^="/icons/timeline/"]')).toBeNull();
+    expect(hueDot).toBeUndefined();
+    act(() => root.unmount());
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("requests persisted track visibility from the gutter without seeking", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: 640,
+    });
+
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [{ id: "clip-1", tag: "div", start: 0, duration: 2, track: 0, hidden: true }],
+    });
+
+    const onSeek = vi.fn();
+    const onToggleTrackHidden = vi.fn();
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        React.createElement(
+          TimelineEditProvider,
+          { value: { onToggleTrackHidden } },
+          React.createElement(Timeline, { onSeek }),
+        ),
+      );
+    });
+
+    const button = host.querySelector<HTMLButtonElement>('button[aria-label="Show track 0"]');
+    expect(button).not.toBeNull();
+    if (!button) throw new Error("Expected a track visibility toggle");
+
+    act(() => {
+      button.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          clientX: 120,
+          clientY: 40,
+        }),
+      );
+    });
+    expect(onSeek).not.toHaveBeenCalled();
+
+    act(() => {
+      button.click();
+    });
+
+    const row = button.parentElement?.parentElement;
+    const trackContent = row?.children.item(1);
+    expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);
+    expect(trackContent).toBeInstanceOf(HTMLElement);
+    if (!(trackContent instanceof HTMLElement)) {
+      throw new Error("Expected track content element");
+    }
+    expect(trackContent.style.opacity).toBe("0.35");
 
     act(() => root.unmount());
   });
@@ -177,10 +272,10 @@ describe("generateTicks", () => {
   it("uses denser major labels as timeline zoom increases", () => {
     const fitTicks = generateTicks(180, 10);
     const zoomedTicks = generateTicks(180, 48);
-    expect(fitTicks.major[1] - fitTicks.major[0]).toBe(15);
-    expect(zoomedTicks.major[1] - zoomedTicks.major[0]).toBe(5);
+    expect(fitTicks.major[1] - fitTicks.major[0]).toBe(10);
+    expect(fitTicks.minor).toContain(5);
+    expect(zoomedTicks.major[1] - zoomedTicks.major[0]).toBe(2);
     expect(zoomedTicks.minor).toContain(1);
-    expect(zoomedTicks.minor).toContain(4);
   });
 
   it("keeps labels readable instead of placing one at every tiny tick", () => {
@@ -194,6 +289,7 @@ describe("formatTime", () => {
     expect(formatTime(0)).toBe("0:00");
   });
 
+  // fallow-ignore-next-line code-duplication
   it("formats seconds below a minute", () => {
     expect(formatTime(5)).toBe("0:05");
     expect(formatTime(30)).toBe("0:30");
@@ -261,8 +357,12 @@ describe("getTimelineScrollLeftForZoomTransition", () => {
     expect(getTimelineScrollLeftForZoomTransition("manual", "fit", 480)).toBe(0);
   });
 
-  it("preserves the current scroll offset for other zoom transitions", () => {
-    expect(getTimelineScrollLeftForZoomTransition("fit", "fit", 480)).toBe(480);
+  it("resets horizontal scroll whenever the next zoom mode is fit", () => {
+    expect(getTimelineScrollLeftForZoomTransition("fit", "fit", 480)).toBe(0);
+    expect(getTimelineScrollLeftForZoomTransition(null, "fit", 480)).toBe(0);
+  });
+
+  it("preserves the current scroll offset for manual zoom transitions", () => {
     expect(getTimelineScrollLeftForZoomTransition("fit", "manual", 480)).toBe(480);
     expect(getTimelineScrollLeftForZoomTransition("manual", "manual", 480)).toBe(480);
   });

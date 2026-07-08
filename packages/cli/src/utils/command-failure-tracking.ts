@@ -1,4 +1,5 @@
 import type { CommandDef } from "citty";
+import { assertKnownFlags } from "./reject-unknown-flags.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
 // each command's specific args type is accepted without per-command generics.
@@ -29,6 +30,11 @@ export function trackCommandFailures(
       return {
         ...cmd,
         run: async (ctx: Parameters<typeof run>[0]) => {
+          // Reject unknown flags before the command runs: citty silently ignores
+          // them otherwise, dropping the value (e.g. `render --out x` fell back
+          // to the default output path). A leaf command with a `run` is the right
+          // place — nested command groups delegate to their own subcommands.
+          assertKnownFlags(cmd, ctx?.rawArgs ?? []);
           try {
             return await run(ctx);
           } catch (err) {

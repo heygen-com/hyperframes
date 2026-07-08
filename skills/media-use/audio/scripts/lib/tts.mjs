@@ -239,6 +239,18 @@ export async function synthesizeOne({
 }) {
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
   if (provider === "elevenlabs") {
+    // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
+    // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
+    // so on a fresh project (no assets/voice/ yet) the save fails and the line is
+    // silently dropped as "TTS failed - omitted". Create it first, like the other
+    // providers do. Guarded so a mkdir failure (EACCES/EROFS) returns
+    // { ok:false } like the rest of this branch rather than throwing (the
+    // function's contract is "never throws; failures return { ok:false }").
+    try {
+      mkdirSync(dirname(wavAbs), { recursive: true });
+    } catch {
+      return { ok: false, words: null };
+    }
     const { cmd, args } = pythonInvocation([
       "-c",
       ELEVENLABS_PY,

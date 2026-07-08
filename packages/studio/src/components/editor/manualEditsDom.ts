@@ -33,6 +33,7 @@ import {
 import { roundRotationAngle } from "./manualEditsParsing";
 import { applyStudioMotionFromDom } from "./studioMotion";
 import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
@@ -162,24 +163,6 @@ export function restoreInlineDisplay(element: HTMLElement): void {
 }
 
 /* ── Translate helpers ────────────────────────────────────────────── */
-function splitTopLevelWhitespace(value: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let current = "";
-  for (const char of value.trim()) {
-    if (char === "(") depth += 1;
-    if (char === ")") depth = Math.max(0, depth - 1);
-    if (/\s/.test(char) && depth === 0) {
-      if (current) parts.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  if (current) parts.push(current);
-  return parts;
-}
-
 function composeTranslateValue(element: HTMLElement, x: string, y: string): string {
   const original = element.getAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR)?.trim();
   if (!original || original === "none") return `${x} ${y}`;

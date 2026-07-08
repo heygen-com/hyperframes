@@ -40,23 +40,30 @@ export function pushWorkerDedupPerfs(
  * render-level drawElement outcome. mode/gateReason |-join distinct values
  * across workers (bounded cardinality); counters SUM.
  */
+/** Orchestrator-supplied render-level drawElement outcome (one shape, used by
+ * both the aggregate function and buildRenderPerfSummary's input). */
+export interface DrawElementPerfInput {
+  compileGate?: string;
+  clampReason?: string;
+  workerInversion?: "inverted" | "reverted";
+  /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
+  preInversionWorkers?: number;
+  selfVerifyFallback: boolean;
+  fallbackReason?: string;
+  drainStats?: {
+    verifyChecked: number;
+    verifyMinDb?: number;
+    blankSuspects: number;
+    blankDeterministicAccepts: number;
+    blankRecaptures: number;
+  };
+}
+
 // Flat field mapping — branches are ?? fallbacks, not logic.
 // fallow-ignore-next-line complexity
 function aggregateDrawElement(
   perfs: CapturePerfSummary[],
-  de: {
-    compileGate?: string;
-    clampReason?: string;
-    selfVerifyFallback: boolean;
-    fallbackReason?: string;
-    drainStats?: {
-      verifyChecked: number;
-      verifyMinDb?: number;
-      blankSuspects: number;
-      blankDeterministicAccepts: number;
-      blankRecaptures: number;
-    };
-  },
+  de: DrawElementPerfInput,
 ): RenderPerfSummary["drawElement"] {
   if (perfs.length === 0) return undefined;
   const modes = [...new Set(perfs.map((p) => p.captureMode).filter(Boolean))].sort();
@@ -68,6 +75,8 @@ function aggregateDrawElement(
     mode: modes.join("|") || "unknown",
     compileGate: de.compileGate,
     clampReason: de.clampReason,
+    workerInversion: de.workerInversion ?? "none",
+    preInversionWorkers: de.preInversionWorkers,
     gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
     workerEncode: perfs.some((p) => p.deWorkerEncode),
     verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
@@ -135,19 +144,7 @@ export function buildRenderPerfSummary(input: {
   peakHeapUsedBytes: number;
   /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
   dedupPerfs: CapturePerfSummary[];
-  drawElement?: {
-    compileGate?: string;
-    clampReason?: string;
-    selfVerifyFallback: boolean;
-    fallbackReason?: string;
-    drainStats?: {
-      verifyChecked: number;
-      verifyMinDb?: number;
-      blankSuspects: number;
-      blankDeterministicAccepts: number;
-      blankRecaptures: number;
-    };
-  };
+  drawElement?: DrawElementPerfInput;
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,

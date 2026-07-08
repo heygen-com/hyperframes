@@ -94,6 +94,12 @@ export function useTimelinePlayhead({
     syncPlayheadPosition(currentTime);
   }, [currentTime, pps, syncPlayheadPosition]);
 
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || zoomMode !== "fit") return;
+    scroll.scrollLeft = 0;
+  }, [zoomMode, pps, scrollRef]);
+
   useEffect(() => {
     const scroll = scrollRef.current;
     if (!scroll) {

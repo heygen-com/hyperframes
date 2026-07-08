@@ -3,9 +3,7 @@ import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
-import { groupAwareOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
-import { collectDomEditLayerItems } from "./domEditingLayers";
-import { isElementComputedVisible } from "./domEditingElement";
+import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
@@ -26,6 +24,8 @@ import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropMode";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -173,6 +173,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   });
 
   const compRect = useDomEditCompositionRect({ iframeRef, overlayRef });
+  const compRectRef = useRef(compRect);
+  compRectRef.current = compRect;
 
   const { hasCropInsets, cropOutlineInsetPx } = useCropOverlay({
     selection,
@@ -189,51 +191,35 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  // fallow-ignore-next-line complexity
+  const offCanvasDirtyRef = useRef(true);
+  const offCanvasSigRef = useRef("");
+  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
+  const offCanvasObservedDocRef = useRef<Document | null>(null);
+
+  // Positions depend on live iframe layout, not selection — the selected-element
+  // suppression is a render-time filter, so selection/groupSelections stay out
+  // of the geometry walk.
+  useMountEffect(() =>
+    startOffCanvasIndicatorRefresh({
+      iframeRef,
+      overlayRef,
+      compRectRef,
+      activeCompositionPathRef,
+      dirtyRef: offCanvasDirtyRef,
+      sigRef: offCanvasSigRef,
+      observerRef: offCanvasObserverRef,
+      observedDocRef: offCanvasObservedDocRef,
+      elementsRef: offCanvasElementsRef,
+      setRects: setOffCanvasRects,
+    }),
+  );
+
+  // Switching compositions may not swap the iframe document (so the observer's
+  // doc-swap detection wouldn't fire) yet changes which elements are off-canvas.
+  // Force a recompute explicitly on comp change.
   useEffect(() => {
-    const iframe = iframeRef.current;
-    const overlay = overlayRef.current;
-    if (!iframe || !overlay || compRect.width <= 0) {
-      setOffCanvasRects([]);
-      return;
-    }
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-    const root = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.body;
-    const acp = activeCompositionPath ?? "index.html";
-    const items = collectDomEditLayerItems(root, {
-      activeCompositionPath: acp,
-      isMasterView: !acp || acp === "index.html",
-    });
-    const rects: typeof offCanvasRects = [];
-    const elMap = new Map<string, HTMLElement>();
-    for (const item of items) {
-      if (!isElementComputedVisible(item.element)) continue;
-      // Groups use their members' union (where they actually render), so a group
-      // whose members sit inside the canvas isn't flagged off-canvas by a stale
-      // wrapper box. Crop-hug the result so an inset crop that keeps the visible
-      // part on-canvas doesn't flag the element either.
-      const base = groupAwareOverlayRect(overlay, iframe, item.element);
-      const r = base ? { ...base, ...hugRectForElement(base, item.element) } : null;
-      if (!r) continue;
-      // Any edge crossing the composition border → gray-zone indicator (the
-      // in-canvas portion is clipped away below, so only the sliver shows).
-      const extendsOutsideComp =
-        r.left < compRect.left ||
-        r.left + r.width > compRect.left + compRect.width ||
-        r.top < compRect.top ||
-        r.top + r.height > compRect.top + compRect.height;
-      if (extendsOutsideComp) {
-        rects.push({ key: item.key, left: r.left, top: r.top, width: r.width, height: r.height });
-        elMap.set(item.key, item.element);
-      }
-    }
-    offCanvasElementsRef.current = elMap;
-    setOffCanvasRects(rects);
-    // Positions depend on layout, not selection — the selected-element
-    // suppression is a render-time filter, so selection/groupSelections stay
-    // out of the deps to avoid re-walking geometry on each selection change.
-  }, [iframeRef, compRect, activeCompositionPath]);
+    offCanvasDirtyRef.current = true;
+  }, [activeCompositionPath]);
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
