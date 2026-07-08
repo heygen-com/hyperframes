@@ -53,7 +53,7 @@ function unknownFlagIn(tok: string, known: Set<string>): string | null {
  * + the global set). Only dash-prefixed tokens are inspected, so positionals and
  * flag values pass through untouched. Stops at `--`.
  */
-export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[]): void {
+export function assertKnownFlags<T extends ArgsDef>(cmd: CommandDef<T>, rawArgs: string[]): void {
   if (!Array.isArray(rawArgs)) return;
   // citty types `args` as Resolvable<ArgsDef> (it may be a fn/promise); every
   // hyperframes command uses a static object, so treat anything else as "no

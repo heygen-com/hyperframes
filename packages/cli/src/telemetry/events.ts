@@ -488,6 +488,12 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// Track dropped WebM alpha as an environment signal, so fleet telemetry can
+// reveal ffmpeg/libvpx-vp9 builds and OS combinations that need MOV fallback.
+export function trackWebmAlphaDropped(): void {
+  trackEvent("webm_alpha_dropped", {});
+}
+
 // A skills install was skipped because a required prerequisite binary is
 // absent from PATH (e.g. git on a fresh Windows box). Best-effort callers
 // (init) skip cleanly rather than crash, so the skip is otherwise invisible;

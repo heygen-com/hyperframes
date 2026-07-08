@@ -1920,6 +1920,11 @@ export async function discoverMediaFromBrowser(page: Page): Promise<BrowserMedia
       if (!id) return;
 
       const src = htmlEl.src || htmlEl.getAttribute("src") || "";
+      // These parseFloat calls assume the runtime start resolver has already
+      // numericized data-start before this browser evaluate() runs. If a
+      // dynamic-src regression lets a nonnumeric data-start reach here,
+      // parseFloat silently yields NaN and drops timing. See #2062 and
+      // packages/core/src/runtime/startResolver.ts for the invariant.
       const start = parseFloat(htmlEl.getAttribute("data-start") || "0");
       const end = parseFloat(htmlEl.getAttribute("data-end") || "0");
       const duration = parseFloat(htmlEl.getAttribute("data-duration") || "0");

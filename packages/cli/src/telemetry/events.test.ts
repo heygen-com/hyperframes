@@ -20,6 +20,7 @@ const {
   trackFigmaImport,
   trackRenderFeedback,
   trackRenderPreflightRejected,
+  trackWebmAlphaDropped,
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
@@ -196,6 +197,18 @@ describe("trackCommandFailure", () => {
         error_message: "No words found in transcript.",
       }),
     );
+  });
+});
+
+describe("trackWebmAlphaDropped", () => {
+  beforeEach(() => {
+    trackEvent.mockClear();
+  });
+
+  it("emits a minimal dropped-alpha event", () => {
+    trackWebmAlphaDropped();
+
+    expect(trackEvent).toHaveBeenCalledWith("webm_alpha_dropped", {});
   });
 });
 

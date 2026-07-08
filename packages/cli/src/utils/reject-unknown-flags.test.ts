@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ArgsDef, CommandDef } from "citty";
+import addCmd from "../commands/add.js";
 import { assertKnownFlags } from "./reject-unknown-flags.js";
 
 const cmd = {
@@ -37,6 +38,10 @@ describe("assertKnownFlags", () => {
 
   it("accepts --no-<boolean> negation", () => {
     expect(ok(["--no-docker"])).not.toThrow();
+  });
+
+  it("accepts add command --no-clipboard negation", () => {
+    expect(() => assertKnownFlags(addCmd, ["shader-wipe", "--no-clipboard"])).not.toThrow();
   });
 
   it("accepts global flags and stops at --", () => {

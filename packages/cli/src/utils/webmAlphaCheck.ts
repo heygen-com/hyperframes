@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { findFFprobe } from "../browser/ffmpeg.js";
+import { trackWebmAlphaDropped } from "../telemetry/events.js";
 import { c } from "../ui/colors.js";
 
 /**
@@ -96,6 +97,7 @@ export function warnIfWebmAlphaDropped(outputPath: string, format: string, quiet
   if (quiet || format !== "webm") return;
   const advisory = webmAlphaAdvisory(format, probeWebmAlpha(outputPath));
   if (!advisory) return;
+  trackWebmAlphaDropped();
   console.warn(`\n${c.warn("⚠")}  ${c.bold("Transparency not preserved")}`);
   console.warn(`   ${c.dim(advisory)}\n`);
 }

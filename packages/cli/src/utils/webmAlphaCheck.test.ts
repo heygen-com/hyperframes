@@ -1,5 +1,28 @@
-import { describe, expect, it } from "vitest";
-import { webmAlphaAdvisory } from "./webmAlphaCheck.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const execFileSync = vi.fn();
+const findFFprobe = vi.fn();
+const trackWebmAlphaDropped = vi.fn();
+
+vi.mock("node:child_process", () => ({
+  execFileSync: (...args: unknown[]) => execFileSync(...args),
+}));
+
+vi.mock("../browser/ffmpeg.js", () => ({
+  findFFprobe: () => findFFprobe(),
+}));
+
+vi.mock("../telemetry/events.js", () => ({
+  trackWebmAlphaDropped: () => trackWebmAlphaDropped(),
+}));
+
+const { webmAlphaAdvisory, warnIfWebmAlphaDropped } = await import("./webmAlphaCheck.js");
+
+beforeEach(() => {
+  execFileSync.mockReset();
+  findFFprobe.mockReset();
+  trackWebmAlphaDropped.mockReset();
+});
 
 describe("webmAlphaAdvisory", () => {
   it("warns when a probed webm lacks the ALPHA_MODE sidecar tag", () => {
@@ -25,5 +48,29 @@ describe("webmAlphaAdvisory", () => {
   it("stays silent for non-webm formats (mp4 opaque; mov carries alpha natively)", () => {
     expect(webmAlphaAdvisory("mp4", { probed: true, alphaMode: false })).toBeUndefined();
     expect(webmAlphaAdvisory("mov", { probed: true, alphaMode: false })).toBeUndefined();
+  });
+});
+
+describe("warnIfWebmAlphaDropped", () => {
+  it("tracks telemetry when a completed WebM lost alpha", () => {
+    findFFprobe.mockReturnValue("/usr/bin/ffprobe");
+    execFileSync.mockReturnValue(JSON.stringify({ streams: [{ codec_name: "vp9", tags: {} }] }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      warnIfWebmAlphaDropped("out.webm", "webm", false);
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(trackWebmAlphaDropped).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not track telemetry when quiet or not rendering WebM", () => {
+    warnIfWebmAlphaDropped("out.webm", "webm", true);
+    warnIfWebmAlphaDropped("out.mp4", "mp4", false);
+
+    expect(trackWebmAlphaDropped).not.toHaveBeenCalled();
+    expect(findFFprobe).not.toHaveBeenCalled();
   });
 });
