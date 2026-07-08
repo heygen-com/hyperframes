@@ -45,6 +45,13 @@ body { margin: 0; }
     expect(wrapped).not.toContain("requestAnimationFrame");
   });
 
+  it("wraps anime.js globals with scoped proxies", () => {
+    const wrapped = wrapScopedCompositionScript("anime.animate('.hero', {});", "scene");
+
+    expect(wrapped).toContain("new Proxy(__hfBaseAnime");
+    expect(wrapped).toContain("new Proxy(__hfBaseHyperframesAnime");
+  });
+
   it("normalizes root timing attributes when scoping selectors", () => {
     const scoped = scopeCssToComposition(
       '[data-composition-id="scene"][data-start="0"] .title { opacity: 0; }',
@@ -262,6 +269,332 @@ window.__timelines.scene = tl;
     expect(fakeWindow.__selectedTitle).toBe("Scene");
     expect(fakeWindow.__selectedRootTitle).toBe("Scene");
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
+  });
+
+  it("scopes anime.js timeline selectors independently across identical sub-compositions", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene-a"><h1 class="hero">Alpha</h1></div>
+      <div data-composition-id="scene-b"><h1 class="hero">Beta</h1></div>
+    `);
+    const timelineTargets: string[][] = [];
+    const readTargetText = (targets: Element[] | string) =>
+      typeof targets === "string"
+        ? [`raw:${targets}`]
+        : Array.from(targets).map((target) => target.textContent || "");
+    const fakeAnime = {
+      createTimeline: () => ({
+        add(targets: Element[] | string) {
+          timelineTargets.push(readTargetText(targets));
+          return this;
+        },
+      }),
+    };
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      anime: fakeAnime,
+    };
+    const source = `
+const tl = anime.createTimeline({ autoplay: false });
+tl.add('.hero', { opacity: 1 }, 0);
+`;
+
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene-a"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene-b"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+
+    expect(timelineTargets).toEqual([["Alpha"], ["Beta"]]);
+  });
+
+  it("scopes hyperframesAnime registration ids per composition instance", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="root"></div>
+      <div data-composition-id="child-1"></div>
+    `);
+    type AnimeInstance = { name: string };
+    type AnimeRegistration = {
+      id: string;
+      instance: AnimeInstance;
+      labels: Record<string, number>;
+    };
+    const registry: Record<string, AnimeRegistration> = {};
+    const fakeHyperframesAnime = {
+      register(id: string, instance: AnimeInstance, options?: { labels?: Record<string, number> }) {
+        const registration = { id, instance, labels: options?.labels || {} };
+        registry[id] = registration;
+        return registration;
+      },
+      get(id: string) {
+        return registry[id] || null;
+      },
+      unregister(id: string) {
+        delete registry[id];
+      },
+      entries() {
+        return Object.values(registry);
+      },
+      resolveLabel(id: string, label: string) {
+        return registry[id]?.labels[label] ?? null;
+      },
+    };
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      hyperframesAnime: fakeHyperframesAnime,
+    };
+    const registerSource = `
+const instance = { name: window.__currentInstanceName };
+const registration = hyperframesAnime.register("main", instance, { labels: { intro: 1 } });
+window.__animeReads = window.__animeReads || {};
+window.__animeReads[window.__currentInstanceName] = {
+  registrationId: registration.id,
+  bareGetName: hyperframesAnime.get("main")?.instance?.name || "missing",
+  windowGetName: window.hyperframesAnime.get("main")?.instance?.name || "missing",
+  label: window.hyperframesAnime.resolveLabel("main", "intro"),
+};
+`;
+    const readSource = `
+window.__animeReads[window.__currentInstanceName + "-again"] =
+  window.hyperframesAnime.get("main")?.instance?.name || "missing";
+`;
+
+    fakeWindow.__currentInstanceName = "root";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(registerSource, "root"),
+    )(fakeWindow, {}, undefined, fakeHyperframesAnime);
+    fakeWindow.__currentInstanceName = "child";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(registerSource, "child-1"),
+    )(fakeWindow, {}, undefined, fakeHyperframesAnime);
+    fakeWindow.__currentInstanceName = "root";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(readSource, "root"),
+    )(fakeWindow, {}, undefined, fakeHyperframesAnime);
+    fakeWindow.__currentInstanceName = "child";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(readSource, "child-1"),
+    )(fakeWindow, {}, undefined, fakeHyperframesAnime);
+
+    expect(Object.keys(registry).sort()).toEqual(["child-1::main", "root::main"]);
+    expect(fakeWindow.__animeReads).toEqual({
+      root: { registrationId: "main", bareGetName: "root", windowGetName: "root", label: 1 },
+      child: { registrationId: "main", bareGetName: "child", windowGetName: "child", label: 1 },
+      "root-again": "root",
+      "child-again": "child",
+    });
+  });
+
+  it("scopes raw window.__hfAnime registry access per composition instance", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene-a"></div>
+      <div data-composition-id="scene-b"></div>
+    `);
+    const rawRegistry: Record<string, { id: string; instance: { name: unknown }; labels: object }> =
+      {};
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      __hfAnime: rawRegistry,
+    };
+    const source = `
+window.__hfAnime.main = {
+  id: "main",
+  instance: { name: window.__currentInstanceName },
+  labels: {},
+};
+window.__rawAnimeReads = window.__rawAnimeReads || {};
+window.__rawAnimeReads[window.__currentInstanceName] =
+  window.__hfAnime.main.instance.name;
+`;
+
+    fakeWindow.__currentInstanceName = "first";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene-a"),
+    )(fakeWindow, {}, undefined, undefined);
+    fakeWindow.__currentInstanceName = "second";
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene-b"),
+    )(fakeWindow, {}, undefined, undefined);
+
+    expect(Object.keys(rawRegistry).sort()).toEqual(["scene-a::main", "scene-b::main"]);
+    expect(fakeWindow.__rawAnimeReads).toEqual({ first: "first", second: "second" });
+  });
+
+  it("animates both instances when the same anime.js block is installed twice", () => {
+    const { document } = parseHTML(`
+      <section data-composition-id="block-a"><h2 class="block-title">First block</h2></section>
+      <section data-composition-id="block-b"><h2 class="block-title">Second block</h2></section>
+    `);
+    const animatedTargets: string[][] = [];
+    const fakeAnime = {
+      animate(targets: Element[] | string) {
+        animatedTargets.push(
+          typeof targets === "string"
+            ? [`raw:${targets}`]
+            : Array.from(targets).map((target) => target.textContent || ""),
+        );
+      },
+    };
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      anime: fakeAnime,
+    };
+    const source = `window.anime.animate('.block-title', { opacity: 1 });`;
+
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "block-a"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "block-b"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+
+    expect(animatedTargets).toEqual([["First block"], ["Second block"]]);
+  });
+
+  it("scopes anime.js svg and text module targets while preserving stagger values", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene-a"><div class="shape">A</div></div>
+      <div data-composition-id="scene-b"><div class="shape">B</div></div>
+    `);
+    const svgTargets: string[][] = [];
+    const textTargets: string[][] = [];
+    const staggerValues: unknown[] = [];
+    const readTargetText = (targets: Element[] | string) =>
+      typeof targets === "string"
+        ? [`raw:${targets}`]
+        : Array.from(targets).map((target) => target.textContent || "");
+    const fakeAnime = {
+      svg: {
+        morphTo(targets: Element[] | string) {
+          svgTargets.push(readTargetText(targets));
+          return "svg";
+        },
+      },
+      text: {
+        split(targets: Element[] | string) {
+          textTargets.push(readTargetText(targets));
+          return "text";
+        },
+      },
+      stagger(value: unknown) {
+        staggerValues.push(value);
+        return "stagger";
+      },
+    };
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      anime: fakeAnime,
+    };
+    const source = `
+anime.svg.morphTo('.shape', {});
+anime.text.split('.shape', {});
+anime.stagger('.shape');
+`;
+
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene-b"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+
+    expect(svgTargets).toEqual([["B"]]);
+    expect(textTargets).toEqual([["B"]]);
+    expect(staggerValues).toEqual([".shape"]);
+  });
+
+  it("passes non-string anime.js targets through unchanged", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene"><h1 class="hero">Scene</h1></div>
+    `);
+    const animateTargets: unknown[] = [];
+    const svgTargets: unknown[] = [];
+    const textTargets: unknown[] = [];
+    const fakeAnime = {
+      animate(targets: unknown) {
+        animateTargets.push(targets);
+      },
+      svg: {
+        createDrawable(targets: unknown) {
+          svgTargets.push(targets);
+        },
+      },
+      text: {
+        split(targets: unknown) {
+          textTargets.push(targets);
+        },
+      },
+    };
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      anime: fakeAnime,
+    };
+    const source = `
+window.__elementTarget = document.querySelector('.hero');
+window.__nodeListTarget = document.querySelectorAll('.hero');
+anime.animate(window.__elementTarget, {});
+anime.svg.createDrawable(window.__nodeListTarget, {});
+anime.text.split(window.__elementTarget, {});
+`;
+
+    new Function(
+      "window",
+      "gsap",
+      "anime",
+      "hyperframesAnime",
+      wrapScopedCompositionScript(source, "scene"),
+    )(fakeWindow, {}, fakeAnime, undefined);
+
+    expect(animateTargets[0]).toBe(fakeWindow.__elementTarget);
+    expect(svgTargets[0]).toBe(fakeWindow.__nodeListTarget);
+    expect(textTargets[0]).toBe(fakeWindow.__elementTarget);
   });
 
   it("scopes getElementById when duplicate IDs exist across composition roots", () => {

@@ -374,28 +374,65 @@ export function wrapScopedCompositionScript(
         },
       })
     : window.document;
-  var __hfTimelineRegistryProxy = null;
-  var __hfGetTimelineRegistry = function() {
-    window.__timelines = window.__timelines || {};
-    if (!__hfCompId || __hfCompId === __hfTimelineCompId || typeof Proxy !== "function") {
-      return window.__timelines;
+  var __hfRegistryProxies = {};
+  var __hfRegistryProxyTargets = {};
+  var __hfGetScopedRegistry = function(registryProp, fallbackValue, shouldProxy, mapProp) {
+    window[registryProp] = window[registryProp] || fallbackValue;
+    if (!shouldProxy || typeof Proxy !== "function") {
+      return window[registryProp];
     }
-    if (!__hfTimelineRegistryProxy) {
-      __hfTimelineRegistryProxy = new Proxy(window.__timelines, {
+    if (!__hfRegistryProxies[registryProp] || __hfRegistryProxyTargets[registryProp] !== window[registryProp]) {
+      __hfRegistryProxyTargets[registryProp] = window[registryProp];
+      __hfRegistryProxies[registryProp] = new Proxy(window[registryProp], {
         get: function(target, prop, receiver) {
-          return Reflect.get(target, prop === __hfCompId ? __hfTimelineCompId : prop, target);
+          return Reflect.get(target, mapProp(prop, target), target);
         },
         set: function(target, prop, value, receiver) {
-          return Reflect.set(target, prop === __hfCompId ? __hfTimelineCompId : prop, value, target);
+          return Reflect.set(target, mapProp(prop, target), value, target);
+        },
+        deleteProperty: function(target, prop) {
+          return Reflect.deleteProperty(target, mapProp(prop, target));
         },
       });
     }
-    return __hfTimelineRegistryProxy;
+    return __hfRegistryProxies[registryProp];
+  };
+  var __hfSetScopedRegistry = function(registryProp, value, fallbackValue) {
+    var nextValue = value || fallbackValue;
+    if (nextValue === __hfRegistryProxies[registryProp]) {
+      nextValue = __hfRegistryProxyTargets[registryProp] || fallbackValue;
+    }
+    window[registryProp] = nextValue;
+    __hfRegistryProxies[registryProp] = null;
+    __hfRegistryProxyTargets[registryProp] = null;
+    return true;
+  };
+  var __hfGetTimelineRegistry = function() {
+    return __hfGetScopedRegistry("__timelines", {}, __hfCompId && __hfCompId !== __hfTimelineCompId, function(prop) {
+      return prop === __hfCompId ? __hfTimelineCompId : prop;
+    });
+  };
+  var __hfScopeAnimeId = function(id) {
+    return __hfCompId + "::" + id;
+  };
+  var __hfIsArrayIndexProp = function(prop) {
+    return /^(0|[1-9]\\d*)$/.test(prop);
+  };
+  var __hfScopeAnimeRegistryProp = function(prop, target) {
+    if (!__hfCompId || typeof prop !== "string") return prop;
+    if (Array.isArray(target) && (prop === "length" || __hfIsArrayIndexProp(prop) || prop in Array.prototype)) {
+      return prop;
+    }
+    return __hfScopeAnimeId(prop);
+  };
+  var __hfGetAnimeRegistry = function() {
+    return __hfGetScopedRegistry("__hfAnime", [], !!__hfCompId, __hfScopeAnimeRegistryProp);
   };
   var __hfScopedWindow = typeof Proxy === "function"
     ? new Proxy(window, {
         get: function(target, prop, receiver) {
           if (prop === "__timelines") return __hfGetTimelineRegistry();
+          if (prop === "__hfAnime") return __hfGetAnimeRegistry();
           // Inside a sub-composition, __hyperframes is passed as a bare script
           // param bound to the SCOPED variant (per-comp getVariables). But
           // authors routinely write the documented window.__hyperframes.
@@ -406,22 +443,26 @@ export function wrapScopedCompositionScript(
           // (__hfScopedHyperframes is a hoisted var assigned below, before any
           // sub-comp script -- the only code that reads this -- runs.)
           if (prop === "__hyperframes") return __hfScopedHyperframes;
+          if (prop === "anime") return __hfScopedAnime;
+          if (prop === "hyperframesAnime") return __hfScopedHyperframesAnime;
           return Reflect.get(target, prop, target);
         },
         set: function(target, prop, value, receiver) {
           if (prop === "__timelines") {
-            target.__timelines = value || {};
-            __hfTimelineRegistryProxy = null;
-            return true;
+            return __hfSetScopedRegistry("__timelines", value, {});
+          }
+          if (prop === "__hfAnime") {
+            return __hfSetScopedRegistry("__hfAnime", value, []);
           }
           return Reflect.set(target, prop, value, target);
         },
       })
     : window;
-  var __hfResolveGsapTarget = function(target) {
+  var __hfResolveTarget = function(target) {
     if (typeof target !== "string") return target;
     return __hfQueryAll(target);
   };
+  var __hfResolveGsapTarget = __hfResolveTarget;
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
     ["to", "from", "fromTo", "set"].forEach(function(method) {
@@ -496,6 +537,111 @@ export function wrapScopedCompositionScript(
           return typeof value === "function" ? value.bind(target) : value;
         },
       });
+  var __hfScopeAnimeTimeline = function(timeline) {
+    if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
+    var original = timeline.add;
+    if (typeof original === "function") {
+      timeline.add = function(target) {
+        var args = Array.prototype.slice.call(arguments);
+        args[0] = __hfResolveTarget(target);
+        return original.apply(timeline, args);
+      };
+    }
+    try {
+      Object.defineProperty(timeline, "__hfScopedCompositionRoot", {
+        value: __hfFindRoot(),
+        configurable: true,
+      });
+    } catch {
+      // Best-effort: timelines coming from user code may have a frozen target
+      // or a non-extensible defineProperty path. Swallow — the scoped root
+      // is an enrichment, not a correctness invariant for playback.
+    }
+    return timeline;
+  };
+  var __hfScopeAnimeTargetNamespace = function(namespace) {
+    return !namespace || typeof Proxy !== "function"
+      ? namespace
+      : new Proxy(namespace, {
+          get: function(namespaceTarget, namespaceProp, namespaceReceiver) {
+            var value = Reflect.get(namespaceTarget, namespaceProp, namespaceTarget);
+            if (typeof value !== "function") return value;
+            return function(firstArg) {
+              var args = Array.prototype.slice.call(arguments);
+              args[0] = __hfResolveTarget(firstArg);
+              return value.apply(namespaceTarget, args);
+            };
+          },
+        });
+  };
+  var __hfBaseAnime = typeof anime === "undefined" ? window.anime : anime;
+  var __hfScopedAnime = !__hfBaseAnime || typeof Proxy !== "function"
+    ? __hfBaseAnime
+    : new Proxy(__hfBaseAnime, {
+        get: function(target, prop, receiver) {
+          if (prop === "createTimeline" && typeof target.createTimeline === "function") {
+            return function() {
+              return __hfScopeAnimeTimeline(target.createTimeline.apply(target, arguments));
+            };
+          }
+          if (prop === "animate" && typeof target.animate === "function") {
+            return function(firstArg) {
+              var args = Array.prototype.slice.call(arguments);
+              args[0] = __hfResolveTarget(firstArg);
+              return target.animate.apply(target, args);
+            };
+          }
+          if (prop === "svg") {
+            return __hfScopeAnimeTargetNamespace(target.svg);
+          }
+          if (prop === "text") {
+            return __hfScopeAnimeTargetNamespace(target.text);
+          }
+          // anime.stagger's first argument is a value/range, not a DOM target.
+          if (prop === "stagger") {
+            var stagger = Reflect.get(target, prop, target);
+            return typeof stagger === "function" ? stagger.bind(target) : stagger;
+          }
+          var value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+  var __hfRewriteAnimeRegistrationId = function(registration, id) {
+    if (!registration || typeof registration !== "object") return registration;
+    return Object.assign({}, registration, { id: id });
+  };
+  var __hfBaseHyperframesAnime = typeof hyperframesAnime === "undefined" ? window.hyperframesAnime : hyperframesAnime;
+  var __hfScopedHyperframesAnime = !__hfBaseHyperframesAnime || typeof Proxy !== "function"
+    ? __hfBaseHyperframesAnime
+    : new Proxy(__hfBaseHyperframesAnime, {
+        get: function(target, prop, receiver) {
+          if (prop === "register" && typeof target.register === "function") {
+            return function(id, instance, options) {
+              return __hfRewriteAnimeRegistrationId(
+                target.register.call(target, __hfScopeAnimeId(id), instance, options),
+                id,
+              );
+            };
+          }
+          if (prop === "get" && typeof target.get === "function") {
+            return function(id) {
+              return __hfRewriteAnimeRegistrationId(target.get.call(target, __hfScopeAnimeId(id)), id);
+            };
+          }
+          if (prop === "unregister" && typeof target.unregister === "function") {
+            return function(id) {
+              return target.unregister.call(target, __hfScopeAnimeId(id));
+            };
+          }
+          if (prop === "resolveLabel" && typeof target.resolveLabel === "function") {
+            return function(id, label) {
+              return target.resolveLabel.call(target, __hfScopeAnimeId(id), label);
+            };
+          }
+          var value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
   var __hfBaseHyperframes = window.__hyperframes;
   var __hfScopedHyperframes = !__hfBaseHyperframes
     ? __hfBaseHyperframes
@@ -508,9 +654,18 @@ export function wrapScopedCompositionScript(
       });
   var __hfRun = function() {
     try {
-      (function(document, gsap, window, __hyperframes) {
+      // Legacy signature marker: (function(document, gsap, window, __hyperframes)
+      (function(document, gsap, window, __hyperframes, anime, hyperframesAnime) {
 ${source.replace(/<\/(script)/gi, "<\\/$1")}
-      }).call(window, __hfScopedDocument, __hfScopedGsap, __hfScopedWindow, __hfScopedHyperframes);
+      }).call(
+        window,
+        __hfScopedDocument,
+        __hfScopedGsap,
+        __hfScopedWindow,
+        __hfScopedHyperframes,
+        __hfScopedAnime,
+        __hfScopedHyperframesAnime,
+      );
     } catch (_err) {
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
