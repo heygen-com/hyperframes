@@ -179,6 +179,25 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
     throw new Error("freezeLibraryLut requires a library match");
   }
 
+  // Prefer the CDN url so looks download on-demand (like bgm/image). Fall back
+  // to deterministic buildCube params when offline (--local-only) or if the
+  // download/validation fails, so resolution is never blocked on the network.
+  if (match.url && !localOnly) {
+    const { id, localPath } = allocateId(projectDir, type, ".cube");
+    const fullPath = join(projectDir, localPath);
+    try {
+      await freezeUrl(match.url, fullPath);
+      assertValidCubeFile(fullPath, `downloaded library LUT ${match.id} failed validation`);
+      return libraryRecord(match, { id, localPath, fullPath, via: "url" });
+    } catch (err) {
+      rmSync(fullPath, { force: true });
+      if (!match.params) {
+        throw new Error(`failed to freeze library LUT ${match.id}: ${err.message}`);
+      }
+      // else: fall through to the params fallback below
+    }
+  }
+
   if (match.params) {
     const { id, localPath } = allocateId(projectDir, type, ".cube");
     const fullPath = join(projectDir, localPath);
@@ -191,22 +210,14 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
       rmSync(fullPath, { force: true });
       throw err;
     }
-    return libraryRecord(match, { id, localPath, fullPath, via: "params" });
+    return libraryRecord(match, {
+      id,
+      localPath,
+      fullPath,
+      via: match.url ? "params-fallback" : "params",
+    });
   }
 
-  if (match.url) {
-    if (localOnly) throw offlineLibraryMiss(match);
-    const { id, localPath } = allocateId(projectDir, type, ".cube");
-    const fullPath = join(projectDir, localPath);
-    try {
-      await freezeUrl(match.url, fullPath);
-      assertValidCubeFile(fullPath, `downloaded library LUT ${match.id} failed validation`);
-    } catch (err) {
-      rmSync(fullPath, { force: true });
-      throw new Error(`failed to freeze library LUT ${match.id}: ${err.message}`);
-    }
-    return libraryRecord(match, { id, localPath, fullPath, via: "url" });
-  }
-
+  if (match.url) throw offlineLibraryMiss(match); // url-only entry, offline
   throw new Error(`misconfigured library LUT "${match.id}": expected params or url`);
 }

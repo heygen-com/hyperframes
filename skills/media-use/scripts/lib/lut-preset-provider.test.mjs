@@ -35,17 +35,19 @@ test("high contrast punchy resolves to deep-contrast", () => {
   assert.equal(matchColorLook("high contrast punchy").preset, "deep-contrast");
 });
 
-test("library-only look freezes a validated cube under .media/luts", async () => {
+test("library look freezes a validated cube from params offline (--local-only)", async () => {
   const projectDir = mkdtempSync(join(tmpdir(), "mu-lut-provider-"));
   try {
     const match = matchColorLook("teal orange blockbuster");
     assert.equal(match.kind, "library");
-    const frozen = await freezeLibraryLut(match, { projectDir, type: "grade" });
+    // localOnly forces the deterministic params path (no network); online, the
+    // same look downloads its .cube from the CDN url (via "url").
+    const frozen = await freezeLibraryLut(match, { projectDir, type: "grade", localOnly: true });
     assert.match(frozen.localPath, /^\.media\/luts\/grade_001\.cube$/);
     assert.ok(existsSync(join(projectDir, frozen.localPath)));
     assert.equal(validateCubeFile(join(projectDir, frozen.localPath)).ok, true);
     assert.equal(frozen.lut.src, frozen.localPath);
-    assert.equal(frozen.metadata.provenance.via, "params");
+    assert.equal(frozen.metadata.provenance.via, "params-fallback");
   } finally {
     rmSync(projectDir, { recursive: true, force: true });
   }
