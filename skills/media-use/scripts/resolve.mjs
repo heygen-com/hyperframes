@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { resolve, join, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
 import { appendRecord, findByPrompt, findByEntity, nextId, allocateId } from "./lib/manifest.mjs";
@@ -13,6 +13,10 @@ import { track } from "./lib/telemetry.mjs";
 import { typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
+import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
+import { validateCubeFile } from "./lib/cube-validate.mjs";
+import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
+import { freezeLibraryLut, matchColorLook } from "./lib/lut-preset-provider.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -25,6 +29,7 @@ const { values: args } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
+    for: { type: "string" },
     "local-only": { type: "boolean", default: false },
     provider: { type: "string" },
     json: { type: "boolean", default: false },
@@ -51,6 +56,10 @@ Options:
                   download, no mutation. Read them and decide reuse yourself.
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
+  --from <file>   Freeze a local file or direct public URL (ingest)
+  --for <media>   Analyze a local image/video and add measured grade adjust
+                  suggestions (grade only)
+  --local-only    Offline: skip every network provider
   --provider      Force one generator (e.g. codex, mflux, kokoro, heygen)
   --json          Output JSON instead of one-line result
   --help, -h      Show this help`);
@@ -120,6 +129,22 @@ const type = args.type;
 const intent = args.intent;
 const entity = args.entity || null;
 
+function recordAvailable(projectDir, record) {
+  if (!record) return false;
+  if (record.path) return existsSync(join(projectDir, record.path));
+  return record.type === "grade" && record.grading;
+}
+
+function localizeImportedRecord(record, localPath) {
+  if (record?.type === "grade" && record.grading?.lut) {
+    record.grading = {
+      ...record.grading,
+      lut: { ...record.grading.lut, src: localPath },
+    };
+  }
+  return record;
+}
+
 async function run() {
   // A forced --provider means "(re)generate with THIS provider" — it bypasses
   // every reuse rung (project/entity/assets/global cache) so it can't silently
@@ -129,7 +154,7 @@ async function run() {
 
   // 1. project manifest — exact-prompt match
   const projectHit = forced ? null : findByPrompt(projectDir, intent, type);
-  if (projectHit && existsSync(join(projectDir, projectHit.path))) {
+  if (recordAvailable(projectDir, projectHit)) {
     return result(projectHit, "cached");
   }
 
@@ -138,17 +163,16 @@ async function run() {
   // always recorded as type image while agents ask for logos as type icon.
   if (!forced && entity) {
     const entityHit = findByEntity(projectDir, entity);
-    if (
-      entityHit &&
-      typesMatch(entityHit.type, type) &&
-      existsSync(join(projectDir, entityHit.path))
-    ) {
+    if (entityHit && typesMatch(entityHit.type, type) && recordAvailable(projectDir, entityHit)) {
       return result(entityHit, "cached");
     }
   }
 
   // 1c. scan existing assets/ directory for unregistered matches
-  const existingAsset = forced ? null : findExistingAsset(projectDir, intent, type);
+  const existingAsset =
+    forced || type === "grade" || type === "lut"
+      ? null
+      : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
     const id = nextId(projectDir, type);
     const record = {
@@ -169,7 +193,10 @@ async function run() {
   if (cacheHit) {
     const ext = extname(cacheHit.cached_path);
     const { id, localPath } = allocateId(projectDir, type, ext);
-    const imported = importFromCache(cacheHit, projectDir, id, localPath);
+    const imported = localizeImportedRecord(
+      importFromCache(cacheHit, projectDir, id, localPath),
+      localPath,
+    );
     if (imported) {
       appendRecord(projectDir, imported);
       regenerateIndex(projectDir);
@@ -182,7 +209,10 @@ async function run() {
     if (entityCacheHit && typesMatch(entityCacheHit.type, type)) {
       const ext = extname(entityCacheHit.cached_path);
       const { id, localPath } = allocateId(projectDir, type, ext);
-      const imported = importFromCache(entityCacheHit, projectDir, id, localPath);
+      const imported = localizeImportedRecord(
+        importFromCache(entityCacheHit, projectDir, id, localPath),
+        localPath,
+      );
       if (imported) {
         appendRecord(projectDir, imported);
         regenerateIndex(projectDir);
@@ -210,6 +240,10 @@ async function run() {
     }
   } catch {
     // hint is best-effort; never block a resolve
+  }
+
+  if (type === "grade" || type === "lut") {
+    return resolveColor(type, intent, { projectDir });
   }
 
   // 3. provider search — registry tries providers in order (heygen-CLI first)
@@ -301,6 +335,194 @@ async function run() {
     // promotion is best-effort; a resolve still succeeds locally
   }
   return result(record, searchResult.source || "search");
+}
+
+function mergeSmartAdjust(block) {
+  if (!args.for) return block;
+  const mediaPath = resolve(args.for);
+  const analysis = analyzeMediaGrade(mediaPath);
+  console.error(formatMeasuredNote(mediaPath, analysis.measured));
+  return {
+    ...block,
+    adjust: {
+      ...(block.adjust || {}),
+      ...analysis.adjust,
+    },
+  };
+}
+
+function freezeGeneratedLut(params, { projectDir, type }) {
+  const { id, localPath } = allocateId(projectDir, type, ".cube");
+  const fullPath = join(projectDir, localPath);
+  try {
+    writeFileSync(fullPath, buildCube(params));
+    const check = validateCubeFile(fullPath);
+    if (!check.ok) throw new Error(check.error);
+  } catch (err) {
+    rmSync(fullPath, { force: true });
+    throw new Error(`generated LUT failed validation: ${err.message}`);
+  }
+  return {
+    id,
+    localPath,
+    fullPath,
+    lut: { src: localPath, intensity: 1 },
+    source: "generated",
+    description: "parametric color grade",
+    metadata: {
+      provider: "cube_lut.builder",
+      provenance: { params },
+    },
+  };
+}
+
+async function finalizeColorRecord(record, source, fullPath = null) {
+  appendRecord(projectDir, record);
+  regenerateIndex(projectDir);
+  if (fullPath) {
+    try {
+      cachePut(fullPath, record);
+    } catch {
+      // promotion is best-effort
+    }
+  }
+  return result(record, source);
+}
+
+async function colorMiss(type, intent) {
+  await track("media_use_resolve_miss", {
+    type,
+    local_only: !!args["local-only"],
+    provider_override: !!args.provider,
+  });
+  const msg = `no local color grade could resolve ${type}: "${intent}"`;
+  if (args.json) {
+    console.log(JSON.stringify({ ok: false, error: msg }));
+  } else {
+    console.error(`error: ${msg}`);
+  }
+  process.exit(1);
+}
+
+async function resolveGrade(intent, { projectDir }) {
+  const match = matchColorLook(intent);
+  if (match?.kind === "preset") {
+    const id = nextId(projectDir, "grade");
+    const grading = mergeSmartAdjust({ preset: match.preset, intensity: 1 });
+    const record = {
+      id,
+      type: "grade",
+      source: "preset",
+      description: intent,
+      grading,
+      provenance: {
+        provider: "color_grade.local",
+        prompt: intent,
+        preset: match.preset,
+      },
+    };
+    return finalizeColorRecord(record, "preset");
+  }
+
+  if (match?.kind === "library") {
+    const frozen = freezeLibraryLut(match, { projectDir, type: "grade" });
+    const grading = mergeSmartAdjust({ intensity: 1, lut: frozen.lut });
+    const record = {
+      id: frozen.id,
+      type: "grade",
+      path: frozen.localPath,
+      source: frozen.source,
+      description: frozen.description,
+      grading,
+      provenance: {
+        provider: frozen.metadata.provider,
+        prompt: intent,
+        ...frozen.metadata.provenance,
+      },
+    };
+    return finalizeColorRecord(record, frozen.source, frozen.fullPath);
+  }
+
+  const params = paramsFromIntent(intent);
+  if (!params) {
+    // No creative look matched. With --for, the measured adjust block is a
+    // valid grade on its own (footage auto-correction); only a true miss
+    // (no look AND no analysis) aborts.
+    if (args.for) {
+      const grading = mergeSmartAdjust({ intensity: 1 });
+      const record = {
+        id: nextId(projectDir, "grade"),
+        type: "grade",
+        source: "measured",
+        description: intent,
+        grading,
+        provenance: { provider: "color_grade.local", prompt: intent, measured: true },
+      };
+      return finalizeColorRecord(record, "measured");
+    }
+    return colorMiss("grade", intent);
+  }
+  const frozen = freezeGeneratedLut(params, { projectDir, type: "grade" });
+  const grading = mergeSmartAdjust({ intensity: 1, lut: frozen.lut });
+  const record = {
+    id: frozen.id,
+    type: "grade",
+    path: frozen.localPath,
+    source: frozen.source,
+    description: intent,
+    grading,
+    provenance: {
+      provider: frozen.metadata.provider,
+      prompt: intent,
+      ...frozen.metadata.provenance,
+    },
+  };
+  return finalizeColorRecord(record, frozen.source, frozen.fullPath);
+}
+
+async function resolveLut(intent, { projectDir }) {
+  if (args.for) {
+    throw new Error("--for is only supported with --type grade");
+  }
+  const match = matchColorLook(intent);
+  if (match?.kind === "library") {
+    const frozen = freezeLibraryLut(match, { projectDir, type: "lut" });
+    const record = {
+      id: frozen.id,
+      type: "lut",
+      path: frozen.localPath,
+      source: frozen.source,
+      description: frozen.description,
+      provenance: {
+        provider: frozen.metadata.provider,
+        prompt: intent,
+        ...frozen.metadata.provenance,
+      },
+    };
+    return finalizeColorRecord(record, frozen.source, frozen.fullPath);
+  }
+
+  const params = paramsFromIntent(intent);
+  if (!params) return colorMiss("lut", intent);
+  const frozen = freezeGeneratedLut(params, { projectDir, type: "lut" });
+  const record = {
+    id: frozen.id,
+    type: "lut",
+    path: frozen.localPath,
+    source: frozen.source,
+    description: intent,
+    provenance: {
+      provider: frozen.metadata.provider,
+      prompt: intent,
+      ...frozen.metadata.provenance,
+    },
+  };
+  return finalizeColorRecord(record, frozen.source, frozen.fullPath);
+}
+
+async function resolveColor(type, intent, options) {
+  if (type === "grade") return resolveGrade(intent, options);
+  return resolveLut(intent, options);
 }
 
 async function ingest(src) {
@@ -407,7 +629,10 @@ async function reuseGlobal(shaArg) {
   }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
   const { id, localPath } = allocateId(projectDir, type, ext);
-  const imported = importFromCache(rec, projectDir, id, localPath);
+  const imported = localizeImportedRecord(
+    importFromCache(rec, projectDir, id, localPath),
+    localPath,
+  );
   if (!imported) {
     console.error(`error: cache entry for "${shaArg}" is incomplete or missing on disk`);
     process.exit(1);
@@ -431,15 +656,26 @@ async function result(record, source) {
     provider_override: !!args.provider,
   });
   if (args.json) {
-    console.log(JSON.stringify({ ok: true, ...record, _source: source }));
+    const grading = record.type === "grade" && record.grading ? record.grading : null;
+    console.log(
+      JSON.stringify({
+        ok: true,
+        ...record,
+        ...(grading || {}),
+        ...(grading && { grading }),
+        _source: source,
+      }),
+    );
   } else {
     const meta = formatMeta(record, source);
-    console.log(`resolved ${record.id} → ${record.path} (${meta})`);
+    console.log(`resolved ${record.id} → ${record.path || "inline"} (${meta})`);
   }
 }
 
 function formatMeta(record, source) {
   const parts = [record.type];
+  if (record.grading?.preset) parts.push(`preset ${record.grading.preset}`);
+  if (record.grading?.lut) parts.push("lut");
   if (record.duration != null) parts.push(`${record.duration}s`);
   if (record.width && record.height) parts.push(`${record.width}×${record.height}`);
   if (record.transparent) parts.push("transparent");
@@ -464,6 +700,8 @@ const DEFAULT_EXT = {
   icon: ".svg",
   logo: ".svg",
   brand: ".png",
+  grade: ".cube",
+  lut: ".cube",
 };
 
 function defaultExt(type) {

@@ -77,6 +77,15 @@ const REGISTRY = {
     // Local design spec, not heygen — reads frame.md / design.md tokens.
     A("design_spec", { search: brandProvider.search }),
   ],
+  grade: [
+    // Local deterministic cascade handled by resolve.mjs so grade records can
+    // carry an inline block as well as an optional frozen .cube file.
+    A("color_grade.local", { search: async () => null, generate: async () => null }),
+  ],
+  lut: [
+    // Lower-level local LUT generation/freezing path handled by resolve.mjs.
+    A("cube_lut.local", { search: async () => null, generate: async () => null }),
+  ],
 };
 
 function listFor(type) {

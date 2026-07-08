@@ -2,12 +2,13 @@ import { strict as assert } from "node:assert";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
 import { freezeLocalFile } from "./lib/freeze.mjs";
 import { cachePut, cacheGet, importFromCache } from "./lib/cache.mjs";
+import { validateCubeFile } from "./lib/cube-validate.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
@@ -43,6 +44,60 @@ function runResolve(args, opts = {}) {
     encoding: "utf8",
     ...opts,
   });
+}
+
+function spawnResolve(args, opts = {}) {
+  return spawnSync(process.execPath, [RESOLVE_CLI, ...args], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    ...opts,
+  });
+}
+
+function makeFrame(dir, name, color) {
+  const out = join(dir, name);
+  execFileSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${color}:s=64x64`,
+      "-frames:v",
+      "1",
+      "-y",
+      out,
+    ],
+    { stdio: "pipe" },
+  );
+  return out;
+}
+
+function normalizeWithCoreSource(grading) {
+  const sourcePath = join(REPO_ROOT, "packages/core/src/colorGrading.ts");
+  const code = `
+    import { normalizeHfColorGrading } from ${JSON.stringify(sourcePath)};
+    const grading = JSON.parse(process.env.HF_GRADING_JSON);
+    const normalized = normalizeHfColorGrading(grading);
+    if (!normalized) process.exit(2);
+    console.log(JSON.stringify({
+      preset: normalized.preset,
+      intensity: normalized.intensity,
+      adjust: normalized.adjust,
+      lut: normalized.lut,
+      colorSpace: normalized.colorSpace
+    }));
+  `;
+  return JSON.parse(
+    execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: { ...process.env, HF_GRADING_JSON: JSON.stringify(grading) },
+    }),
+  );
 }
 
 const tests = [];
@@ -217,6 +272,19 @@ test("--help exits 0", () => {
   const out = runResolve(["--help"]);
   assert.ok(out.includes("media-use resolve"));
   assert.ok(out.includes("--type"));
+  assert.ok(out.includes("--for"));
+  assert.ok(out.includes("--from"));
+  assert.ok(out.includes("--local-only"));
+});
+
+test("unknown type error lists grade and lut", () => {
+  try {
+    runResolve(["--type", "bogus", "--intent", "x"], { stdio: "pipe" });
+    assert.fail("should have exited");
+  } catch (err) {
+    assert.equal(err.status, 2);
+    assert.match(String(err.stderr), /known: .*grade.*lut/);
+  }
 });
 
 test("missing required args exits 2", () => {
@@ -254,6 +322,158 @@ test("one-line output format matches contract", () => {
 
   const out = runResolve(["--type", "bgm", "--intent", "format test", "--project", tmp]);
   assert.match(out.trim(), /^resolved bgm_001 → .media\/audio\/bgm\/bgm_001\.wav \(bgm/);
+  cleanup();
+});
+
+// --- color grading ---
+
+test("grade resolves a preset-only look with no cube file", () => {
+  setup();
+  const out = runResolve([
+    "--type",
+    "grade",
+    "--intent",
+    "warm daylight",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "grade");
+  assert.equal(parsed.grading.preset, "warm-daylight");
+  assert.equal(parsed.grading.lut, undefined);
+  assert.equal(parsed.path, undefined);
+  assert.equal(readManifest(tmp).length, 1);
+  cleanup();
+});
+
+test("grade resolves a library LUT look and freezes a validated cube", () => {
+  setup();
+  const out = runResolve([
+    "--type",
+    "grade",
+    "--intent",
+    "teal orange blockbuster",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.match(parsed.grading.lut.src, /^\.media\/luts\/grade_001\.cube$/);
+  assert.equal(parsed.path, parsed.grading.lut.src);
+  assert.ok(existsSync(join(tmp, parsed.grading.lut.src)));
+  assert.equal(validateCubeFile(join(tmp, parsed.grading.lut.src)).ok, true);
+  cleanup();
+});
+
+test("smart grade merges measured adjust and keeps stdout valid JSON", () => {
+  setup();
+  const frame = makeFrame(tmp, "under.png", "0x202020");
+  const proc = spawnResolve([
+    "--type",
+    "grade",
+    "--intent",
+    "warm cinematic",
+    "--for",
+    frame,
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  assert.equal(proc.status, 0, proc.stderr);
+  const parsed = JSON.parse(proc.stdout);
+  assert.equal(parsed.ok, true);
+  assert.ok(parsed.grading.adjust.exposure > 0, "under-exposed frame should suggest lift");
+  assert.match(proc.stderr, /media-use: measured/);
+  cleanup();
+});
+
+test("emitted grading block survives the core normalizeHfColorGrading contract", () => {
+  setup();
+  const out = runResolve([
+    "--type",
+    "grade",
+    "--intent",
+    "teal orange blockbuster",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  const normalized = normalizeWithCoreSource(parsed.grading);
+  assert.equal(normalized.lut.src, parsed.grading.lut.src);
+  assert.equal(normalized.lut.intensity, parsed.grading.lut.intensity);
+  assert.equal(normalized.colorSpace, "rec709");
+  cleanup();
+});
+
+test("lut resolves only the frozen cube path", () => {
+  setup();
+  const out = runResolve([
+    "--type",
+    "lut",
+    "--intent",
+    "teal orange blockbuster",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "lut");
+  assert.match(parsed.path, /^\.media\/luts\/lut_001\.cube$/);
+  assert.equal(parsed.grading, undefined);
+  assert.equal(validateCubeFile(join(tmp, parsed.path)).ok, true);
+  cleanup();
+});
+
+test("grade miss exits explicitly with no partial file", () => {
+  setup();
+  const missIntent = `zqxv imaginary neutron ${process.pid}`;
+  try {
+    runResolve(["--type", "grade", "--intent", missIntent, "--project", tmp, "--json"]);
+    assert.fail("should have exited");
+  } catch (err) {
+    assert.equal(err.status, 1);
+    const parsed = JSON.parse(String(err.stdout));
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error, /no local color grade could resolve/);
+    assert.equal(readManifest(tmp).length, 0);
+    assert.equal(existsSync(join(tmp, ".media/luts")), false);
+  }
+  cleanup();
+});
+
+test("identical grade resolve hits the project cache without re-freezing", () => {
+  setup();
+  const first = JSON.parse(
+    runResolve([
+      "--type",
+      "grade",
+      "--intent",
+      "teal orange blockbuster",
+      "--project",
+      tmp,
+      "--json",
+    ]),
+  );
+  const second = JSON.parse(
+    runResolve([
+      "--type",
+      "grade",
+      "--intent",
+      "teal orange blockbuster",
+      "--project",
+      tmp,
+      "--json",
+    ]),
+  );
+  assert.equal(second._source, "cached");
+  assert.equal(second.id, first.id);
+  assert.equal(second.path, first.path);
+  assert.equal(readManifest(tmp).length, 1);
   cleanup();
 });
 

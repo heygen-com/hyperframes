@@ -18,7 +18,7 @@
       "files": 1
     },
     "hyperframes": {
-      "hash": "24ec436b52957fcc",
+      "hash": "43717f4e64cae9c1",
       "files": 1
     },
     "hyperframes-animation": {
@@ -26,7 +26,7 @@
       "files": 116
     },
     "hyperframes-cli": {
-      "hash": "493e59cafaab3d10",
+      "hash": "23d4f4d24f4df747",
       "files": 7
     },
     "hyperframes-core": {
@@ -46,8 +46,8 @@
       "files": 10
     },
     "media-use": {
-      "hash": "22d8da57c4af6ddd",
-      "files": 103
+      "hash": "243277506847ddf3",
+      "files": 115
     },
     "motion-graphics": {
       "hash": "96ed2f7d8051b009",

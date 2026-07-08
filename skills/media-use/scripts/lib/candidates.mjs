@@ -75,7 +75,8 @@ export function formatCandidates(candidates, { truncated, total } = {}) {
   if (candidates.length === 0) return "no reuse candidates found (project or global cache)";
   const lines = [`${candidates.length} reuse candidate${candidates.length === 1 ? "" : "s"}:`, ""];
   for (const c of candidates) {
-    const handle = c.scope === "global" ? `--reuse ${String(c.sha).slice(0, 16)}` : c.path;
+    const handle =
+      c.scope === "global" ? `--reuse ${String(c.sha).slice(0, 16)}` : c.path || `manifest:${c.id}`;
     const m = meta(c);
     lines.push(`  [${c.scope}] ${c.description}${m ? ` (${m})` : ""}`);
     lines.push(`          ${handle}`);

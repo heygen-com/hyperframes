@@ -1,6 +1,6 @@
 ---
 name: media-use
-description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, or voice into a frozen local file + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Keeps search noise on disk, hands the agent a path. Use for any audio, image, icon, voiceover, caption, or media-asset need.
+description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, voice, color grade, or LUT into a frozen local file or paste-ready block + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Keeps search noise on disk, hands the agent one path or block. Use for any audio, image, icon, logo, voiceover, caption, color-grading, or media-asset need.
 ---
 
 # media-use
@@ -21,13 +21,36 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 | No transcript-driven cutting               | `scripts/transcript-cut.mjs` compiles word-timestamp edits into cut lists                                                                   |
 | No auto-duck / publish loudness            | `scripts/audio-duck.mjs` + `references/operations.md` loudnorm/sidechain recipes                                                            |
 | No cross-project memory                    | global content-addressed cache + auto-promote (`~/.media`)                                                                                  |
+| No color-grade authoring                   | `resolve --type grade` emits a paste-ready `data-color-grading` block; `resolve --type lut` freezes validated `.cube` files                 |
 | No image generation                        | RAM-graded local mflux (FLUX) via `scripts/lib/mflux-provider.mjs`, codex `image_gen` upsell (`scripts/lib/codex-provider.mjs`)             |
 | No video generation                        | spec-gated local LTX (`videogen` in `scripts/lib/local-models.mjs`); `heygen video create` avatar upsell                                    |
 | Weak local-model defaults                  | free-usage HeyGen first (TTS, bg-removal) via the `heygen` CLI; local open-source only as an opt-out fallback (`scripts/lib/local-run.mjs`) |
 
 ## When to use
 
-Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, brand logos, or voice. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to Parakeet (better than whisper.cpp: 6.05% vs 7.44% WER, 5-10x faster) via `scripts/transcribe.mjs`, with whisper.cpp auto-fallback (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first, freezes the best match locally, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
+Call `resolve` whenever a composition needs media: background music, sound effects, images, icons, brand logos, voice, a color grade, or a LUT. For voiceover / TTS, music, SFX, and caption timing, use the **audio engine** (below); background removal is delegated to the `hyperframes` CLI; transcription defaults to Parakeet (better than whisper.cpp: 6.05% vs 7.44% WER, 5-10x faster) via `scripts/transcribe.mjs`, with whisper.cpp auto-fallback (see `references/operations.md`). For cutting / reframing / transforming existing media, see `references/operations.md`. media-use searches the HeyGen catalog first for media files, resolves official logos through the logo cascade, uses local deterministic color grading for `grade`/`lut`, freezes the best match locally when a file is needed, registers it in a manifest, and hands the agent one line; all search noise stays on disk.
+
+## Be proactive — run a media opportunity pass
+
+The human usually can't tell which media would lift the piece. You can. When you build or review a composition, do **one** grounded scan and then **ask once** — don't silently add, and don't nag per asset.
+
+Surface an opportunity only when a concrete signal is present:
+
+| Signal detected                                        | Offer                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| On-screen text / a script with no voiceover            | TTS voiceover (audio engine)                                                                |
+| Emoji or a `<div>` styled as an icon                   | resolve real `icon`s                                                                        |
+| Image that is a placeholder, tiny, or upscaled-looking | a better `image` (and/or upscale — see `references/operations.md`)                          |
+| Hard scene cuts / transitions with no sound            | transition `sfx`                                                                            |
+| A piece over ~10s with no music bed                    | `bgm`                                                                                       |
+| Footage that reads under/over-exposed or color-cast    | a corrective `grade` (analyze with `grade --for`, preview with `hyperframes grade-compare`) |
+
+Rules that keep this a help, not nagware:
+
+- **Grounded, not generic.** No signal → no suggestion. Never open with "want better images?".
+- **Opinionated + concrete.** Propose the specific fix ("add a VO from your script, swap 3 emoji for real icons, replace the 400×400 hero, whooshes on the 4 cuts"), with defaults chosen — the human just approves **all / some / none**.
+- **Once per project.** One consolidated ask, top few highest-value items. Respect "leave it" and don't re-raise.
+- **Surface, never silently mutate.** Color grades especially: propose and preview, never auto-apply — a gray-world "correction" ruins an intentional sunset or neon look.
 
 ## Resolve
 
@@ -39,14 +62,16 @@ Returns one line: `resolved <id> → <path> (<type>, <metadata>)`
 
 ### Types
 
-| Type    | What it finds        | Provider                                                 |
-| ------- | -------------------- | -------------------------------------------------------- |
-| `bgm`   | Background music     | HeyGen audio catalog (10k+ tracks)                       |
-| `sfx`   | Sound effects        | Bundled 19-file library + HeyGen catalog                 |
-| `image` | Photos, backgrounds  | HeyGen asset search (75k+ vectors)                       |
-| `icon`  | Icons, symbols       | HeyGen asset search (type=icon)                          |
-| `logo`  | Official brand marks | svgl → simple-icons → GitHub org avatar → domain favicon |
-| `voice` | TTS voiceover        | Local Kokoro (free); HeyGen TTS upsell                   |
+| Type    | What it finds                    | Provider / cascade                             |
+| ------- | -------------------------------- | ---------------------------------------------- |
+| `bgm`   | Background music                 | HeyGen audio catalog (10k+ tracks)             |
+| `sfx`   | Sound effects                    | Bundled 19-file library + HeyGen catalog       |
+| `image` | Photos, backgrounds              | HeyGen asset search (75k+ vectors)             |
+| `icon`  | Icons, symbols                   | HeyGen asset search (type=icon)                |
+| `logo`  | Official brand marks             | svgl → simple-icons → GitHub org avatar → domain favicon |
+| `voice` | TTS voiceover                    | Local Kokoro (free); HeyGen TTS upsell         |
+| `grade` | HyperFrames color-grading blocks | Core preset → bundled LUT → deterministic cube |
+| `lut`   | Reusable `.cube` LUT files       | Bundled LUT → deterministic cube               |
 
 ### Examples
 
@@ -70,19 +95,28 @@ node <SKILL_DIR>/scripts/resolve.mjs --type icon --intent "rocket" --project .
 # Brand logo (official mark — never redrawn by hand)
 node <SKILL_DIR>/scripts/resolve.mjs --type logo --entity linkedin --intent "LinkedIn logo" --project .
 # → resolved logo_001 → .media/images/logo_001.svg (logo, official mark)
+
+# Color grade block
+node <SKILL_DIR>/scripts/resolve.mjs --type grade --intent "warm daylight" --project . --json
+# → {"ok":true,"preset":"warm-daylight","grading":{"preset":"warm-daylight","intensity":1},...}
+
+# LUT file
+node <SKILL_DIR>/scripts/resolve.mjs --type lut --intent "teal orange blockbuster" --project .
+# → resolved lut_001 → .media/luts/lut_001.cube (lut)
 ```
 
 ### Flags
 
 | Flag            | Description                                                                          |
 | --------------- | ------------------------------------------------------------------------------------ |
-| `--type, -t`    | Media type: bgm, sfx, image, icon, voice                                             |
+| `--type, -t`    | Media type: bgm, sfx, image, icon, logo, voice, grade, lut                           |
 | `--intent, -i`  | What you need (natural language)                                                     |
 | `--entity, -e`  | Entity name for cache matching (optional)                                            |
 | `--project, -p` | Project directory (default: .)                                                       |
 | `--candidates`  | List reusable assets (project + global cache) for `--type`; no download, no mutation |
 | `--reuse <sha>` | Import a specific global-cache asset (by content sha/prefix, from `--candidates`)    |
 | `--from`        | Freeze a local file or direct public URL (ingest)                                    |
+| `--for`         | Analyze a local image/video and add measured adjust suggestions (`grade` only)       |
 | `--local-only`  | Offline: skip every network provider (cache + local only)                            |
 | `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`)                      |
 | `--adopt`       | Bulk-import existing assets/ into manifest                                           |
@@ -90,7 +124,7 @@ node <SKILL_DIR>/scripts/resolve.mjs --type logo --entity linkedin --intent "Lin
 
 ## Reuse before you resolve
 
-Before resolving bgm/sfx/image/icon, **check what already exists and reuse it when it fits.** media-use does not semantically match for you — you are the judge. It surfaces candidates; you decide.
+Before resolving bgm/sfx/image/icon/logo/grade/lut, **check what already exists and reuse it when it fits.** media-use does not semantically match for you — you are the judge. It surfaces candidates; you decide.
 
 ```bash
 node <SKILL_DIR>/scripts/resolve.mjs --type bgm --intent "upbeat tech launch" --candidates --project .
@@ -110,6 +144,66 @@ Read the list and judge semantic fit yourself — "upbeat tech launch" ≈ "ener
 
 The deterministic floor still runs automatically: an identical (case/whitespace-insensitive) repeat auto-reuses with no `--candidates` step. `--candidates` is only for the semantic layer above that floor — and a fuzzy match is **never** auto-applied; reuse is always your explicit call. On a resolve that misses the floor and is about to fetch, media-use prints a one-line stderr hint when similar cached assets exist, pointing you back here.
 
+## Color grading
+
+Use `grade` when you need the actual HyperFrames `data-color-grading` value to paste onto an `<img>` or `<video>`. It resolves locally and offline:
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type grade --intent "warm daylight" --project . --json
+```
+
+Preset-first output uses the core runtime vocabulary and does not freeze a file:
+
+```json
+{
+  "preset": "warm-daylight",
+  "intensity": 1
+}
+```
+
+Paste it as an attribute value after JSON string escaping:
+
+```html
+<video
+  class="clip"
+  src="./media/scene.mp4"
+  data-color-grading='{"preset":"warm-daylight","intensity":1}'
+></video>
+```
+
+Looks beyond the preset vocabulary freeze a validated `.cube` under `.media/luts/` and return a block that references it:
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type grade --intent "teal orange blockbuster" --project . --json
+```
+
+```json
+{
+  "intensity": 1,
+  "lut": { "src": ".media/luts/grade_001.cube", "intensity": 0.85 }
+}
+```
+
+Use `lut` when you only need the reusable `.cube` file:
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type lut --intent "teal orange blockbuster" --project .
+```
+
+For visual selection, list reusable looks with `resolve --type grade --candidates`, write the promising entries to a `grades.json`, run `hyperframes grade-compare --for <frame> --grades grades.json`, then commit the winner with `resolve -t grade` as the final `data-color-grading` block.
+
+Smart grade is `grade --for <media>`. It runs local `ffmpeg`/`ffprobe` signalstats, merges a bounded `adjust` suggestion into the returned block, and prints the measured evidence to stderr. Stdout remains valid JSON under `--json`; the suggestion is a starting point for the agent to tune, not an automatic neutralization of intentional color.
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --type grade --intent "warm cinematic" --for ./frame.png --project . --json
+```
+
+Seed LUTs live in `luts/` and were generated in-repo with `scripts/lib/cube-build.mjs`; lutgen-rs was not used. To regenerate or extend them, import `buildCube(params, size)`, write the `.cube` into `skills/media-use/luts/`, add it to `luts/index.json`, then validate it:
+
+```bash
+node skills/media-use/scripts/lib/cube-validate.mjs skills/media-use/luts/teal-orange-blockbuster.cube
+```
+
 ## Providers
 
 media-use holds no keys; every external tool owns its auth. Generation is
@@ -124,6 +218,7 @@ ladder, `describeModelLadder`); the agent can see the ladder and override.
 | voice         | local **Kokoro** (free, on-device), then **heygen tts** paid upsell                     |
 | icon          | heygen asset search                                                                     |
 | logo          | svgl, then simple-icons, then GitHub org avatar, then domain favicon (all free)         |
+| grade/lut     | local core-preset map, bundled `.cube` library, deterministic `buildCube` fallback      |
 | video (local) | local LTX (`videogen` ladder); `heygen video create` avatar upsell                      |
 
 Local Kokoro (voice), mflux (image), and LTX (video) run on-device (free,
@@ -147,7 +242,7 @@ leaving the project + global cache and any local provider.
 1. Check project `.media/manifest.jsonl` for a prompt match (case- and whitespace-insensitive) — auto-reuse
 2. Scan existing `assets/` directory for unregistered files that share a word with the need
 3. Check global cache `~/.media/` for a reusable asset matched on the same normalized prompt — auto-reuse
-4. Search via provider (HeyGen audio catalog, HeyGen asset search), then generate
+4. Search via provider (HeyGen audio catalog, HeyGen asset search), or resolve color locally
 5. Freeze file to `.media/<type>/`, register in manifest, regenerate `index.md`, auto-promote to `~/.media/`
 
 Steps 1 and 3 are the **deterministic floor**: they only auto-reuse an exact-normalized match, never a fuzzy one. Semantic reuse ("close enough") is the agent's explicit call via [Reuse before you resolve](#reuse-before-you-resolve) — it never happens automatically. The agent gets back **one line**; candidates, scores, provenance stay on disk.
@@ -227,7 +322,7 @@ tool to unlock its free, private, on-device path. media-use holds no keys.
 
 | Tool               | Serves                                                                   | Install                                                                                                             |
 | ------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `ffmpeg`/`ffprobe` | adopt probing, cut, duck bake, loudnorm                                  | system package (`brew install ffmpeg`)                                                                              |
+| `ffmpeg`/`ffprobe` | adopt probing, smart-grade signalstats, cut, duck bake, loudnorm         | system package (`brew install ffmpeg`)                                                                              |
 | `heygen`           | catalog (bgm/sfx/image/icon), TTS + avatar upsell                        | `curl -fsSL https://static.heygen.ai/cli/install.sh \| bash` then `heygen auth login --key <key>` (needs >= v0.1.6) |
 | `mflux-generate`   | local image gen (FLUX), best-for-RAM                                     | `uv venv ~/.venvs/mflux && VIRTUAL_ENV=~/.venvs/mflux uv pip install mflux==0.9.6`                                  |
 | `codex`            | image gen upsell (ChatGPT sub)                                           | Codex CLI, logged in via ChatGPT (owns its own auth)                                                                |

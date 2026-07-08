@@ -1,0 +1,26 @@
+{
+  "notes": "Seed LUTs are generated offline with skills/media-use/scripts/lib/cube-build.mjs, not lutgen-rs. Regenerate by importing buildCube, writing the desired params at size 9 or higher, and validating with scripts/lib/cube-validate.mjs.",
+  "looks": [
+    {
+      "id": "teal-orange-blockbuster",
+      "file": "teal-orange-blockbuster.cube",
+      "description": "Teal shadows and warm orange highlights for blockbuster-style cinematic footage.",
+      "tags": ["teal", "orange", "blockbuster", "cinematic", "split tone", "movie"],
+      "intensity": 0.85
+    },
+    {
+      "id": "bleach-bypass",
+      "file": "bleach-bypass.cube",
+      "description": "High-contrast desaturated bleach bypass look with strong blacks.",
+      "tags": ["bleach", "bypass", "desaturated", "high contrast", "gritty", "film"],
+      "intensity": 0.8
+    },
+    {
+      "id": "film-fade",
+      "file": "film-fade.cube",
+      "description": "Soft faded film wash with lifted blacks and warm highlights.",
+      "tags": ["film", "fade", "faded", "wash", "warm", "vintage"],
+      "intensity": 0.75
+    }
+  ]
+}

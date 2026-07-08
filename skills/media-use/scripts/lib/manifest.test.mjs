@@ -13,6 +13,7 @@ import {
   manifestPath,
   mediaDir,
   typeDirPath,
+  typeSubdir,
 } from "./manifest.mjs";
 import { regenerateIndex, generateIndexContent } from "./index-gen.mjs";
 import {
@@ -78,6 +79,17 @@ function runTests() {
     appendRecord(tmp, makeRecord());
     assert.ok(existsSync(mediaDir(tmp)));
     assert.ok(existsSync(typeDirPath(tmp, "bgm")));
+    cleanup();
+  });
+
+  test("lut and grade artifacts use the shared .media/luts subdir", () => {
+    assert.equal(typeSubdir("lut"), "luts");
+    assert.equal(typeSubdir("grade"), "luts");
+
+    setup();
+    const allocated = allocateId(tmp, "lut", ".cube");
+    assert.equal(allocated.localPath, ".media/luts/lut_001.cube");
+    assert.ok(existsSync(join(tmp, allocated.localPath)));
     cleanup();
   });
 

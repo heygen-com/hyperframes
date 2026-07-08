@@ -6,7 +6,7 @@ import { getProviders, getProvider, listTypes, runProviders, runCapability } fro
 
 test("listTypes exposes the v2 media types", () => {
   const types = listTypes();
-  for (const t of ["bgm", "sfx", "image", "icon", "voice", "brand"]) {
+  for (const t of ["bgm", "sfx", "image", "icon", "logo", "voice", "brand", "grade", "lut"]) {
     assert.ok(types.includes(t), `missing type: ${t}`);
   }
 });
@@ -21,7 +21,7 @@ test("heygen provider is first for every type it serves", () => {
 
 test("sanctioned providers only: heygen, local mflux/kokoro, codex, design spec, logo tiers", () => {
   const allowed =
-    /^heygen|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$/;
+    /^heygen|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$|^color_grade\.local$|^cube_lut\.local$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);

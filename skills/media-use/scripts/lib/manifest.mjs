@@ -24,6 +24,8 @@ const TYPE_DIRS = {
   logo: "images",
   brand: "images",
   video: "video",
+  grade: "luts",
+  lut: "luts",
 };
 
 export function mediaDir(projectDir) {

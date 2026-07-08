@@ -1,12 +1,11 @@
 // fallow-ignore-file complexity
-import { spawn } from "node:child_process";
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
+import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
@@ -67,46 +66,25 @@ async function extractVideoFrameToBuffer(
   try {
     const ffmpegPath = findFFmpeg();
     if (!ffmpegPath) return null;
-    const result = await new Promise<{ code: number | null; stderr: string; timedOut: boolean }>(
-      (resolvePromise) => {
-        // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
-        // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
-        const args = ["-hide_banner", "-loglevel", "error"];
-        if (useVp9AlphaDecoder) {
-          args.push("-c:v", "libvpx-vp9");
-        }
-        args.push(
-          "-ss",
-          String(Math.max(0, timeSeconds)),
-          "-i",
-          videoPath,
-          "-frames:v",
-          "1",
-          "-q:v",
-          "2",
-          "-y",
-          outPath,
-        );
-        const ff = spawn(ffmpegPath, args);
-        let stderr = "";
-        let timedOut = false;
-        const timer = setTimeout(() => {
-          timedOut = true;
-          ff.kill("SIGTERM");
-        }, FFMPEG_EXTRACT_TIMEOUT_MS);
-        ff.stderr.on("data", (d: Buffer) => {
-          stderr += d.toString();
-        });
-        ff.on("close", (code) => {
-          clearTimeout(timer);
-          resolvePromise({ code, stderr, timedOut });
-        });
-        ff.on("error", () => {
-          clearTimeout(timer);
-          resolvePromise({ code: null, stderr: "ffmpeg spawn failed", timedOut });
-        });
-      },
+    // `-ss` before `-i` performs a fast keyframe seek; adequate for snapshot accuracy
+    // (±1 frame) and orders of magnitude faster than the decode-and-scan alternative.
+    const args = ["-hide_banner", "-loglevel", "error"];
+    if (useVp9AlphaDecoder) {
+      args.push("-c:v", "libvpx-vp9");
+    }
+    args.push(
+      "-ss",
+      String(Math.max(0, timeSeconds)),
+      "-i",
+      videoPath,
+      "-frames:v",
+      "1",
+      "-q:v",
+      "2",
+      "-y",
+      outPath,
     );
+    const result = await runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
     if (result.code !== 0 || result.timedOut || !existsSync(outPath)) return null;
     return readFileSync(outPath);
   } finally {
@@ -193,7 +171,6 @@ async function captureSnapshots(
   },
 ): Promise<string[]> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const { ensureBrowser } = await import("../browser/manager.js");
 
   const numFrames = opts.frames ?? 5;
 
@@ -203,75 +180,12 @@ async function captureSnapshots(
   const savedPaths: string[] = [];
 
   try {
-    const browser = await ensureBrowser();
-    const puppeteer = await import("puppeteer-core");
-    const chromeBrowser = await puppeteer.default.launch({
-      headless: true,
-      executablePath: browser.executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-      ],
+    const { browser: chromeBrowser, page } = await openSettledCompositionPage(html, server.url, {
+      renderReadyTimeoutMs: opts.timeout ?? 5000,
+      renderReadyWarningSuffix: "snapshots may be inaccurate",
     });
 
     try {
-      const page = await chromeBrowser.newPage();
-      await page.setViewport(resolveCompositionViewportFromHtml(html));
-
-      await page.goto(server.url, {
-        waitUntil: "domcontentloaded",
-        timeout: 10000,
-      });
-
-      // __renderReady is set after the player is constructed AND the root
-      // timeline is bound — waiting for it guarantees renderSeek will work.
-      const timeoutMs = opts.timeout ?? 5000;
-      const runtimeReady = await page
-        .waitForFunction(() => !!(window as any).__renderReady, { timeout: timeoutMs })
-        .then(() => true)
-        .catch(() => false);
-
-      if (!runtimeReady) {
-        console.warn(
-          `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${timeoutMs}ms — snapshots may be inaccurate`,
-        );
-      }
-
-      // Wait for shader transition pre-rendering (HyperShader IndexedDB hydration).
-      // Uses the ready state flag as primary signal, with the loading overlay
-      // display:none as a fallback for older builds.
-      await page
-        .waitForFunction(
-          () => {
-            const win = window as unknown as {
-              __hf?: { shaderTransitions?: Record<string, { ready?: boolean }> };
-            };
-            const shaderTransitions = win.__hf?.shaderTransitions;
-            if (shaderTransitions !== undefined) {
-              return Object.values(shaderTransitions).every((s) => s.ready === true);
-            }
-            const overlay = document.querySelector(
-              "[data-hyper-shader-loading]",
-            ) as HTMLElement | null;
-            if (!overlay) return true;
-            return window.getComputedStyle(overlay).display === "none";
-          },
-          { timeout: 90_000 },
-        )
-        .catch(() => {
-          console.warn(`   ${c.warn("⚠")} Shader transitions did not finish pre-rendering`);
-        });
-
-      // Wait for fonts to finish loading before capturing
-      await page.evaluate(() => document.fonts.ready).catch(() => {});
-
-      // Extra settle time for media and animations to initialize
-      await new Promise((r) => setTimeout(r, 1500));
-
       // Font verification — split into loaded / errored / unused. Only status
       // "error" is a real failure; a face still "unloaded"/"loading" after
       // document.fonts.ready + the settle wait was simply never requested by any
