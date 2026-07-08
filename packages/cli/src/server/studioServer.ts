@@ -18,6 +18,7 @@ import {
 import { VERSION as version } from "../version.js";
 import { buildStudioHeadScripts, resolveCliTelemetryDistinctId } from "./telemetryIdentity.js";
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
+import { isThumbnailTimelineReady, seekThumbnailPage } from "./thumbnailTimeline.js";
 import { isDevMode } from "../utils/env.js";
 import {
   createStudioManualEditsRenderBodyScript,
@@ -482,33 +483,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         page = await browser.newPage();
         await page.setViewport({ width: opts.width || 1920, height: opts.height || 1080 });
         await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-        await page
-          .waitForFunction(
-            () => {
-              const w = window as Window & {
-                __timelines?: Record<string, unknown>;
-              };
-              return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-            },
-            { timeout: 5000 },
-          )
-          .catch(() => {});
+        await page.waitForFunction(isThumbnailTimelineReady, { timeout: 5000 }).catch(() => {});
         // fallow-ignore-next-line code-duplication
-        await page.evaluate((t: number) => {
-          const w = window as Window & {
-            __player?: { seek?: (time: number) => void };
-            __timelines?: Record<string, { pause?: (time?: number) => void }>;
-            gsap?: { ticker?: { tick?: () => void } };
-          };
-          if (typeof w.__player?.seek === "function") {
-            w.__player.seek(t);
-          } else if (w.__timelines) {
-            for (const tl of Object.values(w.__timelines)) {
-              tl?.pause?.(t);
-            }
-            w.gsap?.ticker?.tick?.();
-          }
-        }, opts.seekTime);
+        await page.evaluate(seekThumbnailPage, opts.seekTime);
         const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
         await applyStudioManualEditsToThumbnailPage(page, manifestContent, opts.compPath);
         await page.evaluate(() => {

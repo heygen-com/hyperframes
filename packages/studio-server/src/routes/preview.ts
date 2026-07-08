@@ -20,6 +20,15 @@ const GSAP_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_C
 const GSAP_CUSTOM_EASE_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/CustomEase.min.js"></script>`;
 const GSAP_MOTION_PATH_CDN_SCRIPT = `<script src="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/MotionPathPlugin.min.js"></script>`;
 
+let animeCdnScriptPromise: Promise<string> | null = null;
+
+function loadAnimeCdnScript(): Promise<string> {
+  animeCdnScriptPromise ??= import("@hyperframes/core").then(
+    ({ ANIME_CDN }) => `<script src="${ANIME_CDN}"></script>`,
+  );
+  return animeCdnScriptPromise;
+}
+
 function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
   return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
 }
@@ -77,6 +86,33 @@ function htmlHasGsap(html: string): boolean {
     /\b(GreenSock|_gsScope)\b/.test(outsideTemplates) ||
     /\bgsap\.(config|defaults|registerPlugin|version)\b/.test(outsideTemplates)
   );
+}
+
+// fallow-ignore-next-line code-duplication
+function htmlHasAnime(html: string): boolean {
+  // Only match anime references outside <template> elements — scripts inside
+  // templates are inert when cloned and don't make anime globally available.
+  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
+  return (
+    /<script\b[^>]*src=["'][^"']*anime/i.test(outsideTemplates) ||
+    /\/\*\s*inlined:.*anime/i.test(outsideTemplates) ||
+    /\banime\.(createTimeline|animate)\s*\(/.test(outsideTemplates) ||
+    /\bhyperframesAnime\.register\s*\(/.test(outsideTemplates) ||
+    /\bwindow\.__hfAnime\b/.test(outsideTemplates)
+  );
+}
+
+function htmlHasAnimeScript(html: string): boolean {
+  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
+  return (
+    /<script\b[^>]*src=["'][^"']*anime/i.test(outsideTemplates) ||
+    /\/\*\s*inlined:.*anime/i.test(outsideTemplates)
+  );
+}
+
+async function injectAnimeCdnIfNeeded(html: string): Promise<string> {
+  if (!htmlHasAnime(html) || htmlHasAnimeScript(html)) return html;
+  return injectScriptTagIntoHead(html, await loadAnimeCdnScript());
 }
 
 function htmlHasCustomEase(html: string): boolean {
@@ -179,13 +215,13 @@ function injectGsapCdnFallback(html: string): string {
   return GSAP_CDN_FALLBACK_SCRIPT + html;
 }
 
-function injectStudioPreviewAugmentations(
+async function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
   projectDir: string,
   activeCompositionPath: string,
-): string {
-  return injectStudioMotionScript(
+): Promise<string> {
+  const withGsapAugmentations = injectStudioMotionScript(
     injectMotionPathPluginIfNeeded(
       injectGsapCdnFallback(
         injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
@@ -194,6 +230,7 @@ function injectStudioPreviewAugmentations(
     projectDir,
     activeCompositionPath,
   );
+  return injectAnimeCdnIfNeeded(withGsapAugmentations);
 }
 
 async function transformPreviewHtml(
@@ -237,6 +274,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   });
 
   // Bundled composition preview
+  // fallow-ignore-next-line code-duplication
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
@@ -289,7 +327,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
       // so this is idempotent. On the bundled path the bundler may return untagged
       // HTML (stale cache); because ids are content-keyed the minted ids will match
       // the ids already written to disk by persistHfIdsIfNeeded above.
-      bundled = injectStudioPreviewAugmentations(
+      bundled = await injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
         adapter,
         project.dir,
@@ -306,7 +344,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
           fallback.html,
         );
         return c.html(
-          injectStudioPreviewAugmentations(
+          await injectStudioPreviewAugmentations(
             await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
             adapter,
             project.dir,
@@ -344,6 +382,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
   }
 
   // Sub-composition preview
+  // fallow-ignore-next-line code-duplication
   api.get("/projects/:id/preview/comp/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
@@ -380,7 +419,7 @@ export function registerPreviewRoutes(api: Hono, adapter: StudioApiAdapter): voi
     if (!html) return c.text("not found", 404);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     return c.html(
-      injectStudioPreviewAugmentations(html, adapter, project.dir, compPath),
+      await injectStudioPreviewAugmentations(html, adapter, project.dir, compPath),
       200,
       previewCacheHeaders(etag),
     );

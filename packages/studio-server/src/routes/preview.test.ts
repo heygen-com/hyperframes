@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ANIME_CDN } from "../../../core/src/templates/constants";
 import { registerPreviewRoutes } from "./preview";
 import type { StudioApiAdapter } from "../types";
 
@@ -163,6 +164,76 @@ describe("registerPreviewRoutes", () => {
 
     expect(response.status).toBe(200);
     expect(html).not.toContain("MotionPathPlugin.min.js");
+  });
+
+  it("injects the pinned anime CDN into <head> when anime APIs are used without a script", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div class="clip"></div>
+        <script>
+          const tl = anime.createTimeline({ autoplay: false });
+          hyperframesAnime.register("main", tl);
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html.split(ANIME_CDN).length - 1).toBe(1);
+    expect(html.indexOf("<head>")).toBeLessThan(html.indexOf(ANIME_CDN));
+    expect(html.indexOf(ANIME_CDN)).toBeLessThan(html.indexOf("</head>"));
+  });
+
+  it("does not inject a second anime script when a local or CDN script is already present", async () => {
+    for (const src of ["./vendor/anime.min.js", ANIME_CDN]) {
+      const projectDir = createProjectDir();
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!doctype html><html><head><script src="${src}"></script></head><body>
+          <script>
+            const tl = anime.createTimeline({ autoplay: false });
+            hyperframesAnime.register("main", tl);
+          </script>
+        </body></html>`,
+      );
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir));
+
+      const response = await app.request("http://localhost/projects/demo/preview");
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(html.split(src).length - 1).toBe(1);
+      expect(html.split(ANIME_CDN).length - 1).toBe(src === ANIME_CDN ? 1 : 0);
+    }
+  });
+
+  it("does not inject anime for GSAP-only compositions", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+      </head><body><div id="card" class="clip"></div>
+        <script>
+          const tl = gsap.timeline({ paused: true });
+          window.__timelines = { main: tl };
+        </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).not.toContain(ANIME_CDN);
   });
 
   it("injects Studio GSAP motion runtime into sub-composition previews with the active source path", async () => {
