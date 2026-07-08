@@ -267,7 +267,12 @@ export interface UpdateSkillsResult {
   installed: string[];
   /** Targets that were already current — nothing fetched for them. */
   current: string[];
-  /** Requested names the latest manifest doesn't ship (typo, or renamed upstream). */
+  /**
+   * Requested names the latest manifest doesn't ship (typo, or renamed
+   * upstream). Only ever non-empty on a non-strict run: a strict run throws on
+   * unknown names before returning, so strict callers never observe this — a
+   * future caller reading `unknown` should not expect it under `strict: true`.
+   */
   unknown: string[];
   /** True when freshness couldn't be checked (offline) and only presence was verified. */
   presenceOnly: boolean;
@@ -349,6 +354,11 @@ export async function updateSkills(
  * name must now exist on disk. Catches the "install exited 0 but delivered
  * nothing" failure mode, which would otherwise surface much later as a
  * workflow reading skill files that aren't there.
+ *
+ * Strictness mirrors the caller's tolerance: a strict run (the `check ||
+ * update` CI contract, the router's trigger-time guarantee) throws so the
+ * failure is loud; a non-strict run (init) only warns and proceeds, since a
+ * skills hiccup must never break scaffolding.
  */
 function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?: string }): void {
   const present = new Set(presentSkills(names, { cwd: opts.cwd }));
@@ -629,8 +639,9 @@ const updateCommand = defineCommand({
 
     // Targeted, not full-set: refresh the core set (entry router + shared
     // domain skills) plus whatever is already installed, plus anything named
-    // above. Without names a deliberate partial install stays partial — the
-    // end-user workflow skills install on demand, when their workflow is
+    // above. Without names a deliberate partial install stays partial
+    // (refreshed, but never expanded) — the end-user workflow skills install
+    // on demand, when their workflow is
     // triggered. This is where `init` and the stale-skills nudge both lead;
     // pulling the complete skill set here is exactly what users complained
     // about. Explicit full set: `hyperframes skills` or `npx skills add
