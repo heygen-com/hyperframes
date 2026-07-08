@@ -31,7 +31,7 @@ vi.mock("../utils/runFfmpeg.js", () => ({
   runFfmpeg: runFfmpegMock,
 }));
 
-import { processCompositionAudio } from "./audioMixer.js";
+import { parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 
 describe("processCompositionAudio", () => {
   const tempDirs: string[] = [];
@@ -384,5 +384,52 @@ describe("processCompositionAudio", () => {
 
     const prepareArgs = runFfmpegMock.mock.calls[0]?.[0];
     expect(prepareArgs).toContain(join(baseDir, "assets", filename));
+  });
+});
+
+describe("parseAudioElements — relative data-start resolution", () => {
+  const wrap = (body: string) =>
+    `<div id="root" class="composition" data-composition-id="c" data-start="0" data-duration="10">${body}</div>`;
+
+  it("resolves a relative data-start reference to the target clip's end (matches video)", () => {
+    // <audio data-start="v0"> means 'start when clip v0 ends' = v0.start + v0.duration.
+    const html = wrap(
+      `<video id="v0" class="clip" data-start="0" data-duration="3" src="a.mp4" muted></video>` +
+        `<audio id="a0" data-start="v0" data-duration="2" src="a.m4a"></audio>`,
+    );
+    const els = parseAudioElements(html);
+    const a0 = els.find((e) => e.id === "a0");
+    expect(a0).toBeDefined();
+    // Regression guard: the pre-fix parseFloat("v0") produced NaN, and the
+    // mixer silently dropped the track.
+    expect(Number.isNaN(a0!.start)).toBe(false);
+    expect(a0!.start).toBe(3);
+  });
+
+  it("chains references and never emits NaN start (falls back to 0 for an unknown target)", () => {
+    const html = wrap(
+      `<video id="v0" class="clip" data-start="0" data-duration="2" src="a.mp4" muted></video>` +
+        `<video id="v1" class="clip" data-start="v0" data-duration="2" src="b.mp4" muted></video>` +
+        `<audio id="a1" data-start="v1" src="a.m4a"></audio>` +
+        `<audio id="a2" data-start="does-not-exist" src="b.m4a"></audio>`,
+    );
+    const els = parseAudioElements(html);
+    expect(els.find((e) => e.id === "a1")!.start).toBe(4); // v1 ends at 2+2
+    expect(els.find((e) => e.id === "a2")!.start).toBe(0); // unknown ref → 0, not NaN
+  });
+
+  it("still reads a numeric data-start unchanged", () => {
+    const html = wrap(`<audio id="a0" data-start="2.5" data-duration="1" src="a.m4a"></audio>`);
+    expect(parseAudioElements(html).find((e) => e.id === "a0")!.start).toBe(2.5);
+  });
+
+  it("resolves the reference for a data-has-audio video's audio track too", () => {
+    const html = wrap(
+      `<video id="v0" class="clip" data-start="0" data-duration="4" src="a.mp4" muted></video>` +
+        `<video id="v1" class="clip" data-start="v0" data-duration="2" src="b.mp4" data-has-audio="true"></video>`,
+    );
+    const track = parseAudioElements(html).find((e) => e.id === "v1-audio");
+    expect(track).toBeDefined();
+    expect(track!.start).toBe(4);
   });
 });

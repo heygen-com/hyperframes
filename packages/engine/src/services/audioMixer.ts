@@ -13,6 +13,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import { resolveProjectRelativeSrc } from "./videoFrameExtractor.js";
+import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import type { AudioElement, AudioTrack, MixResult } from "./audioMixer.types.js";
 import { applyVolumeEnvelopeToWav } from "./audioVolumeEnvelope.js";
 
@@ -173,54 +174,51 @@ export function parseAudioElements(html: string): AudioElement[] {
   const elements: AudioElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
 
-  // Parse <audio> elements
-  const audioEls = document.querySelectorAll("audio[id][src]");
-  for (const el of audioEls) {
-    const id = el.getAttribute("id");
-    const src = el.getAttribute("src");
-    if (!id || !src) continue;
+  // Shared resolver state so a relative `data-start` ("start when clip X ends")
+  // resolves against every clip in the composition — exactly as
+  // parseVideoElements does. Without this, `parseFloat("clipId")` yields NaN and
+  // the mixer silently drops the track (the segment renders as pure digital
+  // silence), even though the same reference places the *video* correctly.
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
+  const resolveStart = (el: RefResolverEl): number =>
+    el.getAttribute("data-start") ? resolveReferencedStart(document, el, startCache, visiting) : 0;
+  // `end` stays a plain numeric read (the mixer derives the real segment length
+  // from data-duration / natural media downstream); guard NaN so a malformed
+  // value never poisons the mix instead of falling back to 0.
+  const parseEnd = (raw: string | null): number => {
+    const end = raw ? parseFloat(raw) : 0;
+    return Number.isFinite(end) ? end : 0;
+  };
 
-    const startAttr = el.getAttribute("data-start");
-    const endAttr = el.getAttribute("data-end");
+  // <audio> and <video data-has-audio> tracks differ only in the emitted id
+  // and `type`; everything else (timing, layer, volume) is read identically.
+  const build = (el: RefResolverEl, id: string, type: AudioElement["type"]): AudioElement => {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
-
-    elements.push({
+    return {
       id,
-      src,
-      start: startAttr ? parseFloat(startAttr) : 0,
-      end: endAttr ? parseFloat(endAttr) : 0,
+      src: el.getAttribute("src") as string,
+      start: resolveStart(el),
+      end: parseEnd(el.getAttribute("data-end")),
       mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
       layer: layerAttr ? parseInt(layerAttr) : 0,
       volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
-      type: "audio",
-    });
+      type,
+    };
+  };
+
+  for (const el of document.querySelectorAll("audio[id][src]")) {
+    const id = el.getAttribute("id");
+    if (!id || !el.getAttribute("src")) continue;
+    elements.push(build(el, id, "audio"));
   }
 
-  // Parse <video> elements with data-has-audio="true"
-  const videoEls = document.querySelectorAll('video[id][src][data-has-audio="true"]');
-  for (const el of videoEls) {
+  for (const el of document.querySelectorAll('video[id][src][data-has-audio="true"]')) {
     const id = el.getAttribute("id");
-    const src = el.getAttribute("src");
-    if (!id || !src) continue;
-
-    const startAttr = el.getAttribute("data-start");
-    const endAttr = el.getAttribute("data-end");
-    const mediaStartAttr = el.getAttribute("data-media-start");
-    const layerAttr = el.getAttribute("data-layer");
-    const volumeAttr = el.getAttribute("data-volume");
-
-    elements.push({
-      id: `${id}-audio`,
-      src,
-      start: startAttr ? parseFloat(startAttr) : 0,
-      end: endAttr ? parseFloat(endAttr) : 0,
-      mediaStart: mediaStartAttr ? parseFloat(mediaStartAttr) : 0,
-      layer: layerAttr ? parseInt(layerAttr) : 0,
-      volume: volumeAttr ? parseFloat(volumeAttr) : 1.0,
-      type: "video",
-    });
+    if (!id || !el.getAttribute("src")) continue;
+    elements.push(build(el, `${id}-audio`, "video"));
   }
 
   return elements;
