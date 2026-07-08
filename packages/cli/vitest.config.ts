@@ -14,6 +14,13 @@ export default defineConfig({
         find: /^@hyperframes\/core$/,
         replacement: resolve(__dirname, "../core/src/index.ts"),
       },
+      // @hyperframes/validate's dist isn't built in the Test job (unlike core/lint), and
+      // validate.ts imports it at module load. Resolve to source; validate's src pulls
+      // engine/producer only via dynamic import, so nothing unbuilt loads eagerly.
+      {
+        find: /^@hyperframes\/validate$/,
+        replacement: resolve(__dirname, "../validate/src/index.ts"),
+      },
     ],
   },
   test: {

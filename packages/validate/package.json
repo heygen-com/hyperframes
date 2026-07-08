@@ -1,0 +1,58 @@
+{
+  "name": "@hyperframes/validate",
+  "version": "0.7.38",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/validate"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      },
+      "./package.json": "./package.json"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "scripts": {
+    "build": "tsup && cp src/contrast-audit.browser.js dist/",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "echo skip"
+  },
+  "dependencies": {
+    "@hyperframes/core": "workspace:*",
+    "@hyperframes/engine": "workspace:*",
+    "@hyperframes/producer": "workspace:*",
+    "linkedom": "^0.18.12",
+    "puppeteer-core": "24.40.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "happy-dom": "^20.9.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

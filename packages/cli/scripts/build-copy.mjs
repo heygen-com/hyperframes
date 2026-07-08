@@ -99,7 +99,8 @@ async function main() {
     cpSync(layoutAuditScript, join(DIST, "commands", "layout-audit.browser.js"));
   }
 
-  const contrastAuditScript = join(CLI_ROOT, "src", "commands", "contrast-audit.browser.js");
+  // Owned by @hyperframes/validate; bundled CLI loads it from dist/commands via page.addScriptTag.
+  const contrastAuditScript = join(CLI_ROOT, "..", "validate", "src", "contrast-audit.browser.js");
   if (existsSync(contrastAuditScript)) {
     cpSync(contrastAuditScript, join(DIST, "commands", "contrast-audit.browser.js"));
   }
