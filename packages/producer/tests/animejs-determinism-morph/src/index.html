@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #0b1020;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #f3f7fb;
+      background: linear-gradient(135deg, #0b1020 0%, #1f2937 58%, #0f766e 100%);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #b8f7d4;
+    }
+
+    svg {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    #morph-source {
+      fill: #ef476f;
+      stroke: #fff6e6;
+      stroke-width: 10;
+      filter: drop-shadow(0 28px 70px rgba(0, 0, 0, 0.34));
+    }
+
+    #morph-target {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.18);
+      stroke-width: 4;
+      stroke-dasharray: 14 22;
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-morph"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / svg morphTo</div>
+      <svg viewBox="0 0 1920 1080" aria-hidden="true">
+        <path
+          id="morph-target"
+          d="M960 210 C1150 230 1310 365 1326 535 C1342 708 1190 838 960 868 C730 838 578 708 594 535 C610 365 770 230 960 210 Z"
+        ></path>
+        <path
+          id="morph-source"
+          data-det-target="morph-source"
+          d="M960 208 L1038 447 L1290 447 L1086 594 L1164 834 L960 686 L756 834 L834 594 L630 447 L882 447 Z"
+        ></path>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const morphTimeline = anime.createTimeline({ autoplay: false });
+    morphTimeline.add(
+      "#morph-source",
+      {
+        d: anime.svg.morphTo("#morph-target", 0.6),
+        fill: "#06d6a0",
+        duration: 6000,
+        ease: "inOut(3)",
+      },
+      0,
+    );
+
+    hyperframesAnime.register("morph", morphTimeline, {
+      labels: { start: 0, midpoint: 3, end: 6 },
+    });
+  </script>
+</body>
+</html>

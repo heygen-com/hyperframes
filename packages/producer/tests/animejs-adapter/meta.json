@@ -1,7 +1,7 @@
 {
   "name": "animejs-adapter",
-  "description": "Regression guard for the anime.js v4 runtime adapter. Verifies that anime.createTimeline(), stagger(), and seek() render deterministically via the __hfAnime adapter bridge.",
-  "tags": ["regression", "adapter"],
+  "description": "Regression guard for the anime.js 4.5 runtime adapter using the U1 hyperframesAnime.register contract. Verifies keyed createTimeline registrations, transforms, and staggered seek behavior.",
+  "tags": ["regression", "determinism", "adapter"],
   "minPsnr": 30,
   "maxFrameFailures": 0,
   "minAudioCorrelation": 0,

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #160f29;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #fff7ed;
+      background:
+        linear-gradient(155deg, #160f29 0%, #2f1b45 48%, #064e3b 100%);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #fca5a5;
+    }
+
+    #late-card {
+      position: absolute;
+      left: 420px;
+      top: 300px;
+      width: 420px;
+      height: 300px;
+      border-radius: 20px;
+      background: #fb7185;
+      opacity: 0;
+      transform-origin: center;
+    }
+
+    #runner {
+      position: absolute;
+      left: 980px;
+      top: 475px;
+      width: 120px;
+      height: 120px;
+      border-radius: 60px;
+      background: #22c55e;
+      transform-origin: center;
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-backward-seek"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / forward then back to zero</div>
+      <div id="late-card" data-det-target="late-card"></div>
+      <div id="runner" data-det-target="runner"></div>
+    </div>
+  </div>
+
+  <script>
+    const backwardTimeline = anime.createTimeline({ autoplay: false });
+    backwardTimeline
+      .add("#late-card", { opacity: [0, 1], translateY: [90, 0], rotate: [-8, 0], duration: 1400, ease: "out(4)" }, 1200)
+      .add("#runner", { translateX: [0, 520], scale: [1, 1.42], duration: 2200, ease: "inOut(2)" }, 700)
+      .add("#runner", { translateX: [520, -160], scale: [1.42, 0.88], backgroundColor: "#facc15", duration: 1800, ease: "inOut(3)" }, 3300);
+
+    hyperframesAnime.register("backward-seek", backwardTimeline, {
+      labels: { beforeStart: 0, lateStart: 1.2, returnProbe: 4.4, end: 6 },
+    });
+  </script>
+</body>
+</html>

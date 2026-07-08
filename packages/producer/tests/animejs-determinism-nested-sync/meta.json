@@ -1,0 +1,13 @@
+{
+  "name": "animejs-determinism-nested-sync",
+  "description": "Anime.js 4.5 determinism fixture for a parent timeline syncing a child timeline via .sync().",
+  "tags": ["regression", "determinism", "adapter"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

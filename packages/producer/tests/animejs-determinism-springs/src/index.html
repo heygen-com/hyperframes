@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #071014;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #e8f7ff;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 160px 160px,
+        linear-gradient(0deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 160px 160px,
+        #071014;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      line-height: 1;
+      color: #9fd8ff;
+    }
+
+    #spring-box {
+      position: absolute;
+      left: 260px;
+      top: 430px;
+      width: 170px;
+      height: 170px;
+      border-radius: 24px;
+      background: #ffb703;
+      box-shadow: 0 32px 90px rgba(255, 183, 3, 0.24);
+      transform-origin: center;
+    }
+
+    .rail {
+      position: absolute;
+      left: 260px;
+      top: 640px;
+      width: 1180px;
+      height: 4px;
+      background: rgba(232, 247, 255, 0.28);
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-springs"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / spring ease</div>
+      <div class="rail"></div>
+      <div id="spring-box" data-det-target="spring-box"></div>
+    </div>
+  </div>
+
+  <script>
+    const springTimeline = anime.createTimeline({ autoplay: false });
+    springTimeline.add(
+      "#spring-box",
+      {
+        translateX: [0, 980],
+        rotate: [0, 32],
+        scale: [1, 1.18],
+        duration: 6000,
+        ease: anime.createSpring({ stiffness: 88, damping: 12, mass: 1, velocity: 0 }),
+      },
+      0,
+    );
+
+    hyperframesAnime.register("springs", springTimeline, {
+      labels: { start: 0, settle: 4.8, end: 6 },
+    });
+  </script>
+</body>
+</html>

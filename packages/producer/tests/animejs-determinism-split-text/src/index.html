@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #101418;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #f4f1de;
+      background:
+        linear-gradient(90deg, rgba(244, 241, 222, 0.06) 1px, transparent 1px) 0 0 / 96px 96px,
+        #101418;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #81b29a;
+    }
+
+    #split-source {
+      width: 1420px;
+      font-size: 132px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-split-text"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / text split chars</div>
+      <div id="split-source" data-det-target="split-source">SEEK EVERY GLYPH</div>
+    </div>
+  </div>
+
+  <script>
+    const split = anime.text.split("#split-source", { chars: true });
+    const chars = split.chars || split.characters || [];
+    if (!chars.length) {
+      throw new Error("anime.text.split did not return chars");
+    }
+    chars.forEach((char, index) => {
+      char.dataset.detTarget = "split-char";
+      char.dataset.charIndex = String(index);
+    });
+
+    const splitTimeline = anime.createTimeline({ autoplay: false });
+    splitTimeline.add(
+      chars,
+      {
+        opacity: [0, 1],
+        translateY: [90, 0],
+        rotate: [-10, 0],
+        duration: 1200,
+        delay: anime.stagger(52, { from: "center" }),
+        ease: "out(4)",
+      },
+      500,
+    );
+    splitTimeline.add(
+      chars,
+      {
+        color: "#e07a5f",
+        duration: 2400,
+        delay: anime.stagger(18, { from: "first" }),
+        ease: "linear",
+      },
+      2400,
+    );
+
+    hyperframesAnime.register("split-text", splitTimeline, {
+      labels: { reveal: 0.5, color: 2.4, end: 6 },
+    });
+  </script>
+</body>
+</html>

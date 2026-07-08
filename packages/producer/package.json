@@ -41,6 +41,8 @@
     "parity:check:ci": "tsx src/parity-harness.ts --preview-url \"http://127.0.0.1:4173/minimal-wysiwyg.html\" --producer-url \"http://127.0.0.1:4173/minimal-wysiwyg.html?mode=producer\" --checkpoints \"0,0.5,1,1.5\" --allow-mismatch-ratio 0 --emulate-producer-swap true --artifacts-dir \".debug/parity-harness-ci\"",
     "perf:gate": "tsx src/perf-gate.ts",
     "check:runtime-conformance": "tsx src/runtime-conformance.ts",
+    "check:runtime-manifest": "tsx src/runtime-conformance.ts --manifest-only",
+    "check:animejs-determinism": "tsx src/animejs-determinism-gate.ts",
     "benchmark": "tsx src/benchmark.ts",
     "bench:hdr": "tsx src/benchmark.ts --tags hdr",
     "test": "tsx src/regression-harness.ts --exclude-tags transparency",

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #111827;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #main {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: #f8fafc;
+      background:
+        radial-gradient(circle at 24% 30%, rgba(14, 165, 233, 0.25), transparent 30%),
+        linear-gradient(140deg, #111827 0%, #1e293b 52%, #431407 100%);
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+    }
+
+    .debug-label {
+      position: absolute;
+      top: 48px;
+      left: 64px;
+      font-size: 28px;
+      color: #facc15;
+    }
+
+    svg {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    #draw-path {
+      fill: none;
+      stroke: #38bdf8;
+      stroke-width: 28;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 22px 56px rgba(56, 189, 248, 0.3));
+    }
+  </style>
+</head>
+<body>
+  <div
+    id="main"
+    data-composition-id="animejs-determinism-drawable"
+    data-width="1920"
+    data-height="1080"
+    data-start="0"
+    data-duration="6"
+  >
+    <div class="clip" data-start="0" data-duration="6">
+      <div class="debug-label">anime.js determinism / svg drawable draw</div>
+      <svg viewBox="0 0 1920 1080" aria-hidden="true">
+        <path
+          id="draw-path"
+          data-det-target="draw-path"
+          d="M240 740 C430 320 680 320 842 584 C1008 856 1228 850 1380 562 C1480 372 1598 320 1710 360"
+        ></path>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const [drawablePath] = anime.svg.createDrawable("#draw-path");
+    const drawableTimeline = anime.createTimeline({ autoplay: false });
+    drawableTimeline.add(
+      drawablePath,
+      {
+        draw: ["0 0", "0 1"],
+        duration: 6000,
+        ease: "linear",
+      },
+      0,
+    );
+
+    hyperframesAnime.register("drawable", drawableTimeline, {
+      labels: { start: 0, half: 3, end: 6 },
+    });
+  </script>
+</body>
+</html>
