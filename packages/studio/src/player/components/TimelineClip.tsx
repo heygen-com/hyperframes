@@ -72,7 +72,8 @@ export const TimelineClip = memo(function TimelineClip({
     bottom: clipY,
     borderRadius: theme.clipRadius,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-    cursor: capabilities.canMove ? "grab" : "default",
+    // Regular cursor over clips (CapCut-style) — no grab/grabbing hand.
+    cursor: "default",
     transform: isDragging ? "translateY(-1px)" : undefined,
   };
 

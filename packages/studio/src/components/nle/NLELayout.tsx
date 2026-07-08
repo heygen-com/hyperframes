@@ -77,7 +77,9 @@ interface NLELayoutProps {
   onCompositionLoadingChange?: (loading: boolean) => void;
 }
 
-const DEFAULT_TIMELINE_H = 220;
+// Timeline gets a generous default height so the preview isn't oversized and the
+// tracks have room to breathe (CapCut-style). Users can still drag the divider.
+const DEFAULT_TIMELINE_H = 340;
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
