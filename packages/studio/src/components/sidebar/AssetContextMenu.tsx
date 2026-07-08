@@ -32,6 +32,7 @@ export function ContextMenu({
       >
         {onAddAtPlayhead && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onAddAtPlayhead(asset);

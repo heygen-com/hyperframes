@@ -7,6 +7,7 @@ import { resolveTimelineDropPreview, type TimelineDropPreview } from "./timeline
 import { collectTimelineSnapTargets } from "./timelineSnapping";
 import { resolveTimelineAutoScroll } from "./timelineEditing";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import { useMountEffect } from "../../hooks/useMountEffect";
 
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -72,6 +73,15 @@ export function useTimelineAssetDrop({
     setDropPreview(null);
     setIsDragOver(false);
   }, []);
+
+  // Clear the drop ghost when a drag is cancelled (ESC) while the pointer is over
+  // the timeline. `dragleave` may not fire on ESC for in-window drags, but `dragend`
+  // always fires on the drag source element in that case.
+  useMountEffect(() => {
+    const onDragEnd = () => clearDropPreview();
+    window.addEventListener("dragend", onDragEnd);
+    return () => window.removeEventListener("dragend", onDragEnd);
+  });
 
   const handleAssetDragOver = useCallback(
     // fallow-ignore-next-line complexity
