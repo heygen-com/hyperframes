@@ -869,37 +869,21 @@ function handleSetVariableValue(
   const modelPath = variablePath(id);
   const oldVarDefault = readVariableDefault(parsed.document, id);
 
-  if (isObjectVariableValue(value)) {
-    // Object values (font / image): write to JSON model only — objects are not
-    // valid CSS custom property values (LOCKED §7).
-    writeVariableDefault(parsed.document, id, value);
-    const p = valueChange(modelPath, oldVarDefault ?? null, value);
-    return { forward: [p.forward], inverse: [p.inverse] };
-  }
-
-  // Scalar values: update the JSON model (B1 — drives the runtime) and also
-  // keep the CSS custom prop as secondary / compat for compositions that
-  // CSS-bind directly to --{id}.
-  const cssVar = `--${id}`;
-  const rootId = root.getAttribute("data-hf-id");
-  const oldStyles = getElementStyles(root);
-  const oldCssValue = oldStyles[cssVar] ?? null;
-  const newVal = String(value);
-  setElementStyles(root, { [cssVar]: newVal });
+  // Update the JSON model (B1 — drives the runtime) and keep the CSS custom
+  // prop as secondary / compat for compositions that CSS-bind directly to
+  // --{id}. Object values (font / image) are not valid CSS custom property
+  // values (LOCKED §7) — cssCompatChange clears any stale scalar prop instead.
+  // Emitting separate model + style patches keeps apply-patches.ts pure per
+  // path type, so inverse patches restore the exact pre-call state.
   writeVariableDefault(parsed.document, id, value);
-
-  // Emit explicit patches for both the JSON model (canonical) and the CSS compat
-  // prop. Keeping them separate means apply-patches.ts can handle each path type
-  // purely (variable path → model only; style path → CSS only), so inverse patches
-  // correctly restore the exact pre-call state without CSS-side-effect ambiguity.
   const modelP = valueChange(modelPath, oldVarDefault ?? null, value);
   const forward: JsonPatchOp[] = [modelP.forward];
   const inverse: JsonPatchOp[] = [modelP.inverse];
 
-  if (rootId) {
-    const cssPatch = scalarChange(stylePath(rootId, cssVar), oldCssValue, newVal);
-    forward.push(cssPatch.forward);
-    inverse.push(cssPatch.inverse);
+  const css = cssCompatChange(parsed, id, isObjectVariableValue(value) ? null : String(value));
+  if (css) {
+    forward.push(css.forward);
+    inverse.push(css.inverse);
   }
 
   return { forward, inverse };

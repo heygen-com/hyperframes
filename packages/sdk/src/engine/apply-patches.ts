@@ -124,7 +124,20 @@ function applyVariableDefault(document: Document, id: string, newDefault: unknow
 export function applyOverrideSet(parsed: ParsedDocument, overrides: OverrideSet): void {
   const patches: JsonPatchOp[] = [];
   const rootId = findRoot(parsed.document)?.getAttribute("data-hf-id") ?? null;
-  for (const [key, value] of Object.entries(overrides)) {
+  // Whole-declaration snapshots (varDecl.{id}) must replay BEFORE value keys
+  // (var.{id}): a declaration snapshot embeds the default at fold time, while
+  // var.{id} always carries the latest value — insertion order alone would let
+  // an older snapshot clobber a newer value.
+  const entries = Object.entries(overrides).sort(([a], [b]) => {
+    const aVar = a.startsWith("var.");
+    const bVar = b.startsWith("var.");
+    const aDecl = a.startsWith("varDecl.");
+    const bDecl = b.startsWith("varDecl.");
+    if (aVar && bDecl) return 1;
+    if (aDecl && bVar) return -1;
+    return 0; // stable — every other key keeps its insertion order
+  });
+  for (const [key, value] of entries) {
     const path = keyToPath(key);
     if (!path) continue;
     if (value === null) {

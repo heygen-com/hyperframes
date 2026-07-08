@@ -18,6 +18,7 @@ import {
 } from "./VariablesDeclarationForm";
 import { PreviewValueControl } from "./VariablesValueControls";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { resolveMasterCompositionPath } from "../../utils/studioUrlState";
 import { isScalarVariableValue as isScalar } from "@hyperframes/core/variables";
 
 /** POSIX single-quote escaping so the copied command survives quotes in values. */
@@ -273,7 +274,14 @@ export const VariablesPanel = memo(function VariablesPanel({
 }: VariablesPanelProps) {
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
-  const { readProjectFile, writeProjectFile } = useFileManagerContext();
+  const { readProjectFile, writeProjectFile, fileTree } = useFileManagerContext();
+  // On the master view (no activeCompPath) the panel targets the project's real
+  // main composition — the first .html in the tree — not a hardcoded index.html
+  // that may not exist. This same path is used for the persist write target (so
+  // an edit never lands in a phantom index.html) AND the handoff render command.
+  // Null only when the project has no composition yet, in which case sdkSession
+  // is also null and the panel is inert.
+  const effectiveCompPath = activeCompPath ?? resolveMasterCompositionPath(fileTree);
   const previewValues = usePreviewVariablesStore((s) => s.values);
   const setPreviewValues = usePreviewVariablesStore((s) => s.setValues);
 
@@ -291,7 +299,7 @@ export const VariablesPanel = memo(function VariablesPanel({
 
   const persistVariables = useVariablesPersist({
     sdkSession,
-    activeCompPath,
+    activeCompPath: effectiveCompPath,
     readProjectFile,
     writeProjectFile,
     recordEdit,
@@ -490,7 +498,7 @@ export const VariablesPanel = memo(function VariablesPanel({
         {declarations.length > 0 && (
           <HandoffFooter
             effectiveValues={effectiveValues}
-            compPath={activeCompPath ?? "index.html"}
+            compPath={effectiveCompPath ?? "index.html"}
             onCopy={copyToClipboard}
           />
         )}

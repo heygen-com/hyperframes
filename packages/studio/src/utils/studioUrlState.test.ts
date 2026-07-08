@@ -8,11 +8,40 @@ import {
   normalizeStudioCompositionPath,
   normalizeStudioUrlPanelTab,
   parseStudioUrlStateFromHash,
+  resolveMasterCompositionPath,
 } from "./studioUrlState";
 import { useStudioUrlState } from "../hooks/useStudioUrlState";
 import { usePlayerStore } from "../player";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+describe("resolveMasterCompositionPath", () => {
+  it("prefers index.html when present", () => {
+    expect(resolveMasterCompositionPath(["frames/a.html", "index.html", "b.html"])).toBe(
+      "index.html",
+    );
+  });
+
+  it("falls back to the first .html when there is no index.html", () => {
+    expect(resolveMasterCompositionPath(["notes.md", "card.html", "hero.html"])).toBe("card.html");
+  });
+
+  it("returns null when the project carries no composition", () => {
+    expect(resolveMasterCompositionPath(["notes.md", "styles.css"])).toBeNull();
+    expect(resolveMasterCompositionPath([])).toBeNull();
+  });
+});
+
+describe("normalizeStudioUrlPanelTab", () => {
+  it("accepts slideshow and variables as valid tabs", () => {
+    expect(normalizeStudioUrlPanelTab("slideshow", { inspectorPanelsEnabled: true })).toBe(
+      "slideshow",
+    );
+    expect(normalizeStudioUrlPanelTab("variables", { inspectorPanelsEnabled: true })).toBe(
+      "variables",
+    );
+  });
+});
 
 function resetPlayerStore() {
   usePlayerStore.setState({

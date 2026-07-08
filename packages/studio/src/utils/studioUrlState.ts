@@ -19,7 +19,20 @@ export interface StudioUrlState {
   selection: StudioUrlSelectionState | null;
 }
 
-const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders"];
+const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow", "variables"];
+
+/**
+ * The composition a schema-level panel (Variables / Slideshow) targets on the
+ * master view, where there is no explicit `activeCompPath`. Prefer the
+ * `index.html` convention, but fall back to the first `.html` in the file tree
+ * (composition-browser order) so projects whose entry file is `card.html`,
+ * `hero.html`, etc. don't silently mis-target a non-existent `index.html`.
+ * Returns null when the project carries no composition file at all.
+ */
+export function resolveMasterCompositionPath(fileTree: string[]): string | null {
+  if (fileTree.includes("index.html")) return "index.html";
+  return fileTree.find((p) => p.endsWith(".html")) ?? null;
+}
 
 export function normalizeStudioUrlPanelTab(
   tab: RightPanelTab | null,
@@ -106,6 +119,8 @@ export function readStudioUrlStateFromWindow(): StudioUrlState {
   return parseStudioUrlStateFromHash(window.location.hash);
 }
 
+// Pre-existing param-assembly complexity — surfaced by this PR's line shifts.
+// fallow-ignore-next-line complexity
 export function buildStudioHash(projectId: string, state: StudioUrlState): string {
   const params = new URLSearchParams();
 

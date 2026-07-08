@@ -240,14 +240,7 @@ class CompositionImpl implements Composition {
     // The CSS compat channel counts as usage: a variable consumed only via
     // var(--id) in stylesheets or inline styles must not be badged unused
     // (removing it also removes the --{id} root prop and breaks the binding).
-    const cssParts: string[] = [];
-    for (const styleEl of Array.from(this.parsed.document.querySelectorAll("style"))) {
-      cssParts.push(styleEl.textContent ?? "");
-    }
-    for (const el of Array.from(this.parsed.document.querySelectorAll("[style]"))) {
-      cssParts.push(el.getAttribute("style") ?? "");
-    }
-    const cssText = cssParts.join("\n");
+    const cssText = this._collectCssText();
     // Match var(--id) only at a custom-property-name boundary: the id must be
     // followed by whitespace, a comma (fallback), or the closing paren — so id
     // "foo" is NOT counted as used by an unrelated var(--foo-header). Ids are
@@ -262,6 +255,18 @@ class CompositionImpl implements Composition {
       undeclaredReads: usedIds.filter((id) => !declaredSet.has(id)),
       scanIncomplete,
     };
+  }
+
+  /** All stylesheet + inline-style text, for var(--id) consumption checks. */
+  private _collectCssText(): string {
+    const cssParts: string[] = [];
+    for (const styleEl of Array.from(this.parsed.document.querySelectorAll("style"))) {
+      cssParts.push(styleEl.textContent ?? "");
+    }
+    for (const el of Array.from(this.parsed.document.querySelectorAll("[style]"))) {
+      cssParts.push(el.getAttribute("style") ?? "");
+    }
+    return cssParts.join("\n");
   }
 
   setPreviewVariables(values: Record<string, unknown> | null): boolean {
