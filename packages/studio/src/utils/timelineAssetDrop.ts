@@ -139,6 +139,19 @@ export function buildTimelineAssetInsertHtml(input: {
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;
 }
 
+/**
+ * A clip inserted past the composition end would exist in the HTML but never
+ * appear on the timeline or in playback. Extend the root's data-duration to
+ * cover it (mirrors blockInstaller's behavior for installed blocks).
+ */
+export function extendCompositionDurationIfNeeded(source: string, requiredEnd: number): string {
+  const match = source.match(/(<[^>]*data-composition-id="[^"]*"[^>]*data-duration=")([^"]*)(")/);
+  if (!match) return source;
+  const rootDur = Number.parseFloat(match[2]);
+  if (!Number.isFinite(rootDur) || requiredEnd <= rootDur) return source;
+  return source.replace(match[0], `${match[1]}${roundToCenti(requiredEnd)}${match[3]}`);
+}
+
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
   const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (!match || match.index == null) {

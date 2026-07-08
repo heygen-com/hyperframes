@@ -1,5 +1,4 @@
-// Pre-existing-complex timeline hook (DOM patch + GSAP position shift/scale +
-// playback-start resolution).
+// Pre-existing-complex timeline hook (DOM patch + GSAP position shift/scale + pbs resolution).
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
@@ -7,6 +6,7 @@ import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
+  extendCompositionDurationIfNeeded,
   buildTimelineAssetInsertHtml,
   buildTimelineFileDropPlacements,
   fitTimelineAssetGeometry,
@@ -41,8 +41,6 @@ import {
 } from "./timelineTrackVisibility";
 import { sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
-
-// ── Hook ──
 
 export function useTimelineEditing({
   projectId,
@@ -200,9 +198,8 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      // Patch the live playback-start/media-start attr too, or a resize that
-      // trims the playback start leaves the preview showing the old in-point
-      // until the next reload (the persisted patch handles it via pbs below).
+      // Patch the live playback-start/media-start attr too, or a start-trim shows
+      // the old in-point until the next reload (persisted patch handles pbs below).
       if (updates.playbackStart != null) {
         const liveAttr =
           element.playbackStartAttr === "playback-start"
@@ -438,19 +435,22 @@ export function useTimelineEditing({
         );
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
 
-        const patchedContent = insertTimelineAssetIntoSource(
-          originalContent,
-          buildTimelineAssetInsertHtml({
-            id: newId,
-            hfId,
-            assetPath: resolvedAssetSrc,
-            kind,
-            start: normalizedStart,
-            duration: normalizedDuration,
-            track: placement.track,
-            zIndex: newElementZIndex,
-            geometry: fitTimelineAssetGeometry(natural, compSize),
-          }),
+        const patchedContent = extendCompositionDurationIfNeeded(
+          insertTimelineAssetIntoSource(
+            originalContent,
+            buildTimelineAssetInsertHtml({
+              id: newId,
+              hfId,
+              assetPath: resolvedAssetSrc,
+              kind,
+              start: normalizedStart,
+              duration: normalizedDuration,
+              track: placement.track,
+              zIndex: newElementZIndex,
+              geometry: fitTimelineAssetGeometry(natural, compSize),
+            }),
+          ),
+          normalizedStart + normalizedDuration,
         );
 
         domEditSaveTimestampRef.current = Date.now();
