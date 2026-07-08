@@ -114,6 +114,30 @@ export function resolvePlacement({
   return { track: desiredTrack, needsInsert: true };
 }
 
+/**
+ * Snap a clip's start forward so it doesn't overlap any of `laneClips` — used on
+ * the magnetic main track, where clips can't stack. Walks the lane's clips in time
+ * order and, on each overlap, butts the clip flush after that clip (cascading past
+ * a run of adjacent clips). `laneClips` should already be the target lane's clips.
+ */
+export function snapClearOfClips(
+  laneClips: TimelineElement[],
+  start: number,
+  duration: number,
+  excludeKey: string | null,
+): number {
+  const others = laneClips
+    .filter((c) => (c.key ?? c.id) !== excludeKey)
+    .slice()
+    .sort((a, b) => a.start - b.start);
+  let s = Math.max(0, start);
+  for (const c of others) {
+    const ce = c.start + c.duration;
+    if (s < ce && c.start < s + duration) s = ce; // overlap → butt flush after c
+  }
+  return Math.round(s * 100) / 100;
+}
+
 export interface TrackShift {
   key: string;
   toTrack: number;

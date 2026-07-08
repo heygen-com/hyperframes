@@ -19,7 +19,13 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import { resolvePlacement, resolveInsertRow, buildTrackInsert } from "./timelineCollision";
+import {
+  resolvePlacement,
+  resolveInsertRow,
+  buildTrackInsert,
+  snapClearOfClips,
+} from "./timelineCollision";
+import { resolveMainOriginTrack } from "./timelineZones";
 
 const EMPTY_BEAT_TIMES: number[] = [];
 
@@ -220,12 +226,25 @@ export function useTimelineClipDrag({
         ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
         : 0;
       const insertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
+      // Main-track magnet (no-overlap): when the clip lands on the main track (not
+      // an insert), snap its start clear of the other main clips instead of stacking.
+      const mainTrack = resolveMainOriginTrack(elementsRef.current);
+      const dragKey = drag.element.key ?? drag.element.id;
+      const previewStart =
+        insertRow === null && mainTrack !== null && placement.track === mainTrack
+          ? snapClearOfClips(
+              elementsRef.current.filter((e) => e.track === mainTrack),
+              snap.start,
+              drag.element.duration,
+              dragKey,
+            )
+          : snap.start;
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: snap.start,
+        previewStart,
         previewTrack: placement.track,
         insertRow,
         snapTime: snap.snapTime,

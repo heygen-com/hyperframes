@@ -5,6 +5,7 @@ import {
   isLaneFree,
   resolveInsertRow,
   resolvePlacement,
+  snapClearOfClips,
   timeRangesOverlap,
 } from "./timelineCollision";
 
@@ -128,6 +129,23 @@ describe("resolvePlacement", () => {
         excludeKey: "self",
       }),
     ).toEqual({ track: 1, needsInsert: false });
+  });
+});
+
+describe("snapClearOfClips", () => {
+  const lane = [el("a", 0, 0, 2), el("b", 0, 2, 2)]; // two flush clips: [0,2) [2,4)
+
+  it("leaves a non-overlapping start untouched", () => {
+    expect(snapClearOfClips(lane, 5, 1, null)).toBe(5);
+  });
+
+  it("butts flush after the clip it overlaps, cascading past a run", () => {
+    expect(snapClearOfClips(lane, 1, 1, null)).toBe(4); // overlaps [0,2)→2, then [2,4)→4
+    expect(snapClearOfClips(lane, 3, 1, null)).toBe(4); // overlaps [2,4)→4
+  });
+
+  it("ignores the dragged clip itself", () => {
+    expect(snapClearOfClips([el("self", 0, 0, 5)], 1, 2, "self")).toBe(1);
   });
 });
 
