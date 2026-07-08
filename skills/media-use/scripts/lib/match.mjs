@@ -37,10 +37,11 @@ export function tokenOverlap(a, b) {
   return n;
 }
 
-// icon and image are interchangeable: both live in images/, and figma-imported
-// brand marks are recorded as type image while agents ask for logos as icon.
+// icon, image, and logo are interchangeable: all live in images/, and
+// figma-imported brand marks are recorded as type image while agents ask for
+// logos as icon or logo.
 export function typesMatch(a, b) {
   if (a === b) return true;
-  const visual = new Set(["icon", "image"]);
+  const visual = new Set(["icon", "image", "logo"]);
   return visual.has(a) && visual.has(b);
 }

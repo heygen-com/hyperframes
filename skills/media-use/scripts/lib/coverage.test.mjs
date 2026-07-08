@@ -18,6 +18,11 @@ test("weakness: audio-only → media-use resolves image + icon", () => {
   }
 });
 
+test("weakness: no third-party brand logos → media-use resolves logo", () => {
+  assert.ok(listTypes().includes("logo"), "logo type missing");
+  assert.ok(getProviders("logo").length >= 4, "logo cascade incomplete");
+});
+
 test("weakness: no voice/audio gen → media-use exposes voice + the audio engine", () => {
   assert.ok(listTypes().includes("voice"), "voice type missing");
   assert.ok(getProviders("voice").length > 0, "no enabled voice provider (Bin approved)");

@@ -21,6 +21,7 @@ const TYPE_DIRS = {
   voice: "audio/voice",
   image: "images",
   icon: "images",
+  logo: "images",
   brand: "images",
   video: "video",
 };

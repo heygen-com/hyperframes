@@ -19,8 +19,9 @@ test("heygen provider is first for every type it serves", () => {
   }
 });
 
-test("sanctioned providers only: heygen, local mflux/kokoro, codex, design spec", () => {
-  const allowed = /^heygen|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$/;
+test("sanctioned providers only: heygen, local mflux/kokoro, codex, design spec, logo tiers", () => {
+  const allowed =
+    /^heygen|^mflux\.local$|^kokoro\.local$|^codex\.image_gen$|^design_spec$|^svgl$|^simple-icons$|^github\.avatar$|^favicon\.ddg$/;
   for (const t of listTypes()) {
     for (const p of getProviders(t)) {
       assert.ok(allowed.test(p.name), `${t} lists unsanctioned provider: ${p.name}`);
