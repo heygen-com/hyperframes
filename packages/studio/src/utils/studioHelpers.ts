@@ -13,7 +13,13 @@ export interface AppToast {
   tone: "error" | "info";
 }
 
-export type RightPanelTab = "layers" | "design" | "renders" | "block-params" | "slideshow";
+export type RightPanelTab =
+  | "layers"
+  | "design"
+  | "renders"
+  | "block-params"
+  | "slideshow"
+  | "variables";
 export type RightInspectorPane = "layers" | "design";
 
 export interface RightInspectorPanes {

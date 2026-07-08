@@ -27,6 +27,14 @@ export { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
 export type {
   CompositionVariable,
   CompositionVariableType,
+  CompositionVariableBase,
+  StringVariable,
+  NumberVariable,
+  ColorVariable,
+  BooleanVariable,
+  EnumVariable,
+  FontVariable,
+  ImageVariable,
   VariableValidationIssue,
   VariableUsageScan,
 } from "@hyperframes/core/variables";
