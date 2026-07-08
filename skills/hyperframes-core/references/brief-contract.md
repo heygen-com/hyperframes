@@ -44,5 +44,5 @@ The executable question script lives in each workflow's Step 0 as a literal two-
 
 - **Round 1 asks the mode** — one question, skipped when the request already carried a signal. Autonomous → no further questions: state the locked brief (all fields + receipts) as a heads-up and build straight through; the one remaining question, before render, is "preview first, or render?". Collaborative → Round 2.
 - **Round 2 asks the workflow's ask-marked fields** — one question per field, recommended option first, each with its receipt. Skip a question only when the user already answered that field in their request; inference is not an answer.
-- **Receipts.** Every recommended option states its basis: "~40s — small change, +44/−13 across 12 files".
+- **Receipts.** Every recommended option states its basis — "~40s — small change, +44/−13 across 12 files"; "square 1:1 — you named the X/LinkedIn feed as the destination".
 - **Channel.** Native question UI when the environment has one; otherwise plain text as one numbered list. "go" accepts all defaults.
