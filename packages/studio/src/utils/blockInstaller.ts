@@ -5,6 +5,7 @@ import {
   resolveTimelineAssetCompositionSize,
 } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
+import { generateId } from "./generateId";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
@@ -154,6 +155,11 @@ export async function addBlockToProject(
 
       const subCompHtml = [
         `<div`,
+        // A stable id (+ hf-id) is what authored sub-comps carry; without it the
+        // timeline can't dedup the host and renders duplicate clips that multiply
+        // on every interaction. Matches the authored-comp shape.
+        `  id="${compId}"`,
+        `  data-hf-id="hf-${generateId()}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
         `  data-start="${formatTimelineAttributeNumber(start)}"`,
