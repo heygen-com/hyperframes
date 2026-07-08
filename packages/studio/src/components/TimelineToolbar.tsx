@@ -109,7 +109,7 @@ export function TimelineToolbar({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "n" && e.key !== "N") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
+      const target = e.target instanceof HTMLElement ? e.target : null;
       if (target?.isContentEditable) return;
       const tag = target?.tagName?.toLowerCase() ?? "";
       if (tag === "input" || tag === "textarea" || tag === "select") return;
