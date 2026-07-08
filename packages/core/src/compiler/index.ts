@@ -28,6 +28,8 @@ export { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 
 // HTML bundler (Node.js — requires fs, linkedom, esbuild)
 export {
+  assignBundledRuntimeCompositionIds,
+  type BundledHostCompositionIdentity,
   bundleToSingleHtml,
   type BundleOptions,
   prepareFlattenedInnerRoot,

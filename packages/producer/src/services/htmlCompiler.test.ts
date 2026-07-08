@@ -1764,6 +1764,145 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
   });
 
+  it("scopes per-instance values when one sub-comp is mounted multiple times (template reuse)", async () => {
+    // #2066 fixed the single-instance case but left a preview/render divergence:
+    // two mounts of the SAME sub-comp (same authored data-composition-id) with
+    // different data-variable-values collapsed to one __hfVariablesByComp key
+    // and one scope selector, so the last mount clobbered the earlier one and
+    // all-but-one instance rendered blank. The producer now assigns per-instance
+    // runtime ids (card__hf1, card__hf2), mirroring the preview bundler.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const ids = Array.from(
+      document.querySelectorAll('[data-composition-file="compositions/card.html"]'),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    // Each instance gets a unique runtime id, in document order.
+    expect(ids).toContain("card__hf1");
+    expect(ids).toContain("card__hf2");
+    // And each carries its own per-instance values — no cross-instance clobber.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
+  it("assigns a distinct runtime id to every mount when the same sub-comp appears 3+ times", async () => {
+    // Pins the uniqueCompositionId(baseId, index) progression beyond two: the
+    // third and fourth mounts must land as card__hf3 / card__hf4, each with its
+    // own values.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi3-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    const mounts = ["A", "B", "C", "D"]
+      .map(
+        (label, i) =>
+          `<div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_${label}"}' data-start="0" data-duration="3" data-track-index="${i + 1}"></div>`,
+      )
+      .join("\n      ");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      ${mounts}
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const ids = Array.from(
+      parseHTML(compiled.html).document.querySelectorAll(
+        '[data-composition-file="compositions/card.html"]',
+      ),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    expect(ids).toEqual(["card__hf1", "card__hf2", "card__hf3", "card__hf4"]);
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+    expect(compiled.html).toContain('"card__hf3":{"label":"CARD_C"}');
+    expect(compiled.html).toContain('"card__hf4":{"label":"CARD_D"}');
+  });
+
+  it("leaves a single-mount sub-comp's authored id untouched while renaming a duplicated one", async () => {
+    // Pins the "single instances are untouched" claim: a solo mount keeps its
+    // authored data-composition-id; only the duplicated sub-comp is renamed.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-mixed-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    const declare = (id: string) =>
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="${id}" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`;
+    writeFileSync(join(projectDir, "compositions", "solo.html"), declare("solo"));
+    writeFileSync(join(projectDir, "compositions", "card.html"), declare("card"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="solo" data-composition-src="compositions/solo.html" data-variable-values='{"label":"SOLO"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="2"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="3"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    // Solo mount keeps its authored id (not renamed to solo__hf1).
+    expect(compiled.html).toContain('"solo":{"label":"SOLO"}');
+    expect(compiled.html).not.toContain("solo__hf");
+    // Duplicated card mounts are renamed per-instance.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
   it("omits the writer when the sub-comp declares no variables at all", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-none-"));
     mkdirSync(join(projectDir, "compositions"), { recursive: true });

@@ -305,7 +305,7 @@ function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
 
-type BundledHostCompositionIdentity = {
+export type BundledHostCompositionIdentity = {
   authoredCompositionId: string | null;
   runtimeCompositionId: string | null;
 };
@@ -351,7 +351,8 @@ function countBundledAuthoredCompositionIds(hosts: Element[]): Map<string, numbe
   return counts;
 }
 
-function assignBundledRuntimeCompositionIds(
+// fallow-ignore-next-line complexity
+export function assignBundledRuntimeCompositionIds(
   hosts: Element[],
   counts: Map<string, number> = countBundledAuthoredCompositionIds(hosts),
 ): Map<Element, BundledHostCompositionIdentity> {

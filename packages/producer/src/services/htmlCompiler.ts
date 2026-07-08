@@ -25,6 +25,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import {
+  assignBundledRuntimeCompositionIds,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   prepareFlattenedInnerRoot,
@@ -785,10 +786,25 @@ function inlineSubCompositions(
     return emitted ? document.toString() : html;
   }
 
+  // Assign per-instance runtime composition ids BEFORE inlining, mirroring the
+  // preview bundler. When the same sub-composition (same authored
+  // data-composition-id) is mounted more than once — the reusable-template
+  // pattern from issue #2064 — each host is rewritten to a unique runtime id
+  // (`card__hf1`, `card__hf2`). Without this, every instance shares one
+  // `__hfVariablesByComp` key and one scope selector: the last mount's
+  // data-variable-values clobbers the earlier ones and all-but-one instance
+  // renders blank. #2066 fixed the single-instance case but left this
+  // divergence (snapshot/preview correct, render wrong).
+  const hostIdentityByElement = assignBundledRuntimeCompositionIds(hosts as unknown as Element[]);
+
   const result = inlineSubCompositionsShared(
     document as unknown as Document,
     hosts as unknown as Element[],
     {
+      // hostIdentityMap gives each repeated mount a unique runtime id; the
+      // shared inliner's default buildScopeSelector already scopes by
+      // `[data-composition-id="<runtime id>"]`, matching the preview bundler.
+      hostIdentityMap: hostIdentityByElement,
       readVariableDefaults: readDeclaredDefaults,
       parseHostVariables: parseHostVariableValues,
       resolveHtml: (srcPath: string) => {
