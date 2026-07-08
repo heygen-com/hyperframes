@@ -19,13 +19,9 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import {
-  resolvePlacement,
-  resolveInsertRow,
-  buildTrackInsert,
-  snapClearOfClips,
-} from "./timelineCollision";
+import { resolvePlacement, resolveInsertRow, snapClearOfClips } from "./timelineCollision";
 import { resolveMainOriginTrack } from "./timelineZones";
+import { commitDraggedClipMove } from "./timelineClipDragCommit";
 
 const EMPTY_BEAT_TIMES: number[] = [];
 
@@ -519,71 +515,13 @@ export function useTimelineClipDrag({
       suppressClickRef.current = true;
       clearSuppressedClick();
 
-      const dragKey = drag.element.key ?? drag.element.id;
-
-      // Insert mode: create a new track at the hovered boundary. The dragged clip
-      // takes the insert lane; clips below shift down one lane (minimal-shift, only
-      // when lanes are consecutive). Reuses the proven per-element move persist —
-      // each affected clip is its own undo entry (batched single-undo is a later
-      // polish; the common gap-insert has no shifts, so it's a single move).
-      if (drag.insertRow != null) {
-        const plan = buildTrackInsert(
-          elementsRef.current,
-          trackOrderRef.current,
-          drag.insertRow,
-          dragKey,
-        );
-        const changed =
-          plan.draggedTrack !== drag.element.track ||
-          drag.previewStart !== drag.element.start ||
-          plan.shifts.length > 0;
-        if (!changed) return;
-
-        updateElement(dragKey, { start: drag.previewStart, track: plan.draggedTrack });
-        Promise.resolve(
-          onMoveElementRef.current?.(drag.element, {
-            start: drag.previewStart,
-            track: plan.draggedTrack,
-          }),
-        ).catch((error) => {
-          updateElement(dragKey, { start: drag.element.start, track: drag.element.track });
-          console.error("[Timeline] Failed to persist clip insert", error);
-        });
-
-        for (const shift of plan.shifts) {
-          const shifted = elementsRef.current.find((e) => (e.key ?? e.id) === shift.key);
-          if (!shifted) continue;
-          updateElement(shift.key, { track: shift.toTrack });
-          Promise.resolve(
-            onMoveElementRef.current?.(shifted, { start: shifted.start, track: shift.toTrack }),
-          ).catch((error) => {
-            updateElement(shift.key, { track: shifted.track });
-            console.error("[Timeline] Failed to persist track shift", error);
-          });
-        }
-        return;
-      }
-
-      const hasChanged =
-        drag.previewStart !== drag.element.start || drag.previewTrack !== drag.element.track;
-      if (!hasChanged) return;
-
-      updateElement(dragKey, {
-        start: drag.previewStart,
-        track: drag.previewTrack,
-      });
-
-      Promise.resolve(
-        onMoveElementRef.current?.(drag.element, {
-          start: drag.previewStart,
-          track: drag.previewTrack,
-        }),
-      ).catch((error) => {
-        updateElement(dragKey, {
-          start: drag.element.start,
-          track: drag.element.track,
-        });
-        console.error("[Timeline] Failed to persist clip move", error);
+      // Commit the drag — insert (new track), main-track ripple (reflow contiguous),
+      // or a plain single-clip move. See timelineClipDragCommit.
+      commitDraggedClipMove(drag, {
+        elements: elementsRef.current,
+        trackOrder: trackOrderRef.current,
+        updateElement,
+        onMoveElement: onMoveElementRef.current,
       });
     };
 
