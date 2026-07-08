@@ -2,6 +2,10 @@ import { defineCommand } from "citty";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { parseGsapScript, type GsapAnimation } from "@hyperframes/core/gsap-parser";
+import {
+  parseAnimeJsScriptAcorn,
+  type AnimeJsAnimation,
+} from "@hyperframes/core/animejs-parser-acorn";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -79,6 +83,21 @@ interface SurfacedAnimeAnimation {
   targets: string[];
   durations: Array<number | string>;
   registered: boolean;
+  labels?: Record<string, number>;
+  eases?: string[];
+  tweens?: SurfacedAnimeTween[];
+}
+
+interface SurfacedAnimeTween {
+  target: string;
+  targets: string[];
+  method: string;
+  start: number;
+  duration: number | string;
+  end: number;
+  position: number | string;
+  ease?: string;
+  properties: Record<string, unknown>;
 }
 
 interface SurfacedComposition {
@@ -393,50 +412,68 @@ function surfaceCssKeyframes(rawCss: string): SurfacedCssKeyframes[] {
   }));
 }
 
-function valuesFromProperty(
-  script: string,
-  property: "targets" | "duration",
-): Array<string | number> {
-  const values: Array<string | number> = [];
-  const quoted = property + "\\s*:\\s*([\"'`])([^\"'`]+)\\1";
-  const numeric = property + "\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)";
-  const re = new RegExp(`${quoted}|${numeric}`, "g");
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(script))) {
-    if (match[2] !== undefined) values.push(match[2]);
-    else if (match[3] !== undefined) values.push(Number(match[3]));
-  }
-  return values;
-}
-
-function animeAddTargets(script: string): string[] {
-  const values: string[] = [];
-  const re = /\.add\s*\(\s*(["'`])([^"'`]+)\1/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(script))) values.push(match[2]!);
-  return values;
-}
-
 function surfaceAnime(script: string): SurfacedAnimeAnimation[] {
-  if (!/\banime\s*(?:\.(?:timeline|createTimeline))?\s*\(/.test(script)) return [];
-  const registered = /__hfAnime[\s\S]*?\.push\s*\(/.test(script) || /__hfAnime\s*=/.test(script);
-  const timelineCount = (script.match(/\banime\.(?:timeline|createTimeline)\s*\(/g) ?? []).length;
-  const animationCount = (script.match(/\banime\s*\(/g) ?? []).length;
-  const targets = [
-    ...valuesFromProperty(script, "targets").filter(
-      (value): value is string => typeof value === "string",
-    ),
-    ...animeAddTargets(script),
-  ];
-  const durations = valuesFromProperty(script, "duration");
+  const parsed = parseAnimeJsScriptAcorn(script);
+  if (parsed.animations.length === 0) return [];
+  const timelineTweens = parsed.animations.filter(
+    (anim) => anim.method !== "animate" && anim.method !== "label",
+  );
+  const standalone = parsed.animations.filter((anim) => anim.method === "animate");
   const out: SurfacedAnimeAnimation[] = [];
-  for (let i = 0; i < timelineCount; i++) {
-    out.push({ kind: "timeline", targets, durations, registered });
+  if (timelineTweens.length > 0 || Object.keys(parsed.labels).length > 0) {
+    out.push({
+      kind: "timeline",
+      targets: uniqueStrings(timelineTweens.flatMap((anim) => anim.targets)),
+      durations: timelineTweens
+        .map((anim) => anim.duration)
+        .filter((duration): duration is number | string => duration !== undefined),
+      registered: parsed.registered || timelineTweens.some((anim) => anim.registered),
+      labels: Object.keys(parsed.labels).length ? parsed.labels : undefined,
+      eases: uniqueStrings(timelineTweens.map((anim) => anim.ease).filter(isString)),
+      tweens: timelineTweens.map(surfaceAnimeTween),
+    });
   }
-  for (let i = 0; i < animationCount; i++) {
-    out.push({ kind: "animation", targets, durations, registered });
+  for (const anim of standalone) {
+    out.push({
+      kind: "animation",
+      targets: anim.targets,
+      durations: anim.duration === undefined ? [] : [anim.duration],
+      registered: !!anim.registered,
+      eases: anim.ease ? [anim.ease] : undefined,
+      tweens: [surfaceAnimeTween(anim)],
+    });
   }
   return out;
+}
+
+function isString(value: string | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function numericDuration(duration: number | string | undefined): number {
+  const value = num(duration);
+  return value ?? 0;
+}
+
+function surfaceAnimeTween(anim: AnimeJsAnimation): SurfacedAnimeTween {
+  const start = anim.resolvedStart ?? num(anim.position) ?? 0;
+  const duration = anim.duration ?? 0;
+  const durationNumber = numericDuration(duration);
+  return {
+    target: anim.targetSelector,
+    targets: anim.targets,
+    method: anim.method,
+    start,
+    duration,
+    end: Math.round((start + durationNumber) * 1000) / 1000,
+    position: anim.position,
+    ease: anim.ease,
+    properties: { ...anim.properties, ...(anim.propertyKeyframes ?? {}) },
+  };
 }
 
 // A nested element's rendered motion is the COMPOSITION of its own tween and any
@@ -827,10 +864,22 @@ function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
 function printAnime(anime: SurfacedAnimeAnimation): void {
   const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
   const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";
+  const labels = anime.labels
+    ? ` labels ${Object.entries(anime.labels)
+        .map(([name, position]) => `${name}:${position}ms`)
+        .join(",")}`
+    : "";
+  const eases = anime.eases?.length ? ` ease ${anime.eases.join(",")}` : "";
   const registered = anime.registered ? "registered" : "not registered";
   console.log(
-    `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}`)}`,
+    `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}${eases}${labels}`)}`,
   );
+  for (const tween of anime.tweens ?? []) {
+    const ease = tween.ease ? ` ${tween.ease}` : "";
+    console.log(
+      c.dim(`    ${tween.target} ${tween.method} @${tween.start}ms→${tween.end}ms${ease}`),
+    );
+  }
   console.log();
 }
 
