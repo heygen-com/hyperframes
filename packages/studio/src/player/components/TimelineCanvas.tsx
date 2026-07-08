@@ -492,7 +492,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             bottom: 0,
             width: 1,
             background: draggedClip.snapType === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
-            boxShadow: "0 0 6px rgba(60,230,172,0.5)",
+            boxShadow:
+              draggedClip.snapType === "playhead"
+                ? "0 0 6px rgba(60,230,172,0.5)"
+                : "0 0 6px rgba(255,255,255,0.4)",
             zIndex: 60,
           }}
         />
