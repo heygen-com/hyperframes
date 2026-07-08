@@ -413,6 +413,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             outputResolution: opts.outputResolution,
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
+            ...(opts.variables ? { variables: opts.variables } : {}),
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {

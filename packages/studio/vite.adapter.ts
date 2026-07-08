@@ -48,6 +48,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           format: string;
           renderBodyScripts?: string[];
           outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
+          variables?: Record<string, unknown>;
         }) => unknown;
         executeRenderJob: (
           job: unknown,
@@ -246,6 +247,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
             ...(opts.composition ? { entryFile: opts.composition } : {}),
+            ...(opts.variables ? { variables: opts.variables } : {}),
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
