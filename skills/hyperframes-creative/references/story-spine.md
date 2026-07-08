@@ -24,7 +24,14 @@ Structure is value-first; the **voice** stays whatever the workflow prescribes (
 When Step 3 presents the plan (a checkpoint gate — `hyperframes-core/references/brief-contract.md` § 1):
 
 - Open by echoing the strategy line: **"This video tells [audience] that [message]."**
-- Every frame line carries a one-line `why:` — the frame's job in the story (from its `narrativeRole`), traced back to the message. A frame whose `why` cannot be traced to the message is a frame to cut, not to decorate.
+- Present the frames as a markdown table, one row per frame:
+
+  | Frame            | Beat      | On screen                                               | Why                             |
+  | ---------------- | --------- | ------------------------------------------------------- | ------------------------------- |
+  | 01 — Not anymore | hook · 9s | States the old pain and resolves it in the same breath. | Lands the value claim in beat 1 |
+
+  **Why** is the frame's job in the story (from its `narrativeRole`), traced back to the message — a frame whose why cannot be traced to the message is a frame to cut, not to decorate.
+
 - Recommendations keep their receipts (brief-contract § 3): the archetype choice, the beat count, and any beat the user might question each state their basis.
 
-The proposal shape — echo line → per-frame lines with `why:` → style / duration footer → "approve or adjust" — is the cheapest place to iterate: a beat change here costs 30 seconds; the same change after build costs minutes.
+The proposal shape — echo line → frame table → style / duration footer → "approve or adjust" — is the cheapest place to iterate: a frame change here costs 30 seconds; the same change after build costs minutes.

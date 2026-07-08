@@ -10,7 +10,7 @@ This file defines the story: what the video explains, in what order, and why eac
 2. `frame.md` — tone, type, design system (the shipped preset is **claude**: warm editorial, a serif that thinks, scarce coral, a navy code surface).
 3. `capture/extracted/visible-text.txt` — the assembled PR brief: title, meta (`base ← head · +N/−M across F files`), people, body, commits, changed files, and a budget-bounded set of **representative diff hunks**. This is your source of **information**.
 4. `capture/diff.patch` — the full unified diff, for deeper hunk selection than the brief's excerpt.
-5. `capture/extracted/people.json` — contributors (author / committers / reviewers / commenters), bot-filtered, each with an avatar in `assets/<login>.png` (for an optional credits close).
+5. `capture/extracted/people.json` — contributors (author / committers / reviewers / commenters), bot-filtered, each with an avatar in `assets/<login>.png` (for the credits close).
 
 ## Output
 
@@ -151,13 +151,13 @@ Plan **at least one `mechanism` beat** for any PR with a visible runtime behavio
 
 Name the mechanism in the frame's `scene` ("animate the request retrying: fire → 500 → backoff → 200, invented SVG flow") so Step 4 and the worker build it. The `diff` frame and the `mechanism` frame are **complementary** — the diff is the proof in code, the mechanism is the proof in motion; alternate them rather than stacking code surfaces.
 
-## Optional close: a credits / shipped-by scene
+## The close: a credits / shipped-by scene
 
-A PR is shipped by people. `capture/extracted/people.json` lists real contributors (bot-filtered), and Step 1 downloaded each avatar to `assets/<login>.png` (the `avatarFetched: true` entries — confirm with `ls assets/`). `reviewDecision` (e.g. `APPROVED`) is honest grounding.
+A PR is shipped by people, and every PR video closes with a `credits` frame naming them. `capture/extracted/people.json` lists real contributors (bot-filtered), and Step 1 downloaded each avatar to `assets/<login>.png` (the `avatarFetched: true` entries — confirm with `ls assets/`). `reviewDecision` (e.g. `APPROVED`) is honest grounding.
 
 > **The PR `author` only opened the PR — not necessarily who wrote the code.** A teammate often authors most commits. Lead the credits with `committer`s by `commitCount`, not the opener.
 
-You **may** add one closing `credits` frame naming the humans — an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 2–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. This is **optional and tasteful**: a one-line hotfix or a solo PR with no reviews doesn't need a credits roll; a feature or release the team rallied around earns one.
+The `credits` frame is an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 1–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. The frame sits in the Step 3 proposal like any other, so the user can cut it there; skip it yourself only when no avatar was fetched.
 
 Every other frame has **no** `asset_candidates` (the visuals are invented downstream from `scene` + the diff).
 
@@ -209,6 +209,6 @@ The `credits` frame additionally carries an `asset_candidates:` line (see the cr
 - **2–4 real diff hunks** featured, each a small legible snippet (not a whole file), each naming its `code-*` block in `scene`.
 - **At least one `mechanism` beat** animates what the change _does_ at runtime (an invented diagram, or a `flowchart` / `data-chart`), named in its `scene` — unless the PR genuinely has no visible behavior (a pure docs / config bump). The body is not an unbroken run of code surfaces.
 - Transitions use only registry names and repeat 2–3 types; frame 1 is `cut`.
-- `asset_candidates` is absent on every frame except an optional `credits` close (2–6 `assets/<login>.png` entries, `avatarFetched: true` only).
+- The video closes with a `credits` frame (skipped only when no avatar was fetched); `asset_candidates` is absent on every other frame (1–6 `assets/<login>.png` entries on the close, `avatarFetched: true` only).
 - Each `script` fits the budget — ≤ 19 words / ≤ 9 s default, ≤ 2 frames at the ≤ 26 / ≤ 12 s exception; `duration = ceil(word_count / 2.2)`, not a guess.
 - `SCRIPT.md` contains only locked spoken narration; silent frames are intentional and omitted from it.
