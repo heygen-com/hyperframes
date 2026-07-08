@@ -357,4 +357,85 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       /\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]\s+\.title/,
     );
   });
+
+  it("scopes standalone pre-scoped selectors to repeated runtime mount ids", () => {
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-hf-original-composition-id="chart" data-composition-id="chart__hf1" data-composition-src="chart-a.html"></div>
+    <div data-hf-original-composition-id="chart" data-composition-id="chart__hf2" data-composition-src="chart-b.html"></div>
+  </div>
+</body></html>`);
+    const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
+    const identity = new Map<
+      Element,
+      { authoredCompositionId: string | null; runtimeCompositionId: string | null }
+    >([
+      [hosts[0]!, { authoredCompositionId: "chart", runtimeCompositionId: "chart__hf1" }],
+      [hosts[1]!, { authoredCompositionId: "chart", runtimeCompositionId: "chart__hf2" }],
+    ]);
+    const makeStandalone = (title: string) => `<!doctype html>
+<html>
+  <head>
+    <style>
+      [data-composition-id="chart"] .title { opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="chart" data-width="1920" data-height="1080">
+      <h1 class="title">${title}</h1>
+      <script>
+        window.__selectedTitles = window.__selectedTitles || [];
+        const tl = gsap.timeline({ paused: true });
+        tl.to('[data-composition-id="chart"] .title', { opacity: 1 });
+        window.__selectedTitles.push(
+          document.querySelector('[data-composition-id="chart"] .title')?.textContent || ''
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines.chart = tl;
+      </script>
+    </div>
+  </body>
+</html>`;
+
+    function flattenInnerRoot(innerRoot: Element): Element {
+      const clone = innerRoot.cloneNode(true) as Element;
+      clone.removeAttribute("data-composition-id");
+      clone.setAttribute("data-hf-inner-root", "true");
+      return clone;
+    }
+
+    const result = inlineSubCompositions(document, hosts, {
+      resolveHtml: (src) =>
+        src === "chart-a.html" ? makeStandalone("First") : makeStandalone("Second"),
+      parseHtml: (html) => parseHTML(html).document,
+      hostIdentityMap: identity,
+      flattenInnerRoot,
+    });
+    const gsapTargets: string[][] = [];
+    const fakeWindow = {
+      document,
+      __selectedTitles: [] as string[],
+      __timelines: {},
+      gsap: {
+        timeline: () => ({
+          to(targets: Element[]) {
+            gsapTargets.push(Array.from(targets).map((target) => target.textContent || ""));
+            return this;
+          },
+        }),
+      },
+    };
+
+    for (const script of result.scripts) {
+      new Function("window", "gsap", script)(fakeWindow, fakeWindow.gsap);
+    }
+
+    expect(result.styles.join("\n")).toContain('[data-composition-id="chart__hf1"] .title');
+    expect(result.styles.join("\n")).toContain('[data-composition-id="chart__hf2"] .title');
+    expect(fakeWindow.__selectedTitles).toEqual(["First", "Second"]);
+    expect(gsapTargets).toEqual([["First"], ["Second"]]);
+    expect(fakeWindow.__timelines).toHaveProperty("chart__hf1");
+    expect(fakeWindow.__timelines).toHaveProperty("chart__hf2");
+  });
 });

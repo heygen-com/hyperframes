@@ -309,7 +309,8 @@ export function wrapScopedCompositionScript(
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
       .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
-      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector);
+      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector)
+      .replace(new RegExp(__hfRootSelectorPattern, 'g'), __hfRootSelector);
     if (__hfAuthoredRootSelector) {
       normalized = __hfReplaceAuthoredRootIdSelectors(normalized);
     }
