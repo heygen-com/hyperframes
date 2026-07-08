@@ -44,7 +44,10 @@ export function DropPreviewOverlay({
             bottom: 0,
             width: 1,
             background: preview.snapType === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
-            boxShadow: "0 0 6px rgba(60,230,172,0.5)",
+            boxShadow:
+              preview.snapType === "playhead"
+                ? "0 0 6px rgba(60,230,172,0.5)"
+                : "0 0 6px rgba(255,255,255,0.4)",
             zIndex: 60,
           }}
         />

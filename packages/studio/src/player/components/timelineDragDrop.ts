@@ -82,7 +82,7 @@ export function useTimelineAssetDrop({
       const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
       if (!hasFiles && !hasAsset && !hasBlock) return;
       e.preventDefault();
-      if (hasAsset || hasBlock) e.dataTransfer.dropEffect = "copy";
+      if (hasAsset || hasBlock || hasFiles) e.dataTransfer.dropEffect = "copy";
       setIsDragOver(true);
 
       // Edge auto-scroll while hovering with an external drag.
@@ -103,7 +103,10 @@ export function useTimelineAssetDrop({
         prev.start !== next.start ||
         prev.track !== next.track ||
         prev.snapTime !== next.snapTime ||
-        prev.durationSec !== next.durationSec
+        prev.durationSec !== next.durationSec ||
+        prev.isNewTrack !== next.isNewTrack ||
+        prev.label !== next.label ||
+        prev.extraCount !== next.extraCount
       ) {
         dropPreviewRef.current = next;
         setDropPreview(next);
@@ -173,7 +176,6 @@ export function useTimelineAssetDrop({
 
   return {
     isDragOver,
-    setIsDragOver,
     handleAssetDragOver,
     handleAssetDrop,
     clearDropPreview,

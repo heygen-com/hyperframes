@@ -235,22 +235,16 @@ export const Timeline = memo(function Timeline({
     setRangeSelectionRef,
   });
 
-  const {
-    isDragOver,
-    setIsDragOver: _setIsDragOver,
-    handleAssetDragOver,
-    handleAssetDrop,
-    clearDropPreview,
-    dropPreview,
-  } = useTimelineAssetDrop({
-    scrollRef,
-    ppsRef,
-    durationRef,
-    trackOrderRef,
-    onFileDrop,
-    onAssetDrop,
-    onBlockDrop,
-  });
+  const { isDragOver, handleAssetDragOver, handleAssetDrop, clearDropPreview, dropPreview } =
+    useTimelineAssetDrop({
+      scrollRef,
+      ppsRef,
+      durationRef,
+      trackOrderRef,
+      onFileDrop,
+      onAssetDrop,
+      onBlockDrop,
+    });
 
   const displayTrackOrder = useMemo(() => {
     const pendingTracks: number[] = [];
