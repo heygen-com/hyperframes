@@ -85,7 +85,7 @@
       .curtain {
         position: absolute;
         top: 0;
-        left: -100%;
+        left: 0;
         width: 100%;
         height: 100%;
         background: #1a1a1a;
@@ -145,21 +145,25 @@
       <script>
         const tl = gsap.timeline({ paused: true });
 
+        // Curtains rest off-screen left until their wipes begin.
+        gsap.set("#curtain-black", { xPercent: -100 });
+        gsap.set("#curtain-red", { xPercent: -100 });
+
         // Transition: Curtain Pull logic
         // A-roll leaves the screen at least once.
         // Timing: Let's do a curtain pull at 3.7s (transitioning to the 62% stat)
         // and return at 7.3s (end of attention stat).
 
         // Curtain Out (A-roll hidden)
-        tl.to("#curtain-black", { left: "0%", duration: 0.2, ease: "power2.inOut" }, 3.5);
+        tl.to("#curtain-black", { xPercent: 0, duration: 0.2, ease: "power2.inOut" }, 3.5);
         tl.to("#a-roll-wrapper", { opacity: 0, duration: 0 }, 3.7);
-        tl.to("#curtain-black", { left: "100%", duration: 0.4, ease: "power2.inOut" }, 3.7);
+        tl.to("#curtain-black", { xPercent: 100, duration: 0.4, ease: "power2.inOut" }, 3.7);
 
         // Curtain In (A-roll return)
-        tl.set("#curtain-red", { left: "-100%" }, 7.1);
-        tl.to("#curtain-red", { left: "0%", duration: 0.2, ease: "power2.inOut" }, 7.1);
+        tl.set("#curtain-red", { xPercent: -100 }, 7.1);
+        tl.to("#curtain-red", { xPercent: 0, duration: 0.2, ease: "power2.inOut" }, 7.1);
         tl.to("#a-roll-wrapper", { opacity: 1, duration: 0 }, 7.3);
-        tl.to("#curtain-red", { left: "100%", duration: 0.4, ease: "power2.inOut" }, 7.3);
+        tl.to("#curtain-red", { xPercent: 100, duration: 0.4, ease: "power2.inOut" }, 7.3);
 
         window.__timelines = window.__timelines || {};
         window.__timelines["main-comp"] = tl;

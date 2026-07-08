@@ -581,13 +581,27 @@
       var sliderPct = document.getElementById("slider-pct");
       var sliderValue = { value: 34 };
 
-      gsap.set([gs, ts, gt, tt, gm, tm, gsl, tsl], { top: 1160, opacity: 1 });
+      // Glass panels live inside <canvas layoutsubtree> (html-in-canvas): the canvas lib
+      // reads their sub-pixel computed top/left, so animating layout props on them does
+      // NOT stutter and is exempt from gsap_non_transform_motion. They keep top/left.
+      // Plain-DOM text overlays DO stutter on layout props, so they use transforms (x/y).
+      // CSS resting tops — search 300, toggle 390, media 476, slider 616 — are the
+      // transform base; the original set seeded top:1160, i.e. y = 1160 - restingTop.
+      gsap.set([gs, gt, gm, gsl], { top: 1160, opacity: 1 });
+      gsap.set(ts, { y: 860, opacity: 1 });
+      gsap.set(tt, { y: 770, opacity: 1 });
+      gsap.set(tm, { y: 684, opacity: 1 });
+      gsap.set(tsl, { y: 544, opacity: 1 });
       gsap.set("#sound-wave span", { height: 7 });
 
-      tl.to([gs, ts], { top: 300, duration: 0.48, ease: "power3.out" }, 0.12);
-      tl.to([gt, tt], { top: 390, duration: 0.44, ease: "power3.out" }, 0.22);
-      tl.to([gm, tm], { top: 476, duration: 0.44, ease: "power3.out" }, 0.32);
-      tl.to([gsl, tsl], { top: 616, duration: 0.46, ease: "power3.out" }, 0.42);
+      tl.to(gs, { top: 300, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.to(ts, { y: 0, duration: 0.48, ease: "power3.out" }, 0.12);
+      tl.to(gt, { top: 390, duration: 0.44, ease: "power3.out" }, 0.22);
+      tl.to(tt, { y: 0, duration: 0.44, ease: "power3.out" }, 0.22);
+      tl.to(gm, { top: 476, duration: 0.44, ease: "power3.out" }, 0.32);
+      tl.to(tm, { y: 0, duration: 0.44, ease: "power3.out" }, 0.32);
+      tl.to(gsl, { top: 616, duration: 0.46, ease: "power3.out" }, 0.42);
+      tl.to(tsl, { y: 0, duration: 0.46, ease: "power3.out" }, 0.42);
 
       tl.call(
         function () {
@@ -608,13 +622,13 @@
         null,
         1.55,
       );
-      tl.to("#toggle-pill", { left: 215, duration: 0.24, ease: "power2.out" }, 1.82);
+      tl.to("#toggle-pill", { x: 209, duration: 0.24, ease: "power2.out" }, 1.82);
       tl.to(
         ".play-btn",
         { scale: 0.86, duration: 0.12, ease: "power2.out", yoyo: true, repeat: 1 },
         2.18,
       );
-      tl.to("#album-sheen", { left: 112, duration: 0.75, ease: "power2.out" }, 2.2);
+      tl.to("#album-sheen", { x: 182, duration: 0.75, ease: "power2.out" }, 2.2);
       tl.to(
         "#sound-wave span",
         { height: 15, duration: 0.22, ease: "power2.inOut", stagger: 0.05, yoyo: true, repeat: 12 },
@@ -638,11 +652,24 @@
         { scale: 1.45, duration: 0.24, ease: "power2.out", yoyo: true, repeat: 4 },
         2.6,
       );
-      tl.to("#toggle-pill", { left: 425, duration: 0.24, ease: "power2.out" }, 4.15);
+      tl.to("#toggle-pill", { x: 419, duration: 0.24, ease: "power2.out" }, 4.15);
 
-      var stack = [gs, ts, gt, tt, gm, tm, gsl, tsl];
-      tl.to(stack, { top: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 }, 5.55);
-      tl.to(stack, { top: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
+      // Settle + exit. Split so glass panels keep relative top (exempt, html-in-canvas)
+      // and plain-DOM text overlays use the relative transform equivalent (y). Inline
+      // array literals so the linter can resolve each group's targets; a pre-declared
+      // array variable resolves to __unresolved__ and would lose the canvas exemption.
+      tl.to(
+        [gs, gt, gm, gsl],
+        { top: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.55,
+      );
+      tl.to(
+        [ts, tt, tm, tsl],
+        { y: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
+        5.55,
+      );
+      tl.to([gs, gt, gm, gsl], { top: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
+      tl.to([ts, tt, tm, tsl], { y: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
 
       /* Duration driver */
       tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);

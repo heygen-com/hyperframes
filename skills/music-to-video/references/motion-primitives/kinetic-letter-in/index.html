@@ -84,7 +84,13 @@
         { y: 80, opacity: 0, stagger: 0.045, ease: "back.out(2)", duration: 0.55 },
         0.05,
       );
-      tl.to("#hero", { letterSpacing: "0.04em", duration: 0.6, ease: "power2.out" }, 0.7);
+      // Letters loosen apart as they settle. Animate each glyph's x (a transform), NOT the
+      // word's letter-spacing: animating letter-spacing reflows text and snaps glyph positions
+      // to the pixel grid, which micro-stutters on a slow settle under the seek-by-frame
+      // capture engine (the gsap_non_transform_motion lint rule flags it). The chars are
+      // already per-glyph spans, so spread them directly: (0.04em − (−0.04em)) × 280px = 22.4px
+      // per gap, centered about index 3 of the 7-letter word.
+      tl.to(".char", { x: (i) => (i - 3) * 22.4, duration: 0.6, ease: "power2.out" }, 0.7);
 
       window.__timelines["main"] = tl;
     </script>
