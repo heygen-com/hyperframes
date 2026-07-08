@@ -1,6 +1,7 @@
 // Official brand marks — the `logo` type's provider tiers, tried in registry
 // order. Every tier was verified against a 54-brand stress test (2026-07,
-// 100% cascade hit):
+// 100% cascade hit). Hit counts below are a snapshot of that run — they
+// drift as the alias/org maps grow; re-run the stress test to refresh them.
 //
 //   1. svgl          — official full-color vector SVGs (+ wordmark variants);
 //                      40/54 first-hits. Search is substring-based, so
@@ -19,6 +20,10 @@
 // generic look-alike icons (0/3 in testing) — worse than a miss. A total miss
 // falls through to resolve's normal failure path (`no provider could resolve
 // logo`, exit 1).
+
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const SVGL_API = "https://api.svgl.app";
 const SIMPLE_ICONS_CDN = "https://cdn.jsdelivr.net/npm/simple-icons@16.25.0/icons";
@@ -189,17 +194,23 @@ export async function faviconSearch(intent, ctx = {}) {
   const entity = entityFrom(intent, ctx.entity);
   const domain = faviconDomainFor(entity);
   const url = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-  let bytes;
+  let body;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
-    bytes = (await res.arrayBuffer()).byteLength;
+    body = Buffer.from(await res.arrayBuffer());
   } catch {
     return null;
   }
-  if (bytes < FAVICON_MIN_BYTES) return null; // DDG placeholder, not a logo
+  if (body.byteLength < FAVICON_MIN_BYTES) return null; // DDG placeholder, not a logo
+  // Hand the verified bytes over as a local file: the freeze step copies it
+  // instead of re-downloading, so the size check is authoritative over what
+  // gets frozen and the favicon tier costs one network round-trip, not two.
+  const bytes = body.byteLength;
+  const tmp = join(mkdtempSync(join(tmpdir(), "media-use-logo-")), `${domain}.ico`);
+  writeFileSync(tmp, body);
   return {
-    url,
+    localPath: tmp,
     ext: ".ico",
     source: "search",
     metadata: {
