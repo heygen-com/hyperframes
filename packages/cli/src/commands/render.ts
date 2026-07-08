@@ -1191,8 +1191,8 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
 
   // Platform is now derived from the host arch (see resolveDockerPlatform).
   // Apple Silicon and other arm64 hosts get a native linux/arm64 build; the
-  // Dockerfile skips chrome-headless-shell on arm64 and falls back to system
-  // chromium because chrome-headless-shell ships linux64 only.
+  // Dockerfile installs a pinned arm64 chrome-headless-shell from Playwright
+  // (chrome-for-testing publishes no linux-arm64 build).
   //
   // TARGETARCH is passed explicitly rather than relying on BuildKit's
   // automatic platform args because the legacy builder (and some BuildKit
@@ -1250,17 +1250,17 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
   }
 
   if (!options.quiet && platform === "linux/arm64") {
-    // chrome-headless-shell doesn't publish a linux-arm64 build, so the arm64
-    // image falls back to system chromium. That loses byte-for-byte parity
-    // with amd64 renders — fine for end-user output, not fine if you're
-    // comparing against an amd64 golden baseline. Set
-    // HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to keep parity (qemu-emulated,
+    // The arm64 image uses Playwright's pinned linux-arm64 chrome-headless-shell
+    // (chrome-for-testing has no arm64 build). It's a different Chromium build
+    // than amd64's chrome-for-testing binary, so output isn't byte-identical to
+    // an amd64 golden baseline — fine for end-user output. Set
+    // HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to force parity (qemu-emulated,
     // slower).
     console.log(
       c.dim(
-        "  Host is arm64 — using linux/arm64 image with system chromium " +
-          "(output won't be byte-identical to amd64 renders; " +
-          "set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to force parity).",
+        "  Host is arm64 — using linux/arm64 image with Playwright's " +
+          "chrome-headless-shell (output won't be byte-identical to amd64 " +
+          "renders; set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to force parity).",
       ),
     );
   }
