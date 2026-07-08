@@ -1,4 +1,5 @@
-import { Fragment, memo, type ReactNode } from "react";
+import { memo, type ReactNode } from "react";
+import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { BeatStrip, BeatBackgroundLines } from "./BeatStrip";
 import { TimelineClip } from "./TimelineClip";
 import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
@@ -11,7 +12,7 @@ import {
   type TimelineRangeSelection,
 } from "./timelineEditing";
 import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme";
-import { GUTTER, TRACK_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
@@ -19,21 +20,10 @@ import {
 } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
 import type { TrackVisualStyle } from "./timelineIcons";
-import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrder";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { isMusicTrack } from "../../utils/timelineInspector";
-import { TimelineLayerGutter } from "./TimelineLayerGutter";
-import {
-  shouldShowTimelineLayerGroupHeader,
-  TimelineLayerGroupHeader,
-} from "./TimelineLayerGroupHeader";
-import { resolveTimelineDropIndicator } from "./timelineDropIndicator";
-import { TimelineDropInsertionLine } from "./TimelineDropInsertionLine";
-import { TimelineDragGhost } from "./TimelineDragGhost";
-import { TimelineSelectionOverlays } from "./TimelineSelectionOverlays";
-import type { TimelineMarqueeOverlayRect } from "./useTimelineMarqueeSelection";
 
 function ClipLintDot({ element }: { element: TimelineElement }) {
   const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
@@ -56,12 +46,11 @@ interface TimelineCanvasProps {
   effectiveDuration: number;
   majorTickInterval: number;
   rangeSelection: TimelineRangeSelection | null;
-  marqueeRect: TimelineMarqueeOverlayRect | null;
   theme: TimelineTheme;
-  displayTrackOrder: TimelineLayerId[];
-  trackOrder: TimelineLayerId[];
-  tracks: StackingTimelineLayer[];
-  trackStyles: Map<TimelineLayerId, TrackVisualStyle>;
+  displayTrackOrder: number[];
+  trackOrder: number[];
+  tracks: [number, TimelineElement[]][];
+  trackStyles: Map<number, TrackVisualStyle>;
   selectedElementId: string | null;
   hoveredClip: string | null;
   draggedClip: DraggedClipState | null;
@@ -115,7 +104,6 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   effectiveDuration,
   majorTickInterval,
   rangeSelection,
-  marqueeRect,
   theme,
   displayTrackOrder,
   trackOrder,
@@ -124,7 +112,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   selectedElementId,
   hoveredClip,
   draggedClip,
-  resizingClip,
+  resizingClip: _resizingClip,
   blockedClipRef,
   suppressClickRef,
   scrollRef,
@@ -153,21 +141,9 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   onContextMenuClip,
   beatAnalysis,
 }: TimelineCanvasProps) {
-  const {
-    onResizeElement,
-    onMoveElement,
-    onToggleTrackHidden,
-    onToggleElementHidden,
-    onRazorSplit,
-    onRazorSplitAll,
-  } = useTimelineEditContextOptional();
+  const { onResizeElement, onMoveElement, onToggleTrackHidden, onRazorSplit, onRazorSplitAll } =
+    useTimelineEditContextOptional();
   const beatDragging = usePlayerStore((s) => s.beatDragging);
-  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
-  const activeSnapGuideTime = draggedClip?.started
-    ? (draggedClip.snapBeatTime ?? draggedClip.snapGuideTime)
-    : resizingClip?.started
-      ? resizingClip.snapGuideTime
-      : null;
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
     draggedClip?.started === true && draggedElement
@@ -205,16 +181,9 @@ export const TimelineCanvas = memo(function TimelineCanvas({
       )}
     </>
   );
-  const activeDropPlacement =
-    draggedClip?.started === true ? (draggedClip.previewStackingReorder?.placement ?? null) : null;
 
   return (
-    // minWidth:100% makes the lanes and ruler fill the panel when the composition
-    // is narrower than the viewport (zoomed out); content stays in time coords.
-    <div
-      className="relative"
-      style={{ height: totalH, width: GUTTER + trackContentWidth, minWidth: "100%" }}
-    >
+    <div className="relative" style={{ height: totalH, width: GUTTER + trackContentWidth }}>
       <TimelineRuler
         major={major}
         minor={minor}
@@ -229,35 +198,13 @@ export const TimelineCanvas = memo(function TimelineCanvas({
 
       {
         // fallow-ignore-next-line complexity
-        displayTrackOrder.map((layerId, rowIndex) => {
-          const layer = tracks.find((item) => item.id === layerId) ?? null;
-          const previousLayerId = displayTrackOrder[rowIndex - 1];
-          const previousLayer = previousLayerId
-            ? (tracks.find((item) => item.id === previousLayerId) ?? null)
-            : null;
-          const els = layer?.elements ?? [];
-          const ts = trackStyles.get(layerId) ?? getTrackStyle("");
-          const isAudioLayer = layer?.kind === "audio";
-          const isFirstAudioLayer = isAudioLayer && previousLayer?.kind !== "audio";
+        displayTrackOrder.map((trackNum) => {
+          const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
+          const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
-            draggedClip?.started === true && !trackOrder.includes(layerId) && els.length === 0;
-          const baseRowBackground = rowIndex % 2 === 0 ? theme.rowBackground : "#0D0E12";
-          const dropIndicator = resolveTimelineDropIndicator({
-            placement: activeDropPlacement,
-            layerId,
-            layerOrder: displayTrackOrder,
-          });
+            draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
           const rowBackground =
-            dropIndicator?.kind === "onto"
-              ? theme.clipBackgroundActive
-              : isAudioLayer
-                ? `linear-gradient(90deg, ${theme.gutterBackground} 0, ${baseRowBackground} 74px)`
-                : baseRowBackground;
-          const showGroupHeader = shouldShowTimelineLayerGroupHeader(
-            layer?.contextKey ?? "",
-            previousLayer?.contextKey ?? "",
-          );
-          const rowTrack = layer?.placementTrack ?? els[0]?.track ?? 0;
+            displayTrackOrder.indexOf(trackNum) % 2 === 0 ? theme.rowBackground : "#0D0E12";
           // The beat-dot strip occupies the top of this track's lane (active track,
           // or the music track when nothing is selected). When shown, keyframe
           // diamonds shrink + drop to the bottom half so they don't collide with it.
@@ -268,309 +215,339 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               : els.some(isMusicTrack));
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
           return (
-            <Fragment key={layerId}>
-              {showGroupHeader && layer && (
-                <TimelineLayerGroupHeader
-                  contextKey={layer.contextKey}
-                  trackContentWidth={trackContentWidth}
-                  theme={theme}
-                  accentColor={ts.accent}
-                />
-              )}
+            <div
+              key={trackNum}
+              className="relative flex"
+              style={{
+                height: TRACK_H,
+                background: rowBackground,
+                borderBottom: `1px solid ${theme.rowBorder}`,
+              }}
+            >
               <div
-                className="relative flex"
+                className="sticky left-0 z-[12] flex-shrink-0 flex items-center justify-center"
                 style={{
-                  height: TRACK_H,
-                  background: rowBackground,
-                  borderTop: isFirstAudioLayer ? `2px solid ${theme.rulerBorder}` : undefined,
-                  borderBottom: `1px solid ${theme.rowBorder}`,
-                  boxShadow:
-                    dropIndicator?.kind === "onto" ? `inset 0 0 0 1px ${ts.accent}` : undefined,
+                  width: GUTTER,
+                  background: theme.gutterBackground,
+                  borderRight: `1px solid ${theme.gutterBorder}`,
                 }}
               >
-                <TimelineLayerGutter
-                  isAudio={isAudioLayer}
-                  isTrackHidden={isTrackHidden}
-                  rowTrack={rowTrack}
-                  theme={theme}
-                  onToggleHidden={() => {
-                    if (onToggleElementHidden && els.length > 0) {
-                      for (const element of els) {
-                        void onToggleElementHidden(element.key ?? element.id, !isTrackHidden);
-                      }
-                      return;
-                    }
-                    void onToggleTrackHidden?.(rowTrack, !isTrackHidden);
+                <button
+                  type="button"
+                  aria-label={isTrackHidden ? `Show track ${trackNum}` : `Hide track ${trackNum}`}
+                  title={isTrackHidden ? `Show track ${trackNum}` : `Hide track ${trackNum}`}
+                  className={`flex h-6 w-6 items-center justify-center rounded border-0 bg-transparent p-0 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[#3CE6AC] ${
+                    isTrackHidden
+                      ? "text-[#3CE6AC] hover:text-white"
+                      : "text-white/35 hover:text-white/75"
+                  }`}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
                   }}
-                />
-                <div
-                  style={{
-                    width: trackContentWidth,
-                    opacity: isTrackHidden ? 0.35 : 1,
-                    transition: "opacity 120ms ease",
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onToggleTrackHidden?.(trackNum, !isTrackHidden);
                   }}
-                  className="relative"
                 >
-                  {layer?.contextKey && (
-                    <span
-                      className="absolute bottom-0 top-0 pointer-events-none"
-                      style={{
-                        left: 0,
-                        width: 2,
-                        background: ts.accent,
-                        opacity: 0.45,
-                        zIndex: 2,
-                      }}
-                    />
+                  {isTrackHidden ? (
+                    <EyeSlash size={14} weight="bold" aria-hidden="true" />
+                  ) : (
+                    <Eye size={14} weight="bold" aria-hidden="true" />
                   )}
-                  {dropIndicator?.kind === "line" && (
-                    <TimelineDropInsertionLine edge={dropIndicator.edge} accentColor={ts.accent} />
-                  )}
-                  {/* Faint beat lines in every track's background (behind the clips);
-                    the active snap target is highlighted. */}
-                  <BeatBackgroundLines
+                </button>
+              </div>
+              <div
+                style={{
+                  width: trackContentWidth,
+                  opacity: isTrackHidden ? 0.35 : 1,
+                  transition: "opacity 120ms ease",
+                }}
+                className="relative"
+              >
+                {/* Faint beat lines in every track's background (behind the clips);
+                    the active move-snap target is highlighted. */}
+                <BeatBackgroundLines
+                  beatTimes={beatAnalysis?.beatTimes}
+                  beatStrengths={beatAnalysis?.beatStrengths}
+                  pps={pps}
+                  highlightTime={
+                    draggedClip?.started && draggedClip.snapType === "beat"
+                      ? draggedClip.snapTime
+                      : null
+                  }
+                />
+                {/* Beat dots on the active track (the one holding the selection),
+                    falling back to the music track when nothing is selected. */}
+                {beatStripOnTrack && (
+                  <BeatStrip
                     beatTimes={beatAnalysis?.beatTimes}
                     beatStrengths={beatAnalysis?.beatStrengths}
                     pps={pps}
-                    highlightTime={activeSnapGuideTime}
                   />
-                  {/* Beat dots on the active track (the one holding the selection),
-                    falling back to the music track when nothing is selected. */}
-                  {beatStripOnTrack && (
-                    <BeatStrip
-                      beatTimes={beatAnalysis?.beatTimes}
-                      beatStrengths={beatAnalysis?.beatStrengths}
-                      pps={pps}
-                    />
-                  )}
-                  {isPendingTrack && (
-                    <div
-                      className="absolute inset-0 flex items-center"
-                      style={{
-                        paddingLeft: 16,
-                        color: ts.label,
-                        fontSize: 11,
-                        letterSpacing: 0,
-                        textTransform: "uppercase",
-                        opacity: 0.5,
-                      }}
-                    >
-                      New track
-                    </div>
-                  )}
-                  {
-                    // fallow-ignore-next-line complexity
-                    els.map((el) => {
-                      const clipStyle = getTrackStyle(el.tag);
-                      const elementKey = el.key ?? el.id;
-                      const capabilities = getTimelineEditCapabilities(el);
-                      const isSelected = selectedElementIds.has(elementKey);
-                      const isComposition = !!el.compositionSrc;
-                      // elementKey (el.key ?? el.id) is already unique per clip; do NOT
-                      // fold in the map index, or a splice/reorder remounts every clip
-                      // at/after the change (DOM flash, drag interruption).
-                      const clipKey = elementKey;
-                      const isDraggingClip =
-                        draggedClip?.started === true &&
-                        (draggedElement?.key ?? draggedElement?.id) === elementKey;
-                      if (isDraggingClip) return null;
-                      const previewElement = getPreviewElement(el);
-                      return (
-                        <TimelineClip
-                          key={clipKey}
-                          onContextMenu={(e: React.MouseEvent) => {
-                            e.preventDefault();
-                            onContextMenuClip?.(e, el);
-                          }}
-                          el={previewElement}
-                          pps={pps}
-                          clipY={CLIP_Y}
-                          isSelected={isSelected}
-                          isHovered={hoveredClip === clipKey}
-                          isDragging={false}
-                          hasCustomContent={!!renderClipContent}
-                          capabilities={capabilities}
-                          theme={theme}
-                          isComposition={isComposition}
-                          onHoverStart={() => setHoveredClip(clipKey)}
-                          onHoverEnd={() => setHoveredClip(null)}
-                          onResizeStart={(edge, e) => {
-                            if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
-                            if (edge === "start" && !capabilities.canTrimStart) return;
-                            if (edge === "end" && !capabilities.canTrimEnd) return;
-                            e.stopPropagation();
+                )}
+                {isPendingTrack && (
+                  <div
+                    className="absolute inset-0 flex items-center"
+                    style={{
+                      paddingLeft: 16,
+                      color: ts.label,
+                      fontSize: 11,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      opacity: 0.5,
+                    }}
+                  >
+                    New track
+                  </div>
+                )}
+                {
+                  // fallow-ignore-next-line complexity
+                  els.map((el) => {
+                    const clipStyle = getTrackStyle(el.tag);
+                    const elementKey = el.key ?? el.id;
+                    const capabilities = getTimelineEditCapabilities(el);
+                    const isSelected = selectedElementId === elementKey;
+                    const isComposition = !!el.compositionSrc;
+                    // elementKey (el.key ?? el.id) is already unique per clip; do NOT
+                    // fold in the map index, or a splice/reorder remounts every clip
+                    // at/after the change (DOM flash, drag interruption).
+                    const clipKey = elementKey;
+                    const isDraggingClip =
+                      draggedClip?.started === true &&
+                      (draggedElement?.key ?? draggedElement?.id) === elementKey;
+                    if (isDraggingClip) return null;
+                    const previewElement = getPreviewElement(el);
+                    return (
+                      <TimelineClip
+                        key={clipKey}
+                        onContextMenu={(e: React.MouseEvent) => {
+                          e.preventDefault();
+                          onContextMenuClip?.(e, el);
+                        }}
+                        el={previewElement}
+                        pps={pps}
+                        clipY={CLIP_Y}
+                        isSelected={isSelected}
+                        isHovered={hoveredClip === clipKey}
+                        isDragging={false}
+                        hasCustomContent={!!renderClipContent}
+                        capabilities={capabilities}
+                        theme={theme}
+                        isComposition={isComposition}
+                        onHoverStart={() => setHoveredClip(clipKey)}
+                        onHoverEnd={() => setHoveredClip(null)}
+                        onResizeStart={(edge, e) => {
+                          if (e.button !== 0 || e.shiftKey || !onResizeElement) return;
+                          if (edge === "start" && !capabilities.canTrimStart) return;
+                          if (edge === "end" && !capabilities.canTrimEnd) return;
+                          e.stopPropagation();
+                          blockedClipRef.current = null;
+                          setShowPopover(false);
+                          setRangeSelection(null);
+                          setResizingClip({
+                            element: el,
+                            edge,
+                            originClientX: e.clientX,
+                            previewStart: el.start,
+                            previewDuration: el.duration,
+                            previewPlaybackStart: el.playbackStart,
+                            started: false,
+                          });
+                        }}
+                        onPointerDown={
+                          // fallow-ignore-next-line complexity
+                          (e) => {
+                            if (e.button !== 0) return;
+                            if (usePlayerStore.getState().activeTool === "razor") return;
+                            if (e.shiftKey) {
+                              shiftClickClipRef.current = {
+                                element: el,
+                                anchorX: e.clientX,
+                                anchorY: e.clientY,
+                              };
+                              return;
+                            }
+                            const target = e.currentTarget as HTMLElement;
+                            const rect = target.getBoundingClientRect();
+                            const blockedIntent = resolveBlockedTimelineEditIntent({
+                              width: rect.width,
+                              offsetX: e.clientX - rect.left,
+                              handleWidth: CLIP_HANDLE_W,
+                              capabilities,
+                            });
+                            if (
+                              blockedIntent &&
+                              ((blockedIntent === "move" && onMoveElement) ||
+                                (blockedIntent !== "move" && onResizeElement))
+                            ) {
+                              blockedClipRef.current = {
+                                element: el,
+                                intent: blockedIntent,
+                                originClientX: e.clientX,
+                                originClientY: e.clientY,
+                                started: false,
+                              };
+                              return;
+                            }
+                            if (!onMoveElement || !capabilities.canMove) return;
                             blockedClipRef.current = null;
                             setShowPopover(false);
                             setRangeSelection(null);
-                            setResizingClip({
+                            setDraggedClip({
                               element: el,
-                              edge,
                               originClientX: e.clientX,
+                              originClientY: e.clientY,
+                              originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
+                              originScrollTop: scrollRef.current?.scrollTop ?? 0,
+                              pointerClientX: e.clientX,
+                              pointerClientY: e.clientY,
+                              pointerOffsetX: e.clientX - rect.left,
+                              pointerOffsetY: e.clientY - rect.top,
                               previewStart: el.start,
-                              previewDuration: el.duration,
-                              previewPlaybackStart: el.playbackStart,
-                              snapGuideTime: null,
-                              snapGuideKind: null,
+                              previewTrack: el.track,
+                              snapTime: null,
+                              snapType: null,
                               started: false,
                             });
-                          }}
-                          onPointerDown={
-                            // fallow-ignore-next-line complexity
-                            (e) => {
-                              if (e.button !== 0) return;
-                              if (usePlayerStore.getState().activeTool === "razor") return;
-                              if (e.shiftKey) {
-                                shiftClickClipRef.current = {
-                                  element: el,
-                                  anchorX: e.clientX,
-                                  anchorY: e.clientY,
-                                };
-                                return;
-                              }
-                              const target = e.currentTarget as HTMLElement;
-                              const rect = target.getBoundingClientRect();
-                              const blockedIntent = resolveBlockedTimelineEditIntent({
-                                width: rect.width,
-                                offsetX: e.clientX - rect.left,
-                                handleWidth: CLIP_HANDLE_W,
-                                capabilities,
-                              });
-                              if (
-                                blockedIntent &&
-                                ((blockedIntent === "move" && onMoveElement) ||
-                                  (blockedIntent !== "move" && onResizeElement))
-                              ) {
-                                blockedClipRef.current = {
-                                  element: el,
-                                  intent: blockedIntent,
-                                  originClientX: e.clientX,
-                                  originClientY: e.clientY,
-                                  started: false,
-                                };
-                                return;
-                              }
-                              if (!onMoveElement || !capabilities.canMove) return;
-                              blockedClipRef.current = null;
-                              setShowPopover(false);
-                              setRangeSelection(null);
-                              setDraggedClip({
-                                element: el,
-                                originClientX: e.clientX,
-                                originClientY: e.clientY,
-                                originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
-                                originScrollTop: scrollRef.current?.scrollTop ?? 0,
-                                pointerClientX: e.clientX,
-                                pointerClientY: e.clientY,
-                                pointerOffsetX: e.clientX - rect.left,
-                                pointerOffsetY: e.clientY - rect.top,
-                                previewStart: el.start,
-                                previewTrack: el.track,
-                                previewLayerId: layerId,
-                                previewLayerIndex: rowIndex,
-                                previewStackingReorder: null,
-                                snapBeatTime: null,
-                                snapGuideTime: null,
-                                snapGuideKind: null,
-                                started: false,
-                              });
-                              syncClipDragAutoScroll(e.clientX, e.clientY);
-                            }
+                            syncClipDragAutoScroll(e.clientX, e.clientY);
                           }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (suppressClickRef.current) return;
-                            const { activeTool } = usePlayerStore.getState();
-                            if (activeTool === "razor" && onRazorSplit) {
-                              const clipRect = (
-                                e.currentTarget as HTMLElement
-                              ).getBoundingClientRect();
-                              const clickOffsetX = e.clientX - clipRect.left;
-                              const splitTime = previewElement.start + clickOffsetX / pps;
-                              const clampedTime = Math.max(
-                                previewElement.start + SPLIT_BOUNDARY_EPSILON_S,
-                                Math.min(
-                                  previewElement.start +
-                                    previewElement.duration -
-                                    SPLIT_BOUNDARY_EPSILON_S,
-                                  splitTime,
-                                ),
-                              );
-                              if (e.shiftKey && onRazorSplitAll) {
-                                onRazorSplitAll(clampedTime);
-                              } else {
-                                onRazorSplit(el, clampedTime);
-                              }
-                              return;
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (suppressClickRef.current) return;
+                          const { activeTool } = usePlayerStore.getState();
+                          if (activeTool === "razor" && onRazorSplit) {
+                            const clipRect = (
+                              e.currentTarget as HTMLElement
+                            ).getBoundingClientRect();
+                            const clickOffsetX = e.clientX - clipRect.left;
+                            const splitTime = previewElement.start + clickOffsetX / pps;
+                            const clampedTime = Math.max(
+                              previewElement.start + SPLIT_BOUNDARY_EPSILON_S,
+                              Math.min(
+                                previewElement.start +
+                                  previewElement.duration -
+                                  SPLIT_BOUNDARY_EPSILON_S,
+                                splitTime,
+                              ),
+                            );
+                            if (e.shiftKey && onRazorSplitAll) {
+                              onRazorSplitAll(clampedTime);
+                            } else {
+                              onRazorSplit(el, clampedTime);
                             }
-                            const nextElement = isSelected ? null : el;
-                            setSelectedElementId(nextElement ? elementKey : null);
-                            onSelectElement?.(nextElement);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            if (suppressClickRef.current) return;
-                            if (isComposition && onDrillDown) onDrillDown(el);
-                          }}
-                        >
-                          {renderClipChildren(previewElement, clipStyle)}
-                          {STUDIO_KEYFRAMES_ENABLED && keyframeCache?.get(elementKey) && (
-                            <TimelineClipDiamonds
-                              keyframesData={keyframeCache.get(elementKey)!}
-                              clipWidthPx={Math.max(previewElement.duration * pps, 4)}
-                              clipHeightPx={TRACK_H - 2 * CLIP_Y}
-                              beatsActive={beatStripOnTrack}
-                              beatTimes={beatAnalysis?.beatTimes}
-                              clipStart={previewElement.start}
-                              clipDurationSeconds={previewElement.duration}
-                              pixelsPerSecond={pps}
-                              accentColor={clipStyle.accent}
-                              isSelected={isSelected}
-                              currentPercentage={
-                                previewElement.duration > 0
-                                  ? ((currentTime - previewElement.start) /
-                                      previewElement.duration) *
-                                    100
-                                  : 0
-                              }
-                              elementId={elementKey}
-                              selectedKeyframes={selectedKeyframes}
-                              onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
-                              onShiftClickKeyframe={onShiftClickKeyframe}
-                              onContextMenuKeyframe={onContextMenuKeyframe}
-                              onMoveKeyframe={onMoveKeyframe}
-                              suppressClickRef={suppressClickRef}
-                            />
-                          )}
-                        </TimelineClip>
-                      );
-                    })
-                  }
-                </div>
+                            return;
+                          }
+                          const nextElement = isSelected ? null : el;
+                          setSelectedElementId(nextElement ? elementKey : null);
+                          onSelectElement?.(nextElement);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          if (suppressClickRef.current) return;
+                          if (isComposition && onDrillDown) onDrillDown(el);
+                        }}
+                      >
+                        {renderClipChildren(previewElement, clipStyle)}
+                        {STUDIO_KEYFRAMES_ENABLED && keyframeCache?.get(elementKey) && (
+                          <TimelineClipDiamonds
+                            keyframesData={keyframeCache.get(elementKey)!}
+                            clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                            clipHeightPx={TRACK_H - 2 * CLIP_Y}
+                            beatsActive={beatStripOnTrack}
+                            accentColor={clipStyle.accent}
+                            isSelected={isSelected}
+                            currentPercentage={
+                              previewElement.duration > 0
+                                ? ((currentTime - previewElement.start) / previewElement.duration) *
+                                  100
+                                : 0
+                            }
+                            elementId={elementKey}
+                            selectedKeyframes={selectedKeyframes}
+                            onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
+                            onShiftClickKeyframe={onShiftClickKeyframe}
+                            onContextMenuKeyframe={onContextMenuKeyframe}
+                            onMoveKeyframe={onMoveKeyframe}
+                            suppressClickRef={suppressClickRef}
+                          />
+                        )}
+                      </TimelineClip>
+                    );
+                  })
+                }
               </div>
-            </Fragment>
+            </div>
           );
         })
       }
 
-      {activeDraggedElement && activeDraggedPosition && (
-        <TimelineDragGhost
-          element={activeDraggedElement}
-          position={activeDraggedPosition}
-          pps={pps}
-          selectedElementId={selectedElementId}
-          hasCustomContent={!!renderClipContent}
-          theme={theme}
-        >
-          {renderClipChildren(activeDraggedElement, getTrackStyle(activeDraggedElement.tag))}
-        </TimelineDragGhost>
+      {/* Snap guide for non-beat targets during clip drag */}
+      {draggedClip?.started && draggedClip.snapTime != null && draggedClip.snapType !== "beat" && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: GUTTER + draggedClip.snapTime * pps,
+            top: RULER_H,
+            bottom: 0,
+            width: 1,
+            background: draggedClip.snapType === "playhead" ? "#3CE6AC" : "rgba(255,255,255,0.6)",
+            boxShadow: "0 0 6px rgba(60,230,172,0.5)",
+            zIndex: 60,
+          }}
+        />
       )}
 
-      <TimelineSelectionOverlays
-        rangeSelection={rangeSelection}
-        marqueeRect={marqueeRect}
-        pps={pps}
-        accentColor={getTrackStyle("").accent}
-      />
+      {/* Drag ghost */}
+      {activeDraggedElement && activeDraggedPosition && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            top: activeDraggedPosition.top,
+            left: activeDraggedPosition.left,
+            width: Math.max(activeDraggedElement.duration * pps, 4),
+            height: TRACK_H - CLIP_Y * 2,
+            zIndex: 40,
+          }}
+        >
+          <TimelineClip
+            el={{ ...activeDraggedElement, start: 0 }}
+            pps={pps}
+            clipY={0}
+            isSelected={selectedElementId === (activeDraggedElement.key ?? activeDraggedElement.id)}
+            isHovered={false}
+            isDragging={true}
+            hasCustomContent={!!renderClipContent}
+            capabilities={getTimelineEditCapabilities(activeDraggedElement)}
+            theme={theme}
+            isComposition={!!activeDraggedElement.compositionSrc}
+            onHoverStart={() => {}}
+            onHoverEnd={() => {}}
+            onResizeStart={() => {}}
+            onClick={() => {}}
+            onDoubleClick={() => {}}
+          >
+            {renderClipChildren(activeDraggedElement, getTrackStyle(activeDraggedElement.tag))}
+          </TimelineClip>
+        </div>
+      )}
+
+      {/* Range highlight */}
+      {rangeSelection && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: GUTTER + Math.min(rangeSelection.start, rangeSelection.end) * pps,
+            width: Math.abs(rangeSelection.end - rangeSelection.start) * pps,
+            top: RULER_H,
+            bottom: 0,
+            backgroundColor: "rgba(59, 130, 246, 0.12)",
+            borderLeft: "1px solid rgba(59, 130, 246, 0.4)",
+            borderRight: "1px solid rgba(59, 130, 246, 0.4)",
+            zIndex: 50,
+          }}
+        />
+      )}
 
       {/* Playhead — hidden while dragging a beat so its guideline doesn't
           track the scrub and clutter the beat being moved. */}
