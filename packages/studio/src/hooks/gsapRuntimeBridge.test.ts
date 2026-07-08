@@ -1,8 +1,11 @@
+// @vitest-environment happy-dom
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
 import { usePlayerStore } from "../player/store/playerStore";
+import { applySoftReload } from "../utils/gsapSoftReload";
 
 /**
  * Regression: `selectedGsapAnimations` (and the fetch fallback) is an async
@@ -57,6 +60,63 @@ const stalePositionAnim = {
 } as unknown as GsapAnimation;
 
 afterEach(() => vi.restoreAllMocks());
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function expectRecord(value: unknown): Record<string, unknown> {
+  expect(isRecord(value)).toBe(true);
+  if (isRecord(value)) return value;
+  throw new Error("Expected an object");
+}
+
+function installSoftReloadIframe(scriptText: string): {
+  iframe: HTMLIFrameElement;
+  oldTimeline: { kill: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
+  newTimeline: { kill: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn> };
+  rebind: ReturnType<typeof vi.fn>;
+  seek: ReturnType<typeof vi.fn>;
+  manualApply: ReturnType<typeof vi.fn>;
+} {
+  const iframe = document.createElement("iframe");
+  document.body.appendChild(iframe);
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument;
+  if (!win || !doc) throw new Error("Expected iframe window and document");
+
+  const oldTimeline = { kill: vi.fn(), pause: vi.fn() };
+  const newTimeline = { kill: vi.fn(), pause: vi.fn() };
+  const rebind = vi.fn();
+  const seek = vi.fn();
+  const manualApply = vi.fn();
+  Reflect.set(win, "gsap", { timeline: vi.fn(), set: vi.fn() });
+  Reflect.set(win, "__hfForceTimelineRebind", rebind);
+  Reflect.set(win, "__timelines", { root: oldTimeline });
+  Reflect.set(win, "__player", { getTime: () => 3.5, seek });
+  Reflect.set(win, "__hfStudioManualEditsApply", manualApply);
+
+  const staleScript = doc.createElement("script");
+  staleScript.textContent = `
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#box", { x: 12, duration: 1 }, 0);
+window.__timelines["root"] = tl;
+`;
+  doc.body.appendChild(staleScript);
+
+  const realAppendChild = doc.body.appendChild.bind(doc.body);
+  doc.body.appendChild = <T extends Node>(node: T): T => {
+    const result = realAppendChild(node);
+    if (node instanceof HTMLScriptElement && node.textContent?.includes(scriptText)) {
+      const timelines = expectRecord(Reflect.get(win, "__timelines"));
+      timelines.root = newTimeline;
+    }
+    return result;
+  };
+
+  return { iframe, oldTimeline, newTimeline, rebind, seek, manualApply };
+}
 
 describe("tryGsapDragIntercept — stale-parse guard (no resurrection after delete-all)", () => {
   it("commits a static set (not the stale tween) when the runtime has no live position motion", async () => {
@@ -242,5 +302,58 @@ describe("tryGsapDragIntercept — autoKeyframeEnabled toggle (#1808)", () => {
     expect(handled).toBe(true);
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
     expect(types).not.toContain("replace-with-keyframes");
+  });
+});
+
+describe("GSAP soft reload characterization", () => {
+  it("re-runs the edited script and re-registers window.__timelines for its key", () => {
+    const editedScript = `
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#box", { x: 180, duration: 1 }, 0);
+window.__timelines["root"] = tl;
+`;
+    const { iframe, oldTimeline, newTimeline, rebind, seek, manualApply } =
+      installSoftReloadIframe(editedScript);
+
+    try {
+      const result = applySoftReload(iframe, editedScript, undefined, 1.75);
+      const doc = iframe.contentDocument;
+      if (!doc) throw new Error("Expected iframe document");
+      const scripts = [...doc.querySelectorAll("script:not([src])")].map(
+        (script) => script.textContent ?? "",
+      );
+      const win = iframe.contentWindow;
+      if (!win) throw new Error("Expected iframe window");
+      const timelines = expectRecord(Reflect.get(win, "__timelines"));
+
+      expect({
+        result,
+        oldTimelineKilled: oldTimeline.kill.mock.calls.length,
+        registeredTimelineIsNew: timelines.root === newTimeline,
+        rebindCalls: rebind.mock.calls.length,
+        seekCalls: seek.mock.calls,
+        manualApplyCalls: manualApply.mock.calls.length,
+        scripts,
+      }).toEqual({
+        result: "applied",
+        oldTimelineKilled: 1,
+        registeredTimelineIsNew: true,
+        rebindCalls: 1,
+        seekCalls: [[1.75]],
+        manualApplyCalls: 1,
+        scripts: [
+          `(function(){
+window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.to("#box", { x: 180, duration: 1 }, 0);
+window.__timelines["root"] = tl;
+
+})();`,
+        ],
+      });
+    } finally {
+      iframe.remove();
+    }
   });
 });

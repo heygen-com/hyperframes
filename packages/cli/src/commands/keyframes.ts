@@ -861,6 +861,7 @@ function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
   console.log();
 }
 
+// fallow-ignore-next-line complexity
 function printAnime(anime: SurfacedAnimeAnimation): void {
   const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
   const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";

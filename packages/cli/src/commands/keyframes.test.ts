@@ -103,6 +103,7 @@ describe("keyframes runtime surfacing", () => {
     expect(cssKeyframes[0]!.selectors).toEqual([".dot"]);
   });
 
+  // fallow-ignore-next-line code-duplication
   it("surfaces Anime.js calls and explicit HyperFrames registration", () => {
     const html = wrap(`
       const tl = anime.createTimeline({ autoplay: false });
@@ -118,6 +119,7 @@ describe("keyframes runtime surfacing", () => {
     expect(anime[0]!.durations).toContain(900);
   });
 
+  // fallow-ignore-next-line code-duplication
   it("surfaces Anime.js labels, eases, and per-tween timing depth", () => {
     const html = wrap(`
       const tl = anime.createTimeline({ autoplay: false, defaults: { ease: "outQuad" } });

@@ -1,7 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ANIME_CDN } from "../../../core/src/templates/constants";
@@ -65,7 +65,54 @@ async function getPreviewSignature(projectDir: string): Promise<string> {
   return match![1]!;
 }
 
+function readGsapCharacterizationFixture(): string {
+  return readFileSync(join(process.cwd(), "src/__fixtures__/gsap-characterization.html"), "utf-8");
+}
+
+function summarizeScripts(html: string): string[] {
+  return [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].map((match) => {
+    const attrs = match[1] ?? "";
+    const text = match[2] ?? "";
+    const src = /\bsrc=["']([^"']+)["']/.exec(attrs)?.[1];
+    if (src) return `src:${src}`;
+    if (attrs.includes("data-hf-gsap-fallback")) return "inline:data-hf-gsap-fallback";
+    if (attrs.includes("data-hyperframes-gsap")) return "inline:data-hyperframes-gsap";
+    if (text.includes("__hfStudioMotionApply")) return "inline:studio-motion";
+    return "inline:other";
+  });
+}
+
 describe("registerPreviewRoutes", () => {
+  it("characterizes preview script injection order for a GSAP composition", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), readGsapCharacterizationFixture());
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect({
+      scripts: summarizeScripts(html),
+      fallbackBeforeBase: html.indexOf("data-hf-gsap-fallback") < html.indexOf("<base"),
+      motionPathAfterGsap: html.indexOf("gsap.min.js") < html.indexOf("MotionPathPlugin.min.js"),
+      motionPathBeforeTimeline:
+        html.indexOf("MotionPathPlugin.min.js") < html.indexOf("data-hyperframes-gsap"),
+    }).toEqual({
+      scripts: [
+        "inline:data-hf-gsap-fallback",
+        "src:https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js",
+        "src:https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/MotionPathPlugin.min.js",
+        "inline:data-hyperframes-gsap",
+        "src:/api/runtime.js",
+      ],
+      fallbackBeforeBase: true,
+      motionPathAfterGsap: true,
+      motionPathBeforeTimeline: true,
+    });
+  });
+
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

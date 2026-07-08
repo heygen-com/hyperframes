@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>GSAP Studio Characterization</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+  </head>
+  <body data-duration="4">
+    <section
+      id="scene"
+      class="clip"
+      data-composition-id="index.html"
+      data-start="0"
+      data-duration="4"
+    >
+      <div id="card">Card</div>
+      <p id="caption">Caption</p>
+      <span id="dot"></span>
+    </section>
+    <script data-hyperframes-gsap>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.addLabel("intro", 0);
+      tl.to("#card", { x: 120, y: 20, duration: 1, ease: "power3.out" }, "intro");
+      tl.fromTo(
+        "#caption",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },
+        0.25,
+      );
+      tl.addLabel("orbit", 1.2);
+      tl.to(
+        "#dot",
+        {
+          motionPath: {
+            path: [
+              { x: 0, y: 0 },
+              { x: 120, y: 40 },
+              { x: 240, y: 0 },
+            ],
+            curviness: 1.25,
+            autoRotate: true,
+          },
+          duration: 1.4,
+          ease: "none",
+        },
+        "orbit",
+      );
+      window.__timelines["index.html"] = tl;
+    </script>
+  </body>
+</html>

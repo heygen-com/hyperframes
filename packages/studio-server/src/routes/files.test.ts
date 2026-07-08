@@ -190,6 +190,87 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     writeFileSync(join(projectDir, name), html);
   }
 
+  function readGsapCharacterizationFixture(): string {
+    return readFileSync(
+      join(process.cwd(), "src/__fixtures__/gsap-characterization.html"),
+      "utf-8",
+    );
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  function expectRecord(value: unknown): Record<string, unknown> {
+    expect(isRecord(value)).toBe(true);
+    if (isRecord(value)) return value;
+    throw new Error("Expected an object");
+  }
+
+  function expectArray(value: unknown): unknown[] {
+    expect(Array.isArray(value)).toBe(true);
+    if (Array.isArray(value)) return value;
+    throw new Error("Expected an array");
+  }
+
+  function expectString(value: unknown): string {
+    expect(typeof value).toBe("string");
+    if (typeof value === "string") return value;
+    throw new Error("Expected a string");
+  }
+
+  async function readJsonRecord(response: Response): Promise<Record<string, unknown>> {
+    const json: unknown = await response.json();
+    return expectRecord(json);
+  }
+
+  function animationRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
+    return expectArray(payload.animations).map((animation) => expectRecord(animation));
+  }
+
+  function parsedAnimationRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
+    return animationRecords(expectRecord(payload.parsed));
+  }
+
+  function summarizeAnimation(animation: Record<string, unknown>): Record<string, unknown> {
+    return {
+      id: animation.id,
+      targetSelector: animation.targetSelector,
+      method: animation.method,
+      position: animation.position,
+      resolvedStart: animation.resolvedStart,
+      duration: animation.duration,
+      ease: animation.ease,
+      propertyGroup: animation.propertyGroup,
+      properties: animation.properties,
+      fromProperties: animation.fromProperties,
+      arcPath: animation.arcPath,
+    };
+  }
+
+  function summarizeParsePayload(payload: Record<string, unknown>): Record<string, unknown> {
+    return {
+      timelineVar: payload.timelineVar,
+      preamble: payload.preamble,
+      postamble: payload.postamble,
+      animations: animationRecords(payload).map((animation) => summarizeAnimation(animation)),
+    };
+  }
+
+  function findAnimation(
+    animations: Record<string, unknown>[],
+    selector: string,
+    propertyGroup: string,
+  ): Record<string, unknown> {
+    const animation = animations.find(
+      (candidate) =>
+        candidate.targetSelector === selector && candidate.propertyGroup === propertyGroup,
+    );
+    expect(animation).toBeDefined();
+    if (animation) return animation;
+    throw new Error(`Expected ${selector} ${propertyGroup} animation`);
+  }
+
   async function getFirstAnimation(
     app: Hono,
     file: string,
@@ -776,5 +857,243 @@ tl.to("#box", { opacity: 1, duration: 1 }, 0);
     expect(result.after).toContain("(function () {");
     // The variable target was not flattened to a string-literal selector
     expect(result.after).toContain("tl.to(kicker,");
+  });
+
+  it("characterizes parse-edit-write output for a GSAP timeline with labels and motionPath", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "index.html", readGsapCharacterizationFixture());
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const parseResponse = await app.request(
+      "http://localhost/projects/demo/gsap-animations/index.html",
+    );
+    const parsePayload = await readJsonRecord(parseResponse);
+    const initialAnimations = animationRecords(parsePayload);
+    const positionAnimation = findAnimation(initialAnimations, "#card", "position");
+    const animationId = expectString(positionAnimation.id);
+
+    const updateXResponse = await app.request(
+      "http://localhost/projects/demo/gsap-mutations/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "update-property",
+          animationId,
+          property: "x",
+          value: 180,
+        }),
+      },
+    );
+    expect(updateXResponse.status).toBe(200);
+
+    const updateYResponse = await app.request(
+      "http://localhost/projects/demo/gsap-mutations/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "update-property",
+          animationId,
+          property: "y",
+          value: 48,
+        }),
+      },
+    );
+    const updateYPayload = await readJsonRecord(updateYResponse);
+    const scriptText = expectString(updateYPayload.scriptText);
+    const afterHtml = expectString(updateYPayload.after);
+    const reparsedAnimations = parsedAnimationRecords(updateYPayload);
+    const expectedMotionPath = {
+      enabled: true,
+      autoRotate: true,
+      segments: [{ curviness: 1.25 }, { curviness: 1.25 }],
+    };
+    const expectedScriptText = [
+      "",
+      "      window.__timelines = window.__timelines || {};",
+      "      const tl = gsap.timeline({ paused: true });",
+      '      tl.addLabel("intro", 0);',
+      '      tl.to("#card", { x: 180, y: 48, duration: 1, ease: "power3.out" }, "intro");',
+      "      tl.fromTo(",
+      '        "#caption",',
+      "        { opacity: 0, y: 24 },",
+      '        { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },',
+      "        0.25,",
+      "      );",
+      '      tl.addLabel("orbit", 1.2);',
+      "      tl.to(",
+      '        "#dot",',
+      "        {",
+      "          motionPath: {",
+      "            path: [",
+      "              { x: 0, y: 0 },",
+      "              { x: 120, y: 40 },",
+      "              { x: 240, y: 0 },",
+      "            ],",
+      "            curviness: 1.25,",
+      "            autoRotate: true,",
+      "          },",
+      "          duration: 1.4,",
+      '          ease: "none",',
+      "        },",
+      '        "orbit",',
+      "      );",
+      '      window.__timelines["index.html"] = tl;',
+      "    ",
+    ].join("\n");
+    const expectedAfterHtml = [
+      "<!DOCTYPE html>",
+      "<html>",
+      "  <head>",
+      '    <meta charset="utf-8">',
+      "    <title>GSAP Studio Characterization</title>",
+      '    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>',
+      "  </head>",
+      '  <body data-duration="4">',
+      '    <section id="scene" class="clip" data-composition-id="index.html" data-start="0" data-duration="4">',
+      '      <div id="card">Card</div>',
+      '      <p id="caption">Caption</p>',
+      '      <span id="dot"></span>',
+      "    </section>",
+      '    <script data-hyperframes-gsap="">',
+      "      window.__timelines = window.__timelines || {};",
+      "      const tl = gsap.timeline({ paused: true });",
+      '      tl.addLabel("intro", 0);',
+      '      tl.to("#card", { x: 180, y: 48, duration: 1, ease: "power3.out" }, "intro");',
+      "      tl.fromTo(",
+      '        "#caption",',
+      "        { opacity: 0, y: 24 },",
+      '        { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },',
+      "        0.25,",
+      "      );",
+      '      tl.addLabel("orbit", 1.2);',
+      "      tl.to(",
+      '        "#dot",',
+      "        {",
+      "          motionPath: {",
+      "            path: [",
+      "              { x: 0, y: 0 },",
+      "              { x: 120, y: 40 },",
+      "              { x: 240, y: 0 },",
+      "            ],",
+      "            curviness: 1.25,",
+      "            autoRotate: true,",
+      "          },",
+      "          duration: 1.4,",
+      '          ease: "none",',
+      "        },",
+      '        "orbit",',
+      "      );",
+      '      window.__timelines["index.html"] = tl;',
+      "    </script>",
+      "  </body>",
+      "</html>",
+      "",
+    ].join("\n");
+
+    expect(updateYResponse.status).toBe(200);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(afterHtml);
+    expect({
+      initialParse: summarizeParsePayload(parsePayload),
+      finalAnimations: reparsedAnimations.map((animation) => summarizeAnimation(animation)),
+      scriptText,
+      afterHtml,
+    }).toEqual({
+      initialParse: {
+        timelineVar: "tl",
+        preamble: [
+          "",
+          "      window.__timelines = window.__timelines || {};",
+          "      const tl = gsap.timeline({ paused: true });",
+        ].join("\n"),
+        postamble: 'window.__timelines["index.html"] = tl;',
+        animations: [
+          {
+            id: "#card-to-intro-position",
+            targetSelector: "#card",
+            method: "to",
+            position: "intro",
+            resolvedStart: 0,
+            duration: 1,
+            ease: "power3.out",
+            propertyGroup: "position",
+            properties: { x: 120, y: 20 },
+            fromProperties: undefined,
+            arcPath: undefined,
+          },
+          {
+            id: "#caption-fromTo-250",
+            targetSelector: "#caption",
+            method: "fromTo",
+            position: 0.25,
+            resolvedStart: 0.25,
+            duration: 0.8,
+            ease: "power2.out",
+            propertyGroup: undefined,
+            properties: { opacity: 1, y: 0 },
+            fromProperties: { opacity: 0, y: 24 },
+            arcPath: undefined,
+          },
+          {
+            id: "#dot-to-orbit-position",
+            targetSelector: "#dot",
+            method: "to",
+            position: "orbit",
+            resolvedStart: 1.2,
+            duration: 1.4,
+            ease: "none",
+            propertyGroup: "position",
+            properties: {},
+            fromProperties: undefined,
+            arcPath: expectedMotionPath,
+          },
+        ],
+      },
+      finalAnimations: [
+        {
+          id: "#card-to-intro-position",
+          targetSelector: "#card",
+          method: "to",
+          position: "intro",
+          resolvedStart: 0,
+          duration: 1,
+          ease: "power3.out",
+          propertyGroup: "position",
+          properties: { x: 180, y: 48 },
+          fromProperties: undefined,
+          arcPath: undefined,
+        },
+        {
+          id: "#caption-fromTo-250",
+          targetSelector: "#caption",
+          method: "fromTo",
+          position: 0.25,
+          resolvedStart: 0.25,
+          duration: 0.8,
+          ease: "power2.out",
+          propertyGroup: undefined,
+          properties: { opacity: 1, y: 0 },
+          fromProperties: { opacity: 0, y: 24 },
+          arcPath: undefined,
+        },
+        {
+          id: "#dot-to-orbit-position",
+          targetSelector: "#dot",
+          method: "to",
+          position: "orbit",
+          resolvedStart: 1.2,
+          duration: 1.4,
+          ease: "none",
+          propertyGroup: "position",
+          properties: {},
+          fromProperties: undefined,
+          arcPath: expectedMotionPath,
+        },
+      ],
+      scriptText: expectedScriptText,
+      afterHtml: expectedAfterHtml,
+    });
   });
 });
