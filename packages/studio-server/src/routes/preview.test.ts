@@ -613,3 +613,27 @@ describe("preview ?variables= injection", () => {
     expect(html).toContain('window.__hfVariables={"accent":"#f00"}');
   });
 });
+
+describe("sub-composition preview attribute integrity", () => {
+  it("preserves quote-bearing html attributes (data-composition-variables JSON)", async () => {
+    const projectDir = createProjectDir();
+    const decls = JSON.stringify([
+      { id: "title", type: "string", label: "Title", default: "Hello" },
+    ]);
+    writeFileSync(
+      join(projectDir, "card.html"),
+      `<!doctype html><html data-composition-variables='${decls}'><head></head><body><div class="clip" data-start="0" data-duration="2">x</div></body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/preview/comp/card.html");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    const attr = /data-composition-variables="([^"]*)"/.exec(html)?.[1] ?? "";
+    // Entities decode back to the exact declared JSON — a lost/shredded
+    // attribute here silently breaks getVariables() on the comp route.
+    const decoded = attr.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+    expect(JSON.parse(decoded)).toEqual(JSON.parse(decls));
+  });
+});

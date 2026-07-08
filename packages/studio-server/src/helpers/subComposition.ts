@@ -156,6 +156,13 @@ function extractTemplateInnerHtml(rawComp: string): string | null {
   return template ? template.innerHTML : null;
 }
 
+/** Attribute values read from the DOM are decoded — re-escape on rebuild or
+ *  quote-bearing values (data-composition-variables is a JSON array) shred
+ *  the wrapper's markup into bogus attributes. */
+function escapeAttrValue(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
 function extractElementAttrs(el: Element): string {
   const parts: string[] = [];
   for (let i = 0; i < el.attributes.length; i++) {
@@ -163,7 +170,7 @@ function extractElementAttrs(el: Element): string {
     if (attr.value === "") {
       parts.push(attr.name);
     } else {
-      parts.push(`${attr.name}="${attr.value}"`);
+      parts.push(`${attr.name}="${escapeAttrValue(attr.value)}"`);
     }
   }
   return parts.join(" ");

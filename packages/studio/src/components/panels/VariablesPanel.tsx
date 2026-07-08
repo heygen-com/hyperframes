@@ -7,7 +7,9 @@ import type {
 } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../../utils/editHistory";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
+import { useDomEditContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
+import { VariablesBindElement, type BindAction, applyBind } from "./VariablesBindElement";
 import { useVariablesPersist } from "../../hooks/useVariablesPersist";
 import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
 import {
@@ -275,6 +277,7 @@ export const VariablesPanel = memo(function VariablesPanel({
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
   const { readProjectFile, writeProjectFile, fileTree } = useFileManagerContext();
+  const { domEditSelection } = useDomEditContext();
   // On the master view (no activeCompPath) the panel targets the project's real
   // main composition — the first .html in the tree — not a hardcoded index.html
   // that may not exist. This same path is used for the persist write target (so
@@ -449,6 +452,38 @@ export const VariablesPanel = memo(function VariablesPanel({
     reloadPreview();
   }, [setPreviewValues, reloadPreview]);
 
+  const handleBind = useCallback(
+    // Guard chain (session, selection, type-compat) — one branch per guard.
+    // fallow-ignore-next-line complexity
+    (action: BindAction, id: string) => {
+      if (!sdkSession || !domEditSelection?.hfId) return;
+      // Binding to an existing variable is allowed, but only when the types
+      // agree — wiring a color style to a string variable silently breaks
+      // the element's styling.
+      const existing = sdkSession.getVariableDeclarations().find((d) => d.id === id);
+      const wanted = action.declaration(id).type;
+      if (existing && existing.type !== wanted) {
+        showToast(
+          `"${id}" is already a ${existing.type} variable — pick another id for this ${wanted} binding`,
+          "error",
+        );
+        return;
+      }
+      const hfId = domEditSelection.hfId;
+      void runSchemaEdit(`Bind ${action.label.toLowerCase()} to "${id}"`, (s) =>
+        applyBind(s, hfId, action, id),
+      );
+    },
+    [sdkSession, domEditSelection, runSchemaEdit, showToast],
+  );
+
+  // The bind gesture targets the composition the session models — a selection
+  // from another source file must not write bindings into this one.
+  const bindableSelection =
+    domEditSelection?.hfId && domEditSelection.sourceFile === (activeCompPath ?? "index.html")
+      ? domEditSelection
+      : null;
+
   if (!sdkSession) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-center">
@@ -464,6 +499,14 @@ export const VariablesPanel = memo(function VariablesPanel({
         onReset={resetPreview}
       />
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        {bindableSelection && (
+          <VariablesBindElement
+            key={bindableSelection.hfId}
+            selection={bindableSelection}
+            sdkSession={sdkSession}
+            onBind={handleBind}
+          />
+        )}
         <ValidationStrip issues={issues} />
         {declarations.length === 0 && !addOpen && EMPTY_STATE}
         {/* fallow-ignore-next-line complexity */}

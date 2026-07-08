@@ -126,6 +126,8 @@ export function useDomSelection({
 
   // ── Refs ──
 
+  const rightPanelTabRef = useRef(rightPanelTab);
+  rightPanelTabRef.current = rightPanelTab;
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
@@ -205,7 +207,11 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          setRightPanelTab("design");
+          // Keep the Variables tab in place — selecting elements is part of
+          // the bind flow there; yanking to Design would lose the context.
+          if (rightPanelTabRef.current !== "variables") {
+            setRightPanelTab("design");
+          }
         }
         const nextSelectedTimelineId =
           findMatchingTimelineElementId(nextSelection, timelineElements) ??
