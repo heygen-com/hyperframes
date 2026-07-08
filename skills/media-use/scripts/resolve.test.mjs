@@ -23,6 +23,13 @@ const RESOLVE_CLI = join(import.meta.dirname, "resolve.mjs");
 // The "Test: skills" CI job has no ffmpeg on PATH (by design). The smart-grade
 // test shells to ffmpeg, so it's skipped there and runs where ffmpeg exists.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+// The core-conformance test imports core's TypeScript via tsx. The dependency-free
+// "Test: skills" CI job has neither tsx nor installed deps, so skip it there; it
+// runs wherever the workspace is installed (locally, the main Test job).
+const CAN_TSX =
+  spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", "0"], {
+    stdio: "ignore",
+  }).status === 0;
 let tmp;
 
 function setup() {
@@ -406,6 +413,10 @@ test("smart grade merges measured adjust and keeps stdout valid JSON", () => {
 });
 
 test("emitted grading block survives the core normalizeHfColorGrading contract", () => {
+  if (!CAN_TSX) {
+    console.log("  (skipped: tsx / core source unavailable)");
+    return;
+  }
   setup();
   const out = runResolve([
     "--type",
