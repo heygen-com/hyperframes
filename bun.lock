@@ -60,6 +60,7 @@
       },
       "dependencies": {
         "@hono/node-server": "^1.8.0",
+        "@hyperframes/parsers": "workspace:*",
         "@puppeteer/browsers": "^2.13.0",
         "adm-zip": "^0.5.16",
         "citty": "^0.2.1",

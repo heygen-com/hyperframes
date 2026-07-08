@@ -23,6 +23,8 @@ export interface InstallResult {
   written: string[];
 }
 
+export type RegistryRuntime = "animejs" | "gsap";
+
 /**
  * Reject target paths that would escape `destDir`. Mirrors the pattern check
  * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
@@ -44,6 +46,16 @@ export function assertSafeTarget(destDir: string, target: string): void {
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Unsafe target "${target}": resolves outside destDir ${destDir}.`);
   }
+}
+
+export function runtimeMismatchWarning(
+  item: RegistryItem,
+  projectEngine: RegistryRuntime | undefined,
+): string | null {
+  if (!projectEngine) return null;
+  const itemRuntime = item.runtime ?? "gsap";
+  if (itemRuntime === projectEngine) return null;
+  return `Registry item "${item.name}" uses ${itemRuntime} but this project appears to use ${projectEngine}. Installing unchanged; no automatic runtime conversion is performed.`;
 }
 
 function isInstalledRegistryBlockComposition(item: RegistryItem, file: FileTarget): boolean {

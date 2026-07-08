@@ -29,6 +29,7 @@ function readSchema(name: string): Record<string, unknown> {
 // with the given name. Visits each node exactly once; no cycles in parsed JSON.
 function collectEnums(schema: unknown, propName: string): string[][] {
   const results: string[][] = [];
+  // fallow-ignore-next-line complexity
   const visit = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) {
@@ -128,6 +129,12 @@ describe("registry types", () => {
       expect(enums.some((e) => setEquals(e, ITEM_TYPES))).toBe(true);
       expect(enums.some((e) => setEquals(e, FILE_TYPES))).toBe(true);
     });
+
+    it("registry-item.json has an optional runtime enum", () => {
+      const enums = collectEnums(registryItemSchema, "runtime");
+      expect(enums).toHaveLength(1);
+      expect(setEquals(enums[0]!, ["animejs", "gsap"])).toBe(true);
+    });
   });
 
   describe("schema files", () => {
@@ -224,6 +231,7 @@ describe("registry types", () => {
         license: "Apache-2.0",
         minCliVersion: "0.4.0",
         deprecated: "Use `shader-wipe-v2` instead.",
+        runtime: "animejs",
         files: [
           {
             path: "shader-wipe.html",
@@ -235,6 +243,7 @@ describe("registry types", () => {
       expect(item.author).toBe("heygen");
       expect(item.authorUrl).toBe("https://example.com/heygen");
       expect(item.sourcePrompt).toBe("Create a shader wipe.");
+      expect(item.runtime).toBe("animejs");
     });
   });
 });

@@ -7,7 +7,7 @@ import {
   generateGsapTimelineScript,
   generateHyperframesStyles,
 } from "./hyperframes.js";
-import { GSAP_CDN } from "../templates/constants.js";
+import { ANIME_CDN } from "../templates/constants.js";
 import type { TimelineTextElement, TimelineMediaElement } from "../core.types";
 
 function makeTextElement(overrides: Partial<TimelineTextElement> = {}): TimelineTextElement {
@@ -58,28 +58,32 @@ describe("generateHyperframesHtml", () => {
     expect(html).toContain('data-layer="1"');
   });
 
-  it("includes GSAP CDN script tag when includeScripts is true", () => {
+  it("includes anime.js CDN script tag when includeScripts is true", () => {
     const elements = [makeTextElement()];
     const html = generateHyperframesHtml(elements, 5, { includeScripts: true });
 
-    expect(html).toContain(`<script src="${GSAP_CDN}"></script>`);
+    expect(html).toContain(`<script src="${ANIME_CDN}"></script>`);
   });
 
-  it("does NOT include GSAP CDN by default", () => {
+  it("does NOT include anime.js CDN by default", () => {
     const elements = [makeTextElement()];
     const html = generateHyperframesHtml(elements, 5);
 
-    expect(html).not.toContain(GSAP_CDN);
+    expect(html).not.toContain(ANIME_CDN);
   });
 
   it("includes timeline script when includeScripts is true", () => {
     const elements = [makeTextElement()];
-    const html = generateHyperframesHtml(elements, 5, { includeScripts: true });
+    const html = generateHyperframesHtml(elements, 5, {
+      includeScripts: true,
+      compositionId: "main",
+    });
 
-    expect(html).toContain("gsap.timeline({ paused: true })");
+    expect(html).toContain("anime.createTimeline({ autoplay: false })");
+    expect(html).toContain('hyperframesAnime.register("main", tl, { labels: {} });');
   });
 
-  it("generates GSAP timeline with visibility animations when includeScripts is true", () => {
+  it("generates anime timeline with visibility animations when includeScripts is true", () => {
     const elements = [makeTextElement({ id: "el-1", startTime: 1, duration: 3 })];
     const html = generateHyperframesHtml(elements, 5, { includeScripts: true });
 
@@ -199,17 +203,20 @@ describe("generateGsapTimelineScript", () => {
     const elements = [makeTextElement({ id: "el1", startTime: 1, duration: 4 })];
     const script = generateGsapTimelineScript(elements, 5);
 
-    expect(script).toContain("const tl = gsap.timeline({ paused: true });");
+    expect(script).toContain("const tl = anime.createTimeline({ autoplay: false });");
     expect(script).toContain('tl.set("#el1"');
     expect(script).toContain('visibility: "hidden"');
     expect(script).toContain('visibility: "visible"');
+    expect(script).toContain("1000");
+    expect(script).toContain("5000");
   });
 
   it("generates empty timeline for no elements", () => {
-    const script = generateGsapTimelineScript([], 5);
+    const script = generateGsapTimelineScript([], 5, { compositionId: "empty-main" });
 
-    expect(script).toContain("const tl = gsap.timeline({ paused: true });");
-    expect(script).toContain("duration: 5");
+    expect(script).toContain("const tl = anime.createTimeline({ autoplay: false });");
+    expect(script).toContain("duration: 5000");
+    expect(script).toContain('hyperframesAnime.register("empty-main", tl, { labels: {} });');
   });
 
   it("includes media sync for video elements", () => {
@@ -232,13 +239,15 @@ describe("generateGsapTimelineScript", () => {
     const keyframes = {
       "el-kf": [
         { id: "kf1", time: 0, properties: { opacity: 0 } },
-        { id: "kf2", time: 1, properties: { opacity: 1 } },
+        { id: "kf2", time: 1, properties: { opacity: 1 }, ease: "power2.out" },
       ],
     };
     const script = generateGsapTimelineScript(elements, 5, { keyframes });
 
     // Should contain keyframe-based animations
     expect(script).toContain("el-kf");
+    expect(script).toContain("duration: 1000");
+    expect(script).toContain('ease: "outCubic"');
   });
 });
 

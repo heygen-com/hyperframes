@@ -1,4 +1,5 @@
-import type { MappedEase, MotionEase } from "./types";
+import { parseCustomEase, resolveEase, serializeCustomEase } from "../animation/easeMap";
+import type { MappedEase, MotionEase, ResolvedMotionEase } from "./types";
 
 // Full motion.dev named-ease coverage → nearest GSAP equivalent. Anything
 // outside this table falls back to "none" (linear) — documented in the
@@ -44,4 +45,19 @@ export function mapEase(ease: MotionEase): MappedEase {
   }
   const key = ease.toLowerCase().replace(/[_\s-]/g, "");
   return { kind: "named", ease: NAMED_EASE[key] ?? "none" };
+}
+
+function customEasePathFromBezier(bezier: [number, number, number, number]): string {
+  const [x1, y1, x2, y2] = bezier;
+  return `M0,0 C${x1},${y1} ${x2},${y2} 1,1`;
+}
+
+export function resolveMotionEase(ease: MotionEase): ResolvedMotionEase {
+  const mapped = mapEase(ease);
+  if (mapped.kind === "named") {
+    return { kind: "named", ease: resolveEase(mapped.ease).animeEase };
+  }
+
+  const customEase = parseCustomEase(customEasePathFromBezier(mapped.bezier));
+  return { kind: "custom", ease: serializeCustomEase(customEase), customEase };
 }

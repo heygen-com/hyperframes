@@ -58,6 +58,8 @@ interface RegistryItemBase {
   minCliVersion?: string;
   /** If set, the item is deprecated; the value is the reason or migration note. */
   deprecated?: string;
+  /** Animation runtime used by the item. Absent means GSAP for backward compatibility. */
+  runtime?: "animejs" | "gsap";
   /** Names of other registry items this item depends on. */
   registryDependencies?: string[];
   /** Files to install. Must be non-empty. */

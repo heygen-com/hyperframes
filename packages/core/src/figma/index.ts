@@ -58,6 +58,6 @@ export type {
   TokenSource,
   TokensToVariablesResult,
 } from "./tokensToVariables";
-export { mapEase } from "./motionEase";
-export { motionToGsap } from "./motionToGsap";
-export { emitTimelineScript } from "./emitTimelineScript";
+export { mapEase, resolveMotionEase } from "./motionEase";
+export { motionToGsap, motionToTimeline } from "./motionToGsap";
+export { emitAnimeTimelineScript, emitTimelineScript } from "./emitTimelineScript";

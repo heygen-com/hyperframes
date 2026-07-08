@@ -14,6 +14,18 @@ export default defineConfig({
         find: /^@hyperframes\/core$/,
         replacement: resolve(__dirname, "../core/src/index.ts"),
       },
+      {
+        find: /^@hyperframes\/core\/compiler$/,
+        replacement: resolve(__dirname, "../core/src/compiler/index.ts"),
+      },
+      {
+        find: /^@hyperframes\/core\/media-volume-envelope$/,
+        replacement: resolve(__dirname, "../core/src/runtime/mediaVolumeEnvelope.ts"),
+      },
+      {
+        find: /^@hyperframes\/parsers$/,
+        replacement: resolve(__dirname, "../parsers/src/index.ts"),
+      },
     ],
   },
   test: {
