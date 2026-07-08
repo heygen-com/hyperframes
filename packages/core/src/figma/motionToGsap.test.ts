@@ -81,7 +81,8 @@ describe("motionToTimeline", () => {
     expect(spec.tweens[0]?.steps[0]?.ease).toBe("outCubic");
     expect(spec.customEases).toHaveLength(1);
     expect(spec.tweens[0]?.steps[1]?.ease).toBe(spec.customEases[0]?.name);
-    expect(spec.customEases[0]?.ease).toContain("M0,0");
+    expect(spec.customEases[0]?.ease).toBe("anime.cubicBezier(0.539, 0, 0.312, 0.995)");
+    expect(spec.customEases[0]?.ease).not.toContain("M0,0");
     expect(spec.tweens[0]?.repeat).toBe(0);
   });
 });

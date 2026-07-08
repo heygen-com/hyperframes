@@ -70,9 +70,10 @@ describe("emitAnimeTimelineScript", () => {
   });
 
   it("realizes custom bezier eases as anime ease values", () => {
-    expect(script).toContain('const hfCe0 = "M0,0');
+    expect(script).toContain("const hfCe0 = anime.cubicBezier(0.539, 0, 0.312, 0.995);");
     expect(script).toContain("ease: hfCe0");
     expect(script).not.toContain("CustomEase.create");
+    expect(script).not.toContain("M0,0");
   });
 
   it("guards on anime and hyperframesAnime being available", () => {

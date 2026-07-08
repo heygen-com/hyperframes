@@ -1,4 +1,4 @@
-import { parseCustomEase, resolveEase, serializeCustomEase } from "../animation/easeMap";
+import { resolveEase } from "../animation/easeMap";
 import type { MappedEase, MotionEase, ResolvedMotionEase } from "./types";
 
 // Full motion.dev named-ease coverage → nearest GSAP equivalent. Anything
@@ -47,9 +47,15 @@ export function mapEase(ease: MotionEase): MappedEase {
   return { kind: "named", ease: NAMED_EASE[key] ?? "none" };
 }
 
-function customEasePathFromBezier(bezier: [number, number, number, number]): string {
+function formatEaseNumber(value: number): string {
+  return String(Math.round(value * 1e6) / 1e6);
+}
+
+function cubicBezierExpression(bezier: [number, number, number, number]): string {
   const [x1, y1, x2, y2] = bezier;
-  return `M0,0 C${x1},${y1} ${x2},${y2} 1,1`;
+  return `anime.cubicBezier(${formatEaseNumber(x1)}, ${formatEaseNumber(
+    y1,
+  )}, ${formatEaseNumber(x2)}, ${formatEaseNumber(y2)})`;
 }
 
 export function resolveMotionEase(ease: MotionEase): ResolvedMotionEase {
@@ -58,6 +64,5 @@ export function resolveMotionEase(ease: MotionEase): ResolvedMotionEase {
     return { kind: "named", ease: resolveEase(mapped.ease).animeEase };
   }
 
-  const customEase = parseCustomEase(customEasePathFromBezier(mapped.bezier));
-  return { kind: "custom", ease: serializeCustomEase(customEase), customEase };
+  return { kind: "custom", ease: cubicBezierExpression(mapped.bezier) };
 }

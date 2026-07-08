@@ -1,5 +1,3 @@
-import type { ParsedCustomEase } from "../animation/easeMap";
-
 export interface FigmaRef {
   fileKey: string;
   nodeId?: string;
@@ -63,9 +61,7 @@ export type MappedEase =
   | { kind: "named"; ease: string }
   | { kind: "bezier"; bezier: [number, number, number, number] };
 
-export type ResolvedMotionEase =
-  | { kind: "named"; ease: string }
-  | { kind: "custom"; ease: string; customEase: ParsedCustomEase };
+export type ResolvedMotionEase = { kind: "named"; ease: string } | { kind: "custom"; ease: string };
 
 export interface CustomEaseRef {
   name: string;
@@ -98,7 +94,6 @@ export interface TimelineSpec {
 export interface TimelineCustomEaseRef {
   name: string;
   ease: string;
-  customEase: ParsedCustomEase;
 }
 
 export interface TimelineKeyframeStep {

@@ -57,7 +57,7 @@ function resolveTimelineStepEase(
   if (mapped.kind === "custom") {
     const name = `hfCe${counter.value}`;
     counter.value += 1;
-    customEases.push({ name, ease: mapped.ease, customEase: mapped.customEase });
+    customEases.push({ name, ease: mapped.ease });
     return name;
   }
   return mapped.ease;

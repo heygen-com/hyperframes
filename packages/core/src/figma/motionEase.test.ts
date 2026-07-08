@@ -60,10 +60,10 @@ describe("resolveMotionEase", () => {
     expect(resolveMotionEase("HOLD")).toEqual({ kind: "named", ease: "steps(1)" });
   });
 
-  it("maps a bezier array to a serialized anime custom ease", () => {
+  it("maps a bezier array to an executable anime cubicBezier ease", () => {
     const mapped = resolveMotionEase([0.539, 0, 0.312, 0.995]);
     expect(mapped.kind).toBe("custom");
-    expect(mapped.ease).toContain("M0,0");
-    expect(mapped.ease).toContain("1,1");
+    expect(mapped.ease).toBe("anime.cubicBezier(0.539, 0, 0.312, 0.995)");
+    expect(mapped.ease).not.toContain("M0,0");
   });
 });

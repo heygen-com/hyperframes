@@ -92,7 +92,7 @@ export function emitAnimeTimelineScript(spec: MotionTimelineSpec): string {
     `if (typeof anime === "undefined" || typeof hyperframesAnime === "undefined") { console.warn(${lit(`figma timeline ${spec.timelineId}: anime + hyperframesAnime not loaded — add the CDN/runtime <script> tags before this one`)}); return; }`,
   );
   for (const ease of spec.customEases) {
-    lines.push(`const ${ease.name} = ${lit(ease.ease)};`);
+    lines.push(`const ${ease.name} = ${ease.ease};`);
   }
   lines.push("const tl = anime.createTimeline({ autoplay: false });");
   for (const tween of spec.tweens) lines.push(...emitAnimeTween(tween, customEaseNames));
