@@ -157,7 +157,7 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "setVariableValue", id, value });
   }
 
-  // ── #2098 CRUD surface (kept; superseded by the richer API below in #2047+) ──
+  // ── #2098 CRUD conveniences (coexist with the canonical surface below) ──
   getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined {
     // readVariableDefault genuinely can't narrow beyond unknown — the schema
     // isn't validated at read time — so the cast lives here at the SDK
@@ -178,15 +178,25 @@ class CompositionImpl implements Composition {
     return listVariableDecls(this.parsed.document) as unknown as CompositionVariable[];
   }
 
-  declareVariable(decl: CompositionVariable): void {
-    this.dispatch({ type: "declareVariable", decl });
-  }
-
   removeVariable(id: string): void {
     this.dispatch({ type: "removeVariable", id });
   }
 
-  // ── Canonical read surface (this stack) ──
+  // ── Canonical declaration edit ops (this stack) ──
+  // declareVariable unified onto the {declaration} op payload (#2098 used
+  // {decl}); the method signature is identical, so #2098 callers are unaffected.
+  declareVariable(declaration: CompositionVariable): void {
+    this.dispatch({ type: "declareVariable", declaration });
+  }
+
+  updateVariableDeclaration(id: string, declaration: CompositionVariable): void {
+    this.dispatch({ type: "updateVariableDeclaration", id, declaration });
+  }
+
+  removeVariableDeclaration(id: string): void {
+    this.dispatch({ type: "removeVariableDeclaration", id });
+  }
+
   getVariableDeclarations(): CompositionVariable[] {
     return readVariableDeclarations(this.parsed.document);
   }

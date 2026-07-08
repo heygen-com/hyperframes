@@ -40,7 +40,13 @@ function isVariableType(t: unknown): t is CompositionVariableType {
   return typeof t === "string" && t in DEFAULT_TYPEOF;
 }
 
-function isCompositionVariable(v: unknown): v is CompositionVariable {
+/**
+ * True when the value is a structurally valid variable declaration: id, label,
+ * a known type, a default matching that type, and options[] for enums. The
+ * same predicate parseCompositionVariables filters with — exported so writers
+ * (SDK declaration ops, Studio forms) can validate before persisting.
+ */
+export function isCompositionVariable(v: unknown): v is CompositionVariable {
   if (!isRecord(v)) return false;
   if (typeof v.id !== "string" || typeof v.label !== "string") return false;
   if (!isVariableType(v.type)) return false;

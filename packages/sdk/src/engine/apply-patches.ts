@@ -22,10 +22,18 @@ import { keyToPath, stylePath } from "./patches.js";
 import {
   writeVariableDefault,
   clearVariableDefault,
-  declareVariableDecl,
-  removeVariableDecl,
-  type VariableDecl,
+  writeVariableDeclaration,
+  removeVariableDeclarationEntry,
 } from "./variableModel.js";
+
+function isRawDeclarationEntry(value: unknown): value is { id: string } & Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
 
 // ─── Path parser ────────────────────────────────────────────────────────────
 
@@ -38,7 +46,7 @@ interface ParsedPath {
     | "hold"
     | "element"
     | "variable"
-    | "variable-decl"
+    | "variableDeclaration"
     | "metadata"
     | "script"
     | "stylesheet";
@@ -72,11 +80,11 @@ function parsePath(path: string): ParsedPath | null {
   const elemM = /^\/elements\/([^/]+)$/.exec(path);
   if (elemM) return { type: "element", id: elemM[1] };
 
+  const varDeclM = /^\/variableDeclarations\/(.+)$/.exec(path);
+  if (varDeclM) return { type: "variableDeclaration", id: varDeclM[1] };
+
   const varM = /^\/variables\/(.+)$/.exec(path);
   if (varM) return { type: "variable", id: varM[1] };
-
-  const varDeclM = /^\/variable-decls\/(.+)$/.exec(path);
-  if (varDeclM) return { type: "variable-decl", id: varDeclM[1] };
 
   const metaM = /^\/metadata\/(.+)$/.exec(path);
   if (metaM) return { type: "metadata", field: metaM[1] };
@@ -239,6 +247,20 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       break;
     }
 
+    case "variableDeclaration": {
+      if (!p.id) return;
+      if (patch.op === "remove") {
+        removeVariableDeclarationEntry(parsed.document, p.id);
+      } else if (isRawDeclarationEntry(patch.value)) {
+        // Replay is faithful, not strict: inverse patches capture raw entries
+        // (loose hand-authored declarations included) and undo must restore
+        // them verbatim — gating on isCompositionVariable here would make
+        // undo of a remove/update on a loose entry silently no-op.
+        writeVariableDeclaration(parsed.document, patch.value);
+      }
+      break;
+    }
+
     case "variable": {
       if (!p.id) return;
       // B1: update the JSON model (data-composition-variables) so
@@ -246,35 +268,6 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       // CSS compat is handled by explicit style-path patches emitted by mutate.ts,
       // so we do NOT write CSS here — the style case above handles those patches.
       applyVariableDefault(parsed.document, p.id, patch.op === "remove" ? null : patch.value);
-      break;
-    }
-
-    case "variable-decl": {
-      if (!p.id) return;
-      // Distinct from "variable" above: this replays the WHOLE declaration
-      // (declareVariable/removeVariable), not just its default value.
-      if (patch.op === "remove") {
-        removeVariableDecl(parsed.document, p.id);
-      } else {
-        // Undo of removeVariable bundles {__kind: "reinsert", decl, index} to
-        // reinsert at the original array position; a plain declareVariable
-        // forward/replace patch carries the bare decl. Disambiguate on the
-        // __kind tag, not structural "decl"/"index" key presence — VariableDecl
-        // has an open index signature, so a genuine variable schema could
-        // legally declare its own "decl"/"index" fields, and "in" narrowing
-        // alone can't rule that out.
-        const value = patch.value;
-        if (
-          value &&
-          typeof value === "object" &&
-          (value as { __kind?: unknown }).__kind === "reinsert"
-        ) {
-          const wrapped = value as { decl: VariableDecl; index: number };
-          declareVariableDecl(parsed.document, wrapped.decl, { atIndex: wrapped.index });
-        } else {
-          declareVariableDecl(parsed.document, value as VariableDecl);
-        }
-      }
       break;
     }
 

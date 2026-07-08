@@ -220,8 +220,10 @@ window.__timelines = { t: tl };</script>
   });
 
   it("mirrors declareVariable/removeVariable onto the live document's schema attribute", async () => {
-    const iframe = mountIframe(BASE_HTML); // no data-composition-variables at all
-    const comp = await openComposition(BASE_HTML);
+    // Full document (not a fragment): declareVariable refuses fragment sources.
+    const fullDoc = `<!DOCTYPE html><html><body>${BASE_HTML}</body></html>`;
+    const iframe = mountIframe(fullDoc); // no data-composition-variables at all
+    const comp = await openComposition(fullDoc);
     const adapter = createIframePreviewAdapter(iframe);
     adapter.attachSync(comp);
 
@@ -231,7 +233,8 @@ window.__timelines = { t: tl };</script>
     expect(liveDocEl.getAttribute("data-composition-variables")).toContain("accent");
 
     comp.removeVariable("accent");
-    expect(liveDocEl.getAttribute("data-composition-variables")).not.toContain("accent");
+    // Removing the last declaration drops the attribute entirely (null).
+    expect(liveDocEl.getAttribute("data-composition-variables") ?? "").not.toContain("accent");
   });
 
   it("mirrors setTiming onto the live element's data-start/data-end attributes", async () => {

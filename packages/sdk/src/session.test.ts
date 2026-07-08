@@ -597,7 +597,9 @@ describe("variable declarations (Composition API)", () => {
   });
 
   it("declareVariable can create where setVariableValue's model write silently no-ops", async () => {
-    const comp = await openComposition(BASE_HTML); // no data-composition-variables at all
+    // Full document (not a fragment): declareVariable refuses fragment sources,
+    // whose synthetic <html> is stripped on serialize. No declarations yet.
+    const comp = await openComposition(`<!DOCTYPE html><html><body>${BASE_HTML}</body></html>`);
     comp.setVariableValue("never-declared", "x");
     expect(comp.getVariableValue("never-declared")).toBeUndefined();
     comp.declareVariable({ id: "never-declared", type: "string", label: "New", default: "x" });

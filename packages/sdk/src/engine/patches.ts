@@ -8,7 +8,8 @@
  *   /elements/{hfId}/timing/{start|end|duration|trackIndex}   ← end = computed absolute data-end
  *   /elements/{hfId}/hold/{start|end|fill}
  *   /elements/{hfId}                        ← whole subtree (removeElement)
- *   /variables/{variableId}
+ *   /variables/{variableId}                 ← declaration's default value
+ *   /variableDeclarations/{variableId}      ← whole declaration object
  *   /metadata/{width|height|duration}
  *   /script/gsap                            ← GSAP inline script textContent
  *   /style/css                              ← <style> element textContent
@@ -21,6 +22,7 @@
  *   /elements/hf-x/hold/start               → "hf-x.hold.start"
  *   /elements/hf-x                          → "hf-x"  (null = removal marker)
  *   /variables/brand-color-primary          → "var.brand-color-primary"
+ *   /variableDeclarations/brand-color-primary → "varDecl.brand-color-primary"
  *   /metadata/width                         → "meta.width"
  *   /script/gsap                            → "script.gsap"
  *   /style/css                              → "style.css"
@@ -75,9 +77,9 @@ export function variablePath(id: string): string {
   return `/variables/${id}`;
 }
 
-/** Distinct from variablePath — that's the `default` field only; this is the whole decl. */
+/** Whole-declaration path — distinct from /variables/{id}, which is the default *value*. */
 export function variableDeclPath(id: string): string {
-  return `/variable-decls/${id}`;
+  return `/variableDeclarations/${id}`;
 }
 
 export function metaPath(field: "width" | "height" | "duration"): string {
@@ -125,6 +127,10 @@ export function pathToKey(path: string): string | null {
   const elemMatch = /^\/elements\/([^/]+)$/.exec(path);
   if (elemMatch) return decodePathSegment(elemMatch[1]!);
 
+  // /variableDeclarations/{id} → "varDecl.{id}" (checked before /variables/)
+  const varDeclMatch = /^\/variableDeclarations\/(.+)$/.exec(path);
+  if (varDeclMatch) return `varDecl.${varDeclMatch[1]}`;
+
   // /variables/{id} → "var.{id}"
   const varMatch = /^\/variables\/(.+)$/.exec(path);
   if (varMatch) return `var.${varMatch[1]}`;
@@ -146,6 +152,8 @@ export function pathToKey(path: string): string | null {
  * Inverse of pathToKey — maps an override-set key back to its RFC 6902 path.
  * Used to replay a stored override-set onto a fresh base document (T3 init).
  */
+// Exhaustive key-family dispatcher — same shape as apply-patches.ts parsePath.
+// fallow-ignore-next-line complexity
 export function keyToPath(key: string): string | null {
   const style = /^([^.]+)\.style\.(.+)$/.exec(key);
   if (style?.[1] && style[2]) return stylePath(style[1], style[2]);
@@ -165,6 +173,9 @@ export function keyToPath(key: string): string | null {
 
   const hold = /^([^.]+)\.hold\.(start|end|fill)$/.exec(key);
   if (hold?.[1]) return holdPath(hold[1], hold[2] as "start" | "end" | "fill");
+
+  const varDecl = /^varDecl\.(.+)$/.exec(key);
+  if (varDecl?.[1]) return variableDeclPath(varDecl[1]);
 
   const variable = /^var\.(.+)$/.exec(key);
   if (variable?.[1]) return variablePath(variable[1]);

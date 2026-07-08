@@ -112,12 +112,15 @@ export type EditOp =
     }
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
+  | { type: "declareVariable"; declaration: CompositionVariable }
+  | { type: "updateVariableDeclaration"; id: string; declaration: CompositionVariable }
+  | { type: "removeVariableDeclaration"; id: string }
   | {
       type: "setVariableValue";
       id: string;
       value: string | number | boolean | FontValue | ImageValue;
     }
-  | { type: "declareVariable"; decl: CompositionVariable }
+  // #2098 alias op — remove-by-id, kept for its shipped session.removeVariable().
   | { type: "removeVariable"; id: string }
   | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
@@ -409,19 +412,36 @@ export interface Composition {
    */
   addElement(parent: HfId | null, index: number, html: string): HfId;
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void;
-  /** Current `default` value for a declared variable, or undefined if undeclared/unset. */
-  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined;
-  /** Every declared variable's full schema (id/type/label/default/…), or [] when none. */
-  listVariables(): CompositionVariable[];
   /**
-   * Create a new variable declaration, or fully replace an existing one (type/
-   * label/default/etc, not just the value — use setVariableValue for that).
-   * The path setVariableValue can't take: it refuses to create undeclared
-   * variables by design, keeping the schema authoritative.
+   * Current `default` value for a declared variable, or undefined if
+   * undeclared/unset. Convenience over getVariableValues() (kept from #2098).
    */
-  declareVariable(decl: CompositionVariable): void;
-  /** Remove a variable's declaration. Live `var.{id}` overrides are untouched. */
+  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined;
+  /**
+   * Every declared variable's full schema (id/type/label/default/…), or [] when
+   * none. Alias of getVariableDeclarations() (kept from #2098's surface).
+   */
+  listVariables(): CompositionVariable[];
+  /** Remove a variable's declaration — alias of removeVariableDeclaration(). */
   removeVariable(id: string): void;
+  /**
+   * Declare a new variable in `data-composition-variables`. No-ops when the
+   * id is already declared (see can() for the E_DUPLICATE_VARIABLE check);
+   * creates the attribute when the composition has none yet.
+   */
+  declareVariable(declaration: CompositionVariable): void;
+  /**
+   * Replace an existing declaration wholesale (label, type, constraints,
+   * default — the id itself is immutable; rename = remove + declare). When
+   * the default changes to/from a scalar, the `--{id}` CSS compat custom
+   * property on the root is kept in sync, mirroring setVariableValue.
+   */
+  updateVariableDeclaration(id: string, declaration: CompositionVariable): void;
+  /**
+   * Remove a declaration (and the last one removes the whole attribute).
+   * Also clears the `--{id}` CSS compat custom property if present.
+   */
+  removeVariableDeclaration(id: string): void;
   /**
    * Read the typed variable declarations from `data-composition-variables`
    * (the canonical schema — same filter the render pipeline uses; malformed

@@ -52,6 +52,68 @@ export function readVariableDeclarations(document: Document): CompositionVariabl
 }
 
 /**
+ * Find the raw declaration entry for a variable id, verbatim (unvalidated).
+ * Returns undefined when the attribute is absent, the JSON is invalid, or no
+ * entry matches the id.
+ */
+export function findVariableDeclaration(document: Document, id: string): VariableDecl | undefined {
+  const decls = readDecls(document);
+  if (!decls) return undefined;
+  const idx = indexOfId(decls.arr, id);
+  return idx < 0 ? undefined : decls.arr[idx];
+}
+
+/**
+ * Upsert a whole variable declaration by its id. Creates the
+ * `data-composition-variables` attribute when absent; replaces an unparseable
+ * attribute with a fresh single-entry array (the prior content was invisible
+ * to every reader anyway). Returns false only when the document has no root
+ * element to carry the attribute.
+ *
+ * Accepts raw (unvalidated) entries as well as typed declarations: the patch
+ * REPLAY path must faithfully restore whatever entry the inverse patch
+ * captured — including loose hand-authored declarations the strict parser
+ * would drop — or undo silently diverges from history.
+ */
+export function writeVariableDeclaration(
+  document: Document,
+  declaration: CompositionVariable | ({ id: string } & Record<string, unknown>),
+): boolean {
+  const htmlEl = getHtmlEl(document);
+  if (!htmlEl) return false;
+  const decls = readDecls(document);
+  const arr = decls?.arr ?? [];
+  const idx = indexOfId(arr, declaration.id);
+  const entry: VariableDecl = { ...declaration };
+  if (idx < 0) {
+    arr.push(entry);
+  } else {
+    arr[idx] = entry;
+  }
+  (decls?.htmlEl ?? htmlEl).setAttribute("data-composition-variables", JSON.stringify(arr));
+  return true;
+}
+
+/**
+ * Remove a variable declaration by id. Drops the whole attribute when the
+ * last declaration is removed (an empty `[]` is noise in authored HTML).
+ * No-ops (returns false) when the attribute or the entry is absent.
+ */
+export function removeVariableDeclarationEntry(document: Document, id: string): boolean {
+  const decls = readDecls(document);
+  if (!decls) return false;
+  const idx = indexOfId(decls.arr, id);
+  if (idx < 0) return false;
+  decls.arr.splice(idx, 1);
+  if (decls.arr.length === 0) {
+    decls.htmlEl.removeAttribute("data-composition-variables");
+  } else {
+    decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
+  }
+  return true;
+}
+
+/**
  * Read the current `default` value for a variable id. Returns undefined when
  * the attribute is absent, the JSON is invalid, or no entry matches the id.
  */
@@ -101,60 +163,6 @@ export function listVariableDecls(document: Document): VariableDecl[] {
   return readDecls(document)?.arr ?? [];
 }
 
-/**
- * Upsert a full variable declaration (id/type/label/default/…), unlike
- * writeVariableDefault which only ever touches the `default` field of an
- * ALREADY-declared variable and refuses to create new ones. This is the
- * "let someone add a variable" path a declarations panel needs — creates the
- * `data-composition-variables` attribute from scratch when absent.
- *
- * Replaces the whole existing decl when `decl.id` is already declared (so
- * editing a variable's type/label/options goes through the same call as
- * creating one). Returns the previous decl (for inverse-patch capture) or
- * null when this was a fresh create.
- */
-export function declareVariableDecl(
-  document: Document,
-  decl: VariableDecl,
-  opts?: { atIndex?: number },
-): VariableDecl | null {
-  const htmlEl = getHtmlEl(document);
-  if (!htmlEl) return null;
-  const existing = readDecls(document);
-  const arr = existing?.arr ?? [];
-  const idx = indexOfId(arr, decl.id);
-  const previous = idx < 0 ? null : arr[idx]!;
-  if (idx >= 0) {
-    arr[idx] = decl; // edit in place — position is already preserved
-  } else if (opts?.atIndex !== undefined) {
-    // Undo of removeVariable: reinsert at the exact index it was removed
-    // from, so a remove-then-undo round-trips the array order, not just
-    // set-membership (mirrors handleRemoveElement's siblingIndex).
-    arr.splice(opts.atIndex, 0, decl);
-  } else {
-    arr.push(decl); // a genuinely new declaration goes to the end of the list
-  }
-  htmlEl.setAttribute("data-composition-variables", JSON.stringify(arr));
-  return previous;
-}
-
-/**
- * Remove a variable's declaration entirely (not just its default — the whole
- * schema entry). Live `var.{id}` overrides and any data-var-* DOM references
- * are left untouched; removing the declaration doesn't reach into either.
- * Returns the removed decl AND its array index (for inverse-patch capture, so
- * undo can reinsert at the original position — mirrors handleRemoveElement's
- * siblingIndex), or null when the attribute/decl was absent.
- */
-export function removeVariableDecl(
-  document: Document,
-  id: string,
-): { decl: VariableDecl; index: number } | null {
-  const decls = readDecls(document);
-  if (!decls) return null;
-  const idx = indexOfId(decls.arr, id);
-  if (idx < 0) return null;
-  const [removed] = decls.arr.splice(idx, 1);
-  decls.htmlEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));
-  return removed ? { decl: removed, index: idx } : null;
-}
+// #2098's declareVariableDecl / removeVariableDecl removed in the #2098
+// reconciliation — the canonical writeVariableDeclaration / removeVariableDeclarationEntry
+// above are the single source; the edit ops route through those.

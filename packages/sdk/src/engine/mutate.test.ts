@@ -31,6 +31,13 @@ function fresh() {
   return parseMutable(BASE_HTML);
 }
 
+// Full document (BASE_HTML wrapped in <html>) with NO declarations — the shape
+// declareVariable requires (it refuses fragment sources whose synthetic <html>
+// is stripped on serialize).
+function freshDoc() {
+  return parseMutable(`<!DOCTYPE html><html><body>${BASE_HTML}</body></html>`);
+}
+
 /** Full HTML fixture with data-composition-variables for B1/B2 tests. */
 const VARIABLES_HTML = `<!DOCTYPE html>
 <html data-composition-id="c1" data-composition-duration="5" data-composition-variables='${JSON.stringify(
@@ -930,11 +937,11 @@ function readVarDecl(
 
 describe("declareVariable", () => {
   it("creates the data-composition-variables attribute from scratch when absent", () => {
-    const parsed = fresh(); // BASE_HTML has no data-composition-variables at all
+    const parsed = freshDoc(); // full doc, no data-composition-variables at all
     expect(parsed.document.documentElement?.getAttribute("data-composition-variables")).toBeNull();
     applyOp(parsed, {
       type: "declareVariable",
-      decl: { id: "brand-title", type: "string", label: "Title", default: "Hello" },
+      declaration: { id: "brand-title", type: "string", label: "Title", default: "Hello" },
     });
     expect(readVarDecl(parsed, "brand-title")).toEqual({
       id: "brand-title",
@@ -948,17 +955,35 @@ describe("declareVariable", () => {
     const parsed = freshWithVars();
     applyOp(parsed, {
       type: "declareVariable",
-      decl: { id: "brand-tagline", type: "string", label: "Tagline", default: "Ship it" },
+      declaration: { id: "brand-tagline", type: "string", label: "Tagline", default: "Ship it" },
     });
     expect(readVarDecl(parsed, "brand-color-primary")).toBeDefined(); // untouched
     expect(readVarDecl(parsed, "brand-tagline")?.default).toBe("Ship it");
   });
 
-  it("replaces the WHOLE existing decl (not just default) when the id already exists", () => {
+  it("declareVariable no-ops on an existing id; updateVariableDeclaration replaces the whole decl", () => {
     const parsed = freshWithVars();
+    // Canonical semantics: declareVariable creates only — re-declaring an existing
+    // id is a no-op; updateVariableDeclaration is the path that replaces a decl.
     applyOp(parsed, {
       type: "declareVariable",
-      decl: { id: "brand-color-primary", type: "color", label: "Renamed", default: "#00ff00" },
+      declaration: {
+        id: "brand-color-primary",
+        type: "color",
+        label: "Ignored",
+        default: "#111111",
+      },
+    });
+    expect(readVarDecl(parsed, "brand-color-primary")?.label).not.toBe("Ignored");
+    applyOp(parsed, {
+      type: "updateVariableDeclaration",
+      id: "brand-color-primary",
+      declaration: {
+        id: "brand-color-primary",
+        type: "color",
+        label: "Renamed",
+        default: "#00ff00",
+      },
     });
     const decl = readVarDecl(parsed, "brand-color-primary");
     expect(decl?.label).toBe("Renamed");
@@ -966,7 +991,7 @@ describe("declareVariable", () => {
   });
 
   it("succeeds where setVariableValue would refuse — creating an undeclared variable", () => {
-    const parsed = fresh();
+    const parsed = freshDoc();
     // setVariableValue on an undeclared id still writes the --{id} CSS compat
     // prop unconditionally (for CSS-only compositions with no JSON schema at
     // all) — but the JSON model write itself no-ops, per writeVariableDefault's
@@ -976,7 +1001,7 @@ describe("declareVariable", () => {
     expect(readVarDecl(parsed, "never-declared")).toBeUndefined();
     applyOp(parsed, {
       type: "declareVariable",
-      decl: { id: "never-declared", type: "string", label: "New", default: "x" },
+      declaration: { id: "never-declared", type: "string", label: "New", default: "x" },
     });
     expect(readVarDecl(parsed, "never-declared")?.default).toBe("x");
   });
@@ -987,36 +1012,10 @@ describe("declareVariable", () => {
 
     const created = applyOp(parsed, {
       type: "declareVariable",
-      decl: { id: "brand-new", type: "string", label: "New", default: "x" },
+      declaration: { id: "brand-new", type: "string", label: "New", default: "x" },
     });
     applyPatchesToDocument(parsed, created.inverse);
     expect(serializeDocument(parsed)).toBe(before);
-
-    const edited = applyOp(parsed, {
-      type: "declareVariable",
-      decl: { id: "brand-color-primary", type: "color", label: "Edited", default: "#000000" },
-    });
-    applyPatchesToDocument(parsed, edited.inverse);
-    expect(serializeDocument(parsed)).toBe(before);
-  });
-
-  it("a decl whose own extension data includes 'decl'/'index' keys isn't mistaken for a wrapped reinsert", () => {
-    // VariableDecl has an open index signature, so a real, weird schema can
-    // legally carry fields named "decl"/"index" as ordinary extension data —
-    // this must NOT be confused with removeVariable's {__kind: "reinsert",
-    // decl, index} inverse-patch wrapper, which is disambiguated by __kind,
-    // not by structural key presence.
-    const parsed = fresh();
-    const pathologicalDecl = {
-      id: "weird-var",
-      type: "string",
-      label: "Weird",
-      default: "x",
-      decl: "not-a-real-decl",
-      index: 999,
-    };
-    applyOp(parsed, { type: "declareVariable", decl: pathologicalDecl });
-    expect(readVarDecl(parsed, "weird-var")).toEqual(pathologicalDecl);
   });
 });
 
@@ -1034,13 +1033,16 @@ describe("removeVariable", () => {
     expect(result.inverse).toHaveLength(0);
   });
 
-  it("inverse restores the exact removed declaration", () => {
+  it("inverse restores the removed declaration", () => {
+    // Canonical remove re-adds the declaration on undo (array position is not
+    // preserved), so assert the decl is restored by content rather than exact
+    // byte-serialize.
     const parsed = freshWithVars();
-    const before = serializeDocument(parsed);
+    const original = readVarDecl(parsed, "brand-color-primary");
     const result = applyOp(parsed, { type: "removeVariable", id: "brand-color-primary" });
     expect(readVarDecl(parsed, "brand-color-primary")).toBeUndefined();
     applyPatchesToDocument(parsed, result.inverse);
-    expect(serializeDocument(parsed)).toBe(before);
+    expect(readVarDecl(parsed, "brand-color-primary")).toEqual(original);
   });
 });
 
@@ -1151,22 +1153,25 @@ describe("validateOp", () => {
 
   it("returns ok:true for declareVariable / removeVariable when a root exists", () => {
     expect(
-      validateOp(fresh(), {
+      validateOp(freshDoc(), {
         type: "declareVariable",
-        decl: { id: "v1", type: "string", label: "V1", default: "x" },
+        declaration: { id: "v1", type: "string", label: "V1", default: "x" },
       }).ok,
     ).toBe(true);
     expect(validateOp(fresh(), { type: "removeVariable", id: "v1" }).ok).toBe(true);
   });
 
-  it("returns ok:false / E_NO_ROOT for declareVariable / removeVariable with no root", () => {
+  it("refuses declareVariable / removeVariable on a rootless fragment", () => {
     const parsed = parseMutable(`no elements at all — just text`);
+    // declareVariable runs its declaration precondition first, so a wrapped
+    // fragment (no real <html> to carry the schema) surfaces E_FRAGMENT_COMPOSITION.
     const r1 = validateOp(parsed, {
       type: "declareVariable",
-      decl: { id: "v1", type: "string", label: "V1", default: "x" },
+      declaration: { id: "v1", type: "string", label: "V1", default: "x" },
     });
     expect(r1.ok).toBe(false);
-    if (!r1.ok) expect(r1.code).toBe("E_NO_ROOT");
+    if (!r1.ok) expect(r1.code).toBe("E_FRAGMENT_COMPOSITION");
+    // removeVariable only needs a root; there is none → E_NO_ROOT.
     const r2 = validateOp(parsed, { type: "removeVariable", id: "v1" });
     expect(r2.ok).toBe(false);
     if (!r2.ok) expect(r2.code).toBe("E_NO_ROOT");
