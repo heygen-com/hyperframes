@@ -16,7 +16,11 @@ import { findGlobalBySha } from "./lib/cache.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
-import { freezeLibraryLut, matchColorLook } from "./lib/lut-preset-provider.mjs";
+import {
+  freezeLibraryLut,
+  isLibraryLutOfflineMiss,
+  matchColorLook,
+} from "./lib/lut-preset-provider.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -498,7 +502,17 @@ async function resolveGrade(intent, { projectDir }) {
   }
 
   if (match?.kind === "library") {
-    const frozen = freezeLibraryLut(match, { projectDir, type: "grade" });
+    let frozen;
+    try {
+      frozen = await freezeLibraryLut(match, {
+        projectDir,
+        type: "grade",
+        localOnly: args["local-only"],
+      });
+    } catch (err) {
+      if (isLibraryLutOfflineMiss(err)) return colorMiss("grade", intent);
+      throw err;
+    }
     const grading = mergeSmartAdjust({ intensity: 1, lut: frozen.lut });
     const record = {
       id: frozen.id,
@@ -559,7 +573,17 @@ async function resolveLut(intent, { projectDir }) {
   }
   const match = matchColorLook(intent);
   if (match?.kind === "library") {
-    const frozen = freezeLibraryLut(match, { projectDir, type: "lut" });
+    let frozen;
+    try {
+      frozen = await freezeLibraryLut(match, {
+        projectDir,
+        type: "lut",
+        localOnly: args["local-only"],
+      });
+    } catch (err) {
+      if (isLibraryLutOfflineMiss(err)) return colorMiss("lut", intent);
+      throw err;
+    }
     const record = {
       id: frozen.id,
       type: "lut",

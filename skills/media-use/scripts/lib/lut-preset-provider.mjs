@@ -1,13 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { allocateId } from "./manifest.mjs";
-import { freezeLocalFile } from "./freeze.mjs";
+import { freezeUrl } from "./freeze.mjs";
 import { tokenOverlap } from "./match.mjs";
-import { validateCubeFile } from "./cube-validate.mjs";
+import { buildCube } from "./cube-build.mjs";
+import { validateCube, validateCubeFile } from "./cube-validate.mjs";
 
 const SKILL_DIR = join(import.meta.dirname, "..", "..");
 const LUT_DIR = join(SKILL_DIR, "luts");
 const LUT_INDEX = join(LUT_DIR, "index.json");
+export const LIBRARY_LUT_OFFLINE_CODE = "MEDIA_USE_LIBRARY_LUT_OFFLINE";
 
 // Mirrored from packages/core/src/colorGrading.ts HfColorGradingPresetId.
 // Keep this list in lockstep with the core runtime contract.
@@ -71,13 +73,21 @@ export function readBundledLutIndex() {
   const parsed = JSON.parse(readFileSync(LUT_INDEX, "utf8"));
   const entries = Array.isArray(parsed) ? parsed : parsed.looks;
   if (!Array.isArray(entries)) return [];
-  return entries.map((entry) => ({
-    id: String(entry.id),
-    file: String(entry.file),
-    description: String(entry.description ?? entry.id),
-    tags: Array.isArray(entry.tags) ? entry.tags.map(String) : [],
-    intensity: Number.isFinite(Number(entry.intensity)) ? Number(entry.intensity) : 1,
-  }));
+  return entries.map((entry) => {
+    const params =
+      entry.params && typeof entry.params === "object" && !Array.isArray(entry.params)
+        ? entry.params
+        : null;
+    const url = typeof entry.url === "string" && entry.url.trim() ? entry.url.trim() : null;
+    return {
+      id: String(entry.id),
+      description: String(entry.description ?? entry.id),
+      tags: Array.isArray(entry.tags) ? entry.tags.map(String) : [],
+      intensity: Number.isFinite(Number(entry.intensity)) ? Number(entry.intensity) : 1,
+      ...(params && { params }),
+      ...(url && { url }),
+    };
+  });
 }
 
 function libraryCandidates() {
@@ -116,30 +126,20 @@ export function matchColorLook(intent) {
   return {
     kind: "library",
     id: best.id,
-    file: best.file,
     description: best.description,
     tags: best.tags,
     intensity: best.intensity,
+    ...(best.params && { params: best.params }),
+    ...(best.url && { url: best.url }),
     score: best.score,
   };
 }
 
-export function freezeLibraryLut(match, { projectDir, type }) {
-  if (!match || match.kind !== "library") {
-    throw new Error("freezeLibraryLut requires a library match");
-  }
-  const srcPath = join(LUT_DIR, match.file);
-  const sourceCheck = validateCubeFile(srcPath);
-  if (!sourceCheck.ok) {
-    throw new Error(`invalid bundled LUT ${match.file}: ${sourceCheck.error}`);
-  }
-  const { id, localPath } = allocateId(projectDir, type, extname(match.file) || ".cube");
-  const fullPath = join(projectDir, localPath);
-  freezeLocalFile(srcPath, fullPath);
-  const frozenCheck = validateCubeFile(fullPath);
-  if (!frozenCheck.ok) {
-    throw new Error(`invalid frozen LUT ${localPath}: ${frozenCheck.error}`);
-  }
+export function isLibraryLutOfflineMiss(err) {
+  return err?.code === LIBRARY_LUT_OFFLINE_CODE;
+}
+
+function libraryRecord(match, { id, localPath, fullPath, via }) {
   return {
     id,
     localPath,
@@ -152,7 +152,61 @@ export function freezeLibraryLut(match, { projectDir, type }) {
       provenance: {
         look_id: match.id,
         tags: match.tags,
+        via,
       },
     },
   };
+}
+
+function assertValidCubeText(cube, label) {
+  const check = validateCube(cube);
+  if (!check.ok) throw new Error(`${label}: ${check.error}`);
+}
+
+function assertValidCubeFile(path, label) {
+  const check = validateCubeFile(path);
+  if (!check.ok) throw new Error(`${label}: ${check.error}`);
+}
+
+function offlineLibraryMiss(match) {
+  const err = new Error(`library LUT "${match.id}" is CDN-only and --local-only is set`);
+  err.code = LIBRARY_LUT_OFFLINE_CODE;
+  return err;
+}
+
+export async function freezeLibraryLut(match, { projectDir, type, localOnly = false }) {
+  if (!match || match.kind !== "library") {
+    throw new Error("freezeLibraryLut requires a library match");
+  }
+
+  if (match.params) {
+    const { id, localPath } = allocateId(projectDir, type, ".cube");
+    const fullPath = join(projectDir, localPath);
+    try {
+      const cube = buildCube(match.params);
+      assertValidCubeText(cube, `invalid library LUT ${match.id}`);
+      writeFileSync(fullPath, cube);
+      assertValidCubeFile(fullPath, `invalid frozen LUT ${localPath}`);
+    } catch (err) {
+      rmSync(fullPath, { force: true });
+      throw err;
+    }
+    return libraryRecord(match, { id, localPath, fullPath, via: "params" });
+  }
+
+  if (match.url) {
+    if (localOnly) throw offlineLibraryMiss(match);
+    const { id, localPath } = allocateId(projectDir, type, ".cube");
+    const fullPath = join(projectDir, localPath);
+    try {
+      await freezeUrl(match.url, fullPath);
+      assertValidCubeFile(fullPath, `downloaded library LUT ${match.id} failed validation`);
+    } catch (err) {
+      rmSync(fullPath, { force: true });
+      throw new Error(`failed to freeze library LUT ${match.id}: ${err.message}`);
+    }
+    return libraryRecord(match, { id, localPath, fullPath, via: "url" });
+  }
+
+  throw new Error(`misconfigured library LUT "${match.id}": expected params or url`);
 }
