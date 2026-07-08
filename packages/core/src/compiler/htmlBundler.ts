@@ -14,6 +14,7 @@ import {
 } from "./htmlDocument";
 // rewriteSubCompPaths functions are used by inlineSubCompositions (shared module)
 import {
+  buildVariablesByCompScript,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
@@ -939,10 +940,9 @@ export async function bundleToSingleHtml(
     style.textContent = compStyleChunks.join("\n\n");
     document.head.appendChild(style);
   }
-  if (Object.keys(compVariablesByComp).length > 0) {
-    compScriptChunks.unshift(
-      `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(compVariablesByComp)});`,
-    );
+  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
+  if (variablesByCompScript) {
+    compScriptChunks.unshift(variablesByCompScript);
   }
   if (compScriptChunks.length) {
     const compScript = document.createElement("script");

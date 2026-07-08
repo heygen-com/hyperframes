@@ -1712,3 +1712,70 @@ describe("discoverAudioVolumeAutomationFromTimeline", () => {
     }
   });
 });
+
+describe("sub-composition variable injection (render path, #2064)", () => {
+  function writeSubCompVarProject(hostVars: string): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"color","type":"color","label":"Color","default":"#000000"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="card-bg"></div>
+      <script>
+        var color = __hyperframes.getVariables().color || "#000000";
+        document.querySelector('[data-composition-id="card"] .card-bg').style.background = color;
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240">
+      <div data-composition-id="card-1" data-composition-src="compositions/card.html" data-start="0" data-duration="3" data-track-index="1" ${hostVars}></div>
+    </div>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("injects the __hfVariablesByComp writer so JS getVariables() sees per-instance values", async () => {
+    // Regression for #2064: render inlined the sub-comp reader scripts but never
+    // emitted the writer, so window.__hyperframes.getVariables() returned {} and
+    // parametrized sub-comps shipped blank/default text in the final MP4 while
+    // snapshot QA passed.
+    const projectDir = writeSubCompVarProject(`data-variable-values='{"color":"#00ff00"}'`);
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain("#00ff00");
+  });
+
+  it("still injects the declared default even with no per-instance override", async () => {
+    const projectDir = writeSubCompVarProject("");
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
+  });
+
+  it("omits the writer when the sub-comp declares no variables at all", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-none-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "plain.html"),
+      `<!DOCTYPE html><html><body><div data-composition-id="plain" data-width="320" data-height="240"><span>hi</span></div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body><div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240"><div data-composition-id="p-1" data-composition-src="compositions/plain.html" data-start="0" data-duration="3" data-track-index="1"></div></div></body></html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).not.toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+  });
+});

@@ -523,3 +523,24 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
 export function wrapInlineScriptWithErrorBoundary(source: string, errorLabel: string): string {
   return `(function(){ try { Function(${JSON.stringify(source)}).call(window); } catch (_err) { console.error(${JSON.stringify(errorLabel)}, _err); } })();`;
 }
+
+/**
+ * Build the statement that populates `window.__hfVariablesByComp` — the table
+ * the scoped `getVariables` above reads. Returns `null` when there are no
+ * per-instance values.
+ *
+ * The WRITER lives next to the READER (the scoped `getVariables` in
+ * `wrapScopedCompositionScript`) on purpose: every compile path that wraps the
+ * reader MUST also emit this writer before the sub-comp scripts run. The
+ * render compiler (`htmlCompiler`) inlined the reader scripts but never emitted
+ * the writer while the preview bundler (`htmlBundler`) did, so
+ * `getVariables()` returned `{}` only during render — parametrized sub-comps
+ * silently shipped blank/default text in the final MP4 while snapshot QA passed
+ * (issue #2064). Both callers now share this one builder so they can't drift.
+ */
+export function buildVariablesByCompScript(
+  variablesByComp: Record<string, Record<string, unknown>>,
+): string | null {
+  if (!variablesByComp || Object.keys(variablesByComp).length === 0) return null;
+  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(variablesByComp)});`;
+}

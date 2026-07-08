@@ -52,7 +52,11 @@ export {
 } from "./staticGuard";
 
 // Composition isolation helpers
-export { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
+export {
+  buildVariablesByCompScript,
+  scopeCssToComposition,
+  wrapScopedCompositionScript,
+} from "./compositionScoping";
 
 // Sub-composition inlining (shared between bundler and producer)
 export {

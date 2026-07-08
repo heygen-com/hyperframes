@@ -25,6 +25,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import {
+  buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
@@ -882,10 +883,21 @@ function inlineSubCompositions(
     }
   }
 
-  // Append collected inline scripts to <body>
-  if (result.scripts.length && body) {
+  // Append collected inline scripts to <body>. The per-instance variables
+  // table MUST be written before the sub-comp scripts run — their scoped
+  // getVariables() reads window.__hfVariablesByComp[compId]. htmlBundler
+  // (preview/snapshot) prepends this; the render path emitted only the CSS
+  // custom properties (below) and dropped the JS table, so getVariables()
+  // returned {} during render and parametrized sub-comps shipped blank/default
+  // text (issue #2064). Same shared builder as the bundler so they stay in
+  // lockstep.
+  const variablesByCompScript = buildVariablesByCompScript(result.variablesByComp);
+  const inlineScripts = variablesByCompScript
+    ? [variablesByCompScript, ...result.scripts]
+    : result.scripts;
+  if (inlineScripts.length && body) {
     const scriptEl = document.createElement("script");
-    scriptEl.textContent = result.scripts.join("\n;\n");
+    scriptEl.textContent = inlineScripts.join("\n;\n");
     body.appendChild(scriptEl);
   }
 
