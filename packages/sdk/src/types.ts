@@ -1,5 +1,24 @@
 import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
 
+/**
+ * Cross-referenced variable usage for a whole composition: the per-script
+ * static scans merged and compared against the declared schema.
+ */
+export interface VariableUsageReport {
+  /** Variable ids read by composition scripts (static analysis, first-seen order). */
+  usedIds: string[];
+  /** Declared ids never read by any script. */
+  unusedDeclarations: string[];
+  /** Ids read by scripts but missing from data-composition-variables. */
+  undeclaredReads: string[];
+  /**
+   * True when any script accesses variables opaquely (computed keys, escaping
+   * values object…) — usedIds is then a lower bound and unusedDeclarations
+   * may be false positives.
+   */
+  scanIncomplete: boolean;
+}
+
 // ─── Document model ───────────────────────────────────────────────────────────
 
 /** Full DOM-level view of one editable element. Built by the SDK adaptation layer. */
@@ -455,6 +474,18 @@ export interface Composition {
    * `--strict-variables`). Read-only — does not dispatch.
    */
   validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[];
+  /**
+   * Cross-reference the declared schema against a static scan of every inline
+   * composition script (getVariables() reads). Read-only — does not dispatch.
+   */
+  getVariableUsage(): VariableUsageReport;
+  /**
+   * Apply variable values to the preview surface (ephemeral — never written
+   * to the document; use setVariableValue to persist a default). Pass null to
+   * restore declared defaults. No-op when the preview adapter doesn't
+   * implement setPreviewVariables; returns whether the adapter handled it.
+   */
+  setPreviewVariables(values: Record<string, unknown> | null): boolean;
   /**
    * Read enter/exit times and GSAP labels for every timed element (WS-C).
    * Derives enterAt/exitAt using the same data-duration vs data-end preference

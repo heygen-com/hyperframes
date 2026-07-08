@@ -23,7 +23,9 @@ export {
   parseCompositionVariables,
   isCompositionVariable,
   isScalarVariableValue,
+  scanVariableUsage,
 } from "@hyperframes/parsers/composition";
+export type { VariableUsageScan } from "@hyperframes/parsers/composition";
 
 export { getVariables, readDeclaredDefaults } from "./runtime/getVariables.js";
 export {

@@ -28,7 +28,9 @@ export type {
   CompositionVariable,
   CompositionVariableType,
   VariableValidationIssue,
+  VariableUsageScan,
 } from "@hyperframes/core/variables";
+export type { VariableUsageReport } from "./types.js";
 
 export { UnsupportedOpError } from "./engine/mutate.js";
 

@@ -27,6 +27,7 @@ import type {
   PersistErrorEvent,
   SelectionProxy,
   ElementHandle,
+  VariableUsageReport,
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
 import { buildRoots, flatElements, parsedAnimationIds } from "./document.js";
@@ -38,7 +39,11 @@ import { getGsapScript, resolveScoped } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
-import { readDeclaredDefaults, validateVariables } from "@hyperframes/core/variables";
+import {
+  readDeclaredDefaults,
+  validateVariables,
+  scanVariableUsage,
+} from "@hyperframes/core/variables";
 import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
 import { readVariableDeclarations } from "./engine/variableModel.js";
 import { serializeDocument } from "./engine/serialize.js";
@@ -69,6 +74,11 @@ export interface OpenCompositionOptions {
 }
 
 // ─── Implementation ───────────────────────────────────────────────────────────
+
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 class CompositionImpl implements Composition {
   private readonly parsed: ParsedDocument;
@@ -189,6 +199,75 @@ class CompositionImpl implements Composition {
 
   validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[] {
     return validateVariables(values, this.getVariableDeclarations());
+  }
+
+  /**
+   * Script scans are content-keyed (same rationale as _gsapLabelCache): the
+   * panel recomputes usage on every preview reload, and unchanged script text
+   * is the common case — never pay a second acorn parse for identical input.
+   */
+  private _variableUsageScanCache = new Map<string, ReturnType<typeof scanVariableUsage>>();
+
+  // Scan/merge dispatcher — same complexity class as the suppressed
+  // variableUsage.ts classifiers it drives.
+  // fallow-ignore-next-line complexity
+  getVariableUsage(): VariableUsageReport {
+    const usedIds: string[] = [];
+    const seen = new Set<string>();
+    let scanIncomplete = false;
+    const freshCache = new Map<string, ReturnType<typeof scanVariableUsage>>();
+    // Inline scripts only — external src scripts aren't part of the document model.
+    for (const script of Array.from(this.parsed.document.querySelectorAll("script"))) {
+      if (script.getAttribute("src")) continue;
+      const text = script.textContent ?? "";
+      // Direct global reads (window.__hfVariables / __hfVariablesByComp) are
+      // invisible to the getVariables() scanner — the report must degrade to
+      // a lower bound instead of confidently claiming declarations unused.
+      if (text.includes("__hfVariables")) scanIncomplete = true;
+      if (!text.includes("getVariables")) continue; // cheap pre-filter before an acorn parse
+      const scan = this._variableUsageScanCache.get(text) ?? scanVariableUsage(text);
+      freshCache.set(text, scan);
+      scanIncomplete = scanIncomplete || scan.scanIncomplete;
+      for (const id of scan.usedIds) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          usedIds.push(id);
+        }
+      }
+    }
+    this._variableUsageScanCache = freshCache;
+    const declaredIds = this.getVariableDeclarations().map((d) => d.id);
+    // The CSS compat channel counts as usage: a variable consumed only via
+    // var(--id) in stylesheets or inline styles must not be badged unused
+    // (removing it also removes the --{id} root prop and breaks the binding).
+    const cssParts: string[] = [];
+    for (const styleEl of Array.from(this.parsed.document.querySelectorAll("style"))) {
+      cssParts.push(styleEl.textContent ?? "");
+    }
+    for (const el of Array.from(this.parsed.document.querySelectorAll("[style]"))) {
+      cssParts.push(el.getAttribute("style") ?? "");
+    }
+    const cssText = cssParts.join("\n");
+    // Match var(--id) only at a custom-property-name boundary: the id must be
+    // followed by whitespace, a comma (fallback), or the closing paren — so id
+    // "foo" is NOT counted as used by an unrelated var(--foo-header). Ids are
+    // regex-escaped because a value read from disk may predate can()'s
+    // /^[A-Za-z_][A-Za-z0-9_-]*$/ enforcement and carry metacharacters.
+    const cssUsed = (id: string) =>
+      new RegExp(`var\\(\\s*--${escapeRegExp(id)}[\\s,)]`).test(cssText);
+    const declaredSet = new Set(declaredIds);
+    return {
+      usedIds,
+      unusedDeclarations: declaredIds.filter((id) => !seen.has(id) && !cssUsed(id)),
+      undeclaredReads: usedIds.filter((id) => !declaredSet.has(id)),
+      scanIncomplete,
+    };
+  }
+
+  setPreviewVariables(values: Record<string, unknown> | null): boolean {
+    if (!this.preview?.setPreviewVariables) return false;
+    this.preview.setPreviewVariables(values);
+    return true;
   }
 
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────

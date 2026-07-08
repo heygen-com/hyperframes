@@ -73,4 +73,13 @@ export interface PreviewAdapter {
   // Stage 8 prep: fired when the preview host changes selection (e.g. user clicks an element).
   // Not wired up in stage 7 — callers listen to the session's own selectionchange event instead.
   on(event: "selection", handler: (ids: string[]) => void): () => void;
+
+  /**
+   * Optional: apply composition-variable values to the preview so it renders
+   * as `window.__hfVariables` injection would at render time (values must be
+   * visible to the runtime BEFORE composition scripts run — typically a
+   * preview reload with injection, not a live poke). Pass null to restore
+   * declared defaults. Values are ephemeral preview state, never persisted.
+   */
+  setPreviewVariables?(values: Record<string, unknown> | null): void;
 }
