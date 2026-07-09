@@ -25,6 +25,9 @@ export interface PropertyPanelProps {
   assets: string[];
   element: DomEditSelection | null;
   multiSelectCount?: number;
+  multiSelectedElements?: DomEditSelection[];
+  onGroupSelection?: () => void;
+  onHideAllSelected?: () => void;
   copiedAgentPrompt: boolean;
   onClearSelection: () => void;
   onUngroup?: () => void;
