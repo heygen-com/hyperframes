@@ -25,11 +25,15 @@
         font-family: "DM Sans", sans-serif;
       }
 
-      #root .lower-third {
+      #root .lower-third-frame {
         position: absolute;
         bottom: 80px;
         left: 50%;
         transform: translateX(-50%);
+      }
+
+      #root .lower-third {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 28px;
@@ -126,33 +130,35 @@
       data-duration="4.5"
     >
       <div
-        id="card"
-        class="clip lower-third"
+        id="card-frame"
+        class="clip lower-third-frame"
         data-start="0"
         data-duration="4.5"
         data-track-index="0"
       >
-        <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
-        <div class="channel-info">
-          <div class="channel-name">HeyGen</div>
-          <div class="subscriber-count">82.2K subscribers</div>
-        </div>
-        <div id="subscribe-btn" class="subscribe-btn">
-          <span id="btn-subscribe" class="btn-text btn-text-subscribe">Subscribe</span>
-          <span id="btn-subscribed" class="btn-text btn-text-subscribed">
-            <span class="check-icon"
-              ><svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12"></polyline></svg
-            ></span>
-            Subscribed
-          </span>
+        <div id="card" class="lower-third">
+          <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
+          <div class="channel-info">
+            <div class="channel-name">HeyGen</div>
+            <div class="subscriber-count">82.2K subscribers</div>
+          </div>
+          <div id="subscribe-btn" class="subscribe-btn">
+            <span id="btn-subscribe" class="btn-text btn-text-subscribe">Subscribe</span>
+            <span id="btn-subscribed" class="btn-text btn-text-subscribed">
+              <span class="check-icon"
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12"></polyline></svg
+              ></span>
+              Subscribed
+            </span>
+          </div>
         </div>
       </div>
     </div>
