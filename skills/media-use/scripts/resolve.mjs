@@ -791,9 +791,9 @@ function runDoctor() {
   checks.push({
     name: "heygen on PATH",
     ok: heygenOnPath,
-    detail: heygenOnPath
-      ? `heygen ${heygenVersion ? `v${heygenVersion}` : "found"}`
-      : "heygen not found",
+    // Just "is the binary here" — the version row below owns the version string,
+    // so this row must not also render `heygen v0.3.0` (two byte-identical lines).
+    detail: heygenOnPath ? "heygen found on PATH" : "heygen not found",
     fix: heygenOnPath ? "" : HEYGEN_INSTALL_COMMAND,
   });
 
