@@ -9,7 +9,7 @@
  *   <base>/<type-dir>/<name>/registry-item.json
  *   <base>/<type-dir>/<name>/<file.path>    → individual files referenced by the item
  *
- * `<type-dir>` comes from ITEM_TYPE_DIRS in @hyperframes/core.
+ * `<type-dir>` comes from ITEM_TYPE_DIRS in @hyperframes/core/registry.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -21,7 +21,7 @@ import {
   type ItemType,
   type RegistryItem,
   type RegistryManifest,
-} from "@hyperframes/core";
+} from "@hyperframes/core/registry";
 
 export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";

@@ -1,6 +1,8 @@
 // The `enum` arrays in `packages/core/schemas/registry*.json` must match
 // `ITEM_TYPES` / `FILE_TYPES` below — `types.test.ts` is the drift guard.
 
+import type { CompositionVariable } from "@hyperframes/parsers";
+
 /** Top-level classification for a registry item. */
 export type ItemType = "hyperframes:example" | "hyperframes:block" | "hyperframes:component";
 
@@ -66,6 +68,8 @@ interface RegistryItemBase {
   preview?: RegistryItemPreview;
   /** Related skill slug (e.g. `hyperframes-captions`) — shown in docs. */
   relatedSkill?: string;
+  /** Composition variables exposed by this registry item. */
+  variables?: CompositionVariable[];
 }
 
 /** Full-project example — scaffolded by `hyperframes init --example <name>`. */
@@ -77,6 +81,7 @@ export interface ExampleItem extends RegistryItemBase {
   duration: number;
 }
 
+/** @deprecated Use composition `variables` metadata instead. */
 export interface BlockParam {
   key: string;
   label: string;
@@ -95,7 +100,7 @@ export interface BlockItem extends RegistryItemBase {
   dimensions: RegistryItemDimensions;
   /** Duration in seconds (required for blocks). */
   duration: number;
-  /** Customizable parameters with CSS variable mapping. */
+  /** @deprecated Use `variables` instead. */
   params?: BlockParam[];
 }
 

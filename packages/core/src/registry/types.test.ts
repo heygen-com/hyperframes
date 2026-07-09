@@ -17,12 +17,26 @@ import {
   type RegistryManifest,
 } from "./index.js";
 
+const COMPOSITION_VARIABLE_TYPES = [
+  "string",
+  "number",
+  "color",
+  "boolean",
+  "enum",
+  "font",
+  "image",
+] as const;
+
 const here = dirname(fileURLToPath(import.meta.url));
 const schemasDir = resolve(here, "..", "..", "schemas");
 
 function readSchema(name: string): Record<string, unknown> {
   const raw = readFileSync(resolve(schemasDir, name), "utf-8");
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // Walk a JSON schema and collect every `enum` array found under a property
@@ -120,13 +134,14 @@ describe("registry types", () => {
       expect(setEquals(enums[0]!, ITEM_TYPES)).toBe(true);
     });
 
-    it("registry-item.json has exactly two `type` enums: one ITEM_TYPES, one FILE_TYPES", () => {
+    it("registry-item.json has type enums for items, files, and composition variables", () => {
       const enums = collectEnums(registryItemSchema, "type");
       const distinct = new Set(enums.map(setKey));
-      // Two semantically distinct enums — the item's `type` and each file's `type`.
-      expect(distinct.size).toBe(2);
+      // Three semantically distinct enums — item `type`, file `type`, and variable `type`.
+      expect(distinct.size).toBe(3);
       expect(enums.some((e) => setEquals(e, ITEM_TYPES))).toBe(true);
       expect(enums.some((e) => setEquals(e, FILE_TYPES))).toBe(true);
+      expect(enums.some((e) => setEquals(e, COMPOSITION_VARIABLE_TYPES))).toBe(true);
     });
   });
 
@@ -139,6 +154,13 @@ describe("registry types", () => {
       expect(registryItemSchema.$id).toBe(
         "https://hyperframes.heygen.com/schema/registry-item.json",
       );
+    });
+
+    it("registry-item.json allows composition variables metadata", () => {
+      const properties = registryItemSchema.properties;
+      expect(isRecord(properties)).toBe(true);
+      if (!isRecord(properties)) throw new Error("registry-item.json properties missing");
+      expect(properties.variables).toBeDefined();
     });
   });
 
@@ -235,6 +257,33 @@ describe("registry types", () => {
       expect(item.author).toBe("heygen");
       expect(item.authorUrl).toBe("https://example.com/heygen");
       expect(item.sourcePrompt).toBe("Create a shader wipe.");
+    });
+
+    it("registry items accept composition variables metadata", () => {
+      const item: ComponentItem = {
+        name: "caption-texture",
+        type: "hyperframes:component",
+        title: "Caption Texture",
+        description: "d",
+        files: [
+          {
+            path: "caption-texture.html",
+            target: "compositions/components/caption-texture/caption-texture.html",
+            type: "hyperframes:snippet",
+          },
+        ],
+        variables: [
+          {
+            id: "accent",
+            type: "color",
+            label: "Accent",
+            default: "#ff0066",
+            role: "style",
+            bindings: [{ kind: "css-var", name: "--accent" }],
+          },
+        ],
+      };
+      expect(item.variables?.[0]?.bindings?.[0]?.name).toBe("--accent");
     });
   });
 });

@@ -72,6 +72,61 @@
       "exclusiveMinimum": 0,
       "description": "Duration in seconds. Must be > 0."
     },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "label", "default"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": {
+            "type": "string",
+            "enum": ["string", "number", "color", "boolean", "enum", "font", "image"]
+          },
+          "label": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "default": {},
+          "role": {
+            "type": "string",
+            "enum": ["content", "style", "media", "timing", "layout"]
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "name"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "type": "string", "enum": ["css-var"] },
+                "name": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "placeholder": { "type": "string" },
+          "maxLength": { "type": "integer", "minimum": 0 },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "step": { "type": "number" },
+          "unit": { "type": "string" },
+          "brandRole": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["value", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "value": { "type": "string" },
+                "label": { "type": "string" }
+              }
+            }
+          },
+          "source": { "type": "string" },
+          "default_name": { "type": "string" },
+          "default_source": { "type": "string" }
+        }
+      }
+    },
     "registryDependencies": {
       "type": "array",
       "items": {

@@ -14,6 +14,10 @@ export default defineConfig({
         find: /^@hyperframes\/core$/,
         replacement: resolve(__dirname, "../core/src/index.ts"),
       },
+      {
+        find: /^@hyperframes\/core\/registry$/,
+        replacement: resolve(__dirname, "../core/src/registry/index.ts"),
+      },
     ],
   },
   test: {

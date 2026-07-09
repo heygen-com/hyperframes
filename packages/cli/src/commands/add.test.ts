@@ -3,7 +3,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
-import { AddError, buildSnippet, remapTarget, runAdd } from "./add.js";
+import {
+  AddError,
+  buildSnippet,
+  collectSetArgValues,
+  parseSetFlagValues,
+  remapTarget,
+  runAdd,
+} from "./add.js";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -237,14 +244,55 @@ describe("add command pure helpers", () => {
       expect(snip).toContain('data-duration="6"');
     });
 
+    it("adds parsed variable values to block host snippets", () => {
+      const values = parseSetFlagValues([
+        'title="Launch"',
+        "count=3",
+        "enabled=true",
+        "raw=hello=there",
+      ]);
+      const snip = buildSnippet(BLOCK_ITEM, "src/scenes/my-block.html", values);
+      expect(snip).toContain(
+        `data-variable-values='${JSON.stringify({
+          title: "Launch",
+          count: 3,
+          enabled: true,
+          raw: "hello=there",
+        })}'`,
+      );
+    });
+
     it("emits a paste hint for components", () => {
       const snip = buildSnippet(COMPONENT_ITEM, "src/fx/my-component/my-component.html");
       expect(snip).toContain("paste from");
       expect(snip).toContain("my-component.html");
     });
 
+    it("does not add variable values to component paste hints", () => {
+      const values = parseSetFlagValues(['title="Launch"']);
+      const snip = buildSnippet(COMPONENT_ITEM, "src/fx/my-component/my-component.html", values);
+      expect(snip).not.toContain("data-variable-values");
+    });
+
     it("returns empty string for examples", () => {
       expect(buildSnippet(EXAMPLE_ITEM, "index.html")).toBe("");
+    });
+  });
+
+  describe("set flag helpers", () => {
+    it("collects repeated --set values from raw citty args", () => {
+      expect(collectSetArgValues(["--set", 'title="Launch"', "--set=count=3"], "count=3")).toEqual([
+        'title="Launch"',
+        "count=3",
+      ]);
+    });
+
+    it("parses JSON values and falls back to raw strings", () => {
+      expect(parseSetFlagValues(['title="Launch"', "count=3", "raw=hello"])).toEqual({
+        title: "Launch",
+        count: 3,
+        raw: "hello",
+      });
     });
   });
 });
@@ -273,6 +321,29 @@ describe("runAdd (integration, mocked registry)", () => {
       expect(installed).toContain("<!-- hyperframes-registry-item: my-block -->");
       expect(installed).toContain("my-block.html");
       expect(result.snippet).toContain("compositions/my-block.html");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("adds --set values to the returned block snippet without touching installed files", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      const result = await runAdd({
+        name: "my-block",
+        projectDir: dir,
+        skipClipboard: true,
+        set: ['title="Launch"', "count=3"],
+      });
+
+      expect(result.snippet).toContain(
+        `data-variable-values='${JSON.stringify({ title: "Launch", count: 3 })}'`,
+      );
+      const installed = readFileSync(join(dir, "compositions/my-block.html"), "utf-8");
+      expect(installed).not.toContain("data-variable-values");
+      expect(installed).not.toContain("Launch");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -666,6 +666,27 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables[1].type).toBe("number");
   });
 
+  it("preserves variable role and css variable bindings", () => {
+    const variables = JSON.stringify([
+      {
+        id: "accent",
+        type: "color",
+        label: "Accent",
+        default: "#ff0066",
+        role: "style",
+        bindings: [{ kind: "css-var", name: "--accent" }],
+      },
+    ]);
+    const html = `<!DOCTYPE html>
+<html data-composition-id="c" data-composition-duration="5" data-composition-variables='${variables}'>
+<body></body></html>`;
+    const meta = extractCompositionMetadata(html);
+    const v = meta.variables.find((x) => x.id === "accent");
+    expect(v).toBeDefined();
+    expect(v?.role).toBe("style");
+    expect(v?.bindings).toEqual([{ kind: "css-var", name: "--accent" }]);
+  });
+
   // T9 — CompositionVariable font/image parse (WS-B R1 implemented).
 
   it("parses a font variable (type: font) with name and source", () => {

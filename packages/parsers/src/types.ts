@@ -155,6 +155,10 @@ export interface CompositionVariableBase {
   type: CompositionVariableType;
   label: string;
   description?: string;
+  /** Authoring role used by editors and automation to group variables. */
+  role?: "content" | "style" | "media" | "timing" | "layout";
+  /** Runtime bindings that identify where this variable is applied. */
+  bindings?: Array<{ kind: "css-var"; name: string }>;
 }
 
 export interface StringVariable extends CompositionVariableBase {

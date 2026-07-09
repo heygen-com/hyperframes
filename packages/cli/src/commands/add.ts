@@ -7,12 +7,13 @@ export const examples: Example[] = [
   ["Add all HTML-in-Canvas blocks", "hyperframes add html-in-canvas"],
   ["Add all caption blocks", "hyperframes add captions"],
   ["Target a specific project directory", "hyperframes add shader-wipe --dir ./my-video"],
+  ["Set block variables in the include snippet", 'hyperframes add my-block --set title="\\"Hi\\""'],
   ["Skip the clipboard copy (CI/headless)", "hyperframes add shader-wipe --no-clipboard"],
 ];
 
 import { existsSync } from "node:fs";
 import { resolve, relative } from "node:path";
-import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
+import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core/registry";
 import { c } from "../ui/colors.js";
 import { installItem, resolveItemsByTag } from "../registry/index.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
@@ -59,14 +60,72 @@ export function remapTarget(
 // Shown to the user after install so they know how to wire the item into
 // their host composition. Copied to clipboard by default.
 
-export function buildSnippet(item: RegistryItem, relativeTarget: string): string {
+export type SetFlagValues = string | readonly string[] | undefined;
+
+function normalizeSetArgValues(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+export function collectSetArgValues(rawArgs: readonly string[], parsedSet?: unknown): string[] {
+  const values: string[] = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg === "--") break;
+    if (arg === "--set") {
+      const next = rawArgs[i + 1];
+      if (next !== undefined) {
+        values.push(next);
+        i++;
+      }
+      continue;
+    }
+    if (arg?.startsWith("--set=")) {
+      values.push(arg.slice("--set=".length));
+    }
+  }
+  return values.length > 0 ? values : normalizeSetArgValues(parsedSet);
+}
+
+export function parseSetFlagValues(values: SetFlagValues): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const entry of normalizeSetArgValues(values)) {
+    const equalsIndex = entry.indexOf("=");
+    if (equalsIndex <= 0) continue;
+    const key = entry.slice(0, equalsIndex);
+    const rawValue = entry.slice(equalsIndex + 1);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawValue);
+    } catch {
+      parsed = rawValue;
+    }
+    out[key] = parsed;
+  }
+  return out;
+}
+
+function escapeSingleQuotedAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("'", "&#39;");
+}
+
+export function buildSnippet(
+  item: RegistryItem,
+  relativeTarget: string,
+  variableValues?: Record<string, unknown>,
+): string {
   if (item.type === "hyperframes:block") {
     // data-start omitted — adjust to your timeline position after pasting.
     const dims =
       "dimensions" in item && item.dimensions
         ? ` data-width="${item.dimensions.width}" data-height="${item.dimensions.height}"`
         : "";
-    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}></div>`;
+    const values =
+      variableValues && Object.keys(variableValues).length > 0
+        ? ` data-variable-values='${escapeSingleQuotedAttribute(JSON.stringify(variableValues))}'`
+        : "";
+    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${values}></div>`;
   }
   if (item.type === "hyperframes:component") {
     return `<!-- paste from ${relativeTarget} into your composition -->`;
@@ -82,6 +141,8 @@ export interface RunAddArgs {
   skipClipboard?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
   cliVersion?: string;
+  /** Repeatable `--set key=value` entries applied only to the returned block snippet. */
+  set?: SetFlagValues;
 }
 
 export interface RunAddResult {
@@ -151,6 +212,8 @@ async function installAll(
 
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   const projectDir = resolve(opts.projectDir);
+  const variableValues = parseSetFlagValues(opts.set);
+  const hasVariableValues = Object.keys(variableValues).length > 0;
 
   // 1. Load (or write default) project config.
   let config = loadProjectConfig(projectDir);
@@ -183,6 +246,9 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   // 3. Compatibility-gate every item we're about to install (dependencies
   //    included) before writing anything.
   const warnings = assertCompatibleOrThrow(resolved, opts.cliVersion);
+  if (hasVariableValues && item.type === "hyperframes:component") {
+    warnings.push("--set is only supported for blocks; ignoring values for this component.");
+  }
 
   // 4. Remap targets per project config — each item by its own type.
   const installPlan: RegistryItem[] = resolved.map((resolvedItem) => ({
@@ -203,7 +269,11 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     itemForInstall.files.find((f) => f.type === "hyperframes:composition") ??
     itemForInstall.files[0];
   const snippetTargetRel = primaryFile?.target ?? "";
-  const snippet = buildSnippet(item, snippetTargetRel);
+  const snippet = buildSnippet(
+    item,
+    snippetTargetRel,
+    hasVariableValues ? variableValues : undefined,
+  );
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
   return {
@@ -252,16 +322,22 @@ export default defineCommand({
       type: "boolean",
       description: "Print a machine-readable summary (written files + snippet) to stdout",
     },
+    set: {
+      type: "string",
+      description:
+        'Set a block variable in the printed snippet. Repeatable. Example: --set title="\\"Hello\\""',
+    },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
+    const set = collectSetArgValues(rawArgs, args.set);
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
 
     // Try single item first. If it fails, check if the name matches a tag.
     try {
-      const result = await runAdd({ name: args.name, projectDir, skipClipboard });
+      const result = await runAdd({ name: args.name, projectDir, skipClipboard, set });
       const wroteConfig = !hasConfigBefore && existsSync(projectConfigPath(projectDir));
 
       if (json) {

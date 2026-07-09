@@ -87,6 +87,7 @@ export default defineCommand({
         tags: item.tags ?? [],
         ...("dimensions" in item && item.dimensions ? { dimensions: item.dimensions } : {}),
         ...("duration" in item && item.duration ? { duration: item.duration } : {}),
+        ...(item.variables && item.variables.length ? { variables: item.variables } : {}),
       }));
       console.log(JSON.stringify(output, null, 2));
       return;
