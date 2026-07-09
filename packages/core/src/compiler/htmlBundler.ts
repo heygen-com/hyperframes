@@ -875,7 +875,11 @@ export async function bundleToSingleHtml(
         for (const styleEl of [...innerRoot.querySelectorAll("style")]) {
           const css = styleEl.textContent || "";
           compStyleChunks.push(
-            compId ? scopeCssToComposition(css, compId, runtimeScope, authoredRootId) : css,
+            compId
+              ? scopeCssToComposition(css, compId, runtimeScope, authoredRootId, {
+                  scopeRootSelectors: true,
+                })
+              : css,
           );
           styleEl.remove();
         }
@@ -901,7 +905,13 @@ export async function bundleToSingleHtml(
         // No matching inner root — inject all template content directly
         for (const styleEl of [...innerDoc.querySelectorAll("style")]) {
           const css = styleEl.textContent || "";
-          compStyleChunks.push(compId ? scopeCssToComposition(css, compId, runtimeScope) : css);
+          compStyleChunks.push(
+            compId
+              ? scopeCssToComposition(css, compId, runtimeScope, undefined, {
+                  scopeRootSelectors: true,
+                })
+              : css,
+          );
           styleEl.remove();
         }
         hoistCompositionScripts(innerDoc, {

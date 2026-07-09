@@ -36,6 +36,66 @@ body { margin: 0; }
     expect(scoped).toContain("body { margin: 0; }");
   });
 
+  it("leaves html/body/:root untouched by default (top-level composition owns the document)", () => {
+    const scoped = scopeCssToComposition(
+      `html, body { width: 560px; height: 360px; overflow: hidden; }\n:root { --x: 1; }`,
+      "scene",
+    );
+    expect(scoped).toContain("html, body { width: 560px");
+    expect(scoped).toContain(":root { --x: 1; }");
+  });
+
+  it("remaps html/body/:root to the composition box when scopeRootSelectors is set (sub-comp mount/inline)", () => {
+    const scoped = scopeCssToComposition(
+      `html, body { width: 560px; height: 360px; overflow: hidden; background: #14141c; }\n:root { color: red; }\n.title { opacity: 0; }`,
+      "scene",
+      undefined,
+      undefined,
+      { scopeRootSelectors: true },
+    );
+    // No bare document-level selectors survive — they must not clobber the host document's body.
+    expect(scoped).not.toMatch(/(^|[\s,{})])html\s*[,{]/);
+    expect(scoped).not.toMatch(/(^|[\s,{})]):root\s*\{/);
+    expect(scoped).not.toMatch(/(^|[\s,{}])body\s*\{/);
+    // They are remapped to the composition's own box (host or flattened inner root).
+    expect(scoped).toContain('[data-composition-id="scene"]');
+    expect(scoped).toContain("data-hf-inner-root");
+    expect(scoped).toContain("width: 560px");
+    // Regular selectors still scope as usual.
+    expect(scoped).toContain('[data-composition-id="scene"] .title { opacity: 0; }');
+  });
+
+  it("does not scope the universal selector even with scopeRootSelectors", () => {
+    const scoped = scopeCssToComposition(
+      `* { box-sizing: border-box; }`,
+      "scene",
+      undefined,
+      undefined,
+      {
+        scopeRootSelectors: true,
+      },
+    );
+    expect(scoped).toContain("* { box-sizing: border-box; }");
+  });
+
+  it("pins the concrete parent-body clobber pattern that motivated the fix", () => {
+    // The exact sub-comp rule that used to shrink the host <body> and clip the
+    // preview. Assert the concrete remapped output, not just abstract shape, so a
+    // future rewrite that reorders/splits declarations can't leave the shape
+    // assertions green while re-breaking this case.
+    const scoped = scopeCssToComposition(
+      `html, body { width: 560px; height: 360px; overflow: hidden; background: #14141c; }`,
+      "scene",
+      undefined,
+      undefined,
+      { scopeRootSelectors: true },
+    );
+    expect(scoped).toContain('[data-composition-id="scene"]:not(:has([data-hf-inner-root]))');
+    expect(scoped).toContain('[data-composition-id="scene"] > [data-hf-inner-root]');
+    expect(scoped).toContain("width: 560px");
+    expect(scoped).toContain("overflow: hidden");
+  });
+
   it("wraps classic scripts without render-loop requestAnimationFrame waits", () => {
     const wrapped = wrapScopedCompositionScript("window.__ran = true;", "scene");
 

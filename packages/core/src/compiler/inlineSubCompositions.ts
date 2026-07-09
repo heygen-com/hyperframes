@@ -247,20 +247,26 @@ export function inlineSubCompositions(
       }
     }
 
+    // Scope one sub-composition <style> body. scopeRootSelectors keeps the
+    // sub-comp's html/body/:root rules from clobbering the host document (they
+    // are remapped to the composition box); see compositionScoping.
+    const scopeSubStyle = (raw: string): string => {
+      const css = rewriteCssAssetUrls(raw, src);
+      return scopeCompId
+        ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
+            compoundAuthoredRoot: compoundAuthoredRoot === true,
+            scopeRootSelectors: true,
+          })
+        : css;
+    };
+
     // When a sub-composition is a full HTML document (no <template>), styles
     // and scripts in <head> are not part of contentDoc (which only has body
     // content). Extract them so backgrounds, positioning, fonts, and library
     // scripts (e.g. GSAP CDN) are not silently dropped.
     if (!contentRoot && compDoc.head) {
       for (const s of [...compDoc.head.querySelectorAll("style")]) {
-        const css = rewriteCssAssetUrls(s.textContent || "", src);
-        styles.push(
-          scopeCompId
-            ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-                compoundAuthoredRoot: compoundAuthoredRoot === true,
-              })
-            : css,
-        );
+        styles.push(scopeSubStyle(s.textContent || ""));
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
         const externalSrc = (s.getAttribute("src") || "").trim();
@@ -288,14 +294,7 @@ export function inlineSubCompositions(
 
     // Extract styles from content
     for (const s of [...contentDoc.querySelectorAll("style")]) {
-      const css = rewriteCssAssetUrls(s.textContent || "", src);
-      styles.push(
-        scopeCompId
-          ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-              compoundAuthoredRoot: compoundAuthoredRoot === true,
-            })
-          : css,
-      );
+      styles.push(scopeSubStyle(s.textContent || ""));
       s.remove();
     }
 

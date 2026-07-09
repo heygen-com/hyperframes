@@ -97,12 +97,22 @@ function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: stri
   );
 }
 
+/** The composition's own box: the host when it renders content directly, or the
+ *  flattened inner root when one is preserved below the host. Used both for a
+ *  bare composition-root selector and for remapped document-level selectors.
+ *  Relies on `:has()` (Chrome 105 / Safari 15.4 / Firefox 121) — an existing
+ *  baseline for the bare-root case, noted here for new callers. */
+function compositionBoxSelector(scope: string): string {
+  return `${scope}:not(:has([${INNER_ROOT_ATTR}])), ${scope} > [${INNER_ROOT_ATTR}]`;
+}
+
 function scopeSelector(
   selector: string,
   scope: string,
   compositionId: string,
   authoredRootId?: string | null,
   compoundAuthoredRoot?: boolean,
+  scopeRootSelectors?: boolean,
 ): string {
   const selectorWithoutAuthoredRootId = normalizeAuthoredRootIdSelector(selector, authoredRootId);
   const selectorWithoutRootTiming = normalizeCompositionRootSelector(
@@ -112,7 +122,21 @@ function scopeSelector(
   );
   const trimmed = selectorWithoutRootTiming.trim();
   if (!trimmed) return selector;
-  if (/^(html|body|:root|\*)$/i.test(trimmed)) return selector;
+  if (trimmed === "*") return selector;
+  if (/^(html|body|:root)$/i.test(trimmed)) {
+    // A mounted/inlined sub-comp's document-level selectors must not style the
+    // PARENT (a sub-comp `body { width/height/overflow }` would clobber the host
+    // <body> and clip the preview/render). Remap to the comp's own box. A
+    // top-level compile (scopeRootSelectors falsy) legitimately owns the document.
+    //
+    // Coverage is intentionally BARE-only: compound forms (`body.dark`,
+    // `body[data-theme]`, `body:hover`, `html body`, `:root .x`) fall through to
+    // general scoping below. That is byte-identical to pre-fix behavior — those
+    // selectors never matched the parent <body> (it has no data-composition-id),
+    // so there was no clobber to fix. The bare forms are the ones that actually
+    // caused the parent-body clobber, which is what this remap targets.
+    return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
+  }
   const compositionIdPattern = new RegExp(
     `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
@@ -128,7 +152,7 @@ function scopeSelector(
       // exactly one of the two: applying it to both compounds any additive
       // property (padding, margin, non-zero transform) since the wrapper
       // sits nested inside the host and would inherit the effect twice.
-      return `${scope}:not(:has([${INNER_ROOT_ATTR}])), ${scope} > [${INNER_ROOT_ATTR}]`;
+      return compositionBoxSelector(scope);
     }
     return selectorWithoutRootTiming.replace(compositionIdPattern, scope);
   }
@@ -181,7 +205,7 @@ export function scopeCssToComposition(
   compositionId: string,
   scopeSelectorOverride?: string,
   authoredRootId?: string | null,
-  options?: { compoundAuthoredRoot?: boolean },
+  options?: { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean },
 ): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
@@ -199,6 +223,7 @@ export function scopeCssToComposition(
         trimmedCompositionId,
         authoredRootId,
         options?.compoundAuthoredRoot,
+        options?.scopeRootSelectors,
       ),
     );
   });

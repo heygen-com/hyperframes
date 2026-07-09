@@ -410,6 +410,12 @@
       "packages/studio/src/captions/store.ts",
       "packages/studio/src/captions/components/CaptionOverlay.tsx",
       "packages/cli/src/server/studioServer.ts",
+      // Sub-composition html/body scoping fix: inlineSubCompositions.ts has a
+      // pre-existing head-vs-content script-extraction clone, and the scoping
+      // test file has pre-existing parallel arrange/act/assert cases. Adding the
+      // scopeRootSelectors handling shifts lines and re-flags both.
+      "packages/core/src/compiler/inlineSubCompositions.ts",
+      "packages/core/src/compiler/compositionScoping.test.ts",
     ],
   },
   "health": {
@@ -579,6 +585,16 @@
       "packages/studio/src/player/components/TimelineCanvas.tsx",
       "packages/studio/src/player/components/TimelineClip.tsx",
       "packages/studio/src/player/components/TimelineClipDiamonds.tsx",
+      // Sub-composition html/body scoping fix: these files carry pre-existing
+      // CRITICAL/HIGH functions (inlineSubCompositions, bundleToSingleHtml,
+      // mountCompositionContent/loadExternalCompositions, scopeSelector/
+      // replaceAuthoredRootIdSelectors) that pre-date this PR. The change only
+      // threads a scopeRootSelectors option through the existing scoping calls;
+      // the line-shift fingerprint re-flags the inherited complexity.
+      "packages/core/src/compiler/compositionScoping.ts",
+      "packages/core/src/compiler/inlineSubCompositions.ts",
+      "packages/core/src/compiler/htmlBundler.ts",
+      "packages/core/src/runtime/compositionLoader.ts",
     ],
   },
 }

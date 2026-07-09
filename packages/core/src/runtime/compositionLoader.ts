@@ -406,6 +406,11 @@ async function mountCompositionContent(params: {
           authoredScopeCompositionId,
           runtimeScopeSelector,
           authoredRootId,
+          // Sub-comp styles are injected into the PARENT preview document, so
+          // remap html/body/:root to the composition box — otherwise a sub-comp
+          // `body { width/height/overflow }` clobbers the host body and clips
+          // the preview to the last-mounted sub-comp's size.
+          { scopeRootSelectors: true },
         );
       }
       document.head.appendChild(clonedStyle);
