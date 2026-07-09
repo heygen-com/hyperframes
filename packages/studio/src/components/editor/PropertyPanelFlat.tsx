@@ -17,6 +17,11 @@ import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
+import { useColorGradingController } from "./useColorGradingController";
+import {
+  FlatColorGradingAccessory,
+  FlatColorGradingSection,
+} from "./propertyPanelFlatColorGradingSection";
 
 type EditingSections = ReturnType<typeof resolveEditingSections>;
 
@@ -225,6 +230,20 @@ export function PropertyPanelFlat({
   );
   const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
+  // Grade group state. Called unconditionally (React rules-of-hooks) even when
+  // sections.colorGrading is false — unlike the legacy ColorGradingSection,
+  // which is only mounted when the section is active, PropertyPanelFlat is not
+  // remounted per-section so the hook must run every render. Shares one state
+  // object between the group's header accessory (compare/status/reset) and its
+  // body (the FlatColorGradingSection controls).
+  const colorGradingController = useColorGradingController({
+    projectId,
+    element,
+    previewIframeRef,
+    onSetAttributeLive,
+    onApplyScope: onApplyColorGradingScope,
+  });
+
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
   const toggleOpen = (groupId: string) =>
@@ -412,6 +431,30 @@ export function PropertyPanelFlat({
               unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
               onSetAttribute={onSetAttribute}
               {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
+            />
+          </FlatGroup>
+        )}
+        {sections.colorGrading && (
+          <FlatGroup
+            title="Grade"
+            isOpen={openGroupId === "grade" || pinnedGroupIds.includes("grade")}
+            isPinned={pinnedGroupIds.includes("grade")}
+            onToggleOpen={() => toggleOpen("grade")}
+            onTogglePin={() => togglePin("grade")}
+            accessory={<FlatColorGradingAccessory state={colorGradingController} />}
+            summary={`${colorGradingController.grading.preset ?? "neutral"} · ${Math.round(colorGradingController.grading.intensity * 100)}%`}
+          >
+            <FlatColorGradingSection
+              grading={colorGradingController.grading}
+              assets={assets}
+              onImportAssets={onImportAssets}
+              onCommitColorGrading={colorGradingController.commitColorGrading}
+              applyScope={colorGradingController.applyScope}
+              applyBusy={colorGradingController.applyBusy}
+              onSetApplyScope={colorGradingController.setApplyScope}
+              onApplyToScope={() => void colorGradingController.applyToScope()}
+              onApplyScopeAvailable={Boolean(onApplyColorGradingScope)}
+              mediaMetadata={colorGradingController.mediaMetadata}
             />
           </FlatGroup>
         )}
