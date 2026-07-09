@@ -96,11 +96,16 @@
         stroke-dashoffset: 910;
       }
 
-      .label {
+      .label-frame {
         position: absolute;
         left: 50%;
         top: -146px;
-        transform: translateX(-50%) scale(0.82);
+        transform: translateX(-50%);
+      }
+
+      .label {
+        position: relative;
+        transform: scale(0.82);
         transform-origin: 50% 100%;
         min-width: 370px;
         padding: 18px 26px 20px;
@@ -228,7 +233,9 @@
       </div>
 
       <div id="annotation" class="annotation">
-        <div id="label" class="label">LOCKED<br />DOWN</div>
+        <div class="label-frame">
+          <div id="label" class="label">LOCKED<br />DOWN</div>
+        </div>
         <svg class="scribble" viewBox="0 0 560 392" aria-hidden="true" data-layout-ignore>
           <path
             id="circle-a"
