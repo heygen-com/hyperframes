@@ -44,11 +44,11 @@ function editMap(edits: TimelineMoveEdit[]): Record<string, { start: number; tra
 }
 
 describe("commitDraggedClipMove", () => {
-  it("free placement: a drop lands where dropped as a single move — no ripple, no batch, overlap allowed", () => {
-    const elements = [el("v1", 1, 0, 5), el("v2", 1, 5, 4)]; // two clips on lane 1
+  it("pure time-move (same lane) persists just the dragged clip (single, SDK-aware)", () => {
+    const elements = [el("v1", 1, 0, 5)];
     const onMoveElement = vi.fn();
     const onMoveElements = vi.fn();
-    // Drag v1 so it overlaps v2 (drop at 6) → lands exactly at 6 on lane 1; v2 untouched.
+    // previewTrack === element.track → no topology change → single move.
     commitDraggedClipMove(drag(elements[0], { previewStart: 6, previewTrack: 1 }), {
       elements,
       trackOrder: [1],
@@ -61,12 +61,12 @@ describe("commitDraggedClipMove", () => {
     expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 1 });
   });
 
-  it("track insert persists the dragged clip + shifts as ONE batched call", () => {
-    const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5)];
+  it("a lane change re-normalizes and persists EVERY clip atomically (fixes raw-vs-normalized collision)", () => {
+    // Move 'a' from lane 0 down onto lane 1 (b's lane) at a non-overlapping time.
+    const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3)];
     const onMoveElement = vi.fn();
     const onMoveElements = vi.fn();
-    // insertRow 0 = new lane above the top: dragged 'a' takes top index, 'b' shifts down.
-    commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0, insertRow: 0 }), {
+    commitDraggedClipMove(drag(elements[0], { previewStart: 20, previewTrack: 1 }), {
       elements,
       trackOrder: [0, 1],
       updateElement: vi.fn(),
@@ -75,25 +75,28 @@ describe("commitDraggedClipMove", () => {
     });
     expect(onMoveElement).not.toHaveBeenCalled();
     expect(onMoveElements).toHaveBeenCalledTimes(1);
+    // BOTH clips are persisted with consistent normalized tracks (both visual → lane 0).
     const map = editMap(onMoveElements.mock.calls[0][0]);
-    expect(map.a.track).toBe(0);
-    expect(map.b.track).toBe(2);
+    expect(map.a).toEqual({ start: 20, track: 0 });
+    expect(map.b).toEqual({ start: 10, track: 0 });
   });
 
-  it("plain move on a non-main lane uses the single SDK-aware persist", () => {
-    const elements = [el("v", 1, 0, 5, "video"), el("cap", 0, 0, 3, "div")]; // main = track 1 (video)
+  it("inserting a new lane slots the dragged clip in and shifts the rest (fractional → normalized)", () => {
+    const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
     const onMoveElement = vi.fn();
     const onMoveElements = vi.fn();
-    // Move the caption within overlay lane 0 (not the main track) → single persist.
-    commitDraggedClipMove(drag(elements[1], { previewStart: 2, previewTrack: 0 }), {
+    // insert a new lane at row 1 (between a and b) with c.
+    commitDraggedClipMove(drag(elements[2], { previewStart: 0, previewTrack: 2, insertRow: 1 }), {
       elements,
-      trackOrder: [0, 1],
+      trackOrder: [0, 1, 2],
       updateElement: vi.fn(),
       onMoveElement,
       onMoveElements,
     });
-    expect(onMoveElements).not.toHaveBeenCalled();
-    expect(onMoveElement).toHaveBeenCalledTimes(1);
-    expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 2, track: 0 });
+    expect(onMoveElements).toHaveBeenCalledTimes(1);
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a.track).toBe(0); // unchanged top
+    expect(map.c.track).toBe(1); // slots between a and b
+    expect(map.b.track).toBe(2); // pushed down
   });
 });
