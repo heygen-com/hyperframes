@@ -1130,15 +1130,21 @@ async function pollSubCompositionTimelines(
   // compositions driven purely by CSS animations / rAF (the render-compat
   // contract) never register window.__timelines[id], and without the opt-out
   // they stall here for the full playerReadyTimeout (45 s) on every render.
+  const hasRegisteredTimeline = `function hasRegisteredTimeline(id) {
+    return !!(
+      (window.__timelines && window.__timelines[id]) ||
+      (window.__hfAnime && window.__hfAnime[id])
+    );
+  }`;
   const expression = `(function() {
+    ${hasRegisteredTimeline}
     var hosts = document.querySelectorAll("[data-composition-id]");
     if (hosts.length === 0) return true;
-    var timelines = window.__timelines || {};
     for (var i = 0; i < hosts.length; i++) {
       if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
       if (!id) continue;
-      if (!timelines[id]) return false;
+      if (!hasRegisteredTimeline(id)) return false;
     }
     return true;
   })()`;
@@ -1159,13 +1165,13 @@ async function pollSubCompositionTimelines(
   }
   if (!ready) {
     const missing = await page.evaluate(`(function() {
+      ${hasRegisteredTimeline}
       var hosts = document.querySelectorAll("[data-composition-id]");
-      var timelines = window.__timelines || {};
       var m = [];
       for (var i = 0; i < hosts.length; i++) {
         if (hosts[i].hasAttribute("data-no-timeline")) continue;
         var id = hosts[i].getAttribute("data-composition-id");
-        if (id && !timelines[id]) m.push(id);
+        if (id && !hasRegisteredTimeline(id)) m.push(id);
       }
       return m.join(", ");
     })()`);
