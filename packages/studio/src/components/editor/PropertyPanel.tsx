@@ -31,6 +31,7 @@ import {
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
 import { PropertyPanelFlat } from "./PropertyPanelFlat";
+import { createGsapLivePreview } from "./gsapLivePreview";
 import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
@@ -279,6 +280,24 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
         selectedElementId={selectedElementId}
         clipboardCopied={clipboardCopied}
         onCopyElementInfo={handleCopyElementInfo}
+        displayX={displayX}
+        displayY={displayY}
+        displayW={displayW}
+        displayH={displayH}
+        displayR={displayR}
+        manualOffsetEditingDisabled={manualOffsetEditingDisabled}
+        manualSizeEditingDisabled={manualSizeEditingDisabled}
+        manualRotationEditingDisabled={manualRotationEditingDisabled}
+        commitManualOffset={commitManualOffset}
+        commitManualSize={commitManualSize}
+        commitManualRotation={commitManualRotation}
+        gsapAnimId={gsapAnimId}
+        navKeyframes={navKeyframes}
+        currentPct={currentPct}
+        animIdForProp={animIdForProp}
+        gsapRuntimeValues={gsap3dValues}
+        elStart={elStart}
+        elDuration={elDuration}
       />
     );
   }
@@ -522,16 +541,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             onSeekToTime={onSeekToTime}
             onRemoveKeyframe={onRemoveKeyframe}
             onConvertToKeyframes={onConvertToKeyframes}
-            onLivePreviewProps={(el, props) => {
-              const iframe = iframeRef.current;
-              const win = iframe?.contentWindow as
-                | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
-                | null
-                | undefined;
-              const sel = el.id ? `#${el.id}` : el.selector;
-              const node = sel ? iframe?.contentDocument?.querySelector(sel) : null;
-              if (win?.gsap && node) win.gsap.set(node, props);
-            }}
+            onLivePreviewProps={createGsapLivePreview(iframeRef)}
           />
           <div className="mt-3">
             <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-neutral-600">

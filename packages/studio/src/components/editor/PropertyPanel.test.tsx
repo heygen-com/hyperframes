@@ -114,6 +114,22 @@ function styleOnlyElement() {
   };
 }
 
+// Flex fixture (Plan 3a Task 5): display:flex drives BOTH the legacy
+// StyleSections Flex `Section` AND the new flat Layout group's
+// LayoutFlexBlock. Used to prove Flex renders exactly once on the flat path.
+// styles are read from computedStyles (PropertyPanel line ~113), so set it
+// there.
+function flexElement() {
+  return {
+    ...baseElement(),
+    id: "flex-row",
+    selector: ".flex-row",
+    label: "Flex Row",
+    textFields: [],
+    computedStyles: { display: "flex" },
+  };
+}
+
 async function renderPanel(
   flatEnabled: boolean,
   elementOverride: ReturnType<typeof baseElement> = baseElement(),
@@ -261,6 +277,53 @@ describe("PropertyPanel — Style group (flag on)", () => {
       act(() => styleCollapsedRow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(textGroup()?.textContent).not.toContain("Text");
       expect(host.querySelector('[data-flat-group-open="true"]')?.textContent).toContain("Style");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+describe("PropertyPanel — Layout group (Plan 3a)", () => {
+  it(
+    "always renders the Layout group, and opening it closes whichever other group was open",
+    async () => {
+      const { host, root } = await renderPanel(true);
+      // Text group is open by default for the base text-editable fixture.
+      expect(host.querySelector('[data-flat-group-open="true"]')?.textContent).toContain("Text");
+
+      const layoutCollapsedRow = Array.from(
+        host.querySelectorAll('[data-flat-group-collapsed="true"]'),
+      ).find((el) => el.textContent?.includes("Layout"));
+      if (!layoutCollapsedRow) throw new Error("expected a collapsed Layout row");
+      act(() => layoutCollapsedRow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+      const openGroup = host.querySelector('[data-flat-group-open="true"]');
+      expect(openGroup?.textContent).toContain("Layout");
+      expect(openGroup?.textContent).toContain("X");
+      expect(openGroup?.textContent).not.toContain("Ask agent"); // sanity: not matching the footer
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "renders Flex exactly once on the flat path (flat Layout only, legacy suppressed)",
+    async () => {
+      const { host, root } = await renderPanel(true, flexElement());
+      const layoutCollapsedRow = Array.from(
+        host.querySelectorAll('[data-flat-group-collapsed="true"]'),
+      ).find((el) => el.textContent?.includes("Layout"));
+      if (!layoutCollapsedRow) throw new Error("expected a collapsed Layout row");
+      act(() => layoutCollapsedRow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+      // The legacy StyleSections Flex `Section` (data-panel-section="flex") must
+      // NOT render on the flat path — the only two Flex renderers are the legacy
+      // Section and the flat LayoutFlexBlock, so its absence + the flat block's
+      // presence proves Flex renders exactly once (not twice, not zero).
+      expect(host.querySelector('[data-panel-section="flex"]')).toBeNull();
+      const openGroup = host.querySelector('[data-flat-group-open="true"]');
+      expect(openGroup?.textContent).toContain("Layout");
+      expect(openGroup?.textContent).toContain("Flex");
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

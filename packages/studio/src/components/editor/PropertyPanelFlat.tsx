@@ -3,11 +3,14 @@ import { resolveEditingSections } from "@hyperframes/core/editing";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
+import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroup } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
+import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
+import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
@@ -64,6 +67,29 @@ export function PropertyPanelFlat({
   recordingState,
   recordingDuration,
   onToggleRecording,
+  displayX,
+  displayY,
+  displayW,
+  displayH,
+  displayR,
+  manualOffsetEditingDisabled,
+  manualSizeEditingDisabled,
+  manualRotationEditingDisabled,
+  commitManualOffset,
+  commitManualSize,
+  commitManualRotation,
+  gsapAnimId,
+  navKeyframes,
+  currentPct,
+  animIdForProp,
+  gsapRuntimeValues,
+  elStart,
+  elDuration,
+  onCommitAnimatedProperty,
+  onCommitAnimatedProperties,
+  onSeekToTime,
+  onRemoveKeyframe,
+  onConvertToKeyframes,
 }: Pick<
   PropertyPanelProps,
   | "projectId"
@@ -91,18 +117,47 @@ export function PropertyPanelFlat({
   | "recordingState"
   | "recordingDuration"
   | "onToggleRecording"
-> & {
-  element: DomEditSelection;
-  styles: Record<string, string>;
-  sections: EditingSections;
-  sourceLabel: string;
-  gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null;
-  showEditableSections: boolean;
-  selectedElementHidden: boolean;
-  selectedElementId: string | null;
-  clipboardCopied: boolean;
-  onCopyElementInfo: () => void;
-}) {
+> &
+  // Layout-group values (Plan 3a Task 5). All are derived locals or handlers in
+  // PropertyPanel; compose their exact shapes from FlatLayoutSection's own props
+  // via Pick so a signature change there propagates here instead of drifting.
+  Pick<
+    Parameters<typeof FlatLayoutSection>[0],
+    | "displayX"
+    | "displayY"
+    | "displayW"
+    | "displayH"
+    | "displayR"
+    | "manualOffsetEditingDisabled"
+    | "manualSizeEditingDisabled"
+    | "manualRotationEditingDisabled"
+    | "commitManualOffset"
+    | "commitManualSize"
+    | "commitManualRotation"
+    | "gsapAnimId"
+    | "navKeyframes"
+    | "currentPct"
+    | "animIdForProp"
+    | "gsapRuntimeValues"
+    | "elStart"
+    | "elDuration"
+    | "onCommitAnimatedProperty"
+    | "onCommitAnimatedProperties"
+    | "onSeekToTime"
+    | "onRemoveKeyframe"
+    | "onConvertToKeyframes"
+  > & {
+    element: DomEditSelection;
+    styles: Record<string, string>;
+    sections: EditingSections;
+    sourceLabel: string;
+    gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null;
+    showEditableSections: boolean;
+    selectedElementHidden: boolean;
+    selectedElementId: string | null;
+    clipboardCopied: boolean;
+    onCopyElementInfo: () => void;
+  }) {
   // Lazy initializer: pick whichever group actually renders for this element
   // (Text if text-editable, else Style if style-editable, else none open) so a
   // style-only element doesn't start with everything collapsed. Only runs on
@@ -110,7 +165,7 @@ export function PropertyPanelFlat({
   // switching the selection re-mounts this component and re-derives the
   // default instead of preserving stale state across unrelated elements.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
-    isTextEditableSelection(element) ? "text" : showEditableSections ? "style" : "",
+    isTextEditableSelection(element) ? "text" : showEditableSections ? "style" : "layout",
   );
   const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
@@ -122,6 +177,9 @@ export function PropertyPanelFlat({
     setPinnedGroupIds((current) =>
       current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
     );
+  // Trivial percentage→time seek, derived here rather than threaded from
+  // PropertyPanel (keeps that file under its 600-LOC gate).
+  const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
@@ -185,6 +243,50 @@ export function PropertyPanelFlat({
           </FlatGroup>
         )}
 
+        <FlatGroup
+          title="Layout"
+          isOpen={openGroupId === "layout" || pinnedGroupIds.includes("layout")}
+          isPinned={pinnedGroupIds.includes("layout")}
+          onToggleOpen={() => toggleOpen("layout")}
+          onTogglePin={() => togglePin("layout")}
+          accessory={<span className="text-[9px] text-panel-text-5">drag values to scrub</span>}
+          summary={`${formatPxMetricValue(displayX)},${formatPxMetricValue(displayY)} · ${Math.round(displayW)}×${Math.round(displayH)}`}
+        >
+          <FlatLayoutSection
+            element={element}
+            styles={styles}
+            onSetStyle={onSetStyle}
+            disabled={!element.capabilities.canEditStyles}
+            displayX={displayX}
+            displayY={displayY}
+            displayW={displayW}
+            displayH={displayH}
+            displayR={displayR}
+            manualOffsetEditingDisabled={manualOffsetEditingDisabled}
+            manualSizeEditingDisabled={manualSizeEditingDisabled}
+            manualRotationEditingDisabled={manualRotationEditingDisabled}
+            commitManualOffset={commitManualOffset}
+            commitManualSize={commitManualSize}
+            commitManualRotation={commitManualRotation}
+            gsapAnimId={gsapAnimId}
+            navKeyframes={navKeyframes}
+            currentPct={currentPct}
+            seekFromKfPct={seekFromKfPct}
+            animIdForProp={animIdForProp}
+            resolveAnimIdForProp={animIdForProp}
+            gsapRuntimeValues={gsapRuntimeValues}
+            gsapKeyframes={navKeyframes}
+            elStart={elStart}
+            elDuration={elDuration}
+            onCommitAnimatedProperty={onCommitAnimatedProperty}
+            onCommitAnimatedProperties={onCommitAnimatedProperties}
+            onSeekToTime={onSeekToTime}
+            onRemoveKeyframe={onRemoveKeyframe}
+            onConvertToKeyframes={onConvertToKeyframes}
+            onLivePreviewProps={createGsapLivePreview(previewIframeRef ?? { current: null })}
+          />
+        </FlatGroup>
+
         {sections.timing && (
           <TimingSection
             element={element}
@@ -229,6 +331,9 @@ export function PropertyPanelFlat({
             onSetStyle={onSetStyle}
             onImportAssets={onImportAssets}
             gsapBorderRadius={gsapBorderRadius}
+            // Flex now lives in the flat Layout group (LayoutFlexBlock); suppress
+            // the legacy StyleSections Flex `Section` so it renders exactly once.
+            hideFlex
           />
         )}
       </div>
