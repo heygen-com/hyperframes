@@ -15,6 +15,7 @@ import {
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
+import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
@@ -240,6 +241,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     snapGuidesRef,
   });
 
+  // Arrow-key nudge (1px, Shift = 10px) — commits through the same
+  // path-offset callbacks as a drag, one undo entry per key burst.
+  const { flushNudge } = useDomEditNudge({
+    selection,
+    groupSelections,
+    allowCanvasMovement,
+    selectionRef,
+    overlayRectRef,
+    groupOverlayItemsRef,
+    gestureRef,
+    groupGestureRef,
+    blockedMoveRef,
+    onManualDragStartRef,
+    onPathOffsetCommitRef,
+    onGroupPathOffsetCommitRef,
+  });
+
   const marquee = useMarqueeGestures({
     iframeRef,
     overlayRef,
@@ -362,9 +380,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       aria-label="Composition canvas"
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
       style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
-      onPointerDownCapture={(event) =>
-        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay)
-      }
+      onPointerDownCapture={(event) => {
+        // A pointer gesture supersedes a pending nudge burst — commit it first
+        // so the gesture's member snapshot starts from the nudged position.
+        flushNudge();
+        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+      }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
       onPointerMove={marquee.onPointerMove}

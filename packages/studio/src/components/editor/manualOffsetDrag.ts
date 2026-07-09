@@ -441,22 +441,26 @@ export function applyManualOffsetDragDraft(
   return offset;
 }
 
-export function applyManualOffsetDragCommit(
-  member: ManualOffsetDragMember,
-  dx: number,
-  dy: number,
-): { x: number; y: number } {
-  // Re-stamp the STABLE gesture-start base/offset before the source commit reads
-  // them. A mid-drag re-render can wipe these attrs; the commit converts the drop
-  // offset → gsap x/y via computeDraggedGsapPosition, which without the base falls
-  // back to the live (already-dragged) transform and re-adds the delta — so the
-  // element flies off-screen the instant you drop it. The member holds the true
-  // gesture-start values in JS, immune to the re-render.
+/**
+ * Re-stamp the STABLE gesture-start base/offset before the source commit reads
+ * them. A mid-gesture re-render can wipe these attrs; the commit converts the
+ * drop offset → gsap x/y via computeDraggedGsapPosition, which without the base
+ * falls back to the live (already-dragged) transform and re-adds the delta — so
+ * the element flies off-screen the instant you drop it. The member holds the
+ * true gesture-start values in JS, immune to the re-render.
+ */
+function restampManualOffsetDragGestureBase(member: ManualOffsetDragMember): void {
   member.element.setAttribute("data-hf-drag-gsap-base-x", String(member.baseGsap.x));
   member.element.setAttribute("data-hf-drag-gsap-base-y", String(member.baseGsap.y));
   member.element.setAttribute("data-hf-drag-initial-offset-x", String(member.initialOffset.x));
   member.element.setAttribute("data-hf-drag-initial-offset-y", String(member.initialOffset.y));
-  const offset = resolveManualOffsetDragMemberOffset(member, dx, dy);
+}
+
+function applyManualOffsetCommitValue(
+  member: ManualOffsetDragMember,
+  offset: { x: number; y: number },
+): { x: number; y: number } {
+  restampManualOffsetDragGestureBase(member);
   // Optimistic visual through the GSAP channel (same as the live draft and the
   // committed `tl.set`), so the element holds its dropped position until the
   // source mutation soft-reloads — no transient CSS `--hf-studio-offset` write.
@@ -465,6 +469,45 @@ export function applyManualOffsetDragCommit(
     applyStudioPathOffset(member.element, offset);
   }
   return offset;
+}
+
+export function applyManualOffsetDragCommit(
+  member: ManualOffsetDragMember,
+  dx: number,
+  dy: number,
+): { x: number; y: number } {
+  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+}
+
+/**
+ * Arrow-key nudge, in OFFSET units (composition px), not screen px — "nudge
+ * 1px" means one composition pixel regardless of canvas zoom, so the delta
+ * adds to the gesture-start offset directly instead of going through the
+ * screen→offset matrix. Draft/commit land in the same GSAP channel (with the
+ * same CSS fallback) as the drag equivalents above.
+ */
+export function applyManualOffsetNudgeDraft(
+  member: ManualOffsetDragMember,
+  delta: { x: number; y: number },
+): { x: number; y: number } {
+  const offset = {
+    x: member.initialOffset.x + delta.x,
+    y: member.initialOffset.y + delta.y,
+  };
+  if (!applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) {
+    applyStudioPathOffsetDraft(member.element, offset);
+  }
+  return offset;
+}
+
+export function applyManualOffsetNudgeCommit(
+  member: ManualOffsetDragMember,
+  delta: { x: number; y: number },
+): { x: number; y: number } {
+  return applyManualOffsetCommitValue(member, {
+    x: member.initialOffset.x + delta.x,
+    y: member.initialOffset.y + delta.y,
+  });
 }
 
 function restoreManualOffsetDragMember(member: ManualOffsetDragMember): void {
