@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -126,8 +126,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var TRANSCRIPT = [
           { text: "Every", start: 0.0, end: 0.3 },
           { text: "great", start: 0.3, end: 0.55 },
@@ -226,7 +224,10 @@
 
         var BASE_FONT = 88;
         var container = document.getElementById("gl-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = TRANSCRIPT.slice(g.wordStart, g.wordEnd + 1);
@@ -253,12 +254,22 @@
 
           container.appendChild(grp);
 
-          tl.set(grp, { visibility: "visible" }, g.start);
-          tl.fromTo(
+          tl.add(
             grp,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.12, ease: "power2.out" },
-            g.start,
+            {
+              visibility: "visible",
+              duration: 0,
+            },
+            toMs(g.start),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: [0, 1],
+              duration: 120,
+              ease: "outCubic",
+            },
+            toMs(g.start),
           );
 
           groupWords.forEach(function (w, i) {
@@ -274,26 +285,26 @@
             var nextStart = nextWord ? nextWord.start : g.end;
             var aftershockEnd = Math.min(g.end - 0.08, nextStart - 0.04);
 
-            tl.to(
+            tl.add(
               wordEl,
               {
-                x: travel,
+                translateX: travel,
                 textShadow:
                   sm + "px 0 #ff003c, -" + sm + "px 0 #00e5ff, 0 5px 18px rgba(0,0,0,0.52)",
-                duration: plan.d1,
-                ease: "none",
+                duration: toMs(plan.d1),
+                ease: "linear",
               },
-              w.start,
+              toMs(w.start),
             );
-            tl.to(
+            tl.add(
               wordEl,
               {
-                x: 0,
+                translateX: 0,
                 textShadow: "0 5px 18px rgba(0,0,0,0.52)",
-                duration: plan.d2,
-                ease: "power3.out",
+                duration: toMs(plan.d2),
+                ease: "outQuart",
               },
-              w.start + plan.d1,
+              toMs(w.start + plan.d1),
             );
 
             if (shouldAftershock(w) && aftershockEnd - w.end > 0.22) {
@@ -302,29 +313,29 @@
               while (pulseStart + 0.1 < aftershockEnd) {
                 var pulseTravel = -(3 + rng() * 5);
                 var pulseShadow = (3 + rng() * 5).toFixed(1);
-                tl.to(
+                tl.add(
                   wordEl,
                   {
-                    x: pulseTravel,
+                    translateX: pulseTravel,
                     textShadow:
                       pulseShadow +
                       "px 0 #ff003c, -" +
                       pulseShadow +
                       "px 0 #00e5ff, 0 5px 18px rgba(0,0,0,0.52)",
-                    duration: 0.045,
-                    ease: "none",
+                    duration: 45,
+                    ease: "linear",
                   },
-                  pulseStart,
+                  toMs(pulseStart),
                 );
-                tl.to(
+                tl.add(
                   wordEl,
                   {
-                    x: 0,
+                    translateX: 0,
                     textShadow: "0 5px 18px rgba(0,0,0,0.52)",
-                    duration: 0.075,
-                    ease: "power3.out",
+                    duration: 75,
+                    ease: "outQuart",
                   },
-                  pulseStart + 0.045,
+                  toMs(pulseStart + 0.045),
                 );
                 pulseIndex++;
                 pulseStart += pulseIndex % 2 === 0 ? 0.18 : 0.24;
@@ -332,12 +343,26 @@
             }
           });
 
-          tl.to(grp, { opacity: 0, duration: 0.1, ease: "power2.in" }, g.end - 0.1);
-          tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              duration: 100,
+              ease: "inCubic",
+            },
+            toMs(g.end - 0.1),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(g.end),
+          );
         });
-
-        tl.seek(0);
-        window.__timelines["caption-glitch-rgb"] = tl;
+        hyperframesAnime.register("caption-glitch-rgb", tl, { labels: {} });
       })();
     </script>
   </body>

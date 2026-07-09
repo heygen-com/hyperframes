@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Gabarito:wght@900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -439,9 +439,10 @@
       var WORDS = normalizeWords(TRANSCRIPT);
       var GROUPS = makeGroups(WORDS);
       buildCaptions(GROUPS);
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
       var visibleStarts = GROUPS.map(function (group, groupIndex) {
         var prev = GROUPS[groupIndex - 1];
@@ -461,24 +462,58 @@
         var exitStart = Math.max(visibleStart, visibleEnd - EXIT_DURATION);
 
         allGroupEls.forEach(function (otherEl, otherIndex) {
-          if (otherIndex !== groupIndex) tl.set(otherEl, { opacity: 0 }, visibleStart);
+          if (otherIndex !== groupIndex)
+            tl.add(
+              otherEl,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(visibleStart),
+            );
         });
 
-        tl.set(groupEl, { opacity: 0, scaleX: 0.8, scaleY: 1 }, visibleStart);
-        tl.to(
+        tl.add(
           groupEl,
-          { opacity: 1, scaleX: 1, duration: ENTRY_DURATION, ease: "power3.out", force3D: true },
-          visibleStart,
+          {
+            opacity: 0,
+            scaleX: 0.8,
+            scaleY: 1,
+            duration: 0,
+          },
+          toMs(visibleStart),
         );
-        tl.to(
+        tl.add(
           groupEl,
-          { scaleX: 0.75, opacity: 0.8, duration: EXIT_DURATION, ease: "power2.in", force3D: true },
-          exitStart,
+          {
+            opacity: 1,
+            scaleX: 1,
+            duration: toMs(ENTRY_DURATION),
+            ease: "outQuart",
+          },
+          toMs(visibleStart),
         );
-        tl.set(groupEl, { opacity: 0 }, visibleEnd);
+        tl.add(
+          groupEl,
+          {
+            scaleX: 0.75,
+            opacity: 0.8,
+            duration: toMs(EXIT_DURATION),
+            ease: "inCubic",
+          },
+          toMs(exitStart),
+        );
+        tl.add(
+          groupEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(visibleEnd),
+        );
       });
 
-      window.__timelines["caption-emoji-pop"] = tl;
+      hyperframesAnime.register("caption-emoji-pop", tl, { labels: {} });
     </script>
   </body>
 </html>

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -261,9 +261,6 @@
         }
         return minSize;
       }
-
-      gsap.registerPlugin && gsap.registerPlugin();
-
       function cleanText(text) {
         return String(text || "").trim();
       }
@@ -478,9 +475,10 @@
       var WORDS = normalizeWords(TRANSCRIPT);
       var GROUPS = makeGroups(WORDS);
       buildCaptions(GROUPS);
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
       var visibleStarts = GROUPS.map(function (group, groupIndex) {
         var prev = GROUPS[groupIndex - 1];
@@ -502,32 +500,61 @@
         var wiggleCycles = Math.max(1, Math.ceil((visibleEnd - visibleStart) / WIGGLE_CYCLE));
 
         allGroupEls.forEach(function (otherEl, otherIndex) {
-          if (otherIndex !== groupIndex) tl.set(otherEl, { opacity: 0 }, visibleStart);
+          if (otherIndex !== groupIndex)
+            tl.add(
+              otherEl,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(visibleStart),
+            );
         });
 
-        tl.set(groupEl, { opacity: 0, scale: 0.65, x: 0, y: 0 }, visibleStart);
-        tl.to(
-          groupEl,
-          { opacity: 1, scale: 1, duration: ENTRY_DURATION, ease: "power3.out", force3D: true },
-          visibleStart,
-        );
-        tl.to(
+        tl.add(
           groupEl,
           {
-            x: D,
-            y: D,
-            duration: WIGGLE_CYCLE / 2,
-            ease: "sine.inOut",
-            yoyo: true,
-            repeat: Math.max(0, wiggleCycles * 2 - 1),
-            force3D: true,
+            opacity: 0,
+            scale: 0.65,
+            translateX: 0,
+            translateY: 0,
+            duration: 0,
           },
-          visibleStart,
+          toMs(visibleStart),
         );
-        tl.set(groupEl, { opacity: 0 }, visibleEnd);
+        tl.add(
+          groupEl,
+          {
+            opacity: 1,
+            scale: 1,
+            duration: toMs(ENTRY_DURATION),
+            ease: "outQuart",
+          },
+          toMs(visibleStart),
+        );
+        tl.add(
+          groupEl,
+          {
+            translateX: D,
+            translateY: D,
+            duration: toMs(WIGGLE_CYCLE / 2),
+            ease: "inOutSine",
+            alternate: true,
+            loop: Math.max(0, wiggleCycles * 2 - 1) + 1,
+          },
+          toMs(visibleStart),
+        );
+        tl.add(
+          groupEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(visibleEnd),
+        );
       });
 
-      window.__timelines["caption-neon-accent"] = tl;
+      hyperframesAnime.register("caption-neon-accent", tl, { labels: {} });
     </script>
   </body>
 </html>

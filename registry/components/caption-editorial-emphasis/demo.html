@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Playfair+Display:ital,wght@0,800;1,800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -363,9 +363,11 @@
           el.style.position = "";
         });
       })();
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
+      var __hfNoopTarget = { value: 0 };
 
       var allEls = BLOCKS.map(function (_, i) {
         return document.getElementById("b" + i);
@@ -381,18 +383,47 @@
         var nextStart = bi < BLOCKS.length - 1 ? blockStart(bi + 1) : DURATION;
 
         allEls.forEach(function (other, oi) {
-          if (oi !== bi) tl.set(other, { opacity: 0 }, start);
+          if (oi !== bi)
+            tl.add(
+              other,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(start),
+            );
         });
-        tl.set(el, { opacity: 1 }, start);
+        tl.add(
+          el,
+          {
+            opacity: 1,
+            duration: 0,
+          },
+          toMs(start),
+        );
 
         block.line1.forEach(function (pair, wi) {
           var wordEl = document.getElementById("b" + bi + "L1w" + wi);
           var wordStart = W[pair[0]].start;
-          tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
-          tl.to(
+          tl.add(
             wordEl,
-            { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
-            wordStart,
+            {
+              opacity: 0,
+              scale: 1.12,
+              transformOrigin: "0% 100%",
+              duration: 0,
+            },
+            toMs(start),
+          );
+          tl.add(
+            wordEl,
+            {
+              opacity: 1,
+              scale: 1,
+              duration: toMs(ENTRY_DUR),
+              ease: "outCubic",
+            },
+            toMs(wordStart),
           );
         });
 
@@ -403,28 +434,80 @@
           var l2El = document.getElementById("b" + bi + "L2");
           if (hasEmphasis) {
             var l2Start = W[block.line2[0][0]].start;
-            tl.set(l2El, { opacity: 0, x: -1920 }, start);
-            tl.to(l2El, { opacity: 1, x: 0, duration: SLIDE_DUR, ease: "power2.out" }, l2Start);
+            tl.add(
+              l2El,
+              {
+                opacity: 0,
+                translateX: -1920,
+                duration: 0,
+              },
+              toMs(start),
+            );
+            tl.add(
+              l2El,
+              {
+                opacity: 1,
+                translateX: 0,
+                duration: toMs(SLIDE_DUR),
+                ease: "outCubic",
+              },
+              toMs(l2Start),
+            );
           } else {
-            tl.set(l2El, { opacity: 1 }, start);
+            tl.add(
+              l2El,
+              {
+                opacity: 1,
+                duration: 0,
+              },
+              toMs(start),
+            );
             block.line2.forEach(function (pair, wi) {
               var wordEl = document.getElementById("b" + bi + "L2w" + wi);
               var wordStart = W[pair[0]].start;
-              tl.set(wordEl, { opacity: 0, scale: 1.12, transformOrigin: "0% 100%" }, start);
-              tl.to(
+              tl.add(
                 wordEl,
-                { opacity: 1, scale: 1, duration: ENTRY_DUR, ease: "power2.out" },
-                wordStart,
+                {
+                  opacity: 0,
+                  scale: 1.12,
+                  transformOrigin: "0% 100%",
+                  duration: 0,
+                },
+                toMs(start),
+              );
+              tl.add(
+                wordEl,
+                {
+                  opacity: 1,
+                  scale: 1,
+                  duration: toMs(ENTRY_DUR),
+                  ease: "outCubic",
+                },
+                toMs(wordStart),
               );
             });
           }
         }
 
-        tl.set(el, { opacity: 0 }, nextStart);
+        tl.add(
+          el,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(nextStart),
+        );
       });
 
-      tl.to({}, { duration: DURATION }, 0);
-      window.__timelines["caption-editorial-emphasis"] = tl;
+      tl.add(
+        __hfNoopTarget,
+        {
+          value: 1,
+          duration: toMs(DURATION),
+        },
+        0,
+      );
+      hyperframesAnime.register("caption-editorial-emphasis", tl, { labels: {} });
     </script>
   </body>
 </html>

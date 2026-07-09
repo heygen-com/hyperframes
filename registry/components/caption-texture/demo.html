@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       .hf-texture-text {
         color: #fff;
@@ -119,8 +119,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var vars =
           window.__hyperframes && window.__hyperframes.getVariables
             ? window.__hyperframes.getVariables()
@@ -175,7 +173,10 @@
         var KEYWORDS = new Set([8, 12, 15, 24, 27]);
 
         var container = document.getElementById("lv-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         WORDS.forEach(function (w, wi) {
           var txt = w.text.toUpperCase();
@@ -184,7 +185,7 @@
           var shadow = document.createElement("div");
           shadow.className = "lv-shadow";
           shadow.id = "lv-shadow-" + wi;
-          gsap.set(shadow, { yPercent: -50 });
+          shadow.style.translate = "0 -50%";
 
           var wordEl = document.createElement("div");
           wordEl.className = "hf-texture-text lv-texture-override lv-word";
@@ -200,26 +201,64 @@
 
           var dur = Math.max(w.end - w.start + 0.3, 0.4);
 
-          tl.set(shadow, { visibility: "visible", opacity: 0 }, w.start);
-          tl.fromTo(
+          tl.add(
             shadow,
-            { opacity: 0, scale: 0.88 },
-            { opacity: 1, scale: 1, duration: 0.18, ease: "power3.out" },
-            w.start,
+            {
+              visibility: "visible",
+              opacity: 0,
+              duration: 0,
+            },
+            toMs(w.start),
           );
-          tl.set(wordEl, { "--mask-position": "0% 50%" }, w.start);
-          tl.to(
+          tl.add(
+            shadow,
+            {
+              opacity: [0, 1],
+              scale: [0.88, 1],
+              duration: 180,
+              ease: "outQuart",
+            },
+            toMs(w.start),
+          );
+          tl.add(
             wordEl,
-            { "--mask-position": "100% 50%", duration: dur, ease: "sine.inOut" },
-            w.start,
+            {
+              "--mask-position": "0% 50%",
+              duration: 0,
+            },
+            toMs(w.start),
+          );
+          tl.add(
+            wordEl,
+            {
+              "--mask-position": "100% 50%",
+              duration: toMs(dur),
+              ease: "inOutSine",
+            },
+            toMs(w.start),
           );
 
-          tl.to(shadow, { opacity: 0, scale: 1.08, duration: 0.1, ease: "power2.in" }, w.end);
-          tl.set(shadow, { opacity: 0, visibility: "hidden" }, w.end + 0.1);
+          tl.add(
+            shadow,
+            {
+              opacity: 0,
+              scale: 1.08,
+              duration: 100,
+              ease: "inCubic",
+            },
+            toMs(w.end),
+          );
+          tl.add(
+            shadow,
+            {
+              opacity: 0,
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(w.end + 0.1),
+          );
         });
-
-        tl.seek(0);
-        window.__timelines["caption-texture"] = tl;
+        hyperframesAnime.register("caption-texture", tl, { labels: {} });
       })();
     </script>
   </body>

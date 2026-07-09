@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-matrix-decode",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Matrix Decode",
   "description": "Character scramble animation before text reveal",
   "tags": ["captions", "caption-style", "matrix", "scramble", "decode"],

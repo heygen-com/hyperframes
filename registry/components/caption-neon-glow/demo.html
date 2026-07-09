@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -104,8 +104,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
@@ -167,7 +165,10 @@
         var KEYWORDS = new Set([8, 12, 15, 24, 27]); // HyperFrames, HTML, professional, code, cinema.
 
         var container = document.getElementById("ne-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
@@ -193,16 +194,40 @@
 
           container.appendChild(grp);
 
-          tl.set(grp, { visibility: "visible", opacity: 0 }, g.start);
-          tl.fromTo(grp, { opacity: 0 }, { opacity: 1, duration: 0.05, ease: "steps(1)" }, g.start);
-          tl.fromTo(grp, { x: -8 }, { x: 0, duration: 0.14, ease: "power3.out" }, g.start + 0.05);
+          tl.add(
+            grp,
+            {
+              visibility: "visible",
+              opacity: 0,
+              duration: 0,
+            },
+            toMs(g.start),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: [0, 1],
+              duration: 50,
+              ease: "steps(1)",
+            },
+            toMs(g.start),
+          );
+          tl.add(
+            grp,
+            {
+              translateX: [-8, 0],
+              duration: 140,
+              ease: "outQuart",
+            },
+            toMs(g.start + 0.05),
+          );
 
           groupWords.forEach(function (w, i) {
             var wi = g.wordStart + i;
             var el = document.getElementById("ne-w-" + wi);
             var isKW = KEYWORDS.has(wi);
             var activeColor = isKW ? "#FF0099" : "#00FFF0";
-            tl.to(
+            tl.add(
               el,
               {
                 color: activeColor,
@@ -213,18 +238,43 @@
                   activeColor +
                   ", 0 0 90px " +
                   activeColor,
-                duration: 0.06,
+                duration: 60,
               },
-              w.start,
+              toMs(w.start),
             );
-            tl.to(el, { color: "rgba(0,255,240,0.14)", textShadow: "none", duration: 0.06 }, w.end);
+            tl.add(
+              el,
+              {
+                color: "rgba(0,255,240,0.14)",
+                textShadow: "none",
+                duration: 60,
+              },
+              toMs(w.end),
+            );
           });
 
-          tl.to(grp, { opacity: 0, x: 6, duration: 0.1, ease: "steps(1)" }, g.end - 0.1);
-          tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              translateX: 6,
+              duration: 100,
+              ease: "steps(1)",
+            },
+            toMs(g.end - 0.1),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(g.end),
+          );
         });
 
-        window.__timelines["caption-neon-glow"] = tl;
+        hyperframesAnime.register("caption-neon-glow", tl, { labels: {} });
       })();
     </script>
   </body>
