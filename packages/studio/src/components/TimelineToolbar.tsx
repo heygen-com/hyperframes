@@ -291,7 +291,23 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     }}
                     className={canSplit ? flatIdle : flatDisabled}
                   >
-                    <Scissors size={16} />
+                    {/* "][" split glyph: two outward-facing brackets with a center gap */}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      {/* Right bracket of left half: ] */}
+                      <path d="M5 3 L7 3 L7 13 L5 13" />
+                      {/* Left bracket of right half: [ */}
+                      <path d="M11 3 L9 3 L9 13 L11 13" />
+                    </svg>
                   </button>
                 </Tooltip>
               );

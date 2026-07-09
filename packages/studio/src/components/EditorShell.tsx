@@ -212,7 +212,7 @@ function EditorShellBody({
     >
       {/* Top row: [left | preview | right] — outer padding + the 8px resize
           seams give the panels CapCut-style separation on the dark canvas. */}
-      <div className="flex flex-row flex-1 min-h-0 px-1.5 pt-1.5">
+      <div className="flex flex-row flex-1 min-h-0 px-1 pt-1">
         {left}
         <div className="flex-1 min-w-0 flex flex-col relative">
           <PreviewPane
