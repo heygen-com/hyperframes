@@ -18,6 +18,17 @@ import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
+import {
+  VARIABLES_ATTR,
+  injectBaseHrefIntoSrcdoc,
+  injectVariablesIntoSrcdoc,
+  isPlainObject,
+  isSameOriginUrl,
+  parseVariablesAttribute,
+  resolveUrl,
+  serializeVariablesAttribute,
+  type HyperframesVariables,
+} from "./variables-options.js";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -55,6 +66,7 @@ class HyperframesPlayer extends HTMLElement {
     return [
       "src",
       "srcdoc",
+      VARIABLES_ATTR,
       "width",
       "height",
       "controls",
@@ -95,6 +107,7 @@ class HyperframesPlayer extends HTMLElement {
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
+  private _sourceGeneration = 0;
 
   constructor() {
     super();
@@ -161,10 +174,8 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
-    if (this.hasAttribute("src"))
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src")!);
+    if (this.hasAttribute("srcdoc")) this._applySrcdoc(this.getAttribute("srcdoc")!);
+    if (this.hasAttribute("src")) this._applySrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
     // desktop) drops the `audio-locked` attribute, attributeChangedCallback
@@ -191,15 +202,23 @@ class HyperframesPlayer extends HTMLElement {
   attributeChangedCallback(name: string, _old: string | null, val: string | null) {
     switch (name) {
       case "src":
-        if (val) {
+        if (val !== null) {
           this._ready = false;
-          this.iframe.src = prepareSrcForElement(this, val);
+          this._applySrc(val);
         }
         break;
       case "srcdoc":
         this._ready = false;
-        if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
-        else this.iframe.removeAttribute("srcdoc");
+        if (val !== null) this._applySrcdoc(val);
+        else {
+          this.iframe.removeAttribute("srcdoc");
+          if (this.hasAttribute("src")) this._applySrc(this.getAttribute("src") ?? "");
+        }
+        break;
+      case VARIABLES_ATTR:
+        this._ready = false;
+        if (this.hasAttribute("srcdoc")) this._applySrcdoc(this.getAttribute("srcdoc") ?? "");
+        else if (this.hasAttribute("src")) this._applySrc(this.getAttribute("src") ?? "");
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
@@ -406,6 +425,20 @@ class HyperframesPlayer extends HTMLElement {
     else this.setAttribute(SHADER_LOADING_ATTR, mode);
   }
 
+  get variables(): HyperframesVariables | null {
+    return parseVariablesAttribute(this.getAttribute(VARIABLES_ATTR));
+  }
+  set variables(value: HyperframesVariables | null) {
+    if (value === null) {
+      this.removeAttribute(VARIABLES_ATTR);
+      return;
+    }
+    if (!isPlainObject(value)) {
+      throw new TypeError("hyperframes-player variables must be a plain object or null");
+    }
+    this.setAttribute(VARIABLES_ATTR, serializeVariablesAttribute(value));
+  }
+
   get muted() {
     return this.hasAttribute("muted");
   }
@@ -552,12 +585,83 @@ class HyperframesPlayer extends HTMLElement {
   private _reloadShaderOptions(): void {
     if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
+      this._applySrcdoc(this.getAttribute("srcdoc") ?? "");
       return;
     }
     if (this.hasAttribute("src")) {
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src") || "");
+      this._applySrc(this.getAttribute("src") ?? "");
     }
+  }
+
+  private _applySrcdoc(value: string): void {
+    this._sourceGeneration += 1;
+    let srcdoc = prepareSrcdocForElement(this, value);
+    const variables = this.variables;
+    if (variables !== null) srcdoc = injectVariablesIntoSrcdoc(srcdoc, variables);
+    this.iframe.srcdoc = srcdoc;
+  }
+
+  private _applySrc(value: string): void {
+    const src = prepareSrcForElement(this, value);
+    const generation = (this._sourceGeneration += 1);
+    const variables = this.variables;
+
+    if (variables === null || this.hasAttribute("srcdoc")) {
+      if (!this.hasAttribute("srcdoc")) this.iframe.removeAttribute("srcdoc");
+      this.iframe.src = src;
+      return;
+    }
+
+    const base =
+      this.ownerDocument?.baseURI ?? (typeof location !== "undefined" ? location.href : "");
+    const resolved = resolveUrl(src, base);
+    if (resolved === null || !isSameOriginUrl(src, base)) {
+      const message =
+        "[hyperframes-player] variables require a same-origin src so they can be injected before composition scripts run; loading without variables.";
+      this._warnAndDispatchVariablesError(message);
+      this.iframe.removeAttribute("srcdoc");
+      this.iframe.src = src;
+      return;
+    }
+
+    this.iframe.removeAttribute("src");
+    void this._fetchAndApplySrcdoc(src, resolved, variables, generation);
+  }
+
+  private async _fetchAndApplySrcdoc(
+    fallbackSrc: string,
+    resolved: URL,
+    variables: HyperframesVariables,
+    generation: number,
+  ): Promise<void> {
+    try {
+      const response = await fetch(resolved.href);
+      if (generation !== this._sourceGeneration) return;
+      if (!response.ok) {
+        const status = [String(response.status), response.statusText].filter(Boolean).join(" ");
+        throw new Error(status || "HTTP error");
+      }
+      const html = await response.text();
+      if (generation !== this._sourceGeneration) return;
+
+      let srcdoc = prepareSrcdocForElement(this, html);
+      srcdoc = injectVariablesIntoSrcdoc(srcdoc, variables);
+      srcdoc = injectBaseHrefIntoSrcdoc(srcdoc, resolved.href);
+      this.iframe.removeAttribute("src");
+      this.iframe.srcdoc = srcdoc;
+    } catch (error) {
+      if (generation !== this._sourceGeneration) return;
+      const reason = error instanceof Error ? error.message : String(error);
+      const message = `[hyperframes-player] Failed to fetch same-origin src for variables injection (${reason}); loading without variables.`;
+      this._warnAndDispatchVariablesError(message);
+      this.iframe.removeAttribute("srcdoc");
+      this.iframe.src = fallbackSrc;
+    }
+  }
+
+  private _warnAndDispatchVariablesError(message: string): void {
+    console.warn(message);
+    this.dispatchEvent(new CustomEvent("error", { detail: { message } }));
   }
 
   private _trySyncSeek(timeInSeconds: number): boolean {

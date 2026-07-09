@@ -12,6 +12,12 @@ function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): vo
   });
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function createForeignFrameMediaDocument(): {
   doc: Document;
   video: HTMLMediaElement & { pause: ReturnType<typeof vi.fn> };
@@ -566,6 +572,106 @@ describe("HyperframesPlayer shader transition options", () => {
     vi.advanceTimersByTime(420);
     expect(loader?.classList.contains("hfp-hiding")).toBe(false);
     vi.useRealTimers();
+  });
+});
+
+describe("HyperframesPlayer variables", () => {
+  type PlayerWithVariables = HTMLElement & {
+    variables: Record<string, unknown> | null;
+    iframeElement: HTMLIFrameElement;
+  };
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("observes the variables attribute", () => {
+    const player = document.createElement("hyperframes-player");
+    const Ctor = player.constructor as typeof HTMLElement & {
+      observedAttributes: string[];
+    };
+
+    expect(Ctor.observedAttributes).toContain("variables");
+  });
+
+  it("reflects the variables property through the JSON attribute", () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithVariables;
+
+    player.variables = { title: "Hello", count: 2 };
+
+    expect(player.getAttribute("variables")).toBe('{"title":"Hello","count":2}');
+    expect(player.variables).toEqual({ title: "Hello", count: 2 });
+
+    player.variables = null;
+    expect(player.hasAttribute("variables")).toBe(false);
+    expect(player.variables).toBeNull();
+  });
+
+  it("injects srcdoc variables before composition scripts run", () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithVariables;
+    player.setAttribute("variables", '{"title":"Hello"}');
+    player.setAttribute(
+      "srcdoc",
+      '<!doctype html><html><head><script src="composition.js"></script></head><body></body></html>',
+    );
+
+    const srcdoc = player.iframeElement.srcdoc;
+    expect(srcdoc).toContain('window.__hfVariables = {"title":"Hello"};');
+    expect(srcdoc.indexOf("window.__hfVariables")).toBeLessThan(srcdoc.indexOf("composition.js"));
+  });
+
+  it("fetches a same-origin src and injects variables plus a base tag into srcdoc", async () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithVariables;
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        '<!doctype html><html><head><script src="./composition.js"></script></head><body></body></html>',
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    player.setAttribute("variables", '{"title":"Hello"}');
+    player.setAttribute("src", "/compositions/intro/index.html");
+    await flushMicrotasks();
+
+    const expectedUrl = new URL("/compositions/intro/index.html", document.baseURI).href;
+    expect(fetchMock).toHaveBeenCalledWith(expectedUrl);
+    expect(player.iframeElement.srcdoc).toContain(`<base href="${expectedUrl}">`);
+    expect(player.iframeElement.srcdoc).toContain('window.__hfVariables = {"title":"Hello"};');
+    expect(player.iframeElement.srcdoc.indexOf("<base")).toBeLessThan(
+      player.iframeElement.srcdoc.indexOf("window.__hfVariables"),
+    );
+    expect(player.iframeElement.srcdoc.indexOf("window.__hfVariables")).toBeLessThan(
+      player.iframeElement.srcdoc.indexOf("./composition.js"),
+    );
+  });
+
+  it("falls back to iframe src without fetching when variables are used with a cross-origin src", () => {
+    const player = document.createElement("hyperframes-player") as PlayerWithVariables;
+    const fetchMock = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errors: string[] = [];
+    vi.stubGlobal("fetch", fetchMock);
+    player.addEventListener("error", (event) => {
+      if (event instanceof CustomEvent && typeof event.detail?.message === "string") {
+        errors.push(event.detail.message);
+      }
+    });
+
+    player.setAttribute("variables", '{"title":"Hello"}');
+    player.setAttribute("src", "https://other-origin.example/comp.html");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(player.iframeElement.src).toBe("https://other-origin.example/comp.html");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("same-origin"));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("same-origin");
   });
 });
 
