@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="intro"></div>
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+    <div id="info"></div>
+    <script>
+      (function () {
+        const tl = anime.createTimeline({ autoplay: false });
+        const __hfNoopTarget = { value: 0 };
+        tl.add("#intro", { opacity: 0, duration: 1000, ease: "linear" }, 0);
+        tl.add(__hfNoopTarget, { value: 0, duration: 0 }, 3000);
+        tl.add("#scene1", { opacity: 1, duration: 0 }, 3000);
+        tl.add("#scene2", { opacity: 0, duration: 0 }, 3000);
+        tl.add("#info", { opacity: 1, duration: 300, ease: "linear" }, 3000);
+        hyperframesAnime.register("main", tl);
+      })();
+    </script>
+  </body>
+</html>

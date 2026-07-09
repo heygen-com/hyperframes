@@ -103,6 +103,22 @@ const kinds = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.kind);
 const sites = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.callSite);
 const iters = (t: Array<{ prov: any }>): any[] => t.map((x) => x.prov?.iteration);
 
+function hasFunctionDecl(ast: any, name: string): boolean {
+  return ast.body.some((s: any) => s.type === "FunctionDeclaration" && s.id?.name === name);
+}
+
+function countForEachCalls(ast: any): number {
+  let count = 0;
+  simple(ast, {
+    CallExpression(n: any) {
+      if (n.callee?.type === "MemberExpression" && n.callee.property?.name === "forEach") {
+        count += 1;
+      }
+    },
+  });
+  return count;
+}
+
 describe("inlineComputedTimelines — helpers", () => {
   it("expands a helper called N times, substituting positions per call", () => {
     const { tweens } = run(`const tl=gsap.timeline();
@@ -145,11 +161,18 @@ describe("inlineComputedTimelines — helpers", () => {
     const { ast, tweens } = run(`function bez(t){ return t * 2; }
       const tl=gsap.timeline();
       tl.to("#x", {}, bez(1));`);
-    expect(
-      ast.body.some((s: any) => s.type === "FunctionDeclaration" && s.id?.name === "bez"),
-    ).toBe(true);
+    expect(hasFunctionDecl(ast, "bez")).toBe(true);
     expect(tweens).toHaveLength(1);
     expect(tweens[0]!.prov).toBeUndefined(); // literal tween, no provenance tag
+  });
+
+  it("does not drop helpers whose only call is inside an unexpanded callback", () => {
+    const { ast, tweens } = run(`const tl=gsap.timeline();
+      load().then(function () { buildTimeline(); });
+      function buildTimeline() { tl.to("#headline", {}, 0); }`);
+    expect(hasFunctionDecl(ast, "buildTimeline")).toBe(true);
+    expect(tweens).toHaveLength(1);
+    expect(tweens[0]!.prov).toBeUndefined();
   });
 });
 
@@ -167,5 +190,24 @@ describe("inlineComputedTimelines — loops", () => {
       [{t:1},{t:2}].forEach((d) => { tl.to("#x", {}, d.t); });`);
     expect(tweens).toHaveLength(2);
     expect(kinds(tweens)).toEqual(["loop", "loop"]);
+  });
+
+  it("unrolls forEach over a named const array", () => {
+    const { tweens } = run(`const tl=gsap.timeline();
+      const pieces = ["#a", "#b"];
+      pieces.forEach((piece, i) => { tl.to(piece, {}, i * 0.1); });`);
+    expect(tweens).toHaveLength(2);
+    expect(kinds(tweens)).toEqual(["loop", "loop"]);
+    expect(tweens.map((t) => t.pos.left.value)).toEqual([0, 1]);
+  });
+
+  it("does not unroll forEach over a named array that is mutated before use", () => {
+    const { ast, tweens } = run(`const tl=gsap.timeline();
+      const lines = [];
+      lines.push("#a");
+      lines.forEach((line) => { tl.to(line, {}, 0); });`);
+    expect(countForEachCalls(ast)).toBe(1);
+    expect(tweens).toHaveLength(1);
+    expect(tweens[0]!.prov).toBeUndefined();
   });
 });

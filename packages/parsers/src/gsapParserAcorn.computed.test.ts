@@ -65,6 +65,79 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     expect(animations.map((a) => a.provenance?.kind)).toEqual(["loop", "loop", "loop"]);
   });
 
+  it("resolves selectors from a named const array of object-member selectors", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      const pieces = { left: "#left", right: "#right" };
+      const pieceArray = [pieces.left, pieces.right];
+      pieceArray.forEach((piece, i) => {
+        tl.fromTo(piece, { x: 100, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, i * 0.1);
+      });
+      tl.to(pieceArray, { scale: 1.1, duration: 0.4 }, 0.8);
+    `);
+
+    expect(animations.map((a) => a.targetSelector)).toEqual(["#left", "#right", "#left, #right"]);
+    expect(animations.map(start)).toEqual([0, 0.1, 0.8]);
+    expect(animations.every((a) => !a.hasUnresolvedSelector)).toBe(true);
+  });
+
+  it("uses no-op timeline calls as anchors for scoped helper expansion", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        function resetScenes() {
+          tl.set("#scene1", { opacity: 1 });
+          tl.set("#scene2", { opacity: 0 });
+        }
+        tl.to("#intro", { opacity: 0, duration: 1 }, 0);
+        tl.call(function () {}, [], 3);
+        resetScenes();
+        tl.to("#info", { opacity: 1, duration: 0.3 }, 3);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    `);
+
+    const sceneStarts = animations
+      .filter((a) => a.targetSelector === "#scene1" || a.targetSelector === "#scene2")
+      .map(start);
+    expect(sceneStarts).toEqual([3, 3]);
+  });
+
+  it("does not collapse explicit positions that reference reassigned anchors", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      var T;
+      T = 4.5;
+      tl.to("#demo-a", { opacity: 1, duration: 0.2 }, T);
+      tl.to("#demo-b", { x: 10, duration: 0.2 }, T + 0.03);
+      T = 9.5;
+      tl.to("#demo-c", { opacity: 1, duration: 0.2 }, T);
+    `);
+
+    expect(animations).toHaveLength(3);
+    expect(animations.map(start)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("does not treat mutated for-loop counters as constant selector or position inputs", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline({ paused: true });
+      load().then(function () { buildTimeline(); });
+      function buildTimeline() {
+        var top5Codes = ["756", "578"];
+        for (var i = 0; i < top5Codes.length; i++) {
+          var selector = '#world-map [data-country="' + top5Codes[i] + '"]';
+          tl.to(selector, { opacity: 1, duration: 0.2 }, 5.0 + i * 0.15);
+        }
+      }
+    `);
+
+    expect(animations).toHaveLength(1);
+    expect(animations[0]!.targetSelector).toBe("__unresolved__");
+    expect(animations[0]!.hasUnresolvedSelector).toBe(true);
+    expect(start(animations[0]!)).toBeUndefined();
+  });
+
   it("leaves a literal-position composition unchanged (regression)", () => {
     const { animations } = parseGsapScriptAcorn(`
       const tl = gsap.timeline();

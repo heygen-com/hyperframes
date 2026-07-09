@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import type { Dimensions, RegistryItem, RegistryItemKind } from "./types.ts";
 
+import { finitePositiveNumber } from "./num.ts";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(scriptDir, "../..");
 const registryRoot = join(repoRoot, "registry");
@@ -250,14 +251,6 @@ function readDimensions(width: unknown, height: unknown): Dimensions | null {
   const parsedHeight = finitePositiveNumber(height);
   if (parsedWidth === null || parsedHeight === null) return null;
   return { width: Math.round(parsedWidth), height: Math.round(parsedHeight) };
-}
-
-// fallow-ignore-next-line code-duplication
-// fallow-ignore-next-line complexity
-function finitePositiveNumber(value: unknown): number | null {
-  const parsed =
-    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

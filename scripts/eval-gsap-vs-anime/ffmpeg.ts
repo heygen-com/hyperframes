@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { finitePositiveNumber } from "./num.ts";
 import type { CheckpointPsnr } from "./types.ts";
 
 type VideoMetadata = {
@@ -163,14 +164,6 @@ function parseFps(value: unknown): number | null {
   if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0) return null;
   const fps = num / den;
   return Number.isFinite(fps) && fps > 0 ? fps : null;
-}
-
-// fallow-ignore-next-line code-duplication
-// fallow-ignore-next-line complexity
-function finitePositiveNumber(value: unknown): number | null {
-  const parsed =
-    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

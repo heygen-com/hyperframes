@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <body>
+    <div data-composition-id="logo-mini">
+      <div class="logo-left"></div>
+      <div class="logo-right"></div>
+      <div class="glow"></div>
+    </div>
+    <script>
+      (function () {
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add(
+          "[data-composition-id=logo-mini] .logo-left",
+          { translateX: [100, 0], opacity: [0, 1], duration: 500, ease: "outCubic" },
+          0,
+        );
+        tl.add(
+          "[data-composition-id=logo-mini] .logo-right",
+          { translateX: [100, 0], opacity: [0, 1], duration: 500, ease: "outCubic" },
+          100,
+        );
+        tl.add(
+          "[data-composition-id=logo-mini] .logo-left, [data-composition-id=logo-mini] .logo-right",
+          { scale: 1.1, duration: 400, ease: "outCubic" },
+          800,
+        );
+        tl.add(
+          "[data-composition-id=logo-mini] .glow",
+          { opacity: 0.5, duration: 200, ease: "outCubic" },
+          1000,
+        );
+        hyperframesAnime.register("logo-mini", tl);
+      })();
+    </script>
+  </body>
+</html>

@@ -14,6 +14,7 @@ import type {
   ArcPathConfig,
   GsapAnimation,
   GsapKeyframesData,
+  GsapTimelineMarker,
   GsapMethod,
   GsapPercentageKeyframe,
   ParsedGsap,
@@ -43,6 +44,7 @@ const SCOPE_NODE_TYPES = new Set([
   "FunctionExpression",
   "ArrowFunctionExpression",
 ]);
+const UNRESOLVED_POSITION = "__hf-unresolved-position__";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +61,10 @@ type TargetBindings = Map<any, Map<string, string>>;
  */
 const CONST_NODES = Symbol("hf.constNodes");
 type ConstNodes = Map<string, any>;
+
+function stringConcatPart(value: number | string | boolean | undefined): string | undefined {
+  return value === undefined ? undefined : String(value);
+}
 
 function constNodesOf(
   scope: ReadonlyMap<string, number | string | boolean>,
@@ -173,8 +179,13 @@ function resolveNode(
           return right !== 0 ? left / right : undefined;
       }
     }
-    if (typeof left === "string" && node.operator === "+") return left + String(right ?? "");
-    if (typeof right === "string" && node.operator === "+") return String(left ?? "") + right;
+    if (node.operator === "+" && (typeof left === "string" || typeof right === "string")) {
+      const leftPart = stringConcatPart(left);
+      const rightPart = stringConcatPart(right);
+      return leftPart !== undefined && rightPart !== undefined
+        ? `${leftPart}${rightPart}`
+        : undefined;
+    }
   }
   if (node.type === "Identifier" && scope.has(node.name)) {
     return scope.get(node.name);
@@ -299,12 +310,14 @@ function collectScopeBindings(ast: any): ScopeBindings {
   // Const ARRAY/OBJECT literals are kept as AST nodes for member/index folding
   // (resolveMemberNode), exposed to resolveNode via the CONST_NODES side-table.
   const constNodes: ConstNodes = new Map();
+  const mutated = collectMutatedIdentifierNames(ast);
   Object.defineProperty(bindings, CONST_NODES, { value: constNodes, enumerable: false });
   acornWalk.simple(ast, {
     VariableDeclarator(node: any) {
       const name = node.id?.name;
       const init = node.init;
       if (!name || !init) return;
+      if (mutated.has(name)) return;
       if (init.type === "ArrayExpression" || init.type === "ObjectExpression") {
         constNodes.set(name, init);
         return;
@@ -314,6 +327,19 @@ function collectScopeBindings(ast: any): ScopeBindings {
     },
   });
   return bindings;
+}
+
+function collectMutatedIdentifierNames(ast: any): Set<string> {
+  const names = new Set<string>();
+  acornWalk.simple(ast, {
+    AssignmentExpression(node: any) {
+      if (node.left?.type === "Identifier") names.add(node.left.name);
+    },
+    UpdateExpression(node: any) {
+      if (node.argument?.type === "Identifier") names.add(node.argument.name);
+    },
+  });
+  return names;
 }
 
 /**
@@ -415,7 +441,15 @@ function resolveTargetSelector(
     return typeof node.value === "string" ? node.value : null;
   }
   if (node.type === "Identifier") {
-    return lookupBindingFromAncestors(node.name, ancestors, bindings);
+    const bound = lookupBindingFromAncestors(node.name, ancestors, bindings);
+    if (bound !== null) return bound;
+    const resolved = resolveNode(node, scope);
+    if (typeof resolved === "string") return resolved;
+    const constNode = resolveConstNode(node, scope);
+    if (constNode?.type === "ArrayExpression") {
+      return resolveTargetSelector(constNode, ancestors, scope, bindings);
+    }
+    return null;
   }
   if (node.type === "CallExpression") {
     return selectorFromQueryCall(node, scope);
@@ -427,9 +461,23 @@ function resolveTargetSelector(
     return parts.length > 0 ? parts.join(", ") : null;
   }
   if (node.type === "MemberExpression" && node.object?.type === "Identifier") {
-    return lookupBindingFromAncestors(node.object.name, ancestors, bindings);
+    const bound = lookupBindingFromAncestors(node.object.name, ancestors, bindings);
+    if (bound !== null) return bound;
+    if (!hasStaticMemberSelectorKey(node)) return null;
+    const resolved = resolveNode(node, scope);
+    return typeof resolved === "string" ? resolved : null;
   }
   return null;
+}
+
+function hasStaticMemberSelectorKey(node: any): boolean {
+  if (!node.computed) return true;
+  const property = node.property;
+  return (
+    property?.type === "Literal" ||
+    property?.type === "StringLiteral" ||
+    property?.type === "NumericLiteral"
+  );
 }
 
 /**
@@ -567,6 +615,7 @@ interface TimelineDefaults {
 // `window.__timelines["scene"] = ...` form, where the timeline is the member
 // expression itself.
 type TimelineRef = { kind: "identifier"; name: string } | { kind: "member"; node: any };
+const SYNTHESIZED_TIMELINE_VAR = "__hfTl";
 
 interface TimelineDetection {
   /** Identifier name for the canonical form, else null for member/none. */
@@ -608,6 +657,14 @@ function sameMemberAccess(a: any, b: any): boolean {
 /** The source string a tween call is rooted at: identifier name, or the member source as written. */
 function timelineRootSource(ref: TimelineRef, script: string): string {
   return ref.kind === "identifier" ? ref.name : script.slice(ref.node.start, ref.node.end);
+}
+
+function publicTimelineVar(ref: TimelineRef): string {
+  return ref.kind === "identifier" ? ref.name : SYNTHESIZED_TIMELINE_VAR;
+}
+
+function registrationIdForRef(ref: TimelineRef): string | undefined {
+  return ref.kind === "member" ? (staticMemberKey(ref.node) ?? undefined) : undefined;
 }
 
 function escapeRegExp(s: string): string {
@@ -806,6 +863,160 @@ function findAllTweenCalls(
 
   visit(ast, []);
   return results;
+}
+
+const TIMELINE_CONTROL_METHODS = new Set(["call", "add", "addPause"]);
+
+function isGlobalGsapSetCall(node: any): boolean {
+  const callee = node.callee;
+  const arg = node.arguments?.[0];
+  return (
+    callee?.type === "MemberExpression" &&
+    callee.object?.type === "Identifier" &&
+    callee.object.name === "gsap" &&
+    callee.property?.type === "Identifier" &&
+    callee.property.name === "set" &&
+    (arg?.type === "StringLiteral" || (arg?.type === "Literal" && typeof arg.value === "string"))
+  );
+}
+
+function isTimelineTweenCall(node: any, ref: TimelineRef): boolean {
+  const callee = node.callee;
+  return (
+    callee?.type === "MemberExpression" &&
+    callee.property?.type === "Identifier" &&
+    isTimelineRootedCall(node, ref) &&
+    GSAP_METHODS.has(callee.property.name)
+  );
+}
+
+function isTimelineControlCall(node: any, ref: TimelineRef): boolean {
+  const callee = node.callee;
+  return (
+    callee?.type === "MemberExpression" &&
+    callee.property?.type === "Identifier" &&
+    isTimelineRootedCall(node, ref) &&
+    TIMELINE_CONTROL_METHODS.has(callee.property.name)
+  );
+}
+
+function isTimelineAddLabelCall(node: any, ref: TimelineRef): boolean {
+  const callee = node.callee;
+  return (
+    callee?.type === "MemberExpression" &&
+    callee.property?.type === "Identifier" &&
+    callee.property.name === "addLabel" &&
+    isTimelineRootedCall(node, ref)
+  );
+}
+
+function isTimelineEventCall(node: any, ref: TimelineRef): boolean {
+  return (
+    isTimelineTweenCall(node, ref) ||
+    isGlobalGsapSetCall(node) ||
+    isTimelineControlCall(node, ref) ||
+    isTimelineAddLabelCall(node, ref)
+  );
+}
+
+function rangeOf(node: any): [number, number] | undefined {
+  return typeof node.start === "number" && typeof node.end === "number"
+    ? [node.start, node.end]
+    : undefined;
+}
+
+function stampTimelineEventOrder(ast: any, ref: TimelineRef): void {
+  let order = 0;
+  const visit = (node: any): void => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "CallExpression" && isTimelineEventCall(node, ref)) {
+      node.__hfEventOrder = order;
+      order += 1;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === "type" || key === "start" || key === "end" || key === "loc") continue;
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item && typeof item === "object" && item.type) visit(item);
+        }
+      } else if (child && typeof child === "object" && child.type) {
+        visit(child);
+      }
+    }
+  };
+  visit(ast);
+}
+
+interface TimelineMarkerDef extends GsapTimelineMarker {
+  resolvedStart?: number;
+}
+
+interface TimelineControlDefs {
+  markers: TimelineMarkerDef[];
+  unsupported: boolean;
+}
+
+function isEmptyArrayExpression(node: any): boolean {
+  return node?.type === "ArrayExpression" && (node.elements ?? []).length === 0;
+}
+
+function isNoopFunction(node: any): boolean {
+  if (!isFunctionNode(node) || node.body?.type !== "BlockStatement") return false;
+  return (node.body.body ?? []).every((stmt: any) => stmt.type === "EmptyStatement");
+}
+
+function safeCallMarker(
+  node: any,
+  scope: ScopeBindings,
+  sortedCalls: TweenCallInfo[],
+): TimelineMarkerDef | null {
+  const args = node.arguments ?? [];
+  if (!isNoopFunction(args[0]) || !isEmptyArrayExpression(args[1])) return null;
+  const position = resolveNode(args[2], scope);
+  if (typeof position !== "number" && typeof position !== "string") return null;
+  return {
+    kind: "call",
+    position,
+    order: orderBeforeCall(node, sortedCalls),
+    sourceOrder: node.__hfEventOrder,
+    sourceRange: rangeOf(node),
+  };
+}
+
+function orderBeforeCall(node: any, sortedCalls: TweenCallInfo[]): number {
+  const order = node.__hfEventOrder;
+  if (typeof order !== "number") return sortedCalls.length;
+  const index = sortedCalls.findIndex((call) => {
+    const callOrder = call.node.__hfEventOrder;
+    return typeof callOrder === "number" && callOrder > order;
+  });
+  return index === -1 ? sortedCalls.length : index;
+}
+
+function collectTimelineControlDefs(
+  ast: any,
+  ref: TimelineRef,
+  scope: ScopeBindings,
+  sortedCalls: TweenCallInfo[],
+): TimelineControlDefs {
+  const markers: TimelineMarkerDef[] = [];
+  let unsupported = false;
+  acornWalk.simple(ast, {
+    CallExpression(node: any) {
+      if (!isTimelineControlCall(node, ref)) return;
+      const method = node.callee?.property?.name;
+      if (method !== "call") {
+        unsupported = true;
+        return;
+      }
+      const marker = safeCallMarker(node, scope, sortedCalls);
+      if (marker) markers.push(marker);
+      else unsupported = true;
+    },
+  } as any);
+  markers.sort((a, b) => a.order - b.order);
+  return { markers, unsupported };
 }
 
 // ── Keyframes parsing ─────────────────────────────────────────────────────────
@@ -1171,7 +1382,7 @@ function tweenCallToAnimation(
   const hasPositionArg = !!call.positionArg;
   const posVal = hasPositionArg ? extractLiteralValue(call.positionArg, scope) : 0;
   const position: number | string =
-    typeof posVal === "number" ? posVal : typeof posVal === "string" ? posVal : 0;
+    typeof posVal === "number" || typeof posVal === "string" ? posVal : UNRESOLVED_POSITION;
   let duration = typeof vars.duration === "number" ? vars.duration : undefined;
   const ease = typeof vars.ease === "string" ? vars.ease : undefined;
 
@@ -1444,6 +1655,7 @@ interface AddLabelDef {
   position: string | number | undefined;
   /** Source-order key (parallel to anims), for interleaving. */
   order: number;
+  sourceOrder?: number;
 }
 
 /**
@@ -1487,20 +1699,26 @@ function resolveAnimStart(
       resolvePositionString(anim.position, cursor, prevStart)
     );
   }
-  return cursor;
+  return null;
 }
 
 function resolveTimelinePositions(
   anims: Omit<GsapAnimation, "id">[],
   labelDefs: AddLabelDef[] = [],
+  markerDefs: TimelineMarkerDef[] = [],
 ): void {
   let cursor = 0;
   let prevStart = 0;
   const labels = new Map<string, number>();
-  // Interleave addLabel definitions with tweens by source order so labels are
-  // available exactly when later tweens reference them.
-  let labelIdx = 0;
-  const sortedLabels = [...labelDefs].sort((a, b) => a.order - b.order);
+  // Interleave labels and no-op call markers with tweens by source order so
+  // labels are available and cursor anchors land exactly when GSAP saw them.
+  let controlIdx = 0;
+  const controls = [
+    ...labelDefs.map((def) => ({ type: "label" as const, def })),
+    ...markerDefs.map((def) => ({ type: "marker" as const, def })),
+  ].sort(
+    (a, b) => a.def.order - b.def.order || (a.def.sourceOrder ?? 0) - (b.def.sourceOrder ?? 0),
+  );
 
   const defineLabel = (def: AddLabelDef): void => {
     let value: number;
@@ -1511,11 +1729,30 @@ function resolveTimelinePositions(
     labels.set(def.name, Math.max(0, value));
   };
 
+  const defineMarker = (def: TimelineMarkerDef): void => {
+    let value = cursor;
+    if (typeof def.position === "number") value = def.position;
+    else if (typeof def.position === "string") {
+      value =
+        resolveLabelPosition(def.position, labels, cursor) ??
+        resolvePositionString(def.position, cursor, prevStart) ??
+        cursor;
+    }
+    def.resolvedStart = Math.max(0, value);
+    prevStart = def.resolvedStart;
+    cursor = Math.max(cursor, def.resolvedStart);
+  };
+
+  const applyControl = (control: (typeof controls)[number]): void => {
+    if (control.type === "label") defineLabel(control.def);
+    else defineMarker(control.def);
+  };
+
   anims.forEach((anim, i) => {
-    // Apply any addLabel calls authored before this tween.
-    while (labelIdx < sortedLabels.length && sortedLabels[labelIdx]!.order <= i) {
-      defineLabel(sortedLabels[labelIdx]!);
-      labelIdx++;
+    // Apply any addLabel/tl.call marker calls authored before this tween.
+    while (controlIdx < controls.length && controls[controlIdx]!.def.order <= i) {
+      applyControl(controls[controlIdx]!);
+      controlIdx++;
     }
 
     // A global `gsap.set(...)` is off-timeline: applied once at load, not
@@ -1536,8 +1773,8 @@ function resolveTimelinePositions(
     }
   });
 
-  // Any trailing addLabel calls (define for completeness; no tweens follow).
-  while (labelIdx < sortedLabels.length) defineLabel(sortedLabels[labelIdx++]!);
+  // Any trailing labels/markers (define for completeness; no tweens follow).
+  while (controlIdx < controls.length) applyControl(controls[controlIdx++]!);
 }
 
 /**
@@ -1551,7 +1788,6 @@ function collectAddLabelDefs(
   scope: ScopeBindings,
   sortedCalls: TweenCallInfo[],
 ): AddLabelDef[] {
-  const callLocs = sortedCalls.map((c) => c.node.callee?.property?.loc?.start);
   const defs: AddLabelDef[] = [];
   acornWalk.simple(ast, {
     // fallow-ignore-next-line complexity
@@ -1574,17 +1810,12 @@ function collectAddLabelDefs(
       const posVal = resolveNode(node.arguments?.[1], scope);
       const position =
         typeof posVal === "number" || typeof posVal === "string" ? posVal : undefined;
-      const labelLoc = callee.property?.loc?.start;
-      let order = sortedCalls.length;
-      if (labelLoc) {
-        order = callLocs.findIndex(
-          (l) =>
-            l &&
-            (l.line > labelLoc.line || (l.line === labelLoc.line && l.column > labelLoc.column)),
-        );
-        if (order === -1) order = sortedCalls.length;
-      }
-      defs.push({ name, position, order });
+      defs.push({
+        name,
+        position,
+        order: orderBeforeCall(node, sortedCalls),
+        sourceOrder: node.__hfEventOrder,
+      });
     },
   });
   return defs;
@@ -1609,6 +1840,10 @@ function compareCallOrder(a: TweenCallInfo, b: TweenCallInfo): number {
 }
 
 function sortBySourcePosition(calls: TweenCallInfo[]): void {
+  if (calls.some((call) => call.node.__hfProvenance)) {
+    calls.sort((a, b) => (a.node.__hfEventOrder ?? 0) - (b.node.__hfEventOrder ?? 0));
+    return;
+  }
   calls.sort(compareCallOrder);
 }
 
@@ -1655,6 +1890,7 @@ export function parseGsapScriptAcornForWrite(script: string): ParsedGsapAcornFor
     const detection = findTimelineVar(ast, scope);
     const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
     const timelineVar = timelineRootSource(ref, script);
+    stampTimelineEventOrder(ast, ref);
     const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
     sortBySourcePosition(calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
@@ -1688,7 +1924,9 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     const scope = collectScopeBindings(ast);
     const detection = findTimelineVar(ast, scope);
     const ref: TimelineRef = detection.ref ?? { kind: "identifier", name: "tl" };
-    const timelineVar = timelineRootSource(ref, script);
+    const sourceTimelineVar = timelineRootSource(ref, script);
+    const timelineVar = publicTimelineVar(ref);
+    const registrationId = registrationIdForRef(ref);
     // Expand helper-built / bounded-loop timelines before analysis so their
     // tweens resolve at true positions (read path only — the write path keeps
     // original source nodes). Degrades to the un-inlined AST on any failure.
@@ -1696,21 +1934,23 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
     // timelines have nothing to inline, so skip to avoid mis-rooting on member refs.
     if (ref.kind === "identifier") {
       try {
-        inlineComputedTimelines(ast, timelineVar, (node) => resolveNode(node, scope));
+        inlineComputedTimelines(ast, sourceTimelineVar, (node) => resolveNode(node, scope));
       } catch {
         /* fall back to current behavior */
       }
     }
     const targetBindings = collectTargetBindings(ast, scope);
+    stampTimelineEventOrder(ast, ref);
     const calls = findAllTweenCalls(ast, ref, scope, targetBindings);
     sortBySourcePosition(calls);
+    const controls = collectTimelineControlDefs(ast, ref, scope, calls);
     const rawAnims = calls.map((call) => tweenCallToAnimation(call, scope, script));
     applyTimelineDefaults(rawAnims, detection.defaults);
     // Seed tween start-keyframes from gsap.set()/tl.set() pre-states (read-only
     // enrichment; the write path keeps source untouched for round-trip parity).
     seedSetStates(rawAnims, collectGsapSetStates(ast, scope, targetBindings, script));
     const labelDefs = collectAddLabelDefs(ast, ref, scope, calls);
-    resolveTimelinePositions(rawAnims, labelDefs);
+    resolveTimelinePositions(rawAnims, labelDefs, controls.markers);
     // Honesty pass (read path only): make staggered collection tweens read as
     // real per-element motion instead of a flat no-op. Done after positions so
     // duration is settled; before ids so the annotation is part of the id.
@@ -1719,16 +1959,16 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
 
     const declPattern =
       ref.kind === "identifier"
-        ? `(?:const|let|var)\\s+${timelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`
-        : `${escapeRegExp(timelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`;
+        ? `(?:const|let|var)\\s+${sourceTimelineVar}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`
+        : `${escapeRegExp(sourceTimelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^)]*\\)\\s*;?`;
     const timelineMatch = script.match(new RegExp(`^[\\s\\S]*?${declPattern}`));
     const fallbackPreamble =
       ref.kind === "identifier"
-        ? `const ${timelineVar} = gsap.timeline({ paused: true });`
-        : `${timelineVar} = gsap.timeline({ paused: true });`;
+        ? `const ${sourceTimelineVar} = gsap.timeline({ paused: true });`
+        : `${sourceTimelineVar} = gsap.timeline({ paused: true });`;
     const preamble = timelineMatch?.[0] ?? fallbackPreamble;
 
-    const lastCallIdx = script.lastIndexOf(`${timelineVar}.`);
+    const lastCallIdx = script.lastIndexOf(`${sourceTimelineVar}.`);
     let postamble = "";
     if (lastCallIdx !== -1) {
       const afterLast = script.slice(lastCallIdx);
@@ -1738,7 +1978,16 @@ export function parseGsapScriptAcorn(script: string): ParsedGsap {
       }
     }
 
-    const result: ParsedGsap = { animations, timelineVar, preamble, postamble };
+    const result: ParsedGsap = {
+      animations,
+      timelineVar,
+      ...(sourceTimelineVar !== timelineVar ? { sourceTimelineVar } : {}),
+      preamble,
+      postamble,
+      ...(registrationId ? { registrationId } : {}),
+      ...(controls.markers.length > 0 ? { timelineMarkers: controls.markers } : {}),
+      ...(controls.unsupported ? { unsupportedTimelineControls: true } : {}),
+    };
     if (detection.timelineCount > 1) result.multipleTimelines = true;
     if (detection.timelineCount > 0 && detection.ref === null)
       result.unsupportedTimelinePattern = true;

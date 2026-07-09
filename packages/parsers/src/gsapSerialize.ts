@@ -82,6 +82,16 @@ export interface GsapAnimation {
   provenance?: GsapProvenance;
 }
 
+export interface GsapTimelineMarker {
+  kind: "call";
+  position: number | string;
+  resolvedStart?: number;
+  /** Count of parsed tween calls before this marker; used to preserve output order. */
+  order: number;
+  sourceOrder?: number;
+  sourceRange?: [number, number];
+}
+
 export interface GsapPercentageKeyframe {
   percentage: number;
   properties: Record<string, number | string>;
@@ -150,8 +160,13 @@ export function buildArcPath(
 export interface ParsedGsap {
   animations: GsapAnimation[];
   timelineVar: string;
+  /** Original timeline expression when output uses a synthesized identifier. */
+  sourceTimelineVar?: string;
   preamble: string;
   postamble: string;
+  registrationId?: string;
+  timelineMarkers?: GsapTimelineMarker[];
+  unsupportedTimelineControls?: boolean;
   multipleTimelines?: boolean;
   unsupportedTimelinePattern?: boolean;
 }

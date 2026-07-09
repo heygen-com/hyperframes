@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <body>
+    <canvas id="gl-canvas"></canvas>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const gl = document.getElementById("gl-canvas").getContext("webgl");
+      if (!gl) {
+        window.__timelines["main"] = gsap.timeline({ paused: true });
+      } else {
+        const tl = gsap.timeline({
+          paused: true,
+          onUpdate() {
+            renderFrame(tl.time());
+          },
+        });
+        tl.to({ v: 0 }, { v: 1, duration: 4, ease: "none" }, 0);
+        window.__timelines["main"] = tl;
+      }
+    </script>
+  </body>
+</html>

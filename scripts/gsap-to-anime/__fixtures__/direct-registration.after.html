@@ -1,0 +1,11 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="box"></div>
+    <script>
+      const __hfTl = anime.createTimeline({ autoplay: false });
+      __hfTl.add("#box", { translateX: 80, duration: 500, ease: "outCubic" }, 0);
+      hyperframesAnime.register("main", __hfTl);
+    </script>
+  </body>
+</html>

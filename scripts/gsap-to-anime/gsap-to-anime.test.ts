@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { classifyGsapScript } from "./classifier.ts";
 import { transformHtml } from "./index.ts";
 
 const FIXTURES = join(import.meta.dirname, "__fixtures__");
@@ -16,6 +17,25 @@ function reasonCodes(result: ReturnType<typeof transformHtml>): string[] {
 
 function warningCodes(result: ReturnType<typeof transformHtml>): string[] {
   return result.classification.warnings.map((warning) => warning.code);
+}
+
+function assertManualUnchangedFixture(name: string, expectedCodes: string[]): void {
+  const before = fixture(name);
+  const result = transformHtml(before);
+
+  assert.equal(result.classification.status, "manual");
+  for (const code of expectedCodes) assert.ok(reasonCodes(result).includes(code));
+  assert.equal(result.changed, false);
+  assert.equal(result.html, before);
+}
+
+function assertConvertedIdempotentFixture(name: string): void {
+  const html = fixture(name);
+  const result = transformHtml(html);
+
+  assert.equal(result.classification.status, "converted");
+  assert.equal(result.changed, false);
+  assert.equal(result.html, html);
 }
 
 describe("gsap-to-anime transform", () => {
@@ -84,6 +104,56 @@ describe("gsap-to-anime transform", () => {
     assert.equal(result.html, fixture("iife-postamble.after.html"));
   });
 
+  it("converts forEach over a named const array of selectors", () => {
+    const result = transformHtml(fixture("foreach-named-const-array.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("foreach-named-const-array.after.html"));
+  });
+
+  it("converts direct window.__timelines member registration through a synthetic timeline id", () => {
+    const result = transformHtml(fixture("direct-registration.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("direct-registration.after.html"));
+  });
+
+  it("keeps env-conditional direct registration with a WebGL update timeline manual", () => {
+    assertManualUnchangedFixture("direct-registration-webgl-manual.before.html", [
+      "computed-timeline",
+    ]);
+  });
+
+  it("converts empty timeline calls into no-op anime anchors", () => {
+    const result = transformHtml(fixture("call-label.before.html"));
+
+    assert.equal(result.classification.status, "converted");
+    assert.equal(result.html, fixture("call-label.after.html"));
+  });
+
+  it("keeps timeline calls with side effects manual", () => {
+    assertManualUnchangedFixture("call-side-effect-manual.before.html", ["computed-timeline"]);
+  });
+
+  it("keeps zero-animation parses manual when raw source appears to contain tweens", () => {
+    const result = classifyGsapScript(
+      `const tl = gsap.timeline({ paused: true });
+       tl.to("#box", { opacity: 1 }, 0);
+       window.__timelines = window.__timelines || {};
+       window.__timelines["main"] = tl;`,
+      {
+        animations: [],
+        timelineVar: "tl",
+        preamble: "",
+        postamble: `window.__timelines = window.__timelines || {};
+          window.__timelines["main"] = tl;`,
+      },
+    );
+
+    assert.equal(result.status, "manual");
+    assert.ok(result.reasons.some((reason) => reason.code === "computed-timeline"));
+  });
+
   it("scopes callback and delay scans to GSAP tween arguments", () => {
     const result = transformHtml(fixture("unrelated-callback-config.before.html"));
 
@@ -92,23 +162,11 @@ describe("gsap-to-anime transform", () => {
   });
 
   it("classifies motionPath as manual and leaves the file unchanged", () => {
-    const before = fixture("motionpath-manual.before.html");
-    const result = transformHtml(before);
-
-    assert.equal(result.classification.status, "manual");
-    assert.deepEqual(reasonCodes(result), ["motionPath"]);
-    assert.equal(result.changed, false);
-    assert.equal(result.html, before);
+    assertManualUnchangedFixture("motionpath-manual.before.html", ["motionPath"]);
   });
 
   it("classifies a mixed convertible and SplitText script as manual as a whole", () => {
-    const before = fixture("splittext-manual.before.html");
-    const result = transformHtml(before);
-
-    assert.equal(result.classification.status, "manual");
-    assert.deepEqual(reasonCodes(result), ["splitText"]);
-    assert.equal(result.changed, false);
-    assert.equal(result.html, before);
+    assertManualUnchangedFixture("splittext-manual.before.html", ["splitText"]);
   });
 
   it("classifies real tween callbacks as manual", () => {
@@ -123,11 +181,10 @@ describe("gsap-to-anime transform", () => {
   });
 
   it("is idempotent on already-converted anime code", () => {
-    const html = fixture("simple-to.after.html");
-    const result = transformHtml(html);
+    assertConvertedIdempotentFixture("simple-to.after.html");
+  });
 
-    assert.equal(result.classification.status, "converted");
-    assert.equal(result.changed, false);
-    assert.equal(result.html, html);
+  it("is idempotent on already-converted anime code with no-op anchors", () => {
+    assertConvertedIdempotentFixture("call-label.after.html");
   });
 });

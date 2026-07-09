@@ -2,14 +2,14 @@
 
 ## Totals
 
-- converted: 39
-- converted-with-warnings: 3
-- manual: 105
+- converted: 28
+- converted-with-warnings: 2
+- manual: 117
 - total: 147
 
 ## Manual reason breakdown
 
-- computed-timeline: 99
+- computed-timeline: 113
 - unrecognized-postamble: 40
 - non-selector-target: 33
 - splitText: 13
@@ -26,7 +26,7 @@
 - manual: blocks/blue-sweater-intro-video (unsupported-extra, computed-timeline, keyframes)
 - manual: blocks/chromatic-radial-split (computed-timeline)
 - manual: blocks/cinematic-zoom (computed-timeline)
-- manual: blocks/code-3d-extrude (non-selector-target, unrecognized-postamble)
+- manual: blocks/code-3d-extrude (non-selector-target, computed-timeline, unrecognized-postamble)
 - manual: blocks/code-diff (computed-timeline, non-selector-target, unrecognized-postamble)
 - manual: blocks/code-highlight (computed-timeline, non-selector-target, unrecognized-postamble)
 - manual: blocks/code-morph (computed-timeline, unrecognized-postamble)
@@ -74,8 +74,8 @@
 - manual: blocks/liquid-glass-media-controls (computed-timeline, non-selector-target)
 - manual: blocks/liquid-glass-notification (computed-timeline, non-selector-target)
 - manual: blocks/liquid-glass-widgets (computed-timeline, non-selector-target)
-- manual: blocks/logo-outro (computed-timeline)
-- converted: blocks/lower-third-bild
+- converted: blocks/logo-outro
+- manual: blocks/lower-third-bild (computed-timeline)
 - converted: blocks/lt-accent-underline
 - converted: blocks/lt-bold-block
 - converted: blocks/lt-clean-bar
@@ -90,31 +90,31 @@
 - manual: blocks/macos-tahoe-liquid-glass (computed-timeline, non-selector-target, customEase-beyond-shim)
 - converted: blocks/news-ticker
 - converted-with-warnings: blocks/north-korea-locked-down
-- converted-with-warnings: blocks/nyc-paris-flight
+- manual: blocks/nyc-paris-flight (computed-timeline)
 - manual: blocks/reddit-post (computed-timeline)
 - manual: blocks/ridged-burn (computed-timeline)
 - manual: blocks/ripple-waves (computed-timeline)
 - manual: blocks/sdf-iris (computed-timeline)
-- converted: blocks/spain-map
+- manual: blocks/spain-map (computed-timeline)
 - converted: blocks/spotify-card
 - manual: blocks/swirl-vortex (computed-timeline)
 - manual: blocks/thermal-distortion (computed-timeline)
 - converted: blocks/tiktok-follow
-- manual: blocks/transitions-3d (plugin:Flip)
-- converted: blocks/transitions-blur
+- manual: blocks/transitions-3d (plugin:Flip, computed-timeline)
+- manual: blocks/transitions-blur (computed-timeline)
 - manual: blocks/transitions-cover (computed-timeline)
 - manual: blocks/transitions-destruction (computed-timeline, non-selector-target)
-- converted: blocks/transitions-dissolve
+- manual: blocks/transitions-dissolve (computed-timeline)
 - manual: blocks/transitions-distortion (computed-timeline)
 - manual: blocks/transitions-grid (computed-timeline)
-- converted: blocks/transitions-light
-- converted: blocks/transitions-mechanical
-- converted: blocks/transitions-other
-- converted: blocks/transitions-push
-- converted: blocks/transitions-radial
-- converted: blocks/transitions-scale
+- manual: blocks/transitions-light (computed-timeline)
+- manual: blocks/transitions-mechanical (computed-timeline)
+- manual: blocks/transitions-other (computed-timeline)
+- manual: blocks/transitions-push (computed-timeline)
+- manual: blocks/transitions-radial (computed-timeline)
+- manual: blocks/transitions-scale (computed-timeline)
 - manual: blocks/ui-3d-reveal (computed-timeline)
-- converted: blocks/us-map
+- manual: blocks/us-map (computed-timeline)
 - manual: blocks/us-map-bubble (computed-timeline, attr-wrapper)
 - manual: blocks/us-map-flow (computed-timeline, non-selector-target)
 - manual: blocks/us-map-hex (computed-timeline)
@@ -143,7 +143,7 @@
 - manual: components/caption-neon-glow (computed-timeline)
 - manual: components/caption-parallax-layers (computed-timeline, non-selector-target, unrecognized-postamble)
 - manual: components/caption-particle-burst (computed-timeline)
-- converted: components/caption-pill-karaoke
+- manual: components/caption-pill-karaoke (computed-timeline)
 - manual: components/caption-texture (computed-timeline)
 - manual: components/caption-weight-shift (computed-timeline)
 - converted: components/grain-overlay

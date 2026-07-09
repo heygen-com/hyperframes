@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <body>
+    <div data-composition-id="logo-mini">
+      <div class="logo-left"></div>
+      <div class="logo-right"></div>
+      <div class="glow"></div>
+    </div>
+    <script>
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const pieces = {
+          left: "[data-composition-id=logo-mini] .logo-left",
+          right: "[data-composition-id=logo-mini] .logo-right",
+        };
+        const pieceArray = [pieces.left, pieces.right];
+        const glow = "[data-composition-id=logo-mini] .glow";
+
+        pieceArray.forEach((piece, i) => {
+          tl.fromTo(
+            piece,
+            { x: 100, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
+            i * 0.1,
+          );
+        });
+        tl.to(pieceArray, { scale: 1.1, duration: 0.4, ease: "power2.out" }, 0.8);
+        tl.to(glow, { opacity: 0.5, duration: 0.2, ease: "power2.out" }, 1);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["logo-mini"] = tl;
+      })();
+    </script>
+  </body>
+</html>

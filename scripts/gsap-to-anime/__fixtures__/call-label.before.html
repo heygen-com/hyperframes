@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="intro"></div>
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+    <div id="info"></div>
+    <script>
+      (function () {
+        var tl = gsap.timeline({ defaults: { ease: "none" } });
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+
+        function resetScenes() {
+          tl.set("#scene1", { opacity: 1 });
+          tl.set("#scene2", { opacity: 0 });
+        }
+
+        tl.to("#intro", { opacity: 0, duration: 1 }, 0);
+        tl.call(function () {}, [], 3);
+        resetScenes();
+        tl.to("#info", { opacity: 1, duration: 0.3 }, 3);
+      })();
+    </script>
+  </body>
+</html>

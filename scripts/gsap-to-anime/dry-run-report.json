@@ -1,9 +1,9 @@
 {
-  "root": "/Users/miguel07code/dev/hyperframes-oss/.claude/worktrees/animejs-u9/registry",
+  "root": "/Users/miguel07code/dev/hyperframes-oss/.claude/worktrees/animejs-u9b/registry",
   "totals": {
-    "converted": 39,
-    "converted-with-warnings": 3,
-    "manual": 105
+    "converted": 28,
+    "converted-with-warnings": 2,
+    "manual": 117
   },
   "items": [
     {
@@ -93,7 +93,7 @@
         },
         {
           "code": "computed-timeline",
-          "message": "unresolved selector or keyframes"
+          "message": "animation start could not be resolved"
         },
         {
           "code": "keyframes",
@@ -118,7 +118,7 @@
             },
             {
               "code": "computed-timeline",
-              "message": "unresolved selector or keyframes"
+              "message": "animation start could not be resolved"
             },
             {
               "code": "keyframes",
@@ -143,7 +143,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -155,7 +155,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -171,7 +171,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -183,7 +183,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -202,6 +202,10 @@
           "message": "tween target is not a CSS selector string"
         },
         {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        },
+        {
           "code": "unrecognized-postamble",
           "message": "postamble is not only timeline registration"
         }
@@ -216,6 +220,10 @@
             {
               "code": "non-selector-target",
               "message": "tween target is not a CSS selector string"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
             },
             {
               "code": "unrecognized-postamble",
@@ -1659,7 +1667,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1671,7 +1679,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -1731,7 +1739,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1743,7 +1751,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -1759,7 +1767,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1771,7 +1779,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -1859,7 +1867,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1871,7 +1879,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -1887,7 +1895,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1899,7 +1907,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -1977,7 +1985,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -1989,7 +1997,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2136,26 +2144,16 @@
       "kind": "block",
       "name": "logo-outro",
       "path": "blocks/logo-outro",
-      "status": "manual",
-      "changed": false,
-      "reasons": [
-        {
-          "code": "computed-timeline",
-          "message": "unresolved selector or keyframes"
-        }
-      ],
+      "status": "converted",
+      "changed": true,
+      "reasons": [],
       "warnings": [],
       "files": [
         {
           "path": "blocks/logo-outro/logo-outro.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "computed-timeline",
-              "message": "unresolved selector or keyframes"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         }
       ]
@@ -2164,16 +2162,26 @@
       "kind": "block",
       "name": "lower-third-bild",
       "path": "blocks/lower-third-bild",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/lower-third-bild/lower-third-bild.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2470,9 +2478,14 @@
       "kind": "block",
       "name": "nyc-paris-flight",
       "path": "blocks/nyc-paris-flight",
-      "status": "converted-with-warnings",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [
         {
           "code": "ease-shim-divergence",
@@ -2482,9 +2495,14 @@
       "files": [
         {
           "path": "blocks/nyc-paris-flight/nyc-paris-flight.html",
-          "status": "converted-with-warnings",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": [
             {
               "code": "ease-shim-divergence",
@@ -2531,7 +2549,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -2543,7 +2561,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2559,7 +2577,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -2571,7 +2589,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2587,7 +2605,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -2599,7 +2617,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2610,16 +2628,26 @@
       "kind": "block",
       "name": "spain-map",
       "path": "blocks/spain-map",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/spain-map/spain-map.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2651,7 +2679,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -2663,7 +2691,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2679,7 +2707,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -2691,7 +2719,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -2726,6 +2754,10 @@
         {
           "code": "plugin:Flip",
           "message": "Flip plugin usage needs manual review"
+        },
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
         }
       ],
       "warnings": [],
@@ -2738,6 +2770,10 @@
             {
               "code": "plugin:Flip",
               "message": "Flip plugin usage needs manual review"
+            },
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
             }
           ],
           "warnings": []
@@ -2748,16 +2784,26 @@
       "kind": "block",
       "name": "transitions-blur",
       "path": "blocks/transitions-blur",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-blur/transitions-blur.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2830,16 +2876,26 @@
       "kind": "block",
       "name": "transitions-dissolve",
       "path": "blocks/transitions-dissolve",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-dissolve/transitions-dissolve.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2853,7 +2909,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "animation start could not be resolved"
         }
       ],
       "warnings": [],
@@ -2865,7 +2921,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "animation start could not be resolved"
             }
           ],
           "warnings": []
@@ -2881,7 +2937,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline call/add/addPause is not rewritten safely"
+          "message": "unresolved selector or keyframes"
         }
       ],
       "warnings": [],
@@ -2893,7 +2949,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline call/add/addPause is not rewritten safely"
+              "message": "unresolved selector or keyframes"
             }
           ],
           "warnings": []
@@ -2904,16 +2960,26 @@
       "kind": "block",
       "name": "transitions-light",
       "path": "blocks/transitions-light",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-light/transitions-light.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2922,16 +2988,26 @@
       "kind": "block",
       "name": "transitions-mechanical",
       "path": "blocks/transitions-mechanical",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-mechanical/transitions-mechanical.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2940,16 +3016,26 @@
       "kind": "block",
       "name": "transitions-other",
       "path": "blocks/transitions-other",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-other/transitions-other.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2958,16 +3044,26 @@
       "kind": "block",
       "name": "transitions-push",
       "path": "blocks/transitions-push",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-push/transitions-push.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2976,16 +3072,26 @@
       "kind": "block",
       "name": "transitions-radial",
       "path": "blocks/transitions-radial",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-radial/transitions-radial.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -2994,16 +3100,26 @@
       "kind": "block",
       "name": "transitions-scale",
       "path": "blocks/transitions-scale",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "animation start could not be resolved"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/transitions-scale/transitions-scale.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "animation start could not be resolved"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -3050,16 +3166,26 @@
       "kind": "block",
       "name": "us-map",
       "path": "blocks/us-map",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "blocks/us-map/us-map.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -3509,7 +3635,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "multiple or unsupported timelines"
         }
       ],
       "warnings": [],
@@ -3521,7 +3647,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "multiple or unsupported timelines"
             }
           ],
           "warnings": []
@@ -4004,16 +4130,26 @@
       "kind": "component",
       "name": "caption-pill-karaoke",
       "path": "components/caption-pill-karaoke",
-      "status": "converted",
-      "changed": true,
-      "reasons": [],
+      "status": "manual",
+      "changed": false,
+      "reasons": [
+        {
+          "code": "computed-timeline",
+          "message": "unresolved selector or keyframes"
+        }
+      ],
       "warnings": [],
       "files": [
         {
           "path": "components/caption-pill-karaoke/caption-pill-karaoke.html",
-          "status": "converted",
-          "changed": true,
-          "reasons": [],
+          "status": "manual",
+          "changed": false,
+          "reasons": [
+            {
+              "code": "computed-timeline",
+              "message": "unresolved selector or keyframes"
+            }
+          ],
           "warnings": []
         }
       ]
@@ -4602,14 +4738,9 @@
         },
         {
           "path": "examples/product-promo/compositions/scene5-logo-outro.html",
-          "status": "manual",
-          "changed": false,
-          "reasons": [
-            {
-              "code": "computed-timeline",
-              "message": "unresolved selector or keyframes"
-            }
-          ],
+          "status": "converted",
+          "changed": true,
+          "reasons": [],
           "warnings": []
         },
         {
@@ -4799,7 +4930,7 @@
       "reasons": [
         {
           "code": "computed-timeline",
-          "message": "timeline is not a simple identifier"
+          "message": "empty direct-registration timeline"
         }
       ],
       "warnings": [],
@@ -4811,7 +4942,7 @@
           "reasons": [
             {
               "code": "computed-timeline",
-              "message": "timeline is not a simple identifier"
+              "message": "empty direct-registration timeline"
             }
           ],
           "warnings": []

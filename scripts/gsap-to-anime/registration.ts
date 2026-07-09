@@ -41,6 +41,15 @@ export function parseRegistrationPostamble(
   return isClosingTail(consumed) ? { id, trailing: consumed } : null;
 }
 
+export function parseDirectRegistrationPostamble(
+  postamble: string,
+  id: string,
+): RegistrationInfo | null {
+  const trimmed = stripComments(postamble).trim();
+  const withoutSetup = removeRegistrySetup(trimmed);
+  return isClosingTail(withoutSetup) ? { id, trailing: withoutSetup } : null;
+}
+
 export function stripLegacyRegistrySetup(preamble: string): string {
   return removeRegistrySetup(preamble);
 }

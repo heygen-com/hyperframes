@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="line"></div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const line = document.querySelector("#line");
+      tl.call(
+        () => {
+          line.classList.toggle("is-active");
+        },
+        [],
+        0.5,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

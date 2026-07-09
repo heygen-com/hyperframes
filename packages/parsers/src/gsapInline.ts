@@ -148,6 +148,7 @@ type LiteralResolver = (node: Node) => number | string | boolean | undefined;
 
 interface ExpandCtx {
   helpers: Map<string, Node>;
+  arrayBindings: Map<string, Node[]>;
   timelineVar: string;
   resolve: LiteralResolver;
   depth: number;
@@ -155,6 +156,8 @@ interface ExpandCtx {
   site: { n: number };
   /** Mutable counter stamping expansion order onto tweens (clones share source loc). */
   order: { n: number };
+  /** Count helper expression-statement calls actually substituted by this expansion pass. */
+  expandedHelperCalls: Map<string, number>;
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -305,13 +308,141 @@ function collectInlinableHelpers(program: Node, timelineVar: string): Map<string
   return safelyDroppable(program, candidates);
 }
 
-function isHelperDecl(stmt: Node, helpers: Map<string, Node>): boolean {
-  if (stmt.type === "FunctionDeclaration") return !!stmt.id && helpers.get(stmt.id.name) === stmt;
+const ARRAY_MUTATORS = new Set(["copyWithin", "fill", "pop", "push", "shift", "splice", "unshift"]);
+
+function memberObjectName(node: Node): string | null {
+  return node?.type === "MemberExpression" && node.object?.type === "Identifier"
+    ? node.object.name
+    : null;
+}
+
+function memberPropertyName(node: Node): string | null {
+  if (node?.type !== "MemberExpression") return null;
+  if (!node.computed) return node.property?.name ?? null;
+  const value = node.property?.value;
+  return typeof value === "string" ? value : null;
+}
+
+function assignmentMutatesName(node: Node, name: string): boolean {
+  if (node.type !== "AssignmentExpression") return false;
+  if (node.left?.type === "Identifier") return node.left.name === name;
+  return memberObjectName(node.left) === name;
+}
+
+function callMutatesArrayName(node: Node, name: string): boolean {
+  if (node.type !== "CallExpression") return false;
+  const property = memberPropertyName(node.callee);
+  return (
+    memberObjectName(node.callee) === name && property !== null && ARRAY_MUTATORS.has(property)
+  );
+}
+
+function mutatesArrayName(node: Node, name: string): boolean {
+  return assignmentMutatesName(node, name) || callMutatesArrayName(node, name);
+}
+
+function mutatedNames(stmts: Node[], names: Set<string>): Set<string> {
+  const mutated = new Set<string>();
+  walkNodes({ type: "Program", body: stmts }, (node) => {
+    for (const name of names) {
+      if (mutatesArrayName(node, name)) mutated.add(name);
+    }
+  });
+  return mutated;
+}
+
+function variableDeclarators(stmt: Node): Node[] {
+  return stmt.type === "VariableDeclaration" ? (stmt.declarations ?? []) : [];
+}
+
+function arrayCandidateFromDecl(decl: Node): [string, Node[]] | null {
+  if (decl.id?.type !== "Identifier") return null;
+  if (decl.init?.type !== "ArrayExpression") return null;
+  return [decl.id.name, decl.init.elements ?? []];
+}
+
+function collectArrayCandidates(stmts: Node[]): Map<string, Node[]> {
+  const arrays = new Map<string, Node[]>();
+  for (const stmt of stmts) {
+    for (const decl of variableDeclarators(stmt)) {
+      const binding = arrayCandidateFromDecl(decl);
+      if (binding) arrays.set(binding[0], binding[1]);
+    }
+  }
+  return arrays;
+}
+
+function collectArrayBindings(stmts: Node[]): Map<string, Node[]> {
+  const arrays = collectArrayCandidates(stmts);
+  const mutated = mutatedNames(stmts, new Set(arrays.keys()));
+  for (const name of mutated) arrays.delete(name);
+  return arrays;
+}
+
+function countHelperStatementCalls(stmts: Node[], helpers: Map<string, Node>): Map<string, number> {
+  const names = new Set(helpers.keys());
+  const counts = new Map<string, number>();
+  walkNodes({ type: "Program", body: stmts }, (node) => {
+    const expression = node.type === "ExpressionStatement" ? node.expression : undefined;
+    if (
+      expression?.type === "CallExpression" &&
+      expression.callee?.type === "Identifier" &&
+      names.has(expression.callee.name)
+    ) {
+      bump(counts, expression.callee.name);
+    }
+  });
+  return counts;
+}
+
+function mergeMaps<T>(outer: Map<string, T>, inner: Map<string, T>): Map<string, T> {
+  return new Map([...outer, ...inner]);
+}
+
+function scopedCtxForStatements(
+  stmts: Node[],
+  ctx: ExpandCtx,
+): { ctx: ExpandCtx; helperCallCounts: Map<string, number>; localHelpers: Map<string, Node> } {
+  const localHelpers = collectInlinableHelpers({ type: "Program", body: stmts }, ctx.timelineVar);
+  const localArrays = collectArrayBindings(stmts);
+  return {
+    ctx: {
+      ...ctx,
+      helpers: mergeMaps(ctx.helpers, localHelpers),
+      arrayBindings: mergeMaps(ctx.arrayBindings, localArrays),
+    },
+    helperCallCounts: countHelperStatementCalls(stmts, localHelpers),
+    localHelpers,
+  };
+}
+
+function functionHelperDeclName(stmt: Node, helpers: Map<string, Node>): string | null {
+  if (stmt.type !== "FunctionDeclaration" || !stmt.id) return null;
+  return helpers.get(stmt.id.name) === stmt ? stmt.id.name : null;
+}
+
+function variableHelperDeclName(stmt: Node, helpers: Map<string, Node>): string | null {
   if (stmt.type === "VariableDeclaration" && stmt.declarations?.length === 1) {
     const d = stmt.declarations[0];
-    return d.id?.type === "Identifier" && helpers.get(d.id.name) === d.init;
+    return d.id?.type === "Identifier" && helpers.get(d.id.name) === d.init ? d.id.name : null;
   }
-  return false;
+  return null;
+}
+
+function helperDeclName(stmt: Node, helpers: Map<string, Node>): string | null {
+  return functionHelperDeclName(stmt, helpers) ?? variableHelperDeclName(stmt, helpers);
+}
+
+function isFullyExpandedHelperDecl(
+  stmt: Node,
+  helpers: Map<string, Node>,
+  helperCallCounts: Map<string, number>,
+  expandedHelperCalls: Map<string, number>,
+): boolean {
+  const name = helperDeclName(stmt, helpers);
+  if (!name) return false;
+  const expected = helperCallCounts.get(name) ?? 0;
+  return expected > 0 && (expandedHelperCalls.get(name) ?? 0) >= expected;
 }
 
 function bodyStatements(node: Node): Node[] {
@@ -345,6 +476,7 @@ function expandBody(
 
 function inlineHelper(call: Node, ctx: ExpandCtx): Node[] {
   const fn = ctx.helpers.get(call.callee.name);
+  bump(ctx.expandedHelperCalls, call.callee.name);
   const bindings = new Map<string, Node>();
   (fn.params ?? []).forEach((p: Node, i: number) => {
     const arg = call.arguments?.[i];
@@ -501,23 +633,39 @@ function callbackParamNames(cb: Node): { el: string | null; idx: string | null }
 }
 
 /** True for `[arrayLiteral].forEach` member callees. */
-function isForEachCall(callee: Node): boolean {
+function isForEachMember(callee: Node): boolean {
+  if (callee?.type !== "MemberExpression" || callee.property?.name !== "forEach") return false;
+  return true;
+}
+
+function inlineArrayElements(object: Node, ctx: ExpandCtx): Node[] | null {
+  if (object?.type === "ArrayExpression") return object.elements ?? [];
+  if (object?.type === "Identifier") return ctx.arrayBindings.get(object.name) ?? null;
+  return null;
+}
+
+function forEachElements(callee: Node, ctx: ExpandCtx): Node[] | null {
+  return isForEachMember(callee) ? inlineArrayElements(callee.object, ctx) : null;
+}
+
+function isForEachCall(callee: Node, ctx: ExpandCtx): boolean {
   return (
     callee?.type === "MemberExpression" &&
     callee.property?.name === "forEach" &&
-    callee.object?.type === "ArrayExpression"
+    forEachElements(callee, ctx) !== null
   );
 }
 
 /** The element array + callback of `[...].forEach(cb)`, or null. */
-function forEachTarget(call: Node): { elements: Node[]; cb: Node } | null {
-  if (!isForEachCall(call.callee)) return null;
+function forEachTarget(call: Node, ctx: ExpandCtx): { elements: Node[]; cb: Node } | null {
+  if (!isForEachCall(call.callee, ctx)) return null;
   const cb = call.arguments?.[0];
-  return isFunctionNode(cb) ? { elements: call.callee.object.elements ?? [], cb } : null;
+  const elements = forEachElements(call.callee, ctx);
+  return isFunctionNode(cb) && elements ? { elements, cb } : null;
 }
 
 function unrollForEach(call: Node, ctx: ExpandCtx): Node[] | null {
-  const target = forEachTarget(call);
+  const target = forEachTarget(call, ctx);
   if (!target) return null;
   const params = callbackParamNames(target.cb);
   if (!params) return null;
@@ -548,14 +696,35 @@ function expandStatement(stmt: Node, ctx: ExpandCtx): Node[] | null {
   return null;
 }
 
+function expandIifeBody(stmt: Node, ctx: ExpandCtx): void {
+  const expr = stmt.type === "ExpressionStatement" ? stmt.expression : undefined;
+  if (expr?.type !== "CallExpression") return;
+  const callee = expr.callee;
+  if (!isFunctionNode(callee) || callee.body?.type !== "BlockStatement") return;
+  callee.body.body = expandStatements(callee.body.body ?? [], { ...ctx, depth: ctx.depth + 1 });
+}
+
 function expandStatements(stmts: Node[], ctx: ExpandCtx): Node[] {
+  const scoped = scopedCtxForStatements(stmts, ctx);
+  const activeCtx = scoped.ctx;
   const out: Node[] = [];
   for (const stmt of stmts) {
-    const expanded = expandStatement(stmt, ctx);
+    const expanded = expandStatement(stmt, activeCtx);
     if (expanded) out.push(...expanded);
-    else out.push(stmt);
+    else {
+      expandIifeBody(stmt, activeCtx);
+      out.push(stmt);
+    }
   }
-  return out;
+  return out.filter(
+    (stmt) =>
+      !isFullyExpandedHelperDecl(
+        stmt,
+        scoped.localHelpers,
+        scoped.helperCallCounts,
+        activeCtx.expandedHelperCalls,
+      ),
+  );
 }
 
 /**
@@ -570,15 +739,15 @@ export function inlineComputedTimelines(
   timelineVar: string,
   resolve: LiteralResolver,
 ): void {
-  const helpers = collectInlinableHelpers(ast, timelineVar);
   const ctx: ExpandCtx = {
-    helpers,
+    helpers: new Map(),
+    arrayBindings: new Map(),
     timelineVar,
     resolve,
     depth: 0,
     site: { n: 0 },
     order: { n: 0 },
+    expandedHelperCalls: new Map(),
   };
-  const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
-  ast.body = expandStatements(body, ctx);
+  ast.body = expandStatements(ast.body ?? [], ctx);
 }

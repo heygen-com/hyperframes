@@ -1,0 +1,11 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="box"></div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+      window.__timelines["main"].to("#box", { x: 80, duration: 0.5, ease: "power2.out" }, 0);
+    </script>
+  </body>
+</html>

@@ -3,7 +3,11 @@ import { rawText } from "./text.ts";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/parsers";
 import { extractGsapLabels } from "@hyperframes/parsers/gsap-parser-acorn";
 import { parseAttrWrapper, type AttrEntry } from "./attr.ts";
-import { parseRegistrationPostamble, stripLegacyRegistrySetup } from "./registration.ts";
+import {
+  parseDirectRegistrationPostamble,
+  parseRegistrationPostamble,
+  stripLegacyRegistrySetup,
+} from "./registration.ts";
 
 interface AnimeProperty {
   key: string;
@@ -23,30 +27,44 @@ const PROP_RENAMES = new Map([
   ["transformPerspective", "perspective"],
 ]);
 
-export // fallow-ignore-next-line complexity
-function convertGsapScript(script: string, parsed: ParsedGsap): string {
-  const registration = parseRegistrationPostamble(parsed.postamble, parsed.timelineVar);
+// fallow-ignore-next-line complexity
+export function convertGsapScript(script: string, parsed: ParsedGsap): string {
+  const registration = parseRegistration(parsed);
   const registrationId = registration?.id ?? "main";
-  const rawPreamble = convertPreamble(parsed.preamble, parsed.timelineVar);
+  const rawPreamble = convertPreamble(parsed.preamble, parsed);
   const bodyIndent = wrapperBodyIndent(rawPreamble);
   const preamble = bodyIndent ? indentPreambleBody(rawPreamble, bodyIndent) : rawPreamble;
+  const markerLines = renderTimelineMarkers(parsed);
   const registrationCall = `${indentBlock(
     renderRegistration(registrationId, parsed.timelineVar, extractGsapLabels(script)),
     bodyIndent,
   )}${renderTrailingCloser(registration?.trailing ?? "")}`;
   const lines = [
     preamble,
-    ...parsed.animations.map((animation) =>
-      indentBlock(convertAnimation(animation, parsed.timelineVar), bodyIndent),
-    ),
+    ...(markerLines.length > 0 ? [indentBlock(NOOP_TARGET_DECL, bodyIndent)] : []),
+    ...renderTimelineEntries(parsed, markerLines).map((line) => indentBlock(line, bodyIndent)),
     registrationCall,
   ];
   return `\n${lines.filter((line) => line.length > 0).join("\n")}\n`;
 }
 
-function convertPreamble(preamble: string, timelineVar: string): string {
+function convertPreamble(preamble: string, parsed: ParsedGsap): string {
   const withoutRegistry = stripLegacyRegistrySetup(preamble).trim();
   const rewrittenUtils = rewriteGsapToArray(withoutRegistry);
+  const timelineVar = parsed.timelineVar;
+  if (parsed.sourceTimelineVar) {
+    const directTimelineDecl = new RegExp(
+      `${escapeRegExp(parsed.sourceTimelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^;]*\\)\\s*;?`,
+    );
+    return rewrittenUtils
+      .replace(
+        directTimelineDecl,
+        `const ${timelineVar} = anime.createTimeline({ autoplay: false });`,
+      )
+      .split("\n")
+      .map((line) => line.trimStart())
+      .join("\n");
+  }
   const timelineDecl = new RegExp(
     `\\b(const|let|var)\\s+${escapeRegExp(timelineVar)}\\s*=\\s*gsap\\.timeline\\s*\\([^;]*\\)\\s*;?`,
   );
@@ -58,6 +76,13 @@ function convertPreamble(preamble: string, timelineVar: string): string {
     .split("\n")
     .map((line) => line.trimStart())
     .join("\n");
+}
+
+function parseRegistration(parsed: ParsedGsap) {
+  if (parsed.registrationId) {
+    return parseDirectRegistrationPostamble(parsed.postamble, parsed.registrationId);
+  }
+  return parseRegistrationPostamble(parsed.postamble, parsed.timelineVar);
 }
 
 function rewriteGsapToArray(source: string): string {
@@ -92,6 +117,36 @@ function convertAnimation(animation: GsapAnimation, timelineVar: string): string
   const properties = buildProperties(animation);
   const position = milliseconds(animation.resolvedStart ?? 0);
   return renderAddCall(timelineVar, target, properties, position);
+}
+
+const NOOP_TARGET_DECL = "const __hfNoopTarget = { value: 0 };";
+
+function renderTimelineMarkers(parsed: ParsedGsap): Array<{ order: number; code: string }> {
+  return (parsed.timelineMarkers ?? []).map((marker) => ({
+    order: marker.order,
+    code: `${parsed.timelineVar}.add(__hfNoopTarget, { value: 0, duration: 0 }, ${milliseconds(marker.resolvedStart ?? 0)});`,
+  }));
+}
+
+function renderTimelineEntries(
+  parsed: ParsedGsap,
+  markers: Array<{ order: number; code: string }>,
+): string[] {
+  const lines: string[] = [];
+  let markerIndex = 0;
+  const sortedMarkers = [...markers].sort((a, b) => a.order - b.order);
+  parsed.animations.forEach((animation, index) => {
+    while (markerIndex < sortedMarkers.length && sortedMarkers[markerIndex]!.order <= index) {
+      lines.push(sortedMarkers[markerIndex]!.code);
+      markerIndex += 1;
+    }
+    lines.push(convertAnimation(animation, parsed.timelineVar));
+  });
+  while (markerIndex < sortedMarkers.length) {
+    lines.push(sortedMarkers[markerIndex]!.code);
+    markerIndex += 1;
+  }
+  return lines;
 }
 
 // fallow-ignore-next-line complexity
@@ -318,7 +373,7 @@ function renderAddCall(
   if (properties.some((property) => property.code.startsWith("[")) && oneLine.length > 95) {
     return `${timelineVar}.add(\n  ${target},\n  ${props},\n  ${position},\n);`;
   }
-  if (oneLine.length <= 110) return oneLine;
+  if (oneLine.length <= 95) return oneLine;
   if (properties.some((property) => property.code.includes("anime.stagger"))) {
     const propLines = properties.map(
       (property) => `    ${safeKey(property.key)}: ${property.code},`,

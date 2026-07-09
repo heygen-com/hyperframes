@@ -3,7 +3,7 @@ import type { GsapAnimation, ParsedGsap } from "@hyperframes/parsers";
 import { parseAttrWrapper } from "./attr.ts";
 import { rawText } from "./text.ts";
 import { addUniqueNote, note, statusFor } from "./notes.ts";
-import { parseRegistrationPostamble } from "./registration.ts";
+import { parseDirectRegistrationPostamble, parseRegistrationPostamble } from "./registration.ts";
 import type { ClassificationNote, CodemodClassification } from "./types.ts";
 
 const ALLOWED_EXTRAS = new Set(["stagger", "repeat", "yoyo"]);
@@ -23,9 +23,9 @@ export function classifyGsapScript(script: string, parsed: ParsedGsap): CodemodC
   const warnings: ClassificationNote[] = [];
 
   addRawSourceReasons(script, parsed, reasons);
-  addParsedReasons(parsed, reasons);
+  addParsedReasons(script, parsed, reasons);
   addAnimationReasons(parsed.animations, reasons, warnings);
-  if (parseRegistrationPostamble(parsed.postamble, parsed.timelineVar) === null) {
+  if (parseRegistration(parsed) === null) {
     addUniqueNote(
       reasons,
       note("unrecognized-postamble", "postamble is not only timeline registration"),
@@ -64,13 +64,16 @@ function addRawSourceReasons(
   if (hasAdvancedGsapUtils(script)) {
     addUniqueNote(reasons, note("gsap-utils-advanced", "gsap.utils usage beyond toArray"));
   }
-  if (hasTimelineControlCall(script, parsed.timelineVar)) {
+  if (parsed.unsupportedTimelineControls) {
     addUniqueNote(
       reasons,
       note("computed-timeline", "timeline call/add/addPause is not rewritten safely"),
     );
   }
-  const tweenBodies = gsapTweenArgumentSources(script, parsed.timelineVar);
+  const tweenBodies = gsapTweenArgumentSources(
+    script,
+    parsed.sourceTimelineVar ?? parsed.timelineVar,
+  );
   if (tweenBodies.some(hasTweenCallback)) {
     addUniqueNote(
       reasons,
@@ -84,11 +87,6 @@ function addRawSourceReasons(
     );
   }
   addPluginReasons(script, reasons);
-}
-
-function hasTimelineControlCall(script: string, timelineVar: string): boolean {
-  const escapedVar = escapeRegExp(timelineVar);
-  return new RegExp(`\\b${escapedVar}\\s*\\.\\s*(?:call|add|addPause)\\s*\\(`).test(script);
 }
 
 function gsapTweenArgumentSources(script: string, timelineVar: string): string[] {
@@ -229,13 +227,30 @@ function addPluginReasons(script: string, reasons: ClassificationNote[]): void {
   }
 }
 
-function addParsedReasons(parsed: ParsedGsap, reasons: ClassificationNote[]): void {
+// fallow-ignore-next-line complexity
+function addParsedReasons(script: string, parsed: ParsedGsap, reasons: ClassificationNote[]): void {
   if (!/^[A-Za-z_$][\w$]*$/.test(parsed.timelineVar)) {
     addUniqueNote(reasons, note("computed-timeline", "timeline is not a simple identifier"));
   }
   if (parsed.multipleTimelines || parsed.unsupportedTimelinePattern) {
     addUniqueNote(reasons, note("computed-timeline", "multiple or unsupported timelines"));
   }
+  if (parsed.animations.length === 0 && appearsToContainTweenSyntax(script)) {
+    addUniqueNote(
+      reasons,
+      note(
+        "computed-timeline",
+        "parser resolved zero animations from a script that appears to contain tweens",
+      ),
+    );
+  }
+  if (parsed.registrationId && parsed.animations.length === 0) {
+    addUniqueNote(reasons, note("computed-timeline", "empty direct-registration timeline"));
+  }
+}
+
+function appearsToContainTweenSyntax(script: string): boolean {
+  return /\.\s*(?:fromTo|from|to|set)\s*\(/.test(script);
 }
 
 // fallow-ignore-next-line complexity
@@ -253,9 +268,6 @@ function addStructureReasons(animation: GsapAnimation, reasons: ClassificationNo
   }
   if (animation.resolvedStart === undefined) {
     addUniqueNote(reasons, note("computed-timeline", "animation start could not be resolved"));
-  }
-  if (animation.provenance && animation.provenance.kind !== "literal") {
-    addUniqueNote(reasons, note("computed-timeline", "computed timeline construction"));
   }
   if (isNonSelectorTarget(animation.targetSelector)) {
     addUniqueNote(
@@ -386,4 +398,11 @@ function isEaseShimDivergence(ease: string): boolean {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseRegistration(parsed: ParsedGsap) {
+  if (parsed.registrationId) {
+    return parseDirectRegistrationPostamble(parsed.postamble, parsed.registrationId);
+  }
+  return parseRegistrationPostamble(parsed.postamble, parsed.timelineVar);
 }
