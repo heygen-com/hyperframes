@@ -5,6 +5,7 @@
   "title": "Radial Transitions",
   "description": "Showcase of radial wipe and reveal transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

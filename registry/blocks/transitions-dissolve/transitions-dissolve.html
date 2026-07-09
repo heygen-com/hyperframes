@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -221,170 +221,338 @@
 
     <script>
       (function () {
-        var tl = gsap.timeline({ paused: true });
-        var t = 0;
+        const tl = anime.createTimeline({ autoplay: false });
 
         // === TITLE CARD (3s) ===
-        tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
+        tl.add("#title-label", { opacity: 1, translateY: 0, duration: 400, ease: "outCubic" }, 300);
+        tl.add(
           "#title-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+          { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+          600,
         );
-        tl.fromTo(
-          "#title-count",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.4, ease: "power2.out" },
-          t + 1.0,
-        );
-        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
-        t += 3;
-
-        function resetScenes() {
-          tl.set(
-            "#scene1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 1,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#scene2",
-            {
-              opacity: 0,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 2,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#s1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              filter: "none",
-              skewX: 0,
-              scaleX: 1,
-              transformOrigin: "50% 50%",
-            },
-            t,
-          );
-          tl.set(
-            "#s2",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              filter: "none",
-              skewX: 0,
-              scaleX: 1,
-              transformOrigin: "50% 50%",
-            },
-            t,
-          );
-        }
+        tl.add("#title-count", { opacity: [0, 1], duration: 400, ease: "outCubic" }, 1000);
+        tl.add("#title-card", { opacity: 0, duration: 400, ease: "inOutCubic" }, 2400);
 
         // === TRANSITION 1: Crossfade ===
-        resetScenes();
-        tl.to("#info-1", { opacity: 1, duration: 0.3 }, t + 0.2);
-        var T = t + 1.5;
-        tl.to("#s1", { opacity: 0, duration: 0.5, ease: "power2.inOut" }, T);
-        tl.set("#scene2", { opacity: 1 }, T);
-        tl.fromTo("#s2", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.inOut" }, T);
-        t = T + 1.5 + 1.0;
-        tl.to("#info-1", { opacity: 0, duration: 0.2 }, t);
-        t += 0.5;
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add("#info-1", { opacity: 1, duration: 300 }, 3200);
+        tl.add("#s1", { opacity: 0, duration: 500, ease: "inOutCubic" }, 4500);
+        tl.add("#scene2", { opacity: 1, duration: 0 }, 4500);
+        tl.add("#s2", { opacity: [0, 1], duration: 500, ease: "inOutCubic" }, 4500);
+        tl.add("#info-1", { opacity: 0, duration: 200 }, 7000);
 
         // === TRANSITION 2: Blur Crossfade ===
-        resetScenes();
-        tl.to("#info-2", { opacity: 1, duration: 0.3 }, t + 0.2);
-        T = t + 1.5;
-        tl.to(
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add(
           "#s1",
-          { filter: "blur(10px)", scale: 1.03, opacity: 0, duration: 0.5, ease: "power2.inOut" },
-          T,
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          7500,
         );
-        tl.set("#scene2", { opacity: 1 }, T);
-        tl.fromTo(
+        tl.add(
           "#s2",
-          { filter: "blur(10px)", scale: 0.97, opacity: 0 },
-          { filter: "blur(0px)", scale: 1, opacity: 1, duration: 0.5, ease: "power2.inOut" },
-          T + 0.1,
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          7500,
         );
-        t = T + 1.5 + 1.0;
-        tl.to("#info-2", { opacity: 0, duration: 0.2 }, t);
-        t += 0.5;
+        tl.add("#info-2", { opacity: 1, duration: 300 }, 7700);
+        tl.add(
+          "#s1",
+          { filter: "blur(10px)", scale: 1.03, opacity: 0, duration: 500, ease: "inOutCubic" },
+          9000,
+        );
+        tl.add("#scene2", { opacity: 1, duration: 0 }, 9000);
+        tl.add(
+          "#s2",
+          {
+            filter: ["blur(10px)", "blur(0px)"],
+            scale: [0.97, 1],
+            opacity: [0, 1],
+            duration: 500,
+            ease: "inOutCubic",
+          },
+          9100,
+        );
+        tl.add("#info-2", { opacity: 0, duration: 200 }, 11500);
 
         // === TRANSITION 3: Focus Pull ===
-        resetScenes();
-        tl.to("#info-3", { opacity: 1, duration: 0.3 }, t + 0.2);
-        T = t + 1.5;
-        tl.to("#s1", { filter: "blur(15px)", duration: 0.5, ease: "power1.in" }, T);
-        tl.to("#s1", { opacity: 0, duration: 0.3, ease: "power2.in" }, T + 0.25);
-        tl.set("#scene2", { opacity: 1 }, T);
-        tl.fromTo(
-          "#s2",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.3, ease: "power2.out" },
-          T + 0.25,
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          12000,
         );
-        t = T + 1.5 + 1.0;
-        tl.to("#info-3", { opacity: 0, duration: 0.2 }, t);
-        t += 0.5;
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          12000,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          12000,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          12000,
+        );
+        tl.add("#info-3", { opacity: 1, duration: 300 }, 12200);
+        tl.add("#s1", { filter: "blur(15px)", duration: 500, ease: "inQuad" }, 13500);
+        tl.add("#s1", { opacity: 0, duration: 300, ease: "inCubic" }, 13750);
+        tl.add("#scene2", { opacity: 1, duration: 0 }, 13500);
+        tl.add("#s2", { opacity: [0, 1], duration: 300, ease: "outCubic" }, 13750);
+        tl.add("#info-3", { opacity: 0, duration: 200 }, 16000);
 
         // === TRANSITION 4: Color Dip ===
-        resetScenes();
-        tl.to("#info-4", { opacity: 1, duration: 0.3 }, t + 0.2);
-        T = t + 1.5;
-        tl.to("#s1", { opacity: 0, duration: 0.2, ease: "power2.in" }, T);
-        tl.set("#scene2", { opacity: 1 }, T);
-        tl.fromTo(
-          "#s2",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.2, ease: "power2.out" },
-          T + 0.25,
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          16500,
         );
-        t = T + 1.5 + 1.0;
-        tl.to("#info-4", { opacity: 0, duration: 0.2 }, t);
-        t += 0.5;
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          16500,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          16500,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          16500,
+        );
+        tl.add("#info-4", { opacity: 1, duration: 300 }, 16700);
+        tl.add("#s1", { opacity: 0, duration: 200, ease: "inCubic" }, 18000);
+        tl.add("#scene2", { opacity: 1, duration: 0 }, 18000);
+        tl.add("#s2", { opacity: [0, 1], duration: 200, ease: "outCubic" }, 18250);
+        tl.add("#info-4", { opacity: 0, duration: 200 }, 20500);
 
         // === OUTRO (3s) ===
-        tl.set("#scene1", { opacity: 0 }, t);
-        tl.set("#scene2", { opacity: 0 }, t);
-        tl.to("#outro-card", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, t);
-        tl.to("#outro-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 21000);
+        tl.add("#scene2", { opacity: 0, duration: 0 }, 21000);
+        tl.add("#outro-card", { opacity: 1, duration: 400, ease: "inOutCubic" }, 21000);
+        tl.add("#outro-label", { opacity: 1, duration: 400, ease: "outCubic" }, 21300);
+        tl.add(
           "#outro-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+          { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+          21600,
         );
-        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        tl.add("#outro-card", { opacity: 0, duration: 400, ease: "inOutCubic" }, 23400);
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["main"] = tl;
+        hyperframesAnime.register("main", tl);
       })();
     </script>
   </body>

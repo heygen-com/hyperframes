@@ -5,6 +5,7 @@
   "title": "Other Transitions",
   "description": "Showcase of miscellaneous creative transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

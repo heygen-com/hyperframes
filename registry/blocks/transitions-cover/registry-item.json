@@ -5,6 +5,7 @@
   "title": "Cover Transitions",
   "description": "Showcase of cover/uncover slide transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

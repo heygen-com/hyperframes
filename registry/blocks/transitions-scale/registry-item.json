@@ -5,6 +5,7 @@
   "title": "Scale Transitions",
   "description": "Showcase of scale and zoom transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

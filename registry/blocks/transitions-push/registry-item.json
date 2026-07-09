@@ -5,6 +5,7 @@
   "title": "Push Transitions",
   "description": "Showcase of push and slide transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080
