@@ -1,4 +1,4 @@
-import { GUTTER, TRACK_H, RULER_H, CLIP_Y } from "./timelineLayout";
+import { GUTTER, TRACK_H, RULER_H, CLIP_Y, getTimelineRowTop } from "./timelineLayout";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 
 /** Pointer must travel at least this far (either axis) before a pointerdown on
@@ -74,7 +74,7 @@ export function getTimelineClipRect(
   if (row < 0 || !Number.isFinite(pps) || pps <= 0) return null;
   return {
     left: GUTTER + clip.start * pps,
-    top: RULER_H + row * TRACK_H + CLIP_Y,
+    top: getTimelineRowTop(row) + CLIP_Y,
     width: Math.max(clip.duration * pps, MIN_CLIP_W),
     height: TRACK_H - CLIP_Y * 2,
   };

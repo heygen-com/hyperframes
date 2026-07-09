@@ -73,6 +73,9 @@ export function useTimelineRangeSelection({
 }: UseTimelineRangeSelectionInput) {
   const isRangeSelecting = useRef(false);
   const rangeAnchorTime = useRef(0);
+  // Reactive mirror of the scrub gesture (isDragging is a ref, so it can't drive
+  // rendering). Drives the playhead head's filled-vs-hollow state.
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const [rangeSelection, setRangeSelection] = useState<TimelineRangeSelection | null>(null);
   const shiftClickClipRef = useRef<{
     element: TimelineElement;
@@ -130,6 +133,7 @@ export function useTimelineRangeSelection({
       const scrollRect = scrollRef.current?.getBoundingClientRect();
       if (!point || !scrollRect || isTimelineRulerPress(e.clientY, scrollRect.top)) {
         isDragging.current = true;
+        setIsScrubbing(true);
         seekFromX(e.clientX);
         return;
       }
@@ -267,6 +271,7 @@ export function useTimelineRangeSelection({
     }
     seekFromX(pendingClientXRef.current);
     isDragging.current = false;
+    setIsScrubbing(false);
     cancelAnimationFrame(dragScrollRaf.current);
   }, [isDragging, dragScrollRaf, setShowPopover, seekFromX, elementsRef, onSelectElement]);
 
@@ -299,6 +304,7 @@ export function useTimelineRangeSelection({
     setRangeSelection,
     shiftClickClipRef,
     marqueeRect,
+    isScrubbing,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,

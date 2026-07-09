@@ -7,7 +7,7 @@ import {
   getTimelineClipRect,
   computeMarqueeSelection,
 } from "./timelineMarquee";
-import { GUTTER, TRACK_H, RULER_H, CLIP_Y } from "./timelineLayout";
+import { GUTTER, TRACK_H, RULER_H, CLIP_Y, getTimelineRowTop } from "./timelineLayout";
 
 describe("isTimelineRulerPress", () => {
   const rectTop = 500; // scroll container's viewport top
@@ -83,25 +83,25 @@ describe("getMarqueeRect", () => {
 describe("getTimelineClipRect", () => {
   const trackOrder = [0, 2, 5];
 
-  it("maps start/duration to x via pps and the track row to y via RULER_H/TRACK_H", () => {
+  it("maps start/duration to x via pps and the track row to y via the shared row→y helper", () => {
     const rect = getTimelineClipRect({ start: 2, duration: 3, track: 2 }, trackOrder, 100);
     expect(rect).toEqual({
       left: GUTTER + 200,
-      top: RULER_H + 1 * TRACK_H + CLIP_Y,
+      top: getTimelineRowTop(1) + CLIP_Y,
       width: 300,
       height: TRACK_H - CLIP_Y * 2,
     });
   });
 
-  it("places the first visible track directly under the ruler", () => {
+  it("places the first visible track below the ruler + top breathing pad", () => {
     const rect = getTimelineClipRect({ start: 0, duration: 1, track: 0 }, trackOrder, 50);
-    expect(rect?.top).toBe(RULER_H + CLIP_Y);
+    expect(rect?.top).toBe(getTimelineRowTop(0) + CLIP_Y);
     expect(rect?.left).toBe(GUTTER);
   });
 
   it("uses the row index in trackOrder, not the raw track number", () => {
     const rect = getTimelineClipRect({ start: 0, duration: 1, track: 5 }, trackOrder, 50);
-    expect(rect?.top).toBe(RULER_H + 2 * TRACK_H + CLIP_Y);
+    expect(rect?.top).toBe(getTimelineRowTop(2) + CLIP_Y);
   });
 
   it("enforces the 4px minimum rendered width", () => {
@@ -125,8 +125,8 @@ describe("computeMarqueeSelection", () => {
     { id: "b", start: 2, duration: 1, track: 0 }, // x [232,332], row 0
     { id: "c", start: 0.5, duration: 1, track: 1 }, // x [82,182], row 1
   ];
-  const row0Top = RULER_H + CLIP_Y;
-  const row1Top = RULER_H + TRACK_H + CLIP_Y;
+  const row0Top = getTimelineRowTop(0) + CLIP_Y;
+  const row1Top = getTimelineRowTop(1) + CLIP_Y;
 
   it("selects only the clips the marquee rect intersects", () => {
     const marquee = { left: GUTTER, top: row0Top, width: 50, height: 10 };

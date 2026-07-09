@@ -354,6 +354,7 @@ export const Timeline = memo(function Timeline({
     setRangeSelection,
     shiftClickClipRef,
     marqueeRect,
+    isScrubbing,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
@@ -486,6 +487,7 @@ export const Timeline = memo(function Timeline({
           hoveredClip={hoveredClip}
           draggedClip={draggedClip}
           resizingClip={resizingClip}
+          isScrubbing={isScrubbing}
           blockedClipRef={blockedClipRef}
           suppressClickRef={suppressClickRef}
           scrollRef={scrollRef}

@@ -9,7 +9,7 @@ import {
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H, RULER_H } from "./timelineLayout";
+import { TRACK_H, getTimelineRowFromY } from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
 import {
@@ -232,9 +232,10 @@ export function useTimelineClipDrag({
         dragMaxStart + drag.element.duration,
       );
       // rowFloat = the pointer's position in track-heights from the top lane; a
-      // near-boundary hover requests a deliberate new-track insert.
+      // near-boundary hover requests a deliberate new-track insert. Uses the
+      // shared row→y inverse so the top breathing pad is subtracted consistently.
       const rowFloat = scroll
-        ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
+        ? getTimelineRowFromY(clientY - scroll.getBoundingClientRect().top + scroll.scrollTop)
         : 0;
       const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
       const audioTracks = new Set(

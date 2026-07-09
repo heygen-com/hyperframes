@@ -8,6 +8,38 @@ export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
 /**
+ * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
+ * track-row y computation via {@link getTimelineRowTop} — never inline a magic
+ * offset; a track row's top is always `RULER_H + TRACKS_TOP_PAD + row*TRACK_H`.
+ *
+ * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
+ *   (~half a track height) so the first clip isn't jammed under the ruler.
+ * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
+ *   enough to comfortably drag a clip into the void to create a new bottom lane.
+ */
+export const TRACKS_TOP_PAD = Math.round(TRACK_H / 2);
+export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
+
+/**
+ * The y (content-space) of the top edge of track ROW index `row` (0 = first
+ * displayed lane). The single source of truth for row→y — the ruler height plus
+ * the top breathing pad plus whole track lanes above it. Every clip/ghost/
+ * placeholder/insertion top and every pointer-y→row inversion goes through this
+ * (or its inverse in {@link getTimelineRowFromY}) so the pad can never drift.
+ */
+export function getTimelineRowTop(row: number): number {
+  return RULER_H + TRACKS_TOP_PAD + row * TRACK_H;
+}
+
+/**
+ * Inverse of {@link getTimelineRowTop}: the fractional row index for a content-
+ * space y (used for insert-row / drop-lane decisions). Subtracts the ruler and
+ * top pad before dividing by the track height.
+ */
+export function getTimelineRowFromY(contentY: number): number {
+  return (contentY - RULER_H - TRACKS_TOP_PAD) / TRACK_H;
+}
+/**
  * While a clip drag is live, the rendered timeline extends this far past the
  * ghost's end so the right-edge auto-scroll zone always has room to keep
  * stepping — that's what lets a drag extend the timeline past its current
@@ -23,7 +55,6 @@ export const DRAG_EXTEND_MARGIN_PX = 160;
  * with 60s of ruler after it.
  */
 export const MIN_TIMELINE_EXTENT_S = 60;
-const TIMELINE_SCROLL_BUFFER = 20;
 
 /* ── Timeline duration ─────────────────────────────────────────────── */
 
@@ -237,7 +268,10 @@ export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): 
 }
 
 export function getTimelineCanvasHeight(trackCount: number): number {
-  return RULER_H + Math.max(0, trackCount) * TRACK_H + TIMELINE_SCROLL_BUFFER;
+  // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
+  // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space
+  // below the last lane is real scrollable surface, not a hidden buffer.
+  return RULER_H + TRACKS_TOP_PAD + Math.max(0, trackCount) * TRACK_H + TRACKS_BOTTOM_PAD;
 }
 
 /* ── UI helpers ───────────────────────────────────────────────────── */
@@ -302,12 +336,15 @@ export function resolveTimelineAssetDrop(
   clientY: number,
 ): { start: number; track: number } {
   const x = clientX - input.rectLeft + input.scrollLeft - GUTTER;
-  const y = clientY - input.rectTop + input.scrollTop - RULER_H;
+  const contentY = clientY - input.rectTop + input.scrollTop;
   const start = Math.max(
     0,
     Math.min(input.duration, Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100),
   );
-  const rowIndex = Math.floor(y / Math.max(input.trackHeight, 1));
+  // Row from the shared row→y inverse so the top pad is honoured; a drop in the
+  // pad above the first lane floors to row 0, a drop in the bottom pad rounds
+  // past the last lane (getDefaultDroppedTrack then appends a new track).
+  const rowIndex = Math.floor(getTimelineRowFromY(contentY));
   return {
     start,
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),

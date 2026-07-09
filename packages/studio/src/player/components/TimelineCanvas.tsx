@@ -12,13 +12,27 @@ import {
   type TimelineRangeSelection,
 } from "./timelineEditing";
 import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme";
-import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
+import {
+  GUTTER,
+  TRACK_H,
+  RULER_H,
+  CLIP_Y,
+  CLIP_HANDLE_W,
+  TRACKS_TOP_PAD,
+  TRACKS_BOTTOM_PAD,
+  getTimelineRowTop,
+} from "./timelineLayout";
 import {
   usePlayerStore,
   type TimelineElement,
   type KeyframeCacheEntry,
 } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
+import {
+  isMultiDragPassenger,
+  multiDragPassengerOffsetPx,
+  type MultiDragPreviewInput,
+} from "./timelineMultiDragPreview";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
@@ -60,6 +74,8 @@ interface TimelineCanvasProps {
   hoveredClip: string | null;
   draggedClip: DraggedClipState | null;
   resizingClip: ResizingClipState | null;
+  /** Playhead is being actively scrubbed — fills the grab-handle head. */
+  isScrubbing: boolean;
   blockedClipRef: React.RefObject<BlockedClipState | null>;
   suppressClickRef: React.RefObject<boolean>;
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -120,6 +136,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   hoveredClip,
   draggedClip,
   resizingClip: _resizingClip,
+  isScrubbing,
   blockedClipRef,
   suppressClickRef,
   scrollRef,
@@ -166,6 +183,19 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
+  // Live multi-selection drag: while a selected clip is dragged, its co-selected
+  // "passengers" preview the SAME time delta (cheap translateX, no re-layout),
+  // matching what the commit will do — see timelineMultiDragPreview + commit.
+  const multiDragPreview: MultiDragPreviewInput | null =
+    draggedClip?.started === true && draggedElement
+      ? {
+          dragStarted: true,
+          draggedKey: draggedElement.key ?? draggedElement.id,
+          draggedOriginStart: draggedElement.start,
+          draggedPreviewStart: draggedClip.previewStart,
+          selectedKeys: selectedElementIds,
+        }
+      : null;
   const activeDraggedPosition =
     draggedClip?.started === true && activeDraggedElement && scrollRef.current
       ? {
@@ -210,6 +240,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         theme={theme}
         beatAnalysis={beatAnalysis}
       />
+
+      {/* Breathing room between the sticky ruler and the first track lane — the
+          top half of the CapCut-style padding (see TRACKS_TOP_PAD). */}
+      <div aria-hidden="true" style={{ height: TRACKS_TOP_PAD }} />
 
       {
         // fallow-ignore-next-line complexity
@@ -333,7 +367,16 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                       (draggedElement?.key ?? draggedElement?.id) === elementKey;
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
-                    return (
+                    // Passenger of a live multi-drag: slide by the dragged clip's
+                    // delta via a compositor transform on a same-geometry wrapper
+                    // (absolute inset-0 → identical offset parent, so the clip's
+                    // own left/top are preserved), plus the ghost's elevated z/opacity.
+                    const isPassenger =
+                      multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
+                    const passengerOffsetPx = isPassenger
+                      ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
+                      : 0;
+                    const clip = (
                       <TimelineClip
                         key={clipKey}
                         onContextMenu={(e: React.MouseEvent) => {
@@ -498,6 +541,21 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         )}
                       </TimelineClip>
                     );
+                    if (!isPassenger) return clip;
+                    return (
+                      <div
+                        key={clipKey}
+                        className="absolute inset-0"
+                        style={{
+                          transform: `translateX(${passengerOffsetPx}px)`,
+                          opacity: 0.85,
+                          zIndex: 20,
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {clip}
+                      </div>
+                    );
                   })
                 }
               </div>
@@ -506,13 +564,18 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         })
       }
 
+      {/* Breathing room below the last track lane (~1.5 track heights) — a real
+          scrollable surface, so a clip can be dragged into the void to create a
+          new bottom track comfortably (see TRACKS_BOTTOM_PAD / getTimelineCanvasHeight). */}
+      <div aria-hidden="true" style={{ height: TRACKS_BOTTOM_PAD }} />
+
       {/* Drop placeholder — a clip-sized slot at the exact landing spot (target
           lane + snapped start), parallel to the ghost. Hidden in insert mode. */}
       {draggedClip?.started && draggedClip.insertRow == null && draggedRowIndex >= 0 && (
         <div
           className="absolute pointer-events-none"
           style={{
-            top: RULER_H + draggedRowIndex * TRACK_H + CLIP_Y,
+            top: getTimelineRowTop(draggedRowIndex) + CLIP_Y,
             left: GUTTER + draggedClip.previewStart * pps,
             width: Math.max(draggedClip.element.duration * pps, 4),
             height: TRACK_H - CLIP_Y * 2,
@@ -530,7 +593,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         <div
           className="absolute pointer-events-none"
           style={{
-            top: RULER_H + draggedClip.insertRow * TRACK_H - 1,
+            top: getTimelineRowTop(draggedClip.insertRow) - 1,
             left: GUTTER,
             width: trackContentWidth,
             height: 2,
@@ -641,7 +704,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           display: beatDragging ? "none" : undefined,
         }}
       >
-        <PlayheadIndicator />
+        <PlayheadIndicator scrubbing={isScrubbing} />
       </div>
     </div>
   );
