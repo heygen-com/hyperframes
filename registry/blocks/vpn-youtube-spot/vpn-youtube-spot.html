@@ -108,14 +108,18 @@
         background: rgba(52, 199, 89, 0.2);
       }
 
-      .snap-shadow {
+      .snap-shadow-frame {
         position: absolute;
         left: 50%;
         bottom: 132px;
+        transform: translateX(-50%);
+      }
+
+      .snap-shadow {
+        position: relative;
         width: 560px;
         height: 52px;
         border-radius: 50%;
-        transform: translateX(-50%);
         background: rgba(17, 17, 17, 0.14);
         filter: blur(24px);
         opacity: 0;
@@ -675,7 +679,9 @@
         <div class="ambient-word">SAFE</div>
         <div class="ambient-line line-a"></div>
         <div class="ambient-line line-b"></div>
-        <div class="snap-shadow"></div>
+        <div class="snap-shadow-frame">
+          <div class="snap-shadow"></div>
+        </div>
 
         <div class="phone">
           <div class="screen">
@@ -969,7 +975,7 @@
           const value = finalValue(target, key);
           if (value !== undefined) end[key] = value;
         });
-        addSet(target, start, position);
+        addSet(target, start, 0);
         addTo(target, Object.assign({}, fromVars, end), position);
       }
 
