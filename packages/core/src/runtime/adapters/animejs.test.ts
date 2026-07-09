@@ -232,6 +232,56 @@ describe("animejs adapter", () => {
 
       expect(card.style.visibility).toBe("");
     });
+
+    it("restores late-only primed style properties before their first keyframe", () => {
+      document.body.innerHTML = '<div id="scene1"></div>';
+      const scene = document.getElementById("scene1");
+      expect(scene).not.toBeNull();
+      if (!scene) return;
+
+      const clipTween = {
+        target: scene,
+        property: "clipPath",
+        _absoluteStartTime: 3000,
+        _hasFromValue: 0,
+        _next: null,
+      };
+      const fadeOutTween = {
+        target: scene,
+        property: "opacity",
+        _absoluteStartTime: 4750,
+        _hasFromValue: 0,
+        _next: clipTween,
+      };
+      const fadeInTween = {
+        target: scene,
+        property: "opacity",
+        _absoluteStartTime: 3000,
+        _hasFromValue: 0,
+        _next: fadeOutTween,
+      };
+      const timelineChild = {
+        _head: fadeInTween,
+        _next: null,
+      };
+      const instance = {
+        duration: 5000,
+        _head: timelineChild,
+        seek: vi.fn((timeMs: number) => {
+          if (timeMs >= 4750) {
+            scene.style.opacity = "0";
+            scene.style.setProperty("clip-path", "inset(100% 0 0 0)");
+          }
+        }),
+      };
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+      createAnimeJsAdapter().seek({ time: 2.844 });
+
+      expect(scene.style.opacity).toBe("");
+      expect(scene.style.getPropertyValue("clip-path")).toBe("");
+    });
   });
 
   describe("seek", () => {
