@@ -44,11 +44,11 @@ function editMap(edits: TimelineMoveEdit[]): Record<string, { start: number; tra
 }
 
 describe("commitDraggedClipMove", () => {
-  it("main-track drop ripples the whole lane in ONE batched call (no per-clip persist)", () => {
-    const elements = [el("v1", 1, 0, 5), el("v2", 1, 5, 4)]; // contiguous main lane (track 1)
+  it("free placement: a drop lands where dropped as a single move — no ripple, no batch, overlap allowed", () => {
+    const elements = [el("v1", 1, 0, 5), el("v2", 1, 5, 4)]; // two clips on lane 1
     const onMoveElement = vi.fn();
     const onMoveElements = vi.fn();
-    // Drag v1 past v2 (drop at 6) → reorder: v2 to 0, v1 flush after at 4.
+    // Drag v1 so it overlaps v2 (drop at 6) → lands exactly at 6 on lane 1; v2 untouched.
     commitDraggedClipMove(drag(elements[0], { previewStart: 6, previewTrack: 1 }), {
       elements,
       trackOrder: [1],
@@ -56,12 +56,9 @@ describe("commitDraggedClipMove", () => {
       onMoveElement,
       onMoveElements,
     });
-    expect(onMoveElement).not.toHaveBeenCalled();
-    expect(onMoveElements).toHaveBeenCalledTimes(1);
-    expect(editMap(onMoveElements.mock.calls[0][0])).toEqual({
-      v2: { start: 0, track: 1 },
-      v1: { start: 4, track: 1 },
-    });
+    expect(onMoveElements).not.toHaveBeenCalled();
+    expect(onMoveElement).toHaveBeenCalledTimes(1);
+    expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 1 });
   });
 
   it("track insert persists the dragged clip + shifts as ONE batched call", () => {

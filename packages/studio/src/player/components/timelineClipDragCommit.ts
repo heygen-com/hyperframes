@@ -1,7 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
-import { buildTrackInsert, reflowMainTrack } from "./timelineCollision";
-import { resolveMainOriginTrack } from "./timelineZones";
+import { buildTrackInsert } from "./timelineCollision";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -22,16 +21,13 @@ export interface DragCommitDeps {
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 
 /**
- * Commit a finished clip drag. Three cases:
+ * Commit a finished clip drag. Two cases (free-form model — no main-track magnet):
  *  - **Insert** (`insertRow != null`): create a new track at the boundary; the
  *    dragged clip takes it, other lanes shift (buildTrackInsert). Persisted as ONE
  *    atomic batch via `onMoveElements` (was N racing per-clip persists — the
  *    file-corruption bug, HANDOFF §7.1 / F2).
- *  - **Main-track drop**: the main lane is magnetic — reflow every main clip
- *    end-to-end (gap-close + insert-ripple, `reflowMainTrack`) and persist the
- *    whole lane atomically. Overlay/audio/caption lanes are untouched (free).
- *  - **Plain move** (overlay / audio / other lane): a single clip's start/track
- *    via the SDK-aware `onMoveElement`.
+ *  - **Plain move**: land the clip on the hovered lane at the dropped time, via
+ *    the SDK-aware single-clip `onMoveElement`. Overlaps are allowed; no magnet.
  */
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
@@ -86,35 +82,7 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     return;
   }
 
-  // ── Main-track drop: magnetic reflow of the whole main lane ─────────────────
-  const mainTrack = resolveMainOriginTrack(elements);
-  if (onMoveElements && mainTrack != null && drag.previewTrack === mainTrack) {
-    const draggedOnMain = drag.element.track === mainTrack;
-    // Reflow input = existing main clips (minus the dragged) + the dragged clip
-    // pinned to the main lane; reflowMainTrack orders it by preview start.
-    const reflowInput: TimelineElement[] = [
-      ...elements.filter((e) => e.track === mainTrack && keyOf(e) !== dragKey),
-      { ...drag.element, track: mainTrack },
-    ];
-    const changes = reflowMainTrack(reflowInput, dragKey, drag.previewStart);
-    const edits: TimelineMoveEdit[] = [];
-    for (const c of changes) {
-      const el = c.key === dragKey ? drag.element : elements.find((e) => keyOf(e) === c.key);
-      if (el) edits.push({ element: el, updates: { start: c.start, track: mainTrack } });
-    }
-    // Pure lane change (dragged moved onto main with no start change): still persist its track.
-    if (!changes.some((c) => c.key === dragKey) && !draggedOnMain) {
-      edits.push({
-        element: drag.element,
-        updates: { start: drag.element.start, track: mainTrack },
-      });
-    }
-    if (edits.length === 0) return;
-    commitBatch(edits);
-    return;
-  }
-
-  // ── Plain move (overlay / audio / other lane) ───────────────────────────────
+  // ── Plain move (free placement — land where dropped, overlaps allowed) ──────
   if (drag.previewStart === drag.element.start && drag.previewTrack === drag.element.track) return;
   commitSingle(drag.element, { start: drag.previewStart, track: drag.previewTrack });
 }

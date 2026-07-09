@@ -3,7 +3,6 @@ import type { TimelineElement } from "../store/playerStore";
 import {
   buildTrackInsert,
   isLaneFree,
-  reflowMainTrack,
   resolveInsertRow,
   resolvePlacement,
   snapClearOfClips,
@@ -213,34 +212,5 @@ describe("resolveInsertRow", () => {
 
   it("inserts below the bottom lane when the pointer is past the last lane", () => {
     expect(resolveInsertRow(3.4, n, 0.22)).toBe(3);
-  });
-});
-
-describe("reflowMainTrack", () => {
-  it("closes a leading gap (a clip starting at 3 with no predecessor → 0)", () => {
-    expect(reflowMainTrack([el("a", 1, 3, 5)], "x", NaN)).toEqual([{ key: "a", start: 0 }]);
-  });
-
-  it("closes an interior gap and lays clips end-to-end", () => {
-    // a stays at 0..5; b was at 8 → snaps flush to 5.
-    expect(reflowMainTrack([el("a", 1, 0, 5), el("b", 1, 8, 4)], "x", NaN)).toEqual([
-      { key: "b", start: 5 },
-    ]);
-  });
-
-  it("orders by the dragged clip's preview start, then lays end-to-end", () => {
-    // b dropped near 1 → order [a(0), b(1)] → a@0 unchanged, b laid at 5.
-    expect(reflowMainTrack([el("a", 1, 0, 5), el("b", 1, 20, 4)], "b", 1)).toEqual([
-      { key: "b", start: 5 },
-    ]);
-  });
-
-  it("returns empty when everything is already contiguous from 0", () => {
-    expect(reflowMainTrack([el("a", 1, 0, 5), el("b", 1, 5, 4)], "x", NaN)).toEqual([]);
-  });
-
-  it("handles a single already-anchored clip and an empty list", () => {
-    expect(reflowMainTrack([el("a", 1, 0, 5)], "x", NaN)).toEqual([]);
-    expect(reflowMainTrack([], "x", NaN)).toEqual([]);
   });
 });

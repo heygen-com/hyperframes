@@ -1,38 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 
 /**
- * Lay main-track clips end-to-end from 0 in intended-start order (the dragged
- * clip uses `draggedPreviewStart` for its ordering position; everything else
- * uses its current start). This single op does both gap-close (4b) and
- * insert-ripple (4c): after it, the main lane is a contiguous, gapless,
- * non-overlapping sequence. Returns only the clips whose start actually changed
- * (`key` = `el.key ?? el.id`), rounded to centiseconds to match the codebase's
- * timing precision. Deterministic, no I/O.
- */
-export function reflowMainTrack(
-  mainClips: TimelineElement[],
-  draggedKey: string,
-  draggedPreviewStart: number,
-): Array<{ key: string; start: number }> {
-  const keyOf = (e: TimelineElement) => e.key ?? e.id;
-  const intended = (e: TimelineElement) =>
-    keyOf(e) === draggedKey && Number.isFinite(draggedPreviewStart) ? draggedPreviewStart : e.start;
-  const ordered = [...mainClips].sort((a, b) => {
-    const d = intended(a) - intended(b);
-    if (d !== 0) return d;
-    return keyOf(a) < keyOf(b) ? -1 : 1; // stable tie-break on invariant id
-  });
-  const changed: Array<{ key: string; start: number }> = [];
-  let cursor = 0;
-  for (const clip of ordered) {
-    const start = Math.round(cursor * 100) / 100;
-    if (start !== clip.start) changed.push({ key: keyOf(clip), start });
-    cursor = start + clip.duration;
-  }
-  return changed;
-}
-
-/**
  * Fraction of a track height near a lane boundary that switches a vertical drag
  * from "target this lane" into "insert a new track at this boundary". Tuned by
  * feel — bigger = easier to hit boundaries (harder to land on a lane).

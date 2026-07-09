@@ -19,8 +19,7 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import { resolvePlacement, resolveInsertRow, snapClearOfClips } from "./timelineCollision";
-import { resolveMainOriginTrack } from "./timelineZones";
+import { resolveInsertRow } from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 
 const EMPTY_BEAT_TIMES: number[] = [];
@@ -211,16 +210,6 @@ export function useTimelineClipDrag({
         ppsRef.current,
         durationRef.current,
       );
-      // Collision-push: if the target lane is occupied at the drop time, land on
-      // the nearest free lane (preferring up). needsInsert is resolved later (2b/2c).
-      const placement = resolvePlacement({
-        elements: elementsRef.current,
-        desiredTrack: nextMove.track,
-        start: snap.start,
-        duration: drag.element.duration,
-        trackOrder: trackOrderRef.current,
-        excludeKey: drag.element.key ?? drag.element.id,
-      });
       // Insert mode: near a lane boundary (or past an edge) the drop inserts a new
       // track instead of landing on a lane. rowFloat is the pointer's position in
       // track-heights from the top of the first lane.
@@ -228,26 +217,17 @@ export function useTimelineClipDrag({
         ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
         : 0;
       const insertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
-      // Main-track magnet (no-overlap): when the clip lands on the main track (not
-      // an insert), snap its start clear of the other main clips instead of stacking.
-      const mainTrack = resolveMainOriginTrack(elementsRef.current);
-      const dragKey = drag.element.key ?? drag.element.id;
-      const previewStart =
-        insertRow === null && mainTrack !== null && placement.track === mainTrack
-          ? snapClearOfClips(
-              elementsRef.current.filter((e) => e.track === mainTrack),
-              snap.start,
-              drag.element.duration,
-              dragKey,
-            )
-          : snap.start;
+      // Free placement: land on the hovered lane at the (snapped) time. Overlaps are
+      // allowed — layered overlays are real HyperFrames content — so there's no
+      // collision-push to a free lane and no main-track magnet. Snapping (when the
+      // magnet toggle is on) still aligns edges to the playhead / clips / beats.
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart,
-        previewTrack: placement.track,
+        previewStart: snap.start,
+        previewTrack: nextMove.track,
         insertRow,
         snapTime: snap.snapTime,
         snapType: snap.snapType,
