@@ -913,43 +913,36 @@
               return lineBox.top - editorBox.top;
             }
 
-            function setTransformPoint(el, point) {
-              el.style.transform = "translate(" + point.x + "px, " + point.y + "px)";
-            }
-
-            function setLineHighlight(activeLine, y) {
-              activeLine.style.transform = "translateY(" + y + "px)";
-            }
-
             function buildTimeline(root, compositionId) {
               const tl = anime.createTimeline({ autoplay: false });
               const editor = root.querySelector(".editor");
               const caret = root.querySelector(".caret");
               const activeLine = root.querySelector(".active-line");
               const lineEls = [...root.querySelectorAll(".line")];
+              const lineNumberEls = lineEls.map((line) => line.querySelector(".line-number"));
+              const activeLineNumberColor = getComputedStyle(root)
+                .getPropertyValue("--gutter-active-fg")
+                .trim();
+              const inactiveLineNumberColor = getComputedStyle(root)
+                .getPropertyValue("--gutter-fg")
+                .trim();
               const lineStartTimes = [];
               const charSchedule = [];
-              const caretEvents = [{ time: 0, point: caretPointForLineStart(editor, lineEls[0]) }];
-              const stateChangeTimes = [0];
+              const initialCaretPoint = caretPointForLineStart(editor, lineEls[0]);
+              const caretEvents = [{ time: 0, point: initialCaretPoint }];
               let cursorTime = 950;
 
               lineEls.forEach((line, lineIndex) => {
                 const lineChars = [...line.querySelectorAll(".char")];
                 lineStartTimes[lineIndex] = cursorTime;
                 caretEvents.push({ time: cursorTime, point: caretPointForLineStart(editor, line) });
-                stateChangeTimes.push(cursorTime);
                 lineChars.forEach((char, charIndex) => {
                   const time = cursorTime + charIndex * 12;
                   charSchedule.push({ char, time });
                   caretEvents.push({ time: time + 2, point: caretPointForElement(editor, char) });
-                  stateChangeTimes.push(time, time + 2);
                 });
                 cursorTime += Math.max(lineChars.length * 12, 80) + 45;
               });
-
-              for (let i = 0; i <= 26; i++) {
-                stateChangeTimes.push(950 + i * 340);
-              }
 
               function caretOpacityAt(time) {
                 if (time < 950 || time >= 950 + 26 * 340) return "1";
@@ -957,42 +950,52 @@
                 return step % 2 === 0 ? "0" : "1";
               }
 
-              function renderStateFor(time) {
-                const activeIndex = lineStartTimes.reduce(
-                  (latest, lineTime, index) => (time >= lineTime ? index : latest),
-                  0,
+              const initialLineY = lineHighlightY(editor, lineEls[0]);
+              activeLine.style.transform = "translateY(" + initialLineY + "px)";
+              caret.style.transform =
+                "translate(" + initialCaretPoint.x + "px, " + initialCaretPoint.y + "px)";
+              caret.style.opacity = "1";
+              lineNumberEls.forEach((lineNumber, index) => {
+                lineNumber.style.color =
+                  index === 0 ? activeLineNumberColor : inactiveLineNumberColor;
+              });
+
+              tl.add(
+                caret,
+                { translateX: initialCaretPoint.x, translateY: initialCaretPoint.y, duration: 0 },
+                0,
+              );
+              tl.add(caret, { opacity: 1, duration: 0 }, 0);
+              for (let i = 0; i <= 26; i++) {
+                const time = 950 + i * 340;
+                tl.add(caret, { opacity: caretOpacityAt(time), duration: 0 }, time);
+              }
+              caretEvents.forEach(({ time, point }) => {
+                tl.add(caret, { translateX: point.x, translateY: point.y, duration: 0 }, time);
+              });
+
+              tl.add(activeLine, { translateY: initialLineY, duration: 0 }, 0);
+              tl.add(lineNumberEls, { color: inactiveLineNumberColor, duration: 0 }, 0);
+              tl.add(lineNumberEls[0], { color: activeLineNumberColor, duration: 0 }, 0);
+              lineStartTimes.forEach((time, lineIndex) => {
+                tl.add(
+                  activeLine,
+                  { translateY: lineHighlightY(editor, lineEls[lineIndex]), duration: 0 },
+                  time,
                 );
-                const active = lineEls[activeIndex] || lineEls[0];
-                setLineHighlight(activeLine, lineHighlightY(editor, active));
-                lineEls.forEach((item) => item.classList.toggle("is-active", item === active));
+                tl.add(lineNumberEls, { color: inactiveLineNumberColor, duration: 0 }, time);
+                tl.add(
+                  lineNumberEls[lineIndex],
+                  { color: activeLineNumberColor, duration: 0 },
+                  time,
+                );
+              });
 
-                charSchedule.forEach(({ char, time: charTime }) => {
-                  char.style.opacity = time >= charTime ? "1" : "0";
-                });
-
-                for (let i = caretEvents.length - 1; i >= 0; i--) {
-                  if (time >= caretEvents[i].time) {
-                    setTransformPoint(caret, caretEvents[i].point);
-                    break;
-                  }
-                }
-                caret.style.opacity = caretOpacityAt(time);
-              }
-
-              const stateChanges = stateChangeTimes
-                .sort((a, b) => a - b)
-                .map((time) => ({ time, apply: () => renderStateFor(time) }));
-
-              function applyStateAt(time) {
-                for (let i = stateChanges.length - 1; i >= 0; i--) {
-                  if (time >= stateChanges[i].time) {
-                    stateChanges[i].apply();
-                    break;
-                  }
-                }
-              }
-
-              applyStateAt(0);
+              const charEls = charSchedule.map(({ char }) => char);
+              tl.add(charEls, { opacity: 0, duration: 0 }, 0);
+              charSchedule.forEach(({ char, time }) => {
+                tl.add(char, { opacity: 1, duration: 0 }, time);
+              });
 
               tl.add(
                 root.querySelector(".header"),
@@ -1011,19 +1014,6 @@
                 100,
               );
               tl.add(activeLine, { opacity: [0, 1], duration: 220, ease: "outCubic" }, 740);
-
-              const driver = { t: 0 };
-              const totalMs = Math.round((Number(root.dataset.duration) || 11) * 1000);
-              tl.add(
-                driver,
-                {
-                  t: totalMs,
-                  duration: totalMs,
-                  ease: "linear",
-                  onUpdate: () => applyStateAt(driver.t),
-                },
-                0,
-              );
               tl.add(
                 root.querySelector(".terminal"),
                 { translateY: [140, 0], opacity: [0, 1], duration: 560, ease: "outQuart" },

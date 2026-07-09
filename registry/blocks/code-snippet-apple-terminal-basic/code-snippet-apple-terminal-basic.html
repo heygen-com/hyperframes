@@ -194,73 +194,60 @@
         '<span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block" id="final-cursor"></span>';
       inputLine.parentNode.appendChild(finalPrompt);
       const finalCursorEl = document.getElementById("final-cursor");
-      const stateChangeTimes = [0];
       const charDuration = 1.5 / command.length;
-
-      command.split("").forEach((_, i) => {
-        stateChangeTimes.push((0.5 + i * charDuration) * 1000);
-      });
-      outputLines.forEach((_, i) => {
-        stateChangeTimes.push((i === 0 ? 2.3 : 2.8 + i * 0.08) * 1000);
-      });
-      stateChangeTimes.push(2200, 2500, 4000);
+      const hideCursorTimeMs = 2200;
+      const clearCommandTimeMs = 2500;
+      const promptTimeMs = 4000;
+      const finalCursorStopMs = 6600;
       const blinkTimes = [4.2, 4.6, 5.0, 5.4, 5.8, 6.2];
-      blinkTimes.forEach((t, i) => {
-        stateChangeTimes.push(t * 1000);
+
+      finalPrompt.style.display = "none";
+
+      const typedChars = command.split("").map((char) => {
+        const span = document.createElement("span");
+        span.textContent = char;
+        span.style.display = "none";
+        span.style.opacity = "0";
+        typedEl.appendChild(span);
+        return span;
       });
-      stateChangeTimes.push(6600);
 
-      function typedTextAt(timeMs) {
-        if (timeMs >= 2500) return "";
-        if (timeMs < 500) return "";
-        const charIndex = Math.floor((timeMs / 1000 - 0.5) / charDuration);
-        return command.slice(0, Math.max(0, Math.min(command.length, charIndex + 1)));
-      }
-
-      function finalCursorOpacityAt(timeMs) {
-        if (timeMs >= 6600) return "1";
-        let opacity = "1";
-        blinkTimes.forEach((t, i) => {
-          if (timeMs >= t * 1000) opacity = i % 2 === 0 ? "0" : "1";
-        });
-        return opacity;
-      }
-
-      function renderStateFor(timeMs) {
-        typedEl.textContent = typedTextAt(timeMs);
-        cursorEl.style.opacity = timeMs >= 2200 ? "0" : "1";
-        inputLine.style.display = timeMs >= 4000 ? "none" : "flex";
-        finalPrompt.style.display = timeMs >= 4000 ? "flex" : "none";
-        finalCursorEl.style.opacity = finalCursorOpacityAt(timeMs);
-
-        outputLines.forEach((line, i) => {
-          const revealTimeMs = (i === 0 ? 2.3 : 2.8 + i * 0.08) * 1000;
-          line.style.opacity = timeMs >= revealTimeMs ? "1" : "0";
-        });
-      }
-
-      const stateChanges = stateChangeTimes
-        .sort((a, b) => a - b)
-        .map((t) => ({ t, apply: () => renderStateFor(t) }));
-
-      function applyStateAt(timeMs) {
-        for (let i = stateChanges.length - 1; i >= 0; i--) {
-          if (timeMs >= stateChanges[i].t) {
-            stateChanges[i].apply();
-            break;
-          }
-        }
+      function outputRevealTimeMs(index) {
+        return (index === 0 ? 2.3 : 2.8 + index * 0.08) * 1000;
       }
 
       const tl = anime.createTimeline({ autoplay: false });
-      const driver = { t: 0 };
-      const totalMs = 6600;
-      applyStateAt(0);
-      tl.add(
-        driver,
-        { t: totalMs, duration: totalMs, ease: "linear", onUpdate: () => applyStateAt(driver.t) },
-        0,
-      );
+      const durationAnchor = { t: 0 };
+      tl.add(durationAnchor, { t: 1, duration: finalCursorStopMs, ease: "linear" }, 0);
+
+      tl.add(typedChars, { display: "none", opacity: 0, duration: 0 }, 0);
+      typedChars.forEach((span, i) => {
+        tl.add(
+          span,
+          { display: "inline", opacity: 1, duration: 0 },
+          (0.5 + i * charDuration) * 1000,
+        );
+      });
+      tl.add(typedChars, { display: "none", opacity: 0, duration: 0 }, clearCommandTimeMs);
+
+      tl.add(cursorEl, { opacity: 1, duration: 0 }, 0);
+      tl.add(cursorEl, { opacity: 0, duration: 0 }, hideCursorTimeMs);
+
+      tl.add(inputLine, { display: "flex", duration: 0 }, 0);
+      tl.add(inputLine, { display: "none", duration: 0 }, promptTimeMs);
+      tl.add(finalPrompt, { display: "none", duration: 0 }, 0);
+      tl.add(finalPrompt, { display: "flex", duration: 0 }, promptTimeMs);
+
+      tl.add(finalCursorEl, { opacity: 1, duration: 0 }, 0);
+      blinkTimes.forEach((t, i) => {
+        tl.add(finalCursorEl, { opacity: i % 2 === 0 ? 0 : 1, duration: 0 }, t * 1000);
+      });
+      tl.add(finalCursorEl, { opacity: 1, duration: 0 }, finalCursorStopMs);
+
+      tl.add(outputLines, { opacity: 0, duration: 0 }, 0);
+      outputLines.forEach((line, i) => {
+        tl.add(line, { opacity: 1, duration: 0 }, outputRevealTimeMs(i));
+      });
 
       hyperframesAnime.register("code-snippet-apple-terminal-basic", tl);
     </script>
