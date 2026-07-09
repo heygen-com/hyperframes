@@ -131,3 +131,105 @@ export function FlatSegmentedRow({
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  FlatGroup — one-open-at-a-time accordion group (controlled)        */
+/* ------------------------------------------------------------------ */
+
+export function FlatGroup({
+  title,
+  isOpen,
+  isPinned,
+  onToggleOpen,
+  onTogglePin,
+  accessory,
+  summary,
+  children,
+}: {
+  title: string;
+  isOpen: boolean;
+  isPinned: boolean;
+  onToggleOpen: () => void;
+  onTogglePin: () => void;
+  accessory?: ReactNode;
+  summary?: string;
+  children: ReactNode;
+}) {
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        data-flat-group-collapsed="true"
+        onClick={onToggleOpen}
+        className="flex min-h-10 w-full items-center justify-between gap-2 border-b border-panel-hairline px-4 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
+          {summary && (
+            <span className="min-w-0 truncate font-mono text-[9px] text-panel-text-4">
+              {summary}
+            </span>
+          )}
+        </span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="currentColor"
+          className="flex-shrink-0 text-panel-text-5"
+        >
+          <path d="M4 2l4 4-4 4z" />
+        </svg>
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-b border-panel-hairline px-4 py-3" data-flat-group-open="true">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
+        <span className="flex items-center gap-2.5 text-panel-text-5">
+          {accessory}
+          <button
+            type="button"
+            data-flat-group-pin="true"
+            title={isPinned ? "Unpin" : "Pin"}
+            onClick={onTogglePin}
+            className={isPinned ? "text-panel-accent" : "text-panel-text-5 hover:text-panel-text-3"}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onToggleOpen}
+            title="Collapse"
+            className="text-panel-text-3"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M2 4l4 4 4-4z" />
+            </svg>
+          </button>
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PinnedZoneDivider                                                   */
+/* ------------------------------------------------------------------ */
+
+export function PinnedZoneDivider() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2">
+      <span className="h-px flex-1 bg-panel-hairline" aria-hidden="true" />
+      <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-panel-text-5">
+        one open below
+      </span>
+      <span className="h-px flex-1 bg-panel-hairline" aria-hidden="true" />
+    </div>
+  );
+}
