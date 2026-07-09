@@ -1970,7 +1970,18 @@ export async function executeRenderJob(
       );
       workerCount = 1;
     }
-    updateCaptureObservability({ workerCount, deWorkerInversion, deParallelRouter });
+    updateCaptureObservability({
+      workerCount,
+      deWorkerInversion,
+      deParallelRouter,
+      // Recorded here (not just in the success-path perfSummary) so a hard
+      // failure while routed/inverted still tells us what worker count the
+      // resolver would have used absent the experiment — the DE-router pin
+      // to 3 workers regardless of calibration is the leading suspect for
+      // any resource-pressure failure unique to this cohort.
+      dePreInversionWorkers: deWorkerInversion ? preRoutingWorkerCount : undefined,
+      dePreRouterWorkers: deParallelRouter ? preRoutingWorkerCount : undefined,
+    });
     observability.checkpoint("worker_resolution", "resolved", {
       workerCount,
       deWorkerInversion: deWorkerInversion ?? "none",

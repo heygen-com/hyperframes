@@ -34,6 +34,18 @@ export interface RenderObservabilityTelemetryPayload {
   capturePlayerReadyTimeoutMs?: number;
   captureTransientRetries?: number;
   captureMemoryExhaustionDetected?: boolean;
+  // Mirror of the DE inversion/router state on `RenderCaptureObservability` —
+  // sourced from the live-mutated capture object rather than `perfSummary`,
+  // so a hard failure (crash, OOM, timeout) that never reaches perfSummary
+  // construction still reports which DE experiment cohort it was in. Mapped
+  // to the SAME `de_*` event keys `trackRenderComplete` sets explicitly from
+  // `perfSummary.drawElement`; the caller must spread this payload FIRST so
+  // the more authoritative perfSummary value wins when both are present.
+  captureDeWorkerInversion?: string;
+  captureDePreInversionWorkers?: number;
+  captureDeParallelRouter?: string;
+  captureDePreRouterWorkers?: number;
+  captureDeSelfVerifyFallback?: boolean;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -79,6 +91,11 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     capture_player_ready_timeout_ms: props.capturePlayerReadyTimeoutMs,
     capture_transient_retries: props.captureTransientRetries,
     capture_memory_exhaustion_detected: props.captureMemoryExhaustionDetected,
+    de_worker_inversion: props.captureDeWorkerInversion,
+    de_pre_inversion_workers: props.captureDePreInversionWorkers,
+    de_parallel_router: props.captureDeParallelRouter,
+    de_pre_router_workers: props.captureDePreRouterWorkers,
+    de_self_verify_fallback: props.captureDeSelfVerifyFallback,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,
@@ -189,6 +206,11 @@ export function trackRenderComplete(
   trackEvent(
     "render_complete",
     {
+      // Spread first: explicit de_* keys below (sourced from the more
+      // authoritative perfSummary.drawElement, always present on this
+      // success path) must win over the observability-capture fallback
+      // this shares with trackRenderError's failure path.
+      ...renderObservabilityEventProperties(props),
       duration_ms: props.durationMs,
       fps: props.fps,
       quality: props.quality,
@@ -252,7 +274,6 @@ export function trackRenderComplete(
       extract_phase3_ms: props.extractPhase3Ms,
       extract_cache_hits: props.extractCacheHits,
       extract_cache_misses: props.extractCacheMisses,
-      ...renderObservabilityEventProperties(props),
     },
     props.distinctId,
   );

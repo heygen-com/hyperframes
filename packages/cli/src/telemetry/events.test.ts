@@ -51,6 +51,50 @@ describe("render telemetry events", () => {
     );
   });
 
+  it("carries the DE parallel-router/inversion cohort on render_error (hard failure, not just self-verify revert)", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      errorMessage: "worker crashed",
+      captureDeParallelRouter: "routed",
+      captureDePreRouterWorkers: 2,
+      captureWorkerCount: 3,
+      captureMemoryExhaustionDetected: true,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({
+        de_parallel_router: "routed",
+        de_pre_router_workers: 2,
+        capture_worker_count: 3,
+        capture_memory_exhaustion_detected: true,
+      }),
+      undefined,
+    );
+  });
+
+  it("prefers the explicit perfSummary-sourced de_worker_inversion over the capture-observability fallback on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      gpu: false,
+      deWorkerInversion: "inverted",
+      // Simulates a stale/divergent capture-observability value — the explicit
+      // perfSummary field above must win, not this one.
+      captureDeWorkerInversion: "reverted",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({ de_worker_inversion: "inverted" }),
+      undefined,
+    );
+  });
+
   it("emits render_preflight_rejected with the low-cardinality issue kind", () => {
     trackRenderPreflightRejected({ kind: "aspect-mismatch" });
     expect(trackEvent).toHaveBeenCalledWith("render_preflight_rejected", {

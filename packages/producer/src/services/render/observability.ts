@@ -44,8 +44,12 @@ export interface RenderCaptureObservability {
   deSelfVerifyFallback?: boolean;
   /** Auto-parallel inversion outcome: "inverted" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
   deWorkerInversion?: "inverted" | "reverted";
+  /** Worker count the resolver would have used absent the inversion; undefined if it never fired. */
+  dePreInversionWorkers?: number;
   /** DE parallel-router outcome: "routed" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
   deParallelRouter?: "routed" | "reverted";
+  /** Worker count the resolver would have used absent the router; undefined if it never fired. */
+  dePreRouterWorkers?: number;
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;

@@ -38,3 +38,31 @@ describe("renderObservabilityTelemetryPayload — render-reliability counters", 
     expect(payload.captureMemoryExhaustionDetected).toBeUndefined();
   });
 });
+
+describe("renderObservabilityTelemetryPayload — DE inversion/router cohort (failure-path visibility)", () => {
+  it("maps the router cohort and its pre-router worker count", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deParallelRouter: "routed", dePreRouterWorkers: 2 }),
+    );
+    expect(payload.captureDeParallelRouter).toBe("routed");
+    expect(payload.captureDePreRouterWorkers).toBe(2);
+    expect(payload.captureDeWorkerInversion).toBeUndefined();
+    expect(payload.captureDePreInversionWorkers).toBeUndefined();
+  });
+
+  it("maps the inversion cohort and its pre-inversion worker count", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deWorkerInversion: "inverted", dePreInversionWorkers: 4 }),
+    );
+    expect(payload.captureDeWorkerInversion).toBe("inverted");
+    expect(payload.captureDePreInversionWorkers).toBe(4);
+    expect(payload.captureDeParallelRouter).toBeUndefined();
+  });
+
+  it("carries deSelfVerifyFallback so a hard failure mid-verify is still visible", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deParallelRouter: "routed", deSelfVerifyFallback: true }),
+    );
+    expect(payload.captureDeSelfVerifyFallback).toBe(true);
+  });
+});
