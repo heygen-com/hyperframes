@@ -180,6 +180,14 @@ export function useTimelineClipDrag({
   const updateDraggedClipPreview = useCallback(
     (drag: DraggedClipState, clientX: number, clientY: number): DraggedClipState => {
       const scroll = scrollRef.current;
+      // Allow dragging past the current content into the rendered timeline extent
+      // (the viewport-fill keeps that ≥ the viewport width). The composition grows
+      // to fit on commit (content-driven duration), so don't cap at content length.
+      const pps = ppsRef.current;
+      const dragMaxStart = Math.max(
+        durationRef.current,
+        scroll && pps > 0 ? scroll.scrollWidth / pps : durationRef.current,
+      );
       const nextMove = resolveTimelineMove(
         {
           start: drag.element.start,
@@ -191,9 +199,9 @@ export function useTimelineClipDrag({
           originScrollTop: drag.originScrollTop,
           currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
           currentScrollTop: scroll?.scrollTop ?? drag.originScrollTop,
-          pixelsPerSecond: ppsRef.current,
+          pixelsPerSecond: pps,
           trackHeight: TRACK_H,
-          maxStart: Math.max(0, durationRef.current - drag.element.duration),
+          maxStart: dragMaxStart,
           trackOrder: trackOrderRef.current,
         },
         clientX,
@@ -209,8 +217,10 @@ export function useTimelineClipDrag({
         nextMove.start,
         drag.element.duration,
         targets,
-        ppsRef.current,
-        durationRef.current,
+        pps,
+        // Relaxed clamp: allow the snapped start past the content, up to the
+        // rendered extent (see dragMaxStart) — the composition grows on commit.
+        dragMaxStart + drag.element.duration,
       );
       // rowFloat = the pointer's position in track-heights from the top lane; a
       // near-boundary hover requests a deliberate new-track insert.
