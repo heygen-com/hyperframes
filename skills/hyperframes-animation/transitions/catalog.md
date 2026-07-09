@@ -1,6 +1,6 @@
 # Transition Catalog
 
-Hard rules, scene template, and routing to implementation code. Read the reference file for the transition type you need - don't load all of them.
+Hard rules, scene template, and routing to implementation code. Read the reference file for the transition type you need, don't load all of them.
 
 ## Contents
 
@@ -16,7 +16,7 @@ These cause real bugs if violated.
 
 **Scene visibility:** Scene 1 visible by default (no `opacity: 0`). Scenes 2+ have `opacity: 0` on the CONTAINER div. Anime.js reveals them. No visibility shim (`timedEls`).
 
-**Fonts:** Just write the `font-family` you want - the compiler embeds supported fonts automatically via `@font-face` with inline data URIs. No need for `<link>` tags or `@import`. Works in all contexts including sandboxed iframes.
+**Fonts:** Just write the `font-family` you want, the compiler embeds supported fonts automatically via `@font-face` with inline data URIs. No need for `<link>` tags or `@import`. Works in all contexts including sandboxed iframes.
 
 **Element structure:** No `class="clip"` on scene divs in standalone compositions. Only the root div gets `data-composition-id`/`data-start`/`data-duration`.
 
@@ -123,4 +123,4 @@ All code examples use `old` for the outgoing scene-inner selector and `new` for 
 
 WebGL shader transitions are provided by `@hyperframes/shader-transitions` (`packages/shader-transitions/`). The package handles setup, capture, WebGL init, render loop, and its own internal GSAP integration by design. Surrounding scene tweens in the same composition can still be authored with anime.js. Read the package source for available shaders and API, do not copy raw GLSL manually.
 
-The built-ins are not a ceiling. For an effect no built-in covers, you can write custom GLSL from scratch, adapt shader code found online (ShaderToy, GLSL Sandbox, GitHub), or build a custom CSS transition that fits no existing category - combine clip-path, transforms, and filters in new ways. If the storyboard calls for an effect that doesn't exist yet, build it; the framework renders anything a browser can run.
+The built-ins are not a ceiling. For an effect no built-in covers, you can write custom GLSL from scratch, adapt shader code found online (ShaderToy, GLSL Sandbox, GitHub), or build a custom CSS transition that fits no existing category, combine clip-path, transforms, and filters in new ways. If the storyboard calls for an effect that doesn't exist yet, build it; the framework renders anything a browser can run.

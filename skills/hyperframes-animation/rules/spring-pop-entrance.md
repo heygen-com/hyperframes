@@ -1,24 +1,24 @@
 ---
 name: spring-pop-entrance
-description: The canonical entrance pop - an element (or staggered group) arrives by scaling 0 → 1 on a smooth long-tail settle (outQuart default); bouncy overshoot is a rare, explicitly-playful exception. Explicit anime value pairs keep it correct at t=0 under seek.
+description: The canonical entrance pop: an element (or staggered group) arrives by scaling 0 → 1 on a smooth long-tail settle (outQuart default); bouncy overshoot is a rare, explicitly-playful exception. Explicit anime value pairs keep it correct at t=0 under seek.
 metadata:
   tags: spring, entrance, pop, scale, outQuart, settle, stagger, reveal, arrival
 ---
 
 # Spring-Pop Entrance
 
-> **Smooth beats bouncy.** Per the motion doctrine (`references/motion-language.md`), this entrance **defaults to a smooth long-tail settle - `outQuart` (or `outExpo` for a faster arrival)** that decelerates cleanly into the resting size with **no overshoot**. Bouncy `outBack` overshoot is the **#1 instant turn-off** in agent-made videos and is almost never executed well; it is demoted here to a **rare, explicitly-playful exception** (a consumer / fun brand), never the default. When unsure, settle smoothly.
+> **Smooth beats bouncy.** Per the motion doctrine (`references/motion-language.md`), this entrance **defaults to a smooth long-tail settle, `outQuart` (or `outExpo` for a faster arrival)** that decelerates cleanly into the resting size with **no overshoot**. Bouncy `outBack` overshoot is the **#1 instant turn-off** in agent-made videos and is almost never executed well; it is demoted here to a **rare, explicitly-playful exception** (a consumer / fun brand), never the default. When unsure, settle smoothly.
 
-THE entrance primitive: an element (or a staggered group of them) arrives on screen by springing from nothing - `scale: 0 → 1`, optionally with a small `y` rise - riding a **smooth long-tail ease (`outQuart` default)** so it grows confidently into its resting size and settles without bouncing. This is **arrival**, not reaction.
+THE entrance primitive: an element (or a staggered group of them) arrives on screen by springing from nothing, `scale: 0 → 1`, optionally with a small `y` rise, riding a **smooth long-tail ease (`outQuart` default)** so it grows confidently into its resting size and settles without bouncing. This is **arrival**, not reaction.
 
-Explicitly distinct from [press-release-spring.md](press-release-spring.md): that rule is a click/press → release feedback chain (a press phase, then a spring recovery to `1.0`). This one has **no press phase** - there is no prior resting state, the element did not exist on screen, it springs into being. Many blueprints used to borrow `press-release-spring` to fake an entrance; reach for this instead.
+Explicitly distinct from [press-release-spring.md](press-release-spring.md): that rule is a click/press → release feedback chain (a press phase, then a spring recovery to `1.0`). This one has **no press phase**, there is no prior resting state, the element did not exist on screen, it springs into being. Many blueprints used to borrow `press-release-spring` to fake an entrance; reach for this instead.
 
 ## How It Works
 
 A single `tl.add()` with explicit `[from, to]` value pairs carries the whole arrival:
 
-1. **Start values**: `scale: [0, 1]`, `opacity: [0, 1]` - the element is collapsed to a point and invisible at t=0. State the range explicitly so a seek to `t=0` lands the element in this exact state (never rely on a CSS-hidden start - see Critical Constraints).
-2. **To-state (default)**: the second value in each pair lands at `{ scale: 1, opacity: 1 }` with `ease: "outQuart"` - a long-tail decel that grows the element into its resting size and **settles smoothly, no overshoot**. Use `outExpo` instead for a punchier, faster-front arrival (still no bounce). This smooth settle is the house style; the bouncy `outBack` variant is the rare playful exception (see Variations).
+1. **Start values**: `scale: [0, 1]`, `opacity: [0, 1]`, the element is collapsed to a point and invisible at t=0. State the range explicitly so a seek to `t=0` lands the element in this exact state (never rely on a CSS-hidden start, see Critical Constraints).
+2. **To-state (default)**: the second value in each pair lands at `{ scale: 1, opacity: 1 }` with `ease: "outQuart"`, a long-tail decel that grows the element into its resting size and **settles smoothly, no overshoot**. Use `outExpo` instead for a punchier, faster-front arrival (still no bounce). This smooth settle is the house style; the bouncy `outBack` variant is the rare playful exception (see Variations).
 
 For a **group**, the same `.add()` pattern runs per element with a **deterministic, index-derived stagger** (`i * STAGGER`), and the total entry window is **capped** (`ITEM_COUNT × STAGGER ≤ ~0.5s`) so the group reads as one arriving beat, not a slow arpeggio.
 
@@ -79,7 +79,7 @@ A small vertical rise (`translateY: [24, 0]`) layers a subtle "lifts into place"
   font-weight: 900;
   font-size: HERO_FONT_SIZE;
   color: {heroTextColor};
-  /* Pop scales around the center - see Critical Constraints */
+  /* Pop scales around the center: see Critical Constraints */
   transform-origin: 50% 50%;
   will-change: transform;
 }
@@ -150,20 +150,20 @@ A small vertical rise (`translateY: [24, 0]`) layers a subtle "lifts into place"
 
 ## Variations
 
-### Calm settle (refined / enterprise / "premium calm") - default
+### Calm settle (refined / enterprise / "premium calm"): default
 
-`outQuart`, no rotation, drop the `y` rise or keep it tiny (~12px). Reads as a confident, weighted settle - right for a hero wordmark or a single product shot landing. The safe default for premium / enterprise brands.
+`outQuart`, no rotation, drop the `y` rise or keep it tiny (~12px). Reads as a confident, weighted settle, right for a hero wordmark or a single product shot landing. The safe default for premium / enterprise brands.
 
-### Firm settle (default product reveal) - default
+### Firm settle (default product reveal): default
 
-The everyday entrance. `outQuart` (or `outExpo` for a punchier front), optional `Y_RISE` ~24px. Clear, deliberate arrival that decelerates clean - the safe default for cards, icons, and callouts. **No overshoot.**
+The everyday entrance. `outQuart` (or `outExpo` for a punchier front), optional `Y_RISE` ~24px. Clear, deliberate arrival that decelerates clean, the safe default for cards, icons, and callouts. **No overshoot.**
 
-### Bouncy pop (RARE - explicitly-playful only)
+### Bouncy pop (RARE: explicitly-playful only)
 
-The exception, not the default. **Only** for a deliberately playful register (a consumer / fun brand, a toy-like icon set) where a bounce is clearly the intent - never for product / enterprise / serious launch tone. Bouncy is the #1 turn-off and the agent rarely lands it, so reach for this knowingly and sparingly. Swap `outQuart` for `outBack(OVERSHOOT)` and (optionally) add a `rotate` settle so each element looks hand-placed:
+The exception, not the default. **Only** for a deliberately playful register (a consumer / fun brand, a toy-like icon set) where a bounce is clearly the intent, never for product / enterprise / serious launch tone. Bouncy is the #1 turn-off and the agent rarely lands it, so reach for this knowingly and sparingly. Swap `outQuart` for `outBack(OVERSHOOT)` and (optionally) add a `rotate` settle so each element looks hand-placed:
 
 ```js
-// Playful exception only - default to outQuart (see above).
+// Playful exception only: default to outQuart (see above).
 tl.add(
   el,
   {
@@ -189,89 +189,89 @@ When a callout should appear to grow out of a specific point (e.g. a station mar
 }
 ```
 
-### Pop into a held slot - then hold (jitter at most)
+### Pop into a held slot: then hold (jitter at most)
 
-When a popped element then **holds** an ongoing slot (a constellation node, a persistent badge), do **not** bake an idle loop into this entrance - it must stay finite. Land the pop and let it hold still; if the held frame genuinely needs life, hand off to [sine-wave-loop.md](sine-wave-loop.md) for **subtle jitter** (low amplitude) on a separate, later tween - not a breathing loop. Prefer revealing the next element on its VO cue over keeping this one animating.
+When a popped element then **holds** an ongoing slot (a constellation node, a persistent badge), do **not** bake an idle loop into this entrance, it must stay finite. Land the pop and let it hold still; if the held frame genuinely needs life, hand off to [sine-wave-loop.md](sine-wave-loop.md) for **subtle jitter** (low amplitude) on a separate, later tween, not a breathing loop. Prefer revealing the next element on its VO cue over keeping this one animating.
 
 ## How to Choose Values
 
-- **EASE** - the settle curve (the load-bearing decision)
-  - Default: **`outQuart`** - a smooth long-tail settle, no overshoot; the house style for product / enterprise / serious tone. Use `outExpo` for a punchier, faster-front arrival (still smooth).
-  - Exact-physics option: `anime.createSpring({ stiffness, damping, mass, velocity })` directly as the tween `ease` - the curve `outQuart` approximates a critically damped settle, while a native spring gives a harder front and a longer physical tail. Use when the settle IS the shot (a wordmark landing, a final lockup).
-  - Playful exception only: `outBack(OVERSHOOT)` - see the Bouncy pop variation; reach for it only when a bounce is clearly the brand intent.
+- **EASE**: the settle curve (the load-bearing decision)
+  - Default: **`outQuart`**, a smooth long-tail settle, no overshoot; the house style for product / enterprise / serious tone. Use `outExpo` for a punchier, faster-front arrival (still smooth).
+  - Exact-physics option: `anime.createSpring({ stiffness, damping, mass, velocity })` directly as the tween `ease`, the curve `outQuart` approximates a critically damped settle, while a native spring gives a harder front and a longer physical tail. Use when the settle IS the shot (a wordmark landing, a final lockup).
+  - Playful exception only: `outBack(OVERSHOOT)`, see the Bouncy pop variation; reach for it only when a bounce is clearly the brand intent.
 
-- **OVERSHOOT** - `outBack(OVERSHOOT)` overshoot strength - **only used in the rare bouncy variant**; the smooth default has no overshoot dial
+- **OVERSHOOT**: `outBack(OVERSHOOT)` overshoot strength, **only used in the rare bouncy variant**; the smooth default has no overshoot dial
   - Range (playful only): ~1.3 (barely) → ~2.0 (clearly bouncy)
-  - Constraints: keep ≤ ~2 - past that the overshoot exceeds the element's bounds and reads as a cartoon wobble, not an arrival. If you're not in the explicitly-playful case, don't use this - use `outQuart`.
+  - Constraints: keep ≤ ~2, past that the overshoot exceeds the element's bounds and reads as a cartoon wobble, not an arrival. If you're not in the explicitly-playful case, don't use this, use `outQuart`.
 
-- **POP_DUR** - duration of each element's `scale: 0 → 1` tween
+- **POP_DUR**: duration of each element's `scale: 0 → 1` tween
   - Range: 0.4 – 0.7 s
   - Effects: shorter = tight snap; longer = a looser, more floating pop
-  - Constraints: the main subject must be visible by **`t ≤ 0.5s`** - keep `ENTRY_AT + POP_DUR`'s readable midpoint early; don't let the hero finish arriving after the half-second mark
+  - Constraints: the main subject must be visible by **`t ≤ 0.5s`**, keep `ENTRY_AT + POP_DUR`'s readable midpoint early; don't let the hero finish arriving after the half-second mark
 
-- **STAGGER** - gap between successive items' start times (group only)
+- **STAGGER**: gap between successive items' start times (group only)
   - Range: 0.04 – 0.08 s
   - Effects: < 0.04 reads as a simultaneous chord; > 0.08 feels lazy / arpeggiated
-  - Constraints: **`ITEM_COUNT × STAGGER ≤ ~0.5s`** (the cap) - beyond that the group stops reading as one beat. Cap the per-item stagger for large groups: `STAGGER = min(0.06, 0.5 / ITEM_COUNT)`
+  - Constraints: **`ITEM_COUNT × STAGGER ≤ ~0.5s`** (the cap), beyond that the group stops reading as one beat. Cap the per-item stagger for large groups: `STAGGER = min(0.06, 0.5 / ITEM_COUNT)`
 
-- **ITEM_COUNT** - number of elements in a group pop
+- **ITEM_COUNT**: number of elements in a group pop
   - Range: 3 – 9
-  - Effects: 3 = sparse; 9 = full grid. More than ~9 forces `STAGGER` so small the stagger vanishes - switch to a wipe/sweep reveal instead
+  - Effects: 3 = sparse; 9 = full grid. More than ~9 forces `STAGGER` so small the stagger vanishes, switch to a wipe/sweep reveal instead
 
-- **Y_RISE** - optional upward offset the element lifts from (`translateY: [Y_RISE, 0]`)
+- **Y_RISE**: optional upward offset the element lifts from (`translateY: [Y_RISE, 0]`)
   - Range: 0 (pure pop) – 32 px
   - Effects: adds a subtle "lifts into place"; keep small so the `scale` pop stays dominant
   - Constraints: 0 for the calm-settle variant; never large enough to read as a slide-up (that's a different primitive)
 
-- **ROT_FROM** - optional starting rotation, **playful (bouncy) variant only** (`rotate: [ROT_FROM, 0]`)
+- **ROT_FROM**: optional starting rotation, **playful (bouncy) variant only** (`rotate: [ROT_FROM, 0]`)
   - Range: −10° – +10°
   - Effects: a small tilt that resolves makes the element look hand-placed
-  - Constraints: derive sign/size deterministically from index if you want alternating tilt (e.g. `i % 2 ? 6 : -6`) - never `Math.random`
+  - Constraints: derive sign/size deterministically from index if you want alternating tilt (e.g. `i % 2 ? 6 : -6`), never `Math.random`
 
-- **ENTRY_AT / GROUP_ENTRY_AT** - timeline offset before the (group's) pop begins
+- **ENTRY_AT / GROUP_ENTRY_AT**: timeline offset before the (group's) pop begins
   - Range: 0 – 0.4 s
   - Effects: > 0 gives a beat of quiet before the arrival; keep small so the subject still lands by `t ≤ 0.5s`
 
 ### Geometry & tokens
 
-- **{heroSize} / {itemSize}** - footprints. A hero entrance should occupy a clearly readable share of the frame; group items size down so the grid fits with `GRID_GAP` breathing room.
-- **HERO_RADIUS / ITEM_RADIUS** - `height × 0.15` (sharp) → `height / 2` (pill).
-- **{heroBg} / {itemBg} / {\*TextColor}** - surface + label tokens; inherit from the composition palette.
+- **{heroSize} / {itemSize}**: footprints. A hero entrance should occupy a clearly readable share of the frame; group items size down so the grid fits with `GRID_GAP` breathing room.
+- **HERO_RADIUS / ITEM_RADIUS**: `height × 0.15` (sharp) → `height / 2` (pill).
+- **{heroBg} / {itemBg} / {\*TextColor}**: surface + label tokens; inherit from the composition palette.
 
 ## Key Principles
 
-- **Smooth beats bouncy** - default to `outQuart` (or `outExpo`): a long-tail settle into `scale: 1`, no overshoot. Bouncy `outBack` is the rare, explicitly-playful exception (the #1 turn-off, and the agent rarely lands it). When unsure, settle smoothly.
-- **Explicit value pairs, always** - the collapsed start is stated as `scale: [0, 1]`, `opacity: [0, 1]` so a seek to `t=0` lands it exactly there. An entrance built on a CSS-hidden start (e.g. `opacity:0` in CSS + a bare target value) flickers under HF seek - the element renders visible before the tween claims it.
-- **Easing carries the motion, not keyframes** - let the ease produce the settle for free. Don't hand-key a `scale: 1.1` mid-state; that double-bounces and fights the curve. (And in the playful variant, the overshoot is a byproduct of `outBack`, not a hand-keyed bounce.)
-- **The grow is the motion** - `scale` is load-bearing; the `translateY` rise (and, in the playful variant, the `rotate` settle) is garnish layered on top. If you drop everything but the `scale` grow, it should still read as a clean entrance.
-- **Cap the stagger window** - a group must arrive inside ~0.5s total or it stops reading as one beat and starts reading as a slow list reveal. Derive the stagger from `ITEM_COUNT` so it self-caps.
-- **Deterministic per index** - all stagger and any rotation/tilt variation comes from the loop index, never `Math.random` - the renderer must produce the identical frame on every seek.
-- **Visible early** - the main subject must be on screen by `t ≤ 0.5s`. A hero that finishes arriving at `t=1s` wastes the opening beat.
-- **Don't bake an idle loop here** - this entrance is finite. If the element then holds a slot, hand off to `sine-wave-loop` on a later tween; an infinite `loop: true` here breaks seek.
+- **Smooth beats bouncy**: default to `outQuart` (or `outExpo`): a long-tail settle into `scale: 1`, no overshoot. Bouncy `outBack` is the rare, explicitly-playful exception (the #1 turn-off, and the agent rarely lands it). When unsure, settle smoothly.
+- **Explicit value pairs, always**: the collapsed start is stated as `scale: [0, 1]`, `opacity: [0, 1]` so a seek to `t=0` lands it exactly there. An entrance built on a CSS-hidden start (e.g. `opacity:0` in CSS + a bare target value) flickers under HF seek, the element renders visible before the tween claims it.
+- **Easing carries the motion, not keyframes**: let the ease produce the settle for free. Don't hand-key a `scale: 1.1` mid-state; that double-bounces and fights the curve. (And in the playful variant, the overshoot is a byproduct of `outBack`, not a hand-keyed bounce.)
+- **The grow is the motion**: `scale` is load-bearing; the `translateY` rise (and, in the playful variant, the `rotate` settle) is garnish layered on top. If you drop everything but the `scale` grow, it should still read as a clean entrance.
+- **Cap the stagger window**: a group must arrive inside ~0.5s total or it stops reading as one beat and starts reading as a slow list reveal. Derive the stagger from `ITEM_COUNT` so it self-caps.
+- **Deterministic per index**: all stagger and any rotation/tilt variation comes from the loop index, never `Math.random`, the renderer must produce the identical frame on every seek.
+- **Visible early**: the main subject must be on screen by `t ≤ 0.5s`. A hero that finishes arriving at `t=1s` wastes the opening beat.
+- **Don't bake an idle loop here**: this entrance is finite. If the element then holds a slot, hand off to `sine-wave-loop` on a later tween; an infinite `loop: true` here breaks seek.
 
 ## Critical Constraints
 
 - **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
-- **Entrances use explicit `[from, to]` pairs** - never rely on a CSS-hidden starting state
-- **No CSS `transition`** on popped elements - those interpolate independently of HF seek and cause flicker
-- **No `loop: true` / infinite tweens** - this is a finite arrival; idle motion is a separate `sine-wave-loop` tween
-- **No `Math.random` / `Date.now`** - stagger and tilt are index-derived and deterministic
+- **Entrances use explicit `[from, to]` pairs**, never rely on a CSS-hidden starting state
+- **No CSS `transition`** on popped elements, those interpolate independently of HF seek and cause flicker
+- **No `loop: true` / infinite tweens**, this is a finite arrival; idle motion is a separate `sine-wave-loop` tween
+- **No `Math.random` / `Date.now`**, stagger and tilt are index-derived and deterministic
 - **anime.js transform properties only**: `translateX`, `translateY`, `scale`, `rotate`. Never tween `width` / `height` / `left` / `top`
 - **`transform-origin: 50% 50%`** for an in-place pop (default); set it to the source point only for the origin-anchored variation
-- **Default ease `outQuart`** (smooth, no overshoot); `outBack(OVERSHOOT)` only in the explicitly-playful variant, and there keep **`OVERSHOOT ≤ ~2`** - beyond that it reads as a cartoon wobble, not an arrival
-- **`ITEM_COUNT × STAGGER ≤ ~0.5s`** - the group must land inside one beat
-- **`will-change: transform`** on popped elements, especially groups - many simultaneous spring tweens benefit from compositor hints
+- **Default ease `outQuart`** (smooth, no overshoot); `outBack(OVERSHOOT)` only in the explicitly-playful variant, and there keep **`OVERSHOOT ≤ ~2`**, beyond that it reads as a cartoon wobble, not an arrival
+- **`ITEM_COUNT × STAGGER ≤ ~0.5s`**, the group must land inside one beat
+- **`will-change: transform`** on popped elements, especially groups, many simultaneous spring tweens benefit from compositor hints
 
 ## Combinations
 
-- [sine-wave-loop.md](sine-wave-loop.md) - at most **subtle jitter** on a held node/badge AFTER its pop lands (don't bake any loop into the entrance; and prefer a VO-timed reveal over ambient motion - see that rule's caution)
-- [center-outward-expansion.md](center-outward-expansion.md) - elements pop in as they radiate from center to their slots
-- [press-release-spring.md](press-release-spring.md) - the reaction counterpart: once popped in, a button can take a press→release; this rule supplies the arrival, that one the click feedback
+- [sine-wave-loop.md](sine-wave-loop.md): at most **subtle jitter** on a held node/badge AFTER its pop lands (don't bake any loop into the entrance; and prefer a VO-timed reveal over ambient motion, see that rule's caution)
+- [center-outward-expansion.md](center-outward-expansion.md): elements pop in as they radiate from center to their slots
+- [press-release-spring.md](press-release-spring.md): the reaction counterpart: once popped in, a button can take a press→release; this rule supplies the arrival, that one the click feedback
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - `outQuart` settle (smooth default), explicit value-pair entrances, deterministic stagger
-- `/hyperframes-core` - composition wiring
-- `/hyperframes-cli` - `hyperframes lint`
+- `/hyperframes-animation`, `outQuart` settle (smooth default), explicit value-pair entrances, deterministic stagger
+- `/hyperframes-core`, composition wiring
+- `/hyperframes-cli`, `hyperframes lint`

@@ -2,7 +2,7 @@
 
 ### Push Slide
 
-Both scenes move together - new pushes old out.
+Both scenes move together: new pushes old out.
 
 ```js
 tl.add(old, { translateX: -1920, duration: 500, ease: "inOutQuart" }, T);

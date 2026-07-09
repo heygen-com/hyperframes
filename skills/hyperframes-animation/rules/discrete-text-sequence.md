@@ -1,6 +1,6 @@
 ---
 name: discrete-text-sequence
-description: Replace entire text states at frame thresholds for non-linear typing effects - typos, bulk additions, pauses, backspaces, simulated thinking.
+description: Replace entire text states at frame thresholds for non-linear typing effects: typos, bulk additions, pauses, backspaces, simulated thinking.
 metadata:
   tags: text, typing, discrete, threshold, non-linear, sequence
 ---
@@ -46,7 +46,7 @@ For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice
   display: grid;
   place-items: center;
   background: {bgColor};
-  font-family: {monoFont}; /* monospace is required - see Critical Constraints */
+  font-family: {monoFont}; /* monospace is required: see Critical Constraints */
 }
 .terminal {
   display: flex;
@@ -83,7 +83,7 @@ For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice
 ```html
 <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  // SEQUENCE - each entry shows from t to the NEXT entry's t.
+  // SEQUENCE: each entry shows from t to the NEXT entry's t.
   // Non-linear: typos, corrections, bulk additions, pauses.
   // Shape (one realization):
   //   [warm-up keystrokes] → [typo] → [backspaces back to fork] →
@@ -92,8 +92,8 @@ For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice
     { t: 0.0, text: "" },
     { t: T_K1, text: "{p1}" }, // first keystrokes (~3-5 chars, 0.1-0.2s apart)
     { t: T_K2, text: "{p1 + ' ' + p2_typo}" }, // continuation containing a typo
-    { t: T_BS, text: "{p1 + ' ' + p2_partial}" }, // backspace(s) - peel back to the fork
-    { t: T_BULK, text: "{fullCorrectedText}" }, // bulk paste - replaces several chars at once
+    { t: T_BS, text: "{p1 + ' ' + p2_partial}" }, // backspace(s): peel back to the fork
+    { t: T_BULK, text: "{fullCorrectedText}" }, // bulk paste: replaces several chars at once
     { t: T_DONE, text: "{fullCorrectedText + ' ✓'}" }, // completion marker
   ];
 
@@ -124,7 +124,7 @@ For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice
     0,
   );
 
-  // Cursor blink - deterministic via sin, not CSS animation
+  // Cursor blink: deterministic via sin, not CSS animation
   const blinkDriver = { p: 0 };
   tl.add(
     blinkDriver,
@@ -145,7 +145,7 @@ For continuous per-char typewriter (no pauses, no edits), use the **smooth-slice
 
 ## Variations
 
-### Smooth character slice (continuous typewriter - no pauses, no edits)
+### Smooth character slice (continuous typewriter: no pauses, no edits)
 
 For straight-forward typewriter without the non-linear chaos:
 
@@ -166,11 +166,11 @@ tl.add(
 );
 ```
 
-This is faster to author but produces a uniform "machine-typed" feel - missing the human-typing realism.
+This is faster to author but produces a uniform "machine-typed" feel: missing the human-typing realism.
 
 ### Thinking pause (extended hold on a key state)
 
-Insert a state that holds for `THINK_HOLD_DUR` seconds without changes - feels like the user paused to think:
+Insert a state that holds for `THINK_HOLD_DUR` seconds without changes, feels like the user paused to think:
 
 ```js
 { t: T_PRE_PAUSE, text: '{partialPhrase}' },        // last state before the pause
@@ -211,48 +211,48 @@ else textEl.style.color = "{mutedColor}"; // mid-edit dim
 
 ### Layout
 
-- **TERMINAL_FONT_SIZE** - font size of the typing line.
+- **TERMINAL_FONT_SIZE**: font size of the typing line.
   - Range: 48-96 px for full-bleed compositions; smaller for terminal-style detail
   - Constraints: combined with `TEXT_WRAP_MIN_WIDTH` must fit within viewport
-- **TEXT_WRAP_MIN_WIDTH** - fixed-width container holding the text.
+- **TEXT_WRAP_MIN_WIDTH**: fixed-width container holding the text.
   - Constraints: must be `≥ widthOf(longest SEQUENCE state) at TERMINAL_FONT_SIZE`. Measure with a hidden probe after `document.fonts.ready` if unsure
   - Effects: too small → right edge jitters as states change length; too large → unused horizontal whitespace pads the composition
-- **GUTTER** - flex gap between prompt glyph (`$`, `>`) and text.
+- **GUTTER**: flex gap between prompt glyph (`$`, `>`) and text.
   - Range: ~0.3-0.5× `TERMINAL_FONT_SIZE`
-- **CURSOR_WIDTH / CURSOR_GAP** - block cursor dimensions.
+- **CURSOR_WIDTH / CURSOR_GAP**: block cursor dimensions.
   - Range: width ~0.3× `TERMINAL_FONT_SIZE`; gap small (single-digit px) so the cursor feels attached to the text
 
 ### Sequence timing
 
-- **TOTAL_DURATION** - composition length.
+- **TOTAL_DURATION**: composition length.
   - Constraints: must be ≥ `T_DONE` + ~1s climax dwell so viewer sees the completion marker
-- **T_K1 / T_K2 / T_BS / T_BULK / T_DONE** - milestone timestamps within the SEQUENCE.
+- **T_K1 / T_K2 / T_BS / T_BULK / T_DONE**: milestone timestamps within the SEQUENCE.
   - Range: keystrokes 0.06-0.20s apart for "human typing"; pauses 0.3-0.6s at natural word breaks; bulk paste jumps multiple characters in a single entry
   - Constraints: monotonically increasing; `T_DONE ≤ TOTAL_DURATION - dwell`
-- **TYPE_DUR** (smooth-slice variation) - total typing duration for continuous typewriter.
+- **TYPE_DUR** (smooth-slice variation): total typing duration for continuous typewriter.
   - Range: `chars × 0.06s` (fast) to `chars × 0.12s` (relaxed)
-- **THINK_HOLD_DUR** (thinking-pause variation) - hold time between two SEQUENCE states.
+- **THINK_HOLD_DUR** (thinking-pause variation): hold time between two SEQUENCE states.
   - Range: 0.8-2.0s; under 0.5s reads as a stutter rather than thought
 - **COMPLETION_PULSE_SCALE / COMPLETION_PULSE_DUR** (pulse variation).
   - Range: scale 1.03-1.08 (subtle), duration 0.15-0.30s
 
 ### Cursor
 
-- **BLINK_CYCLES** - number of full blink cycles across `TOTAL_DURATION`.
+- **BLINK_CYCLES**: number of full blink cycles across `TOTAL_DURATION`.
   - Range: `TOTAL_DURATION / 0.8s ≤ BLINK_CYCLES ≤ TOTAL_DURATION / 0.5s` (cycle every 0.5-0.8s reads as a natural cursor)
 
 ### Color tokens
 
-- **{bgColor} / {textColor} / {accentColor} / {successColor} / {mutedColor}** - discrete choices, not numeric ranges. Pick from the composition's palette; the prompt + cursor share `{accentColor}` so they read as the same "system" element.
+- **{bgColor} / {textColor} / {accentColor} / {successColor} / {mutedColor}**: discrete choices, not numeric ranges. Pick from the composition's palette; the prompt + cursor share `{accentColor}` so they read as the same "system" element.
 
 ## Key Principles
 
-- **Threshold sequence drives realism** - group fast successive keystrokes (0.1-0.2s apart), then pause on word breaks (0.3-0.5s), bulk-paste in single jumps (one entry replaces many chars), include a typo or two for human-typing feel
-- **Reverse-search the array each frame** - O(n) per frame, where n is small (≤30 typical). Don't try to index by frame; the sequence is sparse
-- **Fixed-width container is mandatory** - without `min-width`, the right edge of the text wrap jitters as state length changes. Set width ≥ longest expected state
-- **Cursor must be deterministic** - sin-based or sequence-driven blink, NOT a CSS animation. HF seeks frame-by-frame; CSS animations desync
-- **No `transition` on the text element** - discrete jumps should be INSTANT. A CSS transition turns the jump into a smear and ruins the "typing" feel
-- **❗ Distinguish discrete from smooth** - if your effect is "type each character, no edits" → use the smooth-slice variation. Discrete sequence is overkill for that case. Use discrete only when you need non-linear states (typos, pauses, bulk paste)
+- **Threshold sequence drives realism**: group fast successive keystrokes (0.1-0.2s apart), then pause on word breaks (0.3-0.5s), bulk-paste in single jumps (one entry replaces many chars), include a typo or two for human-typing feel
+- **Reverse-search the array each frame**: O(n) per frame, where n is small (≤30 typical). Don't try to index by frame; the sequence is sparse
+- **Fixed-width container is mandatory**: without `min-width`, the right edge of the text wrap jitters as state length changes. Set width ≥ longest expected state
+- **Cursor must be deterministic**: sin-based or sequence-driven blink, NOT a CSS animation. HF seeks frame-by-frame; CSS animations desync
+- **No `transition` on the text element**, discrete jumps should be INSTANT. A CSS transition turns the jump into a smear and ruins the "typing" feel
+- **❗ Distinguish discrete from smooth**: if your effect is "type each character, no edits" → use the smooth-slice variation. Discrete sequence is overkill for that case. Use discrete only when you need non-linear states (typos, pauses, bulk paste)
 
 ## Critical Constraints
 
@@ -260,18 +260,18 @@ else textEl.style.color = "{mutedColor}"; // mid-edit dim
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
 - **No CSS `transition`** on the text or any of its parents
-- **Cursor `display: inline-block`** - `display: inline` ignores width/transform
-- **Monospace font** for terminal-style effects - proportional fonts cause visual jitter even with fixed-width container
-- **Whitespace: nowrap** on text wrap - wrapping mid-state breaks the illusion
+- **Cursor `display: inline-block`**, `display: inline` ignores width/transform
+- **Monospace font** for terminal-style effects: proportional fonts cause visual jitter even with fixed-width container
+- **Whitespace: nowrap** on text wrap: wrapping mid-state breaks the illusion
 
 ## Combinations
 
-- [3d-text-depth-layers.md](3d-text-depth-layers.md) - discrete text rendered with layered depth (heavy, dramatic)
-- [counting-dynamic-scale.md](counting-dynamic-scale.md) - discrete text for the LABEL while counter animates smoothly
-- [press-release-spring.md](press-release-spring.md) - after the sequence completes, the line "presses" like a button confirming success
+- [3d-text-depth-layers.md](3d-text-depth-layers.md): discrete text rendered with layered depth (heavy, dramatic)
+- [counting-dynamic-scale.md](counting-dynamic-scale.md): discrete text for the LABEL while counter animates smoothly
+- [press-release-spring.md](press-release-spring.md): after the sequence completes, the line "presses" like a button confirming success
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - onUpdate-driven discrete state lookup
-- `/hyperframes-core` - composition wiring
-- `/hyperframes-cli` - `hyperframes lint`
+- `/hyperframes-animation`, onUpdate-driven discrete state lookup
+- `/hyperframes-core`, composition wiring
+- `/hyperframes-cli`, `hyperframes lint`

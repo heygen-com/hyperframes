@@ -7,7 +7,7 @@ metadata:
 
 # Depth Scatter ↔ Assemble
 
-N elements (glyphs, cards, icons, logo fragments) fly in from a rotating 3D depth-cloud and lock into a clean on-screen layout - or the reverse. Each element starts at a **deterministic** 3D offset (translateZ depth + rotateX/rotateY + an x/y scatter derived from its index), then tweens to its assembled flat position (`z: 0, rotation: 0`). Because every scattered position is computed by trig on the element's index - never `Math.random` - it renders identically every frame.
+N elements (glyphs, cards, icons, logo fragments) fly in from a rotating 3D depth-cloud and lock into a clean on-screen layout, or the reverse. Each element starts at a **deterministic** 3D offset (translateZ depth + rotateX/rotateY + an x/y scatter derived from its index), then tweens to its assembled flat position (`z: 0, rotation: 0`). Because every scattered position is computed by trig on the element's index, never `Math.random`, it renders identically every frame.
 
 Distinct from `orbit-3d-entry` (flip-in then a continuous orbit) and `center-outward-expansion` (a flat 2D burst from one shared center): here each element has its **own** point in a 3D cloud, and the resolve is a flat assembled layout, not an orbit or a radial spray.
 
@@ -16,7 +16,7 @@ Distinct from `orbit-3d-entry` (flip-in then a continuous orbit) and `center-out
 Each element resolves to a flat layout position (`targetX/Y`, set once in CSS or via `data-*`). Its **scattered** state is derived from its index `i`:
 
 ```js
-const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // ~2.39943 rad - even angular spread, no clumping
+const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // ~2.39943 rad: even angular spread, no clumping
 const a = i * GOLDEN; // this element's angle in the cloud
 const scatterX = Math.cos(a) * RADIUS; // index-derived, deterministic
 const scatterY = Math.sin(a) * RADIUS;
@@ -52,7 +52,7 @@ Requires `perspective` on the stage and `transform-style: preserve-3d` on the st
 </div>
 ```
 
-For a logo lockup, `targetX/Y` describe the parts' resting layout; for kinetic type, one `.frag` per glyph (inject spans from the phrase string at setup so width is exact - see Variations).
+For a logo lockup, `targetX/Y` describe the parts' resting layout; for kinetic type, one `.frag` per glyph (inject spans from the phrase string at setup so width is exact, see Variations).
 
 ## CSS
 
@@ -64,7 +64,7 @@ For a logo lockup, `targetX/Y` describe the parts' resting layout; for kinetic t
   display: grid;
   place-items: center;
   background: {bgColor};
-  perspective: 1400px; /* REQUIRED - without it, z-depth + tumble read as flat 2D scale */
+  perspective: 1400px; /* REQUIRED: without it, z-depth + tumble read as flat 2D scale */
 }
 .cloud-stage {
   position: relative;
@@ -72,7 +72,7 @@ For a logo lockup, `targetX/Y` describe the parts' resting layout; for kinetic t
   height: 100%;
   display: grid;
   place-items: center;
-  transform-style: preserve-3d; /* REQUIRED - preserves child 3D context */
+  transform-style: preserve-3d; /* REQUIRED: preserves child 3D context */
   will-change: transform;
 }
 .frag {
@@ -104,7 +104,7 @@ For a logo lockup, `targetX/Y` describe the parts' resting layout; for kinetic t
   const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // ~2.39943, even spread, no clumps
 
   // RADIUS, Z_NEAR, Z_FAR, TUMBLE, ASSEMBLE_DUR, ASSEMBLE_EASE, STAGGER,
-  // CLOUD_SPIN_DEG, CLOUD_SPIN_DUR - named constants per "How to Choose Values".
+  // CLOUD_SPIN_DEG, CLOUD_SPIN_DUR: named constants per "How to Choose Values".
 
   // Precompute each fragment's deterministic scattered state from its index.
   const scatter = frags.map((el, i) => {
@@ -204,98 +204,98 @@ tl.add(
 );
 ```
 
-Inject a per-glyph span set for each phrase at setup (so `targetX` per glyph is the exact laid-out advance width - measure after `document.fonts.ready`), and hide each set's opacity to 0 until its window.
+Inject a per-glyph span set for each phrase at setup (so `targetX` per glyph is the exact laid-out advance width, measure after `document.fonts.ready`), and hide each set's opacity to 0 until its window.
 
 ### Radial letter-explode → resolve
 
-A flat-plane special case (the `kinetic-type-beats` "letters explode radially then resolve" GAP): set `Z_NEAR = Z_FAR = 0` and `TUMBLE` small so the cloud is a 2D ring, then reverse the assemble for the explode - fragments fling out to `scatter[i]` then snap back to layout. Pure in-plane, no depth.
+A flat-plane special case (the `kinetic-type-beats` "letters explode radially then resolve" GAP): set `Z_NEAR = Z_FAR = 0` and `TUMBLE` small so the cloud is a 2D ring, then reverse the assemble for the explode, fragments fling out to `scatter[i]` then snap back to layout. Pure in-plane, no depth.
 
 ### Scatter-OUT (final-frame exit only)
 
-Reverse the assemble (layout → cloud, opacity 1→0) ONLY as the composition's last beat. A scatter-out mid-shot reads as an exit and breaks the shot - keep entrances and hand-offs as assemble or tumble-swap.
+Reverse the assemble (layout → cloud, opacity 1→0) ONLY as the composition's last beat. A scatter-out mid-shot reads as an exit and breaks the shot, keep entrances and hand-offs as assemble or tumble-swap.
 
 ### Parallax depth slide-in (logo lockup)
 
-For `logo-assemble-lockup`, give back layers a larger `|Z_FAR|` and a longer `ASSEMBLE_DUR`, foreground parts a shallower depth and shorter duration - parts at different depths slide in at different apparent speeds (parallax) and lock into the lockup.
+For `logo-assemble-lockup`, give back layers a larger `|Z_FAR|` and a longer `ASSEMBLE_DUR`, foreground parts a shallower depth and shorter duration, parts at different depths slide in at different apparent speeds (parallax) and lock into the lockup.
 
 ## How to Choose Values
 
-- **n (ELEMENT_COUNT)** - fragments / glyphs in the cloud
+- **n (ELEMENT_COUNT)**: fragments / glyphs in the cloud
   - Range: 4–14 (glyph sets follow the word length; for fragments/cards stay 4–9)
   - Effects: few reads as deliberate assembly; many reads as a dense swarm condensing
   - Constraints: above ~14 the cloud crowds the center and individual paths stop reading
 
-- **RADIUS** - cloud spread in the x/y plane, px
+- **RADIUS**: cloud spread in the x/y plane, px
   - Range: 250–700 px
   - Effects: small = a tight knot that barely separates; large = fragments arrive from the frame edges
   - Constraints: keep the farthest scatter inside frame at the chosen `perspective`, or fragments pop in from off-screen with no travel read
 
-- **Z_NEAR / Z_FAR** - depth band of the cloud, px (front / back)
+- **Z_NEAR / Z_FAR**: depth band of the cloud, px (front / back)
   - Range: Z_NEAR +150 to +450; Z_FAR −150 to −500
   - Effects: a wide band (e.g. +400 / −400) gives strong fly-toward / recede-from camera depth; a narrow band keeps it nearly flat
-  - Constraints: very large `|z|` against a short `perspective` over-distorts (fragments smear huge then tiny) - widen `perspective` to match
+  - Constraints: very large `|z|` against a short `perspective` over-distorts (fragments smear huge then tiny), widen `perspective` to match
 
-- **TUMBLE** - peak rotateX/rotateY of scattered fragments, deg
+- **TUMBLE**: peak rotateX/rotateY of scattered fragments, deg
   - Range: 40–110°
   - Effects: low = fragments drift in nearly upright; high = they tumble through space and rotate upright on arrival
   - Constraints: with `backface-visibility: hidden`, glyphs past 90° show blank mid-tween (intended for the tumble); for cards with content on one face, cap near 80°
 
-- **ASSEMBLE_DUR** - per-fragment cloud → layout tween, s
+- **ASSEMBLE_DUR**: per-fragment cloud → layout tween, s
   - Range: 0.7–1.4 s
   - Effects: short = snappy lock-in; long = a floating condense
   - Constraints: `(n − 1) × STAGGER + ASSEMBLE_DUR` must fit the scene's assembly window
 
-- **ASSEMBLE_EASE** - shared ease across fragments
+- **ASSEMBLE_EASE**: shared ease across fragments
   - Discrete choice: `outQuart`, `outExpo`, `outBack(1.4)`
-  - Selection: `outQuart` default (fly in, settle). `outExpo` snaps hard at the end. `outBack` adds a small overshoot as parts seat. Avoid `in` easings - fragments look sucked backward into the cloud mid-air.
+  - Selection: `outQuart` default (fly in, settle). `outExpo` snaps hard at the end. `outBack` adds a small overshoot as parts seat. Avoid `in` easings, fragments look sucked backward into the cloud mid-air.
 
-- **STAGGER** - gap between successive fragments' assembly starts, s
+- **STAGGER**: gap between successive fragments' assembly starts, s
   - Range: 0.03–0.09 s
   - Effects: < 0.03 = a single chord (whole cloud collapses at once); > 0.09 = a slow drip that loses the "swarm" read
   - Constraints: `n × STAGGER` should stay below `ASSEMBLE_DUR` so the cloud is collapsing as one motion, not a queue
 
-- **CLOUD_SPIN_DEG / CLOUD_SPIN_DUR** - stage rotateY over the assembly, deg / s
+- **CLOUD_SPIN_DEG / CLOUD_SPIN_DUR**: stage rotateY over the assembly, deg / s
   - Range: 15–60° over a duration ≥ `ASSEMBLE_DUR`
   - Effects: a gentle spin gives the scatter life so it doesn't read as a frozen explosion diagram; too fast competes with the assembly
-  - Constraints: keep finite and ending by settle - no `loop: true`
+  - Constraints: keep finite and ending by settle, no `loop: true`
 
-- **SWAP_DUR / SWAP_AT** (tumble-swap) - hand-off length / when it fires, s
+- **SWAP_DUR / SWAP_AT** (tumble-swap): hand-off length / when it fires, s
   - Range: SWAP_DUR 0.5–1.0 s; SWAP_AT on the beat boundary
   - Effects: shorter = a hard cross; longer = a visible dissolve-through-cloud
   - Constraints: outgoing and incoming MUST share one `progress` (one tween) so they cross at the same instant
 
 ## Key Principles
 
-- **`perspective` on the scene root + `preserve-3d` on stage AND each fragment** - without all three, z-depth and tumble collapse to a flat scale
-- **Every scattered value is index-derived** - `cos/sin(i × GOLDEN)`, stepped `z` by `i/(n−1)`. The golden angle spreads points evenly with no clumps and (critically) **no `Math.random`**, so the cloud is byte-identical every render
-- **`anime.utils.set` the cloud BEFORE adding tweens** - park each fragment at its scatter point with `opacity: 0` first; the assemble tweens FROM there. Skipping the set leaves frame 0 showing the assembled layout, then a teleport when the first tween starts
-- **Resolve flat** - the settled state is `z: 0, rotationX: 0, rotationY: 0` in the layout. A cloud that resolves still-tilted reads as unfinished
-- **Assemble / hand-off only; scatter-OUT is an exit** - fragments leaving for the cloud mid-shot reads as the shot ending. Use forward assemble for entrances, tumble-swap for beat changes; reserve scatter-out for the final frame
-- **Depth ordering is automatic** - inside `preserve-3d`, paint order follows actual Z, so nearer fragments correctly occlude farther ones with no manual z-index (unlike the orbit case, where the orbit is faked in 2D and needs capped z-index)
+- **`perspective` on the scene root + `preserve-3d` on stage AND each fragment**, without all three, z-depth and tumble collapse to a flat scale
+- **Every scattered value is index-derived**: `cos/sin(i × GOLDEN)`, stepped `z` by `i/(n−1)`. The golden angle spreads points evenly with no clumps and (critically) **no `Math.random`**, so the cloud is byte-identical every render
+- **`anime.utils.set` the cloud BEFORE adding tweens**, park each fragment at its scatter point with `opacity: 0` first; the assemble tweens FROM there. Skipping the set leaves frame 0 showing the assembled layout, then a teleport when the first tween starts
+- **Resolve flat**: the settled state is `z: 0, rotationX: 0, rotationY: 0` in the layout. A cloud that resolves still-tilted reads as unfinished
+- **Assemble / hand-off only; scatter-OUT is an exit**: fragments leaving for the cloud mid-shot reads as the shot ending. Use forward assemble for entrances, tumble-swap for beat changes; reserve scatter-out for the final frame
+- **Depth ordering is automatic**: inside `preserve-3d`, paint order follows actual Z, so nearer fragments correctly occlude farther ones with no manual z-index (unlike the orbit case, where the orbit is faked in 2D and needs capped z-index)
 
 ## Critical Constraints
 
-- **No `Math.random` / `Date.now`** - derive every scatter coordinate from the index (golden-angle trig + stepped depth). This is the whole point of the rule: a randomized cloud renders differently each frame and the seek breaks
-- **No CSS `transition`** - all motion is anime.js tweens on the paused timeline
-- **No `loop: true` / infinite alternate motion** - the cloud spin and every assemble are finite, one-shot tweens that end before settle
+- **No `Math.random` / `Date.now`**, derive every scatter coordinate from the index (golden-angle trig + stepped depth). This is the whole point of the rule: a randomized cloud renders differently each frame and the seek breaks
+- **No CSS `transition`**, all motion is anime.js tweens on the paused timeline
+- **No `loop: true` / infinite alternate motion**, the cloud spin and every assemble are finite, one-shot tweens that end before settle
 - **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
-- **Transform properties only** - `translateX`, `translateY`, `translateZ`, `scale`, `rotate`/`rotateX`/`rotateY`. Never `width`/`height`/`left`/`top`; keep self-centering in CSS so the anime transform values are only stage offsets
-- **`will-change: transform`** on stage + fragments - many simultaneous 3D transforms benefit from compositor hints
-- **In tumble-swap, one shared `progress` for both glyph sets** - two separate tweens can drift out of phase under seek and the cross stops looking like a single hand-off
+- **Transform properties only**: `translateX`, `translateY`, `translateZ`, `scale`, `rotate`/`rotateX`/`rotateY`. Never `width`/`height`/`left`/`top`; keep self-centering in CSS so the anime transform values are only stage offsets
+- **`will-change: transform`** on stage + fragments, many simultaneous 3D transforms benefit from compositor hints
+- **In tumble-swap, one shared `progress` for both glyph sets**, two separate tweens can drift out of phase under seek and the cross stops looking like a single hand-off
 
 ## Combinations
 
-- [orbit-3d-entry.md](orbit-3d-entry.md) - alternative 3D entrance (settles into a continuous orbit instead of a flat lockup); shares the `perspective` + `preserve-3d` stage setup
-- [hacker-flip-3d.md](hacker-flip-3d.md) - per-glyph 3D flip/decode as the fragments seat; layer for a "letters tumble in AND decode on arrival" read
-- [3d-text-depth-layers.md](3d-text-depth-layers.md) - give the assembled wordmark a stacked extrusion once it locks
-- [center-outward-expansion.md](center-outward-expansion.md) - flat 2D cousin (single shared center, no depth) when perspective isn't wanted
-- [press-release-spring.md](press-release-spring.md) - a spring settle on the assembled lockup once the cloud resolves
-- [sine-wave-loop.md](sine-wave-loop.md) - idle breathe on the resolved layout instead of a frozen hold
+- [orbit-3d-entry.md](orbit-3d-entry.md): alternative 3D entrance (settles into a continuous orbit instead of a flat lockup); shares the `perspective` + `preserve-3d` stage setup
+- [hacker-flip-3d.md](hacker-flip-3d.md): per-glyph 3D flip/decode as the fragments seat; layer for a "letters tumble in AND decode on arrival" read
+- [3d-text-depth-layers.md](3d-text-depth-layers.md): give the assembled wordmark a stacked extrusion once it locks
+- [center-outward-expansion.md](center-outward-expansion.md): flat 2D cousin (single shared center, no depth) when perspective isn't wanted
+- [press-release-spring.md](press-release-spring.md): a spring settle on the assembled lockup once the cloud resolves
+- [sine-wave-loop.md](sine-wave-loop.md): idle breathe on the resolved layout instead of a frozen hold
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - timeline + `onUpdate` API (the shared-progress tumble-swap)
-- `/hyperframes-core` - composition wiring
-- `/hyperframes-cli` - `hyperframes lint`
+- `/hyperframes-animation`, timeline + `onUpdate` API (the shared-progress tumble-swap)
+- `/hyperframes-core`, composition wiring
+- `/hyperframes-cli`, `hyperframes lint`

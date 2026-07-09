@@ -6,11 +6,11 @@ The outgoing scene literally burns away from a corner. A fire front expands with
 
 This transition has three systems working together:
 
-1. **Fire geometry** - a radial front expanding from a corner (e.g., bottom-right) with noise-based irregularity for organic edges
-2. **Scene clipping** - the outgoing scene uses an SVG clip-path (with `fill-rule: evenodd`) that cuts a hole matching the fire front. As the fire expands, more of the scene is clipped away. All content (text, images, lines) burns with the page - no separate debris.
-3. **Scorched edge** - a `<canvas>` overlay draws a radial gradient fringe at the fire boundary to simulate charring
+1. **Fire geometry**: a radial front expanding from a corner (e.g., bottom-right) with noise-based irregularity for organic edges
+2. **Scene clipping**: the outgoing scene uses an SVG clip-path (with `fill-rule: evenodd`) that cuts a hole matching the fire front. As the fire expands, more of the scene is clipped away. All content (text, images, lines) burns with the page, no separate debris.
+3. **Scorched edge**: a `<canvas>` overlay draws a radial gradient fringe at the fire boundary to simulate charring
 
-**When to use:** Dramatic reveals, edgy/destructive mood, gaming, cyberpunk. This is the most dramatic transition in the catalog - reserve it for hero moments.
+**When to use:** Dramatic reveals, edgy/destructive mood, gaming, cyberpunk. This is the most dramatic transition in the catalog, reserve it for hero moments.
 
 **Requirements:**
 
@@ -41,9 +41,9 @@ function fireRadiusAtAngle(angle, progress) {
 }
 ```
 
-**Incoming scene timing:** The incoming scene should NOT be visible during the burn. As the fire consumes the outgoing scene, **black shows through the holes** - this is the dramatic part. The viewer watches content being destroyed against blackness.
+**Incoming scene timing:** The incoming scene should NOT be visible during the burn. As the fire consumes the outgoing scene, **black shows through the holes**, this is the dramatic part. The viewer watches content being destroyed against blackness.
 
-At ~90% through the burn, the incoming scene fades in SLOWLY from black - the background first, then content staggered. Use long, gentle fades (`outQuad`, 0.8-1.2s durations) so it feels like the new scene materializes from darkness, not a hard swap.
+At ~90% through the burn, the incoming scene fades in SLOWLY from black: the background first, then content staggered. Use long, gentle fades (`outQuad`, 0.8-1.2s durations) so it feels like the new scene materializes from darkness, not a hard swap.
 
 ```js
 // Scene 2 stays at opacity: 0 during the burn. Black sits behind the fire.
@@ -59,7 +59,7 @@ tl.add("#s2-title", { opacity: 1, duration: 1000, ease: "outQuad" }, contentReve
 tl.add("#s2-subtitle", { opacity: 1, duration: 800, ease: "outQuad" }, contentReveal + 700);
 ```
 
-**Content burns with the page - no falling debris.** The clip-path on scene1 IS the effect - as the fire shape expands, everything behind the fire edge (text, images, lines) disappears naturally. Don't clone elements, don't create falling debris. The content is part of the page being consumed. The scorched canvas edge provides the visual char line at the burn boundary.
+**Content burns with the page: no falling debris.** The clip-path on scene1 IS the effect, as the fire shape expands, everything behind the fire edge (text, images, lines) disappears naturally. Don't clone elements, don't create falling debris. The content is part of the page being consumed. The scorched canvas edge provides the visual char line at the burn boundary.
 
 **Hide scene1 via a zero-duration `tl.add` at burn end, NEVER in `onComplete`.** Using `onComplete` to hide scene1 is not reversible when scrubbing. Instead, use a zero-duration `tl.add` at the exact burn end time:
 

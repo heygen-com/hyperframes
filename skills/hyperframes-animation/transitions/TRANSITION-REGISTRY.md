@@ -1,4 +1,4 @@
-# Transition Registry - machine source of truth
+# Transition Registry: machine source of truth
 
 Single source of truth for **PLV scene-to-scene transitions**. The deterministic
 injector (`product-launch-video/scripts/inject-transitions.mjs`) reads the JSON
@@ -8,7 +8,7 @@ by its `name`; everything else is harness.
 
 > This registry intentionally still emits GSAP templates because `skills/product-launch-video/scripts/inject-transitions.mjs` is out of scope for this port. Anime.js support for that injector is follow-up work, not part of U11 batch 2.
 
-This file is **not** the catalog of all transitions - that is `catalog.md` +
+This file is **not** the catalog of all transitions: that is `catalog.md` +
 `css-*.md` (≈40 CSS + shader). This registry is the curated subset that is
 **Tier-B-ready**: pure transform / opacity / filter on the two scene **clip
 wrappers** (`#el-<sid>`), no injected overlay DOM, no per-scene cooperation.
@@ -21,7 +21,7 @@ At a `break` boundary between scene _i_ (`from`) and scene _i+1_ (`to`), the
 injector:
 
 1. Extends `#el-<from>` wrapper `data-duration` by `duration_s` (holds its final
-   frame - verified: `core/src/runtime/init.ts:1393-1410` external-slot branch).
+   frame: verified: `core/src/runtime/init.ts:1393-1410` external-slot branch).
 2. Pulls `#el-<to>` wrapper `data-start` earlier by `duration_s` (creates the
    overlap window).
 3. Reassigns **all** clip `data-track-index` as a 0/1 ping-pong so the two
@@ -41,8 +41,8 @@ The injector substitutes these tokens in each `gsap_template` line:
 
 | Token                              | Meaning                                                                  |
 | ---------------------------------- | ------------------------------------------------------------------------ |
-| `__OLD__`                          | `"#el-<from>"` - outgoing clip wrapper selector (quoted)                 |
-| `__NEW__`                          | `"#el-<to>"` - incoming clip wrapper selector (quoted)                   |
+| `__OLD__`                          | `"#el-<from>"`, outgoing clip wrapper selector (quoted)                  |
+| `__NEW__`                          | `"#el-<to>"`, incoming clip wrapper selector (quoted)                    |
 | `__T__`                            | overlap-start time in seconds (master clock)                             |
 | `__DUR__`                          | `duration_s` for this boundary                                           |
 | `__DX__`                           | horizontal travel for directional types: `-1920` (LEFT) / `1920` (RIGHT) |
@@ -52,7 +52,7 @@ The injector substitutes these tokens in each `gsap_template` line:
 `filter` / `scaleX` / `transformOrigin` are lint-clean on the master timeline
 (verified: `core/src/lint/rules/gsap.ts` has no per-property whitelist and scopes
 its checks to `data-composition-id` ranges; the x/y/scale/rotation/opacity
-whitelist is a _scene-worker_ prompt rule only - it does not bind index.html).
+whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
 
 ## Registry
 
@@ -146,16 +146,16 @@ A `break` boundary with no named transition gets a default:
 
 1. If the incoming scene's creative brief reads HIGH energy (explosive / kinetic /
    frenetic keywords), use `default_high_energy` (`zoom-through`).
-2. Otherwise use `default_calm` (`blur-crossfade`) - the universal default. The
+2. Otherwise use `default_calm` (`blur-crossfade`), the universal default. The
    blur masks any background shift and reads intentional, which keeps the whole
    video to ~2 transition types (the "repeat 2-3" principle).
 
 ## Choosing as a planner (the only agent touchpoint)
 
-Pick **2-3 types for the whole video** and repeat them - repetition is what reads
+Pick **2-3 types for the whole video** and repeat them: repetition is what reads
 as professional (see `overview.md`). This budget counts the **Tier-B between-scene
 types only** (the 5 in the registry above); the Tier-A `shared-element` morph is a
-worker-authored bridge driven by narrative `intent: morph` - it is **exempt and
+worker-authored bridge driven by narrative `intent: morph`, it is **exempt and
 does not count** toward the 2-3. Name the entering transition on each scene:
 
 ```
@@ -165,5 +165,5 @@ does not count** toward the 2-3. Name the entering transition on each scene:
 ```
 
 Omit the anchor to accept the default above. Do NOT write GSAP, touch timing, or
-edit index.html - the harness stamps the code, computes the overlap, and assigns
+edit index.html: the harness stamps the code, computes the overlap, and assigns
 tracks.

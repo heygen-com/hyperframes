@@ -11,7 +11,7 @@ tl.add(new, { opacity: [0, 1], duration: 500, ease: "inOutCubic" }, T);
 
 ### Blur Crossfade
 
-Dissolve with blur + scale shift. **Scale blur amount by energy** - see SKILL.md "Blur Intensity by Energy" section. The examples below show the medium (default) version. For calm compositions, increase to 20-30px with a 0.3-0.5s hold at peak blur. For high-energy, decrease to 3-6px with no hold.
+Dissolve with blur + scale shift. **Scale blur amount by energy**: see SKILL.md "Blur Intensity by Energy" section. The examples below show the medium (default) version. For calm compositions, increase to 20-30px with a 0.3-0.5s hold at peak blur. For high-energy, decrease to 3-6px with no hold.
 
 **Medium (default):**
 
@@ -30,7 +30,7 @@ tl.add(
 );
 ```
 
-**Calm (wellness, luxury) - heavy blur, holds at abstract color:**
+**Calm (wellness, luxury): heavy blur, holds at abstract color:**
 
 ```js
 tl.add(old, { filter: "blur(25px)", scale: 1.05, duration: 600, ease: "inQuad" }, T);
@@ -51,7 +51,7 @@ tl.add(old, { opacity: 0, duration: 300, ease: "inCubic" }, T + 250);
 tl.add(new, { opacity: [0, 1], duration: 300, ease: "outCubic" }, T + 250);
 ```
 
-**Calm - slow rack focus with long hold at peak defocus:**
+**Calm: slow rack focus with long hold at peak defocus:**
 
 ```js
 tl.add(old, { filter: "blur(30px)", duration: 800, ease: "inQuad" }, T);

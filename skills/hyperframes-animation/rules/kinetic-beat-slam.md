@@ -1,6 +1,6 @@
 ---
 name: kinetic-beat-slam
-description: Percussive kinetic typography - short phrases slam in on a steady beat with distinct per-phrase entrances, optional rhythm chrome (metronome ticks, beat bar), then a locked finale.
+description: Percussive kinetic typography: short phrases slam in on a steady beat with distinct per-phrase entrances, optional rhythm chrome (metronome ticks, beat bar), then a locked finale.
 metadata:
   tags: text, kinetic, typography, beat, rhythm, slam, percussive, punchy
 ---
@@ -11,8 +11,8 @@ Short phrases hit one at a time on a **steady beat**, each with a _different_ en
 
 ## How It Works
 
-1. **Define the beat once.** A single `BEATS = [t0, t1, t2, …]` array (seconds) is the rhythmic spine. Every phrase entrance, accent, and chrome tick reads its time from this array - so the whole piece locks to one pulse instead of drifting hand-tuned offsets.
-2. **Vary the entrances.** Phrase 1 slams (scale + blur), phrase 2 snaps from the side, phrase 3 rises and rotates. Same _energy_, different _form_ - reusing one `punchIn()` for all three reads as flat.
+1. **Define the beat once.** A single `BEATS = [t0, t1, t2, …]` array (seconds) is the rhythmic spine. Every phrase entrance, accent, and chrome tick reads its time from this array, so the whole piece locks to one pulse instead of drifting hand-tuned offsets.
+2. **Vary the entrances.** Phrase 1 slams (scale + blur), phrase 2 snaps from the side, phrase 3 rises and rotates. Same _energy_, different _form_: reusing one `punchIn()` for all three reads as flat.
 3. **Land a finale.** All phrases lock into a left-aligned or centered stack; an accent underline sweeps in; optionally a continuous low-amplitude pulse holds the last beat.
 
 ## Beat & Easing
@@ -23,10 +23,10 @@ Pick the entrance easing by attack character (the choice is discrete):
 | ------------- | ------------------------------------------- |
 | `outQuint`    | Hard slam, fast settle ⭐ default for a hit |
 | `outExpo`     | Hardest snap (side-snaps, whip-ins)         |
-| `outBack(2)`  | Overshoot pop - accents, not body words     |
+| `outBack(2)`  | Overshoot pop, accents, not body words      |
 | `outCirc`     | Heavy rise with momentum                    |
 
-Use **at least 3 distinct easings** across the piece (entrances are its "tone of voice"). Keep durations short - 0.35–0.6s on the hit, ≤0.25s on the exit - so the beat stays percussive.
+Use **at least 3 distinct easings** across the piece (entrances are its "tone of voice"). Keep durations short, 0.35–0.6s on the hit, ≤0.25s on the exit, so the beat stays percussive.
 
 ## HTML
 
@@ -150,37 +150,37 @@ Use **at least 3 distinct easings** across the piece (entrances are its "tone of
 
 ## How to Choose Values
 
-- **BEATS spacing** - 1.2–1.8s between hits reads as a confident beat; <0.8s feels frantic, >2.5s loses the pulse. Keep spacing even (it's a _beat_).
-- **Entrance duration** - 0.35–0.6s. The hit must resolve before the next beat.
-- **Distinct entrances** - assign a different transform axis per phrase (scale / x / y+rotate). Reuse the _ease family_, vary the _motion_.
-- **Accent hue** - exactly one (the verbs). The rest is mono white/near-black.
-- **Rhythm chrome** - optional but high-impact for "rhythmic": a 5-tick metronome, a center beat bar, or a `// label` monospace tag pulsing on-beat. Mark any decorative that must survive a shader transition per `../../transitions/overview.md` rules.
+- **BEATS spacing**: 1.2–1.8s between hits reads as a confident beat; <0.8s feels frantic, >2.5s loses the pulse. Keep spacing even (it's a _beat_).
+- **Entrance duration**: 0.35–0.6s. The hit must resolve before the next beat.
+- **Distinct entrances**: assign a different transform axis per phrase (scale / x / y+rotate). Reuse the _ease family_, vary the _motion_.
+- **Accent hue**: exactly one (the verbs). The rest is mono white/near-black.
+- **Rhythm chrome**: optional but high-impact for "rhythmic": a 5-tick metronome, a center beat bar, or a `// label` monospace tag pulsing on-beat. Mark any decorative that must survive a shader transition per `../../transitions/overview.md` rules.
 
 ## Key Principles
 
-- **One beat array, not scattered offsets** - every element times off `BEATS[]`. This is the single biggest lever for "rhythmic."
-- **Different entrance per phrase** - a reused `punchIn()` for all lines is the flat-but-competent tell.
-- **Short attacks** - percussive means fast in, brief, decisive. Long fades kill the beat.
-- **One accent hue, heavy weight** - embedded display faces (Archivo Black, League Gothic, Oswald) at 150px+; see `hyperframes-creative/references/typography.md`.
-- **Finale earns the hold** - stack + underline sweep + optional breath; don't just leave the last phrase sitting.
+- **One beat array, not scattered offsets**: every element times off `BEATS[]`. This is the single biggest lever for "rhythmic."
+- **Different entrance per phrase**: a reused `punchIn()` for all lines is the flat-but-competent tell.
+- **Short attacks**: percussive means fast in, brief, decisive. Long fades kill the beat.
+- **One accent hue, heavy weight**: embedded display faces (Archivo Black, League Gothic, Oswald) at 150px+; see `hyperframes-creative/references/typography.md`.
+- **Finale earns the hold**: stack + underline sweep + optional breath; don't just leave the last phrase sitting.
 
 ## Critical Constraints
 
 - **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`. Never `tl.play()`.
 - **No infinite repeats** on the hold/chrome: use finite `loop` counts derived with `Math.floor`, not `Math.ceil`. `ceil` overshoots `data-duration`; `Math.max(1, ...)` guards against an invalid loop count when the hold is shorter than one cycle.
-- **No banned exit animations** between scenes - if this is one of several scenes, the _transition_ is the exit (see `../../transitions/overview.md`); only a final scene may fade out.
-- **Display font must be embedded** or it silently falls back at render (Anton/Bebas-as-literal are NOT embedded - `Bebas Neue` aliases to League Gothic; verify in `typography.md`).
+- **No banned exit animations** between scenes: if this is one of several scenes, the _transition_ is the exit (see `../../transitions/overview.md`); only a final scene may fade out.
+- **Display font must be embedded** or it silently falls back at render (Anton/Bebas-as-literal are NOT embedded: `Bebas Neue` aliases to League Gothic; verify in `typography.md`).
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
 
 ## Combinations
 
-- [3d-text-depth-layers.md](3d-text-depth-layers.md) - extruded depth on the slammed words
-- [css-marker-patterns.md](css-marker-patterns.md) - underline sweep / circle on the finale
-- [sine-wave-loop.md](sine-wave-loop.md) - the finale breath/pulse
+- [3d-text-depth-layers.md](3d-text-depth-layers.md): extruded depth on the slammed words
+- [css-marker-patterns.md](css-marker-patterns.md): underline sweep / circle on the finale
+- [sine-wave-loop.md](sine-wave-loop.md): the finale breath/pulse
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - timeline + easing vocabulary (`../../adapters/animejs.md`)
-- `/hyperframes-creative` - `references/video-composition.md` (foreground rhythm chrome), `references/typography.md` (embedded display fonts)
-- `/hyperframes-core` - composition wiring, determinism (finite loops)
+- `/hyperframes-animation`, timeline + easing vocabulary (`../../adapters/animejs.md`)
+- `/hyperframes-creative`, `references/video-composition.md` (foreground rhythm chrome), `references/typography.md` (embedded display fonts)
+- `/hyperframes-core`, composition wiring, determinism (finite loops)

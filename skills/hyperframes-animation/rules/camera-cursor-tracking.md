@@ -13,10 +13,10 @@ Keeps a horizontally-growing element (e.g. a search bar with typing text, a long
 
 Separate **World Space** (the full target element with all content) from **Screen Space** (the viewport). Two phases:
 
-- **Phase 1 (Static)** - The world container sits at a fixed initial offset. Camera doesn't move. This anchors the viewer's eye to the composition before tracking begins.
+- **Phase 1 (Static)**: The world container sits at a fixed initial offset. Camera doesn't move. This anchors the viewer's eye to the composition before tracking begins.
 - **Phase 2 (Tracking)**: Activates when the focal point (cursor, highlight, last typed glyph) exceeds a target screen position (e.g. a configurable fraction `CURSOR_TARGET_FRACTION` of viewport width from the left). The world container translates leftward (`translateX: -<delta>`) keeping the focal point pinned at that screen position.
 
-The offset math is **mathematically continuous** at the phase boundary - at the instant tracking starts, the world position equals what the static phase had. So the transition is seamless.
+The offset math is **mathematically continuous** at the phase boundary: at the instant tracking starts, the world position equals what the static phase had. So the transition is seamless.
 
 The piecewise form used in code is:
 
@@ -63,7 +63,7 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding-left: VIEWPORT_PAD_LEFT; /* "left margin" - variation: left-aligned init */
+  padding-left: VIEWPORT_PAD_LEFT; /* "left margin": variation: left-aligned init */
 }
 
 .world {
@@ -95,10 +95,10 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
   background: {accentColor};
   height: CURSOR_HEIGHT_EM;
   vertical-align: bottom;
-  /* No `animation: blink` CSS keyframe here - HF renders by seeking a paused
+  /* No `animation: blink` CSS keyframe here, HF renders by seeking a paused
      timeline, and CSS animation clocks are NOT synced to that seek. A CSS
      blink will flicker non-deterministically. Drive cursor blink as a finite
-     alternate tween on the anime.js timeline instead - see Anime.js Timeline section. */
+     alternate tween on the anime.js timeline instead, see Anime.js Timeline section. */
 }
 ```
 
@@ -110,7 +110,7 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
   const tl = anime.createTimeline({ autoplay: false });
 
   // Pre-measure target text width to compute tracking distance.
-  // Build the timeline SYNCHRONOUSLY - see Critical Constraints for why
+  // Build the timeline SYNCHRONOUSLY: see Critical Constraints for why
   // a fonts.ready gate causes worker-race flicker.
   const textEl = document.getElementById("reveal-text");
   const fullText = textEl.textContent;
@@ -172,43 +172,43 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
 
 ## How to Choose Values
 
-- **VIEWPORT_PAD_LEFT** - left-edge padding of the world inside the viewport (Phase 1 anchor X).
+- **VIEWPORT_PAD_LEFT**: left-edge padding of the world inside the viewport (Phase 1 anchor X).
   - Range: 0 → ~10% of viewport width
   - Effects: 0 hugs the left edge; larger inset feels more like a centered hero frame
   - Constraints: must match the CSS `padding-left` on `.viewport` or the camera math drifts
-- **VIEWPORT_WIDTH** - the composition's `data-width` in CSS pixels.
+- **VIEWPORT_WIDTH**: the composition's `data-width` in CSS pixels.
   - Constraints: must equal the scene root's `data-width`; never tweened
-- **CURSOR_TARGET_FRACTION** - fraction of viewport width where the focal point locks during Phase 2.
+- **CURSOR_TARGET_FRACTION**: fraction of viewport width where the focal point locks during Phase 2.
   - Range: 0.5 (center-tracked) → 0.75 (right-leaning, more text visible behind cursor)
   - Effects: lower values leave less revealed text in frame; higher values delay tracking
-- **BAR_FONT_SIZE** - hero element font size.
+- **BAR_FONT_SIZE**: hero element font size.
   - Range: ~8-12% of viewport height; below ~6% reads as a UI widget rather than a cinematic element
-- **BAR_FONT_WEIGHT** - weight of the search-bar text.
+- **BAR_FONT_WEIGHT**: weight of the search-bar text.
   - Range: discrete; 400 for neutral demo text, 700 for hero / headline framing
-- **BAR_LETTER_SPACING** - `letter-spacing` for the bar text.
+- **BAR_LETTER_SPACING**: `letter-spacing` for the bar text.
   - Range: slight negative (tighter, more cinematic) → 0 (default)
-- **CURSOR_WIDTH** - visual cursor stroke width in CSS pixels.
+- **CURSOR_WIDTH**: visual cursor stroke width in CSS pixels.
   - Range: ~4-10 px at 1080p; thinner reads as typed text, thicker reads as a block caret
-- **CURSOR_GAP** - `margin-left` between text and cursor.
+- **CURSOR_GAP**: `margin-left` between text and cursor.
   - Range: a few px of breathing room; do not exceed the cursor width or it visually detaches
-- **CURSOR_HEIGHT_EM** - cursor height as an em multiple of the font.
+- **CURSOR_HEIGHT_EM**: cursor height as an em multiple of the font.
   - Range: 0.85-1.0; matches the visual height of the typed glyphs
-- **REVEAL_START** - when Phase 1 typing begins.
+- **REVEAL_START**: when Phase 1 typing begins.
   - Constraints: typically 0; if preceded by another phase, ≥ that phase's end + small buffer
-- **REVEAL_DUR** - duration of the Phase 1 reveal tween.
+- **REVEAL_DUR**: duration of the Phase 1 reveal tween.
   - Range: scale with character count (target an average per-character cadence in the 0.05-0.15s range)
   - Constraints: must end before `SCENE_DURATION` and ideally overlap slightly with the tracking phase
-- **TRACK_START** - when Phase 2 camera motion begins.
+- **TRACK_START**: when Phase 2 camera motion begins.
   - Range: usually before reveal completes so the handoff feels continuous; can equal `REVEAL_START` if the focal point is already past the target at t=0
   - Constraints: `TRACK_START < REVEAL_START + REVEAL_DUR` for a smooth crossfade
-- **TRACK_DUR** - duration of the camera pan.
+- **TRACK_DUR**: duration of the camera pan.
   - Range: 0.8-2.0s; under 0.5s reads as a snap, over 2.5s drags
-- **SCENE_DURATION** - must match the scene root's `data-duration`.
+- **SCENE_DURATION**: must match the scene root's `data-duration`.
   - Constraints: feeds the blink loop count; mismatch causes blinks to truncate or run past the end
-- **BLINK_HALF_PERIOD** - half-period of the cursor blink (one on-state OR one off-state).
+- **BLINK_HALF_PERIOD**: half-period of the cursor blink (one on-state OR one off-state).
   - Range: 0.2-0.4s; 0.3s reads as a natural caret blink
   - Constraints: derived value `Math.ceil(SCENE_DURATION / BLINK_HALF_PERIOD) - 1` must be ≥ 0
-- **Ease choices** - discrete:
+- **Ease choices**: discrete:
   - Camera pan: `inOutCubic` or `inOutQuart` for cinematic settle; avoid `outBack` (overshoot reads as UI bounce, not camera)
   - Reveal: `"none"` for linear typing; any easing distorts the per-keystroke cadence
   - Blink: `"steps(1)"` for hard on/off; any easing fades the cursor and breaks the caret feel
@@ -216,30 +216,30 @@ finalWorldX = Math.min(INITIAL_OFFSET, trackingOffset)
 ## Key Principles
 
 - **Measure with `getBoundingClientRect()` / probe nodes**, not by character count × font-size. Proportional fonts have variable glyph widths.
-- **`white-space: nowrap`** on the world - text must stay on one line for camera math to work
-- **Pre-allocate the world width** by setting `maxWidth` at full target width - prevents layout shift mid-tween
-- **Eased camera** (`inOutCubic` / `inOutQuart`), not linear - natural pan feel
-- **Spring-like via easing or native spring** - use `anime.createSpring({ stiffness, damping, mass, velocity })` when the settle itself matters. For simpler camera pans, `outBack(${BOUNCE_FACTOR})` or `outQuint` can approximate the feel without extra parameters
+- **`white-space: nowrap`** on the world, text must stay on one line for camera math to work
+- **Pre-allocate the world width** by setting `maxWidth` at full target width, prevents layout shift mid-tween
+- **Eased camera** (`inOutCubic` / `inOutQuart`), not linear, natural pan feel
+- **Spring-like via easing or native spring**: use `anime.createSpring({ stiffness, damping, mass, velocity })` when the settle itself matters. For simpler camera pans, `outBack(${BOUNCE_FACTOR})` or `outQuint` can approximate the feel without extra parameters
 
 ## Critical Constraints
 
-- **Build the timeline SYNCHRONOUSLY, no fonts.ready gate** - HF renders frames in parallel workers, each a fresh browser. If you wrap the timeline build in `document.fonts.ready.then(...)`, some workers will seek frames BEFORE the Promise resolves and find no timeline registered → those frames render at CSS initial state (e.g. `max-width: 0` ⇒ empty text), other workers render correctly → visible flicker between empty and filled. Register `hyperframesAnime.register(id, tl)` at script-parse time, even if fonts haven't loaded yet - the camera math can tolerate a few percent width error from fallback-font measurement, but worker-race flicker is unacceptable.
+- **Build the timeline SYNCHRONOUSLY, no fonts.ready gate**: HF renders frames in parallel workers, each a fresh browser. If you wrap the timeline build in `document.fonts.ready.then(...)`, some workers will seek frames BEFORE the Promise resolves and find no timeline registered → those frames render at CSS initial state (e.g. `max-width: 0` ⇒ empty text), other workers render correctly → visible flicker between empty and filled. Register `hyperframesAnime.register(id, tl)` at script-parse time, even if fonts haven't loaded yet, the camera math can tolerate a few percent width error from fallback-font measurement, but worker-race flicker is unacceptable.
 - **If precise post-font measurement matters**, re-measure inside the tween's `onUpdate` (still deterministic per-frame seek), not via a Promise gate. Or set `font-display: block` on the @font-face to force the browser to wait for the font before painting any text.
 - **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`. Never `tl.play()`
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
 - **Continuous math at phase boundary**: the world's `x` at the moment tracking starts must equal the static-phase offset. The `Math.min(INITIAL_OFFSET, trackingOffset)` formulation guarantees this; do NOT switch to a hard `if (typingProgress > threshold)` branch or the camera will visibly jump.
-- **Inline cursor, not absolutely positioned**: cursor should be a sibling of the text (inline-block) so it follows text flow naturally - absolute positioning misaligns with the camera math
+- **Inline cursor, not absolutely positioned**: cursor should be a sibling of the text (inline-block) so it follows text flow naturally: absolute positioning misaligns with the camera math
 - **`overflow: hidden` on `.viewport`**: clip the world's left edge as it pans off-screen
-- **Cursor blink via anime.js, NOT CSS `@keyframes ... infinite`** - HF renders by seeking the paused timeline; CSS animation clocks are NOT synchronized with that seek, so any CSS-driven blink will flicker non-deterministically across frames. Always drive blink as a finite `alternate` tween on the paused anime.js timeline (`loop` count computed from scene length).
+- **Cursor blink via anime.js, NOT CSS `@keyframes ... infinite`**, HF renders by seeking the paused timeline; CSS animation clocks are NOT synchronized with that seek, so any CSS-driven blink will flicker non-deterministically across frames. Always drive blink as a finite `alternate` tween on the paused anime.js timeline (`loop` count computed from scene length).
 
 ## Combinations
 
-- [context-sensitive-cursor.md](context-sensitive-cursor.md) - change cursor color/style per text segment during typing
-- [discrete-text-sequence.md](discrete-text-sequence.md) - non-linear text reveals that pair with this camera
+- [context-sensitive-cursor.md](context-sensitive-cursor.md): change cursor color/style per text segment during typing
+- [discrete-text-sequence.md](discrete-text-sequence.md): non-linear text reveals that pair with this camera
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - timeline + tween API
-- `/hyperframes-core` - composition wiring + `data-*` attributes
-- `/hyperframes-cli` - `hyperframes lint` to validate the registry key + duration
+- `/hyperframes-animation`, timeline + tween API
+- `/hyperframes-core`, composition wiring + `data-*` attributes
+- `/hyperframes-cli`, `hyperframes lint` to validate the registry key + duration

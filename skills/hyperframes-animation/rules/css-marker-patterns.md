@@ -1,14 +1,14 @@
 # CSS Patterns for Marker Highlighting
 
-Pure CSS + anime.js implementations of all five MarkerHighlight.js drawing modes. Use these for deterministic rendering in HyperFrames compositions - no external library dependency, full anime.js timeline control.
+Pure CSS + anime.js implementations of all five MarkerHighlight.js drawing modes. Use these for deterministic rendering in HyperFrames compositions, no external library dependency, full anime.js timeline control.
 
 ## Contents
 
-- [1. Highlight Mode](#1-highlight-mode) - Yellow marker sweep behind text
-- [2. Circle Mode](#2-circle-mode) - Hand-drawn ellipse around text
-- [3. Burst Mode](#3-burst-mode) - Radiating lines from text
-- [4. Scribble Mode](#4-scribble-mode) - Chaotic scribble over text
-- [5. Sketchout Mode](#5-sketchout-mode) - Rough rectangle outline
+- [1. Highlight Mode](#1-highlight-mode): Yellow marker sweep behind text
+- [2. Circle Mode](#2-circle-mode): Hand-drawn ellipse around text
+- [3. Burst Mode](#3-burst-mode): Radiating lines from text
+- [4. Scribble Mode](#4-scribble-mode): Chaotic scribble over text
+- [5. Sketchout Mode](#5-sketchout-mode): Rough rectangle outline
 
 ## 1. Highlight Mode
 

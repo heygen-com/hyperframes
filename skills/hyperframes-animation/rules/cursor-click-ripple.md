@@ -43,7 +43,7 @@ Use an anime.js timeline because the phase ordering (move → settle → click �
     </svg>
   </div>
 
-  <!-- Ripple rings - centered on click target, hidden until trigger -->
+  <!-- Ripple rings: centered on click target, hidden until trigger -->
   <div class="ripple ripple-1"></div>
   <div class="ripple ripple-2"></div>
   <div class="ripple ripple-3"></div>
@@ -102,9 +102,9 @@ Build a paused timeline. Register it with `hyperframesAnime.register()` using th
 
   // MOVE_DUR, MOVE_EASE, CLICK_AT, PRESS_DUR, CURSOR_PRESS_SCALE, TARGET_PRESS_SCALE,
   // RIPPLE_AT, RIPPLE_DUR, RIPPLE_SCALE, RIPPLE_STAGGER, RIPPLE_EASE
-  // - all named; values per How to Choose Values.
+  //: all named; values per How to Choose Values.
 
-  // Phase 1 - Move cursor to target center (eased, not linear)
+  // Phase 1: Move cursor to target center (eased, not linear)
   tl.add(
     ".cursor",
     {
@@ -116,7 +116,7 @@ Build a paused timeline. Register it with `hyperframesAnime.register()` using th
     0,
   );
 
-  // Phase 2 - Click: cursor + target depress together, then return
+  // Phase 2: Click: cursor + target depress together, then return
   tl.add(
     ".cursor",
     {
@@ -140,7 +140,7 @@ Build a paused timeline. Register it with `hyperframesAnime.register()` using th
     CLICK_AT * 1000,
   );
 
-  // Phase 3 - Ripple burst, N rings staggered from the click point
+  // Phase 3: Ripple burst, N rings staggered from the click point
   tl.add(".ripple-1, .ripple-2, .ripple-3", { opacity: 1, duration: 0 }, RIPPLE_AT * 1000);
   tl.add(
     ".ripple-1, .ripple-2, .ripple-3",
@@ -160,86 +160,86 @@ Build a paused timeline. Register it with `hyperframesAnime.register()` using th
 
 ## How to Choose Values
 
-- **MOVE_DUR** - cursor travel time from entry to target, in seconds
+- **MOVE_DUR**: cursor travel time from entry to target, in seconds
   - Range: 0.4–1.0 s
   - Effects: short feels darting; long feels deliberate / "considered click"
-  - Constraints: must end before `CLICK_AT` - otherwise the click fires while the cursor is still moving and reads as a misclick
+  - Constraints: must end before `CLICK_AT`, otherwise the click fires while the cursor is still moving and reads as a misclick
   - Reference: ../../examples/cta-orbit-collapse.html uses 0.5 s
 
-- **MOVE_EASE** - easing family for the move tween
+- **MOVE_EASE**: easing family for the move tween
   - Discrete choice. Options:
-    - `inOutCubic` - symmetric, calm; good for "the user thoughtfully moves the cursor"
-    - `outBack(<n>)` - overshoot landing; good when the click target is a button you want the cursor to "settle onto" with a tiny visible recoil. Pair with a low overshoot coefficient (~1.2–1.4) - higher reads as cartoonish
-    - `outQuart` - fast start, soft landing; good for a "decisive" move
+  - `inOutCubic`, symmetric, calm; good for "the user thoughtfully moves the cursor"
+  - `outBack(<n>)`, overshoot landing; good when the click target is a button you want the cursor to "settle onto" with a tiny visible recoil. Pair with a low overshoot coefficient (~1.2–1.4), higher reads as cartoonish
+  - `outQuart`, fast start, soft landing; good for a "decisive" move
   - Reference: ../../examples/cta-orbit-collapse.html uses `outBack(1.3)`
 
-- **CLICK_AT** - time the click fires, in seconds
+- **CLICK_AT**: time the click fires, in seconds
   - Range: must be ≥ `MOVE_DUR` (cursor has settled); typically `MOVE_DUR + 0.0–0.3 s` of "decision pause"
   - Effects: zero pause reads as autopilot; >0.3 s of pause reads as hesitation
   - Reference: ../../examples/cta-orbit-collapse.html clicks 0.2 s after the cursor settles
 
-- **PRESS_DUR** - half-duration of the depression (the `alternate` tween runs twice this)
+- **PRESS_DUR**: half-duration of the depression (the `alternate` tween runs twice this)
   - Range: 0.06–0.12 s
   - Effects: short feels crisp; long feels mushy
   - Constraints: total press = `2 * PRESS_DUR`; must finish before the next scene phase needs the cursor / target back at normal scale
   - Reference: ../../examples/cta-orbit-collapse.html uses 0.08 s
 
-- **CURSOR_PRESS_SCALE / TARGET_PRESS_SCALE** - how far each compresses during the click
+- **CURSOR_PRESS_SCALE / TARGET_PRESS_SCALE**: how far each compresses during the click
   - Range: cursor 0.80–0.90; target 0.92–0.97
   - Effects: smaller numbers = stronger "this click counts" feel; values close to 1 read as a gentle tap
-  - Constraints: cursor compresses MORE than the target - the cursor is the actor, the target is the recipient
+  - Constraints: cursor compresses MORE than the target, the cursor is the actor, the target is the recipient
   - Reference: ../../examples/cta-orbit-collapse.html uses cursor 0.85 / target 0.95
 
-- **RIPPLE_AT** - when the rings start expanding, in seconds
+- **RIPPLE_AT**: when the rings start expanding, in seconds
   - Range: `CLICK_AT + 0.0–0.08 s`
   - Effects: simultaneous with the press feels causal; slight delay feels acoustic ("the click happens, then the wave radiates")
   - Reference: ../../examples/cta-orbit-collapse.html starts the ripple at `CLICK_AT` exactly
 
-- **RIPPLE_DUR** - how long each ring takes to fully expand and fade
+- **RIPPLE_DUR**: how long each ring takes to fully expand and fade
   - Range: 0.5–1.0 s
   - Effects: short rings feel sharp; long rings feel like a soft sonar
   - Constraints: must complete before any phase that depends on the ring being gone (e.g. a screen wipe)
   - Reference: ../../examples/cta-orbit-collapse.html uses 0.7 s
 
-- **RIPPLE_SCALE** - final scale of each ring before it fades
+- **RIPPLE_SCALE**: final scale of each ring before it fades
   - Range: 3–6
   - Effects: 3 keeps the ring near the click site; 6 lets it sweep the surrounding area
   - Constraints: if the ring would exit the visible frame before opacity reaches 0, lower the scale or shorten the duration
   - Reference: ../../examples/cta-orbit-collapse.html uses 5
 
-- **RIPPLE_STAGGER** - delay between consecutive rings
+- **RIPPLE_STAGGER**: delay between consecutive rings
   - Range: 0.06–0.12 s (or 0 for a single ring; see Variations)
   - Effects: below ~0.06 s reads as one thick ring; above ~0.12 s reads as separate events
   - Reference: ../../examples/cta-orbit-collapse.html uses a single ring (no stagger)
 
-- **RIPPLE_EASE** - easing family for the expansion
+- **RIPPLE_EASE**: easing family for the expansion
   - Discrete choice. Options:
-    - `outCubic` - fast start, soft tail; the standard "ping" feel
-    - `outQuart` - even sharper attack, longer tail
-    - `outExpo` - almost-instant expansion with a long quiet fade; reads as a strong, distant pulse
+  - `outCubic`, fast start, soft tail; the standard "ping" feel
+  - `outQuart`, even sharper attack, longer tail
+  - `outExpo`, almost-instant expansion with a long quiet fade; reads as a strong, distant pulse
   - Reference: ../../examples/cta-orbit-collapse.html uses `outCubic`
 
-- **TARGET_X / TARGET_Y** - pixel offset of the click target from the cursor's CSS-laid origin
-  - These are layout-derived, not creative knobs - they must match the visual centroid of the actual click target. A 4 px miss reads as missing the button
+- **TARGET_X / TARGET_Y**: pixel offset of the click target from the cursor's CSS-laid origin
+  - These are layout-derived, not creative knobs, they must match the visual centroid of the actual click target. A 4 px miss reads as missing the button
   - Reference: ../../examples/cta-orbit-collapse.html targets the white button at `CENTER_X + 130, CENTER_Y + 15`
 
 ## Variations
 
-- **Single ring** - keep one `.ripple` element, drop the stagger; reads as more elegant when the rest of the scene is busy
-- **Keyframed attack-decay** - replace the simple expand-and-fade with a `keyframes` block that ramps opacity 0 → peak → 0 across the duration; gives a clearer "energy radiates and dissipates" envelope (used in ../../examples/cta-orbit-collapse.html)
-- **Multi-ring expanding pulse** - 3 rings with 0.08 s stagger feels richer when the click is the climactic moment of the scene
+- **Single ring**: keep one `.ripple` element, drop the stagger; reads as more elegant when the rest of the scene is busy
+- **Keyframed attack-decay**: replace the simple expand-and-fade with a `keyframes` block that ramps opacity 0 → peak → 0 across the duration; gives a clearer "energy radiates and dissipates" envelope (used in ../../examples/cta-orbit-collapse.html)
+- **Multi-ring expanding pulse**: 3 rings with 0.08 s stagger feels richer when the click is the climactic moment of the scene
 
 ## Key Principles
 
-- **Move before click**: trigger the click only after the move tween has settled - clicking mid-motion reads as unintentional
+- **Move before click**: trigger the click only after the move tween has settled: clicking mid-motion reads as unintentional
 - **Synchronized depression**: cursor + target depress at the same `position` time with the same duration (and both alternate back)
 - **Ripple from click point**: ripples expand from the exact click location (the button's visual center), not from any element's bounding-box origin
-- **Subtle scale**: cursor compresses more than the target - see `CURSOR_PRESS_SCALE` / `TARGET_PRESS_SCALE`
+- **Subtle scale**: cursor compresses more than the target: see `CURSOR_PRESS_SCALE` / `TARGET_PRESS_SCALE`
 - **High z-index cursor**: cursor renders above all content for the entire sequence
 
 ## Critical Constraints
 
-- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`. Never call `tl.play()` - HyperFrames seeks the timeline frame-by-frame deterministically
+- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`. Never call `tl.play()`, HyperFrames seeks the timeline frame-by-frame deterministically
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
 - **Initial ripple state lives in CSS**: `scale: 0` and `opacity: 0` hold until the zero-duration reveal at `RIPPLE_AT`
@@ -249,13 +249,13 @@ Build a paused timeline. Register it with `hyperframesAnime.register()` using th
 
 ## Combinations
 
-- [orbit-3d-entry.md](orbit-3d-entry.md) - when the click is the pivot that collapses orbiting elements toward the cursor's target
-- [center-outward-expansion.md](center-outward-expansion.md) - the click can be the trigger for an outward burst from the click point
+- [orbit-3d-entry.md](orbit-3d-entry.md): when the click is the pivot that collapses orbiting elements toward the cursor's target
+- [center-outward-expansion.md](center-outward-expansion.md): the click can be the trigger for an outward burst from the click point
 - [press-release-spring.md](press-release-spring.md) for stronger physical feel on the target button
 - [scale-swap-transition.md](scale-swap-transition.md) for the button's state change after click (button morphs into success state, next view, etc.)
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - timeline + tween API reference (eases, stagger, `immediateRender`, etc.)
-- `/hyperframes-core` - composition wiring (`data-*` attributes, scene structure, registration contract)
-- `/hyperframes-cli` - `hyperframes lint` to verify the registry key + duration match
+- `/hyperframes-animation`, timeline + tween API reference (eases, stagger, `immediateRender`, etc.)
+- `/hyperframes-core`, composition wiring (`data-*` attributes, scene structure, registration contract)
+- `/hyperframes-cli`, `hyperframes lint` to verify the registry key + duration match

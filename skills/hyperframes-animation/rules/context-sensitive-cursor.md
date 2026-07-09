@@ -1,6 +1,6 @@
 ---
 name: context-sensitive-cursor
-description: Cursor color and styling that adapt to the current text segment being typed - accent color on highlights, dim on placeholders, etc.
+description: Cursor color and styling that adapt to the current text segment being typed: accent color on highlights, dim on placeholders, etc.
 metadata:
   tags: cursor, color, context, typewriter, styling, segment
 ---
@@ -73,7 +73,7 @@ Placeholders: `{monoFont}` is the project's monospace stack (proportional fonts 
   display: inline-block;
   width: {cursorWidth}px;
   height: {cursorHeight}px;
-  background: {textColor}; /* default - overridden per segment in onUpdate */
+  background: {textColor}; /* default: overridden per segment in onUpdate */
   margin-left: {cursorGap}px;
   vertical-align: {cursorBaselineFix}px;
 }
@@ -153,7 +153,7 @@ Placeholders: `{monoFont}` is the project's monospace stack (proportional fonts 
 
 ### Non-blinking during active typing
 
-When letters are being added (driver moved forward in the last `TYPING_GRACE` seconds), suppress blink - cursor stays solid. When no typing activity (`driver.t - lastChangeTime > TYPING_GRACE`), resume blink.
+When letters are being added (driver moved forward in the last `TYPING_GRACE` seconds), suppress blink, cursor stays solid. When no typing activity (`driver.t - lastChangeTime > TYPING_GRACE`), resume blink.
 
 ```js
 let lastChangeTime = 0,
@@ -182,56 +182,56 @@ If a segment is rendered DARK text on light bg, cursor should swap to dark too. 
 
 ## Key Principles
 
-- **Cursor color shifts make brand moments POP** - eye lands on the brand name because the cursor color shifts to brand accent. Without it, cursor is visual noise.
-- **`background` property on the cursor div** - NOT `color` (cursor is a colored block, not a glyph)
-- **Deterministic blink via sin** - never CSS `@keyframes blink`. HF seek will desync.
-- **Cursor `display: inline-block`** - `display: inline` ignores width/height.
-- **`vertical-align: -8px`** (or similar) - visually anchor cursor to text baseline, not full line-height.
-- **`white-space: pre`** on text and parent - preserve trailing spaces so cursor sits at end of segment, not after collapsed space.
-- **Color palette aligned with brand system** - 3-4 colors max for segments (main / brand / cmd / success). More and the segmentation reads as random.
+- **Cursor color shifts make brand moments POP**: eye lands on the brand name because the cursor color shifts to brand accent. Without it, cursor is visual noise.
+- **`background` property on the cursor div**, NOT `color` (cursor is a colored block, not a glyph)
+- **Deterministic blink via sin**: never CSS `@keyframes blink`. HF seek will desync.
+- **Cursor `display: inline-block`**, `display: inline` ignores width/height.
+- **`vertical-align: -8px`** (or similar), visually anchor cursor to text baseline, not full line-height.
+- **`white-space: pre`** on text and parent, preserve trailing spaces so cursor sits at end of segment, not after collapsed space.
+- **Color palette aligned with brand system**: 3-4 colors max for segments (main / brand / cmd / success). More and the segmentation reads as random.
 
 ## How to Choose Values
 
-- **DURATION** - total scene length in seconds
+- **DURATION**: total scene length in seconds
   - Range: 4-8 s for a single typed line; longer if the line is long
   - Effects: too short truncates the typing; too long leaves a dead tail after the success state
   - Constraints: must be `≥ SEQUENCE[last].t + (closing dwell)`
   - Reference: see the corresponding blueprint's example HTML
 
-- **SEQUENCE entry `t` values** - absolute seconds where each new visible text + segment kicks in
+- **SEQUENCE entry `t` values**, absolute seconds where each new visible text + segment kicks in
   - Range: monotonically increasing; spacing 0.2-0.5 s between micro-additions (per-word or per-token), longer between segment swaps
   - Effects: too-tight spacing collapses the typing feel into a slideshow; too-loose drags
-  - Constraints: ordered ascending; entries do not need uniform spacing - slow down on highlights
+  - Constraints: ordered ascending; entries do not need uniform spacing, slow down on highlights
   - Reference: see the corresponding blueprint's example HTML
 
-- **Segment palette: mainColor / brandColor / cmdColor / successColor** - the cursor-fill swatches
+- **Segment palette: mainColor / brandColor / cmdColor / successColor**: the cursor-fill swatches
   - Range: 3-4 discrete colors max; each should be distinguishable at small cursor width
   - Effects: too many segments and the swaps read as random; too few and the brand moment loses pop
   - Constraints: `brandColor` and `successColor` may be similar in hue but should differ in saturation/luminance so a brand→success transition is visible
   - Reference: see the corresponding blueprint's example HTML
 
-- **cursorWidth / cursorHeight / cursorGap / cursorBaselineFix** - cursor block geometry
+- **cursorWidth / cursorHeight / cursorGap / cursorBaselineFix**: cursor block geometry
   - Range: cursorWidth 8-24 px; cursorHeight ≈ 0.85-1.0 × fontSize; cursorGap 4-12 px; cursorBaselineFix small negative number to drop below the baseline
   - Effects: too-thin cursor disappears in render compression; too-tall cursor visually outranks the text
   - Constraints: must use `display: inline-block` (a `width` on `display: inline` is ignored)
   - Reference: see the corresponding blueprint's example HTML
 
-- **cursorHeightEmphasis** (Variations) - height when the active segment is the brand
+- **cursorHeightEmphasis** (Variations): height when the active segment is the brand
   - Range: 1.1-1.25 × `cursorHeight`
   - Effects: subtle bump reads as emphasis; large bump reads as glitch
   - Constraints: `cursorHeightEmphasis > cursorHeight`
   - Reference: see the corresponding blueprint's example HTML
 
-- **BLINK_CYCLES_PER_SCENE** - how many full blink cycles span `DURATION`
+- **BLINK_CYCLES_PER_SCENE**: how many full blink cycles span `DURATION`
   - Range: choose so the period `DURATION / BLINK_CYCLES_PER_SCENE` ≈ 0.6-1.2 s; e.g. an 8-second scene with ~1 s period uses BLINK_CYCLES_PER_SCENE = 8
   - Effects: short period (many cycles) reads as glitchy / agitated; long period reads as terminal-idle
-  - Constraints: must be a whole number when `DURATION` is fixed - the sin sweep ends mid-cycle otherwise and the cursor pops on the last frame
+  - Constraints: must be a whole number when `DURATION` is fixed, the sin sweep ends mid-cycle otherwise and the cursor pops on the last frame
   - Reference: see the corresponding blueprint's example HTML
 
-- **TYPING_GRACE** (Variations) - seconds after a text change during which blink is suppressed
+- **TYPING_GRACE** (Variations): seconds after a text change during which blink is suppressed
   - Range: 0.15-0.3 s
   - Effects: low end still blinks while letters are still appearing; high end keeps cursor solid through long holds
-  - Constraints: must be smaller than the shortest dwell between two adjacent SEQUENCE entries - otherwise the cursor never blinks
+  - Constraints: must be smaller than the shortest dwell between two adjacent SEQUENCE entries, otherwise the cursor never blinks
   - Reference: see the corresponding blueprint's example HTML
 
 ## Critical Constraints
@@ -239,19 +239,19 @@ If a segment is rendered DARK text on light bg, cursor should swap to dark too. 
 - **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
 - **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
 - **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
-- **No CSS animation** on cursor - must be timeline-driven (blink + color)
-- **Cursor `display: inline-block`** - required for width/height
-- **`white-space: pre`** on text container and text - preserve trailing space
-- **Monospace font** - proportional fonts cause cursor to drift mid-segment
+- **No CSS animation** on cursor: must be timeline-driven (blink + color)
+- **Cursor `display: inline-block`**, required for width/height
+- **`white-space: pre`** on text container and text, preserve trailing space
+- **Monospace font**: proportional fonts cause cursor to drift mid-segment
 
 ## Combinations
 
-- [discrete-text-sequence.md](discrete-text-sequence.md) - uses the same SEQUENCE array pattern; this rule adds the cursor styling layer
-- [camera-cursor-tracking.md](camera-cursor-tracking.md) - camera tracks the cursor across the typing
-- [press-release-spring.md](press-release-spring.md) - after typing completes, a button press confirms the command
+- [discrete-text-sequence.md](discrete-text-sequence.md): uses the same SEQUENCE array pattern; this rule adds the cursor styling layer
+- [camera-cursor-tracking.md](camera-cursor-tracking.md): camera tracks the cursor across the typing
+- [press-release-spring.md](press-release-spring.md): after typing completes, a button press confirms the command
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` - onUpdate driving cursor color + sin blink
-- `/hyperframes-core` - composition wiring
-- `/hyperframes-cli` - `hyperframes lint`
+- `/hyperframes-animation`, onUpdate driving cursor color + sin blink
+- `/hyperframes-core`, composition wiring
+- `/hyperframes-cli`, `hyperframes lint`
