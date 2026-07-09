@@ -3,6 +3,8 @@ import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { resolveValueTier } from "./propertyPanelValueTier";
+import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
+import type { DomEditSelection } from "./domEditingTypes";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -231,6 +233,73 @@ export function LayoutFlexBlock({
         tier={resolveValueTier(styles.gap, "0px")}
         disabled={disabled}
         onCommit={(next) => void onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
+      />
+    </div>
+  );
+}
+
+export function LayoutTransform3DBlock({
+  gsapRuntimeValues,
+  gsapAnimId,
+  resolveAnimIdForProp,
+  gsapKeyframes,
+  currentPct,
+  elStart,
+  elDuration,
+  element,
+  onCommitAnimatedProperty,
+  onCommitAnimatedProperties,
+  onSeekToTime,
+  onRemoveKeyframe,
+  onConvertToKeyframes,
+  onLivePreviewProps,
+}: {
+  gsapRuntimeValues: Record<string, number>;
+  gsapAnimId: string | null;
+  resolveAnimIdForProp?: (prop: string) => string | null;
+  gsapKeyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }> | null;
+  currentPct: number;
+  elStart: number;
+  elDuration: number;
+  element: DomEditSelection;
+  onCommitAnimatedProperty?: (
+    element: DomEditSelection,
+    property: string,
+    value: number,
+  ) => Promise<void>;
+  onCommitAnimatedProperties?: (
+    element: DomEditSelection,
+    props: Record<string, number | string>,
+  ) => Promise<void>;
+  onSeekToTime?: (time: number) => void;
+  onRemoveKeyframe?: (animId: string, pct: number) => void;
+  onConvertToKeyframes?: (animId: string, duration?: number) => void;
+  onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
+}) {
+  return (
+    <div className="border-t border-panel-hairline pt-2.5">
+      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+        3D Transform
+      </div>
+      <PropertyPanel3dTransform
+        gsapRuntimeValues={gsapRuntimeValues}
+        gsapAnimId={gsapAnimId}
+        resolveAnimIdForProp={resolveAnimIdForProp}
+        gsapKeyframes={gsapKeyframes}
+        currentPct={currentPct}
+        elStart={elStart}
+        elDuration={elDuration}
+        element={element}
+        onCommitAnimatedProperty={onCommitAnimatedProperty}
+        onCommitAnimatedProperties={onCommitAnimatedProperties}
+        onSeekToTime={onSeekToTime}
+        onRemoveKeyframe={onRemoveKeyframe}
+        onConvertToKeyframes={onConvertToKeyframes}
+        onLivePreviewProps={onLivePreviewProps}
       />
     </div>
   );

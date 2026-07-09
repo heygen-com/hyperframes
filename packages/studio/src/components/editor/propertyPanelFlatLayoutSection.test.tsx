@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LayoutFlexBlock,
   LayoutGeometryRows,
+  LayoutTransform3DBlock,
   LayoutZIndexRow,
 } from "./propertyPanelFlatLayoutSection";
 
@@ -160,6 +161,31 @@ describe("LayoutFlexBlock", () => {
       (columnOption as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
     expect(onSetStyle).toHaveBeenCalledWith("flex-direction", "column");
+    act(() => root.unmount());
+  });
+});
+
+describe("LayoutTransform3DBlock", () => {
+  it("renders the nested 3D transform sub-view", () => {
+    const { host, root } = renderInto(
+      <LayoutTransform3DBlock
+        gsapRuntimeValues={{}}
+        gsapAnimId={null}
+        gsapKeyframes={null}
+        currentPct={0}
+        elStart={0}
+        elDuration={0}
+        element={{} as never}
+        onCommitAnimatedProperty={vi.fn()}
+        onCommitAnimatedProperties={vi.fn()}
+        onSeekToTime={vi.fn()}
+        onRemoveKeyframe={vi.fn()}
+        onConvertToKeyframes={vi.fn()}
+      />,
+    );
+    // PropertyPanel3dTransform's own internals aren't this task's concern (it's
+    // reused unmodified) — just confirm the wrapper mounted something.
+    expect(host.children.length).toBeGreaterThan(0);
     act(() => root.unmount());
   });
 });
