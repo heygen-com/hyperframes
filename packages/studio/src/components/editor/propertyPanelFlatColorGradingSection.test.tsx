@@ -344,3 +344,29 @@ describe("FlatColorGradingSection — Vignette and Grain", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatColorGradingSection — Effects", () => {
+  it("renders Blur and Pixelate sliders under an Effects micro-label", () => {
+    const { host, root } = renderInto(<FlatColorGradingSection {...neutralPropsBase()} />);
+    expect(host.textContent).toContain("Effects");
+    const rows = host.querySelectorAll('[data-flat-grade-effect="true"]');
+    expect(rows).toHaveLength(2);
+    act(() => root.unmount());
+  });
+
+  it("commits a dragged Pixelate value on slider track pointerdown, scaled from percent to the 0..1 effect range", () => {
+    const onCommitColorGrading = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const pixelateRow = findRowByText(host, '[data-flat-grade-effect="true"]', "Pixelate");
+    // min=0, max=100, step=1, ratio=0.75 -> raw=75 -> commit(75) -> effects.pixelate = 75/100 = 0.75
+    dragSliderTrack(pixelateRow, 75, 100);
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].effects.pixelate).toBe(0.75);
+    act(() => root.unmount());
+  });
+});
