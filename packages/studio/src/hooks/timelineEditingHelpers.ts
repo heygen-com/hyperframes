@@ -509,6 +509,36 @@ export async function shiftGsapPositions(
   return readMutationStatus(await res.json().catch(() => null));
 }
 
+/**
+ * Batched counterpart to shiftGsapPositions: shift several elements' GSAP tween
+ * positions in ONE server write (the `shift-positions-batch` op). Used by the
+ * atomic multi-clip persist so a ripple/insert shifts every affected clip's
+ * tweens together instead of one racing round-trip per clip. No-op when every
+ * delta is 0 or the list is empty.
+ */
+export async function shiftGsapPositionsBatch(
+  projectId: string,
+  filePath: string,
+  shifts: Array<{ elementId: string; delta: number }>,
+): Promise<void> {
+  const payload = shifts
+    .filter((s) => s.elementId && Number.isFinite(s.delta) && s.delta !== 0)
+    .map((s) => ({ targetSelector: `#${s.elementId}`, delta: s.delta }));
+  if (payload.length === 0) return;
+  const res = await fetch(
+    `/api/projects/${projectId}/gsap-mutations/${encodeURIComponent(filePath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions-batch", shifts: payload }),
+    },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error((err as { error?: string })?.error ?? "shift-positions-batch failed");
+  }
+}
+
 export async function scaleGsapPositions(
   projectId: string,
   filePath: string,
