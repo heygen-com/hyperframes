@@ -5,7 +5,7 @@ description: Web Animations API adapter patterns for HyperFrames. Use when autho
 
 # Web Animations API for HyperFrames
 
-HyperFrames can seek Web Animations API animations through its `waapi` runtime adapter. WAAPI is useful when you want native browser keyframes with JavaScript-created timing and no GSAP dependency.
+HyperFrames can seek Web Animations API animations through its `waapi` runtime adapter. WAAPI is useful when you want native browser keyframes with JavaScript-created timing and no external runtime dependency.
 
 ## Contract
 
@@ -66,15 +66,15 @@ document.querySelectorAll(".token").forEach((token, index) => {
 
 ## Good Uses
 
-- Lightweight DOM motion where CSS keyframes are too rigid and GSAP is unnecessary.
+- Lightweight DOM motion where CSS keyframes are too rigid and no external runtime is needed.
 - Generated animations from structured data.
 - Simple timelines that can be represented as keyframes, delays, and offsets.
 
 ## Composition Duration
 
-The render engine needs the composition's total length to know how many frames to capture. GSAP timelines report duration automatically; a WAAPI-only composition has no timeline object, so the runtime infers duration from every animation's `effect.getComputedTiming().endTime` (offset by when the animation was created relative to composition start). `data-duration` on the root element is optional as long as every `element.animate()` call uses finite `duration` and `iterations` — which the contract above already requires.
+The render engine needs the composition's total length to know how many frames to capture. A registered anime.js instance or GSAP timeline reports finite duration automatically; a WAAPI-only composition has no timeline object, so the runtime infers duration from every animation's `effect.getComputedTiming().endTime` (offset by when the animation was created relative to composition start). `data-duration` on the root element is optional as long as every `element.animate()` call uses finite `duration` and `iterations`, which the contract above already requires.
 
-Infinite `iterations` has no finite `endTime`, so it can't be auto-inferred — that's one more reason to avoid it (see Avoid below). If you must use it, add `data-duration="<seconds>"` to the root `[data-composition-id]` element or `npx hyperframes lint` will error (`root_composition_missing_duration_source`).
+Infinite `iterations` has no finite `endTime`, so it can't be auto-inferred. That's one more reason to avoid it (see Avoid below). If you must use it, add `data-duration="<seconds>"` to the root `[data-composition-id]` element or `npx hyperframes lint` will error (`root_composition_missing_duration_source`).
 
 ## Avoid
 

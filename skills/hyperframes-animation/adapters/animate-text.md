@@ -1,4 +1,4 @@
-# Text Effects — Reference
+# Text Effects Reference
 
 For deterministic text-animation specs (e.g., `typewriter` at exact `240ms / 46ms stagger / steps(1, end) easing`), this skill defers to the separate **`animate-text`** skill maintained by Pixel Point at [github.com/pixel-point/animate-text](https://github.com/pixel-point/animate-text). It provides a catalog of 24 named text effects with portable contracts and per-library implementation recipes (GSAP, Anime.js, WAAPI).
 
@@ -26,17 +26,17 @@ Once installed, the specs live at:
 .agents/skills/animate-text/assets/specs/<id>.json     # portable motion contract
 ```
 
-Sub-agents reading those files get exact GSAP timings, easing strings, DOM split rules, and stagger algorithms — no creative invention needed.
+Sub-agents reading those files get exact Anime.js, GSAP, or WAAPI timings, easing strings, DOM split rules, and stagger algorithms, so no creative invention is needed.
 
 ## When you don't need the upstream skill
 
-If a beat's text animation is simple enough to describe in prose ("headline fades up word-by-word, 80ms stagger"), implement it inline using the GSAP knowledge already in these skills (`hyperframes-creative` → `references/motion-principles.md` and `references/beat-direction.md`; `hyperframes-animation` → `techniques.md`, entry #4 "Per-Word Kinetic Typography"). The upstream catalog is most valuable when:
+If a beat's text animation is simple enough to describe in prose ("headline fades up word-by-word, 80ms stagger"), implement it inline using the anime.js knowledge already in these skills (`hyperframes-creative` -> `references/motion-principles.md` and `references/beat-direction.md`; `hyperframes-animation` -> `techniques.md`, entry #4 "Per-Word Kinetic Typography"). The upstream catalog is most valuable when:
 
 - You want a specific NAMED effect across multiple beats (so they feel like one design system, not one-offs)
 - You're choosing between several similar effects (typewriter vs per-character-rise vs bottom-up-letters) and want to see all 24 in one place
-- You need layout-aware effects (`kinetic-center-build`, `short-slide-right`, `short-slide-down`) where parameters alone aren't enough — those ship with custom layout algorithms
+- You need layout-aware effects (`kinetic-center-build`, `short-slide-right`, `short-slide-down`) where parameters alone aren't enough. Those ship with custom layout algorithms.
 
-## Effect names — vocabulary (do NOT use this as the implementation source)
+## Effect Names Vocabulary (do NOT use this as the implementation source)
 
 For convenience while writing storyboards: the upstream skill provides 24 effects. Their IDs are listed here so you can name them in `STORYBOARD.md` even before loading the upstream skill. **The implementation specs are in the upstream skill, not here.**
 
@@ -61,4 +61,4 @@ Every text element in every beat can name an effect by ID, e.g.:
 
 Sub-agents implementing the beat will load `/animate-text` if it's not already loaded, then read the spec for each named effect from the upstream skill's files.
 
-If the upstream skill isn't available (offline build, network restrictions, agent runtime that doesn't support skill loading), sub-agents fall back to implementing the effect from the description alone — using GSAP knowledge plus the effect ID as a description of intent (e.g., "typewriter" = per-character stepped reveal with no interpolation).
+If the upstream skill isn't available (offline build, network restrictions, agent runtime that doesn't support skill loading), sub-agents fall back to implementing the effect from the description alone, using anime.js knowledge plus the effect ID as a description of intent (e.g., "typewriter" = per-character stepped reveal with no interpolation).

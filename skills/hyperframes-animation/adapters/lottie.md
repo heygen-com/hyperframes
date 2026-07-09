@@ -84,7 +84,7 @@ HyperFrames seeks them all to the same composition time.
 
 ## Composition Duration
 
-The render engine needs the composition's total length. GSAP timelines report duration automatically; a Lottie-only composition has no timeline object, so the runtime reads the registered animation's native length directly — `totalFrames / frameRate` for `lottie-web`, or the player's own `duration` for dotLottie. `data-duration` on the root element is optional for Lottie compositions: as long as every animation is registered on `window.__hfLottie` (per the contract above), the runtime has a finite duration to work with even when you set `loop: true`.
+The render engine needs the composition's total length. A registered anime.js instance or GSAP timeline reports finite duration automatically; a Lottie-only composition has no timeline object, so the runtime reads the registered animation's native length directly: `totalFrames / frameRate` for `lottie-web`, or the player's own `duration` for dotLottie. `data-duration` on the root element is optional for Lottie compositions: as long as every animation is registered on `window.__hfLottie` (per the contract above), the runtime has a finite duration to work with even when you set `loop: true`.
 
 ## Good Uses
 

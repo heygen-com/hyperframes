@@ -9,14 +9,14 @@ HyperFrames supports TypeGPU and raw WebGPU through its `typegpu` runtime adapte
 
 ## Render-environment prerequisite (WebGPU + html-in-canvas)
 
-The render engine auto-passes `--enable-unsafe-webgpu` and `--enable-features=CanvasDrawElement` to its Chrome launch args. Stock Chromium and the bundled headless-shell **do not** support WebGPU + `drawElementImage` together — the combo that liquid-glass blocks need (`ios26-liquid-glass`, `macos-tahoe-liquid-glass`, `liquid-glass-*`, `vfx-liquid-glass`). For those blocks, point the engine at Brave (or Chrome canary) by setting `PRODUCER_HEADLESS_SHELL_PATH` to the browser binary before running `npx hyperframes render` / `preview`. Plain TypeGPU layers without HTML-as-texture work in headless-shell — only the html-in-canvas + WebGPU combination needs the override.
+The render engine auto-passes `--enable-unsafe-webgpu` and `--enable-features=CanvasDrawElement` to its Chrome launch args. Stock Chromium and the bundled headless-shell **do not** support WebGPU + `drawElementImage` together - the combo that liquid-glass blocks need (`ios26-liquid-glass`, `macos-tahoe-liquid-glass`, `liquid-glass-*`, `vfx-liquid-glass`). For those blocks, point the engine at Brave (or Chrome canary) by setting `PRODUCER_HEADLESS_SHELL_PATH` to the browser binary before running `npx hyperframes render` / `preview`. Plain TypeGPU layers without HTML-as-texture work in headless-shell - only the html-in-canvas + WebGPU combination needs the override.
 
 ## Contract
 
-- Initialize WebGPU asynchronously (`await navigator.gpu.requestAdapter()`), but register all GSAP tweens **synchronously** — before any `await`. The HyperFrames player reads the timeline immediately at page load.
+- Initialize WebGPU asynchronously (`await navigator.gpu.requestAdapter()`), but register your animation runtime's tweens (anime.js by default) **synchronously** before any `await`. The HyperFrames player reads the timeline immediately at page load.
 - Render from HyperFrames time, not `performance.now()`.
 - Listen for the `hf-seek` event and re-render at exactly that time.
-- Guard against environments where WebGPU is unavailable — the adapter does not check for you.
+- Guard against environments where WebGPU is unavailable. The adapter does not check for you.
 - For video renders, call `await device.queue.onSubmittedWorkDone()` after submitting GPU work to ensure the canvas is flushed before the frame is captured.
 
 The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-seek", { detail: { time } })` on each seek.
@@ -74,23 +74,23 @@ The adapter sets `window.__hfTypegpuTime` and dispatches `new CustomEvent("hf-se
 
 ## Timeline Registration
 
-GSAP tweens that drive text, captions, or HTML elements must be registered **synchronously** — before any `await`:
+Tweens that drive text, captions, or HTML elements must be registered **synchronously** before any `await`. Anime.js is the default path:
 
 ```js
-const tl = gsap.timeline({ paused: true });
+const tl = anime.createTimeline({ autoplay: false });
 
 // Caption tweens: synchronous, added before WebGPU init
-gsap.set(".cap", { opacity: 0 });
-tl.to("#cap-1", { opacity: 1, duration: 0.3 }, 1.0);
-tl.to("#cap-1", { opacity: 0, duration: 0.2 }, 3.5);
+tl.add(".cap", { opacity: [0, 0], duration: 1 }, 0);
+tl.add("#cap-1", { opacity: [0, 1], duration: 300 }, 1000);
+tl.add("#cap-1", { opacity: [1, 0], duration: 200 }, 3500);
 
-window.__timelines["my-comp"] = tl;
+hyperframesAnime.register("my-comp", tl, { labels: { captions: 1 } });
 
 // GPU-dependent tweens can go inside the async IIFE
 (async () => {
   // ... WebGPU init ...
   const proxy = { value: 0 };
-  tl.to(proxy, { value: 1, duration: 2, onUpdate: render }, 0.5);
+  tl.add(proxy, { value: [0, 1], duration: 2000, onUpdate: () => render(proxy.value) }, 500);
 })();
 ```
 
@@ -133,15 +133,15 @@ function render(t) {
 
 A single-pass Gaussian kernel is too weak for glass-like frosted blur. Use a two-pass approach:
 
-1. **Pass 1 — Downsample:** render the full-res texture to a small texture (1/6 resolution). Bilinear filtering during the downsample naturally averages pixels.
-2. **Pass 2 — Glass composite:** sample the small texture for the frosted interior (bilinear upscale = heavy smooth blur) and the full-res texture for sharp areas and chromatic refraction.
+1. **Pass 1 - Downsample:** render the full-res texture to a small texture (1/6 resolution). Bilinear filtering during the downsample naturally averages pixels.
+2. **Pass 2 - Glass composite:** sample the small texture for the frosted interior (bilinear upscale = heavy smooth blur) and the full-res texture for sharp areas and chromatic refraction.
 
 This matches TypeGPU's `textureSampleBias` mip-level approach without generating mipmaps.
 
 ## Transparent vs Opaque Canvas
 
-- **`alphaMode: 'opaque'`** — the GPU canvas renders the full frame (video + effect). Use when the GPU pipeline handles all visual content.
-- **`alphaMode: 'premultiplied'`** — the GPU canvas is transparent where alpha = 0, letting HTML elements below show through. Use for overlays (particles, path animations) on top of a regular `<video>` element.
+- **`alphaMode: 'opaque'`**: the GPU canvas renders the full frame (video + effect). Use when the GPU pipeline handles all visual content.
+- **`alphaMode: 'premultiplied'`**: the GPU canvas is transparent where alpha = 0, letting HTML elements below show through. Use for overlays (particles, path animations) on top of a regular `<video>` element.
 
 ## WGSL Full-Screen Triangle
 
@@ -157,7 +157,7 @@ struct Vo { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
 }
 ```
 
-Draw with `pass.draw(3)` — one triangle that covers the viewport.
+Draw with `pass.draw(3)`, one triangle that covers the viewport.
 
 ## Rounded-Rect SDF (Liquid Glass Pill)
 
@@ -172,7 +172,7 @@ Use this to define inside/ring/outside zones for glass effects. Negative values 
 
 ## Deterministic Rendering
 
-- No `Math.random()` — use a seeded PRNG.
-- No `requestAnimationFrame` for the render loop — render only in response to `hf-seek`.
-- No `performance.now()` for animation time — read `window.__hfTypegpuTime` or `e.detail.time`.
+- No `Math.random()`: use a seeded PRNG.
+- No `requestAnimationFrame` for the render loop: render only in response to `hf-seek`.
+- No `performance.now()` for animation time: read `window.__hfTypegpuTime` or `e.detail.time`.
 - After GPU submit, call `await device.queue.onSubmittedWorkDone()` for render-mode frame capture.

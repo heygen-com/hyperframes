@@ -48,7 +48,7 @@ Do not add `tailwind.config.js` only for composition colors, fonts, spacing, or 
 
 ## Composition Pattern
 
-Use Tailwind for static layout and style. Keep render-critical timing in GSAP or another seekable HyperFrames adapter.
+Use Tailwind for static layout and style. Keep render-critical timing in anime.js or another seekable HyperFrames adapter.
 
 ```html
 <section
@@ -64,7 +64,7 @@ Use Tailwind for static layout and style. Keep render-critical timing in GSAP or
 </section>
 ```
 
-For repeated items, **parameterize via CSS variables** — keep the class list static so the runtime sees every utility:
+For repeated items, **parameterize via CSS variables**. Keep the class list static so the runtime sees every utility:
 
 ```html
 <span class="translate-y-[calc(var(--i)*6px)] opacity-80" style="--i: 0"></span>
@@ -93,13 +93,13 @@ If a generated class is unavoidable, make sure the full class token appears in a
 
 v4 + render-mode footguns. Every bullet is a hard rule:
 
-- **Stable dimensions only** — use `w-[…]` / `h-[…]` / `aspect-video` / grid / flex. **No `md:` / `lg:` breakpoints** (renderer is fixed-viewport).
-- **Animate via transforms / opacity** — `translate-*`, `scale-*`, `opacity-*` are seek-safe; animating Tailwind sizing utilities is not.
-- **No `transition-*` for render-critical motion** — a seekable runtime (GSAP) must own the state.
-- **No interaction variants** — `hover:` / `focus:` / `active:` / `group-*:` / `peer-*:` / scroll / pointer variants never fire during render.
-- **Bare `border` is broken in v4** — v4 default is `currentColor` (v3 was `gray-200`). Always write the color: `border border-white/20`.
-- **v4 utility renames** — `shadow-sm` → `shadow-xs`, `rounded-sm` → `rounded-xs`, `outline-none` → `outline-hidden`, `flex-shrink-*` → `shrink-*`, `flex-grow-*` → `grow-*`.
-- **Modern CSS is fine** — `color-mix()`, container queries, logical properties work; the renderer is current Chrome.
+- **Stable dimensions only**: use `w-[...]` / `h-[...]` / `aspect-video` / grid / flex. **No `md:` / `lg:` breakpoints** (renderer is fixed-viewport).
+- **Animate via transforms / opacity**: `translate-*`, `scale-*`, `opacity-*` are seek-safe; animating Tailwind sizing utilities is not.
+- **No `transition-*` for render-critical motion**: a seekable runtime such as anime.js must own the state.
+- **No interaction variants**: `hover:` / `focus:` / `active:` / `group-*:` / `peer-*:` / scroll / pointer variants never fire during render.
+- **Bare `border` is broken in v4**: v4 default is `currentColor` (v3 was `gray-200`). Always write the color: `border border-white/20`.
+- **v4 utility renames**: `shadow-sm` -> `shadow-xs`, `rounded-sm` -> `rounded-xs`, `outline-none` -> `outline-hidden`, `flex-shrink-*` -> `shrink-*`, `flex-grow-*` -> `grow-*`.
+- **Modern CSS is fine**: `color-mix()`, container queries, logical properties work; the renderer is current Chrome.
 
 ## Validation
 
@@ -108,7 +108,7 @@ npx hyperframes lint
 npx hyperframes validate
 npx hyperframes inspect
 
-# Render proof — frame 0 must NOT flash unstyled content. Preview alone can hide this.
+# Render proof: frame 0 must NOT flash unstyled content. Preview alone can hide this.
 npx hyperframes render . --workers 1 --quality draft --output tailwind-proof.mp4
 ```
 

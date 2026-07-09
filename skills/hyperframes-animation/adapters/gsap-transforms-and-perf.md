@@ -1,5 +1,7 @@
 # Transforms and Performance
 
+> GSAP is a supported non-default adapter; anime.js is the first-party default, see `adapters/animejs.md`.
+
 ## Transform Aliases
 
 Prefer GSAP's transform aliases over raw `transform` strings:
@@ -24,7 +26,7 @@ Prefer `autoAlpha` over `opacity` for show/hide:
 gsap.to(".panel", { autoAlpha: 0, duration: 0.4 });
 ```
 
-`autoAlpha: 0` sets both `opacity: 0` and `visibility: hidden`, which removes the element from hit-testing and accessibility tree at zero alpha — closer to "gone" than plain `opacity: 0`.
+`autoAlpha: 0` sets both `opacity: 0` and `visibility: hidden`, which removes the element from hit-testing and accessibility tree at zero alpha - closer to "gone" than plain `opacity: 0`.
 
 ## clearProps
 
@@ -43,41 +45,41 @@ Useful at the end of an animation segment to hand the element back to CSS.
 gsap.to(".chart", { "--hue": 180, duration: 1 });
 ```
 
-Animate any custom property. Works for color, length, number — anything CSS will interpolate.
+Animate any custom property. Works for color, length, number - anything CSS will interpolate.
 
 ## Relative and Directional Values
 
 - Relative: `"+=20"`, `"-=10"`, `"*=2"`.
-- Directional rotation: `"360_cw"`, `"-170_short"`, `"90_ccw"` — controls which way the angle takes when going between two values.
+- Directional rotation: `"360_cw"`, `"-170_short"`, `"90_ccw"` - controls which way the angle takes when going between two values.
 
 ## SVG Specifics
 
-- `svgOrigin` sets transform origin in the SVG's global coordinate space (not the element's local box). **Do not** combine `svgOrigin` with `transformOrigin` on the same element — pick one.
-- Animate SVG transform attributes via the same alias names (`x`, `y`, `rotation`) — GSAP handles the SVG-specific quirks.
+- `svgOrigin` sets transform origin in the SVG's global coordinate space (not the element's local box). **Do not** combine `svgOrigin` with `transformOrigin` on the same element - pick one.
+- Animate SVG transform attributes via the same alias names (`x`, `y`, `rotation`) - GSAP handles the SVG-specific quirks.
 
 ## Performance Rules
 
 ### Animate transforms, not layout properties
 
-Animate `x`, `y`, `scale`, `rotation`, `opacity`. Never animate `left`, `right`, `top`, `bottom`, `width`, `height`, `margin*`, the text-reflow props `letterSpacing` / `wordSpacing` / `fontSize` — and never `roundProps`.
+Animate `x`, `y`, `scale`, `rotation`, `opacity`. Never animate `left`, `right`, `top`, `bottom`, `width`, `height`, `margin*`, the text-reflow props `letterSpacing` / `wordSpacing` / `fontSize` - and never `roundProps`.
 
-This is a **render-correctness** rule in HyperFrames, not just a GPU-performance nicety. The renderer seeks frame-by-frame and screenshots each frame, and the browser compositor snaps layout properties to whole device pixels. On a fast tween the per-frame step is several pixels, so the snap is invisible; on a slow tween or a long ease-out tail the value moves less than a pixel per frame — it holds the same pixel for several frames, then jumps a whole one. The result is motion that looks smooth when fast but visibly stutters when slow. Transforms interpolate sub-pixel and stay smooth at any speed. `roundProps` forces the same integer snap onto a transform — don't use it.
+This is a **render-correctness** rule in HyperFrames, not just a GPU-performance nicety. The renderer seeks frame-by-frame and screenshots each frame, and the browser compositor snaps layout properties to whole device pixels. On a fast tween the per-frame step is several pixels, so the snap is invisible; on a slow tween or a long ease-out tail the value moves less than a pixel per frame - it holds the same pixel for several frames, then jumps a whole one. The result is motion that looks smooth when fast but visibly stutters when slow. Transforms interpolate sub-pixel and stay smooth at any speed. `roundProps` forces the same integer snap onto a transform - don't use it.
 
-"Layout property" is broader than position: anything that triggers **reflow** snaps the same way. `letterSpacing` / `fontSize` are the common trap — a slow "settle" that crawls one of them by a fraction of a pixel per frame dwells on a handful of discrete glyph layouts (visible micro-stutter). The faithful smooth fix depends on which property — **do not reach for `scale` reflexively**:
+"Layout property" is broader than position: anything that triggers **reflow** snaps the same way. `letterSpacing` / `fontSize` are the common trap - a slow "settle" that crawls one of them by a fraction of a pixel per frame dwells on a handful of discrete glyph layouts (visible micro-stutter). The faithful smooth fix depends on which property - **do not reach for `scale` reflexively**:
 
 - **`fontSize`** → animate `scale`. Scaling text up/down is the same visual and stays sub-pixel smooth (no reflow).
-- **`letterSpacing` / `wordSpacing`** → uniform `scale` is **not** the same effect (it resizes the glyphs; it does not change the gaps between them). To animate spacing smoothly, split the text into per-character (or per-word) elements and animate each one's `x` — the glyph spread is a transform, sub-pixel smooth and visually identical to a letter-spacing tween. GSAP's `SplitText` does the split. If the spacing change is a minor flourish, hold the final value statically instead.
+- **`letterSpacing` / `wordSpacing`** → uniform `scale` is **not** the same effect (it resizes the glyphs; it does not change the gaps between them). To animate spacing smoothly, split the text into per-character (or per-word) elements and animate each one's `x` - the glyph spread is a transform, sub-pixel smooth and visually identical to a letter-spacing tween. GSAP's `SplitText` does the split. If the spacing change is a minor flourish, hold the final value statically instead.
 
-Unlike positional props, reflow props snap during browser **layout** — upstream of the canvas raster — so they stutter even in html-in-canvas, and the exception below does **not** apply to them.
+Unlike positional props, reflow props snap during browser **layout** - upstream of the canvas raster - so they stutter even in html-in-canvas, and the exception below does **not** apply to them.
 
-#### Fixing a flagged animation — preserve the intent
+#### Fixing a flagged animation - preserve the intent
 
 The lint rule tells you a property will stutter; it does **not** tell you the fix, and a fix that merely passes lint can silently change the look. Swapping a `letterSpacing` tighten for a uniform `scale` lints clean but animates a _different thing_ (it resizes the glyphs instead of closing the gaps). Two rules:
 
-1. **Reproduce the same visual** — same start/end state, same trajectory, only sub-pixel-smooth. Use the faithful equivalent (per-glyph `x` for spacing, `scale` for `fontSize`, `x`/`y` for position), not whichever transform is the least code.
-2. **Verify against the original, not against the linter.** Render the original and the fixed version and compare the motion at its key moments — the fix should differ only by the removed stutter, not by _where things end up_. Lint-clean-and-smooth is not the bar; faithful-and-smooth is.
+1. **Reproduce the same visual** - same start/end state, same trajectory, only sub-pixel-smooth. Use the faithful equivalent (per-glyph `x` for spacing, `scale` for `fontSize`, `x`/`y` for position), not whichever transform is the least code.
+2. **Verify against the original, not against the linter.** Render the original and the fixed version and compare the motion at its key moments - the fix should differ only by the removed stutter, not by _where things end up_. Lint-clean-and-smooth is not the bar; faithful-and-smooth is.
 
-If the faithful fix is non-trivial (a per-glyph split, a measured offset), build it or surface the tradeoff — never downgrade to a cheaper, different effect just to satisfy the linter.
+If the faithful fix is non-trivial (a per-glyph split, a measured offset), build it or surface the tradeoff - never downgrade to a cheaper, different effect just to satisfy the linter.
 
 **Convert a position animation to a transform** by leaving the element at its resting `left`/`top` in CSS and animating the _offset_ with `x`/`y`:
 
@@ -89,9 +91,9 @@ tl.fromTo("#card", { x: 640, y: 0 }, { x: 0, y: 0, duration: 1 }); // ✓ x/y = 
 
 For a parent-relative `left: "100%"` sweep, use `xPercent: 100` only when the element is the full width of its container; otherwise convert to pixels (`x: containerWidth`).
 
-**The one exception:** elements drawn through the html-in-canvas API — those under a `<canvas layoutsubtree>` ancestor, e.g. the `liquid-glass-*` blocks. The canvas rasterizes from sub-pixel `getComputedStyle`, so layout props don't snap there and those elements keep `left`/`top`. Everything the browser lays out (plain DOM) follows the rule.
+**The one exception:** elements drawn through the html-in-canvas API - those under a `<canvas layoutsubtree>` ancestor, e.g. the `liquid-glass-*` blocks. The canvas rasterizes from sub-pixel `getComputedStyle`, so layout props don't snap there and those elements keep `left`/`top`. Everything the browser lays out (plain DOM) follows the rule.
 
-The `gsap_non_transform_motion` lint rule is the backstop, not the teacher — reach for transforms from the start instead of animating layout props and waiting for lint to reject them.
+The `gsap_non_transform_motion` lint rule is the backstop, not the teacher - reach for transforms from the start instead of animating layout props and waiting for lint to reject them.
 
 ### will-change (sparingly)
 
@@ -105,7 +107,7 @@ Only on elements that _actually_ animate. Applied everywhere it becomes useless 
 
 ### gsap.quickTo for frequent updates (preview-only)
 
-For high-frequency updates driven by **events** — pointer move, scroll, audio scrub — `quickTo` reuses the same tween instead of creating a new one each frame:
+For high-frequency updates driven by **events** - pointer move, scroll, audio scrub - `quickTo` reuses the same tween instead of creating a new one each frame:
 
 ```javascript
 const xTo = gsap.quickTo("#cursor", "x", { duration: 0.4, ease: "power3" });

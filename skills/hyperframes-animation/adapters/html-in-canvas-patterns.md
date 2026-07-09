@@ -1,8 +1,8 @@
 # HTML-in-Canvas Patterns
 
-HyperFrames' most powerful visual capability. Capture ANY live HTML/CSS as a GPU texture, then render it through WebGL shaders, Three.js 3D scenes, or post-processing effects — at 60fps, pixel-perfect, with every CSS feature supported.
+HyperFrames' most powerful visual capability. Capture ANY live HTML/CSS as a GPU texture, then render it through WebGL shaders, Three.js 3D scenes, or post-processing effects at 60fps, pixel-perfect, with every CSS feature supported.
 
-**Read this file when a beat deserves cinematic treatment beyond flat GSAP animations.** Use for 1-3 hero beats per video, not every beat. The rest can use standard GSAP — the contrast between flat beats and HTML-in-Canvas beats IS part of the visual storytelling.
+**Read this file when a beat deserves cinematic treatment beyond flat anime.js animations.** Use for 1-3 hero beats per video, not every beat. The rest can use standard anime.js. The contrast between flat beats and HTML-in-Canvas beats IS part of the visual storytelling.
 
 ---
 
@@ -10,8 +10,16 @@ HyperFrames' most powerful visual capability. Capture ANY live HTML/CSS as a GPU
 
 Every HTML-in-Canvas effect shares this structure. Learn this once, adapt it for any effect.
 
+Examples below assume a synchronously registered anime.js timeline and millisecond timing:
+
+```js
+var tl = anime.createTimeline({ autoplay: false });
+var BEAT_DURATION_MS = 2400;
+hyperframesAnime.register("main", tl, { labels: { effect: 0 } });
+```
+
 ```html
-<!-- 1. Source HTML — your content goes inside a layoutsubtree canvas -->
+<!-- 1. Source HTML: your content goes inside a layoutsubtree canvas -->
 <canvas
   id="hic-source"
   layoutsubtree
@@ -20,16 +28,16 @@ Every HTML-in-Canvas effect shares this structure. Learn this once, adapt it for
   style="position:absolute;inset:0;opacity:0;"
 >
   <div id="hic-content" style="width:1920px;height:1080px;">
-    <!-- YOUR HTML CONTENT HERE — text, images, cards, dashboards, anything -->
+    <!-- YOUR HTML CONTENT HERE: text, images, cards, dashboards, anything -->
   </div>
 </canvas>
 
-<!-- 2. Render target — the visible canvas that shows the effect -->
+<!-- 2. Render target: the visible canvas that shows the effect -->
 <canvas id="hic-output" width="1920" height="1080" style="position:absolute;inset:0;"></canvas>
 ```
 
 ```js
-// 3. Feature detection — always check, always provide fallback
+// 3. Feature detection: always check, always provide fallback
 function isHiCSupported() {
   var tc = document.createElement("canvas");
   if (!("layoutSubtree" in tc)) return false;
@@ -39,7 +47,7 @@ function isHiCSupported() {
 }
 var apiOk = isHiCSupported();
 
-// 4. Capture function — call this every frame in onUpdate
+// 4. Capture function: call this every frame in onUpdate
 var capCanvas = document.getElementById("hic-source");
 var capCtx = capCanvas.getContext("2d");
 function captureContent() {
@@ -48,13 +56,13 @@ function captureContent() {
   }
 }
 
-// 5. Drive from GSAP timeline — capture + render every frame
-tl.to(
+// 5. Drive from an anime.js timeline: capture + render every frame
+tl.add(
   proxy,
   {
     /* your animation properties */
-    duration: BEAT_DURATION,
-    ease: "sine.inOut",
+    duration: BEAT_DURATION_MS,
+    ease: "inOutSine",
     onUpdate: function () {
       captureContent();
       // render your effect here (Three.js or WebGL2)
@@ -64,7 +72,7 @@ tl.to(
 );
 ```
 
-**Fallback:** When `drawElementImage` is not available (preview without Chrome flag), draw a solid-color placeholder or use Canvas 2D text. The HyperFrames renderer auto-enables the flag — the effect WILL work in the final video. See the liquid-glass block for a complete fallback example.
+**Fallback:** When `drawElementImage` is not available (preview without Chrome flag), draw a solid-color placeholder or use Canvas 2D text. The HyperFrames renderer auto-enables the flag, so the effect WILL work in the final video. See the liquid-glass block for a complete fallback example.
 
 ---
 
@@ -100,20 +108,20 @@ scene3d.add(mesh);
 
 // Post-processing: bloom for cinematic glow.
 // EffectComposer / RenderPass / UnrealBloomPass are ES-module named imports
-// (see the import block below) — they're NOT properties of THREE in modern
+// (see the import block below). They're NOT properties of THREE in modern
 // versions. Three.js r150+ removed the UMD `examples/js/` globals.
 var composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene3d, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(1920, 1080), 0.3, 0.4, 0.85));
 
 var proxy = { rotY: -0.12, zoom: 4.2 };
-tl.to(
+tl.add(
   proxy,
   {
     rotY: 0.12,
     zoom: 3.6,
-    duration: BEAT_DURATION,
-    ease: "sine.inOut",
+    duration: BEAT_DURATION_MS,
+    ease: "inOutSine",
     onUpdate: function () {
       captureContent();
       texture.needsUpdate = true;
@@ -139,7 +147,7 @@ tl.to(
 </script>
 ```
 
-The `examples/js/` path was removed in Three.js r152. Use `examples/jsm/` (ES modules) with `three@0.181.2` — the version used by the HyperFrames Three.js adapter.
+The `examples/js/` path was removed in Three.js r152. Use `examples/jsm/` (ES modules) with `three@0.181.2`, the version used by the HyperFrames Three.js adapter.
 
 ---
 
@@ -149,7 +157,7 @@ The `examples/js/` path was removed in Three.js r152. Use `examples/jsm/` (ES mo
 
 **When to use:** Interactive feel, product demo with cursor, "look at THIS feature" moment.
 
-**Key technique:** Custom fragment shader with Gaussian warp + chromatic split. No Three.js needed — just raw WebGL2.
+**Key technique:** Custom fragment shader with Gaussian warp + chromatic split. No Three.js needed, just raw WebGL2.
 
 ```js
 // WebGL2 setup
@@ -158,7 +166,7 @@ var gl = document.getElementById("hic-output").getContext("webgl2", {
   preserveDrawingBuffer: true,
 });
 
-// Vertex shader — full-screen quad
+// Vertex shader: full-screen quad
 var VS = `#version 300 es
 in vec2 a_pos;
 out vec2 v_uv;
@@ -167,7 +175,7 @@ void main() {
   gl_Position = vec4(a_pos, 0.0, 1.0);
 }`;
 
-// Fragment shader — magnetic warp + chromatic aberration
+// Fragment shader: magnetic warp + chromatic aberration
 var FS = `#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -194,16 +202,16 @@ void main() {
 // Compile, link, setup quad geometry, upload texture...
 // (See registry/blocks/vfx-magnetic/vfx-magnetic.html for complete implementation)
 
-// Drive cursor position from GSAP
+// Drive cursor position from anime.js
 var proxy = { cx: 0.2, cy: 0.5, strength: 0.0 };
-tl.to(
+tl.add(
   proxy,
   {
     cx: 0.8,
     cy: 0.4,
     strength: 1.0,
-    duration: BEAT_DURATION,
-    ease: "power2.inOut",
+    duration: BEAT_DURATION_MS,
+    ease: "inOutCubic",
     onUpdate: function () {
       captureContent();
       // Upload texture, set uniforms, draw
@@ -224,13 +232,13 @@ tl.to(
 
 **When to use:** Dramatic transition, "breaking free" moment, tension release.
 
-**Key technique:** Subdivide the source texture into triangle mesh fragments using BufferGeometry, then animate each fragment's position/rotation with GSAP.
+**Key technique:** Subdivide the source texture into triangle mesh fragments using BufferGeometry, then animate each fragment's position/rotation with anime.js.
 
 Study `registry/blocks/vfx-shatter/vfx-shatter.html` for the complete 1156-line implementation. The core idea:
 
 ```js
 // 1. Capture content to texture (same boilerplate)
-// Seeded PRNG for determinism — Math.random() is banned
+// Seeded PRNG for determinism: Math.random() is banned
 function mulberry32(seed) {
   return function () {
     seed |= 0;
@@ -241,6 +249,7 @@ function mulberry32(seed) {
   };
 }
 var rng = mulberry32(42);
+var holdTimeMs = 1200;
 
 // 2. Create N triangle fragments from the texture
 var fragments = [];
@@ -248,27 +257,27 @@ for (var i = 0; i < NUM_FRAGMENTS; i++) {
   var geom = new THREE.BufferGeometry();
   var mesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ map: texture }));
   scene3d.add(mesh);
-  fragments.push({ mesh: mesh, targetPos: randomExplosionVector(rng), delay: rng() * 0.5 });
+  fragments.push({ mesh: mesh, targetPos: randomExplosionVector(rng), delayMs: rng() * 500 });
 }
 
 // 3. Animate: first hold still, then EXPLODE
-tl.to({}, { duration: holdTime }, 0);
+tl.add({ hold: 0 }, { hold: [0, 1], duration: holdTimeMs }, 0);
 fragments.forEach(function (frag) {
-  tl.to(
+  tl.add(
     frag.mesh.position,
     {
       x: frag.targetPos.x,
       y: frag.targetPos.y,
       z: frag.targetPos.z,
-      duration: 0.8,
-      ease: "power3.in",
+      duration: 800,
+      ease: "inQuart",
     },
-    holdTime + frag.delay,
+    holdTimeMs + frag.delayMs,
   );
-  tl.to(
+  tl.add(
     frag.mesh.rotation,
-    { x: rng() * 4, y: rng() * 4, duration: 0.8, ease: "power2.in" },
-    holdTime + frag.delay,
+    { x: rng() * 4, y: rng() * 4, duration: 800, ease: "inCubic" },
+    holdTimeMs + frag.delayMs,
   );
 });
 ```
@@ -326,30 +335,30 @@ Study `registry/blocks/vfx-portal/vfx-portal.html` for the complete 863-line imp
 
 ---
 
-## When to Use HTML-in-Canvas vs Standard GSAP
+## When to Use HTML-in-Canvas vs Standard Anime.js
 
 | Scenario                         | Use                                  | Why                                  |
 | -------------------------------- | ------------------------------------ | ------------------------------------ |
 | Hero product screenshot showcase | HTML-in-Canvas (3D rotation + bloom) | Makes flat UI feel cinematic         |
-| Feature list / stats             | Standard GSAP                        | Content-focused, doesn't need 3D     |
+| Feature list / stats             | Standard anime.js                    | Content-focused, doesn't need 3D     |
 | CTA / brand reveal               | HTML-in-Canvas (portal or magnetic)  | Makes the moment memorable           |
-| Social proof / logos             | Standard GSAP                        | Orderly cascade, trust is steady     |
+| Social proof / logos             | Standard anime.js                    | Orderly cascade, trust is steady     |
 | Transition between acts          | HTML-in-Canvas (shatter)             | Dramatic act break                   |
 | Background atmosphere            | HTML-in-Canvas (liquid surface)      | Premium ambient feel                 |
-| Quick feature cards              | Standard GSAP                        | Speed matters, 3D would slow it down |
+| Quick feature cards              | Standard anime.js                    | Speed matters, 3D would slow it down |
 
 ---
 
 ## More Effects You Can Build
 
-These aren't in the VFX blocks — build them yourself from the core boilerplate + a custom fragment shader. Each effect is a single GLSL function applied to the captured texture.
+These aren't in the VFX blocks. Build them yourself from the core boilerplate + a custom fragment shader. Each effect is a single GLSL function applied to the captured texture.
 
 ### 6. Noise Dissolve
 
 Content dissolves into noise particles, revealing what's behind. Great for transitions.
 
 ```glsl
-// Fragment shader — noise-based dissolve
+// Fragment shader: noise-based dissolve
 uniform float u_progress; // 0.0 = fully visible, 1.0 = fully dissolved
 uniform sampler2D u_tex;
 
@@ -395,7 +404,7 @@ void main() {
 
 ### 8. Scan Lines + CRT
 
-Retro CRT monitor look — scan lines, slight curvature, phosphor glow. Great for "code" or "terminal" beats.
+Retro CRT monitor look: scan lines, slight curvature, phosphor glow. Great for "code" or "terminal" beats.
 
 ```glsl
 uniform sampler2D u_tex;
@@ -423,7 +432,7 @@ void main() {
 
 ### 9. Frosted Glass Blur
 
-Content behind frosted glass — visible but softened, with subtle light refraction. Good for "behind the scenes" or "coming soon" moments.
+Content behind frosted glass: visible but softened, with subtle light refraction. Good for "behind the scenes" or "coming soon" moments.
 
 ```glsl
 uniform sampler2D u_tex;
@@ -449,7 +458,7 @@ void main() {
 
 ### 10. Pixel Sort / Glitch Art
 
-Pixels rearrange themselves in vertical or horizontal strips — digital art aesthetic. Great for tech/creative brands.
+Pixels rearrange themselves in vertical or horizontal strips, a digital art aesthetic. Great for tech/creative brands.
 
 ```glsl
 uniform sampler2D u_tex;
@@ -478,7 +487,7 @@ The fragment shaders above are templates. The pattern is always:
 1. **Capture your HTML content** with `drawElementImage` (the boilerplate at the top)
 2. **Upload the captured canvas as a WebGL texture**
 3. **Write a fragment shader** that reads from the texture and outputs modified colors
-4. **Drive shader uniforms from GSAP** via `onUpdate`
+4. **Drive shader uniforms from anime.js** via `onUpdate`
 
 Any GLSL effect from ShaderToy, The Book of Shaders, CodePen, or anywhere else can be adapted:
 
@@ -486,15 +495,15 @@ Any GLSL effect from ShaderToy, The Book of Shaders, CodePen, or anywhere else c
 2. Copy the fragment shader
 3. Replace `iResolution` with `vec2(1920.0, 1080.0)`, `iTime` with your `u_time` uniform
 4. Add `uniform sampler2D u_tex;` for the captured content texture
-5. Wire the uniforms to GSAP proxy values
+5. Wire the uniforms to anime.js proxy values
 
 **Geometry ideas beyond flat planes:**
 
-- `SphereGeometry` — content mapped onto a globe (world map, global reach)
-- `CylinderGeometry` — content on a rotating cylinder (carousel/scroll feel)
-- `TorusGeometry` — content wrapped around a ring (infinity, cycle)
-- `BoxGeometry` — content on a 3D box (product packaging, dice)
-- GLTF models — content mapped as screen texture on phone, laptop, monitor (see `vfx-iphone-device`)
+- `SphereGeometry`: content mapped onto a globe (world map, global reach)
+- `CylinderGeometry`: content on a rotating cylinder (carousel/scroll feel)
+- `TorusGeometry`: content wrapped around a ring (infinity, cycle)
+- `BoxGeometry`: content on a 3D box (product packaging, dice)
+- GLTF models: content mapped as screen texture on phone, laptop, monitor (see `vfx-iphone-device`)
 
 **Post-processing stacking** (Three.js EffectComposer):
 
@@ -502,6 +511,6 @@ Any GLSL effect from ShaderToy, The Book of Shaders, CodePen, or anywhere else c
 - Bloom + chromatic aberration = lens effect
 - Depth of field + vignette = focused attention
 - Film grain + scan lines = retro
-- Multiple passes stack — add as many as you want
+- Multiple passes stack, add as many as you want
 
 **You are not limited to the effects listed here.** If you can imagine a visual treatment, you can build it. The HTML-in-Canvas API gives you the source material (any HTML rendered as a texture), and WebGL/Three.js gives you unlimited creative control over how that material is presented.
