@@ -130,9 +130,23 @@ function flexElement() {
   };
 }
 
+// Motion fixture (Plan 3b Task 4): an authored clip range (data-start present)
+// makes resolveEditingSections turn on `sections.timing`, so the Motion group
+// renders via its Timing gate even with no GSAP edit handlers wired.
+function animatedElement() {
+  return {
+    ...baseElement(),
+    id: "anim-clip",
+    selector: ".anim-clip",
+    label: "Anim Clip",
+    dataAttributes: { start: "0", duration: "4" },
+  };
+}
+
 async function renderPanel(
   flatEnabled: boolean,
   elementOverride: ReturnType<typeof baseElement> = baseElement(),
+  propsOverride: Partial<PropertyPanelProps> = {},
 ) {
   vi.resetModules();
   vi.doMock("./manualEditingAvailability", async () => {
@@ -154,6 +168,7 @@ async function renderPanel(
     onSetStyle: vi.fn(),
     onSetText: vi.fn(),
     onSetAttributeLive: vi.fn(),
+    ...propsOverride,
   } as unknown as PropertyPanelProps;
   act(() => {
     root.render(<PropertyPanel {...props} />);
@@ -165,6 +180,18 @@ async function renderPanel(
 // flag read); transforming the full section graph uncached can exceed the 5s
 // default under heavy parallel full-suite load, so give these a wider margin.
 const RENDER_TIMEOUT_MS = 20_000;
+
+// Find the collapsed accordion row whose title matches and click it open.
+function openFlatGroup(host: HTMLElement, title: string) {
+  const row = Array.from(host.querySelectorAll('[data-flat-group-collapsed="true"]')).find((el) =>
+    el.textContent?.includes(title),
+  );
+  if (!row) throw new Error(`expected a collapsed ${title} row`);
+  act(() => row.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+const openGroupText = (host: HTMLElement) =>
+  host.querySelector('[data-flat-group-open="true"]')?.textContent ?? "";
 
 describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED off", () => {
   it(
@@ -324,6 +351,68 @@ describe("PropertyPanel — Layout group (Plan 3a)", () => {
       const openGroup = host.querySelector('[data-flat-group-open="true"]');
       expect(openGroup?.textContent).toContain("Layout");
       expect(openGroup?.textContent).toContain("Flex");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+describe("PropertyPanel — Motion group (Plan 3b)", () => {
+  it(
+    "renders the Motion group with Timing, and opening it closes the previously open group (4-way exclusivity)",
+    async () => {
+      const { host, root } = await renderPanel(true, animatedElement());
+      // Text is open by default for the text-editable fixture.
+      expect(openGroupText(host)).toContain("Text");
+
+      openFlatGroup(host, "Motion");
+      const openGroup = openGroupText(host);
+      expect(openGroup).toContain("Motion");
+      // FlatTimingRow (Start/End/Duration) renders inside the Motion group.
+      expect(openGroup).toContain("Start");
+      expect(openGroup).toContain("Duration");
+      // One-open accordion: opening Motion closed the Text group.
+      expect(openGroup).not.toContain("Text");
+
+      // Reverse direction: opening Layout closes Motion.
+      openFlatGroup(host, "Layout");
+      const openAfter = openGroupText(host);
+      expect(openAfter).toContain("Layout");
+      expect(openAfter).not.toContain("Motion");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "hides the effect list (showEffects off) when the GSAP edit handlers are absent",
+    async () => {
+      // STUDIO_GSAP_PANEL_ENABLED defaults on, but none of the five required
+      // edit handlers are supplied here, so the effect-list half of the
+      // double-gate stays closed — only the Timing row shows.
+      const { host, root } = await renderPanel(true, animatedElement());
+      openFlatGroup(host, "Motion");
+      const openGroup = openGroupText(host);
+      expect(openGroup).toContain("Motion");
+      expect(openGroup).toContain("Duration"); // Timing still shows
+      expect(openGroup).not.toContain("Add effect"); // effects gated off
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "shows the effect list (showEffects on) when the flag and all five handlers are present",
+    async () => {
+      const { host, root } = await renderPanel(true, animatedElement(), {
+        onUpdateGsapProperty: vi.fn(),
+        onUpdateGsapMeta: vi.fn(),
+        onDeleteGsapAnimation: vi.fn(),
+        onAddGsapProperty: vi.fn(),
+        onAddGsapAnimation: vi.fn(),
+      });
+      openFlatGroup(host, "Motion");
+      expect(openGroupText(host)).toContain("Add effect");
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

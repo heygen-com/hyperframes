@@ -10,13 +10,28 @@ import { FlatGroup } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
+import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
-import { TimingSection } from "./propertyPanelTimingSection";
+import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { MediaSection } from "./propertyPanelMediaSection";
 
 type EditingSections = ReturnType<typeof resolveEditingSections>;
+
+// Type-only fallback for the Motion effect-card callbacks. Used solely to
+// satisfy FlatMotionSection's required-callback shape when the effect list is
+// gated off (showEffects === false, so none of these are ever invoked). Keeps
+// the gated-off path free of `!` non-null assertions — the real, narrowed
+// handlers flow through only when the double-gate below passes.
+const EMPTY_GSAP_EFFECT_HANDLERS = {
+  onAddAnimation: () => {},
+  onUpdateProperty: () => {},
+  onUpdateMeta: () => {},
+  onDeleteAnimation: () => {},
+  onAddProperty: () => {},
+  onRemoveProperty: () => {},
+};
 
 /**
  * The flat "Ledger" inspector shell (design_handoff_studio_inspector).
@@ -25,10 +40,8 @@ type EditingSections = ReturnType<typeof resolveEditingSections>;
  * (same one-directional-import precedent as FlatTextSection). Rendered only
  * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open/pin group state.
  *
- * Intentionally omits the Layout `Section` and `GsapAnimationSection` (Motion)
- * — flattening those is Layout/Motion plan territory (plans 3–4). A text
- * element with the flag on will not show Layout/Motion controls; that
- * regression is scoped and acceptable for an unreleased, flag-gated feature.
+ * The Text/Style/Layout/Motion groups share the one-open accordion. The legacy
+ * Media and Color-Grading sections render unchanged below the flat groups.
  */
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
@@ -90,6 +103,22 @@ export function PropertyPanelFlat({
   onSeekToTime,
   onRemoveKeyframe,
   onConvertToKeyframes,
+  gsapMultipleTimelines,
+  gsapUnsupportedTimelinePattern,
+  onUpdateGsapProperty,
+  onUpdateGsapMeta,
+  onDeleteGsapAnimation,
+  onAddGsapProperty,
+  onRemoveGsapProperty,
+  onUpdateGsapFromProperty,
+  onAddGsapFromProperty,
+  onRemoveGsapFromProperty,
+  onAddGsapAnimation,
+  onSetArcPath,
+  onUpdateArcSegment,
+  onUnroll,
+  onUpdateKeyframeEase,
+  onSetAllKeyframeEases,
 }: Pick<
   PropertyPanelProps,
   | "projectId"
@@ -114,6 +143,22 @@ export function PropertyPanelFlat({
   | "onImportFonts"
   | "fontAssets"
   | "gsapAnimations"
+  | "gsapMultipleTimelines"
+  | "gsapUnsupportedTimelinePattern"
+  | "onUpdateGsapProperty"
+  | "onUpdateGsapMeta"
+  | "onDeleteGsapAnimation"
+  | "onAddGsapProperty"
+  | "onRemoveGsapProperty"
+  | "onUpdateGsapFromProperty"
+  | "onAddGsapFromProperty"
+  | "onRemoveGsapFromProperty"
+  | "onAddGsapAnimation"
+  | "onSetArcPath"
+  | "onUpdateArcSegment"
+  | "onUnroll"
+  | "onUpdateKeyframeEase"
+  | "onSetAllKeyframeEases"
   | "recordingState"
   | "recordingDuration"
   | "onToggleRecording"
@@ -180,6 +225,43 @@ export function PropertyPanelFlat({
   // Trivial percentage→time seek, derived here rather than threaded from
   // PropertyPanel (keeps that file under its 600-LOC gate).
   const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
+
+  // Motion group double-gate — reproduces the legacy PropertyPanel gate exactly:
+  //  • Timing (sections.timing) shows via resolveEditingSections, same as today.
+  //  • The effect-card list shows only when STUDIO_GSAP_PANEL_ENABLED is on AND
+  //    all five edit handlers are present (identical to PropertyPanel's legacy
+  //    `<GsapAnimationSection>` guard).
+  // Computing the narrowed handler bundle inside the `&&`-guarded ternary lets
+  // TypeScript prove each handler non-undefined without a `!` assertion; the
+  // noop bundle only fills the type when the gate is off (never invoked, since
+  // FlatMotionSection guards every call behind showEffects).
+  const showMotionTiming = Boolean(sections.timing);
+  const gsapEffectHandlers =
+    STUDIO_GSAP_PANEL_ENABLED &&
+    onUpdateGsapProperty &&
+    onUpdateGsapMeta &&
+    onDeleteGsapAnimation &&
+    onAddGsapProperty &&
+    onAddGsapAnimation
+      ? {
+          onAddAnimation: onAddGsapAnimation,
+          onUpdateProperty: onUpdateGsapProperty,
+          onUpdateMeta: onUpdateGsapMeta,
+          onDeleteAnimation: onDeleteGsapAnimation,
+          onAddProperty: onAddGsapProperty,
+          onRemoveProperty: onRemoveGsapProperty ?? (() => {}),
+          onUpdateFromProperty: onUpdateGsapFromProperty,
+          onAddFromProperty: onAddGsapFromProperty,
+          onRemoveFromProperty: onRemoveGsapFromProperty,
+          onSetArcPath,
+          onUpdateArcSegment,
+          onUnroll,
+          onUpdateKeyframeEase,
+          onSetAllKeyframeEases,
+        }
+      : null;
+  const showMotionEffects = gsapEffectHandlers !== null;
+  const showMotionGroup = showMotionTiming || showMotionEffects;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
@@ -287,12 +369,26 @@ export function PropertyPanelFlat({
           />
         </FlatGroup>
 
-        {sections.timing && (
-          <TimingSection
-            element={element}
-            animations={gsapAnimations}
-            onSetAttribute={onSetAttribute}
-          />
+        {showMotionGroup && (
+          <FlatGroup
+            title="Motion"
+            isOpen={openGroupId === "motion" || pinnedGroupIds.includes("motion")}
+            isPinned={pinnedGroupIds.includes("motion")}
+            onToggleOpen={() => toggleOpen("motion")}
+            onTogglePin={() => togglePin("motion")}
+            summary={`${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`}
+          >
+            <FlatMotionSection
+              element={element}
+              animations={gsapAnimations}
+              showTiming={showMotionTiming}
+              showEffects={showMotionEffects}
+              multipleTimelines={gsapMultipleTimelines}
+              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+              onSetAttribute={onSetAttribute}
+              {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
+            />
+          </FlatGroup>
         )}
         {sections.colorGrading && (
           <ColorGradingSection
