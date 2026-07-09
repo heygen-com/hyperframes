@@ -32,26 +32,61 @@ export function optedOut() {
   );
 }
 
-// Stable per-machine anonymous id, read from the shared CLI/studio contract.
-function anonymousId() {
-  const dir = join(homedir(), ".hyperframes");
-  const file = join(dir, "config.json");
+// CLI + studio share one install identity in ~/.hyperframes/config.json
+// (packages/cli/src/telemetry/config.ts — same path, same `anonymousId` /
+// `telemetryNoticeShown` fields). Read and write that same file so media-use is
+// the same PostHog person and shows the notice once per person, not per tool.
+// Computed per call (not a module const) so it honors HOME at runtime — tests
+// sandbox HOME, and os.homedir() re-reads it each call.
+function sharedConfigPath() {
+  return join(homedir(), ".hyperframes", "config.json");
+}
+
+function readSharedConfig() {
   try {
-    let config = {};
+    const file = sharedConfigPath();
     if (existsSync(file)) {
-      try {
-        const parsed = JSON.parse(readFileSync(file, "utf8"));
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
-      } catch {
-        config = {};
-      }
-      if (typeof config.anonymousId === "string" && config.anonymousId.trim()) {
-        return config.anonymousId.trim();
-      }
+      const parsed = JSON.parse(readFileSync(file, "utf8"));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
     }
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const id = randomUUID();
-    writeFileSync(file, JSON.stringify({ ...config, anonymousId: id }, null, 2) + "\n");
+  } catch {
+    // unreadable config → treat as empty; never throw
+  }
+  return {};
+}
+
+function writeSharedConfig(config) {
+  const dir = join(homedir(), ".hyperframes");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2) + "\n");
+}
+
+// Adopt a pre-existing media-use-only id (~/.media/anon-id from before this
+// change) so upgraders keep their PostHog persona instead of resetting to a new
+// one — otherwise cross-surface continuity would start over on upgrade.
+function legacyMediaAnonId() {
+  try {
+    const file = join(homedir(), ".media", "anon-id");
+    if (existsSync(file)) {
+      const id = readFileSync(file, "utf8").trim();
+      if (id) return id;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+// Stable per-machine id from the shared config; seeds it (adopting a legacy
+// media-use id when present) if absent.
+function anonymousId() {
+  try {
+    const config = readSharedConfig();
+    if (typeof config.anonymousId === "string" && config.anonymousId.trim()) {
+      return config.anonymousId.trim();
+    }
+    const id = legacyMediaAnonId() || randomUUID();
+    writeSharedConfig({ ...config, anonymousId: id });
     return id;
   } catch {
     return "anon"; // best-effort; a shared bucket is fine if the fs is read-only
@@ -77,24 +112,20 @@ function heygenAccountDistinctId() {
 
 function showTelemetryNotice() {
   if (optedOut()) return;
-  const dir = join(homedir(), ".media");
-  const file = join(dir, "telemetry-notice-shown");
   try {
-    if (existsSync(file)) return;
+    const config = readSharedConfig();
+    // Shared with the CLI (config.telemetryNoticeShown): shown once per person
+    // across surfaces, not once per tool.
+    if (config.telemetryNoticeShown === true) return;
+    console.error(
+      [
+        "media-use sends usage telemetry: media type, resolution source, and provider; never intent text, file names, or paths.",
+        "If you sign in to HeyGen, usage links to your account email or username. Opt out with HYPERFRAMES_NO_TELEMETRY=1 or DO_NOT_TRACK=1.",
+      ].join("\n"),
+    );
+    writeSharedConfig({ ...config, telemetryNoticeShown: true });
   } catch {
-    return;
-  }
-  console.error(
-    [
-      "media-use sends usage telemetry: media type, resolution source, and provider; never intent text, file names, or paths.",
-      "If you sign in to HeyGen, usage links to your account email or username. Opt out with HYPERFRAMES_NO_TELEMETRY=1 or DO_NOT_TRACK=1.",
-    ].join("\n"),
-  );
-  try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(file, new Date().toISOString() + "\n");
-  } catch {
-    // notice marker is best-effort; never surface into the command
+    // notice is best-effort; never surface into the command
   }
 }
 

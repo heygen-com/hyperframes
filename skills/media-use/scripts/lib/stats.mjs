@@ -85,34 +85,33 @@ function diskBytes(records) {
 }
 
 export function buildStats({ projectDir, days, now = Date.now() } = {}) {
-  try {
-    const cutoff =
-      days == null || Number.isNaN(Number(days))
-        ? null
-        : Number(now) - Number(days) * 24 * 60 * 60 * 1000;
-    const records = (projectDir ? readManifest(projectDir) : []).filter((r) => inWindow(r, cutoff));
-    const misses = readMisses().filter((miss) => inWindow(miss, cutoff));
-    const globalRecords = readGlobalManifest();
-    const report = emptyReport();
+  // Only a positive finite --days windows the report; null / NaN / <= 0 mean
+  // "all time" rather than silently excluding everything (a negative cutoff
+  // would land in the future and drop every record). The reads below are each
+  // best-effort (they return [] / skip on IO errors), so there is no top-level
+  // catch masking a real logic bug as an all-zero "no usage" report.
+  const n = Number(days);
+  const cutoff = Number.isFinite(n) && n > 0 ? Number(now) - n * 24 * 60 * 60 * 1000 : null;
+  const records = (projectDir ? readManifest(projectDir) : []).filter((r) => inWindow(r, cutoff));
+  const misses = readMisses().filter((miss) => inWindow(miss, cutoff));
+  const globalRecords = readGlobalManifest();
+  const report = emptyReport();
 
-    report.total_resolves = records.length;
-    report.misses = misses.length;
-    for (const record of records) {
-      increment(report.by_type, record?.type || "unknown");
-      increment(report.by_source, sourceOf(record));
-      increment(report.by_provider, record?.provenance?.provider);
-      increment(report.by_via, record?.provenance?.via);
-    }
-
-    const attempts = report.total_resolves + report.misses;
-    report.hit_rate = attempts === 0 ? null : report.total_resolves / attempts;
-    report.top_missed_intents = topMissedIntents(misses);
-    report.global_cache_assets = globalRecords.length;
-    report.global_cache_disk_bytes = diskBytes(globalRecords);
-    report.cross_project_reuse = globalRecords.filter((r) => r?.provenance?.reused_by).length;
-
-    return report;
-  } catch {
-    return emptyReport();
+  report.total_resolves = records.length;
+  report.misses = misses.length;
+  for (const record of records) {
+    increment(report.by_type, record?.type || "unknown");
+    increment(report.by_source, sourceOf(record));
+    increment(report.by_provider, record?.provenance?.provider);
+    increment(report.by_via, record?.provenance?.via);
   }
+
+  const attempts = report.total_resolves + report.misses;
+  report.hit_rate = attempts === 0 ? null : report.total_resolves / attempts;
+  report.top_missed_intents = topMissedIntents(misses);
+  report.global_cache_assets = globalRecords.length;
+  report.global_cache_disk_bytes = diskBytes(globalRecords);
+  report.cross_project_reuse = globalRecords.filter((r) => r?.provenance?.reused_by).length;
+
+  return report;
 }
