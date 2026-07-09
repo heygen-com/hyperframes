@@ -1,14 +1,14 @@
 # CSS Patterns for Marker Highlighting
 
-Pure CSS + GSAP implementations of all five MarkerHighlight.js drawing modes. Use these for deterministic rendering in HyperFrames compositions — no external library dependency, full GSAP timeline control.
+Pure CSS + anime.js implementations of all five MarkerHighlight.js drawing modes. Use these for deterministic rendering in HyperFrames compositions, no external library dependency, full anime.js timeline control.
 
 ## Contents
 
-- [1. Highlight Mode](#1-highlight-mode) — Yellow marker sweep behind text
-- [2. Circle Mode](#2-circle-mode) — Hand-drawn ellipse around text
-- [3. Burst Mode](#3-burst-mode) — Radiating lines from text
-- [4. Scribble Mode](#4-scribble-mode) — Chaotic scribble over text
-- [5. Sketchout Mode](#5-sketchout-mode) — Rough rectangle outline
+- [1. Highlight Mode](#1-highlight-mode): Yellow marker sweep behind text
+- [2. Circle Mode](#2-circle-mode): Hand-drawn ellipse around text
+- [3. Burst Mode](#3-burst-mode): Radiating lines from text
+- [4. Scribble Mode](#4-scribble-mode): Chaotic scribble over text
+- [5. Sketchout Mode](#5-sketchout-mode): Rough rectangle outline
 
 ## 1. Highlight Mode
 
@@ -47,10 +47,10 @@ Yellow marker sweep behind text. The most common mode.
 
 ```js
 // Sweep in from left
-tl.to("#hl-1", { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.6);
+tl.add("#hl-1", { scaleX: 1, duration: 500, ease: "outCubic" }, 600);
 
 // Optional: skew for hand-drawn feel
-// gsap.set("#hl-1", { skewX: -2 });
+// anime.utils.set("#hl-1", { skewX: -2 });
 ```
 
 ### Multi-line Highlight
@@ -58,15 +58,15 @@ tl.to("#hl-1", { scaleX: 1, duration: 0.5, ease: "power2.out" }, 0.6);
 Stagger bars across multiple lines:
 
 ```js
-tl.to(
+tl.add(
   ".mh-highlight-bar",
   {
     scaleX: 1,
-    duration: 0.5,
-    ease: "power2.out",
-    stagger: 0.3,
+    duration: 500,
+    ease: "outCubic",
+    delay: anime.stagger(300),
   },
-  0.6,
+  600,
 );
 ```
 
@@ -106,16 +106,16 @@ Hand-drawn circle around text. Use `border-radius: 50%` with a slight rotation f
 
 ```js
 // Circle scales in with a wobble
-tl.to(
+tl.add(
   "#circle-1",
   {
     scale: 1,
-    rotation: -3,
-    duration: 0.6,
-    ease: "back.out(1.7)",
+    rotate: -3,
+    duration: 600,
+    ease: "outBack(1.7)",
     transformOrigin: "center center",
   },
-  0.7,
+  700,
 );
 ```
 
@@ -200,11 +200,10 @@ Radiating lines from text center. Each line is a positioned div rotated to its a
 
 ```js
 // All lines burst outward simultaneously with slight stagger
-tl.fromTo(
+tl.add(
   "#burst-1 .mh-burst-line",
-  { scaleY: 0, opacity: 0 },
-  { scaleY: 1, opacity: 1, duration: 0.4, ease: "power2.out", stagger: 0.03 },
-  0.7,
+  { scaleY: [0, 1], opacity: [0, 1], duration: 400, ease: "outCubic", delay: anime.stagger(30) },
+  700,
 );
 ```
 
@@ -253,17 +252,17 @@ Wavy SVG underlines and strikethroughs that draw themselves via `stroke-dashoffs
 // Measure path length and set initial dash state
 var path = document.querySelector("#scribble-1");
 var len = path.getTotalLength();
-gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
+anime.utils.set(path, { strokeDasharray: len, strokeDashoffset: len });
 
 // Draw the line
-tl.to(
+tl.add(
   "#scribble-1",
   {
     strokeDashoffset: 0,
-    duration: 0.8,
-    ease: "power1.inOut",
+    duration: 800,
+    ease: "inOutQuad",
   },
-  0.7,
+  700,
 );
 ```
 
@@ -332,25 +331,25 @@ Cross-hatch lines over de-emphasized text. Multiple angled lines create a "cross
 
 ```js
 // Forward slash draws first
-tl.to(
+tl.add(
   "#sketchout-1 .mh-sketchout-fwd",
   {
     scaleX: 1,
-    duration: 0.3,
-    ease: "power2.out",
+    duration: 300,
+    ease: "outCubic",
   },
-  1.0,
+  1000,
 );
 
 // Backward slash follows
-tl.to(
+tl.add(
   "#sketchout-1 .mh-sketchout-bwd",
   {
     scaleX: 1,
-    duration: 0.3,
-    ease: "power2.out",
+    duration: 300,
+    ease: "outCubic",
   },
-  1.15,
+  1150,
 );
 ```
 

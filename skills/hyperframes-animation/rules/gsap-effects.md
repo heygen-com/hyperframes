@@ -1,11 +1,13 @@
 # GSAP Effects for HyperFrames
 
-Drop-in animation patterns. Each effect is self-contained (HTML + CSS + JS) and follows the HyperFrames seek-driven contract — deterministic, no randomness, timeline registered on `window.__timelines`.
+> **GSAP-adapter guidance.** This file documents patterns for the GSAP TextPlugin and GSAP-timeline audio-visualizer wiring, which have no equivalent porting requirement under the anime.js-first contract described in `adapters/animejs.md`. Use this file only when a composition explicitly opts into the GSAP adapter (`gsap.timeline`, `window.__timelines`). For anime.js-first authoring see `techniques.md` sections 7 and 11.
+
+Drop-in animation patterns. Each effect is self-contained (HTML + CSS + JS) and follows the HyperFrames seek-driven contract, deterministic, no randomness, timeline registered on `window.__timelines`.
 
 ## Index
 
-- [Typewriter](#typewriter) — character-by-character text reveal with optional cursor / backspace / word rotation
-- [Audio Visualizer](#audio-visualizer) — pre-extract audio data, drive Canvas/DOM rendering from the timeline
+- [Typewriter](#typewriter): character-by-character text reveal with optional cursor / backspace / word rotation
+- [Audio Visualizer](#audio-visualizer): pre-extract audio data, drive Canvas/DOM rendering from the timeline
 
 ---
 
@@ -39,9 +41,9 @@ tl.to(
 
 Three rules:
 
-1. **One cursor visible at a time** — hide previous before showing next.
-2. **Cursor must blink when idle** — after typing, during pauses.
-3. **No gap between text and cursor** — elements must be flush in HTML.
+1. **One cursor visible at a time**: hide previous before showing next.
+2. **Cursor must blink when idle**: after typing, during pauses.
+3. **No gap between text and cursor**: elements must be flush in HTML.
 
 ```html
 <span id="typed-text"></span><span id="cursor" class="cursor-blink">|</span>
@@ -80,7 +82,7 @@ tl.call(() => cursor.classList.replace("cursor-solid", "cursor-blink"), [], star
 
 ### Backspacing
 
-TextPlugin removes from front — wrong for backspace. Use manual substring removal:
+TextPlugin removes from front: wrong for backspace. Use manual substring removal:
 
 ```js
 function backspace(tl, selector, word, startTime, cps) {
@@ -181,7 +183,7 @@ tl.call(() => nextCursor.classList.replace("cursor-solid", "cursor-blink"), [], 
 
 ## Audio Visualizer
 
-Pre-extract audio data, drive Canvas / DOM rendering from a single `tl.call(...)` per frame. **Do not** use the Web Audio API at render time — there's no playback during seek.
+Pre-extract audio data, drive Canvas / DOM rendering from a single `tl.call(...)` per frame. **Do not** use the Web Audio API at render time, there's no playback during seek.
 
 ### Extract Audio Data
 
@@ -202,29 +204,29 @@ python skills/hyperframes-creative/scripts/extract-audio-data.py video.mp4 --fps
 }
 ```
 
-- **`rms`** (0-1) — overall loudness, normalized across the track.
-- **`bands[]`** (0-1) — frequency magnitudes. Index 0 = bass, higher index = treble. Each band normalized independently.
+- **`rms`** (0-1), overall loudness, normalized across the track.
+- **`bands[]`** (0-1), frequency magnitudes. Index 0 = bass, higher index = treble. Each band normalized independently.
 
 ### Loading the Data (Synchronously)
 
 ```js
-// Option A — inline (small files, under ~500 KB)
+// Option A - inline (small files, under ~500 KB)
 var AUDIO_DATA = {
   /* paste audio-data.json contents */
 };
 
-// Option B — sync XHR (large files; must be synchronous for deterministic timeline construction)
+// Option B - sync XHR (large files; must be synchronous for deterministic timeline construction)
 var xhr = new XMLHttpRequest();
 xhr.open("GET", "audio-data.json", false);
 xhr.send();
 var AUDIO_DATA = JSON.parse(xhr.responseText);
 ```
 
-**Do NOT use async `fetch()`.** HyperFrames reads `window.__timelines` synchronously after page load — building the timeline inside `.then()` means the timeline isn't ready when capture starts.
+**Do NOT use async `fetch()`.** HyperFrames reads `window.__timelines` synchronously after page load, building the timeline inside `.then()` means the timeline isn't ready when capture starts.
 
 ### Driving the Timeline
 
-**Canvas 2D** — most common (bars, waveforms, circles, gradients):
+**Canvas 2D**: most common (bars, waveforms, circles, gradients):
 
 ```js
 const canvas = document.getElementById("viz");
@@ -243,9 +245,9 @@ for (let f = 0; f < AUDIO_DATA.totalFrames; f++) {
 }
 ```
 
-**WebGL / Three.js** — HyperFrames patches `THREE.Clock` for deterministic time. Update uniforms from audio data each frame.
+**WebGL / Three.js**: HyperFrames patches `THREE.Clock` for deterministic time. Update uniforms from audio data each frame.
 
-**DOM elements** — fine for fewer than ~20 elements, slower than Canvas for many.
+**DOM elements**: fine for fewer than ~20 elements, slower than Canvas for many.
 
 ### Smoothing
 
@@ -274,11 +276,11 @@ function smooth(f) {
 
 ### Motion Principles
 
-- **Bass drives big moves** — scale, glow, position shifts.
-- **Treble drives detail** — shimmer, flicker, edge effects.
-- **RMS drives globals** — background brightness, overall energy.
+- **Bass drives big moves**: scale, glow, position shifts.
+- **Treble drives detail**: shimmer, flicker, edge effects.
+- **RMS drives globals**: background brightness, overall energy.
 - Pick 2-3 properties to animate. More looks noisy.
-- Keep minimums above zero — quiet sections still need life.
+- Keep minimums above zero: quiet sections still need life.
 
 ### Band Count
 
@@ -291,7 +293,7 @@ function smooth(f) {
 
 ### Layering
 
-Layer multiple canvases with CSS `z-index` for depth — a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without per-element complexity.
+Layer multiple canvases with CSS `z-index` for depth, a background layer driven by bass/rms and a foreground layer driven by individual bands creates depth without per-element complexity.
 
 ```html
 <canvas id="bg-layer" style="position:absolute;top:0;left:0;z-index:1;"></canvas>

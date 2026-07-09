@@ -62,7 +62,7 @@ When `progress = 0` all elements overlap at the center; when `progress = 1` they
 .burst-item {
   position: absolute;
   /* Items start at the wrap center via the absolute + 50% trick.
-     We tween translate offsets via GSAP, not left/top. */
+     Anime.js tweens translate offsets, not left/top. */
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -81,68 +81,66 @@ When `progress = 0` all elements overlap at the center; when `progress = 1` they
 }
 ```
 
-## GSAP Timeline
+## Anime.js Timeline
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
   const items = document.querySelectorAll(".burst-item");
 
-  // Each element gets its own from→to that lerps center (translate(-50%, -50%))
-  // → target offset. xPercent/yPercent bakes the self-centering; x/y animates
+  // Each element gets explicit from/to values that lerp center (translate(-50%, -50%))
+  // to target offset. Static CSS handles self-centering; translateX/translateY animate
   // toward the target.
   items.forEach((el, i) => {
     const targetX = Number(el.dataset.targetX);
     const targetY = Number(el.dataset.targetY);
-    tl.fromTo(
+    tl.add(
       el,
-      { xPercent: -50, yPercent: -50, x: 0, y: 0, scale: 0.6, opacity: 0 },
       {
-        x: targetX,
-        y: targetY,
-        scale: 1,
-        opacity: 1,
-        duration: EXPAND_DUR,
+        translateX: [0, targetX],
+        translateY: [0, targetY],
+        scale: [0.6, 1],
+        opacity: [0, 1],
+        duration: EXPAND_DUR * 1000,
         ease: EXPAND_EASE,
       },
-      i * STAGGER + ENTRY_AT, // stagger; ENTRY_AT offsets the burst beat
+      (i * STAGGER + ENTRY_AT) * 1000, // stagger; ENTRY_AT offsets the burst beat
     );
   });
 
-  window.__timelines["burst-scene"] = tl;
+  hyperframesAnime.register("burst-scene", tl);
 </script>
 ```
 
 ## How to Choose Values
 
-- **ITEM_COUNT** — number of elements in the burst
+- **ITEM_COUNT**: number of elements in the burst
   - Range: 3–8
   - Effects: 3 = sparse; 8 = busy. > 8 causes visual chaos where cards overlap mid-expansion
   - Constraints: at low counts, prefer wider angular spread (target positions further apart)
 
-- **EXPAND_DUR** — duration of each item's center → target tween
+- **EXPAND_DUR**: duration of each item's center → target tween
   - Range: 1.0–1.8 s
   - Effects: shorter = snappy burst; longer = floats outward
   - Constraints: if driven by a counter, must equal the counter's duration (chord)
 
-- **EXPAND_EASE** — shared ease across all items
-  - Discrete choice: `power2.out`, `power3.out`, `expo.out`
-  - Selection: `power3.out` is the default — fling out then settle. `power2.out` is gentler. `expo.out` makes them stop dramatically. Avoid `in` easings (they read as items being sucked back in mid-air).
+- **EXPAND_EASE**: shared ease across all items
+  - Discrete choice: `outCubic`, `outQuart`, `outExpo`
+  - Selection: `outQuart` is the default, fling out then settle. `outCubic` is gentler. `outExpo` makes them stop dramatically. Avoid `in` easings (they read as items being sucked back in mid-air).
   - Constraint: if driven by another animation, must be identical to the driver's ease
 
-- **STAGGER** — gap between successive items' start times
+- **STAGGER**: gap between successive items' start times
   - Range: 0.04–0.08 s
   - Effects: < 0.04 = simultaneous chord; > 0.08 feels lazy / arpeggiated
   - Constraints: ITEM_COUNT × STAGGER must be < EXPAND_DUR or the last items still moving when others have landed reads as ragged
 
-- **ENTRY_AT** — offset applied to the whole burst start
+- **ENTRY_AT**: offset applied to the whole burst start
   - Range: 0 – 0.5 s
   - Effects: > 0 gives a beat of compositional quiet before the burst
 
-- **START_PROGRESS** — fraction of the center→target path where items begin (for partially-spread variant)
+- **START_PROGRESS**: fraction of the center→target path where items begin (for partially-spread variant)
   - Range: 0 (exact center) – 0.5
   - Effects: 0 = full cluster, dramatic spread; 0.3 = avoids initial pile-up at center
 
@@ -157,23 +155,23 @@ If the burst should mirror a counting animation's progress:
 const counterState = { value: 0 };
 const burstState = { p: 0 };
 
-// Shared tween — same duration, same ease — visually a "chord"
-tl.to(
+// Shared tween: same duration, same ease, visually a "chord"
+tl.add(
   counterState,
   {
     value: COUNT_TARGET,
-    duration: COUNT_DUR,
+    duration: COUNT_DUR * 1000,
     ease: COUNT_EASE,
     onUpdate: () => (counterEl.textContent = Math.round(counterState.value).toLocaleString()),
   },
   0,
 );
 
-tl.to(
+tl.add(
   burstState,
   {
     p: 1,
-    duration: COUNT_DUR,
+    duration: COUNT_DUR * 1000,
     ease: COUNT_EASE,
     onUpdate: () =>
       items.forEach((el) => {
@@ -191,37 +189,38 @@ tl.to(
 To avoid the initial clustered mess (6+ elements stacked at center), start at `START_PROGRESS`:
 
 ```js
-{ x: targetX * START_PROGRESS, y: targetY * START_PROGRESS, scale: 0.4, opacity: 0 }
+{ translateX: targetX * START_PROGRESS, translateY: targetY * START_PROGRESS, scale: 0.4, opacity: 0 }
 ```
 
 ### Idle micro-float at final position
 
-Pair with `sine-wave-loop` after expansion lands — keeps elements alive instead of frozen.
+Pair with `sine-wave-loop` after expansion lands, keeps elements alive instead of frozen.
 
 ## Key Principles
 
-- **Driver vs driven** — if the burst stands on its own, use a per-item stagger; if it shadows another animation (counter, audio beat), share the same eased progress so they read as one beat
-- **Stagger inside the 0.04-0.08 s band** — too tight and the cluster never separates visually, too loose and the burst feels lazy
-- **Out-easing for the expansion** — out-easing makes items "fling" out then settle. In-easing looks like they're sucked back in mid-air
-- **Element count: 3-8** — fewer feels empty, more causes visual chaos at the center where cards overlap mid-expansion
-- **❗ Don't put a label below the burst as the "real headline"** — if you do, the eye snaps to the label and ignores the burst. The burst IS the beat. If a label is needed, use big block-caps and reveal it post-burst, in the same stacked layout.
+- **Driver vs driven**: if the burst stands on its own, use a per-item stagger; if it shadows another animation (counter, audio beat), share the same eased progress so they read as one beat
+- **Stagger inside the 0.04-0.08 s band**: too tight and the cluster never separates visually, too loose and the burst feels lazy
+- **Out-easing for the expansion**: out-easing makes items "fling" out then settle. In-easing looks like they're sucked back in mid-air
+- **Element count: 3-8**: fewer feels empty, more causes visual chaos at the center where cards overlap mid-expansion
+- **❗ Don't put a label below the burst as the "real headline"**: if you do, the eye snaps to the label and ignores the burst. The burst IS the beat. If a label is needed, use big block-caps and reveal it post-burst, in the same stacked layout.
 
 ## Critical Constraints
 
-- **Timeline must be paused**: `gsap.timeline({ paused: true })`
-- **Registry key = `data-composition-id`**
-- **Use translate, not left/top** — translating composes cleanly with the centering `translate(-50%, -50%)` trick; mutating `left`/`top` fights the centering and causes pixel jitter
-- **`will-change: transform`** on burst items — many simultaneous transforms benefit from compositor hints
-- **No `position: absolute` parents inside `burst-wrap` other than items themselves** — sibling absolute elements would steal the centered baseline
+- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
+- **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
+- **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
+- **Use translate, not left/top**: translating composes cleanly with the centering `translate(-50%, -50%)` trick; mutating `left`/`top` fights the centering and causes pixel jitter
+- **`will-change: transform`** on burst items, many simultaneous transforms benefit from compositor hints
+- **No `position: absolute` parents inside `burst-wrap` other than items themselves**, sibling absolute elements would steal the centered baseline
 
 ## Combinations
 
-- [counting-dynamic-scale.md](counting-dynamic-scale.md) — counter peak drives the burst peak (chord)
-- [sine-wave-loop.md](sine-wave-loop.md) — idle motion after the burst lands
-- [card-morph-anchor.md](card-morph-anchor.md) — burst out of a morphed card
+- [counting-dynamic-scale.md](counting-dynamic-scale.md): counter peak drives the burst peak (chord)
+- [sine-wave-loop.md](sine-wave-loop.md): idle motion after the burst lands
+- [card-morph-anchor.md](card-morph-anchor.md): burst out of a morphed card
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` — timeline + stagger
-- `/hyperframes-core` — composition wiring
-- `/hyperframes-cli` — `hyperframes lint`
+- `/hyperframes-animation`, timeline + stagger
+- `/hyperframes-core`, composition wiring
+- `/hyperframes-cli`, `hyperframes lint`

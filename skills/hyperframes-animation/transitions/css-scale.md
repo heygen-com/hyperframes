@@ -5,10 +5,18 @@
 Old zooms past camera + blurs, new zooms in from behind.
 
 ```js
-tl.to(old, { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 0.4, ease: "power3.in" }, T);
-tl.fromTo(new,
-  { scale: 0.5, opacity: 0, filter: "blur(8px)" },
-  { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" }, T + 0.15);
+tl.add(old, { scale: 2.5, opacity: 0, filter: "blur(8px)", duration: 400, ease: "inQuart" }, T);
+tl.add(
+  new,
+  {
+    scale: [0.5, 1],
+    opacity: [0, 1],
+    filter: ["blur(8px)", "blur(0px)"],
+    duration: 400,
+    ease: "outQuart",
+  },
+  T + 150,
+);
 ```
 
 ### Zoom Out
@@ -16,9 +24,9 @@ tl.fromTo(new,
 Old shrinks away, new was behind it. Needs z-index management.
 
 ```js
-tl.set(new, { opacity: 1, zIndex: 1 }, T);
-tl.set(old, { zIndex: 10, transformOrigin: "50% 50%" }, T);
-tl.to(old, { scale: 0.3, opacity: 0, duration: 0.4, ease: "power3.in" }, T);
-tl.set(old, { zIndex: "auto" }, T + 0.4);
-tl.set(new, { zIndex: "auto" }, T + 0.4);
+tl.add(new, { opacity: 1, zIndex: 1, duration: 0 }, T);
+tl.add(old, { zIndex: 10, transformOrigin: "50% 50%", duration: 0 }, T);
+tl.add(old, { scale: 0.3, opacity: 0, duration: 400, ease: "inQuart" }, T);
+tl.add(old, { zIndex: "auto", duration: 0 }, T + 400);
+tl.add(new, { zIndex: "auto", duration: 0 }, T + 400);
 ```
