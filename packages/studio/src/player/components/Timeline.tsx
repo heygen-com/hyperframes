@@ -57,6 +57,7 @@ export const Timeline = memo(function Timeline({
   onBlockDrop,
   onDeleteElement: _onDeleteElement,
   onMoveElement: onMoveElementOverride,
+  onMoveElements: onMoveElementsOverride,
   onResizeElement: onResizeElementOverride,
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
@@ -65,6 +66,7 @@ export const Timeline = memo(function Timeline({
 }: TimelineProps = {}) {
   const {
     onMoveElement,
+    onMoveElements,
     onResizeElement,
     onBlockedEditAttempt,
     onSplitElement,
@@ -76,6 +78,7 @@ export const Timeline = memo(function Timeline({
     onMoveKeyframe,
   } = useResolvedTimelineEditCallbacks({
     onMoveElement: onMoveElementOverride,
+    onMoveElements: onMoveElementsOverride,
     onResizeElement: onResizeElementOverride,
     onBlockedEditAttempt: onBlockedEditAttemptOverride,
     onSplitElement: onSplitElementOverride,
@@ -229,6 +232,7 @@ export const Timeline = memo(function Timeline({
     durationRef,
     trackOrderRef,
     onMoveElement,
+    onMoveElements,
     onResizeElement,
     onBlockedEditAttempt,
     setShowPopover,

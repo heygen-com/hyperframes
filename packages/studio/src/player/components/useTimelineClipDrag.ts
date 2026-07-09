@@ -78,6 +78,9 @@ interface UseTimelineClipDragInput {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
+  onMoveElements?: (
+    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+  ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
@@ -94,6 +97,7 @@ export function useTimelineClipDrag({
   durationRef,
   trackOrderRef,
   onMoveElement,
+  onMoveElements,
   onResizeElement,
   onBlockedEditAttempt,
   setShowPopover,
@@ -164,6 +168,8 @@ export function useTimelineClipDrag({
 
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
+  const onMoveElementsRef = useRef(onMoveElements);
+  onMoveElementsRef.current = onMoveElements;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
 
@@ -522,6 +528,7 @@ export function useTimelineClipDrag({
         trackOrder: trackOrderRef.current,
         updateElement,
         onMoveElement: onMoveElementRef.current,
+        onMoveElements: onMoveElementsRef.current,
       });
     };
 

@@ -35,6 +35,10 @@ export interface TimelineEditCallbacks {
       stackingReorder?: TimelineStackingReorderIntent | null;
     },
   ) => Promise<void> | void;
+  /** Atomic multi-clip move (single undo) for main-track ripple + track-insert. */
+  onMoveElements?: (
+    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+  ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,

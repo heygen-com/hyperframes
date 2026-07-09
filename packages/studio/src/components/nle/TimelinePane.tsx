@@ -61,7 +61,8 @@ export function TimelinePane({
   // Move/resize/split come from the timeline edit context, not props — the
   // wrappers below intercept expanded clips and must call the *real* handlers.
   // (Delete is a direct prop; it stays that way.)
-  const { onMoveElement, onResizeElement, onSplitElement } = useTimelineEditContext();
+  const { onMoveElement, onMoveElements, onResizeElement, onSplitElement } =
+    useTimelineEditContext();
 
   // An expanded sub-comp child reaches the normal edit handlers in its own
   // local coordinates: addressed by its real DOM id, with timeline time rebased
@@ -87,6 +88,23 @@ export function TimelinePane({
       });
     },
     [onMoveElement, toLocalElement],
+  );
+
+  // Batched move (ripple / insert): rebase each expanded sub-comp child to its
+  // local coords, exactly as handleMoveElement does for a single clip.
+  const handleMoveElements = useCallback(
+    (edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>) =>
+      onMoveElements?.(
+        edits.map(({ element, updates }) => {
+          const basis = element.expandedParentStart;
+          if (basis === undefined) return { element, updates };
+          return {
+            element: toLocalElement(element, basis),
+            updates: { ...updates, start: Math.max(0, updates.start - basis) },
+          };
+        }),
+      ),
+    [onMoveElements, toLocalElement],
   );
 
   const handleResizeElement = useCallback(
@@ -161,6 +179,7 @@ export function TimelinePane({
             onAssetDrop={onAssetDrop}
             onBlockDrop={onBlockDrop}
             onMoveElement={handleMoveElement}
+            onMoveElements={handleMoveElements}
             onResizeElement={handleResizeElement}
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}

@@ -75,6 +75,7 @@ export function EditorShell({
   handlePreviewBlockDrop,
   handleTimelineFileDrop,
   handleTimelineElementMove,
+  handleTimelineElementsMove,
   handleTimelineElementResize,
   handleToggleTrackHidden,
   handleBlockedTimelineEdit,
@@ -97,6 +98,7 @@ export function EditorShell({
 
   const timelineEditCallbacks = useTimelineEditCallbacks({
     handleTimelineElementMove,
+    handleTimelineElementsMove,
     handleTimelineElementResize,
     handleToggleTrackHidden,
     handleBlockedTimelineEdit,

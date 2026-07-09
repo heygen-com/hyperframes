@@ -17,6 +17,9 @@ export interface TimelineEditCallbackDeps {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
+  handleTimelineElementsMove: (
+    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+  ) => Promise<void> | void;
   handleTimelineElementResize: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
@@ -37,6 +40,7 @@ export interface TimelineEditCallbackDeps {
 // fallow-ignore-next-line complexity
 export function useTimelineEditCallbacks({
   handleTimelineElementMove,
+  handleTimelineElementsMove,
   handleTimelineElementResize,
   handleToggleTrackHidden,
   handleBlockedTimelineEdit,
@@ -79,6 +83,7 @@ export function useTimelineEditCallbacks({
   return useMemo(
     () => ({
       onMoveElement: handleTimelineElementMove,
+      onMoveElements: handleTimelineElementsMove,
       onResizeElement: handleTimelineElementResize,
       onToggleTrackHidden: handleToggleTrackHidden,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
@@ -179,6 +184,7 @@ export function useTimelineEditCallbacks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       handleTimelineElementMove,
+      handleTimelineElementsMove,
       handleTimelineElementResize,
       handleToggleTrackHidden,
       handleBlockedTimelineEdit,
