@@ -1,6 +1,5 @@
 import { useCallback, useState, type RefObject } from "react";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { usePlayerStore } from "../store/playerStore";
 import { TRACK_H, resolveTimelineAssetDrop } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 
@@ -12,10 +11,12 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
 }
 
 /**
- * Dropping an asset/file/block onto the timeline places it at the PLAYHEAD (like
- * CapCut) — the clip's start is the current playhead time; only the track comes
- * from where you drop vertically. No drag ghost: you drop, it lands at the
- * playhead on that track.
+ * Dropping an asset/file/block onto the timeline places it at the DROP
+ * POSITION — start comes from the drop x, track from the drop y. This is the
+ * industry-standard drag semantic (CapCut/Premiere/FCP: dragged media lands
+ * where you release it); playhead placement is reserved for button/shortcut
+ * adds (handleAddAssetAtPlayhead). External OS file drops and internal asset
+ * drops share this same placement path.
  */
 export function useTimelineAssetDrop({
   scrollRef,
@@ -45,23 +46,28 @@ export function useTimelineAssetDrop({
     (clientX: number, clientY: number): { start: number; track: number } => {
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
-      // Track comes from the vertical drop position; start is the playhead.
-      const { track } = resolveTimelineAssetDrop(
+      const pps = ppsRef.current;
+      // Start comes from the drop x, track from the drop y. Allow dropping into
+      // the rendered empty space past the content end (same relaxed bound as a
+      // clip drag) — the composition grows to fit on commit, content-driven.
+      const maxDropTime = Math.max(
+        durationRef.current,
+        scroll && pps > 0 ? scroll.scrollWidth / pps : durationRef.current,
+      );
+      return resolveTimelineAssetDrop(
         {
           rectLeft: rect?.left ?? 0,
           rectTop: rect?.top ?? 0,
           scrollLeft: scroll?.scrollLeft ?? 0,
           scrollTop: scroll?.scrollTop ?? 0,
-          pixelsPerSecond: ppsRef.current,
-          duration: durationRef.current,
+          pixelsPerSecond: pps,
+          duration: maxDropTime,
           trackHeight: TRACK_H,
           trackOrder: trackOrderRef.current,
         },
         clientX,
         clientY,
       );
-      const start = Math.max(0, usePlayerStore.getState().currentTime);
-      return { start, track };
     },
     [scrollRef, ppsRef, durationRef, trackOrderRef],
   );

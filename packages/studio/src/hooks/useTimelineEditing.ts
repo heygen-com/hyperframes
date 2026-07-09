@@ -3,10 +3,12 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
+import { resolveZoneDropPlacement } from "../player/components/timelineCollision";
 import {
   furthestClipEndFromDocument,
   furthestClipEndFromSource,
 } from "../player/lib/timelineElementHelpers";
+import { isAudioTimelineElement } from "../utils/timelineInspector";
 import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
@@ -491,6 +493,34 @@ export function useTimelineEditing({
         );
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
 
+        // Zone- and overlap-aware track: run the new clip through the same pure
+        // drop decision a clip DRAG uses (visual lanes top / audio lanes bottom,
+        // no same-track time overlap — relocate to the nearest free lane in the
+        // kind zone, else a fresh track). Covers OS file drops, asset-panel
+        // drops, and playhead adds alike, so adding an asset behaves exactly
+        // like moving one.
+        let resolvedTrack = placement.track;
+        if (relevantElements.length > 0) {
+          const order = [...new Set(relevantElements.map((te) => te.track))].sort((a, b) => a - b);
+          const audioTracks = new Set(
+            relevantElements.filter(isAudioTimelineElement).map((te) => te.track),
+          );
+          const zoned = resolveZoneDropPlacement({
+            order,
+            audioTracks,
+            elements: relevantElements,
+            desiredTrack: placement.track,
+            deliberateInsertRow: null,
+            start: normalizedStart,
+            duration: normalizedDuration,
+            dragKey: newId,
+            isAudio: kind === "audio",
+          });
+          // A needsInsert result means every lane in the kind zone is occupied at
+          // this time — place on a fresh track; display normalization zones it.
+          resolvedTrack = zoned.insertRow != null ? Math.max(...order) + 1 : zoned.track;
+        }
+
         const patchedContent = extendCompositionDurationIfNeeded(
           insertTimelineAssetIntoSource(
             originalContent,
@@ -501,7 +531,7 @@ export function useTimelineEditing({
               kind,
               start: normalizedStart,
               duration: normalizedDuration,
-              track: placement.track,
+              track: resolvedTrack,
               zIndex: newElementZIndex,
               geometry: fitTimelineAssetGeometry(natural, compSize),
             }),
