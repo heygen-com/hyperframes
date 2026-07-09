@@ -25,11 +25,15 @@
         font-family: "DM Sans", sans-serif;
       }
 
-      #root .lower-third {
+      #root .lower-third-frame {
         position: absolute;
         bottom: 160px;
         left: 50%;
         transform: translateX(-50%);
+      }
+
+      #root .lower-third {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 30px;
@@ -134,34 +138,36 @@
       data-duration="4.5"
     >
       <div
-        id="card"
-        class="clip lower-third"
+        id="card-frame"
+        class="clip lower-third-frame"
         data-start="0"
         data-duration="4.5"
         data-track-index="0"
       >
-        <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
-        <div class="profile-info">
-          <div class="display-name">HeyGen</div>
-          <div class="handle">@heygen.com</div>
-          <div class="follower-count">1,999 followers</div>
-        </div>
-        <div id="follow-btn" class="follow-btn">
-          <span id="btn-follow" class="btn-text btn-text-follow">Follow</span>
-          <span id="btn-following" class="btn-text btn-text-following">
-            <span>Following</span>
-            <span class="check-icon"
-              ><svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <polyline points="20 6 9 17 4 12"></polyline></svg
-            ></span>
-          </span>
+        <div id="card" class="lower-third">
+          <img class="avatar" src="assets/avatar.jpg" alt="HeyGen" crossorigin="anonymous" />
+          <div class="profile-info">
+            <div class="display-name">HeyGen</div>
+            <div class="handle">@heygen.com</div>
+            <div class="follower-count">1,999 followers</div>
+          </div>
+          <div id="follow-btn" class="follow-btn">
+            <span id="btn-follow" class="btn-text btn-text-follow">Follow</span>
+            <span id="btn-following" class="btn-text btn-text-following">
+              <span>Following</span>
+              <span class="check-icon"
+                ><svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12"></polyline></svg
+              ></span>
+            </span>
+          </div>
         </div>
       </div>
     </div>

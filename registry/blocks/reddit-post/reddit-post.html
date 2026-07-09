@@ -26,11 +26,15 @@
         font-family: "DM Sans", sans-serif;
       }
 
-      #root .reddit-card {
+      #root .reddit-card-frame {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
+      }
+
+      #root .reddit-card {
+        position: relative;
         width: 860px;
         background: #1a1a2e;
         border-radius: 16px;
@@ -175,82 +179,90 @@
       data-start="0"
       data-duration="5"
     >
-      <div id="card" class="clip reddit-card" data-start="0" data-duration="5" data-track-index="0">
-        <!-- Header -->
-        <div class="post-header">
-          <div class="subreddit-icon">
-            <svg viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="24" fill="#4A90D9" />
-              <text
-                x="24"
-                y="30"
-                text-anchor="middle"
-                font-family="DM Sans, sans-serif"
-                font-size="22"
-                font-weight="700"
-                fill="#fff"
+      <div
+        id="card-frame"
+        class="clip reddit-card-frame"
+        data-start="0"
+        data-duration="5"
+        data-track-index="0"
+      >
+        <div id="card" class="reddit-card">
+          <!-- Header -->
+          <div class="post-header">
+            <div class="subreddit-icon">
+              <svg viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="24" fill="#4A90D9" />
+                <text
+                  x="24"
+                  y="30"
+                  text-anchor="middle"
+                  font-family="DM Sans, sans-serif"
+                  font-size="22"
+                  font-weight="700"
+                  fill="#fff"
+                >
+                  r/
+                </text>
+              </svg>
+            </div>
+            <div class="post-meta">
+              <span class="subreddit-name">r/hyperframes</span>
+              <span class="post-author">u/placeholder_user &middot; 3h</span>
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div class="post-title">Prompt to change this title to whatever you want</div>
+          <div class="post-body">
+            Prompt to change this body text, the subreddit, username, and vote count to match your
+            content.
+          </div>
+
+          <!-- Action bar -->
+          <div class="action-bar">
+            <div class="vote-group">
+              <div id="upvote-btn" class="vote-btn">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path id="upvote-arrow" d="M12 4L3 14h5v6h8v-6h5L12 4z" fill="#818384" />
+                </svg>
+              </div>
+              <span id="vote-count" class="vote-count">4.2k</span>
+              <div class="vote-btn">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M12 20l9-10h-5V4H8v6H3l9 10z" fill="#818384" />
+                </svg>
+              </div>
+            </div>
+
+            <div class="action-btn">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#818384"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
-                r/
-              </text>
-            </svg>
-          </div>
-          <div class="post-meta">
-            <span class="subreddit-name">r/hyperframes</span>
-            <span class="post-author">u/placeholder_user &middot; 3h</span>
-          </div>
-        </div>
-
-        <!-- Content -->
-        <div class="post-title">Prompt to change this title to whatever you want</div>
-        <div class="post-body">
-          Prompt to change this body text, the subreddit, username, and vote count to match your
-          content.
-        </div>
-
-        <!-- Action bar -->
-        <div class="action-bar">
-          <div class="vote-group">
-            <div id="upvote-btn" class="vote-btn">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path id="upvote-arrow" d="M12 4L3 14h5v6h8v-6h5L12 4z" fill="#818384" />
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
               </svg>
+              <span>328</span>
             </div>
-            <span id="vote-count" class="vote-count">4.2k</span>
-            <div class="vote-btn">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 20l9-10h-5V4H8v6H3l9 10z" fill="#818384" />
+
+            <div class="action-btn">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#818384"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
               </svg>
+              <span>Share</span>
             </div>
-          </div>
-
-          <div class="action-btn">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#818384"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-            </svg>
-            <span>328</span>
-          </div>
-
-          <div class="action-btn">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#818384"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-              <polyline points="16 6 12 2 8 6" />
-              <line x1="12" y1="2" x2="12" y2="15" />
-            </svg>
-            <span>Share</span>
           </div>
         </div>
       </div>
