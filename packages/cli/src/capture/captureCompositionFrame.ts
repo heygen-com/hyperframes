@@ -18,6 +18,9 @@ const CAPTURE_SETTLE_MS = 1500;
 export interface SettledCompositionPage {
   browser: Browser;
   page: Page;
+  // True when the runtime never signaled __renderReady within the timeout — the
+  // capture proceeds anyway (possibly mid-animation), so callers can surface it.
+  renderReadyTimedOut: boolean;
 }
 
 export interface OpenSettledCompositionPageOptions {
@@ -64,7 +67,7 @@ function shaderTransitionsReadyInBrowser(): boolean {
 async function waitForCompositionSettle(
   page: Page,
   options: OpenSettledCompositionPageOptions,
-): Promise<void> {
+): Promise<boolean> {
   const runtimeReady = await page
     .waitForFunction(compositionRuntimeReadyInBrowser, { timeout: options.renderReadyTimeoutMs })
     .then(() => true)
@@ -86,6 +89,7 @@ async function waitForCompositionSettle(
 
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await new Promise((resolveSettle) => setTimeout(resolveSettle, CAPTURE_SETTLE_MS));
+  return runtimeReady;
 }
 
 export async function openSettledCompositionPage(
@@ -108,8 +112,8 @@ export async function openSettledCompositionPage(
     const page = await chromeBrowser.newPage();
     await page.setViewport(resolveCompositionViewportFromHtml(html));
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
-    await waitForCompositionSettle(page, options);
-    return { browser: chromeBrowser, page };
+    const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
+    return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {
     await chromeBrowser?.close().catch(() => {});
     throw err;

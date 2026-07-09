@@ -1,5 +1,5 @@
 {
-  "notes": "Look entries resolve on-demand from a CDN .cube `url` (downloaded + frozen, like bgm/image); `params` is a deterministic buildCube fallback used offline (--local-only) or if the download/validation fails. No .cube bodies are committed. Host new looks at https://static.heygen.ai/luts/<id>.cube (s3://heygen-public/luts/).",
+  "notes": "Look entries resolve on-demand from a CDN .cube `url` (downloaded + frozen, like bgm/image); `params` is a deterministic buildCube fallback used offline (--local-only) or if the download/validation fails. No .cube bodies are committed. See README.md to author or host a new look.",
   "looks": [
     {
       "id": "teal-orange-blockbuster",

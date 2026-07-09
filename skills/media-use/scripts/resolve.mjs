@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
 import { resolve, join, extname, basename } from "node:path";
 import { parseArgs } from "node:util";
 import { appendRecord, findByPrompt, findByEntity, nextId, allocateId } from "./lib/manifest.mjs";
@@ -362,6 +362,8 @@ async function run() {
 function mergeSmartAdjust(block) {
   if (!args.for) return block;
   const mediaPath = resolve(args.for);
+  // Clear upfront error beats an ffmpeg "No such file" stack on a typo'd path.
+  if (!existsSync(mediaPath)) throw new Error(`--for file not found: ${mediaPath}`);
   const analysis = analyzeMediaGrade(mediaPath);
   console.error(formatMeasuredNote(mediaPath, analysis.measured));
   return {
@@ -384,12 +386,16 @@ function freezeGeneratedLut(
 ) {
   const { id, localPath } = allocateId(projectDir, type, ".cube");
   const fullPath = join(projectDir, localPath);
+  const tmpPath = `${fullPath}.tmp`;
   try {
-    writeFileSync(fullPath, buildCube(params));
-    const check = validateCubeFile(fullPath);
+    // Write + validate at .tmp, then atomic rename, so a crash between write and
+    // validate can't leave an invalid .cube at the final path.
+    writeFileSync(tmpPath, buildCube(params));
+    const check = validateCubeFile(tmpPath);
     if (!check.ok) throw new Error(check.error);
+    renameSync(tmpPath, fullPath);
   } catch (err) {
-    rmSync(fullPath, { force: true });
+    rmSync(tmpPath, { force: true });
     throw new Error(`${validationErrorPrefix}: ${err.message}`);
   }
   return {
@@ -756,6 +762,10 @@ async function result(record, source) {
     type: record.type,
     source,
     provider: record.provenance?.provider,
+    // How a library LUT resolved: "url" (CDN), "params-fallback" (CDN failed →
+    // parametric), or "params" (offline). Surfaces silent CDN→params downgrades
+    // in prod, which --doctor can't (it only answers "reachable now?").
+    via: record.provenance?.via,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
   });

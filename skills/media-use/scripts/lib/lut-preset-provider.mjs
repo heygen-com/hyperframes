@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { allocateId } from "./manifest.mjs";
 import { freezeUrl } from "./freeze.mjs";
@@ -185,12 +185,17 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
   if (match.url && !localOnly) {
     const { id, localPath } = allocateId(projectDir, type, ".cube");
     const fullPath = join(projectDir, localPath);
+    const tmpPath = `${fullPath}.tmp`;
     try {
-      await freezeUrl(match.url, fullPath);
-      assertValidCubeFile(fullPath, `downloaded library LUT ${match.id} failed validation`);
+      // Download + validate at a .tmp path, then atomically rename. A crash
+      // (SIGKILL/OOM) between write and validate can't orphan an invalid .cube
+      // at the final path — only a validated cube is ever renamed into place.
+      await freezeUrl(match.url, tmpPath);
+      assertValidCubeFile(tmpPath, `downloaded library LUT ${match.id} failed validation`);
+      renameSync(tmpPath, fullPath);
       return libraryRecord(match, { id, localPath, fullPath, via: "url" });
     } catch (err) {
-      rmSync(fullPath, { force: true });
+      rmSync(tmpPath, { force: true });
       if (!match.params) {
         throw new Error(`failed to freeze library LUT ${match.id}: ${err.message}`);
       }
@@ -201,13 +206,17 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
   if (match.params) {
     const { id, localPath } = allocateId(projectDir, type, ".cube");
     const fullPath = join(projectDir, localPath);
+    const tmpPath = `${fullPath}.tmp`;
     try {
       const cube = buildCube(match.params);
       assertValidCubeText(cube, `invalid library LUT ${match.id}`);
-      writeFileSync(fullPath, cube);
-      assertValidCubeFile(fullPath, `invalid frozen LUT ${localPath}`);
+      // Write + validate at .tmp, then atomic rename — same no-orphan guarantee
+      // as the url path above.
+      writeFileSync(tmpPath, cube);
+      assertValidCubeFile(tmpPath, `invalid frozen LUT ${localPath}`);
+      renameSync(tmpPath, fullPath);
     } catch (err) {
-      rmSync(fullPath, { force: true });
+      rmSync(tmpPath, { force: true });
       throw err;
     }
     return libraryRecord(match, {

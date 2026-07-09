@@ -24,6 +24,7 @@ import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 
@@ -47,6 +48,7 @@ interface ParsedGradeCompareArgs {
   outPath: string;
   source: { kind: "grades"; path: string } | { kind: "luts"; value: string };
   json: boolean;
+  timeoutMs: number;
 }
 
 interface PreparedGradeCompareProject {
@@ -260,6 +262,7 @@ export function parseGradeCompareArgs(args: {
   project?: unknown;
   out?: unknown;
   json?: unknown;
+  timeout?: unknown;
 }): ParsedGradeCompareArgs {
   const frameArg = readOptionalString(args.for);
   if (!frameArg) throw new Error("--for <path> is required");
@@ -282,6 +285,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
+    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
   };
 }
 
@@ -534,7 +538,10 @@ async function loadReferenceFrame(framePath: string): Promise<ReferenceFrame> {
   };
 }
 
-async function captureGradeCompareSheet(projectDir: string, timeoutMs: number): Promise<string> {
+async function captureGradeCompareSheet(
+  projectDir: string,
+  timeoutMs: number,
+): Promise<{ sheetPath: string; renderReadyTimedOut: boolean }> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
 
   const html = await bundleToSingleHtml(projectDir);
@@ -542,14 +549,18 @@ async function captureGradeCompareSheet(projectDir: string, timeoutMs: number): 
   const sheetPath = join(projectDir, "grade-compare.png");
 
   try {
-    const { browser: chromeBrowser, page } = await openSettledCompositionPage(html, server.url, {
+    const {
+      browser: chromeBrowser,
+      page,
+      renderReadyTimedOut,
+    } = await openSettledCompositionPage(html, server.url, {
       renderReadyTimeoutMs: timeoutMs,
       renderReadyWarningSuffix: "grade comparison may be inaccurate",
     });
 
     try {
       await page.screenshot({ path: sheetPath, type: "png" });
-      return sheetPath;
+      return { sheetPath, renderReadyTimedOut };
     } finally {
       await chromeBrowser.close();
     }
@@ -594,6 +605,10 @@ export default defineCommand({
       description: "Output result as JSON",
       default: false,
     },
+    timeout: {
+      type: "string",
+      description: "Render-ready timeout in ms before capture (default: 5000)",
+    },
     baseline: {
       type: "boolean",
       description:
@@ -612,6 +627,7 @@ export default defineCommand({
         project: args.project,
         out: args.out,
         json: args.json,
+        timeout: args.timeout,
       });
       let cells =
         parsed.source.kind === "grades"
@@ -645,9 +661,19 @@ export default defineCommand({
       });
       preparedDir = prepared.tempDir;
 
-      const tempSheet = await captureGradeCompareSheet(prepared.tempDir, 5000);
+      const { sheetPath: tempSheet, renderReadyTimedOut } = await captureGradeCompareSheet(
+        prepared.tempDir,
+        parsed.timeoutMs,
+      );
       mkdirSync(dirname(parsed.outPath), { recursive: true });
       copyFileSync(tempSheet, parsed.outPath);
+      trackCompareSheet({
+        command: "grade-compare",
+        cells: prepared.cells.length,
+        truncated: capResult.truncated,
+        total: capResult.total,
+        renderReadyTimedOut,
+      });
 
       const sheet = displayPathFromBase(parsed.projectDir, parsed.outPath);
       if (parsed.json) {

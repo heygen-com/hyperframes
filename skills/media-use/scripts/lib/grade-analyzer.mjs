@@ -1,8 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"]);
 const SAMPLE_FRAMES = 5;
+// A long HD clip on slow storage can exceed the default 15s signalstats window;
+// override without a code change via HYPERFRAMES_ANALYZE_TIMEOUT_MS.
+const SIGNALSTATS_TIMEOUT_MS = Number(process.env.HYPERFRAMES_ANALYZE_TIMEOUT_MS) || 15000;
 
 const ADJUST_LIMITS = {
   exposure: { min: -2, max: 2 },
@@ -149,7 +152,7 @@ export function analyzeMediaGrade(mediaPath) {
         "null",
         "-",
       ],
-      { encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "pipe"] },
+      { encoding: "utf8", timeout: SIGNALSTATS_TIMEOUT_MS, stdio: ["ignore", "pipe", "pipe"] },
     );
     return statsToAdjust(parseSignalStats(raw));
   } catch (err) {
@@ -158,5 +161,5 @@ export function analyzeMediaGrade(mediaPath) {
 }
 
 export function formatMeasuredNote(mediaPath, measured) {
-  return `media-use: measured ${mediaPath}: frames=${measured.frames}, YMIN=${measured.yMin}, YMAX=${measured.yMax}, YAVG=${measured.yAvg}, UAVG=${measured.uAvg}, VAVG=${measured.vAvg}; adjust is a starting suggestion`;
+  return `media-use: measured ${basename(mediaPath)}: frames=${measured.frames}, YMIN=${measured.yMin}, YMAX=${measured.yMax}, YAVG=${measured.yAvg}, UAVG=${measured.uAvg}, VAVG=${measured.vAvg}; adjust is a starting suggestion`;
 }

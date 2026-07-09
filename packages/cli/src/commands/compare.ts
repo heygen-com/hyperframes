@@ -10,6 +10,7 @@ import {
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
@@ -35,6 +36,7 @@ export interface ParsedCompareArgs {
   atSeconds: number;
   cols?: number;
   json: boolean;
+  timeoutMs: number;
 }
 
 export interface CompareVariantCapResult {
@@ -120,6 +122,7 @@ export function parseCompareArgs(
     at?: unknown;
     cols?: unknown;
     json?: unknown;
+    timeout?: unknown;
   },
   cwd = process.cwd(),
 ): ParsedCompareArgs {
@@ -141,6 +144,9 @@ export function parseCompareArgs(
     atSeconds: parseAtSeconds(args.at),
     cols: parseColumns(args.cols),
     json: args.json === true,
+    timeoutMs:
+      Number.parseInt(readOptionalString(args.timeout) ?? "", 10) ||
+      DEFAULT_RENDER_READY_TIMEOUT_MS,
   };
 }
 
@@ -193,7 +199,15 @@ function inputError(variant: CompareVariantSpec): Error {
 function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-compare-variant-"));
   try {
-    cpSync(dirname(variant.inputPath), stagedDir, { recursive: true });
+    // Copy the composition's sibling files but skip heavy/irrelevant trees — a
+    // variant sitting next to node_modules or .git shouldn't drag them into tmp.
+    cpSync(dirname(variant.inputPath), stagedDir, {
+      recursive: true,
+      filter: (src) => {
+        const base = basename(src);
+        return base !== "node_modules" && base !== ".git";
+      },
+    });
     const sourceName = basename(variant.inputPath);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));
@@ -253,15 +267,19 @@ function cleanupPreparedCompareVariants(variants: readonly PreparedCompareVarian
 
 async function renderCompareVariant(
   variant: PreparedCompareVariant,
-  opts: { atSeconds: number; framePath: string },
-): Promise<string> {
+  opts: { atSeconds: number; framePath: string; timeoutMs: number },
+): Promise<{ framePath: string; renderReadyTimedOut: boolean }> {
   try {
     const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
     const html = await bundleToSingleHtml(variant.projectDir);
     const server = await serveStaticProjectHtml(variant.projectDir, html);
     try {
-      const { browser: chromeBrowser, page } = await openSettledCompositionPage(html, server.url, {
-        renderReadyTimeoutMs: DEFAULT_RENDER_READY_TIMEOUT_MS,
+      const {
+        browser: chromeBrowser,
+        page,
+        renderReadyTimedOut,
+      } = await openSettledCompositionPage(html, server.url, {
+        renderReadyTimeoutMs: opts.timeoutMs,
         renderReadyWarningSuffix: `comparison variant "${variant.label}" may be inaccurate`,
       });
       try {
@@ -269,7 +287,7 @@ async function renderCompareVariant(
           await seekCompositionTimeline(page, opts.atSeconds);
         }
         await page.screenshot({ path: opts.framePath, type: "png" });
-        return opts.framePath;
+        return { framePath: opts.framePath, renderReadyTimedOut };
       } finally {
         await chromeBrowser.close();
       }
@@ -291,15 +309,17 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
   const framePaths: string[] = [];
 
   try {
+    let renderReadyTimedOut = false;
     for (let i = 0; i < prepared.length; i++) {
       const variant = prepared[i]!;
       const framePath = join(frameDir, `variant-${String(i + 1).padStart(2, "0")}.png`);
-      framePaths.push(
-        await renderCompareVariant(variant, {
-          atSeconds: parsed.atSeconds,
-          framePath,
-        }),
-      );
+      const rendered = await renderCompareVariant(variant, {
+        atSeconds: parsed.atSeconds,
+        framePath,
+        timeoutMs: parsed.timeoutMs,
+      });
+      framePaths.push(rendered.framePath);
+      renderReadyTimedOut = renderReadyTimedOut || rendered.renderReadyTimedOut;
     }
 
     mkdirSync(dirname(parsed.outPath), { recursive: true });
@@ -310,6 +330,13 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
       labels: variants.map((variant) => variant.label),
     });
 
+    trackCompareSheet({
+      command: "compare",
+      cells: variants.length,
+      truncated: capResult.truncated,
+      total: capResult.total,
+      renderReadyTimedOut,
+    });
     return buildCompareSuccessPayload(parsed.outPath, variants, capResult);
   } finally {
     cleanupPreparedCompareVariants(prepared);
@@ -347,6 +374,10 @@ export default defineCommand({
     cols: {
       type: "string",
       description: "Grid columns (default: sqrt heuristic, capped at 4)",
+    },
+    timeout: {
+      type: "string",
+      description: "Render-ready timeout in ms per variant (default: 5000)",
     },
     json: {
       type: "boolean",

@@ -15,6 +15,7 @@ function readParam(params, key, min, max) {
 }
 
 function luma([r, g, b]) {
+  // Rec.709 luma weightings (matches the color space the grading runtime uses).
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
 }
 
