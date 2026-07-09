@@ -4,9 +4,10 @@ import {
   isHfColorGradingActive,
   normalizeHfColorGrading,
   type HfColorGradingAdjustKey,
+  type HfColorGradingDetailKey,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
-import { Compare, Plus, RotateCcw } from "../../icons/SystemIcons";
+import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
 import { LUT_EXT } from "../../utils/mediaTypes";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
@@ -106,6 +107,32 @@ function formatAdjustValue(key: HfColorGradingAdjustKey, rawPercent: number): st
   return `${Math.round(rawPercent)}%`;
 }
 
+const DETAIL_SLIDERS: Array<{
+  key: HfColorGradingDetailKey;
+  label: string;
+  defaultValue: number;
+}> = [
+  { key: "vignette", label: "Vignette", defaultValue: 0 },
+  { key: "vignetteMidpoint", label: "Midpoint", defaultValue: 0.5 },
+  { key: "vignetteRoundness", label: "Roundness", defaultValue: 0 },
+  { key: "vignetteFeather", label: "Feather", defaultValue: 0.65 },
+  { key: "grain", label: "Grain", defaultValue: 0 },
+  { key: "grainSize", label: "Grain Size", defaultValue: 0.25 },
+  { key: "grainRoughness", label: "Roughness", defaultValue: 0.5 },
+];
+const detailByKey = (key: HfColorGradingDetailKey) => {
+  const spec = DETAIL_SLIDERS.find((d) => d.key === key);
+  if (!spec) throw new Error(`Unknown color grading detail key: ${key}`);
+  return spec;
+};
+const VIGNETTE_TUNE_KEYS: HfColorGradingDetailKey[] = [
+  "vignetteMidpoint",
+  "vignetteRoundness",
+  "vignetteFeather",
+];
+const GRAIN_TUNE_KEYS: HfColorGradingDetailKey[] = ["grainSize", "grainRoughness"];
+
+// fallow-ignore-next-line complexity
 export function FlatColorGradingSection({
   grading,
   assets,
@@ -131,6 +158,7 @@ export function FlatColorGradingSection({
 }) {
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutOpen, setLutOpen] = useState(false);
+  const [detailSettingsOpen, setDetailSettingsOpen] = useState<"vignette" | "grain" | null>(null);
   const lutAssets = useMemo(
     () => assets.filter((asset) => LUT_EXT.test(asset)).sort((a, b) => a.localeCompare(b)),
     [assets],
@@ -153,6 +181,33 @@ export function FlatColorGradingSection({
     const uploaded = await onImportAssets(files, "assets/luts");
     const firstLut = uploaded.find((asset) => LUT_EXT.test(asset));
     if (firstLut) applyLut(firstLut, 1);
+  };
+
+  const renderDetailSlider = (key: HfColorGradingDetailKey) => {
+    const spec = detailByKey(key);
+    const value = grading.details[key];
+    const isSet = Math.abs(value - spec.defaultValue) > 1e-4;
+    return (
+      <FlatSlider
+        key={key}
+        label={spec.label}
+        value={Math.round(value * 100)}
+        min={key === "vignetteRoundness" ? -100 : 0}
+        max={100}
+        tier={isSet ? "explicitCustom" : "default"}
+        displayValue={`${Math.round(value * 100)}%`}
+        centerTick={key === "vignetteRoundness"}
+        onCommit={(next) =>
+          onCommitColorGrading({ ...grading, details: { ...grading.details, [key]: next / 100 } })
+        }
+        onReset={() =>
+          onCommitColorGrading({
+            ...grading,
+            details: { ...grading.details, [key]: spec.defaultValue },
+          })
+        }
+      />
+    );
   };
 
   return (
@@ -291,6 +346,43 @@ export function FlatColorGradingSection({
             </div>
           );
         })}
+      </div>
+
+      <div className="space-y-1.5 border-t border-panel-hairline pt-1.5">
+        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+          Finishing
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1">{renderDetailSlider("vignette")}</div>
+          <button
+            type="button"
+            data-flat-grade-settings="vignette"
+            title="Vignette settings"
+            onClick={() => setDetailSettingsOpen((c) => (c === "vignette" ? null : "vignette"))}
+            className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+          >
+            <Settings size={12} />
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1">{renderDetailSlider("grain")}</div>
+          <button
+            type="button"
+            data-flat-grade-settings="grain"
+            title="Grain settings"
+            onClick={() => setDetailSettingsOpen((c) => (c === "grain" ? null : "grain"))}
+            className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+          >
+            <Settings size={12} />
+          </button>
+        </div>
+        {detailSettingsOpen && (
+          <div className="space-y-0.5 border-l-2 border-panel-border-input pl-2.5">
+            {(detailSettingsOpen === "vignette" ? VIGNETTE_TUNE_KEYS : GRAIN_TUNE_KEYS).map(
+              renderDetailSlider,
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
