@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="lib/liquid-glass.iife.js"></script>
     <style>
@@ -374,16 +374,15 @@
           if (glassCanvas.requestPaint) glassCanvas.requestPaint();
         });
 
-        window.__timelines = window.__timelines || {};
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
 
-        tl.to(
+        tl.add(
           {},
           {
-            duration: 8,
-            ease: "none",
-            onUpdate: function () {
-              var t = tl.time();
+            duration: 8000,
+            ease: "linear",
+            onUpdate: function (self) {
+              var t = self.currentTime / 1000;
               uniforms.uTime.value = t;
               threeRenderer.render(threeScene, threeCamera);
               if (lgReady) {
@@ -402,79 +401,80 @@
         var renderStatus = document.getElementById("render-status");
         var renderCopy = document.getElementById("render-copy");
 
-        gsap.set(["#gp1", "#gp2"], { left: "1980px", opacity: 0 });
-        gsap.set(["#txt1", "#txt2"], { x: 640, opacity: 0 });
-        gsap.set("#reply-actions", { y: 8, opacity: 0 });
-        gsap.set("#typing-dots span", { opacity: 0.35 });
+        tl.add(["#gp1", "#gp2"], { left: "1980px", opacity: 0, duration: 0 }, 0);
+        tl.add(["#txt1", "#txt2"], { translateX: 640, opacity: 0, duration: 0 }, 0);
+        tl.add("#reply-actions", { translateY: 8, opacity: 0, duration: 0 }, 0);
+        tl.add("#typing-dots span", { opacity: 0.35, duration: 0 }, 0);
 
-        tl.to("#gp1", { left: "1326px", opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
-        tl.to("#txt1", { x: -14, opacity: 1, duration: 0.38, ease: "power3.out" }, 0.18);
-        tl.to("#gp1", { left: "1340px", duration: 0.16, ease: "power2.out" }, 0.56);
-        tl.to("#txt1", { x: 0, duration: 0.16, ease: "power2.out" }, 0.56);
+        tl.add("#gp1", { left: "1326px", opacity: 1, duration: 380, ease: "outQuart" }, 180);
+        tl.add("#txt1", { translateX: -14, opacity: 1, duration: 380, ease: "outQuart" }, 180);
+        tl.add("#gp1", { left: "1340px", duration: 160, ease: "outCubic" }, 560);
+        tl.add("#txt1", { translateX: 0, duration: 160, ease: "outCubic" }, 560);
 
-        tl.to("#gp2", { left: "1326px", opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
-        tl.to("#txt2", { x: -14, opacity: 1, duration: 0.36, ease: "power3.out" }, 0.82);
-        tl.to("#gp2", { left: "1340px", duration: 0.16, ease: "power2.out" }, 1.18);
-        tl.to("#txt2", { x: 0, duration: 0.16, ease: "power2.out" }, 1.18);
+        tl.add("#gp2", { left: "1326px", opacity: 1, duration: 360, ease: "outQuart" }, 820);
+        tl.add("#txt2", { translateX: -14, opacity: 1, duration: 360, ease: "outQuart" }, 820);
+        tl.add("#gp2", { left: "1340px", duration: 160, ease: "outCubic" }, 1180);
+        tl.add("#txt2", { translateX: 0, duration: 160, ease: "outCubic" }, 1180);
 
-        tl.to("#render-progress", { width: "100%", duration: 3.4, ease: "none" }, 0.82);
-        tl.to(
+        tl.add("#render-progress", { width: "100%", duration: 3400, ease: "linear" }, 820);
+        tl.add(
           "#status-dot",
-          { scale: 1.45, duration: 0.18, ease: "power2.out", yoyo: true, repeat: 1 },
-          1.1,
+          { scale: 1.45, duration: 180, ease: "outCubic", alternate: true, loop: 1 },
+          1100,
         );
-        tl.to(
+        tl.add(
           "#typing-dots span",
           {
             opacity: 1,
-            y: -2,
-            duration: 0.22,
-            ease: "power2.out",
-            stagger: 0.08,
-            yoyo: true,
-            repeat: 5,
+            translateY: -2,
+            duration: 220,
+            ease: "outCubic",
+            delay: anime.stagger(80),
+            alternate: true,
+            loop: 5,
           },
-          1.2,
+          1200,
         );
-        tl.to("#gp2", { top: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
-        tl.to("#txt2", { y: "+=10", duration: 0.18, ease: "power2.out" }, 2.55);
-        tl.to("#gp2", { top: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
-        tl.to("#txt2", { y: "-=10", duration: 0.22, ease: "power2.out" }, 2.73);
-        tl.to("#reply-actions", { y: 0, opacity: 1, duration: 0.24, ease: "power2.out" }, 2.72);
-        tl.to(
+        tl.add("#gp2", { top: "+=10", duration: 180, ease: "outCubic" }, 2550);
+        tl.add("#txt2", { translateY: "+=10", duration: 180, ease: "outCubic" }, 2550);
+        tl.add("#gp2", { top: "-=10", duration: 220, ease: "outCubic" }, 2730);
+        tl.add("#txt2", { translateY: "-=10", duration: 220, ease: "outCubic" }, 2730);
+        tl.add(
+          "#reply-actions",
+          { translateY: 0, opacity: 1, duration: 240, ease: "outCubic" },
+          2720,
+        );
+        tl.add(
           "#status-dot",
           {
             backgroundColor: "#4ade80",
             boxShadow: "0 0 18px rgba(74, 222, 128, 0.8)",
-            duration: 0.15,
+            duration: 150,
+            ease: "outQuad",
           },
-          4.25,
+          4250,
         );
-        tl.call(
-          function () {
-            renderStatus.textContent = "complete";
-            renderCopy.textContent = "liquid-glass-notification.mp4 is ready.";
-          },
-          null,
-          4.25,
-        );
-        tl.to(
+        tl.call(function () {
+          renderStatus.textContent = "complete";
+          renderCopy.textContent = "liquid-glass-notification.mp4 is ready.";
+        }, 4250);
+        tl.add(
           "#gp1",
-          { top: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
-          4.25,
+          { top: "-=8", duration: 200, ease: "outCubic", alternate: true, loop: 1 },
+          4250,
         );
-        tl.to(
+        tl.add(
           "#txt1",
-          { y: "-=8", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
-          4.25,
+          { translateY: "-=8", duration: 200, ease: "outCubic", alternate: true, loop: 1 },
+          4250,
         );
 
-        tl.to("#gp1", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
-        tl.to("#txt1", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.72);
-        tl.to("#gp2", { left: "1980px", opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
-        tl.to("#txt2", { x: 640, opacity: 0, duration: 0.42, ease: "power2.in" }, 6.9);
+        tl.add("#gp1", { left: "1980px", opacity: 0, duration: 420, ease: "inCubic" }, 6720);
+        tl.add("#txt1", { translateX: 640, opacity: 0, duration: 420, ease: "inCubic" }, 6720);
+        tl.add("#gp2", { left: "1980px", opacity: 0, duration: 420, ease: "inCubic" }, 6900);
+        tl.add("#txt2", { translateX: 640, opacity: 0, duration: 420, ease: "inCubic" }, 6900);
 
-        window.__timelines["liquid-glass-notification"] = tl;
+        hyperframesAnime.register("liquid-glass-notification", tl);
       })();
     </script>
   </body>

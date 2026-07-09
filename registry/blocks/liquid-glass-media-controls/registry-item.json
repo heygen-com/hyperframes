@@ -5,6 +5,7 @@
   "title": "Liquid Glass Media Controls",
   "description": "Frosted glass media control panels spreading over an aurora shader background",
   "stability": "experimental",
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

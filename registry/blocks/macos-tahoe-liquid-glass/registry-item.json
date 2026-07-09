@@ -5,6 +5,7 @@
   "title": "macOS Tahoe Liquid Glass Desktop",
   "description": "3D MacBook with a macOS Tahoe-style desktop, glass menu bar, Finder window, dock, and cinematic device camera move.",
   "stability": "experimental",
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

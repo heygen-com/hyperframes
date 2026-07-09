@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1268,31 +1268,31 @@
         renderer.render(scene, camera);
       }
 
-      // ── GSAP Timeline — Product Review Edit ────────────────────────────
-      var tl = gsap.timeline({ paused: true });
-      window.__timelines = window.__timelines || {};
-      window.__timelines["ios26-liquid-glass"] = tl;
+      // ── Anime Timeline — Product Review Edit ───────────────────────────
+      var tl = anime.createTimeline({ autoplay: false });
 
-      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none" }, 0);
+      tl.add(S, { p: 1, drift: 15, duration: 15000, ease: "linear" }, 0);
 
       // ── iOS 26 Showcase: full-device hero with a subtle drift-in ──
-      tl.to(S, { cZ: 6.45, duration: 12, ease: driftEase }, 0.5);
-      tl.to(S, { cY: 0.16, duration: 12, ease: driftEase }, 0.5);
+      tl.add(S, { cZ: 6.45, duration: 12000, ease: driftEase }, 500);
+      tl.add(S, { cY: 0.16, duration: 12000, ease: driftEase }, 500);
 
       // Very gentle tilt — shows the glass icon refraction from slightly different angles
-      tl.to(S, { phRY: PI + 0.04, phRX: 0.01, duration: 4, ease: breatheEase }, 0.5);
-      tl.to(S, { phRY: PI - 0.03, phRX: -0.008, duration: 4, ease: breatheEase }, 4.5);
-      tl.to(S, { phRY: PI + 0.02, phRX: 0.005, duration: 4, ease: breatheEase }, 8.5);
+      tl.add(S, { phRY: PI + 0.04, phRX: 0.01, duration: 4000, ease: breatheEase }, 500);
+      tl.add(S, { phRY: PI - 0.03, phRX: -0.008, duration: 4000, ease: breatheEase }, 4500);
+      tl.add(S, { phRY: PI + 0.02, phRX: 0.005, duration: 4000, ease: breatheEase }, 8500);
 
       // No scroll — keep the home screen static
       // No 360° turntable — just the gentle zoom out
 
       // Move MacBook off screen so it doesn't appear
-      tl.set(S, { lpX: 10 }, 0);
-      tl.to(S, { iosN1: 1, duration: 0.72, ease: "none" }, 0.85);
-      tl.to(S, { iosN2: 1, duration: 0.74, ease: "none" }, 1.7);
-      tl.to(S, { iosN3: 1, duration: 0.76, ease: "none" }, 2.55);
-      tl.to({}, { duration: 15, ease: "none", onUpdate: render }, 0);
+      tl.add(S, { lpX: 10, duration: 0 }, 0);
+      tl.add(S, { iosN1: 1, duration: 720, ease: "linear" }, 850);
+      tl.add(S, { iosN2: 1, duration: 740, ease: "linear" }, 1700);
+      tl.add(S, { iosN3: 1, duration: 760, ease: "linear" }, 2550);
+      tl.add({}, { duration: 15000, ease: "linear", onUpdate: render }, 0);
+
+      hyperframesAnime.register("ios26-liquid-glass", tl);
     </script>
   </body>
 </html>

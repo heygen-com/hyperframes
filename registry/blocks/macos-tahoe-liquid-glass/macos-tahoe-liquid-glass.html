@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -1432,41 +1432,41 @@
         renderer.render(scene, camera);
       }
 
-      // ── GSAP Timeline — Product Review Edit ────────────────────────────
-      var tl = gsap.timeline({ paused: true });
-      window.__timelines = window.__timelines || {};
-      window.__timelines["macos-tahoe-liquid-glass"] = tl;
+      // ── Anime Timeline — Product Review Edit ───────────────────────────
+      var tl = anime.createTimeline({ autoplay: false });
 
-      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none", onUpdate: render }, 0);
+      tl.add(S, { p: 1, drift: 15, duration: 15000, ease: "linear", onUpdate: render }, 0);
 
       // ── macOS Tahoe: MacBook hero — zoomed close, slow pull-back ──
       // Move iPhone off screen immediately
-      tl.set(S, { phX: 10 }, 0);
+      tl.add(S, { phX: 10, duration: 0 }, 0);
       // Start MacBook centered and close
-      tl.set(S, { lpX: 0, lpRY: 0 }, 0);
-      tl.set(S, { cX: 0, clX: 0, cZ: 4.5, cY: 0.4, clY: -0.1 }, 0);
+      tl.add(S, { lpX: 0, lpRY: 0, duration: 0 }, 0);
+      tl.add(S, { cX: 0, clX: 0, cZ: 4.5, cY: 0.4, clY: -0.1, duration: 0 }, 0);
 
       // Slow zoom out
-      tl.to(S, { cZ: 7, cY: 0.6, duration: 12, ease: driftEase }, 0.5);
+      tl.add(S, { cZ: 7, cY: 0.6, duration: 12000, ease: driftEase }, 500);
 
       // Gentle breathing tilt
-      tl.to(S, { lpRY: 0.04, duration: 4, ease: breatheEase }, 1);
-      tl.to(S, { lpRY: -0.03, duration: 4, ease: breatheEase }, 5);
-      tl.to(S, { lpRY: 0.02, duration: 4, ease: breatheEase }, 9);
+      tl.add(S, { lpRY: 0.04, duration: 4000, ease: breatheEase }, 1000);
+      tl.add(S, { lpRY: -0.03, duration: 4000, ease: breatheEase }, 5000);
+      tl.add(S, { lpRY: 0.02, duration: 4000, ease: breatheEase }, 9000);
 
       // ── Live HTML Animations (captured to 3D textures every frame) ──
       // Title fade in
-      tl.to(S, { titleFade: 1, duration: 0.8, ease: breatheEase }, 0.3);
+      tl.add(S, { titleFade: 1, duration: 800, ease: breatheEase }, 300);
       // Counter animates up
-      tl.to(S, { counter: 43, duration: 2, ease: driftEase }, 0.5);
+      tl.add(S, { counter: 43, duration: 2000, ease: driftEase }, 500);
       // Cards stagger in (0→1 reveals all cards sequentially)
-      tl.to(S, { cardReveal: 1, duration: 3, ease: breatheEase }, 0.8);
-      tl.set(S, { macToastX: 1464, macToastY: 62, macToastOpacity: 0 }, 0);
-      tl.to(S, { macToastX: 988, macToastOpacity: 1, duration: 0.38, ease: "power3.out" }, 0.45);
-      tl.to(S, { macToastX: 1002, duration: 0.16, ease: "power2.out" }, 0.83);
-      tl.to(S, { macToastY: 72, duration: 0.18, ease: "power2.out" }, 4.25);
-      tl.to(S, { macToastY: 62, duration: 0.22, ease: "power2.out" }, 4.43);
-      tl.to(S, { macPanel: 1, duration: 1.1, ease: breatheEase }, 0.45);
+      tl.add(S, { cardReveal: 1, duration: 3000, ease: breatheEase }, 800);
+      tl.add(S, { macToastX: 1464, macToastY: 62, macToastOpacity: 0, duration: 0 }, 0);
+      tl.add(S, { macToastX: 988, macToastOpacity: 1, duration: 380, ease: "outQuart" }, 450);
+      tl.add(S, { macToastX: 1002, duration: 160, ease: "outCubic" }, 830);
+      tl.add(S, { macToastY: 72, duration: 180, ease: "outCubic" }, 4250);
+      tl.add(S, { macToastY: 62, duration: 220, ease: "outCubic" }, 4430);
+      tl.add(S, { macPanel: 1, duration: 1100, ease: breatheEase }, 450);
+
+      hyperframesAnime.register("macos-tahoe-liquid-glass", tl);
     </script>
   </body>
 </html>
