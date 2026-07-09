@@ -313,6 +313,12 @@
       "file": "packages/core/src/figma/manifest.ts",
       "exports": ["mediaDir", "typeDirPath", "isFigmaManifestRecord"],
     },
+    // STUDIO_FLAT_INSPECTOR_ENABLED: exported for use by downstream studio
+    // inspector redesign tasks; consumed by components in later PRs.
+    {
+      "file": "packages/studio/src/components/editor/manualEditingAvailability.ts",
+      "exports": ["STUDIO_FLAT_INSPECTOR_ENABLED"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
