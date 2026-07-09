@@ -2962,19 +2962,6 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/browser-flow.png"
     },
     {
-        "name": "chat-gpt",
-        "type": "component",
-        "title": "ChatGPT",
-        "description": "A chat composer types a prompt and morphs the voice button into send.",
-        "tags": [
-            "showcase",
-            "remocn-port",
-            "chat"
-        ],
-        "href": "/catalog/components/chat-gpt",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chat-gpt.png"
-    },
-    {
         "name": "chat-to-preview-layout",
         "type": "component",
         "title": "Chat to Preview Layout",
@@ -2998,31 +2985,6 @@
         ],
         "href": "/catalog/components/chromatic-aberration-wipe",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/chromatic-aberration-wipe.png"
-    },
-    {
-        "name": "claude-chat",
-        "type": "component",
-        "title": "Claude Chat",
-        "description": "A calm assistant chat layout with staged response cards.",
-        "tags": [
-            "showcase",
-            "remocn-port",
-            "chat"
-        ],
-        "href": "/catalog/components/claude-chat",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/claude-chat.png"
-    },
-    {
-        "name": "claude-code",
-        "type": "component",
-        "title": "Claude Code",
-        "description": "A code-agent workbench with file tree, terminal, and patch panel.",
-        "tags": [
-            "code-animation",
-            "remocn-port"
-        ],
-        "href": "/catalog/components/claude-code",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/claude-code.png"
     },
     {
         "name": "code-accordion",
@@ -3169,18 +3131,6 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/frosted-glass-wipe.png"
     },
     {
-        "name": "github-stars",
-        "type": "component",
-        "title": "GitHub Stars",
-        "description": "A repo star-count card with avatars, velocity line, and odometer.",
-        "tags": [
-            "social-overlay",
-            "remocn-port"
-        ],
-        "href": "/catalog/components/github-stars",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/github-stars.png"
-    },
-    {
         "name": "glass-code-block",
         "type": "component",
         "title": "Glass Code Block",
@@ -3287,18 +3237,6 @@
         ],
         "href": "/catalog/components/micro-scale-fade",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/micro-scale-fade.png"
-    },
-    {
-        "name": "opencode",
-        "type": "component",
-        "title": "OpenCode",
-        "description": "A terminal-first coding agent surface with streaming task output.",
-        "tags": [
-            "code-animation",
-            "remocn-port"
-        ],
-        "href": "/catalog/components/opencode",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/opencode.png"
     },
     {
         "name": "pricing-tier-focus",

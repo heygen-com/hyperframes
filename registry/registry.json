@@ -1036,23 +1036,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "chat-gpt",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "chat-to-preview-layout",
       "type": "hyperframes:component"
     },
     {
       "name": "chromatic-aberration-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "claude-chat",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "claude-code",
       "type": "hyperframes:component"
     },
     {
@@ -1104,10 +1092,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "github-stars",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "glass-code-block",
       "type": "hyperframes:component"
     },
@@ -1141,10 +1125,6 @@
     },
     {
       "name": "micro-scale-fade",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "opencode",
       "type": "hyperframes:component"
     },
     {

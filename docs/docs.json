@@ -130,11 +130,9 @@
               "catalog/blocks/code-shader-dissolve",
               "catalog/blocks/code-snippet-flight",
               "catalog/blocks/code-typing",
-              "catalog/components/claude-code",
               "catalog/components/code-accordion",
               "catalog/components/glass-code-block",
               "catalog/components/live-code-compilation",
-              "catalog/components/opencode",
               "catalog/components/terminal-simulator"
             ]
           },
@@ -186,7 +184,6 @@
               "catalog/blocks/tiktok-follow",
               "catalog/blocks/x-post",
               "catalog/blocks/yt-lower-third",
-              "catalog/components/github-stars",
               "catalog/components/x-follow-card",
               "catalog/components/x-followers-overview"
             ]
@@ -257,9 +254,7 @@
               "catalog/blocks/vpn-youtube-spot",
               "catalog/components/ai-generation-canvas",
               "catalog/components/browser-flow",
-              "catalog/components/chat-gpt",
               "catalog/components/chat-to-preview-layout",
-              "catalog/components/claude-chat",
               "catalog/components/data-flow-pipes",
               "catalog/components/device-mockup-zoom",
               "catalog/components/drag-and-drop-flow",
