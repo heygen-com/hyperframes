@@ -135,6 +135,8 @@ node <SKILL_DIR>/scripts/resolve.mjs --type lut --intent "teal orange blockbuste
 | `--provider`    | Force one generator (e.g. `codex`, `mflux`, `kokoro`, `heygen`)                      |
 | `--adopt`       | Bulk-import existing assets/ into manifest                                           |
 | `--doctor`      | Check local CLI dependencies; no manifest changes                                    |
+| `--stats`       | Print local usage stats from `.media/` and `~/.media`; no manifest changes           |
+| `--days N`      | Limit `--stats` to timestamped records/misses from the last N days                   |
 | `--json`        | Output JSON instead of one-line result                                               |
 
 ## Reuse before you resolve
@@ -316,11 +318,24 @@ Assets are cached automatically on resolve. Every resolved/ingested asset is aut
 
 For a _semantically_ similar (not identical) need in another project, the exact-match floor won't fire — use [Reuse before you resolve](#reuse-before-you-resolve): `--candidates` lists the global assets, and `--reuse <sha>` imports the one you pick. This is how a track resolved in one project gets reused in the next when the wording differs.
 
+## Usage stats
+
+Use `resolve --stats` for a local, shareable report over the current project's `.media/` manifest, the global `~/.media/` cache, and local resolve misses. Human output is compact; add `--json` for a single machine-readable object, and `--days N` to window timestamped records.
+
+```bash
+node <SKILL_DIR>/scripts/resolve.mjs --stats --project . --days 7
+# media-use stats
+# total resolves: 12
+# misses: 2
+# hit rate: 86%
+```
+
 ## Files
 
 - `.media/manifest.jsonl`: machine SSOT, one JSON record per line
 - `.media/index.md`: agent-readable table (id, type, dur, dims, path, description)
 - `~/.media/`: global cross-project reuse cache (content-addressed, SHA-256)
+- `~/.media/misses.jsonl`: local-only resolve misses, including intent text for `--stats`
 
 ## Audio engine: voiceover, music, SFX, captions, transcription
 
@@ -389,3 +404,12 @@ resolve never waits on or fails from telemetry).
 
 Opt out with `DO_NOT_TRACK=1` or `HYPERFRAMES_NO_TELEMETRY=1` (also off in CI and
 dev). Same public PostHog project key and opt-outs as the `hyperframes` CLI.
+
+## Privacy
+
+media-use uses the same shared install id as the `hyperframes` CLI/studio
+(`~/.hyperframes/config.json`). When you are signed in to HeyGen, usage is
+linked to your account email, or username when email is unavailable, matching
+the CLI behavior. The events stay coarse: media type, source, provider, and
+small counts only; intent text and paths stay local. Disable telemetry with
+`HYPERFRAMES_NO_TELEMETRY=1` or `DO_NOT_TRACK=1`.

@@ -11,6 +11,8 @@ import { runCapability, listTypes, providerMatches, providerNamesFor } from "./l
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
 import { track } from "./lib/telemetry.mjs";
+import { recordMiss } from "./lib/misses.mjs";
+import { buildStats } from "./lib/stats.mjs";
 import { typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
@@ -45,6 +47,8 @@ const { values: args } = parseArgs({
     adopt: { type: "boolean", default: false },
     candidates: { type: "boolean", default: false },
     doctor: { type: "boolean", default: false },
+    stats: { type: "boolean", default: false },
+    days: { type: "string" },
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
@@ -75,6 +79,9 @@ Options:
   --candidates    List reusable assets (project + global cache) for --type; no
                   download, no mutation. Read them and decide reuse yourself.
   --doctor        Check local CLI dependencies; no manifest changes.
+  --stats         Print local usage stats from .media and ~/.media; no mutation.
+  --days <N>      Limit --stats to records/misses from the last N days when
+                  timestamps are available.
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
@@ -132,6 +139,19 @@ if (args.doctor) {
     printDoctor(doctor.checks);
   }
   process.exit(doctor.ok ? 0 : 1);
+}
+
+if (args.stats) {
+  const report = buildStats({
+    projectDir,
+    days: args.days ? Number(args.days) : undefined,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(report));
+  } else {
+    printStats(report);
+  }
+  process.exit(0);
 }
 
 // Reuse: import a specific global-cache asset (by content sha/prefix, taken
@@ -326,6 +346,12 @@ async function run() {
       local_only: !!localOnly,
       provider_override: !!args.provider,
     });
+    recordMiss({
+      type,
+      intent,
+      provider_override: !!args.provider,
+      local_only: !!args["local-only"],
+    });
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
     const msg =
@@ -512,6 +538,12 @@ async function colorMiss(type, intent) {
     type,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
+  });
+  recordMiss({
+    type,
+    intent,
+    provider_override: !!args.provider,
+    local_only: !!args["local-only"],
   });
   const msg = `no local color grade could resolve ${type}: "${intent}"`;
   if (args.json) {
@@ -896,6 +928,42 @@ function printDoctor(checks) {
     const fix = check.ok || !check.fix ? "" : ` — fix: ${check.fix}`;
     console.log(`${prefix} ${check.detail}${freePath}${fix}`);
   }
+}
+
+function printStats(report) {
+  console.log("media-use stats");
+  console.log(`total resolves: ${report.total_resolves}`);
+  console.log(`misses: ${report.misses}`);
+  console.log(
+    `hit rate: ${report.hit_rate == null ? "n/a" : `${Math.round(report.hit_rate * 100)}%`}`,
+  );
+  printMap("by type", report.by_type);
+  printMap("by source", report.by_source);
+  printMap("by provider", report.by_provider);
+  printMap("by via", report.by_via);
+  console.log(`global cache assets: ${report.global_cache_assets}`);
+  console.log(`global cache disk: ${report.global_cache_disk_bytes} bytes`);
+  console.log(`cross-project reuse: ${report.cross_project_reuse}`);
+  console.log("top missed intents:");
+  const entries = Object.entries(report.top_missed_intents);
+  if (entries.length === 0) {
+    console.log("  none");
+    return;
+  }
+  for (const [type, misses] of entries) {
+    console.log(`  ${type}:`);
+    for (const miss of misses) console.log(`    ${miss.count}  ${miss.intent}`);
+  }
+}
+
+function printMap(label, values) {
+  const entries = Object.entries(values);
+  console.log(`${label}:`);
+  if (entries.length === 0) {
+    console.log("  none");
+    return;
+  }
+  for (const [key, value] of entries) console.log(`  ${key}: ${value}`);
 }
 
 function runCommand(bin, argv) {

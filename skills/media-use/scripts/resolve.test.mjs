@@ -57,18 +57,22 @@ function makeRecord(overrides = {}) {
 // a separate argv entry, so a value with spaces or shell metacharacters can't
 // break out — never build a command string and hand it to a shell.
 function runResolve(args, opts = {}) {
+  const { env, ...rest } = opts;
   return execFileSync(process.execPath, [RESOLVE_CLI, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    ...opts,
+    env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+    ...rest,
   });
 }
 
 function spawnResolve(args, opts = {}) {
+  const { env, ...rest } = opts;
   return spawnSync(process.execPath, [RESOLVE_CLI, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    ...opts,
+    env: { ...process.env, DO_NOT_TRACK: "1", ...env },
+    ...rest,
   });
 }
 
@@ -293,6 +297,7 @@ test("--help exits 0", () => {
   assert.ok(out.includes("--for"));
   assert.ok(out.includes("--from"));
   assert.ok(out.includes("--local-only"));
+  assert.ok(out.includes("--stats"));
 });
 
 test("unknown type error lists grade and lut", () => {
