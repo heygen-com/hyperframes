@@ -3,7 +3,12 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
+import {
+  FlatGroup,
+  FlatRow,
+  FlatSegmentedRow,
+  PinnedZoneDivider,
+} from "./propertyPanelFlatPrimitives";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -96,6 +101,59 @@ describe("FlatSegmentedRow", () => {
       (options[0] as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })),
     );
     expect(onChange).toHaveBeenCalledWith("left");
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatGroup", () => {
+  it("renders the open header (name + pin + caret) and shows children", () => {
+    const onToggleOpen = vi.fn();
+    const onTogglePin = vi.fn();
+    const { host, root } = renderInto(
+      <FlatGroup
+        title="Text"
+        isOpen
+        isPinned={false}
+        onToggleOpen={onToggleOpen}
+        onTogglePin={onTogglePin}
+      >
+        <div data-testid="body">body</div>
+      </FlatGroup>,
+    );
+    expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
+    const pin = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
+    act(() => pin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onTogglePin).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("renders the collapsed row (name + summary + caret-right) and no children", () => {
+    const onToggleOpen = vi.fn();
+    const { host, root } = renderInto(
+      <FlatGroup
+        title="Style"
+        isOpen={false}
+        isPinned={false}
+        onToggleOpen={onToggleOpen}
+        onTogglePin={vi.fn()}
+        summary="fill none · 100%"
+      >
+        <div data-testid="body">body</div>
+      </FlatGroup>,
+    );
+    expect(host.querySelector('[data-testid="body"]')).toBeNull();
+    expect(host.textContent).toContain("fill none · 100%");
+    const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
+    act(() => row?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onToggleOpen).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+});
+
+describe("PinnedZoneDivider", () => {
+  it("renders the 'one open below' label", () => {
+    const { host, root } = renderInto(<PinnedZoneDivider />);
+    expect(host.textContent).toContain("one open below");
     act(() => root.unmount());
   });
 });
