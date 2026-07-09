@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -81,28 +81,24 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
-
-      var wrap = document.getElementById("lt");
-      var block = document.getElementById("lt-block");
-      var nameEl = document.getElementById("lt-name");
-      var tag = document.getElementById("lt-tag");
-
-      // Solid block wipes in from the left, name slams up inside it, tag pops up after.
-      gsap.set(block, { clipPath: "inset(0 100% 0 0)" });
-      gsap.set(nameEl, { y: 30, opacity: 0 });
-      gsap.set(tag, { y: 40 });
-
-      tl.to(block, { clipPath: "inset(0 0% 0 0)", duration: 0.5, ease: "power4.out" }, 0.1);
-      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.42, ease: "back.out(1.6)" }, 0.26);
-      tl.to(tag, { y: 0, duration: 0.45, ease: "back.out(2)" }, 0.5);
-
-      // Exit: block wipes out to the left, then hard kill.
-      tl.to(block, { clipPath: "inset(0 0 0 100%)", duration: 0.4, ease: "power3.in" }, 4.3);
-      tl.set(wrap, { visibility: "hidden" }, 4.75);
-
-      window.__timelines["lt-bold-block"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#lt-block",
+        { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"], duration: 500, ease: "outQuint" },
+        100,
+      );
+      tl.add(
+        "#lt-name",
+        { translateY: [30, 0], opacity: [0, 1], duration: 420, ease: "outBack(1.6)" },
+        260,
+      );
+      tl.add("#lt-tag", { translateY: [40, 0], duration: 450, ease: "outBack(2)" }, 500);
+      tl.add(
+        "#lt-block",
+        { clipPath: ["inset(0 0% 0 0)", "inset(0 0 0 100%)"], duration: 400, ease: "inQuart" },
+        4300,
+      );
+      hyperframesAnime.register("lt-bold-block", tl, { labels: {} });
     </script>
   </body>
 </html>

@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -26,7 +26,7 @@
         font-family: "Inter", sans-serif;
       }
 
-      [data-composition-id="macos-notification"] .notification-card {
+      #root .notification-card {
         position: absolute;
         top: 24px;
         right: 24px;
@@ -44,7 +44,7 @@
         align-items: flex-start;
       }
 
-      [data-composition-id="macos-notification"] .app-icon {
+      #root .app-icon {
         width: 36px;
         height: 36px;
         border-radius: 8px;
@@ -52,25 +52,25 @@
         overflow: hidden;
       }
 
-      [data-composition-id="macos-notification"] .app-icon svg {
+      #root .app-icon svg {
         width: 36px;
         height: 36px;
         display: block;
       }
 
-      [data-composition-id="macos-notification"] .notification-content {
+      #root .notification-content {
         flex: 1;
         min-width: 0;
       }
 
-      [data-composition-id="macos-notification"] .notification-header {
+      #root .notification-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 2px;
       }
 
-      [data-composition-id="macos-notification"] .app-name {
+      #root .app-name {
         font-size: 13px;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.5);
@@ -78,13 +78,13 @@
         letter-spacing: 0.02em;
       }
 
-      [data-composition-id="macos-notification"] .time-label {
+      #root .time-label {
         font-size: 13px;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.35);
       }
 
-      [data-composition-id="macos-notification"] .notification-title {
+      #root .notification-title {
         font-size: 15px;
         font-weight: 600;
         color: #ffffff;
@@ -92,7 +92,7 @@
         margin-bottom: 2px;
       }
 
-      [data-composition-id="macos-notification"] .notification-body {
+      #root .notification-body {
         font-size: 13px;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.6);
@@ -163,39 +163,18 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      var tl = gsap.timeline({ paused: true });
-      var notification = document.getElementById("notification");
-
-      // Start off-screen to the right
-      gsap.set(notification, { x: 420, opacity: 0 });
-
-      // Slide in from right
-      tl.to(
-        notification,
-        {
-          x: 0,
-          opacity: 1,
-          duration: 0.5,
-          ease: "power3.out",
-        },
-        0.2,
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#notification",
+        { translateX: [420, 0], opacity: [0, 1], duration: 500, ease: "outQuart" },
+        200,
       );
-
-      // Slide out to right
-      tl.to(
-        notification,
-        {
-          x: 420,
-          opacity: 0,
-          duration: 0.3,
-          ease: "power3.in",
-        },
-        4.2,
+      tl.add(
+        "#notification",
+        { translateX: [0, 420], opacity: [1, 0], duration: 300, ease: "inQuart" },
+        4200,
       );
-
-      window.__timelines["macos-notification"] = tl;
+      hyperframesAnime.register("macos-notification", tl, { labels: {} });
     </script>
   </body>
 </html>

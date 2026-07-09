@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "north-korea-locked-down",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "North Korea Locked Down",
   "description": "Realistic map zoom into North Korea with a red scribble circle, locked-down pop-up label, and reddish editorial wash.",
   "tags": ["showcase", "map", "annotation", "youtube", "kinetic"],

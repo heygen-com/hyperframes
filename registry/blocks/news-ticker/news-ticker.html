@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>News Ticker</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -343,66 +343,63 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      var tl = gsap.timeline({ paused: true });
-      var shell = document.getElementById("nt-shell");
-      var brand = document.getElementById("nt-brand");
-      var headline = document.getElementById("nt-headline");
-      var label = document.getElementById("nt-label");
-      var tickerTrack = document.getElementById("nt-ticker-track");
-      var liveDot = document.getElementById("nt-live-dot");
-      var flash = document.getElementById("nt-flash");
-      var time = document.getElementById("nt-time");
-
-      gsap.set(shell, { y: 260, opacity: 0 });
-      gsap.set(brand, { x: -80, opacity: 0 });
-      gsap.set(headline, { y: 26, opacity: 0, clipPath: "inset(0 100% 0 0)" });
-      gsap.set(label, { y: 18, opacity: 0 });
-      gsap.set(time, { y: -10, opacity: 0 });
-      gsap.set(tickerTrack, { x: 1260 });
-
-      tl.to(shell, { y: 0, opacity: 1, duration: 0.52, ease: "power4.out" }, 0);
-      tl.to(brand, { x: 0, opacity: 1, duration: 0.42, ease: "power3.out" }, 0.08);
-      tl.to(
-        headline,
-        {
-          y: 0,
-          opacity: 1,
-          clipPath: "inset(0 0% 0 0)",
-          duration: 0.62,
-          ease: "power3.out",
-        },
-        0.18,
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#nt-shell",
+        { translateY: [260, 0], opacity: [0, 1], duration: 520, ease: "outQuint" },
+        0,
       );
-      tl.to(time, { y: 0, opacity: 1, duration: 0.32, ease: "power2.out" }, 0.5);
-      tl.to(label, { y: 0, opacity: 1, duration: 0.28, ease: "power2.out" }, 0.55);
-      tl.to(flash, { x: 2040, duration: 0.86, ease: "power2.inOut" }, 0.34);
-      tl.to(
-        tickerTrack,
-        {
-          x: -1120,
-          duration: 6.05,
-          ease: "none",
-        },
-        0.62,
+      tl.add(
+        "#nt-brand",
+        { translateX: [-80, 0], opacity: [0, 1], duration: 420, ease: "outQuart" },
+        80,
       );
-      tl.to(
-        liveDot,
+      tl.add(
+        "#nt-headline",
+        {
+          translateY: [26, 0],
+          opacity: [0, 1],
+          clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"],
+          duration: 620,
+          ease: "outQuart",
+        },
+        180,
+      );
+      tl.add(
+        "#nt-time",
+        { translateY: [-10, 0], opacity: [0, 1], duration: 320, ease: "outCubic" },
+        500,
+      );
+      tl.add(
+        "#nt-label",
+        { translateY: [18, 0], opacity: [0, 1], duration: 280, ease: "outCubic" },
+        550,
+      );
+      tl.add("#nt-flash", { translateX: 2040, duration: 860, ease: "inOutCubic" }, 340);
+      tl.add(
+        "#nt-ticker-track",
+        { translateX: [1260, -1120], duration: 6050, ease: "linear" },
+        620,
+      );
+      tl.add(
+        "#nt-live-dot",
         {
           scale: 1.32,
           boxShadow: "0 0 0 18px rgba(255,255,255,0)",
-          duration: 0.42,
-          repeat: 11,
-          yoyo: true,
-          ease: "sine.inOut",
+          duration: 420,
+          ease: "inOutSine",
+          loop: 12,
+          alternate: true,
         },
-        0.58,
+        580,
       );
-      tl.to(flash, { x: 4080, duration: 0.72, ease: "power2.inOut" }, 3.42);
-      tl.to(shell, { y: 170, opacity: 0, duration: 0.34, ease: "power3.in" }, 6.62);
-
-      window.__timelines["news-ticker"] = tl;
+      tl.add("#nt-flash", { translateX: [2040, 4080], duration: 720, ease: "inOutCubic" }, 3420);
+      tl.add(
+        "#nt-shell",
+        { translateY: [0, 170], opacity: [1, 0], duration: 340, ease: "inQuart" },
+        6620,
+      );
+      hyperframesAnime.register("news-ticker", tl, { labels: {} });
     </script>
   </body>
 </html>

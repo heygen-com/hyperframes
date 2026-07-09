@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -82,30 +82,25 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
-
-      var card = document.getElementById("lt");
-      var tab = document.getElementById("lt-tab");
-      var nameEl = document.getElementById("lt-name");
-      var role = document.getElementById("lt-role");
-
-      // Card wipes in from the left (clip-path), accent tab grows, text rises with a small stagger.
-      gsap.set(card, { clipPath: "inset(0 100% 0 0)" });
-      gsap.set(tab, { scaleY: 0, transformOrigin: "50% 0%" });
-      gsap.set(nameEl, { y: 22, opacity: 0 });
-      gsap.set(role, { y: 22, opacity: 0 });
-
-      tl.to(card, { clipPath: "inset(0 0% 0 0)", duration: 0.55, ease: "power3.out" }, 0.1);
-      tl.to(tab, { scaleY: 1, duration: 0.45, ease: "power2.out" }, 0.28);
-      tl.to(nameEl, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.34);
-      tl.to(role, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 0.44);
-
-      // Exit: settle out, then hard kill the inner element.
-      tl.to(card, { y: 18, opacity: 0, duration: 0.35, ease: "power2.in" }, 4.3);
-      tl.set(card, { visibility: "hidden" }, 4.75);
-
-      window.__timelines["lt-clean-bar"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#lt",
+        { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"], duration: 550, ease: "outQuart" },
+        100,
+      );
+      tl.add("#lt-tab", { scaleY: [0, 1], duration: 450, ease: "outCubic" }, 280);
+      tl.add(
+        "#lt-name",
+        { translateY: [22, 0], opacity: [0, 1], duration: 500, ease: "outQuart" },
+        340,
+      );
+      tl.add(
+        "#lt-role",
+        { translateY: [22, 0], opacity: [0, 1], duration: 500, ease: "outQuart" },
+        440,
+      );
+      tl.add("#lt", { translateY: 18, opacity: 0, duration: 350, ease: "inCubic" }, 4300);
+      hyperframesAnime.register("lt-clean-bar", tl, { labels: {} });
     </script>
   </body>
 </html>

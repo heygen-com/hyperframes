@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -26,7 +26,7 @@
         font-family: "Inter", sans-serif;
       }
 
-      [data-composition-id="spotify-card"] .card {
+      #root .card {
         position: absolute;
         top: 50%;
         left: 50%;
@@ -54,7 +54,7 @@
       }
 
       /* Specular highlight — light refraction across top */
-      [data-composition-id="spotify-card"] .card::before {
+      #root .card::before {
         content: "";
         position: absolute;
         top: 0;
@@ -72,7 +72,7 @@
       }
 
       /* Edge shine — bottom rim catch light */
-      [data-composition-id="spotify-card"] .card::after {
+      #root .card::after {
         content: "";
         position: absolute;
         bottom: 0;
@@ -91,7 +91,7 @@
       }
 
       /* Album Art */
-      [data-composition-id="spotify-card"] .album-art {
+      #root .album-art {
         width: 708px;
         height: 708px;
         border-radius: 16px;
@@ -102,7 +102,7 @@
         margin-bottom: 36px;
       }
 
-      [data-composition-id="spotify-card"] .album-art-icon {
+      #root .album-art-icon {
         position: absolute;
         top: 50%;
         left: 50%;
@@ -111,14 +111,14 @@
       }
 
       /* Track Info */
-      [data-composition-id="spotify-card"] .track-info {
+      #root .track-info {
         position: relative;
         z-index: 1;
         margin-bottom: 28px;
         padding: 0 8px;
       }
 
-      [data-composition-id="spotify-card"] .track-name {
+      #root .track-name {
         font-size: 52px;
         font-weight: 700;
         color: #ffffff;
@@ -127,7 +127,7 @@
         margin-bottom: 8px;
       }
 
-      [data-composition-id="spotify-card"] .artist-name {
+      #root .artist-name {
         font-size: 34px;
         font-weight: 400;
         color: rgba(255, 255, 255, 0.7);
@@ -135,7 +135,7 @@
       }
 
       /* Spotify Branding */
-      [data-composition-id="spotify-card"] .spotify-brand {
+      #root .spotify-brand {
         position: relative;
         z-index: 1;
         display: flex;
@@ -144,13 +144,13 @@
         padding: 0 8px;
       }
 
-      [data-composition-id="spotify-card"] .spotify-logo {
+      #root .spotify-logo {
         display: flex;
         align-items: center;
         justify-content: center;
       }
 
-      [data-composition-id="spotify-card"] .spotify-brand-text {
+      #root .spotify-brand-text {
         font-size: 26px;
         font-weight: 600;
         color: rgba(255, 255, 255, 0.55);
@@ -204,96 +204,38 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      var tl = gsap.timeline({ paused: true });
-
-      var card = document.getElementById("card");
-      var albumArt = document.getElementById("album-art");
-      var trackName = document.getElementById("track-name");
-      var artistName = document.getElementById("artist-name");
-      var spotifyBrand = document.getElementById("spotify-brand");
-
-      // Start state
-      gsap.set(card, { y: 60, opacity: 0, scale: 0.94 });
-      gsap.set(trackName, { y: 20, opacity: 0 });
-      gsap.set(artistName, { y: 16, opacity: 0 });
-      gsap.set(spotifyBrand, { y: 12, opacity: 0 });
-
-      // ── Card entrance ────────────────────────────────────────
-      tl.to(
-        card,
-        {
-          y: 0,
-          opacity: 1,
-          scale: 1,
-          duration: 0.7,
-          ease: "power3.out",
-        },
-        0.1,
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        "#card",
+        { translateY: [60, 0], opacity: [0, 1], scale: [0.94, 1], duration: 700, ease: "outQuart" },
+        100,
       );
-
-      // ── Text stagger in ─────────────────────────────────────
-      tl.to(
-        trackName,
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.5,
-          ease: "power2.out",
-        },
-        0.55,
+      tl.add(
+        "#track-name",
+        { translateY: [20, 0], opacity: [0, 1], duration: 500, ease: "outCubic" },
+        550,
       );
-
-      tl.to(
-        artistName,
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.45,
-          ease: "power2.out",
-        },
-        0.7,
+      tl.add(
+        "#artist-name",
+        { translateY: [16, 0], opacity: [0, 1], duration: 450, ease: "outCubic" },
+        700,
       );
-
-      tl.to(
-        spotifyBrand,
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.4,
-          ease: "power2.out",
-        },
-        0.85,
+      tl.add(
+        "#spotify-brand",
+        { translateY: [12, 0], opacity: [0, 1], duration: 400, ease: "outCubic" },
+        850,
       );
-
-      // ── Subtle album art breathe ────────────────────────────
-      tl.to(
-        albumArt,
-        {
-          scale: 1.015,
-          duration: 1.5,
-          ease: "power1.inOut",
-          yoyo: true,
-          repeat: 1,
-        },
-        1.2,
+      tl.add(
+        "#album-art",
+        { scale: 1.015, duration: 1500, ease: "inOutQuad", loop: 2, alternate: true },
+        1200,
       );
-
-      // ── Card exit ────────────────────────────────────────────
-      tl.to(
-        card,
-        {
-          y: -40,
-          opacity: 0,
-          scale: 0.96,
-          duration: 0.5,
-          ease: "power2.in",
-        },
-        4.2,
+      tl.add(
+        "#card",
+        { translateY: [0, -40], opacity: [1, 0], scale: [1, 0.96], duration: 500, ease: "inCubic" },
+        4200,
       );
-
-      window.__timelines["spotify-card"] = tl;
+      hyperframesAnime.register("spotify-card", tl, { labels: {} });
     </script>
   </body>
 </html>

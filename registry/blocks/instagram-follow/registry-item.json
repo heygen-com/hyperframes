@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "instagram-follow",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Instagram Follow",
   "description": "Animated Instagram follow overlay with profile card and follow button",
   "tags": ["social", "overlay", "instagram"],

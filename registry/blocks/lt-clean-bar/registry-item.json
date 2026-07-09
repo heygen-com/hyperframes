@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "lt-clean-bar",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Lower Third — Clean Bar",
   "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
   "tags": ["lower-third", "overlay", "podcast", "interview"],

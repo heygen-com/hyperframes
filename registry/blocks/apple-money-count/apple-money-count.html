@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -81,14 +81,21 @@
         pointer-events: none;
       }
 
-      .money-icon {
+      .money-anchor {
         position: absolute;
         left: 50%;
         top: 50%;
+        transform: translate(-50%, -50%);
+        transform-origin: 50% 50%;
+      }
+
+      .money-icon {
         display: grid;
         place-items: center;
         opacity: 0;
         filter: drop-shadow(0 20px 24px rgba(7, 84, 31, 0.2));
+        transform: scale(0.18);
+        transform-origin: 50% 50%;
         will-change: transform, opacity, filter;
       }
 
@@ -167,8 +174,6 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
       const amount = document.querySelector("#amount");
       const moneyBurst = document.querySelector("#moneyBurst");
       const countState = { value: 0 };
@@ -187,11 +192,14 @@
       const moneySpecs = [];
 
       for (let i = 0; i < 62; i += 1) {
+        const anchor = document.createElement("div");
+        anchor.className = "money-anchor";
         const icon = document.createElement("div");
         const isCoin = i % 3 === 0;
         icon.className = "money-icon " + (isCoin ? "coin" : "bill");
         icon.innerHTML = '<span class="mark">$</span>';
-        moneyBurst.appendChild(icon);
+        anchor.appendChild(icon);
+        moneyBurst.appendChild(anchor);
         moneyIcons.push(icon);
 
         const angle = i * 2.399963229728653;
@@ -206,9 +214,9 @@
         moneySpecs.push({
           x,
           y,
-          delay: (i % 8) * 0.025,
-          duration: 0.74 + (i % 5) * 0.045,
-          fadeDelay: (i % 5) * 0.05,
+          delay: (i % 8) * 25,
+          duration: 740 + (i % 5) * 45,
+          fadeDelay: (i % 5) * 50,
           rotation: ((i * 43) % 160) - 80,
           scale: isCoin ? 0.72 + (i % 4) * 0.08 : 0.68 + (i % 5) * 0.07,
         });
@@ -216,93 +224,81 @@
 
       renderAmount(0);
 
-      const tl = gsap.timeline({
-        paused: true,
-        defaults: { ease: "power3.out" },
-      });
+      const tl = anime.createTimeline({ autoplay: false });
 
-      gsap.set(moneyIcons, {
-        x: 0,
-        y: 0,
-        xPercent: -50,
-        yPercent: -50,
-        opacity: 0,
-        scale: 0.18,
-        transformOrigin: "50% 50%",
-      });
-
-      tl.from(
+      tl.add(
         "#amount",
         {
-          y: 26,
-          opacity: 0,
-          scale: 0.985,
-          duration: 0.45,
-          ease: "power2.out",
+          translateY: [26, 0],
+          opacity: [0, 1],
+          scale: [0.985, 1],
+          duration: 450,
+          ease: "outCubic",
         },
         0,
       );
 
-      tl.to(
+      tl.add(
         countState,
         {
           value: 10000,
-          duration: 3.16,
-          ease: "none",
+          duration: 3160,
+          ease: "linear",
           onUpdate: () => renderAmount(countState.value),
           onComplete: () => renderAmount(10000),
         },
         0,
       );
 
-      tl.to(
+      tl.add(
         "#amount",
         {
           color: "#30d158",
           textShadow:
             "0 3px 0 rgba(255,255,255,0.52), 0 18px 40px rgba(48,209,88,0.3), 0 46px 96px rgba(7,84,31,0.2)",
-          duration: 0.18,
+          duration: 180,
+          ease: "outQuart",
         },
-        3.16,
+        3160,
       );
-      tl.to("#amount", { scale: 1.06, duration: 0.16, ease: "back.out(2.2)" }, 3.16);
-      tl.to("#amount", { scale: 1, duration: 0.23, ease: "power2.out" }, 3.33);
+      tl.add("#amount", { scale: 1.06, duration: 160, ease: "outBack(2.2)" }, 3160);
+      tl.add("#amount", { scale: 1, duration: 230, ease: "outCubic" }, 3330);
 
-      tl.to("#greenFlash", { opacity: 0.34, duration: 0.08, ease: "none" }, 3.16);
-      tl.to("#greenFlash", { opacity: 0.22, duration: 0.76, ease: "none" }, 3.24);
-      tl.to("#greenFlash", { opacity: 0, duration: 0.16, ease: "power2.out" }, 4);
+      tl.add("#greenFlash", { opacity: 0.34, duration: 80, ease: "linear" }, 3160);
+      tl.add("#greenFlash", { opacity: 0.22, duration: 760, ease: "linear" }, 3240);
+      tl.add("#greenFlash", { opacity: 0, duration: 160, ease: "outCubic" }, 4000);
 
       moneyIcons.forEach((icon, i) => {
         const spec = moneySpecs[i];
-        tl.to(
+        tl.add(
           icon,
           {
-            x: spec.x,
-            y: spec.y,
-            rotation: spec.rotation,
-            scale: spec.scale,
-            opacity: 1,
+            translateX: [0, spec.x],
+            translateY: [0, spec.y],
+            rotate: spec.rotation,
+            scale: [0.18, spec.scale],
+            opacity: [0, 1],
             duration: spec.duration,
-            ease: "power4.out",
+            ease: "outQuint",
           },
-          3.28 + spec.delay,
+          3280 + spec.delay,
         );
-        tl.to(
+        tl.add(
           icon,
           {
-            y: spec.y + (spec.y < 0 ? -58 : 58),
+            translateY: spec.y + (spec.y < 0 ? -58 : 58),
             scale: spec.scale * 0.54,
             opacity: 0,
-            duration: 0.38,
-            ease: "power2.in",
+            duration: 380,
+            ease: "inCubic",
           },
-          4.18 + spec.fadeDelay,
+          4180 + spec.fadeDelay,
         );
       });
 
-      tl.to("#amount", { opacity: 0, scale: 0.985, duration: 0.28, ease: "power2.in" }, 4.36);
+      tl.add("#amount", { opacity: 0, scale: 0.985, duration: 280, ease: "inCubic" }, 4360);
 
-      window.__timelines["apple-money-count"] = tl;
+      hyperframesAnime.register("apple-money-count", tl, { labels: {} });
     </script>
   </body>
 </html>
