@@ -244,3 +244,123 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatMediaSection — loop/muted/has-audio", () => {
+  it("toggles loop via onSetHtmlAttribute and shows has-audio-track for video", () => {
+    const onSetHtmlAttribute = vi.fn();
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { "has-audio": "true" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+        />,
+      );
+    });
+    const loopToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Loop"]',
+    );
+    act(() => loopToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("loop", "true");
+
+    const hasAudioToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+    );
+    expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => root.unmount());
+  });
+
+  it("toggles muted via onSetHtmlAttribute", () => {
+    const onSetHtmlAttribute = vi.fn();
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+        />,
+      );
+    });
+    const mutedToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Muted"]',
+    );
+    expect(mutedToggle?.getAttribute("aria-checked")).toBe("false");
+    act(() => mutedToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", "true");
+    act(() => root.unmount());
+  });
+
+  it("enables has-audio-track and clears muted on click", () => {
+    const onSetHtmlAttribute = vi.fn();
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+        />,
+      );
+    });
+    const hasAudioToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+    );
+    expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("false");
+    act(() => hasAudioToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetAttribute).toHaveBeenCalledWith("has-audio", "true");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", null);
+    act(() => root.unmount());
+  });
+
+  it("disables has-audio-track and sets muted on click", () => {
+    const onSetHtmlAttribute = vi.fn();
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { "has-audio": "true" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+        />,
+      );
+    });
+    const hasAudioToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Has audio track"]',
+    );
+    expect(hasAudioToggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => hasAudioToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetAttribute).toHaveBeenCalledWith("has-audio", "");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", "true");
+    act(() => root.unmount());
+  });
+});
