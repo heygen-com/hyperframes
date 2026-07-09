@@ -611,11 +611,13 @@ describe("installWithCorruptArchiveRecovery", () => {
 // extraction busy-spins forever, leaving a half-extracted cache with no
 // executable (puppeteer/puppeteer#14957).
 //
-// `@puppeteer/browsers` 3.0.2 dropped extract-zip/yauzl entirely (now uses
-// `modern-tar`), which is the fix. This test fails if a dependency change ever
-// drags the pin back below 3.x — i.e. reintroduces the broken extractor.
+// `@puppeteer/browsers` 3.0.2 dropped `extract-zip` as a dependency and now
+// extracts with `modern-tar` by default (`yauzl` lingers only as an optional
+// peer fallback — no longer a runtime dependency), which is the fix. This test
+// fails if a dependency change ever drags the pin back below 3.x — i.e.
+// reintroduces the broken extractor as a hard dependency.
 describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", () => {
-  it("stays on the extractor-free major (>= 3) that dropped extract-zip/yauzl", async () => {
+  it("stays on the major (>= 3) that dropped extract-zip and no longer depends on yauzl", async () => {
     const { createRequire } = await import("node:module");
     const require = createRequire(import.meta.url);
     const pkg = require("@puppeteer/browsers/package.json") as {
