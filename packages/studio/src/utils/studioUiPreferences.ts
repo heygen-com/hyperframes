@@ -16,6 +16,7 @@ export interface StudioUiPreferences {
   gridVisible?: boolean;
   gridSpacing?: number;
   snapToGrid?: boolean;
+  pinnedGroupsByElementType?: Record<string, string[]>;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -87,6 +88,15 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.snapToGrid === "boolean") {
       preferences.snapToGrid = parsed.snapToGrid;
+    }
+    if (isRecord(parsed.pinnedGroupsByElementType)) {
+      const map: Record<string, string[]> = {};
+      for (const [kind, ids] of Object.entries(parsed.pinnedGroupsByElementType)) {
+        if (Array.isArray(ids)) {
+          map[kind] = ids.filter((id): id is string => typeof id === "string");
+        }
+      }
+      preferences.pinnedGroupsByElementType = map;
     }
     return preferences;
   } catch {
