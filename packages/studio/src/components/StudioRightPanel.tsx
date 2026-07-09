@@ -468,7 +468,7 @@ export function StudioRightPanel({
         <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
-        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-700/60 bg-[#131316]"
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900"
         style={{ width: rightWidth }}
       >
         {captionEditMode ? (
@@ -545,7 +545,7 @@ export function StudioRightPanel({
                     role="separator"
                     aria-label="Resize Layers and Design panes"
                     aria-orientation="horizontal"
-                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-[#131316]"
+                    className="group flex h-2 flex-shrink-0 cursor-row-resize items-center justify-center border-y border-neutral-800 bg-neutral-900"
                     style={{ touchAction: "none" }}
                     onPointerDown={handleInspectorSplitResizeStart}
                     onPointerMove={handleInspectorSplitResizeMove}

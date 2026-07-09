@@ -91,7 +91,10 @@ export function TimelineResizeDivider({
       onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
     >
-      <div className="h-px w-full bg-white/10 transition-colors group-hover:bg-white/16 group-active:bg-white/22 group-focus-visible:bg-studio-accent/60" />
+      {/* Invisible at rest — the shell gap alone separates the rows. A subtle
+          wash appears only on hover/drag/focus so the resize affordance is
+          discoverable without drawing a permanent hairline. */}
+      <div className="h-px w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
     </div>
   );
 }

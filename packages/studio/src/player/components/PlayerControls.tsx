@@ -427,10 +427,11 @@ export const PlayerControls = memo(function PlayerControls({
 
   return (
     <div
+      // No own background/border: the transport blends into the preview
+      // panel's surface — buttons carry their own chrome.
       className="px-4 py-2 flex flex-wrap items-center gap-x-2 gap-y-1"
       aria-disabled={disabled || undefined}
       style={{
-        borderTop: "1px solid rgba(255,255,255,0.04)",
         paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
       }}
     >

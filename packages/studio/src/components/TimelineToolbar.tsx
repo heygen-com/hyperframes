@@ -172,33 +172,43 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <Magnet size={16} weight="bold" aria-hidden="true" />
             </button>
           </Tooltip>
-          {STUDIO_KEYFRAMES_ENABLED && onToggleKeyframe && (
+          {STUDIO_KEYFRAMES_ENABLED && (
+            // Always rendered (CapCut-style): with no keyframeable selection the
+            // button fades to a disabled state instead of unmounting, so the
+            // toolbar layout never shifts.
             <Tooltip
               label={
-                keyframeState === "active"
-                  ? "Remove keyframe at playhead (K)"
-                  : keyframeState === "inactive"
-                    ? keyframeWillExtend
-                      ? "Add keyframe at playhead, extends animation (K)"
-                      : "Add keyframe at playhead (K)"
-                    : "Add keyframe (K)"
+                !onToggleKeyframe
+                  ? "Select an animated element to add keyframes"
+                  : keyframeState === "active"
+                    ? "Remove keyframe at playhead (K)"
+                    : keyframeState === "inactive"
+                      ? keyframeWillExtend
+                        ? "Add keyframe at playhead, extends animation (K)"
+                        : "Add keyframe at playhead (K)"
+                      : "Add keyframe (K)"
               }
             >
               <button
                 type="button"
+                disabled={!onToggleKeyframe}
                 onClick={onToggleKeyframe}
                 aria-label={
                   keyframeState === "active"
                     ? "Remove keyframe at playhead"
                     : "Add keyframe at playhead"
                 }
-                className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
-                  keyframeState === "active"
-                    ? "text-studio-accent"
-                    : keyframeState === "inactive"
-                      ? "text-neutral-400 hover:text-studio-accent"
-                      : "text-neutral-600 hover:text-neutral-400"
-                }`}
+                className={
+                  !onToggleKeyframe
+                    ? flatDisabled
+                    : `${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
+                        keyframeState === "active"
+                          ? "text-studio-accent"
+                          : keyframeState === "inactive"
+                            ? "text-neutral-400 hover:text-studio-accent"
+                            : "text-neutral-600 hover:text-neutral-400"
+                      }`
+                }
               >
                 <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
                   {keyframeState === "active" ? (
@@ -286,39 +296,47 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 </Tooltip>
               );
             })()}
-          {beatAnalysisReady &&
-            (() => {
-              const canAdd = canAddBeatAt(currentTime);
-              return (
-                <Tooltip
-                  label={canAdd ? "Add beat at playhead" : "A beat already exists at the playhead"}
+          {(() => {
+            // Always rendered (CapCut-style): before beat analysis loads (or when
+            // the project has no analyzed music) the button fades to a disabled
+            // state instead of unmounting, so the toolbar layout never shifts.
+            const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);
+            return (
+              <Tooltip
+                label={
+                  !beatAnalysisReady
+                    ? "Add a music track with beat analysis to place beats"
+                    : canAdd
+                      ? "Add beat at playhead"
+                      : "A beat already exists at the playhead"
+                }
+              >
+                <button
+                  type="button"
+                  disabled={!canAdd}
+                  aria-label="Add beat at playhead"
+                  onClick={() => {
+                    if (canAdd) addBeatAtCompositionTime(currentTime);
+                  }}
+                  className={
+                    canAdd
+                      ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
+                      : flatDisabled
+                  }
                 >
-                  <button
-                    type="button"
-                    disabled={!canAdd}
-                    aria-label="Add beat at playhead"
-                    onClick={() => {
-                      if (canAdd) addBeatAtCompositionTime(currentTime);
-                    }}
-                    className={
-                      canAdd
-                        ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
-                        : flatDisabled
-                    }
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </Tooltip>
-              );
-            })()}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-0.5">
           <Tooltip label="Fit timeline to width">
@@ -360,7 +378,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               setZoomMode("manual");
               setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
             }}
-            className="mx-1 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#131316,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+            className="mx-1 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
           />
           <Tooltip label="Zoom in">
             <button
