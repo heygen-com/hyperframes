@@ -316,7 +316,8 @@ describe("FlatStyleSection — blur sliders", () => {
     expect(host.textContent).toContain("Backdrop");
     expect(host.textContent).toContain("6px");
     const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
-    const backdropTrack = tracks[tracks.length - 1];
+    // Track order is Layer blur, Backdrop, Opacity — Backdrop is the second track.
+    const backdropTrack = tracks[1];
     Object.defineProperty(backdropTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -330,7 +331,13 @@ describe("FlatStyleSection — blur sliders", () => {
 
   it("does not render a fill/knob highlight for a zero-value blur (default tier)", () => {
     const { host, root } = renderSection({});
-    expect(host.querySelectorAll('[data-flat-slider-fill="true"]')).toHaveLength(0);
+    const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
+    // Only the first two tracks are the blur sliders (Layer blur, Backdrop); Opacity
+    // (the third track) always renders a fill by design, so it's excluded here.
+    const blurTracks = Array.from(tracks).slice(0, 2);
+    for (const track of blurTracks) {
+      expect(track.querySelectorAll('[data-flat-slider-fill="true"]')).toHaveLength(0);
+    }
     act(() => root.unmount());
   });
 });
@@ -463,6 +470,39 @@ describe("FlatStyleSection — Overflow and Mask", () => {
     const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
     await commitInsetSideInput(host, "B", "5");
     expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(8px 8px 5px 8px round 4px)");
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatStyleSection — Opacity", () => {
+  it("renders the Opacity slider at 100% by default and commits a change through onSetStyle", () => {
+    const onSetStyle = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatStyleSection
+          projectId="proj-1"
+          element={makeElement()}
+          styles={{}}
+          assets={[]}
+          onSetStyle={onSetStyle}
+          gsapBorderRadius={null}
+        />,
+      );
+    });
+    expect(host.textContent).toContain("Opacity");
+    expect(host.textContent).toContain("100%");
+    const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
+    const opacityTrack = tracks[tracks.length - 1];
+    Object.defineProperty(opacityTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      opacityTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("opacity", "0.5");
     act(() => root.unmount());
   });
 });
