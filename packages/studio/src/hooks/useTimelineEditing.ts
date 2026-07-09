@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
+import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
@@ -124,24 +125,6 @@ export function useTimelineEditing({
         ["data-track-index", String(updates.track)],
       ]);
       const targetPath = element.sourceFile || activeCompPath || "index.html";
-      // Content-driven duration: after the move, set data-duration to the furthest
-      // clip end in this file (grows if moved past the end, shrinks if the furthest
-      // clip moved left).
-      const movedEnd = updates.start + element.duration;
-      const moveContentEnd = usePlayerStore
-        .getState()
-        .elements.reduce(
-          (max, te) =>
-            (te.sourceFile || activeCompPath || "index.html") === targetPath
-              ? Math.max(
-                  max,
-                  (te.key ?? te.id) === (element.key ?? element.id)
-                    ? movedEnd
-                    : te.start + te.duration,
-                )
-              : max,
-          0,
-        );
       const buildMovePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         let patched = applyPatchByTarget(original, target, {
           type: "attribute",
@@ -153,7 +136,13 @@ export function useTimelineEditing({
           property: "track-index",
           value: String(updates.track),
         });
-        return setCompositionDurationToContent(patched, moveContentEnd);
+        // Content-driven duration: sync data-duration to the furthest clip end
+        // read from the PATCHED SOURCE (raw data-duration), so it grows if a clip
+        // moved past the end and shrinks if the furthest clip moved left. Measured
+        // from the source, NOT the store — store durations are runtime-truncated
+        // to the current comp length, which would ratchet the duration down every
+        // move (HANDOFF-3 §6.1 feedback loop).
+        return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
       };
       // Server-path fallback (no SDK session): persist the attr patch, then
       // shift GSAP tween positions on the server and reload the preview — the
@@ -246,23 +235,6 @@ export function useTimelineEditing({
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
       const targetPath = element.sourceFile || activeCompPath || "index.html";
-      // Content-driven duration: after the trim, set data-duration to the furthest
-      // clip end in this file (shrinks when the furthest clip is trimmed shorter).
-      const resizedEnd = updates.start + updates.duration;
-      const resizeContentEnd = usePlayerStore
-        .getState()
-        .elements.reduce(
-          (max, te) =>
-            (te.sourceFile || activeCompPath || "index.html") === targetPath
-              ? Math.max(
-                  max,
-                  (te.key ?? te.id) === (element.key ?? element.id)
-                    ? resizedEnd
-                    : te.start + te.duration,
-                )
-              : max,
-          0,
-        );
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
         let patched = applyPatchByTarget(original, target, {
@@ -282,7 +254,10 @@ export function useTimelineEditing({
             value: formatTimelineAttributeNumber(pbs.value),
           });
         }
-        return setCompositionDurationToContent(patched, resizeContentEnd);
+        // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
+        // grows/shrinks to the furthest clip end. Not from the store, whose
+        // durations are runtime-truncated (HANDOFF-3 §6.1 feedback loop).
+        return setCompositionDurationToContent(patched, furthestClipEndFromSource(patched));
       };
       // SDK path: skip when a playback-start adjustment is needed (setTiming has no pbs field).
       // The second clause fires because trimming the start of a clip that has a
@@ -413,17 +388,14 @@ export function useTimelineEditing({
         const removedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
         // Content-driven duration: shrink the composition to the furthest remaining
-        // clip end in this file (grow-only extend on drop has a shrink counterpart on
-        // delete), so deleting the last/longest clip removes trailing empty space.
-        const contentEnd = timelineElements.reduce(
-          (max, te) =>
-            (te.key ?? te.id) !== (element.key ?? element.id) &&
-            (te.sourceFile || activeCompPath || "index.html") === targetPath
-              ? Math.max(max, te.start + te.duration)
-              : max,
-          0,
+        // clip end, read from the post-removal SOURCE (raw data-duration), so
+        // deleting the last/longest clip removes trailing empty space. Measured
+        // from the source, not the store, whose durations are runtime-truncated
+        // (HANDOFF-3 §6.1 feedback loop).
+        const patchedContent = setCompositionDurationToContent(
+          removedContent,
+          furthestClipEndFromSource(removedContent),
         );
-        const patchedContent = setCompositionDurationToContent(removedContent, contentEnd);
         domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,

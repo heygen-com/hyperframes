@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { MutableRefObject, RefObject } from "react";
-import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
+import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
@@ -18,36 +18,6 @@ import {
 export interface TimelineElementMoveEdit {
   element: TimelineElement;
   updates: Pick<TimelineElement, "start" | "track">;
-}
-
-const elementKey = (el: Pick<TimelineElement, "key" | "id">): string | number => el.key ?? el.id;
-const fileOf = (el: Pick<TimelineElement, "sourceFile">, activeCompPath: string | null): string =>
-  el.sourceFile || activeCompPath || "index.html";
-
-/**
- * Furthest clip end in `targetPath`, using each edit's NEW start for the clips
- * that moved and every other clip's live start. Mirrors the content-driven
- * duration calc the single-clip move path does inline (useTimelineEditing.ts) so
- * a batched lane-change/insert move keeps the root `data-duration` in sync with
- * content — without it the saved file's duration goes stale (research HANDOFF-3
- * §6.1: "moved audio, data-duration=15.18 but audio ends 19.53"). Pure so it can
- * be unit-tested independently of the persist plumbing.
- */
-export function resolveMovedContentEnd(
-  elements: TimelineElement[],
-  edits: TimelineElementMoveEdit[],
-  targetPath: string,
-  activeCompPath: string | null,
-): number {
-  const movedStart = new Map<string | number, number>();
-  for (const { element, updates } of edits) {
-    movedStart.set(elementKey(element), updates.start);
-  }
-  return elements.reduce((max, te) => {
-    if (fileOf(te, activeCompPath) !== targetPath) return max;
-    const start = movedStart.get(elementKey(te)) ?? te.start;
-    return Math.max(max, start + te.duration);
-  }, 0);
 }
 
 export interface PersistTimelineElementsMoveDeps {
@@ -136,17 +106,12 @@ export async function persistTimelineElementsMove(
         value: String(updates.track),
       });
     }
-    // Content-driven duration: after moving these clips, sync the root
-    // data-duration to the furthest clip end in this file (grow OR shrink) so the
-    // saved source — and any render off it — matches what the player shows. The
-    // single-clip move path does this inline; the batched path used to skip it,
-    // leaving the file's duration stale (HANDOFF-3 §6.1).
-    const contentEnd = resolveMovedContentEnd(
-      usePlayerStore.getState().elements,
-      groupEdits,
-      targetPath,
-      activeCompPath,
-    );
+    // Content-driven duration: sync the root data-duration to the furthest clip
+    // end, read from the PATCHED SOURCE (raw data-duration), not the store. The
+    // store holds runtime-TRUNCATED durations (a clip is clamped to the comp
+    // length), so measuring content from it would feed the truncated value back
+    // in and shrink the composition every move (HANDOFF-3 §6.1 feedback loop).
+    const contentEnd = furthestClipEndFromSource(patched);
     patched = setCompositionDurationToContent(patched, contentEnd);
     if (patched === original) continue;
 
