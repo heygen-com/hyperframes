@@ -6,19 +6,19 @@ description: "Pitfalls that break Hyperframes compositions."
 These are mistakes that cannot be caught by the linter. For automated checks, run `npx hyperframes lint` (see [CLI](/packages/cli#lint)).
 
 <Warning>
-  The first two mistakes — animating video element dimensions and controlling media playback in scripts — are the most common causes of broken compositions. If your video looks wrong, check these first.
+  The first two mistakes - animating video element dimensions and controlling media playback in scripts - are the most common causes of broken compositions. If your video looks wrong, check these first.
 </Warning>
 
 <AccordionGroup>
   <Accordion title="Animating video element dimensions">
     **Symptom:** Video frames stop updating, or browser performance drops severely.
 
-    **Cause:** GSAP animating `width`, `height`, `top`, `left` directly on a `<video>` element can cause the browser to stop rendering frames.
+    **Cause:** Animating `width`, `height`, `top`, `left` directly on a `<video>` element can cause the browser to stop rendering frames.
 
     **Before (broken):**
 
     ```javascript index.html
-    // Animating the video element directly — causes frame rendering to stop
+    // Animating the video element directly - causes frame rendering to stop
     tl.to("#el-video", { width: 500, height: 280, top: 700, left: 1400 }, 26);
     ```
 
@@ -33,7 +33,7 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     ```
 
     ```javascript index.html
-    // Animate the wrapper — the video fills it at 100%
+    // Animate the wrapper - the video fills it at 100%
     tl.to("#pip-wrapper", { width: 500, height: 280, top: 700, left: 1400 }, 26);
     ```
 
@@ -57,8 +57,8 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
 
     ```javascript index.html
     // Don't control media playback at all. The framework handles it.
-    // Use GSAP for visual animations only:
-    tl.to("#el-video", { opacity: 1, duration: 0.5 }, 0);
+    // Use your animation runtime for visual animation only:
+    tl.add("#el-video", { opacity: [0, 1], duration: 500 }, 0);
     ```
 
     The framework reads [`data-start`](/concepts/data-attributes#timing-attributes), [`data-media-start`](/concepts/data-attributes#media-attributes), and [`data-volume`](/concepts/data-attributes#media-attributes) to control when and how media plays. See [Compositions: Two Layers](/concepts/compositions#two-layers-primitives-and-scripts) for the separation between HTML primitives and scripts.
@@ -67,28 +67,29 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
   <Accordion title="Composition duration shorter than video">
     **Symptom:** Video plays for a few seconds then stops. Timeline shows 8-10 seconds even though the video is minutes long.
 
-    **Cause:** The composition duration equals the [GSAP timeline duration](/guides/gsap-animation#timeline-duration-and-composition-duration), not `data-duration` on the video. If your last GSAP animation ends at 8 seconds, the composition is 8 seconds long — regardless of how long the video source is.
+    **Cause:** Without a root `data-duration`, the composition duration is inferred from the longest finite registered animation, not `data-duration` on the video. If your last registered animation ends at 8 seconds, the composition is 8 seconds long, regardless of how long the video source is.
 
     **Before (broken):**
 
     ```javascript index.html
-    // Timeline is only 7.8s long — video cuts off after 7.8 seconds
-    tl.to("#lower-third", { left: -640, duration: 0.6 }, 7.2);
+    // Timeline is only 7.8s long, video cuts off after 7.8 seconds
+    tl.add("#lower-third", { translateX: -640, duration: 600 }, 7200);
     ```
 
     **After (fixed):**
 
     ```javascript index.html
-    tl.to("#lower-third", { left: -640, duration: 0.6 }, 7.2);
+    tl.add("#lower-third", { translateX: -640, duration: 600 }, 7200);
 
-    // Extend the timeline to 283 seconds to match the video length
-    tl.set({}, {}, 283);
+    // Prefer explicit root data-duration for long media edits.
+    // If you omit it, add a finite timeline entry that reaches the intended end.
+    tl.add({}, { duration: 283000 }, 0);
     ```
 
-    `tl.set({}, {}, TIME)` adds a zero-duration tween at the specified time, extending the timeline without affecting any elements.
+    An explicit root `data-duration` is the clearest fix for long media edits. If you rely on anime.js duration inference instead, the longest finite registered instance must cover the intended render length.
 
     <Tip>
-      A quick check: run `npx hyperframes compositions` to see the resolved duration of each composition. If it is shorter than expected, your timeline needs extending.
+      A quick check: run `npx hyperframes compositions` to see the resolved duration of each composition. If it is shorter than expected, set root `data-duration` or extend the registered animation.
     </Tip>
   </Accordion>
 
@@ -124,7 +125,7 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     **Before (broken):**
 
     ```html index.html
-    <!-- Missing class="clip" — this element is always visible -->
+    <!-- Missing class="clip" - this element is always visible -->
     <h1 id="title" data-start="2" data-duration="5" data-track-index="0">
       Hello World
     </h1>
@@ -147,7 +148,7 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
   <Accordion title="Oversized source images">
     **Symptom:** Preview stutters during scenes with images on screen. Render is slower than expected.
 
-    **Cause:** Source images at much higher resolution than the canvas. Chrome decodes images to raw RGBA bitmaps before displaying them, and bitmap size is `width × height × 4` bytes — independent of file size on disk. A 7000×5000 JPEG is 140MB decoded, even if the file is only 2MB.
+    **Cause:** Source images at much higher resolution than the canvas. Chrome decodes images to raw RGBA bitmaps before displaying them, and bitmap size is `width × height × 4` bytes - independent of file size on disk. A 7000×5000 JPEG is 140MB decoded, even if the file is only 2MB.
 
     Displaying such an image in a 384×1080 region wastes memory and forces the compositor to resample a huge texture every frame.
 
@@ -198,7 +199,7 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     **After (3 tuned layers):**
 
     ```css
-    /* Fewer passes with hand-picked radii — visually similar, much cheaper */
+    /* Fewer passes with hand-picked radii - visually similar, much cheaper */
     .pb-1 { backdrop-filter: blur(4px); }
     .pb-2 { backdrop-filter: blur(16px); }
     .pb-3 { backdrop-filter: blur(48px); }
@@ -207,7 +208,7 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     **Guidelines:**
 
     - Keep stacked `backdrop-filter` layers to 2-3 per region
-    - Avoid radii above 64px over large areas — the biggest radii dominate the total cost
+    - Avoid radii above 64px over large areas - the biggest radii dominate the total cost
     - For a static blur effect, pre-render it into a PNG once and overlay with a regular `<img>`
 
     See [Performance: backdrop-filter: blur()](/guides/performance#backdrop-filter-blur) for the full breakdown.
@@ -226,28 +227,28 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
        # SDR:  bt709, smpte170m, bt470bg, etc.
        ```
 
-    2. **Wrong output format.** HDR output requires MP4. `--format mov` and `--format webm` fall back to SDR — Hyperframes logs a warning when this happens.
+    2. **Wrong output format.** HDR output requires MP4. `--format mov` and `--format webm` fall back to SDR - Hyperframes logs a warning when this happens.
 
     3. **SDR was forced.** `--sdr` disables HDR even when HDR sources are present.
 
     If you need HDR regardless of source metadata, use `--hdr` to force it.
 
-    `--docker` works the same as local rendering — auto-detect, `--hdr`, and `--sdr` are all forwarded into the container and produce the same output decisions (slower, since the container falls back to software WebGL for SDR DOM capture).
+    `--docker` works the same as local rendering - auto-detect, `--hdr`, and `--sdr` are all forwarded into the container and produce the same output decisions (slower, since the container falls back to software WebGL for SDR DOM capture).
 
     See [HDR Rendering](/guides/hdr) for the full source requirements and verification steps.
   </Accordion>
 
-  <Accordion title="Timeline key doesn't match data-composition-id">
+  <Accordion title="Animation registration id doesn't match data-composition-id">
     **Symptom:** Animations don't play. The composition appears static.
 
-    **Cause:** The key used in `window.__timelines` must exactly match the [`data-composition-id`](/concepts/data-attributes#composition-attributes) attribute on the composition root element.
+    **Cause:** The id passed to `hyperframesAnime.register(...)` must exactly match the [`data-composition-id`](/concepts/data-attributes#composition-attributes) attribute on the composition root element.
 
     **Before (broken):**
 
     ```javascript index.html
     // Mismatch: HTML says "my-video", script registers "root"
     // <div data-composition-id="my-video" ...>
-    window.__timelines["root"] = tl;
+    hyperframesAnime.register("root", tl, { labels: {} });
     ```
 
     **After (fixed):**
@@ -255,8 +256,10 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
     ```javascript index.html
     // Key matches the data-composition-id attribute
     // <div data-composition-id="my-video" ...>
-    window.__timelines["my-video"] = tl;
+    hyperframesAnime.register("my-video", tl, { labels: {} });
     ```
+
+    For the supported GSAP adapter path, the same id rule applies to `window.__timelines["my-video"]`.
   </Accordion>
 </AccordionGroup>
 
@@ -264,11 +267,11 @@ These are mistakes that cannot be caught by the linter. For automated checks, ru
 
 When something does not work, check in this order:
 
-1. **Run the linter:** `npx hyperframes lint` — catches most structural issues
-2. **Timeline registered?** Is `window.__timelines["<id>"]` set? Does the key match [`data-composition-id`](/concepts/data-attributes#composition-attributes)?
-3. **GSAP-only animations?** Only animate visual properties (opacity, transform, color) — see [GSAP Animation](/guides/gsap-animation#key-rules)
-4. **Timeline long enough?** Add `tl.set({}, {}, DURATION)` at the end — see [Timeline Duration](/guides/gsap-animation#timeline-duration-and-composition-duration)
-5. **Console errors?** Open browser console — runtime errors show as `[Browser:ERROR]`
+1. **Run the linter:** `npx hyperframes lint` - catches most structural issues
+2. **Animation registered?** Does `hyperframesAnime.register("<id>", instance, { labels })` use the same id as [`data-composition-id`](/concepts/data-attributes#composition-attributes)? For the GSAP adapter path, the equivalent check is `window.__timelines["<id>"]`.
+3. **Visual-only animations?** Only animate visual properties (opacity, transform, color). See [anime.js Animation](/guides/anime-animation#contract) or [GSAP Adapter](/guides/gsap-animation#key-rules).
+4. **Timeline long enough?** Set root `data-duration` or ensure the longest finite registered animation covers the intended edit length.
+5. **Console errors?** Open browser console - runtime errors show as `[Browser:ERROR]`
 6. **Still stuck?** See [Troubleshooting](/guides/troubleshooting) for environment and rendering issues
 
 ## Next Steps
@@ -277,7 +280,7 @@ When something does not work, check in this order:
   <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
     Fix environment and rendering issues
   </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+  <Card title="anime.js Animation" icon="wand-magic-sparkles" href="/guides/anime-animation">
     Review animation rules and patterns
   </Card>
   <Card title="HTML Schema Reference" icon="code" href="/reference/html-schema">

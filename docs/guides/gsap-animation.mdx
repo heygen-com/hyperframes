@@ -1,9 +1,11 @@
 ---
-title: GSAP Animation
-description: "Add animations to your Hyperframes compositions with GSAP."
+title: GSAP Adapter
+description: "Use the supported GSAP adapter path for existing or migrated HyperFrames compositions."
 ---
 
-Hyperframes uses [GSAP](https://gsap.com/) for animation. Timelines are paused and controlled by the runtime — you define the animations, the framework handles playback. For background on how animation runtimes plug into Hyperframes, see [Frame Adapters](/concepts/frame-adapters).
+anime.js (MIT licensed) is the first-party default animation engine for HyperFrames. This page documents the supported [GSAP](https://gsap.com/) adapter path for existing compositions, migrated compositions, and authors who prefer GSAP.
+
+GSAP timelines are paused and controlled by the runtime. You define the animations, and HyperFrames handles playback by seeking the registered timeline. For new anime.js compositions, see [anime.js Animation](/guides/anime-animation). For background on how animation runtimes plug into HyperFrames, see [Frame Adapters](/concepts/frame-adapters).
 
 ## Setup
 
@@ -12,7 +14,7 @@ Include GSAP and create a paused timeline:
 ```html index.html
 <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
 <script>
-  // 1. Create a paused timeline — the framework controls playback
+  // 1. Create a paused timeline - the framework controls playback
   const tl = gsap.timeline({ paused: true });
 
   // 2. Add animations using the position parameter (3rd arg) for absolute timing
@@ -32,10 +34,10 @@ Include GSAP and create a paused timeline:
 
 ## Key Rules
 
-1. **Always create timelines with `{ paused: true }`** — the framework controls playback via [deterministic seeking](/concepts/determinism)
+1. **Always create timelines with `{ paused: true }`** - the framework controls playback via [deterministic seeking](/concepts/determinism)
 2. **Register timelines on `window.__timelines`** with the [`data-composition-id`](/concepts/data-attributes#composition-attributes) as key
 3. **Use the position parameter** (3rd argument) for absolute timing: `tl.to(el, vars, 1.5)`
-4. **Only animate visual properties** — never control media playback in scripts
+4. **Only animate visual properties** - never control media playback in scripts
 
 ## Supported Methods
 
@@ -48,7 +50,7 @@ Include GSAP and create a paused timeline:
 
 ## Supported Properties
 
-`opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotation`, `color`, `backgroundColor`, and other CSS-animatable transform/color properties. Do **not** animate `visibility`, `width`, or `height` — these break deterministic rendering.
+`opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotation`, `color`, `backgroundColor`, and other CSS-animatable transform/color properties. Do **not** animate `visibility`, `width`, or `height` - these break deterministic rendering.
 
 ## Timeline Duration and Composition Duration
 
@@ -81,7 +83,7 @@ tl.set({}, {}, 283);
 These patterns will break your composition or cause sync issues:
 
 ```javascript index.html
-// WRONG: Playing media in scripts — the framework owns media playback
+// WRONG: Playing media in scripts - the framework owns media playback
 document.getElementById("el-video").play();
 document.getElementById("el-audio").currentTime = 5;
 
@@ -113,7 +115,7 @@ window.__timelines["intro-anim"] = tl;
 ```
 
 <Warning>
-  Don't animate `width`, `height`, `top`, or `left` directly on `<video>` elements — this can cause the browser to stop rendering frames. Wrap the video in a `<div>` and animate the wrapper instead. See [Common Mistakes](/guides/common-mistakes) for a detailed explanation.
+  Don't animate `width`, `height`, `top`, or `left` directly on `<video>` elements - this can cause the browser to stop rendering frames. Wrap the video in a `<div>` and animate the wrapper instead. See [Common Mistakes](/guides/common-mistakes) for a detailed explanation.
 </Warning>
 
 ## Next Steps
@@ -123,7 +125,7 @@ window.__timelines["intro-anim"] = tl;
     Understand the building blocks that timelines animate
   </Card>
   <Card title="Frame Adapters" icon="plug" href="/concepts/frame-adapters">
-    Learn how GSAP plugs into the render pipeline
+    Learn how GSAP plugs into the render pipeline as a supported adapter
   </Card>
   <Card title="Common Mistakes" icon="triangle-exclamation" href="/guides/common-mistakes">
     Avoid pitfalls that break animations

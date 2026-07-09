@@ -1,50 +1,50 @@
 ---
 title: Keyframes & Arc Motion
-description: "Edit GSAP keyframes visually in Studio — timeline diamonds, arc motion paths, and gesture recording."
+description: "Edit keyframes visually in Studio, including the supported GSAP adapter keyframe surface."
 ---
 
-Studio gives you visual tools to create and edit GSAP keyframes without writing code. You can adjust animation properties in the Design Panel, convert straight-line motion into curved arcs, and record gesture-based motion by dragging elements in the preview.
+anime.js is the first-party default engine for new compositions. Studio also gives you visual tools to create and edit GSAP adapter keyframes without writing code, which is useful for existing or migrated GSAP compositions. You can adjust animation properties in the Design Panel, convert straight-line motion into curved arcs, and record gesture-based motion by dragging elements in the preview.
 
 ## Timeline Keyframe Diamonds
 
-When you open a composition in Studio, the timeline shows **diamond markers** on clips that have GSAP animations. Each diamond represents a keyframe — a point in time where a property value is set.
+When you open a composition in Studio, the timeline shows **diamond markers** on clips that have editable animations. For GSAP adapter compositions, each diamond represents a keyframe, a point in time where a property value is set.
 
-- **Start diamond** — where the tween begins (e.g., `x: 0`)
-- **End diamond** — where the tween ends (e.g., `x: 1000`)
+- **Start diamond** - where the tween begins (e.g., `x: 0`)
+- **End diamond** - where the tween ends (e.g., `x: 1000`)
 - Elements with multiple tweens show multiple diamond pairs
 
 <Note>
-  Keyframe diamonds are synthesized from your GSAP tweens automatically. Every `.to()`, `.from()`, and `.fromTo()` call produces start and end markers on the timeline.
+  For GSAP adapter compositions, keyframe diamonds are synthesized from your tweens automatically. Every `.to()`, `.from()`, and `.fromTo()` call produces start and end markers on the timeline.
 </Note>
 
 ## Editing Animation Properties
 
 Select any animated element in the preview or timeline to open the Design Panel. The **Animation** section shows:
 
-- **Method badge** — `Animate`, `Animate In`, or `From → To` (maps to `.to()`, `.from()`, `.fromTo()`)
-- **Timing** — Length (duration) and Starts at (position on timeline)
-- **Speed** — The GSAP ease (e.g., `power2.inOut`, `back.out(3)`)
-- **Speed curve** — Visual preview of the easing function
-- **Properties** — Each animated property (Move X, Move Y, Scale, Opacity, etc.) with its target value
+- **Method badge** - `Animate`, `Animate In`, or `From → To` (maps to `.to()`, `.from()`, `.fromTo()`)
+- **Timing** - Length (duration) and Starts at (position on timeline)
+- **Speed** - The adapter ease, for example `power2.inOut` or `back.out(3)` on GSAP tweens
+- **Speed curve** - Visual preview of the easing function
+- **Properties** - Each animated property (Move X, Move Y, Scale, Opacity, etc.) with its target value
 
 <Steps>
   <Step title="Select an element">
     Click an animated element in the preview or its clip in the timeline. The Design Panel opens on the right.
   </Step>
   <Step title="Edit property values">
-    Change any property value directly — for example, set Move X to `500` to make the element travel 500px. Changes apply immediately via soft reload.
+    Change any property value directly - for example, set Move X to `500` to make the element travel 500px. Changes apply immediately via soft reload.
   </Step>
   <Step title="Change the ease">
     Click the ease dropdown (e.g., "Smooth ease") to pick a different easing function. The speed curve preview updates live.
   </Step>
   <Step title="Verify in Code tab">
-    Switch to the Code tab to see the generated GSAP code. Every Design Panel edit writes valid GSAP that renders identically in preview and headless export.
+    Switch to the Code tab to see the generated adapter code. For GSAP adapter compositions, every Design Panel edit writes valid GSAP that renders identically in preview and headless export.
   </Step>
 </Steps>
 
 ## Arc Motion
 
-Arc Motion converts a straight-line x/y animation into a curved path using GSAP's MotionPathPlugin. Instead of moving in a straight diagonal, the element follows a smooth arc — like tossing an object into a basket.
+Arc Motion converts a straight-line x/y animation into a curved path using GSAP's MotionPathPlugin. Instead of moving in a straight diagonal, the element follows a smooth arc - like tossing an object into a basket.
 
 ### When to Use It
 
@@ -64,10 +64,10 @@ Use Arc Motion when an element has both `x` and `y` properties in a single tween
   </Step>
   <Step title="Adjust Curviness">
     The **Curviness** slider controls how exaggerated the arc is:
-    - `0` — straight line (no curve)
-    - `1` — gentle natural arc
-    - `1.5–2.0` — smooth throw feel (recommended)
-    - `3.0` — extreme loop
+    - `0` - straight line (no curve)
+    - `1` - gentle natural arc
+    - `1.5–2.0` - smooth throw feel (recommended)
+    - `3.0` - extreme loop
 
     Scrub the timeline to preview the arc in real time.
   </Step>
@@ -104,7 +104,7 @@ Use Arc Motion when an element has both `x` and `y` properties in a single tween
 
 ## Gesture Recording
 
-Record motion by physically dragging an element in the preview while the timeline plays. The pointer path is simplified and converted into GSAP keyframes automatically.
+Record motion by physically dragging an element in the preview while the timeline plays. The pointer path is simplified and converted into adapter keyframes automatically.
 
 <Steps>
   <Step title="Select an element">
@@ -117,7 +117,7 @@ Record motion by physically dragging an element in the preview while the timelin
     Move the element in the preview by dragging it. Your pointer motion is sampled at ~60fps. A trail overlay shows the path you're drawing.
   </Step>
   <Step title="Stop recording">
-    Press R again or wait for the timeline to reach the end. Recording stops, the motion is simplified (reducing ~180 raw samples to 5–15 clean keyframes), and the keyframes are written to the GSAP script immediately.
+    Press R again or wait for the timeline to reach the end. Recording stops, the motion is simplified (reducing ~180 raw samples to 5–15 clean keyframes), and the keyframes are written to the adapter script immediately.
   </Step>
   <Step title="Review or undo">
     The timeline seeks back to the recording start so you can scrub through the result. If you don't like it, press **Cmd+Z** to undo and try again.
@@ -126,13 +126,13 @@ Record motion by physically dragging an element in the preview while the timelin
 
 ## Computed Timelines (Helpers, Loops, Dynamic Data)
 
-Studio reads your timeline statically, so a composition that builds its tweens with a **helper function called several times**, a **bounded loop**, or **data-driven values** still shows every keyframe at its true time on the timeline — and the Arc Motion panel still activates for `motionPath` tweens, even when the path comes from a variable.
+Studio reads your timeline statically, so a composition that builds its tweens with a **helper function called several times**, a **bounded loop**, or **data-driven values** still shows every keyframe at its true time on the timeline - and the Arc Motion panel still activates for `motionPath` tweens, even when the path comes from a variable.
 
 How those keyframes are **edited** depends on how they were authored:
 
-- **Literal tweens** (`tl.to("#x", { x: 100 }, 1.3)`) — edit directly in the Design Panel. One source call, one tween.
-- **Helper / loop tweens** — a single source line (e.g. `addCycle(1.0, ...)`) expands into many runtime tweens, so editing one keyframe is ambiguous. The Animation card shows a **"Generated by `addCycle()` — not directly editable"** notice with an **Unroll to edit** action: it rewrites the helper or loop into explicit literal tweens (a visual no-op — the render is identical), after which each keyframe edits directly. Undo restores the helper.
-- **Computed-value tweens** (the rare case of a value derived at runtime that can't be resolved or unrolled) — stay display-only; edit them in the **Code tab**. HyperFrames compositions are deterministic, so this case is uncommon.
+- **Literal tweens** (`tl.to("#x", { x: 100 }, 1.3)`) - edit directly in the Design Panel. One source call, one tween.
+- **Helper / loop tweens** - a single source line (e.g. `addCycle(1.0, ...)`) expands into many runtime tweens, so editing one keyframe is ambiguous. The Animation card shows a **"Generated by `addCycle()` - not directly editable"** notice with an **Unroll to edit** action: it rewrites the helper or loop into explicit literal tweens (a visual no-op - the render is identical), after which each keyframe edits directly. Undo restores the helper.
+- **Computed-value tweens** (the rare case of a value derived at runtime that can't be resolved or unrolled) - stay display-only; edit them in the **Code tab**. HyperFrames compositions are deterministic, so this case is uncommon.
 
 The notice on each computed tween tells you which path applies.
 
@@ -150,4 +150,4 @@ Animation: from() 0.5s at 0s, ease: power2.out
 Properties: x: -40, opacity: 0
 ```
 
-Paste this into any AI agent prompt to give it spatial context about the element — its position, size, animation, and source location.
+Paste this into any AI agent prompt to give it spatial context about the element - its position, size, animation, and source location.

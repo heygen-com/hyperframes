@@ -15,7 +15,7 @@ See also: [`Composition`](/sdk/reference/composition) for the main session inter
 type HfId = string;
 ```
 
-A stable HyperFrames element identifier — the value of the `data-hf-id` attribute stamped on every editable element by `ensureHfIds`. Use `HfId` wherever you would write a raw `string` to signal that the value is an element id.
+A stable HyperFrames element identifier - the value of the `data-hf-id` attribute stamped on every editable element by `ensureHfIds`. Use `HfId` wherever you would write a raw `string` to signal that the value is an element id.
 
 ---
 
@@ -41,11 +41,11 @@ interface HyperFramesElement {
 ```
 
 <ResponseField name="id" type="string">
-  The element's `data-hf-id` value — unique within the top-level document.
+  The element's `data-hf-id` value - unique within the top-level document.
 </ResponseField>
 
 <ResponseField name="scopedId" type="string">
-  Fully-qualified scoped identifier: `host-chain-prefix/leaf`, separated by `/`. For top-level elements `scopedId === id`. For elements inside inlined sub-compositions the format is `"hf-HOST/hf-LEAF"` (any depth). Use `scopedId` — not `id` — as the canonical key in `dispatch()` targets, `getElement()`, `find()`, and `OverrideSet` keys when addressing sub-composition elements.
+  Fully-qualified scoped identifier: `host-chain-prefix/leaf`, separated by `/`. For top-level elements `scopedId === id`. For elements inside inlined sub-compositions the format is `"hf-HOST/hf-LEAF"` (any depth). Use `scopedId` - not `id` - as the canonical key in `dispatch()` targets, `getElement()`, `find()`, and `OverrideSet` keys when addressing sub-composition elements.
 </ResponseField>
 
 <ResponseField name="tag" type="string">
@@ -85,7 +85,7 @@ interface HyperFramesElement {
 </ResponseField>
 
 <ResponseField name="animationIds" type="readonly string[]">
-  IDs of GSAP tweens whose target is this element. Pass these to the GSAP tween ops in `dispatch()`.
+  IDs of GSAP adapter tweens whose target is this element. Pass these to the GSAP tween ops in `dispatch()`.
 </ResponseField>
 
 ---
@@ -96,7 +96,7 @@ interface HyperFramesElement {
 type ElementSnapshot = HyperFramesElement;
 ```
 
-Type alias for `HyperFramesElement`. Used in return types of `getElements()` and `getElement()` to signal that the value is a read-only snapshot — it does not update after subsequent mutations.
+Type alias for `HyperFramesElement`. Used in return types of `getElements()` and `getElement()` to signal that the value is a read-only snapshot - it does not update after subsequent mutations.
 
 ---
 
@@ -121,7 +121,7 @@ interface SdkDocument {
 </ResponseField>
 
 <ResponseField name="gsapScript" type="string | null">
-  Raw contents of the composition's GSAP `<script>` block, if present.
+  Raw contents of the composition's GSAP adapter `<script>` block, if present.
 </ResponseField>
 
 <ResponseField name="styles" type="string | null">
@@ -141,7 +141,7 @@ interface SdkDocument {
 </ResponseField>
 
 <ResponseField name="html" type="string">
-  Build-time snapshot of the `ensureHfIds`-stamped HTML. This value is **never updated** after mutations — call `comp.serialize()` to get the current document state.
+  Build-time snapshot of the `ensureHfIds`-stamped HTML. This value is **never updated** after mutations - call `comp.serialize()` to get the current document state.
 </ResponseField>
 
 ---
@@ -155,15 +155,15 @@ type OverrideSet = Record<
 >;
 ```
 
-A sparse map of overrides layered on top of a base composition template. Used in embedded override mode (T3) — pass as `overrides` to `openComposition()`, or read the accumulated delta with `comp.getOverrides()`.
+A sparse map of overrides layered on top of a base composition template. Used in embedded override mode (T3) - pass as `overrides` to `openComposition()`, or read the accumulated delta with `comp.getOverrides()`.
 
 **Key format:** `hfId.prop.path`, where:
 
-- `hfId.style.fontSize` — inline style property override
-- `hfId.text` — text content override
-- `hfId.attr.src` — attribute override
-- `hfId` (key only, value `null`) — element removed by user
-- `var.{id}` — variable override; value is a scalar or an object (`FontValue` / `ImageValue`)
+- `hfId.style.fontSize` - inline style property override
+- `hfId.text` - text content override
+- `hfId.attr.src` - attribute override
+- `hfId` (key only, value `null`) - element removed by user
+- `var.{id}` - variable override; value is a scalar or an object (`FontValue` / `ImageValue`)
 
 **`null` value** = removal marker: the element or property was deleted by the user.
 
@@ -181,7 +181,7 @@ const overrides: OverrideSet = {
 ```
 
 <Warning>
-  The value union includes `Record<string, unknown>` to admit object-valued variables (font, image). Code that reads an `OverrideSet` value must narrow before assuming a scalar — an object value type-checks anywhere `unknown` is accepted.
+  The value union includes `Record<string, unknown>` to admit object-valued variables (font, image). Code that reads an `OverrideSet` value must narrow before assuming a scalar - an object value type-checks anywhere `unknown` is accepted.
 </Warning>
 
 ---
@@ -205,7 +205,7 @@ interface FindQuery {
 </ResponseField>
 
 <ResponseField name="text" type="string">
-  Match by the element's direct text content (case-sensitive substring match — implemented with `String.includes`).
+  Match by the element's direct text content (case-sensitive substring match - implemented with `String.includes`).
 </ResponseField>
 
 <ResponseField name="name" type="string">
@@ -234,7 +234,7 @@ const subIds = comp.find({ composition: "hf-scene-2", tag: "img" });
 
 ## GsapTweenSpec
 
-Describes a single GSAP tween entry to create or update.
+Describes a single GSAP adapter tween entry to create or update. anime.js is the first-party default runtime for new composition authoring; this type supports existing or migrated GSAP adapter scripts.
 
 ```typescript
 interface GsapTweenSpec {
@@ -268,15 +268,15 @@ interface GsapTweenSpec {
 </ResponseField>
 
 <ResponseField name="fromProperties" type="Record<string, unknown>">
-  Start-state property map — used by `"from"` and `"fromTo"` methods.
+  Start-state property map - used by `"from"` and `"fromTo"` methods.
 </ResponseField>
 
 <ResponseField name="toProperties" type="Record<string, unknown>">
-  End-state property map — used by `"fromTo"` method.
+  End-state property map - used by `"fromTo"` method.
 </ResponseField>
 
 <ResponseField name="properties" type="Record<string, unknown>">
-  Animated property map — used by `"to"` method.
+  Animated property map - used by `"to"` method.
 </ResponseField>
 
 <ResponseField name="repeat" type="number">
@@ -295,7 +295,7 @@ interface GsapTweenSpec {
 
 ## KeyframeSpec
 
-A single keyframe entry for `addWithKeyframes` and `replaceWithKeyframes`. This is a structural shape, not a runtime export — you pass plain objects of this form to those methods; it is **not** re-exported from the `@hyperframes/sdk` barrel, so there is nothing to import.
+A single keyframe entry for `addWithKeyframes` and `replaceWithKeyframes`. This is a structural shape, not a runtime export - you pass plain objects of this form to those methods; it is **not** re-exported from the `@hyperframes/sdk` barrel, so there is nothing to import.
 
 ```typescript
 interface KeyframeSpec {
@@ -352,7 +352,7 @@ interface ElasticHold {
 
 ## FontValue
 
-Object value for a `font` composition variable. Always an object — never a raw CSS string.
+Object value for a `font` composition variable. Always an object - never a raw CSS string.
 
 ```typescript
 interface FontValue {
@@ -373,7 +373,7 @@ interface FontValue {
 
 ## ImageValue
 
-Object value for an `image` composition variable. Always an object — never a raw URL string.
+Object value for an `image` composition variable. Always an object - never a raw URL string.
 
 ```typescript
 interface ImageValue {
@@ -450,7 +450,7 @@ interface PatchEvent {
 </ResponseField>
 
 <ResponseField name="inversePatches" type="readonly JsonPatchOp[]">
-  Inverse patches that undo this change — apply to the new state to return to the previous state. Store these for host-side undo stacks.
+  Inverse patches that undo this change - apply to the new state to return to the previous state. Store these for host-side undo stacks.
 </ResponseField>
 
 <ResponseField name="origin" type="unknown">
@@ -458,7 +458,7 @@ interface PatchEvent {
 </ResponseField>
 
 <ResponseField name="opTypes" type="readonly string[]">
-  Semantic op names from the `EditOp.type` field (e.g. `["setStyle", "setText"]`). Intended for analytics and history labels. **Not versioned** — do not use in branching logic.
+  Semantic op names from the `EditOp.type` field (e.g. `["setStyle", "setText"]`). Intended for analytics and history labels. **Not versioned** - do not use in branching logic.
 </ResponseField>
 
 **Loop prevention.** When a host mirrors patch events into the SDK via `applyPatches()`, it must skip events that originated from that call to avoid infinite loops:
@@ -487,7 +487,7 @@ type CanResult =
 </ResponseField>
 
 <ResponseField name="code" type="string">
-  Stable error code for `ok: false` — safe to use in `switch` statements. See the code table in [Edit Operations](/sdk/reference/edit-operations#dispatch-batch-and-can).
+  Stable error code for `ok: false` - safe to use in `switch` statements. See the code table in [Edit Operations](/sdk/reference/edit-operations#dispatch-batch-and-can).
 </ResponseField>
 
 <ResponseField name="message" type="string">
@@ -521,7 +521,7 @@ interface ElementTimingSnapshot {
 </ResponseField>
 
 <ResponseField name="labels" type="string[]">
-  GSAP `addLabel` names whose numeric position falls within `[enterAt, exitAt]` for this element. Parsed fresh from the GSAP script on every `getElementTimings()` call — never cached.
+  GSAP `addLabel` names whose numeric position falls within `[enterAt, exitAt]` for this element. Parsed fresh from the GSAP script on every `getElementTimings()` call, never cached.
 </ResponseField>
 
 ---
@@ -556,7 +556,7 @@ if (sel.ids.length > 0) {
 
 ## ElementHandle
 
-A curried element handle returned by `comp.element(id)`. Holds only the id string — no stale-reference hazard — and provides the same mutation methods as typed methods on `Composition`.
+A curried element handle returned by `comp.element(id)`. Holds only the id string - no stale-reference hazard - and provides the same mutation methods as typed methods on `Composition`.
 
 ```typescript
 interface ElementHandle {
@@ -587,14 +587,14 @@ const ORIGIN_LOCAL = "local";
 
 Reserved `origin` tag constants:
 
-- **`ORIGIN_APPLY_PATCHES`** — automatically set by `comp.applyPatches()`. Listeners **must** skip this origin to prevent undo loops when mirroring patch events back into the SDK. Uses a namespaced string (not a unique Symbol) so the sentinel survives realm boundaries such as `postMessage` and structured clone, which T3 embedded hosts may use to forward patch events.
-- **`ORIGIN_LOCAL`** — default origin used when `dispatch()` or `batch()` is called without an explicit `origin` option. Signals UI-driven user edits.
+- **`ORIGIN_APPLY_PATCHES`** - automatically set by `comp.applyPatches()`. Listeners **must** skip this origin to prevent undo loops when mirroring patch events back into the SDK. Uses a namespaced string (not a unique Symbol) so the sentinel survives realm boundaries such as `postMessage` and structured clone, which T3 embedded hosts may use to forward patch events.
+- **`ORIGIN_LOCAL`** - default origin used when `dispatch()` or `batch()` is called without an explicit `origin` option. Signals UI-driven user edits.
 
 ```typescript
 comp.on("patch", ({ origin }) => {
-  if (origin === ORIGIN_APPLY_PATCHES) return; // skip — would loop
+  if (origin === ORIGIN_APPLY_PATCHES) return; // skip - would loop
   if (origin === ORIGIN_LOCAL) {
-    // user-driven edit — sync to collaboration layer
+    // user-driven edit - sync to collaboration layer
   }
 });
 ```
@@ -646,7 +646,7 @@ type EditOp =
 
 ## PersistErrorEvent
 
-Emitted by `comp.on('persist:error', handler)` when an autosave write fails. Failures are non-fatal — the session continues operating normally.
+Emitted by `comp.on('persist:error', handler)` when an autosave write fails. Failures are non-fatal - the session continues operating normally.
 
 ```typescript
 interface PersistErrorEvent {
@@ -665,4 +665,3 @@ interface PersistErrorEvent {
 <ResponseField name="error.cause" type="unknown">
   Underlying error object, if available.
 </ResponseField>
-

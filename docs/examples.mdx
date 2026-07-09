@@ -3,7 +3,7 @@ title: Examples
 description: "Built-in examples for common video patterns. Hover to preview animations."
 ---
 
-Hyperframes includes starter examples to help you scaffold compositions quickly. Each example gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and a [GSAP timeline](/guides/gsap-animation) already wired up.
+Hyperframes includes starter examples to help you scaffold compositions quickly. Each example gives you a working project with the correct [composition structure](/concepts/compositions), [data attributes](/concepts/data-attributes), and an [anime.js timeline](/guides/anime-animation) already wired up.
 
 <Note>
   Looking for finished videos and production projects? Start with the [Showcase](/showcase).
@@ -56,7 +56,7 @@ npx hyperframes init my-video --example <name>
 </div>
 
 <Tip>
-  Looking for a minimal starting point? Use **blank** — it gives you an empty composition with just the scaffolding, no visual design.
+  Looking for a minimal starting point? Use **blank** - it gives you an empty composition with just the scaffolding, no visual design.
 
   ```bash Terminal
   npx hyperframes init my-video --example blank
@@ -75,7 +75,7 @@ npx hyperframes init my-video --example <name>
 | `product-promo` | Multi-scene | Landscape | Product showcases, demos |
 | `nyt-graph` | Editorial data | Landscape | Data stories, reports |
 | `vignelli` | Bold, typographic | Portrait | Headlines, announcements |
-| `blank` | Minimal scaffolding | — | Full control, agent-generated |
+| `blank` | Minimal scaffolding | none | Full control, agent-generated |
 
 ## Example Details
 
@@ -231,21 +231,20 @@ The CLI will probe the video for duration, resolution, and codec. If the video u
 Any directory with an `index.html` can serve as an example. Your custom example needs:
 
 1. An `index.html` with a [`data-composition-id`](/concepts/data-attributes#composition-attributes) root element
-2. A [GSAP timeline](/guides/gsap-animation) registered in `window.__timelines`
+2. An [anime.js timeline](/guides/anime-animation) registered with `hyperframesAnime.register(...)`
 3. Any assets in the same directory or a subdirectory
 
 ```html index.html
 <div id="root" data-composition-id="my-example"
-     data-start="0" data-width="1920" data-height="1080">
+     data-start="0" data-duration="5" data-width="1920" data-height="1080">
 
   <!-- Your elements here -->
 
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   <script>
-    const tl = gsap.timeline({ paused: true });
+    const tl = anime.createTimeline({ autoplay: false });
     // Add your animations...
-    window.__timelines = window.__timelines || {};
-    window.__timelines["my-example"] = tl;
+    hyperframesAnime.register("my-example", tl, { labels: {} });
   </script>
 </div>
 ```
@@ -263,9 +262,9 @@ npx hyperframes lint
     Create, preview, and render your first video
   </Card>
   <Card title="Launch Videos" icon="github" href="/launch-videos">
-    Real production projects from HeyGen's launches — open-source for you to read and remix.
+    Real production projects from HeyGen's launches - open-source for you to read and remix.
   </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
+  <Card title="anime.js Animation" icon="wand-magic-sparkles" href="/guides/anime-animation">
     Add animations to your example
   </Card>
   <Card title="Compositions" icon="layer-group" href="/concepts/compositions">

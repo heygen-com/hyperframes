@@ -81,7 +81,7 @@ Use a different port if `3002` is already busy:
 npx hyperframes preview --port 4567
 ```
 
-Inside the Studio, shortcuts are grouped the same way the playbar's `⌨` panel groups them — playback first, then work-area markers, view controls, and app-level commands. Open the `⌨` panel in the playbar for an in-app cheatsheet, a frame-jump input, and live readouts of the in/out points.
+Inside the Studio, shortcuts are grouped the same way the playbar's `⌨` panel groups them - playback first, then work-area markers, view controls, and app-level commands. Open the `⌨` panel in the playbar for an in-app cheatsheet, a frame-jump input, and live readouts of the in/out points.
 
 ### Playback
 
@@ -107,7 +107,7 @@ Inside the Studio, shortcuts are grouped the same way the playbar's `⌨` panel 
 | `A` | Jump to in-point (or composition start if unset) |
 | `E` | Jump to out-point (or composition end if unset) |
 
-The in and out points define a **work area**. When loop is on, both forward and backward playback loop within those boundaries — useful for tightening a transition or scrubbing a single clip without trimming it. The seek bar renders a teal band between in and out, with tick markers at each point. Clear the markers from the `⌨` panel or with `Shift+I` and `Shift+O`.
+The in and out points define a **work area**. When loop is on, both forward and backward playback loop within those boundaries - useful for tightening a transition or scrubbing a single clip without trimming it. The seek bar renders a teal band between in and out, with tick markers at each point. Clear the markers from the `⌨` panel or with `Shift+I` and `Shift+O`.
 
 ### View
 
@@ -128,7 +128,7 @@ The in and out points define a **work area**. When loop is on, both forward and 
 | `Escape` | Leave a sub-composition or close editor dialogs |
 
 <Tip>
-  Preview uses the same runtime as rendering, so the visual frame matches the output. If preview stutters on a heavy frame but the render is clean, that is expected — preview plays in real time, render captures one frame at a time.
+  Preview uses the same runtime as rendering, so the visual frame matches the output. If preview stutters on a heavy frame but the render is clean, that is expected - preview plays in real time, render captures one frame at a time.
 </Tip>
 
 ## Agent-Led Editing
@@ -154,7 +154,7 @@ Use agents for:
 
 - creating scenes from scratch
 - refactoring repeated visual patterns
-- wiring GSAP timelines
+- wiring anime.js timelines
 - fixing broken timing, layout overflow, or render errors
 - turning a manual visual tweak into reusable, clean HTML/CSS
 
@@ -209,22 +209,22 @@ Use these attributes like timeline controls:
 | `data-volume` | Audio volume for an audio or video clip |
 | `data-composition-src` | Nested scene or reusable overlay |
 
-For GSAP animation, register one paused timeline per composition:
+For anime.js animation, register one paused timeline per composition:
 
 ```html
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
-  tl.from("#title", { opacity: 0, y: 40, duration: 0.6 });
-  tl.set({}, {}, 5); // keeps the timeline at least 5 seconds long
+  tl.add("#title", { opacity: [0, 1], translateY: [40, 0], duration: 600, ease: "outQuart" }, 0);
+  tl.add({}, { duration: 5000 }, 0); // keeps the timeline at least 5 seconds long
 
-  window.__timelines["main"] = tl;
+  hyperframesAnime.register("main", tl, { labels: {} });
 </script>
 ```
 
 <Warning>
-  If a video cuts off early, check that the GSAP timeline is at least as long as the intended edit. The final `tl.set({}, {}, 5)` pattern is the fix.
+  If a video cuts off early, check that the root `data-duration` is set or that the longest finite registered anime.js instance is at least as long as the intended edit.
 </Warning>
 
 ## Render Presets
@@ -289,7 +289,7 @@ For editor-facing changes, keep `npx hyperframes preview` running, then have the
     How to direct AI agents to build better videos
   </Card>
   <Card title="Timeline Editing" icon="timeline" href="/guides/timeline-editing">
-    Timing, tracks, and GSAP timeline patterns
+    Timing, tracks, and animation patterns
   </Card>
   <Card title="Common Mistakes" icon="circle-exclamation" href="/guides/common-mistakes">
     Pitfalls the linter can't catch

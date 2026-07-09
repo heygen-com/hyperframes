@@ -3,12 +3,12 @@ title: Contributing to the Catalog
 description: How to add blocks and components to the HyperFrames registry.
 ---
 
-Your agent already knows how to build video components. It writes HTML. HyperFrames renders it. The registry is the collection of everything that's been built — 52 blocks and counting.
+Your agent already knows how to build video components. It writes HTML. HyperFrames renders it. The registry is the collection of everything that's been built - 52 blocks and counting.
 
 This guide shows you how to add to it.
 
 <Info>
-**Quick version** — Fork the repo. Write one HTML file with a paused GSAP timeline. Add `registry-item.json`. Run `hyperframes lint` + `validate`. Publish with `npx hyperframes publish`. Open a PR.
+**Quick version** - Fork the repo. Write one HTML file with a paused anime.js timeline, add `runtime: "animejs"` to `registry-item.json`, run `hyperframes lint` + `validate`, publish with `npx hyperframes publish`, and open a PR.
 </Info>
 
 ## Why Contribute?
@@ -47,9 +47,9 @@ The `/hyperframes-registry` skill scaffolds the structure, validates, renders a 
 
 ## What Goes in the Registry
 
-**Blocks** (`registry/blocks/`) — full standalone compositions. Fixed dimensions, fixed duration. Caption styles, VFX effects, title cards, transitions.
+**Blocks** (`registry/blocks/`) - full standalone compositions. Fixed dimensions, fixed duration. Caption styles, VFX effects, title cards, transitions.
 
-**Components** (`registry/components/`) — reusable snippets. No fixed size. CSS effects, text treatments, overlays that adapt to any composition.
+**Components** (`registry/components/`) - reusable snippets. No fixed size. CSS effects, text treatments, overlays that adapt to any composition.
 
 ### Structure
 
@@ -68,6 +68,7 @@ registry/blocks/my-block/
   "type": "hyperframes:block",
   "title": "My Block",
   "description": "What this block does in one sentence",
+  "runtime": "animejs",
   "tags": ["category", "subcategory"],
   "dimensions": { "width": 1920, "height": 1080 },
   "duration": 5,
@@ -81,6 +82,8 @@ registry/blocks/my-block/
 }
 ```
 
+`runtime` declares the animation engine used by the registry item. New contributions default to `"animejs"`. Existing or migrated GSAP-authored items declare `"runtime": "gsap"`, so installers and docs can route users to the correct adapter guidance. Omitted `runtime` is treated as legacy GSAP for backward compatibility, but new registry items should always set it explicitly.
+
 ## The Rules
 
 Five things that must be true for every registry item:
@@ -90,21 +93,21 @@ Five things that must be true for every registry item:
     No `Math.random()`, no `Date.now()`. Use seeded PRNG only.
   </Step>
   <Step title="Paused timeline">
-    `gsap.timeline({ paused: true })`. The player controls playback.
+    Use `anime.createTimeline({ autoplay: false })` or `anime.animate(..., { autoplay: false })`. The player controls playback.
   </Step>
   <Step title="Register timeline">
-    `window.__timelines["id"]` must match `data-composition-id`.
+    `hyperframesAnime.register("id", tl, { labels })` must match `data-composition-id`.
   </Step>
   <Step title="No requestAnimationFrame">
-    Use `tl.eventCallback("onUpdate", render)` for Three.js/WebGL scenes.
+    Drive Three.js/WebGL scenes from the registered timeline's current position or `hf-seek` events.
   </Step>
   <Step title="Hard kills on captions">
-    `tl.set(el, { opacity: 0, visibility: "hidden" }, group.end)` — no lingering text.
+    Set caption opacity and visibility to hidden at the group end. No lingering text.
   </Step>
 </Steps>
 
 <Warning>
-Break any of these and renders won't be reproducible. The renderer captures every frame by seeking the timeline — if your animation depends on real time or random state, it breaks.
+Break any of these and renders won't be reproducible. The renderer captures every frame by seeking the registered animation. If your animation depends on real time or random state, it breaks.
 </Warning>
 
 ## Quality Bar
@@ -115,16 +118,16 @@ Not everything belongs in the registry. The bar is production quality.
 |------|-----------------|
 | Captions | 96px+ font, text-stroke/shadow, overflow prevention |
 | VFX | Solves a problem that takes 4+ hours from scratch |
-| Transitions | Smoother than CSS — if opacity 0→1 works, it's not a transition |
+| Transitions | Smoother than CSS - if opacity 0→1 works, it's not a transition |
 | Blocks | Would a professional use this in a client project? |
 
 ### Common rejection reasons
 
-1. **"Looks like a demo"** — a spinning cube is not a component
-2. **"Text unreadable"** — font too small, no contrast treatment
-3. **"Non-deterministic"** — `Math.random()` or `Date.now()`
-4. **"Timeline not found"** — ID mismatch between HTML and JS
-5. **"Breaks as sub-composition"** — element IDs collide (prefix everything)
+1. **"Looks like a demo"** - a spinning cube is not a component
+2. **"Text unreadable"** - font too small, no contrast treatment
+3. **"Non-deterministic"** - `Math.random()` or `Date.now()`
+4. **"Animation registration not found"** - ID mismatch between HTML and JS
+5. **"Breaks as sub-composition"** - element IDs collide (prefix everything)
 
 ## Workflow
 

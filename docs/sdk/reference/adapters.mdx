@@ -1,6 +1,6 @@
 ---
 title: "Adapters"
-description: "Persistence and preview adapter interfaces, contracts, and the built-in factory functions."
+description: "Persistence and preview adapter interfaces, contracts, and built-in factory functions."
 ---
 
 The SDK decouples editing sessions from storage and preview surfaces through two injectable interfaces: `PersistAdapter` and `PreviewAdapter`. Both ship with concrete factory functions you pass to `openComposition()`. You can also implement either interface directly for custom storage backends (S3, IndexedDB, HTTP) or custom preview surfaces.
@@ -31,7 +31,7 @@ interface PersistAdapter {
 </ParamField>
 
 <ParamField path="write" type="(path: string, content: string) => Promise<void>">
-  Persists `content` at `path`. Idempotent — a second call with the same path overwrites the prior value. Write failures must not propagate as thrown exceptions; fire `persist:error` instead.
+  Persists `content` at `path`. Idempotent - a second call with the same path overwrites the prior value. Write failures must not propagate as thrown exceptions; fire `persist:error` instead.
 </ParamField>
 
 <ParamField path="flush" type="() => Promise<void>">
@@ -47,16 +47,16 @@ interface PersistAdapter {
 </ParamField>
 
 <ParamField path="on" type='(event: "persist:error", handler) => () => void'>
-  Subscribes to write failures. Returns an unsubscribe function. Adapters must emit this event — not throw — when a write fails, so the session continues running even when storage is temporarily unavailable.
+  Subscribes to write failures. Returns an unsubscribe function. Adapters must emit this event - not throw - when a write fails, so the session continues running even when storage is temporarily unavailable.
 </ParamField>
 
 ### Contract summary
 
-- `read()` returns `undefined` for a path that has never been written — never throws ENOENT or a 404 equivalent.
+- `read()` returns `undefined` for a path that has never been written - never throws ENOENT or a 404 equivalent.
 - `write()` is idempotent; a second write to the same path replaces the stored content.
 - `flush()` resolves when any pending writes are committed to durable storage.
 - `listVersions()` returns entries newest-first; `loadFrom()` uses the keys from those entries.
-- Write errors are emitted via `on('persist:error')`, never thrown — the session keeps running.
+- Write errors are emitted via `on('persist:error')`, never thrown - the session keeps running.
 
 ### PersistVersionEntry
 
@@ -64,13 +64,13 @@ interface PersistAdapter {
 interface PersistVersionEntry {
   /** Opaque key identifying this version (adapter-defined format). */
   key: string;
-  /** Full HTML content — may be omitted by adapters that load content lazily via loadFrom(). */
+  /** Full HTML content - may be omitted by adapters that load content lazily via loadFrom(). */
   content?: string;
   timestamp?: number;
 }
 ```
 
-The `key` is adapter-defined and opaque to callers — pass it directly to `loadFrom()`. The filesystem adapter encodes milliseconds and a counter into the key; the memory adapter uses an incrementing `"v1"`, `"v2"` … scheme.
+The `key` is adapter-defined and opaque to callers - pass it directly to `loadFrom()`. The filesystem adapter encodes milliseconds and a counter into the key; the memory adapter uses an incrementing `"v1"`, `"v2"` … scheme.
 
 ---
 
@@ -96,11 +96,11 @@ interface PreviewAdapter {
 ```
 
 <ParamField path="elementAtPoint" type="(x, y, opts?) => ElementAtPointResult | null">
-  Synchronous hit-test at composition coordinates `(x, y)`. Returns the nearest `[data-hf-id]` element under the point, or `null` for a transparent hit (the composition root, an opacity-0 element, or nothing at all). Requires a same-origin iframe — cross-origin access throws a DOMException. The `atTime` option reflects GSAP state at the current playhead; seeking to a speculative time is not supported.
+  Synchronous hit-test at composition coordinates `(x, y)`. Returns the nearest `[data-hf-id]` element under the point, or `null` for a transparent hit (the composition root, an opacity-0 element, or nothing at all). Requires a same-origin iframe. Cross-origin access throws a DOMException. The `atTime` option reflects the current adapter state at the playhead; seeking to a speculative time is not supported.
 </ParamField>
 
 <ParamField path="applyDraft" type="(id: string, props: DraftProps) => void">
-  Visually translates the preview element at 60fps during a drag: sets the element's CSS `translate` to its pre-drag value composed with the accumulated delta. Works on GSAP-animated elements (a `translate` set after GSAP's first parse composes with the animated transform). The **SDK is not called here** — this is a direct write to the preview surface by your pointer-move handler. Switching `id` mid-drag reverts the previous element's draft first.
+  Visually translates the preview element at 60fps during a drag: sets the element's CSS `translate` to its pre-drag value composed with the accumulated delta. Works on adapter-animated elements, including anime.js defaults and GSAP adapter compositions. The **SDK is not called here**, this is a direct write to the preview surface by your pointer-move handler. Switching `id` mid-drag reverts the previous element's draft first.
 </ParamField>
 
 <ParamField path="commitPreview" type="() => void">
@@ -116,7 +116,7 @@ interface PreviewAdapter {
 </ParamField>
 
 <ParamField path="on" type='(event: "selection", handler: (ids: string[]) => void) => () => void'>
-  Fired when the preview host changes the selection (for example, the user clicks an element). Returns an unsubscribe function. In the current release, callers listen to the session's own `selectionchange` event instead — this hook is wired in a future stage.
+  Fired when the preview host changes the selection (for example, the user clicks an element). Returns an unsubscribe function. In the current release, callers listen to the session's own `selectionchange` event instead - this hook is wired in a future stage.
 </ParamField>
 
 ### ElementAtPointResult
@@ -144,7 +144,7 @@ interface DraftProps {
 `dx` and `dy` are the accumulated drag deltas in composition pixels. `width` and `height` are defined in the interface for forward compatibility but are not yet wired to any op.
 
 <Note>
-  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel — you implement against these shapes rather than importing them.
+  `ElementAtPointResult` and `DraftProps` are the structural shapes a `PreviewAdapter` produces and consumes. They are **not** re-exported from the `@hyperframes/sdk` barrel. You implement against these shapes rather than importing them.
 </Note>
 
 ---
@@ -161,7 +161,7 @@ function createMemoryAdapter(): PersistAdapter & { injectFault(message: string):
 
 Returns a `PersistAdapter` backed by an in-process `Map`. Writes are synchronous; `flush()` is a no-op. Versions are keyed `"v1"`, `"v2"` … and stored in memory with full content.
 
-The returned value also exposes `injectFault(message)` — a test helper that causes the **next** `write()` call to fire a `persist:error` event with `message` instead of committing. Use this in unit tests to verify your error-handling code path.
+The returned value also exposes `injectFault(message)` - a test helper that causes the **next** `write()` call to fire a `persist:error` event with `message` instead of committing. Use this in unit tests to verify your error-handling code path.
 
 ```typescript
 const persist = createMemoryAdapter();
@@ -187,7 +187,7 @@ import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
 function createFsAdapter(opts: FsAdapterOptions): PersistAdapter;
 ```
 
-**Node.js only.** Returns a `PersistAdapter` that reads and writes files under a root directory. Import from the `@hyperframes/sdk/adapters/fs` subpath — this module uses Node `fs/promises` and is excluded from the browser-safe main bundle.
+**Node.js only.** Returns a `PersistAdapter` that reads and writes files under a root directory. Import from the `@hyperframes/sdk/adapters/fs` subpath. This module uses Node `fs/promises` and is excluded from the browser-safe main bundle.
 
 #### FsAdapterOptions
 
@@ -229,7 +229,7 @@ const previous = await adapter.loadFrom("index.html", versions[1].key);
 ```
 
 <Warning>
-  `createFsAdapter` uses Node.js `fs/promises`. Do not import it in browser or edge environments — import from `@hyperframes/sdk/adapters/fs` (the subpath) so bundlers can tree-shake it.
+  `createFsAdapter` uses Node.js `fs/promises`. Do not import it in browser or edge environments - import from `@hyperframes/sdk/adapters/fs` (the subpath) so bundlers can tree-shake it.
 </Warning>
 
 ---
@@ -242,7 +242,7 @@ import { createHeadlessAdapter } from "@hyperframes/sdk";
 function createHeadlessAdapter(): PreviewAdapter;
 ```
 
-Returns a no-op `PreviewAdapter` for headless use: agents, CI pipelines, and server-side rendering. All methods are stubs — `elementAtPoint` always returns `null`, `applyDraft` and `commitPreview` are no-ops, and the `"selection"` event never fires.
+Returns a no-op `PreviewAdapter` for headless use: agents, CI pipelines, and server-side rendering. All methods are stubs - `elementAtPoint` always returns `null`, `applyDraft` and `commitPreview` are no-ops, and the `"selection"` event never fires.
 
 Pass this adapter when you open a composition for programmatic editing and do not need a live preview surface.
 
@@ -275,7 +275,7 @@ Returns a `PreviewAdapter` that bridges the SDK to a same-origin `<iframe>` cont
 
 **Requirements:**
 - The iframe must be same-origin (e.g. a `srcdoc` or `blob:` URL). Cross-origin access to `contentDocument` throws a `DOMException`.
-- Pass your session's `dispatch` callback to enable `commitPreview()` — without it, pointer-up is a no-op on the model.
+- Pass your session's `dispatch` callback to enable `commitPreview()`. Without it, pointer-up is a no-op on the model.
 
 **Image-alpha hit-testing:** For `<img>` elements, the adapter samples the alpha channel of the pixel under the pointer using an `OffscreenCanvas`. Transparent pixels fall through to the element behind. Cross-origin images that taint the canvas are treated as opaque (safe fallback, logged once per src).
 
@@ -319,4 +319,3 @@ preview.commitPreview();
     Building a visual editor canvas with the iframe preview adapter and hit-testing.
   </Card>
 </CardGroup>
-

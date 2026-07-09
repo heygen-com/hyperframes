@@ -1,9 +1,9 @@
 ---
 title: "@hyperframes/studio-server"
-description: "The studio preview/editor backend — a mountable Hono API, extracted from core."
+description: "The studio preview/editor backend, a mountable Hono API extracted from core."
 ---
 
-The studio-server package is the HTTP backend that powers studio preview and editing — project routes, file serving, preview bundling, thumbnails, and source-mutation helpers. It was extracted from `@hyperframes/core/studio-api` into a dedicated package so an embedder can mount the studio backend **without** depending on core's full surface, and so core no longer ships a web server it doesn't need at render time.
+The studio-server package is the HTTP backend that powers studio preview and editing: project routes, file serving, preview bundling, thumbnails, and source-mutation helpers. It was extracted from `@hyperframes/core/studio-api` into a dedicated package so an embedder can mount the studio backend **without** depending on core's full surface, and so core no longer ships a web server it doesn't need at render time.
 
 ```bash
 npm install @hyperframes/studio-server
@@ -60,7 +60,7 @@ const api = createStudioApi(adapter); // → Hono app
 app.route('/api', api);
 ```
 
-The adapter is the seam between the framework-agnostic route logic and your storage / bundling / lint implementation — the [CLI](/packages/cli) supplies a filesystem-backed adapter, but you can back it with anything.
+The adapter is the seam between the framework-agnostic route logic and your storage / bundling / lint implementation - the [CLI](/packages/cli) supplies a filesystem-backed adapter, but you can back it with anything.
 
 ## Helpers
 
@@ -88,7 +88,7 @@ import type {
     The browser editor UI this server backs.
   </Card>
   <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
-    The HTML + GSAP parsing layer it builds on.
+    The HTML, anime.js, and GSAP parsing layer it builds on.
   </Card>
   <Card title="@hyperframes/core" icon="cube" href="/packages/core">
     Types and runtime; re-exports the studio API for back-compat.

@@ -1,9 +1,9 @@
 ---
 title: "@hyperframes/parsers"
-description: "The GSAP + HTML parser/writer suite — standalone, zero @hyperframes/* dependencies."
+description: "The anime.js, GSAP, and HTML parser/writer suite, standalone and zero @hyperframes/* dependencies."
 ---
 
-The parsers package is the standalone foundation extracted from core. It owns the GSAP animation parser/writer (recast **and** acorn implementations), the HTML composition parser, hf-id stamping, and spring-ease generation. It has **no `@hyperframes/*` dependencies**, so it's the base every other package builds on.
+The parsers package is the standalone foundation extracted from core. It owns the anime.js and GSAP animation parsers/writers, the HTML composition parser, hf-id stamping, and spring-ease generation. It has **no `@hyperframes/*` dependencies**, so it's the base every other package builds on.
 
 ```bash
 npm install @hyperframes/parsers
@@ -17,7 +17,7 @@ npm install @hyperframes/parsers
 
 **Use `@hyperframes/parsers` when you need to:**
 - Parse HTML compositions into structured TypeScript objects
-- Parse, edit, and re-serialize GSAP timeline scripts (AST round-trip)
+- Parse, edit, and re-serialize anime.js and GSAP timeline scripts (AST round-trip)
 - Stamp deterministic `hf-id` attributes onto a document
 - Build tooling that touches the parsing layer but doesn't need core's runtime, compiler, or generators
 
@@ -26,6 +26,10 @@ npm install @hyperframes/parsers
 | Import | Description |
 |--------|-------------|
 | `@hyperframes/parsers` | HTML parser, GSAP serialize/validate helpers, hf-ids, shared types |
+| `@hyperframes/parsers/animejs-parser` | anime.js parser exports, `parseAnimeJsScript`, labels, constants |
+| `@hyperframes/parsers/animejs-parser-acorn` | Acorn-based anime.js parser (browser-safe, read path) |
+| `@hyperframes/parsers/animejs-writer-acorn` | Acorn-based anime.js writer (mutation helpers) |
+| `@hyperframes/parsers/animejs-constants` | anime.js supported props, eases, and property groups |
 | `@hyperframes/parsers/gsap-parser` | GSAP parser exports, `parseGsapScript`, `SUPPORTED_PROPS`, `SUPPORTED_EASES` |
 | `@hyperframes/parsers/gsap-parser-acorn` | Acorn-based GSAP parser (browser-safe, read path) |
 | `@hyperframes/parsers/gsap-writer-acorn` | Acorn-based GSAP writer (mutation helpers) |
@@ -39,7 +43,7 @@ npm install @hyperframes/parsers
 | `@hyperframes/parsers/sub-composition-validity` | Sub-composition validation utilities |
 
 <Info>
-  The package ships subpath entries so consumers tree-shake to what they use — importing `@hyperframes/parsers/hf-ids` (a couple KB) does **not** pull in the GSAP AST machinery (recast/babel/acorn).
+  The package ships subpath entries so consumers tree-shake to what they use. Importing `@hyperframes/parsers/hf-ids` (a couple KB) does **not** pull in the anime.js or GSAP AST machinery.
 </Info>
 
 ## HTML Parsing
@@ -80,9 +84,25 @@ const added = addElementToHtml(html, newElement);
 const cleaned = removeElementFromHtml(html, 'el-1');
 ```
 
+## anime.js Script Parsing
+
+The anime.js acorn parser/writer is the default animation tooling path for new compositions. Parse an anime.js script, mutate editable literal calls, and serialize it back without losing surrounding code:
+
+```typescript
+import { parseAnimeJsScript, extractAnimeJsLabels } from '@hyperframes/parsers/animejs-parser';
+import {
+  updateAnimeJsAnimationInScript,
+  addAnimeJsAnimationToScript,
+  removeAnimeJsAnimationFromScript,
+} from '@hyperframes/parsers/animejs-writer-acorn';
+
+const parsed = parseAnimeJsScript(scriptContent);
+// parsed.animations, parsed.timelineVar, parsed.labels
+```
+
 ## GSAP Script Parsing
 
-The acorn parser/writer is the primary path (browser-safe). Parse a timeline script, mutate it, and serialize it back without losing surrounding code:
+GSAP remains supported as an adapter path for existing and migrated compositions. The acorn parser/writer is the primary GSAP path (browser-safe). Parse a timeline script, mutate it, and serialize it back without losing surrounding code:
 
 ```typescript
 import { parseGsapScriptAcorn, extractGsapLabels } from '@hyperframes/parsers/gsap-parser-acorn';
@@ -127,6 +147,16 @@ import {
 import type { PropertyGroupName } from '@hyperframes/parsers/gsap-constants';
 ```
 
+### anime.js Constants
+
+```typescript
+import {
+  SUPPORTED_ANIMEJS_PROPS,
+  SUPPORTED_ANIMEJS_EASES,
+  ANIMEJS_PROPERTY_GROUPS,
+} from '@hyperframes/parsers/animejs-constants';
+```
+
 ## hf-ids
 
 Deterministic element identity for stable diffing and editing:
@@ -148,7 +178,7 @@ import { generateSpringEaseData, SPRING_PRESETS } from '@hyperframes/parsers/spr
 
 <CardGroup cols={2}>
   <Card title="@hyperframes/core" icon="cube" href="/packages/core">
-    Types, generators, runtime, and compiler — re-exports the parser API it needs.
+    Types, generators, runtime, and compiler, including the first-party anime.js runtime adapter.
   </Card>
   <Card title="@hyperframes/lint" icon="circle-check" href="/packages/lint">
     The composition linter, built on the parsers.

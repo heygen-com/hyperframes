@@ -18,10 +18,10 @@ npm install @hyperframes/producer
 - Benchmark render performance across different configurations
 
 **Use a different package if you want to:**
-- Render from the command line without writing code — use the [CLI](/packages/cli) (`npx hyperframes render`)
-- Preview compositions in the browser — use the [CLI](/packages/cli) or [studio](/packages/studio)
-- Capture frames without encoding — use the [engine](/packages/engine)
-- Lint or parse composition HTML — use [core](/packages/core)
+- Render from the command line without writing code - use the [CLI](/packages/cli) (`npx hyperframes render`)
+- Preview compositions in the browser - use the [CLI](/packages/cli) or [studio](/packages/studio)
+- Capture frames without encoding - use the [engine](/packages/engine)
+- Lint or parse composition HTML - use [core](/packages/core)
 
 <Tip>
   If you are building a web application or script that just needs to render a video, the [CLI](/packages/cli) is the fastest path. The producer package is for when you need programmatic control inside Node.js.
@@ -36,7 +36,7 @@ The producer orchestrates the full render pipeline:
     Reads your `index.html` and any referenced sub-compositions.
   </Step>
   <Step title="Inject the Hyperframes runtime">
-    Adds the runtime script that manages timeline seeking, clip lifecycle, and media playback.
+    Adds the runtime script that manages timeline seeking, clip lifecycle, and media playback. The runtime drives anime.js as the first-party default adapter and continues to drive GSAP through the supported adapter path.
   </Step>
   <Step title="Wait for readiness gates">
     Polls for `window.__playerReady` and `window.__renderReady` to ensure all assets (fonts, images, video) are loaded before capture begins.
@@ -104,7 +104,7 @@ When `format: 'webm'`:
 
 #### HDR Output
 
-Set `hdrMode` to control HDR behavior. The producer probes every video and image source for BT.2020 / PQ / HLG color tagging — if any HDR source is found and the mode allows it, the output uses H.265 10-bit BT.2020 with HDR10 static metadata. SDR-only compositions are unaffected.
+Set `hdrMode` to control HDR behavior. The producer probes every video and image source for BT.2020 / PQ / HLG color tagging - if any HDR source is found and the mode allows it, the output uses H.265 10-bit BT.2020 with HDR10 static metadata. SDR-only compositions are unaffected.
 
 ```typescript
 const job = createRenderJob({
@@ -122,7 +122,7 @@ When `hdrMode` is `'auto'` or `'force-hdr'`:
 - HDR videos and images are extracted as 16-bit linear-light pixels and composited natively
 - SDR DOM overlays are converted from sRGB → BT.2020 before being layered on top
 - Output uses `libx265` with `yuv420p10le` and HDR10 mastering / content-light-level metadata
-- `format` must be `'mp4'` — `'mov'` and `'webm'` fall back to SDR
+- `format` must be `'mp4'` - `'mov'` and `'webm'` fall back to SDR
 - HDR `<img>` extraction support is **still images only**; animated GIF inputs are prepared as timeline-synced video before render
 
 For full details on source requirements, fallback rules, and verification, see [HDR Rendering](/guides/hdr).
@@ -168,7 +168,7 @@ await startServer({ port: 8080 });
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/render` | Blocking render — returns JSON result |
+| `POST` | `/render` | Blocking render - returns JSON result |
 | `POST` | `/render/stream` | Streaming render with Server-Sent Events |
 | `POST` | `/lint` | Lint a composition for issues |
 | `GET` | `/health` | Health check |
@@ -188,7 +188,7 @@ const app = createProducerApp(options);
 
 ## Docker Rendering
 
-For deterministic output, the producer can render inside a Docker container with a pinned Chrome version and font set. This guarantees identical output across machines — critical for CI pipelines and production services.
+For deterministic output, the producer can render inside a Docker container with a pinned Chrome version and font set. This guarantees identical output across machines - critical for CI pipelines and production services.
 
 ```bash
 # Via the CLI (recommended)
@@ -295,7 +295,7 @@ if (i % 30 === 0 && (log.isLevelEnabled?.("debug") ?? true)) {
 }
 ```
 
-The `?? true` fallback means callers using a custom logger that does not implement `isLevelEnabled` continue to build and pass the meta object — the optimization is opt-in for logger implementations that want it.
+The `?? true` fallback means callers using a custom logger that does not implement `isLevelEnabled` continue to build and pass the meta object - the optimization is opt-in for logger implementations that want it.
 
 ## Regression Testing
 
@@ -332,7 +332,7 @@ The benchmark runs several compositions with different quality and FPS settings 
 ## External assets (files outside `projectDir`)
 
 A composition can reference absolute paths to assets outside the project
-directory — a local voiceover in `~/Downloads`, a shared-drive image, a
+directory - a local voiceover in `~/Downloads`, a shared-drive image, a
 generated fixture at an absolute path. The producer handles these by:
 
 1. **Detection.** During compilation, the HTML compiler walks every

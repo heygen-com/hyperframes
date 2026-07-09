@@ -3,10 +3,10 @@ title: "Edit Operations"
 description: "The complete EditOp catalog for dispatch(), can(), and batch()."
 ---
 
-Every mutation in the SDK is expressed as an `EditOp` — a plain data object with a discriminated `type` field. You can submit ops individually through `dispatch()`, validate them with `can()`, or group them into a single undo/persist step with `batch()`.
+Every mutation in the SDK is expressed as an `EditOp`, a plain data object with a discriminated `type` field. You can submit ops individually through `dispatch()`, validate them with `can()`, or group them into a single undo/persist step with `batch()`.
 
 <Tip>
-  Every element op requires an explicit `target` (an `HfId` string or `HfId[]` array). There is no selection-implicit mutation — the SDK never reads the current selection to decide what to edit. The typed methods on `Composition` (such as `comp.setText()` and `comp.setStyle()`) are convenience sugar that construct and dispatch these same ops.
+  Every element op requires an explicit `target` (an `HfId` string or `HfId[]` array). There is no selection-implicit mutation. The SDK never reads the current selection to decide what to edit. The typed methods on `Composition` (such as `comp.setText()` and `comp.setStyle()`) are convenience sugar that construct and dispatch these same ops.
 </Tip>
 
 ## dispatch, batch, and can
@@ -72,11 +72,11 @@ Stable `code` values for `ok: false`:
 |------|---------|
 | `E_TARGET_NOT_FOUND` | The `target` hf-id does not exist in the document. |
 | `E_NO_ROOT` | The document has no root element (empty HTML). |
-| `E_NO_GSAP_TIMELINE` | Op requires a parsed GSAP timeline; parser engine not yet active. |
+| `E_NO_GSAP_TIMELINE` | Op requires a parsed GSAP adapter timeline. |
 | `E_NO_GSAP_SCRIPT` | Op requires a GSAP `<script>` block; none found in the document. |
 
 <Note>
-  Several Phase-3b GSAP ops (`addGsapTween`, `setGsapTween`, `removeGsapTween`, `addGsapKeyframe`, `setGsapKeyframe`, `removeGsapKeyframe`, etc.) return `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` from `can()` until the parser engine ships. `dispatch()` still applies those ops structurally even when `can()` returns false.
+  Several GSAP adapter ops (`addGsapTween`, `setGsapTween`, `removeGsapTween`, `addGsapKeyframe`, `setGsapKeyframe`, `removeGsapKeyframe`, etc.) return `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` from `can()` when the parser engine is unavailable. `dispatch()` still applies those ops structurally even when `can()` returns false.
 </Note>
 
 See also: [`Composition`](/sdk/reference/composition) for the typed-method wrappers, [`Types`](/sdk/reference/types) for `CanResult` and `EditOp`.
@@ -214,7 +214,7 @@ Use the typed `comp.addElement(parent, index, html)` method to get back the mint
 
 ### reorderElements
 
-Each entry sets `z-index` on one element. Elements must be non-statically positioned for `z-index` to take effect — the caller must ensure `position` is set.
+Each entry sets `z-index` on one element. Elements must be non-statically positioned for `z-index` to take effect - the caller must ensure `position` is set.
 
 ```typescript
 comp.dispatch({
@@ -273,7 +273,7 @@ comp.dispatch({
   value: "#6C5CE7",
 });
 
-// Font variable (object-valued — never a CSS string)
+// Font variable (object-valued - never a CSS string)
 comp.dispatch({
   type: "setVariableValue",
   id: "brand-font",
@@ -297,12 +297,12 @@ comp.dispatch({
 
 ---
 
-## GSAP tweens
+## GSAP adapter tweens
 
-These ops add, edit, and remove GSAP tween entries in the composition's GSAP script block. They operate by `animationId` — a stable string identifier minted when a tween is created. Use `comp.addGsapTween()` or `addWithKeyframes` to mint a new id; the typed wrapper returns it directly.
+These ops add, edit, and remove GSAP tween entries in the composition's GSAP script block. anime.js is the first-party default runtime for new composition authoring; these operations are the supported SDK editing surface for existing or migrated GSAP adapter scripts. They operate by `animationId`, a stable string identifier minted when a tween is created. Use `comp.addGsapTween()` or `addWithKeyframes` to mint a new id; the typed wrapper returns it directly.
 
 <Note>
-  Several GSAP ops require the parser engine to be active. Until it ships, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` for these ops. `dispatch()` still applies the op structurally.
+  Several GSAP adapter ops require the parser engine to be active. When it is unavailable, `can()` returns `{ ok: false, code: 'E_NO_GSAP_TIMELINE' }` for these ops. `dispatch()` still applies the op structurally.
 </Note>
 
 | `type` | Key fields | What it does |
@@ -415,7 +415,7 @@ comp.dispatch({
 
 ### addWithKeyframes / replaceWithKeyframes
 
-`position` is a number (seconds) — unlike `GsapTweenSpec.position`, label-relative strings are not accepted here.
+`position` is a number (seconds) - unlike `GsapTweenSpec.position`, label-relative strings are not accepted here.
 
 ```typescript
 // Create a new keyframed tween:
@@ -456,13 +456,13 @@ comp.dispatch({
 | `percentage` | `number` | Keyframe stop position (0–100). |
 | `properties` | `Record<string, number \| string>` | CSS / GSAP properties at this stop. |
 | `ease` | `string` | Ease applied from this stop to the next. |
-| `auto` | `boolean` | GSAP endpoint flag — emitted as numeric `_auto: 1`. |
+| `auto` | `boolean` | GSAP endpoint flag, emitted as numeric `_auto: 1`. |
 
 ---
 
 ## Labels
 
-GSAP timeline labels mark named positions (in seconds) in the master timeline. Labels are referenced in `GsapTweenSpec.position` as strings like `"intro"` or `"intro+=0.5"`.
+GSAP adapter timeline labels mark named positions (in seconds) in the master timeline. Labels are referenced in `GsapTweenSpec.position` as strings like `"intro"` or `"intro+=0.5"`.
 
 | `type` | Key fields | What it does |
 |--------|-----------|--------------|
@@ -492,7 +492,7 @@ comp.dispatch({ type: "removeLabel", name: "intro" });
 
 ## Arc paths
 
-Arc path ops control the motion path of a GSAP tween — the curve along which an element travels.
+Arc path ops control the motion path of a GSAP adapter tween, the curve along which an element travels.
 
 | `type` | Key fields | What it does |
 |--------|-----------|--------------|
@@ -538,4 +538,3 @@ comp.dispatch({
   update: { curviness: 2, cp1: { x: 220, y: -100 } },
 });
 ```
-

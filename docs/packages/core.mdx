@@ -1,6 +1,6 @@
 ---
 title: "@hyperframes/core"
-description: "Types, HTML generation, runtime, and linter — the foundation every other package depends on."
+description: "Types, HTML generation, runtime, and linter, the foundation every other package depends on."
 ---
 
 The core package provides the foundational types, HTML parsing/generation, runtime, and composition linter that all other Hyperframes packages build on. If you are building tooling, writing a custom integration, or extending Hyperframes itself, this is the package you need.
@@ -23,9 +23,9 @@ npm install @hyperframes/core
 - Embed the Hyperframes runtime in a custom player
 
 **Use a different package if you want to:**
-- Preview compositions in the browser — use the [CLI](/packages/cli) (`npx hyperframes preview`) or [studio](/packages/studio)
-- Render compositions to MP4 — use the [CLI](/packages/cli) (`npx hyperframes render`) or [producer](/packages/producer)
-- Capture frames from a headless browser — use the [engine](/packages/engine)
+- Preview compositions in the browser - use the [CLI](/packages/cli) (`npx hyperframes preview`) or [studio](/packages/studio)
+- Render compositions to MP4 - use the [CLI](/packages/cli) (`npx hyperframes render`) or [producer](/packages/producer)
+- Capture frames from a headless browser - use the [engine](/packages/engine)
 
 ## Package Exports
 
@@ -170,10 +170,10 @@ const result = validateCompositionHtml(html);
 // result.valid, result.errors
 ```
 
-### GSAP Script Parsing
+### Animation Script Parsing
 
 <Info>
-  The GSAP + HTML parsing layer now lives in its own standalone package, [`@hyperframes/parsers`](/packages/parsers). Core re-exports the API below for back-compat; import from `@hyperframes/parsers` directly in new code.
+  The anime.js and GSAP parsing layer now lives in its own standalone package, [`@hyperframes/parsers`](/packages/parsers). Core re-exports legacy GSAP APIs for back-compat and exposes parser subpaths for anime.js. Import from `@hyperframes/parsers` directly in new code.
 </Info>
 
 ```typescript
@@ -198,6 +198,13 @@ const parsed: ParsedGsap = parseGsapScript(scriptContent);
 const script = serializeGsapAnimations(parsed.animations);
 ```
 
+For anime.js parser and writer helpers, import from the anime.js subpaths:
+
+```typescript
+import { parseAnimeJsScript } from '@hyperframes/parsers/animejs-parser';
+import { updateAnimeJsAnimationInScript } from '@hyperframes/parsers/animejs-writer-acorn';
+```
+
 ### HTML Generation
 
 ```typescript
@@ -210,7 +217,7 @@ import {
 // Generate a complete HTML composition
 const html = generateHyperframesHtml(elements, options);
 
-// Generate just the GSAP script
+// Generate just the legacy-named timeline script. New output uses anime.js.
 const script = generateGsapTimelineScript(animations, options);
 
 // Generate CSS styles
@@ -225,7 +232,7 @@ const { coreCss, customCss, googleFontsLink } = generateHyperframesStyles(
 import {
   generateBaseHtml,
   getStageStyles,
-  GSAP_CDN,
+  ANIME_CDN,
   BASE_STYLES,
   ELEMENT_BASE_STYLES,
   MEDIA_STYLES,
@@ -241,7 +248,7 @@ const styles = getStageStyles('portrait');
 ## Linter
 
 <Info>
-  The composition linter now lives in its own package, [`@hyperframes/lint`](/packages/lint) — install it directly to lint a project or HTML string from Node without the CLI. `@hyperframes/core/lint` remains a back-compat re-export.
+  The composition linter now lives in its own package, [`@hyperframes/lint`](/packages/lint) - install it directly to lint a project or HTML string from Node without the CLI. `@hyperframes/core/lint` remains a back-compat re-export.
 </Info>
 
 The composition linter checks for structural issues that would cause rendering failures or unexpected behavior. You can run it from the CLI with `npx hyperframes lint`, or call it programmatically:
@@ -269,7 +276,7 @@ const mediaFindings = lintMediaUrls(result.findings);
 
 Detected issues include:
 
-- Missing timeline registration (`window.__timelines`)
+- Missing animation registration (`hyperframesAnime.register(...)` for anime.js, or `window.__timelines` for the GSAP adapter path)
 - Unmuted video elements (causes autoplay failures)
 - Missing `class="clip"` on timed visible elements
 - Deprecated attribute names
@@ -285,7 +292,7 @@ Detected issues include:
 The compiler sub-package handles timing resolution, HTML compilation, and bundling:
 
 ```typescript
-// Timing compiler (browser-safe — no Node.js dependencies)
+// Timing compiler (browser-safe - no Node.js dependencies)
 import {
   compileTimingAttrs,
   injectDurations,
@@ -310,7 +317,7 @@ const media: ResolvedMediaElement[] = extractResolvedMedia(html);
 ```
 
 ```typescript
-// HTML compiler (Node.js — requires media probing)
+// HTML compiler (Node.js - requires media probing)
 import { compileHtml } from '@hyperframes/core/compiler';
 import type { MediaDurationProber } from '@hyperframes/core/compiler';
 
@@ -319,7 +326,7 @@ const compiledHtml = await compileHtml(html, prober);
 ```
 
 ```typescript
-// HTML bundler (Node.js — bundles to single file)
+// HTML bundler (Node.js - bundles to single file)
 import { bundleToSingleHtml } from '@hyperframes/core/compiler';
 import type { BundleOptions } from '@hyperframes/core/compiler';
 
@@ -327,7 +334,7 @@ const bundled = await bundleToSingleHtml({ entryPath: './index.html', inline: tr
 ```
 
 ```typescript
-// Static guard — validate HTML contract
+// Static guard - validate HTML contract
 import { validateHyperframeHtmlContract } from '@hyperframes/core/compiler';
 import type {
   HyperframeStaticGuardResult,
@@ -375,7 +382,9 @@ import runtime from '@hyperframes/core/runtime';
 
 ## Frame Adapters
 
-The core package defines the [Frame Adapter](/concepts/frame-adapters) interface and provides the built-in GSAP adapter:
+The core runtime includes the first-party anime.js adapter and the supported GSAP adapter. New authored compositions use `hyperframesAnime.register(...)`; existing GSAP compositions continue through the paused timeline on `window.__timelines` adapter path.
+
+The core package also defines the v0 [Frame Adapter](/concepts/frame-adapters) interface and keeps the exported GSAP frame adapter factory for integrations that use that API directly:
 
 ```typescript
 import { createGSAPFrameAdapter } from '@hyperframes/core';
@@ -386,7 +395,7 @@ import type {
   CreateGSAPFrameAdapterOptions,
 } from '@hyperframes/core';
 
-// Create a GSAP frame adapter
+// Create a GSAP frame adapter for the supported GSAP adapter path
 const adapter: FrameAdapter = createGSAPFrameAdapter({
   id: 'my-composition',
   fps: 30,
@@ -433,7 +442,7 @@ import type {
 
 <CardGroup cols={2}>
   <Card title="@hyperframes/parsers" icon="code" href="/packages/parsers">
-    The standalone GSAP + HTML parsing layer extracted from core.
+    The standalone anime.js, GSAP, and HTML parsing layer extracted from core.
   </Card>
   <Card title="@hyperframes/lint" icon="circle-check" href="/packages/lint">
     The composition linter as a standalone library.

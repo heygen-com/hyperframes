@@ -3,7 +3,7 @@ title: "@hyperframes/studio"
 description: "Visual composition editor with live preview, timeline view, and hot reload."
 ---
 
-The studio package provides a browser-based visual editor for creating and previewing Hyperframes compositions. It gives you a real-time preview of your video, a visual timeline of all clips, and player controls for seeking and playback — all updating live as you edit your HTML.
+The studio package provides a browser-based visual editor for creating and previewing Hyperframes compositions. It gives you a real-time preview of your video, a visual timeline of all clips, and player controls for seeking and playback - all updating live as you edit your HTML.
 
 ```bash
 npm install @hyperframes/studio
@@ -17,9 +17,9 @@ npm install @hyperframes/studio
 - Extend the editor with custom panels, toolbars, or integrations
 
 **Use a different package if you want to:**
-- Preview compositions during development — use the [CLI](/packages/cli) (`npx hyperframes preview`), which launches the studio for you
-- Render compositions to MP4 — use the [CLI](/packages/cli) or [producer](/packages/producer)
-- Capture frames programmatically — use the [engine](/packages/engine)
+- Preview compositions during development - use the [CLI](/packages/cli) (`npx hyperframes preview`), which launches the studio for you
+- Render compositions to MP4 - use the [CLI](/packages/cli) or [producer](/packages/producer)
+- Capture frames programmatically - use the [engine](/packages/engine)
 
 <Tip>
   **For most development workflows, you do not need to install the studio directly.** Running `npx hyperframes preview` starts the studio automatically with hot reload. Install `@hyperframes/studio` only if you are embedding the editor into your own application.
@@ -165,12 +165,12 @@ const picker = useElementPicker(iframeRef);
 
 ### Live Preview
 
-The studio renders your composition in an iframe using the Hyperframes runtime. What you see in the preview is exactly what will be captured during rendering — the same runtime code, the same seek logic, the same clip lifecycle.
+The studio renders your composition in an iframe using the Hyperframes runtime. What you see in the preview is exactly what will be captured during rendering: the same runtime code, the same seek logic, the same clip lifecycle, and the same anime.js or GSAP adapter contract.
 
 Changes to your HTML are picked up automatically through hot reload, so you can edit `index.html` in your editor and see the result in the browser within milliseconds.
 
 <Note>
-  The *visual* output of preview matches render exactly. Real-time *playback smoothness* depends on your hardware, because preview actually plays the composition in your browser at 30/60fps. Render doesn't have that constraint — it captures each frame individually via a seek-driven pipeline, so expensive frames make the render slower but never drop. If you see stutter in preview but the rendered mp4 is clean, that's expected. See [Performance](/guides/performance) for the patterns that most often cause it.
+  The *visual* output of preview matches render exactly. Real-time *playback smoothness* depends on your hardware, because preview actually plays the composition in your browser at 30/60fps. Render doesn't have that constraint - it captures each frame individually via a seek-driven pipeline, so expensive frames make the render slower but never drop. If you see stutter in preview but the rendered mp4 is clean, that's expected. See [Performance](/guides/performance) for the patterns that most often cause it.
 </Note>
 
 ### Timeline View
@@ -201,10 +201,10 @@ see [Timeline Editing](/guides/timeline-editing).
 
 The studio includes a full set of playback controls:
 
-- **Play / Pause** — start and stop playback
-- **Seek** — click anywhere on the timeline to jump to that point
-- **Scrub** — drag the playhead to scrub through the composition frame by frame
-- **Frame step** — advance or rewind one frame at a time for precise positioning
+- **Play / Pause** - start and stop playback
+- **Seek** - click anywhere on the timeline to jump to that point
+- **Scrub** - drag the playhead to scrub through the composition frame by frame
+- **Frame step** - advance or rewind one frame at a time for precise positioning
 
 ### Hot Reload
 
@@ -214,13 +214,13 @@ File changes are detected and applied without restarting the server. The preview
 
 The studio is a React application with the following structure:
 
-1. **Iframe preview** — your composition HTML is loaded in an isolated iframe with the Hyperframes runtime injected. This ensures the preview uses the same rendering path as production.
+1. **Iframe preview** - your composition HTML is loaded in an isolated iframe with the Hyperframes runtime injected. This ensures the preview uses the same rendering path as production.
 
-2. **Runtime bridge** — the studio communicates with the iframe via `postMessage` to control playback (play, pause, seek) and receive state updates (current time, duration, readiness).
+2. **Runtime bridge** - the studio communicates with the iframe via `postMessage` to control playback (play, pause, seek) and receive state updates (current time, duration, readiness).
 
-3. **Timeline component** — parses the composition using `@hyperframes/core` to extract clip timing data and renders the visual timeline panel.
+3. **Timeline component** - parses the composition using `@hyperframes/core` to extract clip timing data and renders the visual timeline panel.
 
-4. **File watcher** — a development server (Vite-based) watches your project files and triggers hot module replacement when changes are detected.
+4. **File watcher** - a development server (Vite-based) watches your project files and triggers hot module replacement when changes are detected.
 
 ## Tailwind CSS Preset
 
@@ -240,7 +240,7 @@ export default {
 
 <CardGroup cols={2}>
   <Card title="CLI" icon="terminal" href="/packages/cli">
-    Launches the studio via `npx hyperframes preview` — the easiest way to preview compositions.
+    Launches the studio via `npx hyperframes preview` - the easiest way to preview compositions.
   </Card>
   <Card title="Core" icon="cube" href="/packages/core">
     Types, parsing, and runtime that the studio uses for preview and timeline rendering.

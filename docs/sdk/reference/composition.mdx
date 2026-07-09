@@ -1,6 +1,6 @@
 ---
 title: "Composition"
-description: "The main editing surface returned by openComposition — query, mutate, animate, and serialize a composition."
+description: "The main editing surface returned by openComposition: query, mutate, animate, and serialize a composition."
 ---
 
 `Composition` is the object returned by [`openComposition`](/sdk/reference/open-composition). Every SDK edit goes through this interface. Typed methods are convenience wrappers over `dispatch()`; all validation runs in `dispatch()` regardless of which entry point you use.
@@ -42,7 +42,7 @@ setText(id: HfId, value: string): void
 Replace the display text of an element. Targets the element's direct text content, not all descendant text.
 
 ```typescript
-comp.setText("hf-headline", "Product launch — June 2026");
+comp.setText("hf-headline", "Product launch - June 2026");
 ```
 
 ### `setAttribute`
@@ -116,7 +116,7 @@ comp.setVariableValue("heroImage", { url: "/assets/hero.jpg", fit: "cover" });
 getElementTimings(): Record<HfId, ElementTimingSnapshot>
 ```
 
-Return a map of enter/exit times and active GSAP labels for every timed element. The SDK derives `enterAt`/`exitAt` using `data-duration` when present, falling back to `data-end − data-start`. GSAP labels are parsed fresh from the script each call. Elements with no timing attributes are excluded.
+Return a map of enter/exit times and active GSAP adapter labels for every timed element. The SDK derives `enterAt`/`exitAt` using `data-duration` when present, falling back to `data-end - data-start`. GSAP labels are parsed fresh from the script each call. Elements with no timing attributes are excluded.
 
 ```typescript
 const timings = comp.getElementTimings();
@@ -147,7 +147,7 @@ comp.setElementTiming({
 setHold(id: HfId, hold: ElasticHold): void
 ```
 
-Set an elastic hold window — a `{ start, end, fill }` range that either freezes or loops the element during a pause in the timeline.
+Set an elastic hold window - a `{ start, end, fill }` range that either freezes or loops the element during a pause in the timeline.
 
 ```typescript
 comp.setHold("hf-hero", { start: 2, end: 5, fill: "freeze" });
@@ -159,7 +159,7 @@ comp.setHold("hf-hero", { start: 2, end: 5, fill: "freeze" });
 addGsapTween(target: HfId, tween: GsapTweenSpec): string
 ```
 
-Add a GSAP tween to the composition's timeline targeting the given element. Returns the newly assigned `animationId`.
+Add a GSAP adapter tween to the composition's timeline targeting the given element. Returns the newly assigned `animationId`. anime.js is the default runtime for new composition authoring; these methods are for existing or migrated GSAP adapter scripts.
 
 ```typescript
 const animId = comp.addGsapTween("hf-title", {
@@ -235,7 +235,7 @@ replaceWithKeyframes(
 ): string
 ```
 
-Atomically remove an existing tween and add a replacement keyframed tween. Returns the replacement's `animationId`. Because position-derived IDs renumber after the removal, the returned ID may differ from the input `animationId` — treat the return value as the new canonical ID.
+Atomically remove an existing tween and add a replacement keyframed tween. Returns the replacement's `animationId`. Because position-derived IDs renumber after the removal, the returned ID may differ from the input `animationId`; treat the return value as the new canonical ID.
 
 ```typescript
 const newId = comp.replaceWithKeyframes(
@@ -347,7 +347,7 @@ const track1Ids   = comp.find({ track: 1 });
 selection(): SelectionProxy
 ```
 
-Return a `SelectionProxy` that resolves `getSelection()` at call time and dispatches operations to all selected elements. The proxy captures the ID list when you call `selection()` — subsequent selection changes do not affect an already-captured proxy.
+Return a `SelectionProxy` that resolves `getSelection()` at call time and dispatches operations to all selected elements. The proxy captures the ID list when you call `selection()` - subsequent selection changes do not affect an already-captured proxy.
 
 ```typescript
 const sel = comp.selection();
@@ -445,7 +445,7 @@ can(op: EditOp): CanResult
 
 Dry-run validation. Returns `{ ok: true }` when `dispatch(op)` would succeed, or `{ ok: false, code, message, hint? }` when it would fail or be a no-op.
 
-Use this as a feature-detection gate before rendering controls that depend on GSAP timeline availability, or before showing UI that applies optional edits.
+Use this as a feature-detection gate before rendering controls that depend on GSAP adapter timeline availability, or before showing UI that applies optional edits.
 
 ```typescript
 const result = comp.can({
@@ -557,7 +557,7 @@ These methods are only meaningful in embedded / override mode. See the [embedded
 getOverrides(): OverrideSet
 ```
 
-Return a copy of the current override set — the sparse delta accumulated on top of the base template. Store this instead of the full HTML when the base template is shared.
+Return a copy of the current override set - the sparse delta accumulated on top of the base template. Store this instead of the full HTML when the base template is shared.
 
 ```typescript
 const delta = comp.getOverrides();
@@ -618,13 +618,13 @@ comp.dispose();
 
 <CardGroup cols={2}>
   <Card title="openComposition" icon="door-open" href="/sdk/reference/open-composition">
-    Session factory — all options and modes.
+    Session factory - all options and modes.
   </Card>
   <Card title="Edit operations" icon="bolt" href="/sdk/reference/edit-operations">
     Full op catalog for dispatch() and can().
   </Card>
   <Card title="Types reference" icon="file-code" href="/sdk/reference/types">
-    All exported TypeScript types — ElementSnapshot, PatchEvent, GsapTweenSpec, and more.
+    All exported TypeScript types - ElementSnapshot, PatchEvent, GsapTweenSpec, and more.
   </Card>
   <Card title="Querying and editing" icon="magnifying-glass" href="/sdk/guides/querying-and-editing">
     Practical guide to find, getElements, and typed edits.
@@ -636,4 +636,3 @@ comp.dispose();
     Template-driven products with host-owned history.
   </Card>
 </CardGroup>
-

@@ -1,6 +1,6 @@
 ---
 title: Frame Adapters
-description: "Bring your own animation runtime to Hyperframes."
+description: "Use anime.js by default, or bring any seekable animation runtime to Hyperframes."
 ---
 
 The Frame Adapter pattern is how Hyperframes supports multiple animation runtimes. The core question every adapter answers:
@@ -104,14 +104,49 @@ These rules are non-negotiable for any adapter. They are the foundation of Hyper
 
 ## Supported Runtimes
 
-First-party runtime adapters:
+anime.js (MIT licensed) is the first-party default animation engine for HyperFrames. GSAP remains a fully supported adapter for existing compositions and anyone who prefers it.
 
-All runtime adapters live in the `/hyperframes-animation` skill — invoke it for the runtime-specific seek API as well as motion rules, scene blueprints, and transitions.
+All runtime adapters live in the `/hyperframes-animation` skill. Invoke it for the runtime-specific seek API as well as motion rules, scene blueprints, and transitions.
+
+### anime.js, the first-party default
+
+New compositions should create anime.js animations or timelines with `autoplay: false` and register them with `hyperframesAnime.register(id, instance, { labels })`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+<script>
+  const tl = anime.createTimeline({ autoplay: false });
+  tl.add(".title", { opacity: [0, 1], duration: 600, ease: "outQuart" }, 0);
+
+  hyperframesAnime.register("main", tl, { labels: { intro: 0 } });
+</script>
+```
+
+The registration id must match the composition root's `data-composition-id`. Labels are in seconds; anime.js positions and durations are in milliseconds.
+
+HyperFrames primes each registered anime.js instance once at discovery so timeline children added after time zero render their initial state before the first real seek. If the root omits `data-duration`, HyperFrames infers the composition duration from the longest finite registered anime.js instance.
+
+### GSAP, supported adapter
+
+GSAP compositions remain fully supported through the GSAP adapter path. Build a paused `gsap.timeline()` or tween, then register it on `window.__timelines` with a key matching `data-composition-id`:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+<script>
+  const tl = gsap.timeline({ paused: true });
+  tl.to(".title", { opacity: 1, duration: 0.5 }, 0);
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines["main"] = tl;
+</script>
+```
+
+The GSAP adapter seeks in seconds with `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)`.
 
 | Runtime | Seek Method | Skill |
 |---------|-------------|-------|
-| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` | `/hyperframes-animation` |
-| Anime.js | `instance.seek(timeMs)` for animations registered on `window.__hfAnime` | `/hyperframes-animation` |
+| [anime.js](/guides/anime-animation) | `instance.seek(timeMs)` for instances registered with `hyperframesAnime.register(...)` | `/hyperframes-animation` |
+| [GSAP](/guides/gsap-animation) | `timeline.totalTime(timeSeconds)` or `timeline.seek(timeSeconds)` for timelines registered on `window.__timelines` | `/hyperframes-animation` |
 | CSS keyframes | Browser `Animation.currentTime`, with paused negative-delay fallback | `/hyperframes-animation` |
 | Lottie / dotLottie | `goToAndStop(timeMs, false)`, raw-frame setters, or player seek APIs | `/hyperframes-animation` |
 | Three.js / WebGL | `hf-seek` events plus `window.__hfThreeTime` for deterministic scene rendering | `/hyperframes-animation` |
@@ -136,8 +171,11 @@ Every adapter should pass these minimum tests:
   <Card title="Deterministic Rendering" icon="lock" href="/concepts/determinism">
     Understand the determinism guarantees adapters must uphold
   </Card>
-  <Card title="GSAP Animation" icon="wand-magic-sparkles" href="/guides/gsap-animation">
-    See the first-party GSAP adapter in action
+  <Card title="anime.js Animation" icon="wand-magic-sparkles" href="/guides/anime-animation">
+    Build with the first-party default animation engine
+  </Card>
+  <Card title="GSAP Adapter" icon="plug" href="/guides/gsap-animation">
+    Use the supported GSAP adapter path
   </Card>
   <Card title="@hyperframes/engine" icon="gear" href="/packages/engine">
     The capture engine that drives adapters during rendering
