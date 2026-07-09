@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Swiss Grid - Hyperframes</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       body,
       html {
@@ -121,78 +121,68 @@
       ></div>
 
       <script>
-        window.__timelines = window.__timelines || {};
-
-        const masterTL = gsap.timeline({ paused: true });
-        const v = document.getElementById("short_mag_cut_frame");
-
-        // --- A-ROLL MOVEMENT (Structured Swiss Layout) ---
-
-        // 1. Entrance (0-1.86s): Slide in from left, settle centered for Intro
-        masterTL.fromTo(
-          v,
-          { x: -1000, y: 120, width: 960, height: 840 },
-          { x: 480, y: 120, width: 960, height: 840, duration: 0.8, ease: "power2.out" },
+        const masterTL = anime.createTimeline({ autoplay: false });
+        masterTL.add(
+          "#short_mag_cut_frame",
+          {
+            translateX: [-1000, 480],
+            translateY: [120, 120],
+            width: [960, 960],
+            height: [840, 840],
+            duration: 800,
+            ease: "outCubic",
+          },
           0,
         );
-
-        // 2. Stat 1 (1.86s - 4.68s): Move to right side (Graphic is on left)
-        masterTL.to(
-          v,
+        masterTL.add(
+          "#short_mag_cut_frame",
           {
-            x: 1080,
-            y: 120,
-            width: 720,
-            height: 720,
-            duration: 0.25,
-            ease: "expo.out",
+            translateX: [480, 1080],
+            translateY: [120, 120],
+            width: [960, 720],
+            height: [840, 720],
+            duration: 250,
+            ease: "outExpo",
           },
-          1.86,
+          1860,
         );
-
-        // 3. Stat 2 (4.68s - 8.88s): Stay right, zoom in slightly
-        masterTL.to(
-          v,
+        masterTL.add(
+          "#short_mag_cut_frame",
           {
-            x: 1080,
-            y: 60,
-            width: 780,
-            height: 780,
-            duration: 0.25,
-            ease: "expo.out",
+            translateX: [1080, 1080],
+            translateY: [120, 60],
+            width: [720, 780],
+            height: [720, 780],
+            duration: 250,
+            ease: "outExpo",
           },
-          4.68,
+          4680,
         );
-
-        // 4. Stat 3 (8.88s - 14.2s): Move to left side (Graphic is on right)
-        masterTL.to(
-          v,
+        masterTL.add(
+          "#short_mag_cut_frame",
           {
-            x: 120,
-            y: 120,
-            width: 720,
-            height: 720,
-            duration: 0.25,
-            ease: "expo.out",
+            translateX: [1080, 120],
+            translateY: [60, 120],
+            width: [780, 720],
+            height: [780, 720],
+            duration: 250,
+            ease: "outExpo",
           },
-          8.88,
+          8880,
         );
-
-        // 5. Conclusion (14.2s - 16.04s): Center large
-        masterTL.to(
-          v,
+        masterTL.add(
+          "#short_mag_cut_frame",
           {
-            x: 240,
-            y: 60,
-            width: 1440,
-            height: 810,
-            duration: 0.5,
-            ease: "expo.out",
+            translateX: [120, 240],
+            translateY: [120, 60],
+            width: [720, 1440],
+            height: [720, 810],
+            duration: 500,
+            ease: "outExpo",
           },
-          14.2,
+          14200,
         );
-
-        window.__timelines["master"] = masterTL;
+        hyperframesAnime.register("master", masterTL, { labels: {} });
       </script>
     </div>
 

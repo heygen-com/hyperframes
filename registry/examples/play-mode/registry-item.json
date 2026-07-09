@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "play-mode",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "Play Mode",
   "description": "Playful elastic animations",
   "dimensions": {

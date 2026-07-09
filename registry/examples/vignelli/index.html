@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>Massimo Vignelli Video</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       body,
       html {
@@ -143,30 +143,33 @@
       </div>
 
       <script>
-        const tl = gsap.timeline({ paused: true });
-
-        // Curtains rest off-screen left until their wipes begin.
-        gsap.set("#curtain-black", { xPercent: -100 });
-        gsap.set("#curtain-red", { xPercent: -100 });
-
-        // Transition: Curtain Pull logic
-        // A-roll leaves the screen at least once.
-        // Timing: Let's do a curtain pull at 3.7s (transitioning to the 62% stat)
-        // and return at 7.3s (end of attention stat).
-
-        // Curtain Out (A-roll hidden)
-        tl.to("#curtain-black", { xPercent: 0, duration: 0.2, ease: "power2.inOut" }, 3.5);
-        tl.to("#a-roll-wrapper", { opacity: 0, duration: 0 }, 3.7);
-        tl.to("#curtain-black", { xPercent: 100, duration: 0.4, ease: "power2.inOut" }, 3.7);
-
-        // Curtain In (A-roll return)
-        tl.set("#curtain-red", { xPercent: -100 }, 7.1);
-        tl.to("#curtain-red", { xPercent: 0, duration: 0.2, ease: "power2.inOut" }, 7.1);
-        tl.to("#a-roll-wrapper", { opacity: 1, duration: 0 }, 7.3);
-        tl.to("#curtain-red", { xPercent: 100, duration: 0.4, ease: "power2.inOut" }, 7.3);
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines["main-comp"] = tl;
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add("#curtain-black", { translateX: "-100%", duration: 0 }, 0);
+        tl.add("#curtain-red", { translateX: "-100%", duration: 0 }, 0);
+        tl.add(
+          "#curtain-black",
+          { translateX: ["-100%", "0%"], duration: 200, ease: "inOutCubic" },
+          3500,
+        );
+        tl.add("#a-roll-wrapper", { opacity: 0, duration: 0 }, 3700);
+        tl.add(
+          "#curtain-black",
+          { translateX: ["0%", "100%"], duration: 400, ease: "inOutCubic" },
+          3700,
+        );
+        tl.add("#curtain-red", { translateX: "-100%", duration: 0 }, 7100);
+        tl.add(
+          "#curtain-red",
+          { translateX: ["-100%", "0%"], duration: 200, ease: "inOutCubic" },
+          7100,
+        );
+        tl.add("#a-roll-wrapper", { opacity: [0, 1], duration: 0 }, 7300);
+        tl.add(
+          "#curtain-red",
+          { translateX: ["0%", "100%"], duration: 400, ease: "inOutCubic" },
+          7300,
+        );
+        hyperframesAnime.register("main-comp", tl, { labels: {} });
       </script>
     </div>
 

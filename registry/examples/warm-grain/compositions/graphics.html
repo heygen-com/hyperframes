@@ -42,7 +42,7 @@
         align-items: center;
         justify-content: center;
         opacity: 0;
-        /* We'll use GSAP to handle the centering and drift */
+        /* The timeline handles the centering and drift */
       }
 
       /* Moment 1: Forest Green Circle */
@@ -116,46 +116,58 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
       (function () {
-        const tl = gsap.timeline({ paused: true });
-
-        // Moment 1: 1.8s - 4.5s
-        // Gentle drift into place and settle
-        tl.fromTo(
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add(
           "#moment-1",
-          { opacity: 0, x: "+=40", y: "+=15", scale: 0.8 },
-          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
-          1.8,
+          {
+            opacity: [0, 1],
+            translateX: ["+=40", 0],
+            translateY: ["+=15", 0],
+            scale: [0.8, 1],
+            duration: 1200,
+            ease: "outBack(1.7)",
+          },
+          1800,
         );
-        // Hold until 4.5s, then fade out
-        tl.to("#moment-1", { opacity: 0, scale: 0.8, duration: 0.3, ease: "power2.in" }, 4.2);
-
-        // Moment 2: 4.6s - 8.6s
-        // Gentle drift into place and settle
-        tl.fromTo(
+        tl.add(
+          "#moment-1",
+          { opacity: [1, 0], scale: [1, 0.8], duration: 300, ease: "inCubic" },
+          4200,
+        );
+        tl.add(
           "#moment-2",
-          { opacity: 0, y: "-=40", x: "+=10", scale: 0.8 },
-          { opacity: 1, y: 0, x: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
-          4.6,
+          {
+            opacity: [0, 1],
+            translateY: ["-=40", 0],
+            translateX: ["+=10", 0],
+            scale: [0.8, 1],
+            duration: 1200,
+            ease: "outBack(1.7)",
+          },
+          4600,
         );
-        // Hold until 8.6s, then fade out
-        tl.to("#moment-2", { opacity: 0, scale: 0.8, duration: 0.3, ease: "power2.in" }, 8.3);
-
-        // Moment 3: 8.8s - 14s
-        // Gentle drift into place and settle
-        tl.fromTo(
+        tl.add(
+          "#moment-2",
+          { opacity: [1, 0], scale: [1, 0.8], duration: 300, ease: "inCubic" },
+          8300,
+        );
+        tl.add(
           "#moment-3",
-          { opacity: 0, x: "-=40", y: "-=10", scale: 0.8 },
-          { opacity: 1, x: 0, y: 0, scale: 1, duration: 1.2, ease: "back.out(1.7)" },
-          8.8,
+          {
+            opacity: [0, 1],
+            translateX: ["-=40", 0],
+            translateY: ["-=10", 0],
+            scale: [0.8, 1],
+            duration: 1200,
+            ease: "outBack(1.7)",
+          },
+          8800,
         );
-        // Hold until end (14s)
-        tl.to("#moment-3", { opacity: 0, duration: 0.5, ease: "power2.in" }, 13.5);
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines["graphics"] = tl;
+        tl.add("#moment-3", { opacity: [1, 0], duration: 500, ease: "inCubic" }, 13500);
+        hyperframesAnime.register("graphics", tl, { labels: {} });
       })();
     </script>
   </div>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "us-map-flow",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "US Flow Map",
   "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
   "tags": ["data", "map", "geography", "usa", "flow", "connections", "arcs"],

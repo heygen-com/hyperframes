@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
@@ -225,7 +225,7 @@
           var svg = document.querySelector("#spain-map .map-svg");
           var regionsGroup = svg.querySelector(".regions-group");
           var labelsGroup = svg.querySelector(".labels-group");
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
 
           fetch(SPAIN_TOPO_URL)
             .then(function (r) {
@@ -283,74 +283,68 @@
             var regionPaths = regionsGroup.querySelectorAll(".region-path");
             var regionLabels = labelsGroup.querySelectorAll(".region-label");
 
-            tl.to(
+            tl.add(
               "#spain-map .headline",
               {
                 clipPath: "inset(0 0% 0 0)",
-                duration: 1.0,
-                ease: "power2.inOut",
+                duration: 1000,
+                ease: "inOutCubic",
               },
               0,
             );
 
-            tl.to(
+            tl.add(
               "#spain-map .subtitle",
               {
                 opacity: 1,
-                duration: 0.6,
-                ease: "power2.out",
+                duration: 600,
+                ease: "outCubic",
               },
-              0.4,
+              400,
             );
 
-            tl.to(
+            tl.add(
               regionPaths,
               {
                 opacity: 1,
                 scale: 1,
-                duration: 0.4,
-                stagger: {
-                  each: 0.08,
-                  from: "center",
-                },
-                ease: "back.out(1.4)",
+                duration: 400,
+                delay: anime.stagger(80, { from: "center" }),
+                ease: "outBack(1.4)",
               },
-              1.0,
+              1000,
             );
 
-            tl.to(
+            tl.add(
               regionLabels,
               {
                 opacity: 1,
-                duration: 0.3,
-                stagger: {
-                  each: 0.05,
-                  from: "center",
-                },
-                ease: "power2.out",
+                duration: 300,
+                delay: anime.stagger(50, { from: "center" }),
+                ease: "outCubic",
               },
-              4.0,
+              4000,
             );
 
-            tl.to(
+            tl.add(
               "#spain-map .legend",
               {
                 opacity: 1,
-                y: 0,
-                duration: 0.6,
-                ease: "power2.out",
+                translateY: 0,
+                duration: 600,
+                ease: "outCubic",
               },
-              5.5,
+              5500,
             );
 
-            tl.to(
+            tl.add(
               "#spain-map .source",
               {
                 opacity: 1,
-                duration: 0.5,
-                ease: "power2.out",
+                duration: 500,
+                ease: "outCubic",
               },
-              6.0,
+              6000,
             );
 
             var highlightRegions = ["MAD", "PVA", "NAV"];
@@ -358,33 +352,38 @@
               var el = regionsGroup.querySelector('[data-region="' + abbr + '"]');
               if (!el) return;
 
-              tl.to(
+              tl.add(
                 el,
                 {
-                  filter: "brightness(1.5) drop-shadow(0 0 8px rgba(255,255,255,0.4))",
-                  stroke: "#f8fafc",
-                  strokeWidth: 2.5,
-                  duration: 0.5,
-                  ease: "power2.out",
+                  filter: [
+                    "brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0))",
+                    "brightness(1.5) drop-shadow(0 0 8px rgba(255,255,255,0.4))",
+                  ],
+                  stroke: ["#1e293b", "#f8fafc"],
+                  strokeWidth: [0.8, 2.5],
+                  duration: 500,
+                  ease: "outCubic",
                 },
-                6.5 + i * 0.8,
+                6500 + i * 800,
               );
 
-              tl.to(
+              tl.add(
                 el,
                 {
-                  filter: "brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0))",
-                  stroke: "#1e293b",
-                  strokeWidth: 0.8,
-                  duration: 0.5,
-                  ease: "power2.in",
+                  filter: [
+                    "brightness(1.5) drop-shadow(0 0 8px rgba(255,255,255,0.4))",
+                    "brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0))",
+                  ],
+                  stroke: ["#f8fafc", "#1e293b"],
+                  strokeWidth: [2.5, 0.8],
+                  duration: 500,
+                  ease: "inCubic",
                 },
-                7.0 + i * 0.8,
+                7000 + i * 800,
               );
             });
 
-            window.__timelines = window.__timelines || {};
-            window.__timelines["spain-map"] = tl;
+            hyperframesAnime.register("spain-map", tl, { labels: {} });
           }
         })();
       </script>

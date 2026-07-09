@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "spain-map",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Spain Map",
   "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
   "tags": ["data", "map", "geography", "spain", "europe", "choropleth"],

@@ -12,7 +12,7 @@
   4. Mark the focal card with data-pz-focus="true" — this is the one
      that scales up to fill the frame.
   5. Drive --pz-progress 0 → 1 on the .parallax-zoom-grid from your
-     composition's paused GSAP timeline (see example at bottom).
+     composition's paused anime.js timeline (see example at bottom).
 
   Tunable CSS variables on .parallax-zoom-grid:
   - --pz-focus-scale  (default 6)      maximum scale of the focused card
@@ -84,16 +84,11 @@
 </script>
 
 <!--
-  Timeline integration example (paste into your composition's GSAP timeline):
+  Timeline integration example (paste into your composition's anime.js timeline):
 
-  tl.fromTo(
-    ".parallax-zoom-grid",
-    { "--pz-progress": 0 },
-    {
-      "--pz-progress": 1,
-      duration: 2.4,
-      ease: "power2.inOut",
-    },
-    1.0, // start time in seconds
-  );
+  tl.add(".parallax-zoom-grid", {
+    "--pz-progress": [0, 1],
+    duration: 2400,
+    ease: "inOutCubic",
+  }, 1000);
 -->

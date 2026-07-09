@@ -2,10 +2,10 @@
   Motion Blur — velocity-driven directional motion blur.
 
   Usage: paste this snippet into your composition, then call
-  attachMotionBlur() with any element animated by your GSAP timeline.
+  attachMotionBlur() with any element animated by your anime.js timeline.
 
   The snippet hooks into the timeline's onUpdate callback, tracks the
-  GSAP x/y position of each target frame-by-frame, and applies:
+  anime.js translateX/Y position of each target frame-by-frame, and applies:
     1. Ghost copies of the element at increasing backward offsets with
        decreasing opacity — inherently one-sided, no forward blur component.
     2. A small Gaussian blur at the current position so the element looks
@@ -16,10 +16,10 @@
   Both effects clear automatically when the element decelerates to rest.
 
   Requirements:
-  - Elements must be animated via GSAP x/y (transform), not left/top.
+  - Elements must be animated via anime.js translateX/Y (transform), not left/top.
   - Call attachMotionBlur() AFTER defining all tweens, before
-    window.__timelines registration.
-  - GSAP must be loaded before this snippet executes.
+    hyperframesAnime registration.
+  - anime.js must be loaded before this snippet executes.
 
   API:
     attachMotionBlur(selector, timeline, options?)
@@ -35,6 +35,24 @@
 <script>
   (function () {
     if (!window._hfMbUid) window._hfMbUid = 0;
+
+    function getTimelineTimeSeconds(tl) {
+      return (Number(tl.currentTime) || 0) / 1000;
+    }
+
+    function getTimelineDurationMs(tl) {
+      return Math.max(Number(tl.duration) || 0, 100);
+    }
+
+    function readTranslate(el, property) {
+      var value = anime.utils.get(el, property, false);
+      var parsed = typeof value === "number" ? value : parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function setMotionStyles(el, styles) {
+      anime.utils.set(el, styles);
+    }
 
     window.attachMotionBlur = function (selector, tl, opts) {
       opts = opts || {};
@@ -128,27 +146,27 @@
           ghosts: ghosts,
           feTopBlur: feTopBlur,
           filterId: uid,
-          prevX: parseFloat(gsap.getProperty(el, "x")) || 0,
-          prevY: parseFloat(gsap.getProperty(el, "y")) || 0,
-          prevTime: tl.time(),
+          prevX: readTranslate(el, "translateX"),
+          prevY: readTranslate(el, "translateY"),
+          prevTime: getTimelineTimeSeconds(tl),
         };
       });
 
-      // tl.eventCallback("onUpdate") is not available in the HyperFrames renderer —
-      // the runtime proxies the timeline object. Tween onUpdate fires on every seek.
+      // Timeline-level callbacks can be skipped by renderer proxies; this
+      // proxy tween's onUpdate fires on every seek.
       var _proxy = { t: 0 };
-      tl.to(
+      tl.add(
         _proxy,
         {
           t: 1,
-          duration: Math.max(tl.duration(), 0.1),
-          ease: "none",
+          duration: getTimelineDurationMs(tl),
+          ease: "linear",
           onUpdate: function () {
-            var time = tl.time();
+            var time = getTimelineTimeSeconds(tl);
 
             state.forEach(function (s) {
-              var x = parseFloat(gsap.getProperty(s.el, "x")) || 0;
-              var y = parseFloat(gsap.getProperty(s.el, "y")) || 0;
+              var x = readTranslate(s.el, "translateX");
+              var y = readTranslate(s.el, "translateY");
               var dt = time - s.prevTime;
 
               if (dt > 0.0005) {
@@ -188,7 +206,7 @@
                     var sy = 1 + Math.min(Math.abs(vy) * stretchScale, stretchMax);
                     var ox = axis !== "y" ? (vx >= 0 ? "100% 50%" : "0% 50%") : "50% 50%";
                     var oy = axis !== "x" ? (vy >= 0 ? "50% 100%" : "50% 0%") : "50% 50%";
-                    gsap.set(s.el, {
+                    setMotionStyles(s.el, {
                       scaleX: axis !== "y" ? sx : 1,
                       scaleY: axis !== "x" ? sy : 1,
                       transformOrigin: axis === "x" ? ox : axis === "y" ? oy : "50% 50%",
@@ -203,7 +221,7 @@
                   });
                   s.feTopBlur.setAttribute("stdDeviation", "0 0");
                   if (stretchMax > 0) {
-                    gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                    setMotionStyles(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
                   }
                 }
 
@@ -219,7 +237,7 @@
                 });
                 s.feTopBlur.setAttribute("stdDeviation", "0 0");
                 if (stretchMax > 0) {
-                  gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                  setMotionStyles(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
                 }
                 s.prevX = x;
                 s.prevY = y;
@@ -238,18 +256,17 @@
 <!--
   Timeline integration example:
 
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
-  tl.fromTo("#my-box", { x: -100 }, { x: 1700, duration: 1.2, ease: "power3.inOut" }, 0.5);
+  tl.add("#my-box", { translateX: [-100, 1700], duration: 1200, ease: "inOutQuart" }, 500);
 
   // Extend to data-duration so seeks past the last tween reach the blur callback.
-  tl.set(document.body, {}, DATA_DURATION);
+  tl.set(document.body, {}, DATA_DURATION * 1000);
 
-  // Call AFTER tweens, BEFORE window.__timelines registration.
+  // Call AFTER tweens, BEFORE hyperframesAnime registration.
   // attachMotionBlur adds a tracking tween with onUpdate — must be called after
-  // tl.set()/tl.to() have established the final timeline duration.
+  // tl.set()/tl.add() have established the final timeline duration.
   attachMotionBlur("#my-box", tl, { axis: "x" });
 
-  window.__timelines = window.__timelines || {};
-  window.__timelines["my-composition"] = tl;
+  hyperframesAnime.register("my-composition", tl, {});
 -->

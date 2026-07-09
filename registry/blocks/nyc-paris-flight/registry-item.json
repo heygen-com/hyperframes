@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "nyc-paris-flight",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "NYC Paris Flight",
   "description": "Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.",
   "tags": ["showcase", "travel", "map", "youtube", "sfx"],

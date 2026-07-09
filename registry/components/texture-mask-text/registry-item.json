@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "texture-mask-text",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Texture Mask Text",
   "description": "CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps",
   "tags": ["text", "text-effect", "effect", "texture", "mask"],

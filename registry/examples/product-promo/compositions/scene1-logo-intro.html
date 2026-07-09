@@ -88,10 +88,10 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
       (function () {
-        const tl = gsap.timeline({ paused: true });
+        const tl = anime.createTimeline({ autoplay: false });
 
         const pieces = {
           tl: '[data-composition-id="scene1-logo-intro"] .logo-tl',
@@ -108,27 +108,27 @@
         // Viewport is 1920x1080. Center is 960, 540.
         // logo-container is at 880, 420.
 
-        tl.set(pieces.tl, { x: -960, y: -540 });
-        tl.set(pieces.tr, { x: 960, y: -540 });
-        tl.set(pieces.ml, { x: -960, y: 0 });
-        tl.set(pieces.mr, { x: 960, y: 0 });
-        tl.set(pieces.bl, { x: -960, y: 540 });
+        tl.add(pieces.tl, { translateX: -960, translateY: -540, duration: 0 }, 0);
+        tl.add(pieces.tr, { translateX: 960, translateY: -540, duration: 0 }, 0);
+        tl.add(pieces.ml, { translateX: -960, translateY: 0, duration: 0 }, 0);
+        tl.add(pieces.mr, { translateX: 960, translateY: 0, duration: 0 }, 0);
+        tl.add(pieces.bl, { translateX: -960, translateY: 540, duration: 0 }, 0);
 
         // 1. Converge to center with 3-frame stagger (approx 0.05s at 60fps)
         // 2. Collide with slight bounce (overshoot 1.1x)
-        const convergeDuration = 0.6;
-        const stagger = 0.05;
+        const convergeDuration = 600;
+        const stagger = 50;
 
         const pieceArray = [pieces.tl, pieces.tr, pieces.ml, pieces.mr, pieces.bl];
 
         pieceArray.forEach((piece, i) => {
-          tl.to(
+          tl.add(
             piece,
             {
-              x: 0,
-              y: 0,
+              translateX: 0,
+              translateY: 0,
               duration: convergeDuration,
-              ease: "back.out(1.1)",
+              ease: "outBack(1.1)",
             },
             i * stagger,
           );
@@ -137,53 +137,50 @@
         // 3. On collision (approx at 0.6 + 4*0.05 = 0.8s), white ring expands
         const collisionTime = convergeDuration + (pieceArray.length - 1) * stagger;
 
-        tl.fromTo(
+        tl.add(
           ring,
-          { scale: 0.2, opacity: 1 },
           {
-            scale: 2.5,
-            opacity: 0,
-            duration: 0.4,
-            ease: "power2.out",
+            scale: [0.2, 2.5],
+            opacity: [1, 0],
+            duration: 400,
+            ease: "outCubic",
           },
           collisionTime,
         );
 
         // 4. Logo pulses slightly
-        tl.to(
+        tl.add(
           logoContainer,
           {
             scale: 1.05,
-            duration: 0.15,
-            ease: "power2.out",
+            duration: 150,
+            ease: "outCubic",
           },
           collisionTime,
         );
 
-        tl.to(
+        tl.add(
           logoContainer,
           {
             scale: 1,
-            duration: 0.15,
-            ease: "power2.in",
+            duration: 150,
+            ease: "inCubic",
           },
-          collisionTime + 0.15,
+          collisionTime + 150,
         );
 
         // 5. Scale down to 0
-        tl.to(
+        tl.add(
           logoContainer,
           {
             scale: 0,
-            duration: 0.3,
-            ease: "expo.in",
-            delay: 0.1,
+            duration: 300,
+            ease: "inExpo",
           },
-          collisionTime + 0.3,
+          collisionTime + 400,
         );
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["scene1-logo-intro"] = tl;
+        hyperframesAnime.register("scene1-logo-intro", tl, { labels: {} });
       })();
     </script>
   </div>

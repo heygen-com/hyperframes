@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
@@ -167,7 +167,7 @@
           var cityDotsGroup = svg.querySelector(".city-dots-group");
           var cityLabelsGroup = svg.querySelector(".city-labels-group");
 
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
 
           /* --- City data: name → [longitude, latitude] (D3 uses [lon, lat]) --- */
           var cities = {
@@ -305,77 +305,77 @@
               travelingDots.push(dot);
             });
 
-            /* ===== GSAP TIMELINE ===== */
+            /* ===== ANIMATION TIMELINE ===== */
 
             /* 0s: headline clip-path wipe */
-            tl.to(
+            tl.add(
               "#us-map-flow .flow-headline",
               {
                 clipPath: "inset(0 0% 0 0)",
-                duration: 1,
-                ease: "power2.inOut",
+                duration: 1000,
+                ease: "inOutCubic",
               },
               0,
             );
 
             /* 0.3s: subtitle fade */
-            tl.to(
+            tl.add(
               "#us-map-flow .flow-subtitle",
               {
                 opacity: 1,
-                duration: 0.5,
-                ease: "power2.out",
+                duration: 500,
+                ease: "outCubic",
               },
-              0.3,
+              300,
             );
 
             /* 0.6s: states fade in */
-            tl.to(
+            tl.add(
               "#us-map-flow .state-path",
               {
                 opacity: 1,
-                duration: 0.8,
-                ease: "power2.out",
+                duration: 800,
+                ease: "outCubic",
               },
-              0.6,
+              600,
             );
 
             /* 1.5s: city dots pop in */
-            tl.to(
+            tl.add(
               "#us-map-flow .city-dot",
               {
                 opacity: 1,
                 scale: 1,
                 transformOrigin: "center center",
-                duration: 0.4,
-                stagger: 0.05,
-                ease: "back.out(1.7)",
+                duration: 400,
+                delay: anime.stagger(50),
+                ease: "outBack(1.7)",
               },
-              1.5,
+              1500,
             );
 
             /* 2.5s: city labels fade in */
-            tl.to(
+            tl.add(
               "#us-map-flow .city-label",
               {
                 opacity: 1,
-                duration: 0.3,
-                stagger: 0.05,
-                ease: "power2.out",
+                duration: 300,
+                delay: anime.stagger(50),
+                ease: "outCubic",
               },
-              2.5,
+              2500,
             );
 
             /* 3.5s: arcs draw sequentially */
             arcPaths.forEach(function (arc, i) {
-              tl.to(
+              tl.add(
                 arc.el,
                 {
                   strokeDashoffset: 0,
-                  duration: 1,
-                  ease: "power2.inOut",
+                  duration: 1000,
+                  ease: "inOutCubic",
                 },
-                3.5 + i * 0.2,
+                3500 + i * 200,
               );
             });
 
@@ -385,42 +385,48 @@
               var pathEl = arc.el;
               var pathLength = arc.length;
 
-              tl.set(dot, { opacity: 0.9 }, 7.0 + i * 0.1);
+              tl.add(dot, { opacity: 0.9, duration: 0 }, 7000 + i * 100);
 
               var progress = { value: 0 };
-              tl.to(
+              tl.add(
                 progress,
                 {
                   value: 1,
-                  duration: 1.5,
-                  ease: "power1.inOut",
+                  duration: 1500,
+                  ease: "inOutQuad",
                   onUpdate: function () {
                     var pt = pathEl.getPointAtLength(progress.value * pathLength);
                     dot.setAttribute("cx", pt.x);
                     dot.setAttribute("cy", pt.y);
                   },
-                  onComplete: function () {
-                    gsap.to(dot, { opacity: 0, duration: 0.3 });
-                  },
                 },
-                7.0 + i * 0.1,
+                7000 + i * 100,
+              );
+
+              tl.add(
+                dot,
+                {
+                  opacity: 0,
+                  duration: 300,
+                  ease: "outCubic",
+                },
+                8500 + i * 100,
               );
             });
 
             /* 9.0s: source fade in */
-            tl.to(
+            tl.add(
               "#us-map-flow .flow-source",
               {
                 opacity: 1,
-                duration: 0.6,
-                ease: "power2.out",
+                duration: 600,
+                ease: "outCubic",
               },
-              9.0,
+              9000,
             );
 
             /* Register timeline */
-            window.__timelines = window.__timelines || {};
-            window.__timelines["us-map-flow"] = tl;
+            hyperframesAnime.register("us-map-flow", tl, { labels: {} });
           });
         })();
       </script>

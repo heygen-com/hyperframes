@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Vignette — Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -179,14 +179,14 @@
 
       <script>
         (function () {
-          const tl = gsap.timeline({ paused: true });
+          const tl = anime.createTimeline({ autoplay: false });
 
           // Reveal the backdrop subject and haze first so the vignette has
           // something to frame. Without a subject the effect reads as a flat
           // dark gradient — uninteresting in a still preview.
-          tl.to(".haze-far", { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.0);
-          tl.to(".haze-near", { opacity: 1, duration: 0.8, ease: "power2.out" }, 0.15);
-          tl.to(".demo-subject", { opacity: 1, scale: 1, duration: 1.0, ease: "power3.out" }, 0.1);
+          tl.add(".haze-far", { opacity: 1, duration: 800, ease: "outCubic" }, 0);
+          tl.add(".haze-near", { opacity: 1, duration: 800, ease: "outCubic" }, 150);
+          tl.add(".demo-subject", { opacity: 1, duration: 1000, ease: "outQuart" }, 100);
 
           // Title + subtitle settle in. The letters settle from wider spacing to their
           // resting spacing — the faithful smooth equivalent of a letter-spacing tween is a
@@ -195,54 +195,56 @@
           // its CSS resting 0.18em; each glyph starts offset by the extra gap the original
           // tween opened — (0.32em − 0.18em) × 108px ≈ 15.12px per gap — and converges to 0,
           // centered about the word (8 chars → center at index 3.5).
-          tl.fromTo(
+          tl.add(
             ".demo-title",
-            { opacity: 0, y: 18 },
-            { opacity: 1, y: 0, duration: 1.0, ease: "power3.out" },
-            0.6,
+            { opacity: [0, 1], translateY: [18, 0], duration: 1000, ease: "outQuart" },
+            600,
           );
-          tl.from(
+          tl.add(
             ".demo-title .ch",
-            { x: (i) => (i - 3.5) * 15.12, duration: 1.0, ease: "power3.out" },
-            0.6,
+            {
+              translateX: (_el, i) => [(i - 3.5) * 15.12, 0],
+              duration: 1000,
+              ease: "outQuart",
+            },
+            600,
           );
-          tl.to(".demo-subtitle", { opacity: 1, duration: 0.8, ease: "power3.out" }, 1.0);
+          tl.add(".demo-subtitle", { opacity: 1, duration: 800, ease: "outQuart" }, 1000);
 
           // Vignette: start visibly soft (so viewers see the unframed scene),
           // then ramp to a strong cinematic vignette and hold through the
           // capture-time peak (~3.0s, picked to match the catalog thumbnail
           // sampling at `Math.min(3.0, duration * 0.6)` for duration=5).
-          gsap.set("#hf-vignette", {
+          anime.utils.set("#hf-vignette", {
             "--vignette-color": "rgba(0, 0, 0, 0.35)",
             "--vignette-size": "70%",
             "--vignette-edge": "100%",
           });
-          tl.to(
+          tl.add(
             "#hf-vignette",
             {
               "--vignette-color": "rgba(0, 0, 0, 0.92)",
               "--vignette-size": "26%",
-              duration: 1.6,
-              ease: "power2.inOut",
+              duration: 1600,
+              ease: "inOutCubic",
             },
-            1.4,
+            1400,
           );
 
           // Gentle breathing for the video loop so the effect reads as alive,
           // not static. Keeps the still-frame at peak intensity around t≈3s.
-          tl.to(
+          tl.add(
             "#hf-vignette",
-            { "--vignette-size": "32%", duration: 0.9, ease: "sine.inOut" },
-            3.4,
+            { "--vignette-size": "32%", duration: 900, ease: "inOutSine" },
+            3400,
           );
-          tl.to(
+          tl.add(
             "#hf-vignette",
-            { "--vignette-size": "26%", duration: 0.9, ease: "sine.inOut" },
-            4.3,
+            { "--vignette-size": "26%", duration: 900, ease: "inOutSine" },
+            4300,
           );
 
-          window.__timelines = window.__timelines || {};
-          window.__timelines["vignette-demo"] = tl;
+          hyperframesAnime.register("vignette-demo", tl, {});
         })();
       </script>
     </div>

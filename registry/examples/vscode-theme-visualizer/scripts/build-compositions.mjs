@@ -627,17 +627,17 @@ const runtime = String.raw`(() => {
   }
 
   function buildTimeline(root, compositionId) {
-    const tl = gsap.timeline({ paused: true });
+    const tl = anime.createTimeline({ autoplay: false });
     const editor = root.querySelector(".editor");
     const caret = root.querySelector(".caret");
     const activeLine = root.querySelector(".active-line");
-    const lineEls = gsap.utils.toArray(root.querySelectorAll(".line"));
+    const lineEls = Array.from(root.querySelectorAll(".line"));
     const lineStartTimes = [];
     const charSchedule = [];
     let cursorTime = 0.95;
 
     lineEls.forEach((line, lineIndex) => {
-      const lineChars = gsap.utils.toArray(line.querySelectorAll(".char"));
+      const lineChars = Array.from(line.querySelectorAll(".char"));
       lineStartTimes[lineIndex] = cursorTime;
       lineChars.forEach((char, charIndex) => {
         charSchedule.push({ char, time: cursorTime + charIndex * 0.012 });
@@ -645,36 +645,43 @@ const runtime = String.raw`(() => {
       cursorTime += Math.max(lineChars.length * 0.012, 0.08) + 0.045;
     });
 
-    gsap.set(activeLine, { y: lineHighlightY(editor, lineEls[0]) });
-    gsap.set(caret, caretPointForLineStart(editor, lineEls[0]));
+    function pointToTransform(point) {
+      return { translateX: point.x, translateY: point.y };
+    }
 
-    tl.from(root.querySelector(".header"), { y: 24, opacity: 0, duration: 0.45, ease: "power3.out" }, 0);
-    tl.from(root.querySelector(".workbench"), { y: 42, opacity: 0, scale: 0.986, duration: 0.58, ease: "power3.out" }, 0.1);
-    tl.from(activeLine, { opacity: 0, duration: 0.22, ease: "power2.out" }, 0.74);
+    function addTimelineCall(position, callback) {
+      tl.add({ value: 0 }, { value: 0, duration: 0, onComplete: callback }, position);
+    }
+
+    anime.utils.set(activeLine, { translateY: lineHighlightY(editor, lineEls[0]) });
+    anime.utils.set(caret, pointToTransform(caretPointForLineStart(editor, lineEls[0])));
+
+    tl.add(root.querySelector(".header"), { translateY: [24, 0], opacity: [0, 1], duration: 450, ease: "outQuart" }, 0);
+    tl.add(root.querySelector(".workbench"), { translateY: [42, 0], opacity: [0, 1], scale: [0.986, 1], duration: 580, ease: "outQuart" }, 100);
+    tl.add(activeLine, { opacity: [0, 1], duration: 220, ease: "outCubic" }, 740);
     lineStartTimes.forEach((time, lineIndex) => {
       const line = lineEls[lineIndex];
-      tl.set(activeLine, { y: lineHighlightY(editor, line) }, time);
-      tl.set(caret, caretPointForLineStart(editor, line), time);
-      tl.call(() => {
+      tl.add(activeLine, { translateY: lineHighlightY(editor, line), duration: 0 }, time * 1000);
+      tl.add(caret, { ...pointToTransform(caretPointForLineStart(editor, line)), duration: 0 }, time * 1000);
+      addTimelineCall(time * 1000, () => {
         lineEls.forEach((item) => item.classList.toggle("is-active", item === line));
-      }, [], time);
+      });
     });
     charSchedule.forEach(({ char, time }) => {
-      tl.set(char, { opacity: 1 }, time);
-      tl.set(caret, caretPointForElement(editor, char), time + 0.002);
+      tl.add(char, { opacity: 1, duration: 0 }, time * 1000);
+      tl.add(caret, { ...pointToTransform(caretPointForElement(editor, char)), duration: 0 }, (time + 0.002) * 1000);
     });
-    tl.to(root.querySelector(".caret"), { opacity: 0, duration: 0.34, repeat: 25, yoyo: true, ease: "steps(1)" }, 0.95);
-    tl.from(root.querySelector(".terminal"), { y: 140, opacity: 0, duration: 0.56, ease: "power3.out" }, 7.55);
-    tl.from(root.querySelector(".terminal-body").children, { opacity: 0, y: 8, duration: 0.24, stagger: 0.16, ease: "power2.out" }, 8.05);
-    tl.to(root.querySelector(".workbench"), { rotateY: -10.5, z: 74, duration: 0.72, ease: "power2.inOut" }, 9.35);
-    tl.to(root.querySelector(".workbench"), { rotateY: 0, z: 0, duration: 0.62, ease: "power2.inOut" }, 10.08);
+    tl.add(root.querySelector(".caret"), { opacity: 0, duration: 340, loop: 26, alternate: true, ease: "steps(1)" }, 950);
+    tl.add(root.querySelector(".terminal"), { translateY: [140, 0], opacity: [0, 1], duration: 560, ease: "outQuart" }, 7550);
+    tl.add(root.querySelector(".terminal-body").children, { opacity: [0, 1], translateY: [8, 0], duration: 240, delay: anime.stagger(160), ease: "outCubic" }, 8050);
+    tl.add(root.querySelector(".workbench"), { rotateY: -10.5, translateZ: 74, duration: 720, ease: "inOutCubic" }, 9350);
+    tl.add(root.querySelector(".workbench"), { rotateY: 0, translateZ: 0, duration: 620, ease: "inOutCubic" }, 10080);
 
-    window.__timelines = window.__timelines || {};
-    window.__timelines[compositionId] = tl;
+    hyperframesAnime.register(compositionId, tl, { labels: {} });
 
     const previewTime = new URLSearchParams(window.location.search).get("t");
     if (previewTime !== null) {
-      tl.time(Number(previewTime));
+      tl.seek(Number(previewTime) * 1000);
     }
   }
 
@@ -724,13 +731,12 @@ function compositionMarkup(compositionId, theme) {
         <style>
 ${css}
         </style>
-        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
         <script>
 ${runtime}
         </script>
         <script>
-          window.__timelines = window.__timelines || {};
-          window.__timelines["${compositionId}"] = window.__timelines["${compositionId}"] || gsap.timeline({ paused: true });
+          hyperframesAnime.register("${compositionId}", anime.createTimeline({ autoplay: false }), { labels: {} });
           window.createVSCodeThemeComposition("${compositionId}", ${JSON.stringify(theme)});
         </script>
       </div>
@@ -824,7 +830,7 @@ function rootIndexMarkup() {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>VS Code Theme Sequence</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -848,8 +854,7 @@ function rootIndexMarkup() {
     <div id="vscode-theme-sequence" data-composition-id="vscode-theme-sequence" data-start="0" data-width="1920" data-height="1080">
 ${clips}
       <script>
-        window.__timelines = window.__timelines || {};
-        window.__timelines["vscode-theme-sequence"] = gsap.timeline({ paused: true });
+        hyperframesAnime.register("vscode-theme-sequence", anime.createTimeline({ autoplay: false }), { labels: {} });
       </script>
     </div>
   </body>
@@ -865,7 +870,7 @@ function renderEntryMarkup(theme) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>${theme.label} Render Entry</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -896,8 +901,7 @@ function renderEntryMarkup(theme) {
         data-track-index="1"
       ></div>
       <script>
-        window.__timelines = window.__timelines || {};
-        window.__timelines["render-${theme.id}"] = gsap.timeline({ paused: true });
+        hyperframesAnime.register("render-${theme.id}", anime.createTimeline({ autoplay: false }), { labels: {} });
       </script>
     </div>
   </body>

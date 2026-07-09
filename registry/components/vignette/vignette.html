@@ -37,15 +37,15 @@
 </style>
 
 <!--
-  Timeline integration example (add to your composition's GSAP timeline):
+  Timeline integration example (add to your composition's anime.js timeline):
 
   // Fade the vignette in over the first second
-  tl.fromTo("#hf-vignette",
-    { "--vignette-color": "rgba(0, 0, 0, 0)" },
-    { "--vignette-color": "rgba(0, 0, 0, 0.7)", duration: 1, ease: "power2.out" },
-    0,
-  );
+  tl.add("#hf-vignette", {
+    "--vignette-color": ["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0.7)"],
+    duration: 1000,
+    ease: "outCubic",
+  }, 0);
 
   // Or breathe the size in and out (works with any easing)
-  tl.to("#hf-vignette", { "--vignette-size": "35%", duration: 1, ease: "sine.inOut" }, 2);
+  tl.add("#hf-vignette", { "--vignette-size": "35%", duration: 1000, ease: "inOutSine" }, 2000);
 -->

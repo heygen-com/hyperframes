@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "grid-pixelate-wipe",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Grid Pixelate Wipe",
   "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
   "tags": ["transition", "wipe", "grid", "pixelate"],

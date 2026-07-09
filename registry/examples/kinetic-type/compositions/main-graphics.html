@@ -480,93 +480,101 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
-      const tl = gsap.timeline({ paused: true });
-
-      // The A-roll footage lives in the host root (index.html); its reveal is
-      // driven on the main timeline there. This timeline only animates the
-      // graphics overlay's own elements.
-
-      // --- Initial Setup ---
-      tl.set("#white-wipe", { xPercent: -100 }, 0);
-
-      // --- Scene 1: Hook (0s - 2.0s) ---
-      tl.set("#scene-1", { opacity: 1, clipPath: "none" }, 0);
-      tl.to(".hook-what-if", { opacity: 1, y: -30, duration: 0.8, ease: "power3.out" }, 0.2);
-      tl.to(".hook-motion-graphics", { scale: 1, duration: 0.8, ease: "back.out(1.7)" }, 0.5);
-      tl.fromTo(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#white-wipe", { translateX: "-100%", duration: 0 }, 0);
+      tl.add("#scene-1", { opacity: 1, clipPath: "none", duration: 0 }, 0);
+      tl.add(
+        ".hook-what-if",
+        { opacity: 1, translateY: -30, duration: 800, ease: "outQuart" },
+        200,
+      );
+      tl.add(".hook-motion-graphics", { scale: 1, duration: 800, ease: "outBack(1.7)" }, 500);
+      tl.add(
         ".hook-wrote-themselves",
-        { x: 100, opacity: 0 },
-        { x: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-        0.9,
+        { translateX: [100, 0], opacity: [0, 1], duration: 600, ease: "outCubic" },
+        900,
       );
-
-      // --- Transition to Scene 2 (2.0s - 2.4s) ---
-      tl.to("#white-wipe", { xPercent: 0, duration: 0.2, ease: "power2.in" }, 2.0);
-      tl.set("#scene-1", { opacity: 0 }, 2.2);
-      tl.to("#white-wipe", { xPercent: 100, duration: 0.2, ease: "power2.out" }, 2.2);
-
-      // --- Scene 2: Swiss Style (2.0s - 5.0s) ---
-      gsap.set(".swiss-panel", { xPercent: 100 });
-      tl.to("#scene-2", { opacity: 1, duration: 0.1 }, 2.2);
-      tl.to(".swiss-panel", { xPercent: 0, duration: 0.8, ease: "expo.out" }, 2.3);
-      tl.to(".swiss-title", { opacity: 1, duration: 0.1 }, 2.5);
-      tl.to(".swiss-subtitle", { opacity: 1, y: 0, duration: 0.4 }, 2.7);
-      tl.to(
+      tl.add("#white-wipe", { translateX: ["-100%", "0%"], duration: 200, ease: "inCubic" }, 2000);
+      tl.add("#scene-1", { opacity: 0, duration: 0 }, 2200);
+      tl.add("#white-wipe", { translateX: ["0%", "100%"], duration: 200, ease: "outCubic" }, 2200);
+      tl.add(".swiss-panel", { translateX: "100%", duration: 0 }, 0);
+      tl.add("#scene-2", { opacity: 1, duration: 100 }, 2200);
+      tl.add(".swiss-panel", { translateX: ["100%", "0%"], duration: 800, ease: "outExpo" }, 2300);
+      tl.add(".swiss-title", { opacity: 1, duration: 100 }, 2500);
+      tl.add(".swiss-subtitle", { opacity: 1, translateY: 0, duration: 400 }, 2700);
+      tl.add(
         ".swiss-main-text .word",
-        { opacity: 1, y: 0, stagger: 0.15, duration: 0.5, ease: "power2.out" },
-        3.0,
+        {
+          opacity: 1,
+          translateY: 0,
+          duration: 500,
+          ease: "outCubic",
+          delay: anime.stagger(150),
+        },
+        3000,
       );
-      tl.to(".swiss-circle", { opacity: 1, scale: 1.2, duration: 0.6, ease: "back.out" }, 3.2);
-      tl.to(".swiss-square", { opacity: 1, rotation: 45, duration: 0.6, ease: "back.out" }, 3.4);
-      tl.to(".swiss-panel", { xPercent: 120, duration: 0.7, ease: "expo.in" }, 4.7);
-      tl.to("#scene-2", { opacity: 0, duration: 0.1 }, 5.0);
-
-      // --- Scene 3: Figma Config Style (5.3s - 9.6s) ---
-      tl.to("#scene-3", { opacity: 1, duration: 0.3 }, 5.3);
-      tl.to("#figma-animations", { opacity: 1, y: 0, duration: 0.6 }, 5.5);
-      tl.to(".glyph-diamond", { rotation: 225, duration: 2, repeat: 1, ease: "power2.inOut" }, 5.5);
-
-      tl.to("#figma-transitions", { opacity: 1, y: 0, duration: 0.6 }, 6.2);
-      tl.to(".glyph-wipe", { width: "100%", duration: 1, ease: "power2.inOut" }, 6.2);
-
-      tl.to("#figma-typography", { opacity: 1, y: 0, duration: 0.6 }, 6.9);
-      tl.to(".glyph-lines .line", { width: "100%", stagger: 0.2, duration: 0.5 }, 7.1);
-
-      tl.to(".figma-footer", { opacity: 1, y: -20, duration: 0.8 }, 7.8);
-      tl.to("#scene-3", { opacity: 0, duration: 0.5 }, 9.1);
-
-      // --- Scene 4: David Carson Style (9.6s - 11.7s) ---
-      tl.to("#scene-4", { opacity: 1, duration: 0.1 }, 9.6);
-      tl.fromTo(".carson-line-1", { y: 200 }, { y: 0, duration: 0.6, ease: "expo.out" }, 9.7);
-      tl.to(".carson-line-2", { opacity: 1, x: -50, duration: 0.5, ease: "back.out" }, 10.2);
-      tl.to(".carson-container", { y: 300, duration: 0.6, ease: "expo.in" }, 11.4);
-      tl.to("#scene-4", { opacity: 0, duration: 0.1 }, 11.7);
-
-      // --- Scene 5: Wes Anderson (11.7s - 13.5s) ---
-      tl.to("#scene-5", { opacity: 1, duration: 0.1 }, 11.7);
-      tl.fromTo(".wes-text-top", { y: -100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.0);
-      tl.to(".wes-rule", { width: 400, duration: 0.6 }, 12.3);
-      tl.fromTo(".wes-text-bottom", { y: 100 }, { y: 0, duration: 0.6, ease: "back.out(1.2)" }, 12.6);
-      tl.to("#scene-5", { opacity: 0, duration: 0.5 }, 13.0);
-
-      // --- Scene 6: Vignelli Style (13.5s - 14.72s) ---
-      tl.set("#scene-6", { opacity: 1 }, 13.5);
-      tl.set("#scene-6-overlay", { opacity: 1 }, 13.5);
-
-      tl.to("#scene-6-overlay", { opacity: 0.6, duration: 0.4 }, 13.5);
-
-      tl.to(".vignelli-title", { opacity: 1, duration: 0.5 }, 13.8);
-      tl.to(".vignelli-subtitle", { opacity: 1, duration: 0.5 }, 14.0);
-      tl.to(".vignelli-rule", { width: 300, duration: 0.4 }, 14.2);
-
-      tl.to("#scene-6-overlay", { opacity: 0, duration: 0.3 }, 14.4);
-
-      tl.set("#black-out", { opacity: 1 }, 14.7);
-
-      window.__timelines = window.__timelines || {};
-      window.__timelines["main-graphics"] = tl;
+      tl.add(
+        ".swiss-circle",
+        { opacity: 1, scale: 1.2, duration: 600, ease: "outBack(1.70158)" },
+        3200,
+      );
+      tl.add(
+        ".swiss-square",
+        { opacity: 1, rotate: 45, duration: 600, ease: "outBack(1.70158)" },
+        3400,
+      );
+      tl.add(".swiss-panel", { translateX: ["0%", "120%"], duration: 700, ease: "inExpo" }, 4700);
+      tl.add("#scene-2", { opacity: [1, 0], duration: 100 }, 5000);
+      tl.add("#scene-3", { opacity: 1, duration: 300 }, 5300);
+      tl.add("#figma-animations", { opacity: 1, translateY: 0, duration: 600 }, 5500);
+      tl.add(".glyph-diamond", { rotate: 225, duration: 2000, ease: "inOutCubic", loop: 2 }, 5500);
+      tl.add("#figma-transitions", { opacity: 1, translateY: 0, duration: 600 }, 6200);
+      tl.add(".glyph-wipe", { width: "100%", duration: 1000, ease: "inOutCubic" }, 6200);
+      tl.add("#figma-typography", { opacity: 1, translateY: 0, duration: 600 }, 6900);
+      tl.add(
+        ".glyph-lines .line",
+        {
+          width: "100%",
+          duration: 500,
+          delay: anime.stagger(200),
+        },
+        7100,
+      );
+      tl.add(".figma-footer", { opacity: 1, translateY: -20, duration: 800 }, 7800);
+      tl.add("#scene-3", { opacity: [1, 0], duration: 500 }, 9100);
+      tl.add("#scene-4", { opacity: 1, duration: 100 }, 9600);
+      tl.add(".carson-line-1", { translateY: [200, 0], duration: 600, ease: "outExpo" }, 9700);
+      tl.add(
+        ".carson-line-2",
+        { opacity: 1, translateX: -50, duration: 500, ease: "outBack(1.70158)" },
+        10200,
+      );
+      tl.add(".carson-container", { translateY: 300, duration: 600, ease: "inExpo" }, 11400);
+      tl.add("#scene-4", { opacity: [1, 0], duration: 100 }, 11700);
+      tl.add("#scene-5", { opacity: 1, duration: 100 }, 11700);
+      tl.add(
+        ".wes-text-top",
+        { translateY: [-100, 0], duration: 600, ease: "outBack(1.2)" },
+        12000,
+      );
+      tl.add(".wes-rule", { width: 400, duration: 600 }, 12300);
+      tl.add(
+        ".wes-text-bottom",
+        { translateY: [100, 0], duration: 600, ease: "outBack(1.2)" },
+        12600,
+      );
+      tl.add("#scene-5", { opacity: [1, 0], duration: 500 }, 13000);
+      tl.add("#scene-6", { opacity: 1, duration: 0 }, 13500);
+      tl.add("#scene-6-overlay", { opacity: 1, duration: 0 }, 13500);
+      tl.add("#scene-6-overlay", { opacity: [1, 0.6], duration: 400 }, 13500);
+      tl.add(".vignelli-title", { opacity: 1, duration: 500 }, 13800);
+      tl.add(".vignelli-subtitle", { opacity: 1, duration: 500 }, 14000);
+      tl.add(".vignelli-rule", { width: 300, duration: 400 }, 14200);
+      tl.add("#scene-6-overlay", { opacity: [0.6, 0], duration: 300 }, 14400);
+      tl.add("#black-out", { opacity: 1, duration: 0 }, 14700);
+      hyperframesAnime.register("main-graphics", tl, { labels: {} });
     </script>
   </div>
 </template>

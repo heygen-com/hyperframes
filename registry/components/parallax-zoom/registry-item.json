@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "parallax-zoom",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Parallax Zoom",
   "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
   "tags": ["transition", "zoom", "parallax", "grid", "hero"],

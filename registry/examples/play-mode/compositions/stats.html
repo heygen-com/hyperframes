@@ -267,7 +267,7 @@
           { text: "built", start: 14.619, end: 14.88 },
           { text: "Hyperframes", start: 15.079, end: 15.42 },
         ];
-        const tl = gsap.timeline({ paused: true });
+        const tl = anime.createTimeline({ autoplay: false });
 
         // Helper to find word timing
         function getWordTime(wordText) {
@@ -286,102 +286,104 @@
         const t3 = getWordTime("three") || 8.88;
 
         // Moment 1 Animation (approx 5s)
-        tl.to(
+        anime.utils.set("#moment-1, #moment-2, #moment-3", {
+          transformOrigin: "center center",
+        });
+
+        tl.add(
           "#moment-1",
           {
             opacity: 1,
             scale: 1,
-            duration: 0.8,
-            ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-1", { transformOrigin: "center center" }),
+            duration: 800,
+            ease: "outElastic(1, .6)",
           },
-          t1,
+          t1 * 1000,
         );
 
         // Moment 1 Exit (before Moment 2)
-        tl.to(
+        tl.add(
           "#moment-1",
           {
             opacity: 0,
             scale: 0.5,
-            duration: 0.3,
-            ease: "back.in(1.7)",
+            duration: 300,
+            ease: "inBack(1.7)",
           },
-          t2 - 0.4,
+          (t2 - 0.4) * 1000,
         );
 
         // Moment 2 Animation (approx 9s)
-        tl.to(
+        tl.add(
           "#moment-2",
           {
             opacity: 1,
             scale: 1,
-            duration: 0.8,
-            ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-2", { transformOrigin: "center center" }),
+            duration: 800,
+            ease: "outElastic(1, .6)",
           },
-          t2,
+          t2 * 1000,
         );
 
         // Moment 2 Exit (before Moment 3)
-        tl.to(
+        tl.add(
           "#moment-2",
           {
             opacity: 0,
             scale: 0.5,
-            duration: 0.3,
-            ease: "back.in(1.7)",
+            duration: 300,
+            ease: "inBack(1.7)",
           },
-          t3 - 0.4,
+          (t3 - 0.4) * 1000,
         );
 
         // Moment 3 Animation (approx 13s)
-        tl.to(
+        tl.add(
           "#moment-3",
           {
             opacity: 1,
             scale: 1,
-            duration: 0.8,
-            ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-3", { transformOrigin: "center center" }),
+            duration: 800,
+            ease: "outElastic(1, .6)",
           },
-          t3,
+          t3 * 1000,
         );
 
         // Moment 3 Exit: 3 words before 'Hyperframes'
         // 'Editor' is at 15.079. 3 words before is 'So' at 14.239.
-        tl.to(
+        tl.add(
           "#moment-3",
           {
             opacity: 0,
             scale: 0.5,
-            duration: 0.3,
-            ease: "back.in(1.7)",
+            duration: 300,
+            ease: "inBack(1.7)",
           },
-          14.239,
+          14239,
         );
 
         // Ambient Motion (Finite)
         const totalDuration = 16.04;
-        gsap.utils.toArray(".shape").forEach((shape, i) => {
+        Array.from(document.querySelectorAll(".shape")).forEach((shape, i) => {
+          const keepsCenteredX = shape.style.transform.includes("translateX(-50%)");
           const stepDuration = 2 + i * 0.2;
           const steps = Math.ceil(totalDuration / stepDuration);
           for (let s = 0; s < steps; s++) {
-            tl.to(
+            tl.add(
               shape,
               {
-                y: s % 2 === 0 ? 15 : -15,
-                rotation: s % 2 === 0 ? 5 : -5,
-                duration: stepDuration,
-                ease: "sine.inOut",
+                ...(keepsCenteredX ? { translateX: "-50%" } : {}),
+                translateY: s % 2 === 0 ? 15 : -15,
+                rotate: s % 2 === 0 ? 5 : -5,
+                duration: stepDuration * 1000,
+                ease: "inOutSine",
               },
-              s * stepDuration,
+              s * stepDuration * 1000,
             );
           }
         });
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["stats"] = tl;
+        hyperframesAnime.register("stats", tl, { labels: {} });
       })();
     </script>
   </div>

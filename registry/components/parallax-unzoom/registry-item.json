@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "parallax-unzoom",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Parallax Unzoom",
   "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
   "tags": ["transition", "reveal", "unzoom", "parallax", "grid", "hero"],

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "nyt-graph",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "NYT Graph",
   "description": "Animated data chart in print editorial style",
   "dimensions": {
