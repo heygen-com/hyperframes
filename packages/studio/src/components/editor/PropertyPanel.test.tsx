@@ -615,3 +615,119 @@ describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up f
     RENDER_TIMEOUT_MS,
   );
 });
+
+// Media fixtures (Plan 4 Task 7): the three tag values resolveEditingSections
+// turns `media` on for (video/audio/img). Each carries no text fields (so the
+// Text group never renders) and sets `element` to a real media node so the
+// FlatMediaSection reads a live media element. `as never` casts around the
+// element-type mismatch with baseElement()'s HTMLDivElement.
+function videoElement() {
+  return {
+    ...baseElement(),
+    id: "s1-bg",
+    selector: "#s1-bg",
+    label: "S1 Background",
+    tagName: "video",
+    textFields: [],
+    element: document.createElement("video"),
+  };
+}
+
+function imageElement() {
+  return {
+    ...baseElement(),
+    id: "s1-img",
+    selector: "#s1-img",
+    label: "S1 Image",
+    tagName: "img",
+    textFields: [],
+    element: document.createElement("img"),
+  };
+}
+
+function audioElement() {
+  return {
+    ...baseElement(),
+    id: "s1-audio",
+    selector: "#s1-audio",
+    label: "S1 Audio",
+    tagName: "audio",
+    textFields: [],
+    element: document.createElement("audio"),
+  };
+}
+
+// All FlatGroup titles currently mounted (open row + every collapsed row).
+function flatGroupTitles(host: HTMLElement): string[] {
+  const open = Array.from(
+    host.querySelectorAll('[data-flat-group-open="true"] .text-panel-text-0'),
+  ).map((el) => el.textContent ?? "");
+  const collapsed = Array.from(
+    host.querySelectorAll('[data-flat-group-collapsed="true"] .text-panel-text-2'),
+  ).map((el) => el.textContent ?? "");
+  return [...open, ...collapsed];
+}
+
+describe("PropertyPanel — Media group (Plan 4)", () => {
+  it(
+    "renders the flat Media group and not the legacy MediaSection, for a video element",
+    async () => {
+      const { host, root } = await renderPanel(true, videoElement() as never);
+      // A Media FlatGroup exists (open or collapsed).
+      expect(flatGroupTitles(host)).toContain("Media");
+      // The legacy MediaSection renders its rows inside a `Section` whose
+      // data-panel-section slug is the media title ("video"/"image"/"audio").
+      // On the flat path it's fully replaced, so none of those may appear.
+      expect(host.querySelector('[data-panel-section="video"]')).toBeNull();
+      expect(host.querySelector('[data-panel-section="image"]')).toBeNull();
+      expect(host.querySelector('[data-panel-section="audio"]')).toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "one-open accordion: opening Media closes whichever other group was open, and vice versa (5-way exclusivity)",
+    async () => {
+      // videoElement() has canEditStyles: true and no text fields, so Style is
+      // the default-open group; Layout and Media render collapsed alongside it.
+      const { host, root } = await renderPanel(true, videoElement() as never);
+      expect(openGroupText(host)).toContain("Style");
+
+      // Opening Media closes Style.
+      openFlatGroup(host, "Media");
+      const afterMedia = openGroupText(host);
+      expect(afterMedia).toContain("Media");
+      expect(afterMedia).not.toContain("Style");
+
+      // Reverse direction: opening Layout closes Media — same shared openGroupId.
+      openFlatGroup(host, "Layout");
+      const afterLayout = openGroupText(host);
+      expect(afterLayout).toContain("Layout");
+      expect(afterLayout).not.toContain("Media");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "gates the Media group exactly like the legacy MediaSection: present for video/img/audio, absent for a plain div/text element",
+    async () => {
+      for (const fixture of [videoElement, imageElement, audioElement]) {
+        const { host, root } = await renderPanel(true, fixture() as never);
+        expect(flatGroupTitles(host)).toContain("Media");
+        act(() => root.unmount());
+      }
+
+      // baseElement() is a plain <div> with text — sections.media is false, so
+      // no Media group (flat or legacy) may render.
+      const { host, root } = await renderPanel(true);
+      expect(flatGroupTitles(host)).not.toContain("Media");
+      expect(host.querySelector('[data-panel-section="video"]')).toBeNull();
+      expect(host.querySelector('[data-panel-section="image"]')).toBeNull();
+      expect(host.querySelector('[data-panel-section="audio"]')).toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
