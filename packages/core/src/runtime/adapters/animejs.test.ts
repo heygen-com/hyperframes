@@ -182,6 +182,35 @@ describe("animejs adapter", () => {
       expect(renderedState).toBe(fromState);
     });
 
+    it("keeps numeric from-values written during priming when later seek(0) is unchanged", () => {
+      document.body.innerHTML = '<div id="card"></div>';
+      const card = document.getElementById("card");
+      expect(card).not.toBeNull();
+      if (!card) return;
+
+      let engaged = false;
+      let currentTimeMs: number | null = null;
+      const instance = {
+        duration: 4000,
+        seek: vi.fn((timeMs: number) => {
+          if (timeMs === currentTimeMs) return;
+          currentTimeMs = timeMs;
+          if (timeMs >= 1200) engaged = true;
+          if (engaged) {
+            card.style.opacity = "0";
+            card.style.transform = "translateY(400px)";
+          }
+        }),
+      };
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+      createAnimeJsAdapter().seek({ time: 0 });
+
+      expect(card.style.opacity).toBe("0");
+      expect(card.style.transform).toBe("translateY(400px)");
+    });
+
     it("does not strand a visibility-only set from priming at frame zero", () => {
       document.body.innerHTML = '<div id="card"></div>';
       const card = document.getElementById("card");

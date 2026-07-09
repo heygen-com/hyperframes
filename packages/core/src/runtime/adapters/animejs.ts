@@ -197,13 +197,14 @@ function normalizeRegistration(
 // registrations). anime.js clamps seek to the timeline duration, so a large
 // value engages every child regardless of actual length.
 const PRIME_FALLBACK_MS = 36_000_000;
+const PRIME_RESTORED_STYLE_PROPERTIES = ["visibility", "display"] as const;
 
 function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
   if (primedAnimeInstances.has(instance)) return;
   primedAnimeInstances.add(instance);
   if (typeof instance.seek !== "function") return;
   const durationMs = readDurationMs(instance) ?? PRIME_FALLBACK_MS;
-  const inlineStyles = snapshotInlineStyles();
+  const keywordStyles = snapshotPrimeKeywordStyles();
   try {
     // anime.js 4.5.0: a timeline child added at position > 0 is not rendered
     // to its "from" value until the timeline has been sought to/past that
@@ -217,29 +218,41 @@ function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
   } catch (err) {
     swallow("runtime.adapters.animejs.prime", err);
   } finally {
-    restoreInlineStyles(inlineStyles);
+    restorePrimeKeywordStyles(keywordStyles);
   }
 }
 
-type InlineStyleSnapshot = {
-  element: Element;
-  style: string | null;
+type PrimeRestoredStyleProperty = (typeof PRIME_RESTORED_STYLE_PROPERTIES)[number];
+
+type PrimeKeywordStyleSnapshot = {
+  element: HTMLElement | SVGElement;
+  properties: {
+    property: PrimeRestoredStyleProperty;
+    value: string;
+    priority: string;
+  }[];
 };
 
-function snapshotInlineStyles(): InlineStyleSnapshot[] {
+function snapshotPrimeKeywordStyles(): PrimeKeywordStyleSnapshot[] {
   if (typeof document === "undefined") return [];
-  return Array.from(document.querySelectorAll("*"), (element) => ({
+  return Array.from(document.querySelectorAll<HTMLElement | SVGElement>("*"), (element) => ({
     element,
-    style: element.getAttribute("style"),
+    properties: PRIME_RESTORED_STYLE_PROPERTIES.map((property) => ({
+      property,
+      value: element.style.getPropertyValue(property),
+      priority: element.style.getPropertyPriority(property),
+    })),
   }));
 }
 
-function restoreInlineStyles(snapshot: InlineStyleSnapshot[]): void {
-  for (const { element, style } of snapshot) {
-    if (style == null) {
-      element.removeAttribute("style");
-    } else {
-      element.setAttribute("style", style);
+function restorePrimeKeywordStyles(snapshot: PrimeKeywordStyleSnapshot[]): void {
+  for (const { element, properties } of snapshot) {
+    for (const { property, value, priority } of properties) {
+      if (value) {
+        element.style.setProperty(property, value, priority);
+      } else {
+        element.style.removeProperty(property);
+      }
     }
   }
 }
