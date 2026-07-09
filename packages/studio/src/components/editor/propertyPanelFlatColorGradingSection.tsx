@@ -262,8 +262,7 @@ export function FlatColorGradingSection({
           Adjust
         </div>
         {ADJUST_SLIDERS.map((slider) => {
-          const scale = slider.key === "exposure" ? 100 : 100;
-          const rawPercent = grading.adjust[slider.key] * scale;
+          const rawPercent = grading.adjust[slider.key] * 100;
           const isSet = Math.abs(grading.adjust[slider.key]) > 1e-6;
           return (
             <div key={slider.key} data-flat-grade-adjust="true">
@@ -279,7 +278,7 @@ export function FlatColorGradingSection({
                 onCommit={(next) =>
                   onCommitColorGrading({
                     ...grading,
-                    adjust: { ...grading.adjust, [slider.key]: next / scale },
+                    adjust: { ...grading.adjust, [slider.key]: next / 100 },
                   })
                 }
                 onReset={() =>
