@@ -39,6 +39,10 @@
       "type": "string",
       "format": "uri"
     },
+    "sourceUrl": {
+      "type": "string",
+      "format": "uri"
+    },
     "sourcePrompt": {
       "type": "string",
       "minLength": 1

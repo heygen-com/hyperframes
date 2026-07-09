@@ -39,7 +39,7 @@ export function isRegistrySourceFile(filePath?: string): boolean {
   if (!filePath) return false;
 
   const normalized = filePath.replace(/\\/g, "/");
-  return /(?:^|\/)registry\/blocks\/([^/]+)\/\1\.html$/i.test(normalized);
+  return /(?:^|\/)registry\/(?:blocks|components)\/([^/]+)\/\1\.html$/i.test(normalized);
 }
 
 export function isRegistryInstalledFile(rawSource: string): boolean {
