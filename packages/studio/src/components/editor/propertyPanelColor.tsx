@@ -121,11 +121,13 @@ export function ColorField({
   label,
   value,
   disabled,
+  flat,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
+  flat?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -348,6 +350,30 @@ export function ColorField({
       requestAnimationFrame(updatePanelPosition);
     }
   };
+
+  if (flat) {
+    return (
+      <div className="flex min-h-[30px] items-center justify-between">
+        <span className="text-[11px] text-panel-text-2">{label}</span>
+        <button
+          type="button"
+          data-flat-color-trigger="true"
+          disabled={disabled}
+          aria-label={`Pick ${label.toLowerCase()} color`}
+          ref={buttonRef}
+          onClick={openPicker}
+          className="flex items-center gap-2 disabled:cursor-not-allowed"
+        >
+          <span
+            className="h-4 w-4 flex-shrink-0 rounded-[4px]"
+            style={{ backgroundColor: value || "transparent" }}
+          />
+          <span className="font-mono text-[11px] text-panel-text-0">{value}</span>
+        </button>
+        {picker}
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-w-0 gap-1.5">
