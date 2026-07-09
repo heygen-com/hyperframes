@@ -17,7 +17,7 @@ describe("resolveMainOriginTrack", () => {
       resolveMainOriginTrack([el("a", "img", 0), el("v", "video", 2, 3), el("v2", "video", 4, 9)]),
     ).toBe(4);
   });
-  it("breaks ties to the lowest index", () => {
+  it("breaks ties to the track holding the smallest stable id", () => {
     expect(resolveMainOriginTrack([el("v", "video", 2, 5), el("v2", "video", 4, 5)])).toBe(2);
   });
   it("honors an explicit data-timeline-role=main designation over content", () => {
@@ -100,5 +100,14 @@ describe("normalizeToZones", () => {
     expect(trackOf(out, "v")).toBe(0); // main (no overlays)
     expect(trackOf(out, "a1")).toBe(1);
     expect(trackOf(out, "a2")).toBe(2);
+  });
+
+  it("does NOT oscillate with EQUAL-duration videos on distinct tracks", () => {
+    // Regression: tie-breaking main on the (mutated) track index made these two
+    // swap tracks on every re-zone. Tie-break is now the stable id → fixed point.
+    const input = [el("v1", "video", 1, 5), el("v2", "video", 2, 5)];
+    const once = normalizeToZones(input);
+    const twice = normalizeToZones(once);
+    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
   });
 });

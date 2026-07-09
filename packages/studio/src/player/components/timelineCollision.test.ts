@@ -150,9 +150,15 @@ describe("snapClearOfClips", () => {
 });
 
 describe("buildTrackInsert", () => {
-  it("inserts above the top lane with no shifts", () => {
+  it("inserts above the top lane by shifting everyone down (indices stay ≥ 0)", () => {
     const els = [el("a", 0, 0, 5), el("b", 1, 0, 5)];
-    expect(buildTrackInsert(els, [0, 1], 0, null)).toEqual({ draggedTrack: -1, shifts: [] });
+    expect(buildTrackInsert(els, [0, 1], 0, null)).toEqual({
+      draggedTrack: 0,
+      shifts: [
+        { key: "a", toTrack: 1 },
+        { key: "b", toTrack: 2 },
+      ],
+    });
   });
 
   it("inserts below the bottom lane with no shifts", () => {

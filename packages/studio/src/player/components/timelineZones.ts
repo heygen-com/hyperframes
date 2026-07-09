@@ -13,8 +13,10 @@ function sortedDistinct(values: number[]): number[] {
  * re-zoning** (so normalizeToZones is idempotent even with multiple video tracks):
  *   1. An explicit `data-timeline-role="main"` designation wins (persisted metadata).
  *   2. Otherwise the primary sequence = the video track with the most total clip
- *      duration — identity-based, not index-based, so it survives track renumbering.
- *      Ties break to the lowest index.
+ *      duration. Ties break to the track holding the smallest stable clip id (NOT
+ *      the track index — normalizeToZones mutates the index every pass, so tie-
+ *      breaking on it made equal-duration videos oscillate between tracks on every
+ *      re-zone; the id is invariant).
  * Returns null when the timeline has no video. Works on authored OR zoned elements
  * (on zoned elements it returns the current main lane index).
  */
@@ -25,15 +27,26 @@ export function resolveMainOriginTrack(elements: TimelineElement[]): number | nu
   const designated = videos.find((v) => v.timelineRole === "main");
   if (designated) return designated.track;
 
-  const totalByTrack = new Map<number, number>();
-  for (const v of videos) totalByTrack.set(v.track, (totalByTrack.get(v.track) ?? 0) + v.duration);
+  const byTrack = new Map<number, { total: number; minId: string }>();
+  for (const v of videos) {
+    const id = v.key ?? v.id;
+    const cur = byTrack.get(v.track);
+    if (cur) {
+      cur.total += v.duration;
+      if (id < cur.minId) cur.minId = id;
+    } else {
+      byTrack.set(v.track, { total: v.duration, minId: id });
+    }
+  }
 
   let bestTrack = Number.POSITIVE_INFINITY;
   let bestTotal = -1;
-  for (const [track, total] of totalByTrack) {
-    if (total > bestTotal || (total === bestTotal && track < bestTrack)) {
+  let bestMinId = "";
+  for (const [track, { total, minId }] of byTrack) {
+    if (total > bestTotal || (total === bestTotal && minId < bestMinId)) {
       bestTotal = total;
       bestTrack = track;
+      bestMinId = minId;
     }
   }
   return bestTrack;

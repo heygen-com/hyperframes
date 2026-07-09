@@ -154,7 +154,10 @@ export interface TrackInsertPlan {
  * Plan a new-track insert at visual row `insertRow` (0 = above the top lane,
  * `trackOrder.length` = below the bottom). Minimal-shift: keeps authored track
  * indices and only bumps clips when there is no integer gap to slot into.
- * - Edge inserts (row 0 / row N): one-below-top / one-above-bottom, no shifts.
+ * - Row N (below the bottom): one-above-bottom, no shifts.
+ * - Row 0 (above the top): the dragged clip takes the current top index and every
+ *   other clip shifts down one — indices must stay ≥ 0 (a negative index corrupts
+ *   the persisted source).
  * - Interior with a gap (next - prev ≥ 2): slot into the gap, no shifts.
  * - Interior, consecutive: bump every clip on track ≥ `next` down one lane.
  */
@@ -167,7 +170,18 @@ export function buildTrackInsert(
   const n = trackOrder.length;
   if (n === 0) return { draggedTrack: 0, shifts: [] };
   const row = Math.max(0, Math.min(n, insertRow));
-  if (row === 0) return { draggedTrack: trackOrder[0] - 1, shifts: [] };
+  if (row === 0) {
+    // Insert a new lane ABOVE the top. Indices must stay ≥ 0, so the dragged clip
+    // takes the old top index and every other clip shifts down one.
+    const top = trackOrder[0];
+    const shifts: TrackShift[] = [];
+    for (const el of elements) {
+      const key = el.key ?? el.id;
+      if (key === draggedKey) continue;
+      shifts.push({ key, toTrack: el.track + 1 });
+    }
+    return { draggedTrack: top, shifts };
+  }
   if (row === n) return { draggedTrack: trackOrder[n - 1] + 1, shifts: [] };
 
   const prev = trackOrder[row - 1];
