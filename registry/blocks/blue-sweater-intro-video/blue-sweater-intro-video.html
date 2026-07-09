@@ -1599,12 +1599,14 @@
         4.92,
       );
 
-      addTo(
-        tl,
-        ".prompt-text span",
-        { opacity: 1, duration: 0.01, stagger: { amount: 2.85 }, ease: "none" },
-        4.18,
-      );
+      const promptSpans = [...document.querySelectorAll(".prompt-text span")];
+      const promptTypeStartMs = 4180;
+      const promptTypeSpreadMs = 2850;
+      promptSpans.forEach((span, index) => {
+        const delayMs =
+          promptSpans.length <= 1 ? 0 : (promptTypeSpreadMs * index) / (promptSpans.length - 1);
+        tl.add(span, { opacity: 1, duration: 10 }, promptTypeStartMs + delayMs);
+      });
       addTo(tl, "#sendFull", { opacity: 1, scale: 1, duration: 0.24, ease: "power3.out" }, 7.32);
       addFromTo(
         tl,
