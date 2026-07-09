@@ -12,7 +12,7 @@ import { PromotableControl } from "./PromotableControl";
 /*  Text helpers (used only by text section components)                */
 /* ------------------------------------------------------------------ */
 
-function formatTextFieldPreview(value: string): string {
+export function formatTextFieldPreview(value: string): string {
   const collapsed = value.trim().replace(/\s+/g, " ");
   if (collapsed.length <= 56) return collapsed;
   return `${collapsed.slice(0, 55)}…`;

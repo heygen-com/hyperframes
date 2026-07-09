@@ -505,3 +505,56 @@ export function readGsapBorderRadiusForPanel(
     return null;
   }
 }
+
+/**
+ * Builds the multi-line "element info" text copied to the clipboard for an AI
+ * agent. Shared by both the legacy and flat inspector headers (the flat split
+ * needs the same string), so it lives here rather than as a PropertyPanel
+ * closure. Pure — the caller owns the clipboard write, toast, and copied state.
+ */
+// fallow-ignore-next-line complexity
+export function buildElementInfoText(
+  element: DomEditSelection,
+  sourceLabel: string,
+  gsapAnimations: GsapAnimation[],
+  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>,
+): string {
+  const file = element.sourceFile ?? "index.html";
+  let lineNum: number | null = null;
+  try {
+    const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
+    if (src && element.id) {
+      const idx = src.indexOf(`id="${element.id}"`);
+      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+    }
+    if (!lineNum && element.selector) {
+      const tag = element.tagName.toLowerCase();
+      const cls = element.selector.startsWith(".") ? element.selector.slice(1).split(".")[0] : null;
+      const search = cls ? `class="${cls}` : `<${tag}`;
+      const idx = src.indexOf(search);
+      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+    }
+  } catch {}
+  const fileLoc = lineNum ? `${file}:${lineNum}` : file;
+  const lines = [
+    `Element: ${element.label} (${sourceLabel})`,
+    `File: ${fileLoc}`,
+    `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
+    `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
+    `Tag: <${element.tagName}>`,
+  ];
+  if (element.computedStyles["z-index"] && element.computedStyles["z-index"] !== "auto") {
+    lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
+  }
+  if (gsapAnimations.length > 0) {
+    const anim = gsapAnimations[0];
+    lines.push(
+      `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
+    );
+    const props = Object.entries(anim.properties)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    if (props) lines.push(`Properties: ${props}`);
+  }
+  return lines.join("\n");
+}
