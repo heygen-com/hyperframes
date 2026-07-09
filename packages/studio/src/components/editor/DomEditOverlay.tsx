@@ -58,13 +58,18 @@ const RESIZE_HANDLE_DEFS: Array<{
   { handle: "se", cursor: "nwse-resize", x: "right", y: "bottom" },
 ];
 
+// Visible dot is 9px; the pointer target is a 16px invisible square centered
+// on the corner so click targets don't shrink with the smaller dot.
+const RESIZE_HANDLE_HIT_PX = 16;
+
 function resizeHandleStyle(
   def: (typeof RESIZE_HANDLE_DEFS)[number],
   cropInset?: { top: number; right: number; bottom: number; left: number },
 ): React.CSSProperties {
   const style: React.CSSProperties = { cursor: def.cursor, touchAction: "none" };
-  style[def.x] = (def.x === "left" ? (cropInset?.left ?? 0) : (cropInset?.right ?? 0)) - 6;
-  style[def.y] = (def.y === "top" ? (cropInset?.top ?? 0) : (cropInset?.bottom ?? 0)) - 6;
+  const half = RESIZE_HANDLE_HIT_PX / 2;
+  style[def.x] = (def.x === "left" ? (cropInset?.left ?? 0) : (cropInset?.right ?? 0)) - half;
+  style[def.y] = (def.y === "top" ? (cropInset?.top ?? 0) : (cropInset?.bottom ?? 0)) - half;
   return style;
 }
 
@@ -525,13 +530,15 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
                   <div
                     key={def.handle}
-                    className="absolute w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
+                    className="absolute flex h-4 w-4 items-center justify-center"
                     style={resizeHandleStyle(def, cropOutlineInsetPx ?? undefined)}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       gestures.startGesture("resize", e, { resizeHandle: def.handle });
                     }}
-                  />
+                  >
+                    <div className="pointer-events-none h-[9px] w-[9px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
+                  </div>
                 ),
               )}
           </div>
