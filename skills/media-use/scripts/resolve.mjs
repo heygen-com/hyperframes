@@ -760,6 +760,9 @@ function heygenAuthCheck() {
   // `heygen auth status` already emits JSON by default (only `--human` opts out
   // to a table) — there is no `--json`/`--output` flag; passing one errors with
   // "unknown flag". emailFromAuthStatus parses that default JSON.
+  // NOTE: JSON-by-default is a v0.3.0 behavior — this probe assumes it, which
+  // HEYGEN_MIN_VERSION >= 0.3.0 (+ the version gate above) guarantees. If that
+  // floor is ever lowered, auth detection on an older CLI would silently break.
   const authProbe = runCommand("heygen", ["auth", "status"]);
   // spawnSync sets .error/.signal on a timeout or spawn failure (status then
   // null). A stalled auth endpoint (transient network/DNS) must not be reported
@@ -823,7 +826,20 @@ function runDoctor() {
       fix: versionOk ? (behind ? HEYGEN_UPDATE_COMMAND : "") : HEYGEN_UPDATE_COMMAND,
     });
 
-    checks.push(heygenAuthCheck());
+    // Below the OAuth-capable floor the auth probe fails for the SAME root cause
+    // (an old CLI can't OAuth and doesn't emit JSON auth status), which would
+    // read as a confusing second "not authenticated" error. Skip it — one root
+    // cause, one fix.
+    checks.push(
+      versionOk
+        ? heygenAuthCheck()
+        : {
+            name: "heygen authenticated",
+            ok: false,
+            detail: "skipped — update heygen first",
+            fix: HEYGEN_UPDATE_COMMAND,
+          },
+    );
   } else {
     // Fail-open: heygen ran but printed no semver (dev/stripped build). We can't
     // verify the version, so we don't block on it — but say so rather than a bare
