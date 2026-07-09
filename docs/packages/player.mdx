@@ -3,7 +3,7 @@ title: "@hyperframes/player"
 description: "Embeddable web component for playing HyperFrames compositions in any web page."
 ---
 
-The player package provides a `<hyperframes-player>` custom element that embeds a HyperFrames composition anywhere — in any framework or plain HTML. Zero dependencies, 3KB gzipped.
+The player package provides a `<hyperframes-player>` custom element that embeds a HyperFrames composition anywhere, in any framework or plain HTML. Zero dependencies, 3KB gzipped.
 
 ```bash
 npm install @hyperframes/player
@@ -17,9 +17,9 @@ npm install @hyperframes/player
 - Show compositions in documentation or blog posts
 
 **Use a different package if you want to:**
-- Edit compositions interactively — use the [studio](/packages/studio)
-- Preview during development — use the [CLI](/packages/cli) (`npx hyperframes preview`)
-- Render to MP4 — use the [CLI](/packages/cli) or [producer](/packages/producer)
+- Edit compositions interactively: use the [studio](/packages/studio)
+- Preview during development: use the [CLI](/packages/cli) (`npx hyperframes preview`)
+- Render to MP4: use the [CLI](/packages/cli) or [producer](/packages/producer)
 
 ## Quick Start
 
@@ -64,8 +64,29 @@ import '@hyperframes/player';
 | `autoplay` | boolean | false | Start playing on load |
 | `loop` | boolean | false | Loop playback |
 | `muted` | boolean | false | Mute audio (set to `true` for autoplay in most browsers) |
-| `poster` | string | — | Image URL to show before first play |
+| `poster` | string | none | Image URL to show before first play |
 | `playback-rate` | number | 1 | Playback speed multiplier |
+| `variables` | JSON object string | none | Variables injected into the composition as `window.__hfVariables` before composition scripts run |
+
+## Composition Variables
+
+Use `variables` when a composition reads `window.__hfVariables` synchronously during startup.
+
+```html
+<hyperframes-player
+  src="/compositions/intro.html"
+  variables='{"title":"Hello"}'
+></hyperframes-player>
+```
+
+```js
+const player = document.querySelector('hyperframes-player');
+player.variables = { title: "Hello" };
+```
+
+<Warning>
+  **Limitation:** injecting `variables` into a cross-origin `src` is not possible. The player must fetch same-origin HTML so it can pre-inject the script before composition scripts run. With a cross-origin `src`, the player logs a warning, fires the `error` event, and loads the composition without applying variables.
+</Warning>
 
 ## JavaScript API
 
@@ -80,14 +101,15 @@ player.pause();
 player.seek(2.5); // seek to 2.5 seconds
 
 // Properties
-player.currentTime;     // number — current position in seconds
+player.currentTime;     // number, current position in seconds
 player.currentTime = 5; // seek to 5 seconds
-player.duration;        // number — total duration
+player.duration;        // number, total duration
 player.paused;          // boolean
-player.ready;           // boolean — true after composition loads
-player.playbackRate;    // number — get/set speed
-player.muted;           // boolean — get/set mute
-player.loop;            // boolean — get/set loop
+player.ready;           // boolean, true after composition loads
+player.playbackRate;    // number, get/set speed
+player.muted;           // boolean, get/set mute
+player.loop;            // boolean, get/set loop
+player.variables;       // object | null, get/set composition variables
 ```
 
 ## Events
@@ -113,9 +135,9 @@ player.addEventListener('error', (e) => console.error(e.detail.message));
 |-------|--------|-------------|
 | `ready` | `{ duration }` | Composition loaded and timeline discovered |
 | `timeupdate` | `{ currentTime }` | Fires during playback (~30fps) |
-| `play` | — | Playback started |
-| `pause` | — | Playback paused |
-| `ended` | — | Playback reached end |
+| `play` | none | Playback started |
+| `pause` | none | Playback paused |
+| `ended` | none | Playback reached end |
 | `error` | `{ message }` | Load or runtime error |
 
 ## Framework Examples
@@ -163,7 +185,7 @@ document.getElementById('player-container').appendChild(player);
 
 ## Advanced: iframe access
 
-The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. For most use cases you don't need direct access — the JavaScript API and events above are sufficient. But if you're building an editor, recorder, or custom timeline on top of the player, you'll need to inspect the composition's DOM or read its `__player` / `__timelines` runtime objects. The `iframeElement` getter exposes the inner iframe for these consumers:
+The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. For most use cases you don't need direct access, the JavaScript API and events above are sufficient. But if you're building an editor, recorder, or custom timeline on top of the player, you'll need to inspect the composition's DOM or read its `__player` / `__timelines` runtime objects. The `iframeElement` getter exposes the inner iframe for these consumers:
 
 ```js
 const player = document.querySelector('hyperframes-player');
@@ -218,16 +240,16 @@ function StudioPreview({ src }: { src: string }) {
 ```
 
 <Warning>
-  **Common gotcha** — if you pass the `<hyperframes-player>` element itself (not `iframeElement`) into a hook or API that expects an `<iframe>`, every `.contentWindow` / `.contentDocument` access returns `null` because the iframe lives inside the player's Shadow DOM. Timeline seek, play, pause, and DOM inspection all silently no-op. **Always extract `iframeElement` first**, or use `resolveIframe` from `@hyperframes/studio` which handles both iframe and web-component hosts transparently.
+  **Common gotcha:** if you pass the `<hyperframes-player>` element itself (not `iframeElement`) into a hook or API that expects an `<iframe>`, every `.contentWindow` / `.contentDocument` access returns `null` because the iframe lives inside the player's Shadow DOM. Timeline seek, play, pause, and DOM inspection all silently no-op. **Always extract `iframeElement` first**, or use `resolveIframe` from `@hyperframes/studio` which handles both iframe and web-component hosts transparently.
 </Warning>
 
 ## Architecture
 
 The player uses an iframe inside a Shadow DOM container. This provides:
 
-- **Isolation** — composition CSS/JS can't leak into or conflict with your page
-- **Security** — iframe sandbox restricts composition capabilities
-- **Scaling** — auto-scales the composition to fit the player's container via CSS transforms
+- **Isolation:** composition CSS/JS can't leak into or conflict with your page
+- **Security:** iframe sandbox restricts composition capabilities
+- **Scaling:** auto-scales the composition to fit the player's container via CSS transforms
 
 The player communicates with the composition via the HyperFrames runtime bridge protocol (`postMessage`). Existing compositions work without modification.
 
