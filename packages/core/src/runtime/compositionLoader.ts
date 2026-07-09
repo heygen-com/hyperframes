@@ -2,9 +2,12 @@ import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
+  applyVariableBindings,
   clearAppliedCssVariables,
   parseHostVariableValues,
-  readDeclaredDefaults,
+  type DeclaredVariableEntryLike,
+  readDeclaredDefaultsFromEntries,
+  readDeclaredVariableEntries,
   readRenderOverrides,
 } from "./getVariables";
 
@@ -32,9 +35,26 @@ type PendingScript =
     };
 
 const EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS = 8000;
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const BARE_RELATIVE_PATH_RE = /^(?![a-zA-Z][a-zA-Z\d+\-.]*:)(?!\/\/)(?!\/)(?!\.\.?\/).+/;
 const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 const PATH_ATTRS = ["src", "href"] as const;
+
+function parseNum(value: string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readHostAuthoredDuration(host: Element): number | undefined {
+  // Mirrors runtime/timeline.ts parseElementDurationAttr: init.ts may move a
+  // non-root composition host's public data-duration to this private attr.
+  return (
+    parseNum(host.getAttribute("data-duration")) ??
+    parseNum(host.getAttribute(AUTHORED_DURATION_ATTR)) ??
+    undefined
+  );
+}
 
 /**
  * Return true for URLs/prefixes that should never be rewritten — absolute
@@ -277,6 +297,7 @@ function cleanupDetachedScopedVariables() {
   }
 }
 
+// fallow-ignore-next-line complexity
 function assignRuntimeCompositionIds(
   hosts: Element[],
   hostCountsByCompositionId: Map<string, number> = countAuthoredCompositionIds(hosts),
@@ -334,6 +355,7 @@ function assignRuntimeCompositionIds(
   return hostIdentityByElement;
 }
 
+// fallow-ignore-next-line complexity
 async function mountCompositionContent(params: {
   host: Element;
   authoredCompositionId: string | null;
@@ -361,6 +383,7 @@ async function mountCompositionContent(params: {
    * separate document root so no declared defaults are passed.
    */
   declaredVariableDefaults?: Record<string, unknown>;
+  declaredVariableEntries?: DeclaredVariableEntryLike[];
   onDiagnostic?: (payload: {
     code: string;
     details: Record<string, string | number | boolean | null | string[]>;
@@ -597,6 +620,7 @@ export async function loadExternalCompositions(
   if (hosts.length === 0) return;
 
   await Promise.all(
+    // fallow-ignore-next-line complexity
     hosts.map(async (host) => {
       const src = host.getAttribute("data-composition-src");
       if (!src) return;
@@ -678,6 +702,7 @@ export async function loadExternalCompositions(
               ),
             )
           : undefined;
+        const declaredVariableEntries = readDeclaredVariableEntries(doc.documentElement);
         await mountCompositionContent({
           host,
           authoredCompositionId,
@@ -693,7 +718,8 @@ export async function loadExternalCompositions(
           headStyles,
           headScripts,
           headLinks,
-          declaredVariableDefaults: readDeclaredDefaults(doc.documentElement),
+          declaredVariableDefaults: readDeclaredDefaultsFromEntries(declaredVariableEntries),
+          declaredVariableEntries,
           onDiagnostic: params.onDiagnostic,
         });
       } catch (error) {
@@ -724,22 +750,33 @@ export async function loadExternalCompositions(
  * before (re)applying.
  */
 function stashInstanceVariables(
-  params: { host: Element; declaredVariableDefaults?: Record<string, unknown> },
+  params: {
+    host: Element;
+    declaredVariableDefaults?: Record<string, unknown>;
+    declaredVariableEntries?: DeclaredVariableEntryLike[];
+  },
   contentNode: Node,
   runtimeScopeCompositionId: string,
 ): void {
+  const declaredEntries =
+    params.declaredVariableEntries ??
+    (contentNode instanceof Element ? readDeclaredVariableEntries(contentNode) : []);
   const declaredDefaults =
-    params.declaredVariableDefaults ??
-    (contentNode instanceof Element ? readDeclaredDefaults(contentNode) : {});
+    params.declaredVariableDefaults ?? readDeclaredDefaultsFromEntries(declaredEntries);
   const merged = {
     ...declaredDefaults,
     ...parseHostVariableValues(params.host),
   };
+  const scopedValues: Record<string, unknown> = { ...merged };
+  const duration = readHostAuthoredDuration(params.host);
+  if (duration !== undefined) scopedValues.__duration = duration;
+  const cssValues = { ...merged, ...readRenderOverrides() };
   clearAppliedCssVariables(params.host);
-  if (Object.keys(merged).length > 0) {
+  if (Object.keys(scopedValues).length > 0) {
     if (!window.__hfVariablesByComp) window.__hfVariablesByComp = {};
-    window.__hfVariablesByComp[runtimeScopeCompositionId] = merged;
-    applyCssVariables(params.host, { ...merged, ...readRenderOverrides() });
+    window.__hfVariablesByComp[runtimeScopeCompositionId] = scopedValues;
+    applyCssVariables(params.host, cssValues);
+    applyVariableBindings(params.host, declaredEntries, cssValues);
   } else if (window.__hfVariablesByComp) {
     delete window.__hfVariablesByComp[runtimeScopeCompositionId];
   }

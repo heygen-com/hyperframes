@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from "vitest";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
 
+type TestHyperframesRuntime = {
+  getVariables?: () => Record<string, unknown>;
+  getDuration?: () => number | undefined;
+};
+
+type WindowWithScopedVars = Window & {
+  __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+  __hyperframes?: TestHyperframesRuntime;
+};
+
 // jsdom doesn't provide CSS.escape
 beforeAll(() => {
   if (typeof globalThis.CSS === "undefined") {
@@ -730,10 +740,6 @@ describe("loadExternalCompositions", () => {
   });
 
   describe("variable scoping (window.__hfVariablesByComp)", () => {
-    type WindowWithScopedVars = Window & {
-      __hfVariablesByComp?: Record<string, Record<string, unknown>>;
-    };
-
     afterEach(() => {
       delete (window as WindowWithScopedVars).__hfVariablesByComp;
     });
@@ -970,6 +976,121 @@ describe("loadExternalCompositions", () => {
 
       const byCompAfterSecondMount = (window as WindowWithScopedVars).__hfVariablesByComp;
       expect(byCompAfterSecondMount?.["card-last"]).toBeUndefined();
+    });
+
+    it("applies explicit css-var bindings from declared defaults onto the mounted host", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card-css-default.html");
+      host.setAttribute("data-composition-id", "card-css-default");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"accentColor","type":"color","label":"Accent","default":"#ff0000","bindings":[{"kind":"css-var","name":"--accent"}]}
+        ]'>
+          <body><div data-composition-id="card-css-default"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(host.style.getPropertyValue("--accent")).toBe("#ff0000");
+    });
+
+    it("applies explicit css-var bindings from host variable overrides onto the mounted host", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/card-css-override.html");
+      host.setAttribute("data-composition-id", "card-css-override");
+      host.setAttribute("data-variable-values", '{"accentColor":"#0000ff"}');
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html data-composition-variables='[
+          {"id":"accentColor","type":"color","label":"Accent","default":"#ff0000","bindings":[{"kind":"css-var","name":"--accent"}]}
+        ]'>
+          <body><div data-composition-id="card-css-override"><p>x</p></div></body>
+        </html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      expect(host.style.getPropertyValue("--accent")).toBe("#0000ff");
+    });
+
+    it("stashes host data-duration for scoped scripts without leaking it through getVariables", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/duration-card.html");
+      host.setAttribute("data-composition-id", "duration-card");
+      host.setAttribute("data-duration", "6.25");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <div data-composition-id="duration-card">
+            <span class="probe"></span>
+            <script>
+              const probe = document.querySelector(".probe");
+              const hyperframes = window.__hyperframes;
+              if (probe && hyperframes) {
+                const vars = hyperframes.getVariables();
+                const duration = hyperframes.getDuration();
+                probe.setAttribute("data-vars", JSON.stringify(vars));
+                probe.setAttribute("data-duration", String(duration));
+              }
+            </script>
+          </div>
+        </body></html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      const runtimeWindow: WindowWithScopedVars = window;
+      runtimeWindow.__hyperframes = {
+        getVariables: () => ({}),
+        getDuration: () => undefined,
+      };
+
+      const injectedScripts: HTMLScriptElement[] = [];
+      await loadExternalCompositions({ ...defaultParams, injectedScripts });
+
+      const runtimeId = host.getAttribute("data-composition-id") ?? "";
+      expect(runtimeWindow.__hfVariablesByComp?.[runtimeId]?.__duration).toBe(6.25);
+
+      new Function("window", injectedScripts[0]?.textContent ?? "")(window);
+
+      const probe = host.querySelector(".probe");
+      expect(probe?.getAttribute("data-duration")).toBe("6.25");
+      expect(probe?.getAttribute("data-vars")).toBe("{}");
+    });
+
+    it("stashes preserved data-hf-authored-duration when public data-duration is absent", async () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", "https://example.com/authored-duration-card.html");
+      host.setAttribute("data-composition-id", "authored-duration-card");
+      host.setAttribute("data-hf-authored-duration", "7.5");
+      document.body.appendChild(host);
+
+      const compositionHtml = `
+        <html><body>
+          <div data-composition-id="authored-duration-card"><p>x</p></div>
+        </body></html>
+      `;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadExternalCompositions({ ...defaultParams });
+
+      const runtimeId = host.getAttribute("data-composition-id") ?? "";
+      const runtimeWindow: WindowWithScopedVars = window;
+      expect(runtimeWindow.__hfVariablesByComp?.[runtimeId]?.__duration).toBe(7.5);
     });
   });
 

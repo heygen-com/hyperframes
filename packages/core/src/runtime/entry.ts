@@ -1,12 +1,15 @@
 import { initSandboxRuntimeModular } from "./init";
 import { fitTextFontSize } from "../text/fitTextFontSize";
-import { getVariables } from "./getVariables";
+import { getDuration, getVariables } from "./getVariables";
+import { resolvePhases } from "./phases";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
   __hyperframes?: {
     fitTextFontSize: typeof fitTextFontSize;
+    getDuration: typeof getDuration;
     getVariables: typeof getVariables;
+    resolvePhases: typeof resolvePhases;
   };
 };
 
@@ -16,10 +19,12 @@ type HyperframeWindow = Window & {
 
 // Expose runtime helpers immediately so composition scripts can use them
 // before DOMContentLoaded (font sizing runs during script evaluation, and
-// getVariables is read by composition setup before the timeline is built).
+// getVariables/getDuration are read by composition setup before the timeline is built).
 (window as HyperframeWindow).__hyperframes = {
   fitTextFontSize,
+  getDuration,
   getVariables,
+  resolvePhases,
 };
 
 function bootstrapHyperframeRuntime(): void {

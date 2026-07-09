@@ -27,6 +27,7 @@ function isSelectorNameChar(char: string | undefined): boolean {
   return !!char && /[\w-]/.test(char);
 }
 
+// fallow-ignore-next-line complexity
 function replaceAuthoredRootIdSelectors(
   selector: string,
   authoredRootId: string,
@@ -97,6 +98,7 @@ function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: stri
   );
 }
 
+// fallow-ignore-next-line complexity
 function scopeSelector(
   selector: string,
   scope: string,
@@ -503,7 +505,18 @@ export function wrapScopedCompositionScript(
         getVariables: function() {
           var byComp = window.__hfVariablesByComp;
           var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
-          return scoped ? Object.assign({}, scoped) : {};
+          var copy = scoped ? Object.assign({}, scoped) : {};
+          delete copy.__duration;
+          return copy;
+        },
+        getDuration: function() {
+          var byComp = window.__hfVariablesByComp;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
+          var duration = scoped ? scoped.__duration : undefined;
+          if (typeof duration === "number" && isFinite(duration)) return duration;
+          return typeof __hfBaseHyperframes.getDuration === "function"
+            ? __hfBaseHyperframes.getDuration()
+            : undefined;
         },
       });
   var __hfRun = function() {

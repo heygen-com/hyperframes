@@ -2,7 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getVariables, readDeclaredDefaults } from "./getVariables";
+import {
+  applyVariableBindings,
+  getDuration,
+  getVariables,
+  readDeclaredDefaults,
+} from "./getVariables";
 
 const VARIABLES_ATTR = "data-composition-variables";
 
@@ -204,6 +209,71 @@ describe("readDeclaredDefaults", () => {
   });
 });
 
+describe("applyVariableBindings", () => {
+  it("sets explicitly bound css vars using the exact binding name", () => {
+    const el = document.createElement("div");
+
+    applyVariableBindings(
+      el,
+      [{ id: "accentColor", bindings: [{ kind: "css-var", name: "--accent" }] }],
+      { accentColor: "#ff0000" },
+    );
+
+    expect(el.style.getPropertyValue("--accent")).toBe("#ff0000");
+    expect(el.style.getPropertyValue("--accent-color")).toBe("");
+  });
+
+  it("defensively ignores malformed bindings and unsupported values", () => {
+    const el = document.createElement("div");
+
+    applyVariableBindings(
+      el,
+      [
+        { id: "accentColor", bindings: "not-array" },
+        { id: "accentColor", bindings: [{ kind: "host-attribute", name: "--ignored" }] },
+        { id: "accentColor", bindings: [{ kind: "css-var" }] },
+        { id: 42, bindings: [{ kind: "css-var", name: "--bad-id" }] },
+        { id: "empty", bindings: [{ kind: "css-var", name: "--empty" }] },
+        { id: "enabled", bindings: [{ kind: "css-var", name: "--enabled" }] },
+      ],
+      { accentColor: "#00ff00", empty: "", enabled: true },
+    );
+
+    expect(el.getAttribute("style")).toBeNull();
+  });
+});
+
+describe("getDuration", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("reads the topmost root composition element duration", () => {
+    document.body.innerHTML = `
+      <section data-composition-id="root" data-duration="9">
+        <div data-composition-id="nested" data-duration="3"></div>
+      </section>
+    `;
+
+    expect(getDuration()).toBe(9);
+  });
+
+  it("prefers an explicit data-root composition and reads preserved authored duration", () => {
+    document.body.innerHTML = `
+      <section data-composition-id="first" data-duration="4"></section>
+      <section data-composition-id="chosen" data-root="true" data-hf-authored-duration="6.5"></section>
+    `;
+
+    expect(getDuration()).toBe(6.5);
+  });
+
+  it("returns undefined when the root has no finite authored duration", () => {
+    document.body.innerHTML = `<section data-composition-id="root" data-duration="forever"></section>`;
+
+    expect(getDuration()).toBeUndefined();
+  });
+});
+
 describe("css variable injection (figma brand-token chain)", () => {
   afterEach(() => {
     document.documentElement.removeAttribute(VARIABLES_ATTR);
@@ -294,5 +364,20 @@ describe("css variable injection (figma brand-token chain)", () => {
     const { getVariables } = await import("./getVariables");
     document.body.innerHTML = `<div ${VARIABLES_ATTR}='[{"id":"figma:brand","type":"color","label":"b","default":"#445566"}]'></div>`;
     expect(getVariables()["figma:brand"]).toBe("#445566");
+  });
+
+  it("applies explicit css-var bindings with the same default and override resolution", async () => {
+    const { injectCompositionCssVariables } = await import("./getVariables");
+    document.body.innerHTML = `<div id="root" ${VARIABLES_ATTR}='[
+      {"id":"accentColor","type":"color","label":"Accent","default":"#ff0000","bindings":[{"kind":"css-var","name":"--accent"}]}
+    ]'></div>`;
+    setOverrides({ accentColor: "#0000ff" });
+
+    injectCompositionCssVariables(document);
+
+    const root = document.getElementById("root");
+    expect(root).toBeInstanceOf(HTMLElement);
+    if (!(root instanceof HTMLElement)) return;
+    expect(root.style.getPropertyValue("--accent")).toBe("#0000ff");
   });
 });

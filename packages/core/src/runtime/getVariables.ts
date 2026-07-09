@@ -21,6 +21,20 @@
  */
 import { cssVariableName, detectSlugCollisions } from "../tokenSlug";
 
+const VARIABLES_ATTR = "data-composition-variables";
+const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+
+interface CssVarBinding {
+  kind: "css-var";
+  name: string;
+}
+
+export interface DeclaredVariableEntryLike {
+  id?: unknown;
+  bindings?: unknown;
+  default?: unknown;
+}
+
 export function getVariables<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(): Partial<T> {
@@ -30,10 +44,10 @@ export function getVariables<
   // composition element carrying the attribute (later declarers win), then
   // render-time overrides.
   const declarers = new Set<Element>();
-  if (document.documentElement?.hasAttribute("data-composition-variables")) {
+  if (document.documentElement?.hasAttribute(VARIABLES_ATTR)) {
     declarers.add(document.documentElement);
   }
-  for (const el of Array.from(document.querySelectorAll("[data-composition-variables]"))) {
+  for (const el of Array.from(document.querySelectorAll(`[${VARIABLES_ATTR}]`))) {
     declarers.add(el);
   }
   const declaredDefaults: Record<string, unknown> = {};
@@ -45,6 +59,57 @@ export function getVariables<
   return { ...declaredDefaults, ...overrides } as Partial<T>;
 }
 
+function isDeclaredVariableEntryLike(entry: unknown): entry is DeclaredVariableEntryLike {
+  return entry !== null && typeof entry === "object";
+}
+
+function isCssVarBinding(binding: unknown): binding is CssVarBinding {
+  if (binding === null || typeof binding !== "object") return false;
+  return (
+    "kind" in binding &&
+    binding.kind === "css-var" &&
+    "name" in binding &&
+    typeof binding.name === "string"
+  );
+}
+
+function isCssVariableValue(value: unknown): value is string | number {
+  return (typeof value === "string" && value !== "") || typeof value === "number";
+}
+
+/**
+ * Read the raw variable declaration entries from an element's
+ * `data-composition-variables` attribute. Unknown JSON shapes are tolerated:
+ * malformed JSON, non-array payloads, and non-object entries all become an
+ * empty or filtered result.
+ */
+export function readDeclaredVariableEntries(root: Element | null): DeclaredVariableEntryLike[] {
+  if (!root) return [];
+  const raw = root.getAttribute(VARIABLES_ATTR);
+  if (!raw) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed.filter(isDeclaredVariableEntryLike);
+}
+
+export function readDeclaredDefaultsFromEntries(
+  entries: DeclaredVariableEntryLike[],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const entry of entries) {
+    if (typeof entry.id !== "string" || !("default" in entry)) continue;
+    out[entry.id] = entry.default;
+  }
+  return out;
+}
+
 /**
  * Extract `{id: default}` map from an element's `data-composition-variables`
  * attribute. Returns an empty object when the attribute is missing, the JSON
@@ -52,29 +117,11 @@ export function getVariables<
  * compositionLoader can compute the same defaults map for sub-comp instances.
  */
 export function readDeclaredDefaults(root: Element | null): Record<string, unknown> {
-  if (!root) return {};
-  const raw = root.getAttribute("data-composition-variables");
-  if (!raw) return {};
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!Array.isArray(parsed)) return {};
-
-  const out: Record<string, unknown> = {};
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e.id !== "string" || !("default" in e)) continue;
-    out[e.id] = e.default;
-  }
-  return out;
+  return readDeclaredDefaultsFromEntries(readDeclaredVariableEntries(root));
 }
 
 const APPLIED_VARS_ATTR = "data-hf-css-vars";
+const APPLIED_BINDINGS_ATTR = "data-hf-css-var-bindings";
 
 function hasInlineStyle(target: Element): target is Element & ElementCSSInlineStyle {
   return "style" in target && typeof (target as HTMLElement).style?.setProperty === "function";
@@ -99,15 +146,45 @@ export function applyCssVariables(target: Element, variables: Record<string, unk
   if (applied.length > 0) target.setAttribute(APPLIED_VARS_ATTR, applied.join(" "));
 }
 
-/** Remove custom properties a previous applyCssVariables call defined. */
-export function clearAppliedCssVariables(target: Element): void {
+/**
+ * Apply explicit css-var bindings from variable declarations. This is
+ * separate from the slug-derived applyCssVariables path: bindings use the
+ * authored custom-property name exactly as declared.
+ */
+export function applyVariableBindings(
+  target: Element,
+  entries: DeclaredVariableEntryLike[],
+  values: Record<string, unknown>,
+): void {
   if (!hasInlineStyle(target)) return;
-  const applied = target.getAttribute(APPLIED_VARS_ATTR);
+  const applied: string[] = [];
+  for (const entry of entries) {
+    if (typeof entry.id !== "string" || !Array.isArray(entry.bindings)) continue;
+    const value = values[entry.id];
+    if (!isCssVariableValue(value)) continue;
+    for (const binding of entry.bindings) {
+      if (!isCssVarBinding(binding)) continue;
+      target.style.setProperty(binding.name, String(value));
+      applied.push(binding.name);
+    }
+  }
+  if (applied.length > 0) target.setAttribute(APPLIED_BINDINGS_ATTR, applied.join(" "));
+}
+
+function clearAppliedCustomProperties(target: Element & ElementCSSInlineStyle, attr: string): void {
+  const applied = target.getAttribute(attr);
   if (!applied) return;
   for (const name of applied.split(" ")) {
     if (name.startsWith("--")) target.style.removeProperty(name);
   }
-  target.removeAttribute(APPLIED_VARS_ATTR);
+  target.removeAttribute(attr);
+}
+
+/** Remove custom properties a previous applyCssVariables call defined. */
+export function clearAppliedCssVariables(target: Element): void {
+  if (!hasInlineStyle(target)) return;
+  clearAppliedCustomProperties(target, APPLIED_VARS_ATTR);
+  clearAppliedCustomProperties(target, APPLIED_BINDINGS_ATTR);
 }
 
 /**
@@ -126,10 +203,10 @@ export function clearAppliedCssVariables(target: Element): void {
  */
 export function injectCompositionCssVariables(doc: Document): void {
   const declarers = new Set<Element>();
-  if (doc.documentElement?.hasAttribute("data-composition-variables")) {
+  if (doc.documentElement?.hasAttribute(VARIABLES_ATTR)) {
     declarers.add(doc.documentElement);
   }
-  for (const el of Array.from(doc.querySelectorAll("[data-composition-variables]"))) {
+  for (const el of Array.from(doc.querySelectorAll(`[${VARIABLES_ATTR}]`))) {
     declarers.add(el);
   }
   const overrides = readRenderOverrides();
@@ -152,7 +229,8 @@ function applyDeclaredForElement(
   view: Window | null,
 ): string[] {
   if (!hasInlineStyle(el)) return [];
-  const declared = readDeclaredDefaults(el);
+  const entries = readDeclaredVariableEntries(el);
+  const declared = readDeclaredDefaultsFromEntries(entries);
   const toApply: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(declared)) {
     if (id in overrides) continue; // overrides applied below, always win
@@ -168,7 +246,52 @@ function applyDeclaredForElement(
     if (id in declared) toApply[id] = value;
   }
   applyCssVariables(el, toApply);
+  applyVariableBindings(el, entries, resolveDeclaredVariableValues(entries, overrides));
   return Object.keys(declared);
+}
+
+function resolveDeclaredVariableValues(
+  entries: DeclaredVariableEntryLike[],
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const entry of entries) {
+    if (typeof entry.id !== "string") continue;
+    if ("default" in entry) values[entry.id] = entry.default;
+    if (entry.id in overrides) values[entry.id] = overrides[entry.id];
+  }
+  return values;
+}
+
+function parseNum(value: string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseElementDurationAttr(element: Element): number | null {
+  return (
+    parseNum(element.getAttribute("data-duration")) ??
+    parseNum(element.getAttribute(AUTHORED_DURATION_ATTR))
+  );
+}
+
+function findRootCompositionEl(doc: Document): Element | null {
+  // Mirrors init.ts's private findRootCompositionEl: explicit root first,
+  // then the topmost non-nested composition, then first in DOM order.
+  const explicitRoot = doc.querySelector('[data-composition-id][data-root="true"]');
+  if (explicitRoot) return explicitRoot;
+  const nodes = Array.from(doc.querySelectorAll("[data-composition-id]"));
+  return (
+    nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ?? nodes[0] ?? null
+  );
+}
+
+export function getDuration(): number | undefined {
+  if (typeof document === "undefined") return undefined;
+  const root = findRootCompositionEl(document);
+  if (!root) return undefined;
+  return parseElementDurationAttr(root) ?? undefined;
 }
 
 /** Parse a host element's `data-variable-values` JSON attribute (per-instance
