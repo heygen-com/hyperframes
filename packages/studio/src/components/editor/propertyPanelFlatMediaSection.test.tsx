@@ -129,3 +129,118 @@ describe("FlatMediaSection — cutout", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatMediaSection — volume/rate/media-start", () => {
+  it("renders volume at its stored percentage and commits a new value on drag", () => {
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { volume: "0.5" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    expect(host.textContent).toContain("50%");
+    act(() => root.unmount());
+  });
+
+  it("commits a new volume value on slider track pointerdown", () => {
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { volume: "0.5" } });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+    });
+    // min=0, max=100, ratio=0.5 -> raw=50 -> commit(50) -> 50/100=0.5 -> "0.5"
+    expect(onSetAttribute).toHaveBeenCalledWith("volume", "0.5");
+    act(() => root.unmount());
+  });
+
+  it("commits a new rate value on slider track pointerdown", () => {
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const rateTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[1];
+    Object.defineProperty(rateTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      rateTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+    });
+    // min=25, max=300, ratio=1.0 -> raw=300 -> commit(300) -> 300/100=3 -> "3"
+    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "3");
+    act(() => root.unmount());
+  });
+
+  it("commits a new media-start value on slider track pointerdown", () => {
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const mediaStartTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[2];
+    Object.defineProperty(mediaStartTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      mediaStartTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+    });
+    // no source-duration set -> mediaStartMax=Math.max(30, Math.ceil(0+10))=30 -> max=3000
+    // ratio=1.0 -> raw=3000 -> commit(3000) -> (3000/100).toFixed(2) = "30.00"
+    expect(onSetAttribute).toHaveBeenCalledWith("media-start", "30.00");
+    act(() => root.unmount());
+  });
+});
