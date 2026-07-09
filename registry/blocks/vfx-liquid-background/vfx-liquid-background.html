@@ -1244,13 +1244,32 @@
             10.5,
           );
 
-          // Driver tween: runs the full 12s; render time comes from the timeline.
+          // Driver tween keeps the anime timeline duration explicit; the seek wrapper settles renders.
           addTo({ frame: 0 }, { frame: 1, duration: 12, ease: "none" }, 0);
 
-          hyperframesAnime.register("vfx-liquid-background", tl, { labels: {} });
+          function seekTimeline(timeMs) {
+            var clampedMs = Math.max(0, Math.min(12000, Number(timeMs) || 0));
+            tl.seek(clampedMs);
+            renderAt(clampedMs / 1000);
+          }
+
+          hyperframesAnime.register(
+            "vfx-liquid-background",
+            {
+              duration: 12000,
+              seek: seekTimeline,
+              pause: function () {
+                tl.pause();
+              },
+              play: function () {
+                tl.play();
+              },
+            },
+            { labels: {} },
+          );
 
           // Initial render
-          renderAt(0);
+          seekTimeline(0);
         })();
       </script>
     </div>
