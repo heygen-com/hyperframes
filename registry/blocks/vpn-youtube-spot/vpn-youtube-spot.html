@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -555,10 +555,26 @@
 
       .percent {
         position: absolute;
+        width: 132px;
+        height: 56px;
+        display: grid;
+        place-items: center;
         color: #111111;
         font-size: 48px;
         line-height: 1;
         font-weight: 900;
+      }
+
+      .progress-value {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+      }
+
+      .progress-value.progress-0 {
+        opacity: 1;
       }
 
       .shield-status {
@@ -766,7 +782,7 @@
                         <circle class="track" cx="14" cy="14" r="11"></circle>
                         <circle class="progress" cx="14" cy="14" r="11"></circle>
                       </svg>
-                      <span class="open-label"></span>
+                      <span class="open-label">OPEN</span>
                     </div>
                   </div>
                 </div>
@@ -792,7 +808,13 @@
                     <circle class="big-track" cx="80" cy="80" r="70"></circle>
                     <circle id="progressArc" class="big-progress" cx="80" cy="80" r="70"></circle>
                   </svg>
-                  <div class="percent" id="progressText">0%</div>
+                  <div class="percent" id="progressText">
+                    <span class="progress-value progress-0">0%</span>
+                    <span class="progress-value progress-18">18%</span>
+                    <span class="progress-value progress-52">52%</span>
+                    <span class="progress-value progress-87">87%</span>
+                    <span class="progress-value progress-100">100%</span>
+                  </div>
                 </div>
                 <div class="shield-status">
                   <div class="check">✓</div>
@@ -814,174 +836,318 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
+      const tweenDefaults = { duration: 0.45, ease: "power3.out" };
+      const tl = anime.createTimeline({ autoplay: false });
 
-      gsap.defaults({ force3D: true });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
-      const tl = gsap.timeline({
-        paused: true,
-        defaults: { duration: 0.45, ease: "power3.out" },
-      });
+      function mapEase(ease) {
+        if (!ease || ease === "none") return "linear";
+        if (typeof ease === "function") return ease;
+        const compact = String(ease).replace(/\s+/g, "");
+        const power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+        if (power) {
+          const names = { 1: "Quad", 2: "Cubic", 3: "Quart", 4: "Quint" };
+          const dirs = { in: "in", out: "out", inOut: "inOut" };
+          return dirs[power[2]] + names[power[1]];
+        }
+        const family = compact.match(/^(sine|back|elastic)\.(in|out|inOut)(\(.*\))?$/);
+        if (family) {
+          const names = { sine: "Sine", back: "Back", elastic: "Elastic" };
+          const dirs = { in: "in", out: "out", inOut: "inOut" };
+          return dirs[family[2]] + names[family[1]] + (family[3] || "");
+        }
+        return ease;
+      }
 
-      const breatheRepeats = Math.ceil(7 / 2.4) - 1;
+      function reverseEase(ease) {
+        if (!ease) return "power3.in";
+        return String(ease)
+          .replace(/\.out(\(|$)/, ".in$1")
+          .replace(/\.in(\(|$)/, ".out$1");
+      }
 
-      tl.from(
+      function outQuart(t) {
+        return 1 - Math.pow(1 - t, 4);
+      }
+
+      function inCubic(t) {
+        return t * t * t;
+      }
+
+      function segmentEase(ease, endProgress) {
+        const endValue = ease(endProgress);
+        return function (t) {
+          return endValue === 0 ? 0 : ease(t * endProgress) / endValue;
+        };
+      }
+
+      function isCssTarget(target) {
+        return (
+          typeof target === "string" ||
+          target instanceof Element ||
+          target instanceof NodeList ||
+          Array.isArray(target)
+        );
+      }
+
+      function propName(target, key) {
+        if (!isCssTarget(target)) return key;
+        const props = { x: "translateX", y: "translateY", rotation: "rotate" };
+        return props[key] || key;
+      }
+
+      function staggerDelay(value) {
+        if (typeof value === "number") return anime.stagger(toMs(value));
+        if (value && typeof value === "object") {
+          const options = {};
+          Object.keys(value).forEach(function (key) {
+            options[key] = key === "each" || key === "amount" ? toMs(value[key]) : value[key];
+          });
+          return anime.stagger(options.each || 0, options);
+        }
+        return value;
+      }
+
+      function normalize(target, vars, applyDefaults) {
+        const out = {};
+        let hasDuration = false;
+        let hasEase = false;
+        Object.keys(vars).forEach(function (key) {
+          if (key === "duration" || key === "delay") {
+            out[key] = toMs(vars[key]);
+            if (key === "duration") hasDuration = true;
+          } else if (key === "ease") {
+            out.ease = mapEase(vars[key]);
+            hasEase = true;
+          } else if (key === "stagger") {
+            out.delay = staggerDelay(vars[key]);
+          } else if (key !== "overwrite" && key !== "force3D") {
+            out[propName(target, key)] = vars[key];
+          }
+        });
+        if (applyDefaults && !hasDuration) out.duration = toMs(tweenDefaults.duration);
+        if (applyDefaults && !hasEase) out.ease = mapEase(tweenDefaults.ease);
+        return out;
+      }
+
+      function firstElement(target) {
+        if (typeof target === "string") return document.querySelector(target);
+        if (target instanceof Element) return target;
+        if (target instanceof NodeList || Array.isArray(target)) return target[0];
+        return null;
+      }
+
+      function finalValue(target, key) {
+        const el = firstElement(target);
+        if (key === "x" || key === "y" || key === "rotation") return 0;
+        if (key === "scale" || key === "scaleX" || key === "scaleY") return 1;
+        if (key === "opacity" && el) return Number(getComputedStyle(el).opacity || 1);
+        return undefined;
+      }
+
+      function addSet(target, vars, position) {
+        tl.add(
+          target,
+          Object.assign(normalize(target, vars, false), { duration: 0 }),
+          toMs(position || 0),
+        );
+      }
+
+      function addTo(target, vars, position) {
+        tl.add(target, normalize(target, vars, true), toMs(position || 0));
+      }
+
+      function addFrom(target, fromVars, position) {
+        const start = {};
+        const end = {};
+        Object.keys(fromVars).forEach(function (key) {
+          if (key === "duration" || key === "delay" || key === "ease" || key === "stagger") return;
+          start[key] = fromVars[key];
+          const value = finalValue(target, key);
+          if (value !== undefined) end[key] = value;
+        });
+        addSet(target, start, position);
+        addTo(target, Object.assign({}, fromVars, end), position);
+      }
+
+      function addFromTo(target, fromVars, toVars, position) {
+        addSet(target, fromVars, position);
+        addTo(target, toVars, position);
+      }
+
+      function addPulse(target, peakScale, duration, position, ease, baseScale) {
+        const startScale = baseScale == null ? 1 : baseScale;
+        const activeEase = ease || tweenDefaults.ease;
+        addTo(target, { scale: peakScale, duration, ease: activeEase }, position);
+        addTo(
+          target,
+          { scale: startScale, duration, ease: reverseEase(activeEase) },
+          position + duration,
+        );
+      }
+
+      function showProgress(previousSelector, nextSelector, position) {
+        addSet(previousSelector, { opacity: 0 }, position);
+        addSet(nextSelector, { opacity: 1 }, position);
+      }
+
+      addFrom(
         ".headline span",
         { y: 46, opacity: 0, stagger: 0.055, duration: 0.38, ease: "back.out(1.35)" },
         0.05,
-      )
-        .from(".headline .sub", { y: 20, opacity: 0, duration: 0.28 }, 0.2)
-        .from(".ambient-word", { scale: 0.92, opacity: 0, duration: 0.5 }, 0.08)
-        .from(".ambient-line", { scaleX: 0, opacity: 0, stagger: 0.08, duration: 0.42 }, 0.16)
-        .to(
-          ".ambient-line",
-          {
-            scaleX: 1.08,
-            opacity: 0.55,
-            duration: 2.4,
-            yoyo: true,
-            repeat: breatheRepeats,
-            ease: "sine.inOut",
-          },
-          0.55,
-        )
-        .from(
-          ".phone",
-          {
-            y: 760,
-            scale: 0.82,
-            rotation: -2.5,
-            opacity: 0,
-            duration: 0.47,
-            ease: "back.out(1.6)",
-          },
-          0,
-        )
-        .from(".store-title", { y: 26, opacity: 0, duration: 0.28 }, 0.28)
-        .from(".avatar", { scale: 0.4, opacity: 0, duration: 0.24, ease: "back.out(1.8)" }, 0.34)
-        .from(".search-pill", { y: 18, opacity: 0, duration: 0.26 }, 0.4)
-        .from(
-          ".store-row",
-          { y: 44, opacity: 0, stagger: 0.035, duration: 0.36, ease: "power3.out" },
-          0.48,
-        );
+      );
+      addFrom(".headline .sub", { y: 20, opacity: 0, duration: 0.28 }, 0.2);
+      addFrom(".ambient-word", { scale: 0.92, opacity: 0, duration: 0.5 }, 0.08);
+      addFrom(".ambient-line", { scaleX: 0, opacity: 0, stagger: 0.08, duration: 0.42 }, 0.16);
+      addTo(
+        ".ambient-line",
+        { scaleX: 1.08, opacity: 0.55, duration: 2.4, ease: "sine.inOut" },
+        0.55,
+      );
+      addTo(".ambient-line", { scaleX: 1, opacity: 1, duration: 2.4, ease: "sine.inOut" }, 2.95);
+      addTo(
+        ".ambient-line",
+        { scaleX: 1.08, opacity: 0.55, duration: 2.4, ease: "sine.inOut" },
+        5.35,
+      );
+      addFrom(
+        ".phone",
+        { y: 760, scale: 0.82, rotation: -2.5, opacity: 0, duration: 0.47, ease: "back.out(1.6)" },
+        0,
+      );
+      addFrom(".store-title", { y: 26, opacity: 0, duration: 0.28 }, 0.28);
+      addFrom(".avatar", { scale: 0.4, opacity: 0, duration: 0.24, ease: "back.out(1.8)" }, 0.34);
+      addFrom(".search-pill", { y: 18, opacity: 0, duration: 0.26 }, 0.4);
+      addFrom(
+        ".store-row",
+        { y: 44, opacity: 0, stagger: 0.035, duration: 0.36, ease: "power3.out" },
+        0.48,
+      );
 
-      tl.to(".scroll-content", { y: -456, duration: 1.2, ease: "power4.out" }, 0.62)
-        .to(
-          ".screen-window",
-          { scale: 1.012, duration: 0.18, yoyo: true, repeat: 1, ease: "power2.out" },
-          0.92,
-        )
-        .to(
-          ".screen-window",
-          { scale: 1.014, duration: 0.14, yoyo: true, repeat: 1, ease: "power2.out" },
-          1.25,
-        )
-        .to(
-          "#vpn-row",
-          {
-            scale: 1.035,
-            outlineWidth: 3,
-            outlineColor: "rgba(0,122,255,0.34)",
-            duration: 0.2,
-            ease: "back.out(1.7)",
-          },
-          1.72,
-        )
-        .to("#vpn-row", { scale: 1, duration: 0.22 }, 1.93)
-        .fromTo(
-          ".tap-dot",
-          { scale: 0.25, opacity: 0.95 },
-          { scale: 2.15, opacity: 0, duration: 0.42, ease: "power2.out" },
-          2.02,
-        )
-        .to("#vpn-row .get-button", { scale: 0.82, duration: 0.1, ease: "power3.in" }, 2.04)
-        .to("#vpn-row .get-button", { scale: 1, duration: 0.14, ease: "back.out(2)" }, 2.14);
+      addTo(".scroll-content", { y: -456, duration: 1.2, ease: "power4.out" }, 0.62);
+      addTo(".screen-window", { scale: 1.012, duration: 0.18, ease: "power2.out" }, 0.92);
+      const screenReturnRatio = (1.25 - 1.1) / 0.18;
+      const screenScaleAtSecondPulse = 1.012 + (1 - 1.012) * inCubic(screenReturnRatio);
+      addTo(
+        ".screen-window",
+        {
+          scale: screenScaleAtSecondPulse,
+          duration: 0.15,
+          ease: segmentEase(inCubic, screenReturnRatio),
+        },
+        1.1,
+      );
+      addPulse(".screen-window", 1.014, 0.14, 1.25, "power2.out", screenScaleAtSecondPulse);
+      addTo(
+        "#vpn-row",
+        {
+          scale: 1.035,
+          outlineWidth: 3,
+          outlineColor: "rgba(0,122,255,0.34)",
+          duration: 0.2,
+          ease: "back.out(1.7)",
+        },
+        1.72,
+      );
+      addTo("#vpn-row", { scale: 1, duration: 0.22 }, 1.93);
+      addFromTo(
+        ".tap-dot",
+        { scale: 0.25, opacity: 0.95 },
+        { scale: 2.15, opacity: 0, duration: 0.42, ease: "power2.out" },
+        2.02,
+      );
+      addTo("#vpn-row .get-button", { scale: 0.82, duration: 0.1, ease: "power3.in" }, 2.04);
+      addTo("#vpn-row .get-button", { scale: 1, duration: 0.14, ease: "back.out(2)" }, 2.14);
 
-      tl.fromTo(
+      addFromTo(
         ".detail-view",
         { y: 620, scale: 0.92, opacity: 0 },
         { y: 0, scale: 1, opacity: 1, duration: 0.46, ease: "power4.out" },
         2.32,
-      )
-        .from(".detail-card", { y: 56, scale: 0.96, duration: 0.42, ease: "back.out(1.2)" }, 2.34)
-        .from(
-          ".detail-icon",
-          { scale: 0.55, rotation: -8, opacity: 0, duration: 0.32, ease: "back.out(1.8)" },
-          2.47,
-        )
-        .from(".detail-title", { y: 20, opacity: 0, duration: 0.28 }, 2.54)
-        .from(".detail-sub", { y: 14, opacity: 0, duration: 0.24 }, 2.6)
-        .from(
-          ".install-button",
-          { scale: 0.72, opacity: 0, duration: 0.24, ease: "back.out(2)" },
-          2.66,
-        )
-        .from(".stat", { y: 28, opacity: 0, stagger: 0.05, duration: 0.3 }, 2.78)
-        .from(".progress-panel", { y: 42, scale: 0.96, opacity: 0, duration: 0.38 }, 2.92);
+      );
+      addFrom(".detail-card", { y: 56, scale: 0.96, duration: 0.42, ease: "back.out(1.2)" }, 2.34);
+      addFrom(
+        ".detail-icon",
+        { scale: 0.55, rotation: -8, opacity: 0, duration: 0.32, ease: "back.out(1.8)" },
+        2.47,
+      );
+      addFrom(".detail-title", { y: 20, opacity: 0, duration: 0.28 }, 2.54);
+      addFrom(".detail-sub", { y: 14, opacity: 0, duration: 0.24 }, 2.6);
+      addFrom(
+        ".install-button",
+        { scale: 0.72, opacity: 0, duration: 0.24, ease: "back.out(2)" },
+        2.66,
+      );
+      addFrom(".stat", { y: 28, opacity: 0, stagger: 0.05, duration: 0.3 }, 2.78);
+      addFrom(".progress-panel", { y: 42, opacity: 0, duration: 0.38, ease: "power3.out" }, 2.92);
+      const progressPanelRatio = (3.18 - 2.92) / 0.38;
+      const progressPanelScale = 0.96 + (1 - 0.96) * outQuart(progressPanelRatio);
+      addFromTo(
+        ".progress-panel",
+        { scale: 0.96 },
+        {
+          scale: progressPanelScale,
+          duration: 0.26,
+          ease: segmentEase(outQuart, progressPanelRatio),
+        },
+        2.92,
+      );
 
-      tl.to(".install-label", { y: -18, opacity: 0, duration: 0.16 }, 2.86)
-        .set(".install-label", { textContent: "" }, 3.02)
-        .to(".ring", { opacity: 1, duration: 0.16 }, 2.96)
-        .fromTo(
-          ".ring .progress",
-          { strokeDashoffset: 69 },
-          { strokeDashoffset: 0, duration: 1.2, ease: "power2.inOut" },
-          3.04,
-        )
-        .fromTo(
-          "#progressArc",
-          { strokeDashoffset: 440 },
-          { strokeDashoffset: 0, duration: 1.42, ease: "power2.inOut" },
-          3.02,
-        )
-        .set("#progressText", { textContent: "18%" }, 3.18)
-        .to(".progress-panel", { scale: 1.025, duration: 0.12, yoyo: true, repeat: 1 }, 3.18)
-        .set("#progressText", { textContent: "52%" }, 3.56)
-        .to(".progress-panel", { scale: 1.03, duration: 0.12, yoyo: true, repeat: 1 }, 3.56)
-        .set("#progressText", { textContent: "87%" }, 3.9)
-        .to(".progress-panel", { scale: 1.035, duration: 0.12, yoyo: true, repeat: 1 }, 3.9)
-        .set("#progressText", { textContent: "100%" }, 4.28)
-        .to(
-          ".progress-panel",
-          { scale: 1.04, duration: 0.12, yoyo: true, repeat: 1, ease: "back.out(1.7)" },
-          4.28,
-        )
-        .to(".ring", { scale: 0.35, opacity: 0, duration: 0.16 }, 4.44)
-        .to(".install-button", { backgroundColor: "#34c759", width: 94, duration: 0.18 }, 4.5)
-        .set(".open-label", { textContent: "OPEN" }, 4.52)
-        .to(".open-label", { opacity: 1, duration: 0.16 }, 4.56)
-        .fromTo(
-          ".shield-status",
-          { y: 22, scale: 0.9, opacity: 0 },
-          { y: 0, scale: 1, opacity: 1, duration: 0.34, ease: "back.out(1.8)" },
-          4.62,
-        )
-        .to(
-          ".phone",
-          { scale: 1.025, duration: 0.18, yoyo: true, repeat: 1, ease: "back.out(1.5)" },
-          4.7,
-        );
+      addTo(".install-label", { y: -18, opacity: 0, duration: 0.16 }, 2.86);
+      addTo(".ring", { opacity: 1, duration: 0.16 }, 2.96);
+      addFromTo(
+        ".ring .progress",
+        { strokeDashoffset: 69 },
+        { strokeDashoffset: 0, duration: 1.2, ease: "power2.inOut" },
+        3.04,
+      );
+      addFromTo(
+        "#progressArc",
+        { strokeDashoffset: 440 },
+        { strokeDashoffset: 0, duration: 1.42, ease: "power2.inOut" },
+        3.02,
+      );
+      showProgress(".progress-0", ".progress-18", 3.18);
+      addPulse(".progress-panel", 1.025, 0.12, 3.18, "power3.out", progressPanelScale);
+      showProgress(".progress-18", ".progress-52", 3.56);
+      addPulse(".progress-panel", 1.03, 0.12, 3.56, "power3.out", progressPanelScale);
+      showProgress(".progress-52", ".progress-87", 3.9);
+      addPulse(".progress-panel", 1.035, 0.12, 3.9, "power3.out", progressPanelScale);
+      showProgress(".progress-87", ".progress-100", 4.28);
+      addPulse(".progress-panel", 1.04, 0.12, 4.28, "back.out(1.7)", progressPanelScale);
+      addTo(".ring", { scale: 0.35, opacity: 0, duration: 0.16 }, 4.44);
+      addTo(".install-button", { backgroundColor: "#34c759", width: 94, duration: 0.18 }, 4.5);
+      addTo(".open-label", { opacity: 1, duration: 0.16 }, 4.56);
+      addFromTo(
+        ".shield-status",
+        { y: 22, scale: 0.9, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.34, ease: "back.out(1.8)" },
+        4.62,
+      );
+      addPulse(".phone", 1.025, 0.18, 4.7, "back.out(1.5)");
 
-      tl.to(".headline", { y: -18, opacity: 0.35, duration: 0.22 }, 5.18)
-        .to(".ambient-word", { opacity: 0.018, duration: 0.22 }, 5.18)
-        .to(".snap-shadow", { opacity: 1, scaleX: 0.8, duration: 0.16 }, 5.35)
-        .fromTo(
-          ".speed-lines",
-          { y: -220, opacity: 0 },
-          { y: 420, opacity: 1, duration: 0.26, ease: "power4.in" },
-          5.42,
-        )
-        .to(
-          ".phone",
-          { y: 1050, scale: 0.78, rotation: -3.5, duration: 0.48, ease: "power4.in" },
-          5.44,
-        )
-        .to(".snap-shadow", { opacity: 0, scaleX: 1.6, duration: 0.28 }, 5.62)
-        .to(".speed-lines", { opacity: 0, duration: 0.2 }, 5.74)
-        .to(".white-wipe", { opacity: 1, duration: 0.42, ease: "power2.out" }, 5.86);
+      addTo(".headline", { y: -18, opacity: 0.35, duration: 0.22 }, 5.18);
+      addTo(".ambient-word", { opacity: 0.018, duration: 0.22 }, 5.18);
+      addTo(".snap-shadow", { opacity: 1, scaleX: 0.8, duration: 0.16 }, 5.35);
+      addFromTo(
+        ".speed-lines",
+        { y: -220, opacity: 0 },
+        { y: 420, opacity: 1, duration: 0.26, ease: "power4.in" },
+        5.42,
+      );
+      addTo(
+        ".phone",
+        { y: 1050, scale: 0.78, rotation: -3.5, duration: 0.48, ease: "power4.in" },
+        5.44,
+      );
+      addTo(".snap-shadow", { opacity: 0, scaleX: 1.6, duration: 0.28 }, 5.62);
+      addTo(".speed-lines", { opacity: 0, duration: 0.2 }, 5.74);
+      addTo(".white-wipe", { opacity: 1, duration: 0.42, ease: "power2.out" }, 5.86);
 
-      window.__timelines["vpn-youtube-spot"] = tl;
+      hyperframesAnime.register("vpn-youtube-spot", tl, { labels: {} });
     </script>
   </body>
 </html>

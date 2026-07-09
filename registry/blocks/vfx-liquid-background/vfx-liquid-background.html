@@ -518,13 +518,11 @@
       </style>
 
       <!-- ═══════════════ SCRIPTS ═══════════════ -->
-      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
 
       <script>
-        window.__timelines = window.__timelines || {};
-
-        setTimeout(function () {
+        (function () {
           // ── Capture panel textures via html2canvas-like rasterization ──
           // We use hidden canvases + drawImage of the panels for texture source.
           // Since drawElementImage requires chrome flags, we rasterize the panels
@@ -1052,14 +1050,51 @@
             renderer.render(scene, camera);
           }
 
+          function toMs(seconds) {
+            return seconds * 1000;
+          }
+
+          function mapEase(ease) {
+            if (!ease || ease === "none") return "linear";
+            var compact = String(ease).replace(/\s+/g, "");
+            var family = compact.match(/^(power[1-4]|sine)\.(in|out|inOut)$/);
+            if (family) {
+              var names = {
+                power1: "Quad",
+                power2: "Cubic",
+                power3: "Quart",
+                power4: "Quint",
+                sine: "Sine",
+              };
+              var dirs = { in: "in", out: "out", inOut: "inOut" };
+              return dirs[family[2]] + names[family[1]];
+            }
+            return ease;
+          }
+
+          function addTo(target, vars, position) {
+            var out = {};
+            Object.keys(vars).forEach(function (key) {
+              if (key === "duration" || key === "delay") out[key] = toMs(vars[key]);
+              else if (key === "ease") out.ease = mapEase(vars[key]);
+              else out[key] = vars[key];
+            });
+            tl.add(target, out, toMs(position || 0));
+          }
+
           // ═══════════════════════════════════════════════════════
-          // GSAP DRIVER TIMELINE
+          // ANIME DRIVER TIMELINE
           // ═══════════════════════════════════════════════════════
 
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({
+            autoplay: false,
+            onUpdate: function () {
+              renderAt(tl.currentTime / 1000);
+            },
+          });
 
           // Phase 1 (0-2s): Panel A appears, gentle waves begin
-          tl.to(
+          addTo(
             uniforms.uWaveIntensity,
             {
               value: 1.0,
@@ -1069,7 +1104,7 @@
             0,
           );
 
-          tl.to(
+          addTo(
             uniforms.uRippleIntensity,
             {
               value: 0.6,
@@ -1080,7 +1115,7 @@
           );
 
           // Phase 2 (2-4.5s): Waves flowing, camera tilts slightly
-          tl.to(
+          addTo(
             camera.rotation,
             {
               x: 0.06,
@@ -1092,7 +1127,7 @@
           );
 
           // Phase 3 (4.5-5.5s): Waves intensify for transition
-          tl.to(
+          addTo(
             uniforms.uWaveIntensity,
             {
               value: 2.5,
@@ -1102,7 +1137,7 @@
             4.5,
           );
 
-          tl.to(
+          addTo(
             uniforms.uRippleIntensity,
             {
               value: 2.0,
@@ -1113,7 +1148,7 @@
           );
 
           // Phase 4 (5-7s): Crossfade from Panel A to Panel B
-          tl.to(
+          addTo(
             uniforms.uMix,
             {
               value: 1.0,
@@ -1124,7 +1159,7 @@
           );
 
           // Phase 5 (6.5-8.5s): Waves settle back down
-          tl.to(
+          addTo(
             uniforms.uWaveIntensity,
             {
               value: 1.0,
@@ -1134,7 +1169,7 @@
             6.5,
           );
 
-          tl.to(
+          addTo(
             uniforms.uRippleIntensity,
             {
               value: 0.5,
@@ -1145,7 +1180,7 @@
           );
 
           // Camera returns to center
-          tl.to(
+          addTo(
             camera.rotation,
             {
               x: -0.03,
@@ -1157,28 +1192,28 @@
           );
 
           // Phase 6 (9-11s): Gentle breathing waves on Panel B
-          tl.to(
+          addTo(
             uniforms.uWaveIntensity,
             {
-              value: 0.7,
-              duration: 2.0,
+              value: 0.7439339828220179,
+              duration: 1.5,
               ease: "sine.inOut",
             },
             9,
           );
 
-          tl.to(
+          addTo(
             uniforms.uRippleIntensity,
             {
-              value: 0.3,
-              duration: 2.0,
+              value: 0.3292893218813453,
+              duration: 1.5,
               ease: "sine.inOut",
             },
             9,
           );
 
           // Phase 7 (10.5-12s): Waves fade to still
-          tl.to(
+          addTo(
             uniforms.uWaveIntensity,
             {
               value: 0.0,
@@ -1188,7 +1223,7 @@
             10.5,
           );
 
-          tl.to(
+          addTo(
             uniforms.uRippleIntensity,
             {
               value: 0.0,
@@ -1198,7 +1233,7 @@
             10.5,
           );
 
-          tl.to(
+          addTo(
             camera.rotation,
             {
               x: 0,
@@ -1209,35 +1244,14 @@
             10.5,
           );
 
-          // Driver tween: runs the full 12s, drives uTime and renders each frame
-          tl.to(
-            { frame: 0 },
-            {
-              frame: 1,
-              duration: 12,
-              ease: "none",
-              onUpdate: function () {
-                var time = tl.time();
-                uniforms.uTime.value = time;
-                renderer.render(scene, camera);
-              },
-            },
-            0,
-          );
+          // Driver tween: runs the full 12s; render time comes from the timeline.
+          addTo({ frame: 0 }, { frame: 1, duration: 12, ease: "none" }, 0);
 
-          window.__timelines["vfx-liquid-background"] = tl;
-
-          // ── hf-seek integration for Three.js adapter ──
-          window.addEventListener("hf-seek", function (e) {
-            var t = e.detail.time;
-            tl.seek(t);
-            uniforms.uTime.value = t;
-            renderer.render(scene, camera);
-          });
+          hyperframesAnime.register("vfx-liquid-background", tl, { labels: {} });
 
           // Initial render
           renderAt(0);
-        }, 0);
+        })();
       </script>
     </div>
   </body>

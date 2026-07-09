@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Blue Sweater Intro Video</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --bg: #f7f1ef;
@@ -958,8 +958,6 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
       const promptEl = document.querySelector("#promptText");
       const promptText = promptEl.textContent.replace(/\s+/g, " ").trim();
       promptEl.textContent = "";
@@ -969,56 +967,199 @@
         promptEl.appendChild(span);
       }
 
-      const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.out" } });
+      const tl = anime.createTimeline({ autoplay: false });
+      const tweenDefaults = { ease: "outQuart" };
 
-      tl.set(["#warmup", "#intro", "#burst", "#brand", "#ui"], { opacity: 0 });
-      tl.set("#cursor", { x: 690, y: 846, rotation: -8, scale: 0.72, opacity: 0 });
-      tl.set(".panel-full", { opacity: 0 });
-      tl.set(".panel-thinking", { opacity: 0 });
-      tl.set(".prompt-text span", { opacity: 0 });
-      tl.set("#sendFull", { opacity: 0, scale: 0.84 });
-      tl.set([".selection-box", ".intro-remnant", ".frag", ".final-wordmark"], { opacity: 0 });
-      tl.set([".x-result", ".social-card"], { opacity: 0 });
-      tl.set(".x-trigger", { scale: 1 });
+      function toMs(seconds) {
+        return typeof seconds === "number" ? Math.round(seconds * 1000) : seconds;
+      }
 
-      tl.to("#warmup", { opacity: 1, duration: 0.01 }, 0);
-      tl.fromTo(
+      function mapEase(ease) {
+        if (typeof ease !== "string") return ease;
+        const compact = ease.replace(/\s+/g, "");
+        if (compact === "none") return "linear";
+        const power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+        if (power) {
+          return power[2] + ["", "Quad", "Cubic", "Quart", "Quint"][Number(power[1])];
+        }
+        const family = compact.match(/^(sine|circ|expo|bounce)\.(in|out|inOut)$/);
+        if (family) {
+          return family[2] + family[1][0].toUpperCase() + family[1].slice(1);
+        }
+        const parameterized = compact.match(/^(back|elastic)\.(in|out|inOut)(?:\((.*)\))?$/);
+        if (parameterized) {
+          return (
+            parameterized[2] +
+            parameterized[1][0].toUpperCase() +
+            parameterized[1].slice(1) +
+            (parameterized[3] ? "(" + parameterized[3] + ")" : "")
+          );
+        }
+        return compact;
+      }
+
+      function isCssTarget(targets) {
+        if (typeof targets === "string") return true;
+        if (targets && targets.nodeType === 1) return true;
+        if (Array.isArray(targets)) return targets.some(isCssTarget);
+        return (
+          targets && typeof targets.length === "number" && targets[0] && targets[0].nodeType === 1
+        );
+      }
+
+      function propName(name, cssTarget) {
+        if (!cssTarget) return name;
+        return (
+          {
+            x: "translateX",
+            y: "translateY",
+            z: "translateZ",
+            rotation: "rotate",
+          }[name] || name
+        );
+      }
+
+      function staggerDelay(stagger) {
+        if (typeof stagger === "number") return anime.stagger(toMs(stagger));
+        if (!stagger) return undefined;
+        if (typeof stagger.each === "number") {
+          return anime.stagger(toMs(stagger.each), { ease: mapEase(stagger.ease) });
+        }
+        if (typeof stagger.amount === "number") {
+          const amount = toMs(stagger.amount);
+          return function (_target, index, total) {
+            return total <= 1 ? 0 : (amount * index) / (total - 1);
+          };
+        }
+        return undefined;
+      }
+
+      function normalize(vars, cssTarget, useDefaults) {
+        const out = {};
+        if (useDefaults && tweenDefaults.ease && vars.ease === undefined)
+          out.ease = tweenDefaults.ease;
+        Object.keys(vars).forEach(function (key) {
+          if (key === "duration") out.duration = toMs(vars.duration);
+          else if (key === "ease") out.ease = mapEase(vars.ease);
+          else if (key === "stagger") {
+            const delay = staggerDelay(vars.stagger);
+            if (delay) out.delay = delay;
+          } else if (key === "overwrite" || key === "force3D") {
+            return;
+          } else if (key === "keyframes") {
+            out.keyframes = vars.keyframes.map(function (frame) {
+              return normalize(frame, cssTarget, false);
+            });
+          } else {
+            out[propName(key, cssTarget)] = vars[key];
+          }
+        });
+        return out;
+      }
+
+      function finalValue(key) {
+        if (key === "opacity") return 1;
+        if (key === "scale" || key === "scaleX" || key === "scaleY") return 1;
+        if (key === "x" || key === "y" || key === "rotation") return 0;
+        if (key === "filter") return "blur(0px)";
+        return undefined;
+      }
+
+      function addSet(tl, targets, vars, position) {
+        const params = normalize(vars, isCssTarget(targets), false);
+        params.duration = 0;
+        params.ease = "linear";
+        tl.add(targets, params, toMs(position || 0));
+      }
+
+      function addTo(tl, targets, vars, position) {
+        tl.add(targets, normalize(vars, isCssTarget(targets), true), toMs(position || 0));
+      }
+
+      function addFrom(tl, targets, vars, position) {
+        const cssTarget = isCssTarget(targets);
+        const params = normalize(vars, cssTarget, true);
+        Object.keys(vars).forEach(function (key) {
+          if (
+            key === "duration" ||
+            key === "ease" ||
+            key === "stagger" ||
+            key === "overwrite" ||
+            key === "force3D"
+          )
+            return;
+          const end = finalValue(key);
+          if (end !== undefined) params[propName(key, cssTarget)] = [vars[key], end];
+        });
+        tl.add(targets, params, toMs(position || 0));
+      }
+
+      function addFromTo(tl, targets, fromVars, toVars, position) {
+        const cssTarget = isCssTarget(targets);
+        const params = normalize(toVars, cssTarget, true);
+        Object.keys(fromVars).forEach(function (key) {
+          if (key === "duration" || key === "ease" || key === "stagger") return;
+          const mapped = propName(key, cssTarget);
+          params[mapped] = [fromVars[key], toVars[key]];
+        });
+        tl.add(targets, params, toMs(position || 0));
+      }
+
+      addSet(tl, ["#warmup", "#intro", "#burst", "#brand", "#ui"], { opacity: 0 });
+      addSet(tl, "#cursor", { x: 690, y: 846, rotation: -8, scale: 0.72, opacity: 0 });
+      addSet(tl, ".panel-full", { opacity: 0 });
+      addSet(tl, ".panel-thinking", { opacity: 0 });
+      addSet(tl, ".prompt-text span", { opacity: 0 });
+      addSet(tl, "#sendFull", { opacity: 0, scale: 0.84 });
+      addSet(tl, [".selection-box", ".intro-remnant", ".frag", ".final-wordmark"], { opacity: 0 });
+      addSet(tl, [".x-result", ".social-card"], { opacity: 0 });
+      addSet(tl, ".x-trigger", { scale: 1 });
+
+      addTo(tl, "#warmup", { opacity: 1, duration: 0.01 }, 0);
+      addFromTo(
+        tl,
         "#warmBlock",
         { x: -820, scaleX: 0.42, opacity: 0, filter: "blur(14px)" },
         { x: -25, scaleX: 1, opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power2.out" },
         0.02,
       );
-      tl.to(
+      addTo(
+        tl,
         "#warmBlock",
         { x: 620, opacity: 0, filter: "blur(18px)", duration: 0.24, ease: "power2.in" },
         0.25,
       );
-      tl.to("#warmup", { opacity: 0, duration: 0.08 }, 0.4);
+      addTo(tl, "#warmup", { opacity: 0, duration: 0.08 }, 0.4);
 
-      tl.to("#intro", { opacity: 1, duration: 0.1 }, 0.44);
-      tl.fromTo(
+      addTo(tl, "#intro", { opacity: 1, duration: 0.1 }, 0.44);
+      addFromTo(
+        tl,
         "#introTitle",
         { opacity: 0, y: 26, filter: "blur(10px)" },
         { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.46, ease: "expo.out" },
         0.48,
       );
-      tl.to("#cursor", { opacity: 1, duration: 0.12 }, 0.44);
-      tl.to(
+      addTo(tl, "#cursor", { opacity: 1, duration: 0.12 }, 0.44);
+      addTo(
+        tl,
         "#cursor",
         { x: 942, y: 604, rotation: -3, duration: 0.36, ease: "power2.inOut", overwrite: "auto" },
         0.44,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 982, y: 642, rotation: -6, duration: 0.24, ease: "power2.inOut", overwrite: "auto" },
         1.28,
       );
-      tl.to(
+      addTo(
+        tl,
         "#introTitle",
         { opacity: 0.26, filter: "blur(4px)", duration: 0.03, ease: "power2.in" },
         1.43,
       );
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".intro-remnant",
         { opacity: 0, x: 0, y: 0, filter: "blur(2px)" },
         {
@@ -1032,26 +1173,30 @@
         },
         1.435,
       );
-      tl.to(
+      addTo(
+        tl,
         "#introTitle",
         { opacity: 0, y: -8, filter: "blur(10px)", duration: 0.08, ease: "power2.in" },
         1.47,
       );
-      tl.to(
+      addTo(
+        tl,
         ".intro-remnant",
         { opacity: 0, filter: "blur(11px)", duration: 0.07, ease: "power2.in" },
         1.49,
       );
-      tl.to("#intro", { opacity: 0, duration: 0.06 }, 1.56);
+      addTo(tl, "#intro", { opacity: 0, duration: 0.06 }, 1.56);
 
-      tl.to("#burst", { opacity: 1, duration: 0.02 }, 1.4);
-      tl.fromTo(
+      addTo(tl, "#burst", { opacity: 1, duration: 0.02 }, 1.4);
+      addFromTo(
+        tl,
         ".burst-star",
         { opacity: 0, scale: 0.08, rotation: -20 },
         { opacity: 1, scale: 0.16, rotation: -6, duration: 0.08, ease: "power2.out" },
         1.43,
       );
-      tl.to(
+      addTo(
+        tl,
         ".burst-star",
         { scale: 1, rotation: 0, duration: 0.42, ease: "expo.out", overwrite: "auto" },
         1.55,
@@ -1103,13 +1248,14 @@
           fade: 2.33,
         },
       ];
-      gsap.utils.toArray(".burst-block").forEach((block, index) => {
+      Array.from(document.querySelectorAll(".burst-block")).forEach((block, index) => {
         const path = blockPaths[index];
         if (!path) {
-          tl.set(block, { opacity: 0 });
+          addSet(tl, block, { opacity: 0 });
           return;
         }
-        tl.set(
+        addSet(
+          tl,
           block,
           {
             x: path.source[0],
@@ -1120,7 +1266,8 @@
           },
           1.45,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           {
             opacity: 1,
@@ -1132,7 +1279,8 @@
           },
           1.455,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           {
             x: path.scatter[0],
@@ -1143,7 +1291,8 @@
           },
           1.5,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           {
             x: path.drift[0],
@@ -1154,12 +1303,14 @@
           },
           1.7,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           { x: path.select[0], y: path.select[1], rotation: 0, duration: 0.2, ease: "sine.inOut" },
           1.9,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           {
             x: path.squeeze[0],
@@ -1172,7 +1323,8 @@
           },
           2.1,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           {
             x: path.release[0],
@@ -1185,23 +1337,27 @@
           },
           2.17,
         );
-        tl.to(
+        addTo(
+          tl,
           block,
           { opacity: 0, scale: 0.38, filter: "blur(7px)", duration: 0.05, ease: "power2.in" },
           path.fade,
         );
       });
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1540, y: 112, rotation: -9, duration: 0.26, ease: "power2.inOut", overwrite: "auto" },
         1.56,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 380, y: 252, rotation: -7, duration: 0.16, ease: "power2.inOut", overwrite: "auto" },
         1.82,
       );
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".selection-box",
         { opacity: 0, scaleX: 0.06, scaleY: 0.1, x: 0, y: 0, filter: "blur(3px)" },
         {
@@ -1216,22 +1372,26 @@
         },
         1.96,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 930, y: 478, rotation: -4, duration: 0.14, ease: "power2.inOut", overwrite: "auto" },
         1.96,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1168, y: 560, rotation: -4, duration: 0.14, ease: "power2.inOut", overwrite: "auto" },
         2.12,
       );
-      tl.to(
+      addTo(
+        tl,
         ".selection-box",
         { x: 220, y: 158, width: 640, height: 190, duration: 0.2, ease: "power2.inOut" },
         2.16,
       );
-      tl.to(
+      addTo(
+        tl,
         ".burst-star",
         {
           x: 118,
@@ -1245,7 +1405,7 @@
         2.12,
       );
 
-      tl.to("#brand", { opacity: 1, duration: 0.04 }, 2.08);
+      addTo(tl, "#brand", { opacity: 1, duration: 0.04 }, 2.08);
 
       const fragmentMotion = [
         {
@@ -1291,7 +1451,8 @@
       ];
 
       fragmentMotion.forEach((piece, index) => {
-        tl.fromTo(
+        addFromTo(
+          tl,
           piece.selector,
           {
             opacity: 0,
@@ -1312,7 +1473,8 @@
           },
           2.12 + index * 0.004,
         );
-        tl.to(
+        addTo(
+          tl,
           piece.selector,
           {
             x: piece.settle[0],
@@ -1325,7 +1487,8 @@
           },
           2.28 + index * 0.003,
         );
-        tl.to(
+        addTo(
+          tl,
           piece.selector,
           {
             opacity: 0,
@@ -1340,7 +1503,8 @@
         );
       });
 
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".final-wordmark",
         { opacity: 0, x: -12, y: 8, scale: 0.995, filter: "blur(5px)" },
         {
@@ -1355,63 +1519,88 @@
         },
         2.38,
       );
-      tl.to(".burst-star", { opacity: 0, duration: 0.12, ease: "power2.in" }, 2.32);
-      tl.to(
+      addTo(tl, ".burst-star", { opacity: 0, duration: 0.12, ease: "power2.in" }, 2.32);
+      addTo(
+        tl,
         ".selection-box",
         { opacity: 0, filter: "blur(5px)", duration: 0.16, ease: "power2.in" },
         2.33,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1256, y: 587, rotation: -3, duration: 0.3, ease: "power2.inOut", overwrite: "auto" },
         2.34,
       );
-      tl.to("#burst", { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" }, 2.58);
-      tl.to("#cursor", { opacity: 0, duration: 0.13, ease: "power2.in" }, 2.86);
-      tl.set("#cursor", { opacity: 0 }, 3.0);
-      tl.to(
+      addTo(
+        tl,
+        "#burst",
+        { opacity: 0, filter: "blur(6px)", duration: 0.14, ease: "power2.in" },
+        2.58,
+      );
+      addTo(tl, "#cursor", { opacity: 0, duration: 0.13, ease: "power2.in" }, 2.86);
+      addSet(tl, "#cursor", { opacity: 0 }, 3.0);
+      addTo(
+        tl,
         "#brand",
         { opacity: 0, y: 26, filter: "blur(9px)", duration: 0.22, ease: "power2.in" },
         2.9,
       );
 
-      tl.to("#ui", { opacity: 1, duration: 0.08 }, 3.02);
-      tl.fromTo(
+      addTo(tl, "#ui", { opacity: 1, duration: 0.08 }, 3.02);
+      addFromTo(
+        tl,
         ".input-stack",
         { opacity: 0, scale: 0.88, y: 92, filter: "blur(14px)" },
         { opacity: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.66, ease: "expo.out" },
         3.05,
       );
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".star-panel",
         { opacity: 0, scale: 0.5, rotation: -16 },
         { opacity: 1, scale: 1, rotation: 0, duration: 0.38, ease: "power3.out" },
         3.18,
       );
-      tl.fromTo(".placeholder", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.34 }, 3.3);
-      tl.fromTo(
+      addFromTo(
+        tl,
+        ".placeholder",
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.34 },
+        3.3,
+      );
+      addFromTo(
+        tl,
         ".panel-empty .panel-plus, .panel-empty .model",
         { opacity: 0, y: 10 },
         { opacity: 1, y: 0, duration: 0.3, stagger: 0.06 },
         3.42,
       );
 
-      tl.to(".panel-empty", { opacity: 0, duration: 0.18, ease: "power2.inOut" }, 4.12);
-      tl.to(".panel-full", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 4.12);
-      tl.to(
+      addTo(tl, ".panel-empty", { opacity: 0, duration: 0.18, ease: "power2.inOut" }, 4.12);
+      addTo(tl, ".panel-full", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 4.12);
+      addTo(
+        tl,
         ".input-stack",
         { scale: 1.32, x: 300, y: -100, duration: 0.26, ease: "power2.inOut" },
         4.14,
       );
-      tl.to(".input-stack", { scale: 1, x: 0, y: 0, duration: 0.74, ease: "power2.inOut" }, 4.92);
+      addTo(
+        tl,
+        ".input-stack",
+        { scale: 1, x: 0, y: 0, duration: 0.74, ease: "power2.inOut" },
+        4.92,
+      );
 
-      tl.to(
+      addTo(
+        tl,
         ".prompt-text span",
         { opacity: 1, duration: 0.01, stagger: { amount: 2.85 }, ease: "none" },
         4.18,
       );
-      tl.to("#sendFull", { opacity: 1, scale: 1, duration: 0.24, ease: "power3.out" }, 7.32);
-      tl.fromTo(
+      addTo(tl, "#sendFull", { opacity: 1, scale: 1, duration: 0.24, ease: "power3.out" }, 7.32);
+      addFromTo(
+        tl,
         "#cursor",
         { x: 1328, y: 900, rotation: -6, scale: 1, opacity: 0 },
         {
@@ -1425,52 +1614,54 @@
         },
         6.92,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1512, y: 620, rotation: -5, duration: 0.5, ease: "power2.inOut" },
         7.44,
       );
 
-      tl.to("#sendFull", { scale: 0.86, duration: 0.08, ease: "power2.in" }, 7.9);
-      tl.to("#sendFull", { scale: 1, duration: 0.14, ease: "back.out(1.7)" }, 7.98);
-      tl.to(".panel-full", { opacity: 0, duration: 0.16, ease: "power2.inOut" }, 8.15);
-      tl.to(".panel-thinking", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 8.15);
-      tl.set(".thinking-line", { opacity: 0 }, 8.24);
-      tl.to(
+      addTo(tl, "#sendFull", { scale: 0.86, duration: 0.08, ease: "power2.in" }, 7.9);
+      addTo(tl, "#sendFull", { scale: 1, duration: 0.14, ease: "back.out(1.7)" }, 7.98);
+      addTo(tl, ".panel-full", { opacity: 0, duration: 0.16, ease: "power2.inOut" }, 8.15);
+      addTo(tl, ".panel-thinking", { opacity: 1, duration: 0.18, ease: "power2.inOut" }, 8.15);
+      addSet(tl, ".thinking-line", { opacity: 0 }, 8.24);
+      addTo(
+        tl,
         ".thinking-line",
         { opacity: 1, duration: 0.3, ease: "power3.out", overwrite: "auto" },
         8.25,
       );
-      tl.to("#cursor", { x: 1554, y: 620, rotation: -5, duration: 0.28, ease: "power2.out" }, 7.94);
-      tl.to(
+      addTo(
+        tl,
+        "#cursor",
+        { x: 1554, y: 620, rotation: -5, duration: 0.28, ease: "power2.out" },
+        7.94,
+      );
+      addTo(
+        tl,
         ".thinking-line",
         { opacity: 0, duration: 0.18, ease: "power2.inOut", overwrite: "auto" },
         8.64,
       );
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".x-result",
         { opacity: 0, y: 12 },
         { opacity: 1, y: 0, duration: 0.28, ease: "power3.out" },
         8.82,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 365, y: 418, rotation: -6, duration: 0.58, ease: "power2.inOut", overwrite: "auto" },
         8.74,
       );
-      tl.to(
-        ".x-trigger",
-        {
-          keyframes: [
-            { scale: 0.88, duration: 0.08, ease: "power2.in" },
-            { scale: 1, duration: 0.14, ease: "back.out(1.7)" },
-          ],
-          overwrite: "auto",
-        },
-        9.34,
-      );
-      tl.to(".x-result", { opacity: 0, y: -8, duration: 0.18, ease: "power2.inOut" }, 9.5);
-      tl.to(
+      addTo(tl, ".x-trigger", { scale: 0.88, duration: 0.08, ease: "power2.in" }, 9.34);
+      addTo(tl, ".x-trigger", { scale: 1, duration: 0.14, ease: "back.out(1.7)" }, 9.42);
+      addTo(tl, ".x-result", { opacity: 0, y: -8, duration: 0.18, ease: "power2.inOut" }, 9.5);
+      addTo(
+        tl,
         ".input-stack",
         {
           opacity: 0,
@@ -1482,42 +1673,48 @@
         },
         9.5,
       );
-      tl.to(
+      addTo(
+        tl,
         ".star-panel",
         { opacity: 0, scale: 0.72, rotation: 12, duration: 0.28, ease: "power2.inOut" },
         9.5,
       );
-      tl.fromTo(
+      addFromTo(
+        tl,
         ".social-card",
         { opacity: 0, y: 34, scale: 0.88, filter: "blur(12px)" },
         { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.6, ease: "expo.out" },
         9.86,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1408, y: 246, rotation: -5, duration: 0.42, ease: "power2.inOut", overwrite: "auto" },
         9.96,
       );
-      tl.to(
+      addTo(
+        tl,
         "#cursor",
         { x: 1242, y: 446, rotation: -5, duration: 0.36, ease: "power2.inOut", overwrite: "auto" },
         10.5,
       );
-      tl.to(".follow-button", { scale: 0.9, duration: 0.08, ease: "power2.in" }, 10.88);
-      tl.to(
+      addTo(tl, ".follow-button", { scale: 0.9, duration: 0.08, ease: "power2.in" }, 10.88);
+      addTo(
+        tl,
         ".follow-button",
         { scale: 1, backgroundColor: "#2f2f2f", duration: 0.28, ease: "elastic.out(1, 0.45)" },
         10.96,
       );
-      tl.to(".follow-label-follow", { opacity: 0, duration: 0.08, ease: "none" }, 10.96);
-      tl.to(".follow-label-following", { opacity: 1, duration: 0.08, ease: "none" }, 10.99);
-      tl.to(
+      addTo(tl, ".follow-label-follow", { opacity: 0, duration: 0.08, ease: "none" }, 10.96);
+      addTo(tl, ".follow-label-following", { opacity: 1, duration: 0.08, ease: "none" }, 10.99);
+      addTo(
+        tl,
         "#cursor",
         { x: 1286, y: 472, rotation: -5, duration: 0.16, ease: "power2.out", overwrite: "auto" },
         11,
       );
 
-      window.__timelines["blue-sweater-intro-video"] = tl;
+      hyperframesAnime.register("blue-sweater-intro-video", tl, { labels: {} });
     </script>
   </body>
 </html>
