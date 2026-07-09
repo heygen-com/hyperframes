@@ -410,8 +410,14 @@ export function resolveSnapAdjustment(input: {
 }
 
 // ---------------------------------------------------------------------------
-// resolveResizeSnapAdjustment — resize variant (only right/bottom snap)
+// resolveResizeSnapAdjustment — resize variant (snaps the moving edges)
 // ---------------------------------------------------------------------------
+
+/** Which edges of the rect a resize gesture is moving (per grabbed corner). */
+export interface ResizeSnapEdges {
+  x: "left" | "right";
+  y: "top" | "bottom";
+}
 
 // fallow-ignore-next-line complexity
 export function resolveResizeSnapAdjustment(input: {
@@ -422,24 +428,27 @@ export function resolveResizeSnapAdjustment(input: {
   gridEdges?: { x: SnapEdge[]; y: SnapEdge[] };
   threshold: number;
   disabled: boolean;
+  /** Defaults to the SE corner (right/bottom edges move). */
+  edges?: ResizeSnapEdges;
 }): SnapResult {
   if (input.disabled || input.threshold <= 0) {
     return DISABLED_RESULT(input.proposedDx, input.proposedDy);
   }
 
   const mr = input.movingRect;
-  const proposedRight = rectRight(mr) + input.proposedDx;
-  const proposedBottom = rectBottom(mr) + input.proposedDy;
+  const edges = input.edges ?? { x: "right", y: "bottom" };
+  const movingXEdge = (edges.x === "right" ? rectRight(mr) : mr.left) + input.proposedDx;
+  const movingYEdge = (edges.y === "bottom" ? rectBottom(mr) : mr.top) + input.proposedDy;
 
   const xCandidates = collectCandidates(
-    [proposedRight],
+    [movingXEdge],
     input.targets,
     (t) => [t.left, t.centerX, t.right],
     input.gridEdges?.x,
     input.threshold,
   );
   const yCandidates = collectCandidates(
-    [proposedBottom],
+    [movingYEdge],
     input.targets,
     (t) => [t.top, t.centerY, t.bottom],
     input.gridEdges?.y,
@@ -452,10 +461,10 @@ export function resolveResizeSnapAdjustment(input: {
   const adjustedDy = input.proposedDy + (bestY?.adjustment ?? 0);
 
   const adjustedRect: Rect = {
-    left: mr.left,
-    top: mr.top,
-    width: mr.width + adjustedDx,
-    height: mr.height + adjustedDy,
+    left: edges.x === "left" ? mr.left + adjustedDx : mr.left,
+    top: edges.y === "top" ? mr.top + adjustedDy : mr.top,
+    width: edges.x === "left" ? mr.width - adjustedDx : mr.width + adjustedDx,
+    height: edges.y === "top" ? mr.height - adjustedDy : mr.height + adjustedDy,
   };
 
   const targetMap = new Map(input.targets.map((t) => [t.id, t]));
@@ -466,6 +475,25 @@ export function resolveResizeSnapAdjustment(input: {
     guides: buildGuidesFromMatches(bestX, bestY, adjustedRect, targetMap),
     spacingGuides: [], // computed separately via resolveEquidistanceGuides
   };
+}
+
+// ---------------------------------------------------------------------------
+// resolveGuideLineRect — screen rect for rendering a snap guide line
+// ---------------------------------------------------------------------------
+
+/**
+ * Full-length guide line spanning the composition: a vertical line (axis "x")
+ * runs the composition's height at the snapped x position; a horizontal line
+ * (axis "y") runs the composition's width. `composition` is the composition
+ * rect in overlay space — guide positions are already overlay-space, so the
+ * line must be offset by the composition's left/top (the canvas is usually
+ * letterboxed inside the overlay).
+ */
+export function resolveGuideLineRect(guide: SnapGuide, composition: Rect): Rect {
+  if (guide.axis === "x") {
+    return { left: guide.position, top: composition.top, width: 1, height: composition.height };
+  }
+  return { left: composition.left, top: guide.position, width: composition.width, height: 1 };
 }
 
 // ---------------------------------------------------------------------------

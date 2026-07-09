@@ -13,6 +13,9 @@ import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction"
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
+/** Which corner handle initiated a resize gesture. */
+export type ResizeHandle = "nw" | "ne" | "sw" | "se";
+
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
 const MIN_RESIZE_EDGE_PX = 20;
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
@@ -43,6 +46,10 @@ export interface GestureState {
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  /** Corner the resize gesture grabbed (resize gestures only). */
+  resizeHandle?: ResizeHandle;
+  /** Last anchoring translation applied during a corner resize (overlay px). */
+  lastResizeAnchor?: { dx: number; dy: number };
 }
 
 export interface GroupGestureState {
@@ -102,6 +109,40 @@ export function resolveDomEditResizeGesture(input: {
     overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
     width: Math.max(1, input.actualWidth + input.dx / scaleX),
     height: Math.max(1, input.actualHeight + input.dy / scaleY),
+  };
+}
+
+/**
+ * Map a raw pointer delta to size deltas for the grabbed corner. West/north
+ * corners grow the box when the pointer moves left/up, and anchor the opposite
+ * edge (the element must translate to keep that edge visually fixed).
+ */
+export function resolveResizeHandleDeltas(
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+): { sizeDx: number; sizeDy: number; anchorX: boolean; anchorY: boolean } {
+  const anchorX = handle === "nw" || handle === "sw";
+  const anchorY = handle === "nw" || handle === "ne";
+  return { sizeDx: anchorX ? -dx : dx, sizeDy: anchorY ? -dy : dy, anchorX, anchorY };
+}
+
+/**
+ * Overlay-px translation that keeps the opposite corner fixed while a west or
+ * north handle resizes: the element's visual origin shifts by exactly the size
+ * change on the anchored axis.
+ */
+export function resolveResizeAnchorOffset(input: {
+  originWidth: number;
+  originHeight: number;
+  overlayWidth: number;
+  overlayHeight: number;
+  anchorX: boolean;
+  anchorY: boolean;
+}): { dx: number; dy: number } {
+  return {
+    dx: input.anchorX ? input.originWidth - input.overlayWidth : 0,
+    dy: input.anchorY ? input.originHeight - input.overlayHeight : 0,
   };
 }
 

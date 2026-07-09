@@ -15,6 +15,7 @@ import {
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
 import type { DomEditSelection } from "./domEditing";
+import { resolveResizeAnchorOffset, resolveResizeHandleDeltas } from "./domEditOverlayGestures";
 
 // React 19 warns unless the test environment opts into act().
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -658,5 +659,84 @@ describe("resolveDomEditRotationGesture", () => {
     expect(nextRotation.angle).toBe(1.4);
     expect(hasDomEditRotationChanged(0, nextRotation.angle)).toBe(true);
     expect(hasDomEditRotationChanged(0, 0)).toBe(false);
+  });
+});
+
+describe("resolveResizeHandleDeltas", () => {
+  it("se: pointer deltas map directly to size deltas, no anchoring", () => {
+    expect(resolveResizeHandleDeltas("se", 30, 12)).toEqual({
+      sizeDx: 30,
+      sizeDy: 12,
+      anchorX: false,
+      anchorY: false,
+    });
+  });
+
+  it("nw: moving the pointer up-left grows the box and anchors both axes", () => {
+    expect(resolveResizeHandleDeltas("nw", -30, -12)).toEqual({
+      sizeDx: 30,
+      sizeDy: 12,
+      anchorX: true,
+      anchorY: true,
+    });
+  });
+
+  it("ne: x follows the pointer, y is inverted and anchored", () => {
+    expect(resolveResizeHandleDeltas("ne", 30, -12)).toEqual({
+      sizeDx: 30,
+      sizeDy: 12,
+      anchorX: false,
+      anchorY: true,
+    });
+  });
+
+  it("sw: x is inverted and anchored, y follows the pointer", () => {
+    expect(resolveResizeHandleDeltas("sw", -30, 12)).toEqual({
+      sizeDx: 30,
+      sizeDy: 12,
+      anchorX: true,
+      anchorY: false,
+    });
+  });
+});
+
+describe("resolveResizeAnchorOffset", () => {
+  it("translates by the size change only on anchored axes", () => {
+    expect(
+      resolveResizeAnchorOffset({
+        originWidth: 200,
+        originHeight: 100,
+        overlayWidth: 230,
+        overlayHeight: 112,
+        anchorX: true,
+        anchorY: true,
+      }),
+    ).toEqual({ dx: -30, dy: -12 });
+  });
+
+  it("returns zero offset when nothing is anchored (se handle)", () => {
+    expect(
+      resolveResizeAnchorOffset({
+        originWidth: 200,
+        originHeight: 100,
+        overlayWidth: 230,
+        overlayHeight: 112,
+        anchorX: false,
+        anchorY: false,
+      }),
+    ).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it("mixed anchoring (ne): only the y axis translates", () => {
+    expect(
+      resolveResizeAnchorOffset({
+        originWidth: 200,
+        originHeight: 100,
+        overlayWidth: 230,
+        overlayHeight: 88,
+        anchorX: false,
+        anchorY: true,
+      }),
+    ).toEqual({ dx: 0, dy: 12 });
   });
 });

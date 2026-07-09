@@ -25,6 +25,7 @@ import {
 import {
   type GestureKind,
   type GestureState,
+  type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
@@ -99,7 +100,11 @@ export function startGesture(
   kind: GestureKind,
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
-  options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+  options?: {
+    selection?: DomEditSelection;
+    rect?: OverlayRect | null;
+    resizeHandle?: ResizeHandle;
+  },
 ): boolean {
   const sel = options?.selection ?? opts.selectionRef.current;
   const rect = options?.rect ?? opts.overlayRectRef.current;
@@ -143,7 +148,29 @@ export function startGesture(
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    // Corner resize from a west/north handle anchors the opposite corner by
+    // translating the element while it resizes — that translation goes through
+    // the same manual-offset channel as a drag, so create a member for it.
+    const resizeHandle = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
+    const needsAnchorOffset =
+      resizeHandle !== undefined && resizeHandle !== "se" && sel.capabilities.canApplyManualOffset;
+    if (needsAnchorOffset) {
+      const result = createManualOffsetDragMember({
+        key: selectionCacheKey(sel),
+        selection: sel,
+        element: sel.element,
+        rect,
+      });
+      if (result.ok) {
+        pathOffsetMember = result.member;
+        initialPathOffset = result.member.initialPathOffset;
+        manualEditDragToken = result.member.gestureToken;
+      } else {
+        manualEditDragToken = beginStudioManualEditGesture(sel.element);
+      }
+    } else {
+      manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    }
   }
 
   const overlayBounds = overlayEl?.getBoundingClientRect();
@@ -186,6 +213,7 @@ export function startGesture(
     editScaleY: rect.editScaleY,
     manualEditDragToken,
     snapContext,
+    resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
   };
   return true;
 }

@@ -7,6 +7,7 @@ import {
   resolveSnapAdjustment,
   resolveResizeSnapAdjustment,
   resolveEquidistanceGuides,
+  resolveGuideLineRect,
   SNAP_THRESHOLD_PX,
   type SnapTarget,
 } from "./snapEngine";
@@ -467,6 +468,91 @@ describe("resolveResizeSnapAdjustment", () => {
     const xGuide = result.guides.find((g) => g.axis === "x");
     expect(xGuide).toBeDefined();
     expect(xGuide!.position).toBe(200);
+  });
+
+  test("edges left/top: the grabbed NW corner's edges snap", () => {
+    // Moving rect at (100, 100) size 50x50. Target right edge at 97,
+    // target bottom edge at 96. Pointer proposes dx=0, dy=0 → left=100 is
+    // 3px from 97 (engage), top=100 is 4px from 96 (engage).
+    const t = target("a", 47, 46, 50, 50); // right=97, bottom=96
+    const result = resolveResizeSnapAdjustment({
+      movingRect: rect(100, 100, 50, 50),
+      proposedDx: 0,
+      proposedDy: 0,
+      targets: [t],
+      threshold: SNAP_THRESHOLD_PX,
+      disabled: false,
+      edges: { x: "left", y: "top" },
+    });
+    expect(result.dx).toBe(-3); // left 100 → 97
+    expect(result.dy).toBe(-4); // top 100 → 96
+  });
+
+  test("edges left/top: no snap when the moving edge is beyond threshold", () => {
+    const t = target("a", 40, 40, 50, 50); // right=90, bottom=90
+    const result = resolveResizeSnapAdjustment({
+      movingRect: rect(100, 100, 50, 50),
+      proposedDx: 0,
+      proposedDy: 0,
+      targets: [t],
+      threshold: SNAP_THRESHOLD_PX,
+      disabled: false,
+      edges: { x: "left", y: "top" },
+    });
+    expect(result.dx).toBe(0); // 10px away — released
+    expect(result.dy).toBe(0);
+  });
+
+  test("edges left/top: snaps the left edge to the composition centerX", () => {
+    const comp = buildCompositionSnapTarget(rect(0, 0, 1000, 600));
+    const result = resolveResizeSnapAdjustment({
+      movingRect: rect(504, 100, 200, 100), // left=504, centerX of comp=500
+      proposedDx: 0,
+      proposedDy: 0,
+      targets: [comp],
+      threshold: SNAP_THRESHOLD_PX,
+      disabled: false,
+      edges: { x: "left", y: "top" },
+    });
+    expect(result.dx).toBe(-4); // left 504 → 500
+    const xGuide = result.guides.find((g) => g.axis === "x");
+    expect(xGuide?.position).toBe(500);
+  });
+
+  test("edges left/top: disabled=true suppresses snap (modifier passthrough)", () => {
+    const t = target("a", 47, 46, 50, 50);
+    const result = resolveResizeSnapAdjustment({
+      movingRect: rect(100, 100, 50, 50),
+      proposedDx: 0,
+      proposedDy: 0,
+      targets: [t],
+      threshold: SNAP_THRESHOLD_PX,
+      disabled: true,
+      edges: { x: "left", y: "top" },
+    });
+    expect(result.dx).toBe(0);
+    expect(result.dy).toBe(0);
+    expect(result.guides).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveGuideLineRect
+// ---------------------------------------------------------------------------
+
+describe("resolveGuideLineRect", () => {
+  const composition = rect(120, 80, 640, 360); // letterboxed inside the overlay
+
+  test("vertical guide (axis x) spans the composition's height at the snap x", () => {
+    expect(resolveGuideLineRect({ axis: "x", position: 440, from: 0, to: 0 }, composition)).toEqual(
+      { left: 440, top: 80, width: 1, height: 360 },
+    );
+  });
+
+  test("horizontal guide (axis y) spans the composition's width at the snap y", () => {
+    expect(resolveGuideLineRect({ axis: "y", position: 260, from: 0, to: 0 }, composition)).toEqual(
+      { left: 120, top: 260, width: 640, height: 1 },
+    );
   });
 });
 

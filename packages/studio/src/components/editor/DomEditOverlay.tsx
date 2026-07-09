@@ -10,6 +10,7 @@ import {
   type FocusableDomEditOverlay,
   type GestureState,
   type GroupGestureState,
+  type ResizeHandle,
   focusDomEditOverlayElement,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
@@ -41,6 +42,31 @@ export {
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
+
+// Corner resize handles, Canva-style: one per corner, diagonal cursors.
+// Non-SE corners anchor the opposite corner by translating the element, so
+// they need the manual-offset capability in addition to manual-size.
+const RESIZE_HANDLE_DEFS: Array<{
+  handle: ResizeHandle;
+  cursor: string;
+  x: "left" | "right";
+  y: "top" | "bottom";
+}> = [
+  { handle: "nw", cursor: "nwse-resize", x: "left", y: "top" },
+  { handle: "ne", cursor: "nesw-resize", x: "right", y: "top" },
+  { handle: "sw", cursor: "nesw-resize", x: "left", y: "bottom" },
+  { handle: "se", cursor: "nwse-resize", x: "right", y: "bottom" },
+];
+
+function resizeHandleStyle(
+  def: (typeof RESIZE_HANDLE_DEFS)[number],
+  cropInset?: { top: number; right: number; bottom: number; left: number },
+): React.CSSProperties {
+  const style: React.CSSProperties = { cursor: def.cursor, touchAction: "none" };
+  style[def.x] = (def.x === "left" ? (cropInset?.left ?? 0) : (cropInset?.right ?? 0)) - 6;
+  style[def.y] = (def.y === "top" ? (cropInset?.top ?? 0) : (cropInset?.bottom ?? 0)) - 6;
+  return style;
+}
 
 interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -493,23 +519,21 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 }}
               />
             )}
-            {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
-              <div
-                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
-                style={{
-                  cursor: "se-resize",
-                  touchAction: "none",
-                  ...(cropOutlineInsetPx && {
-                    right: cropOutlineInsetPx.right - 6,
-                    bottom: cropOutlineInsetPx.bottom - 6,
-                  }),
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  gestures.startGesture("resize", e);
-                }}
-              />
-            )}
+            {allowCanvasMovement &&
+              selection.capabilities.canApplyManualSize &&
+              RESIZE_HANDLE_DEFS.map((def) =>
+                def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
+                  <div
+                    key={def.handle}
+                    className="absolute w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
+                    style={resizeHandleStyle(def, cropOutlineInsetPx ?? undefined)}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      gestures.startGesture("resize", e, { resizeHandle: def.handle });
+                    }}
+                  />
+                ),
+              )}
           </div>
           {selection.capabilities.canCrop && groupSelections.length <= 1 && (
             <DomEditCropHandles
@@ -556,8 +580,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       />
       <SnapGuideOverlay
         snapGuidesRef={snapGuidesRef}
-        overlayWidth={compRect.width}
-        overlayHeight={compRect.height}
+        compositionLeft={compRect.left}
+        compositionTop={compRect.top}
+        compositionWidth={compRect.width}
+        compositionHeight={compRect.height}
       />
     </div>
   );

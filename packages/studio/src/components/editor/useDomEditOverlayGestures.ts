@@ -37,10 +37,13 @@ import {
   type GestureKind,
   type GestureState,
   type GroupGestureState,
+  type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
   hasDomEditRotationChanged,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
+  resolveResizeAnchorOffset,
+  resolveResizeHandleDeltas,
 } from "./domEditOverlayGestures";
 import {
   startGesture as _startGesture,
@@ -80,7 +83,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   const startGesture = (
     kind: GestureKind,
     e: React.PointerEvent<HTMLElement>,
-    options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+    options?: {
+      selection?: DomEditSelection;
+      rect?: OverlayRect | null;
+      resizeHandle?: ResizeHandle;
+    },
   ) => _startGesture(kind, e, opts, options);
 
   // fallow-ignore-next-line complexity
@@ -246,6 +253,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     } else {
       if (!box) return;
 
+      const handle = g.resizeHandle ?? "se";
       const sc = g.snapContext;
       if (sc?.snapEnabled && sc.targets.length > 0) {
         const movingRect = {
@@ -265,12 +273,17 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           gridEdges: sc.gridEdges ?? undefined,
           threshold: SNAP_THRESHOLD_PX,
           disabled: e.altKey,
+          edges: {
+            x: handle === "nw" || handle === "sw" ? "left" : "right",
+            y: handle === "nw" || handle === "ne" ? "top" : "bottom",
+          },
         });
         dx = snap.dx;
         dy = snap.dy;
         opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides: [] };
       }
 
+      const deltas = resolveResizeHandleDeltas(handle, dx, dy);
       const nextSize = resolveDomEditResizeGesture({
         originWidth: g.originWidth,
         originHeight: g.originHeight,
@@ -278,11 +291,27 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualHeight: g.actualHeight,
         scaleX: g.editScaleX,
         scaleY: g.editScaleY,
-        dx,
-        dy,
+        dx: deltas.sizeDx,
+        dy: deltas.sizeDy,
         uniform: e.shiftKey,
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
+
+      // West/north handles keep the opposite corner visually fixed by
+      // translating the element through the same manual-offset channel a
+      // drag uses (member created at gesture start).
+      if (g.pathOffsetMember) {
+        const anchor = resolveResizeAnchorOffset({
+          originWidth: g.originWidth,
+          originHeight: g.originHeight,
+          overlayWidth: nextSize.overlayWidth,
+          overlayHeight: nextSize.overlayHeight,
+          anchorX: deltas.anchorX,
+          anchorY: deltas.anchorY,
+        });
+        g.lastResizeAnchor = anchor;
+        applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
+      }
 
       // Re-read BCR after applying dimensions. For elements with a GSAP
       // scale transform and centered transform-origin the visual top-left
@@ -383,7 +412,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "resize" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
       restoreStudioBoxSize(sel.element, g.initialBoxSize);
-      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      if (g.pathOffsetMember) {
+        restoreManualOffsetDragMembers([g.pathOffsetMember]);
+      } else {
+        endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      }
       if (box) {
         box.style.width = `${g.originWidth}px`;
         box.style.height = `${g.originHeight}px`;
@@ -468,15 +501,31 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
+      // Anchored corner resize also moved the element — commit the offset
+      // after the size lands (sequenced so the two source mutations can't race).
+      const member = g.pathOffsetMember;
+      const anchor = g.lastResizeAnchor;
+      const finalOffset =
+        member && anchor && (anchor.dx !== 0 || anchor.dy !== 0)
+          ? applyManualOffsetDragCommit(member, anchor.dx, anchor.dy)
+          : null;
       void Promise.resolve(opts.onBoxSizeCommitRef.current(sel, finalSize))
+        .then(() => {
+          if (finalOffset) return opts.onPathOffsetCommitRef.current(sel, finalOffset);
+        })
         .catch(() => {
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
-          )
+          ) {
             restoreStudioBoxSize(sel.element, g.initialBoxSize);
+            if (finalOffset) restoreStudioPathOffset(sel.element, g.initialPathOffset);
+          }
         })
-        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+        .finally(() => {
+          if (member) endManualOffsetDragMembers([member]);
+          else endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
     }
   };
 
@@ -495,7 +544,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
     if (g?.mode === "box-size" && sel) {
       restoreStudioBoxSize(sel.element, g.initialBoxSize);
-      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      if (g.pathOffsetMember) {
+        restoreManualOffsetDragMembers([g.pathOffsetMember]);
+      } else {
+        endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+      }
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "rotation" && sel) {
