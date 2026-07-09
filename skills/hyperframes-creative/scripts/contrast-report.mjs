@@ -151,6 +151,11 @@ async function prepareTextElements(session) {
     /** @type {Array<{selector: string, text: string, fg: [number,number,number,number], fontSize: number, fontWeight: number, bbox: {x:number,y:number,w:number,h:number}}>} */
     const out = [];
     const restores = [];
+    // Registered BEFORE the walk starts and pushed to incrementally as each
+    // element is hidden: if something in the walk throws partway through,
+    // everything hidden so far is still reachable for restore instead of
+    // leaking hidden indefinitely.
+    window.__contrastReportRestores = restores;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
     const parseColor = (c) => {
       const m = c.match(/rgba?\(([^)]+)\)/);
@@ -199,6 +204,14 @@ async function prepareTextElements(session) {
         : parseColor(cs.color);
       if (fg[3] <= 0.01) continue;
 
+      // A `transition` on color/fill would otherwise animate this hide
+      // instead of applying it instantly — the screenshot taken right after
+      // can catch a partially-transparent glyph mid-transition instead of a
+      // fully hidden one, contaminating the background sample. Force
+      // `transition: none` alongside color/fill so the hide is atomic.
+      const origTransition = el.style.getPropertyValue("transition");
+      const origTransitionPriority = el.style.getPropertyPriority("transition");
+      el.style.setProperty("transition", "none", "important");
       const origColor = el.style.getPropertyValue("color");
       const origColorPriority = el.style.getPropertyPriority("color");
       el.style.setProperty("color", "transparent", "important");
@@ -209,7 +222,16 @@ async function prepareTextElements(session) {
         origFillPriority = el.style.getPropertyPriority("fill");
         el.style.setProperty("fill", "transparent", "important");
       }
-      restores.push({ el, origColor, origColorPriority, origFill, origFillPriority, isSvgText });
+      restores.push({
+        el,
+        origTransition,
+        origTransitionPriority,
+        origColor,
+        origColorPriority,
+        origFill,
+        origFillPriority,
+        isSvgText,
+      });
 
       out.push({
         selector: selectorOf(el),
@@ -220,7 +242,6 @@ async function prepareTextElements(session) {
         bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
       });
     }
-    window.__contrastReportRestores = restores;
     return out;
   });
 }
@@ -236,6 +257,9 @@ async function restoreTextElements(session) {
         if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
         else r.el.style.removeProperty("fill");
       }
+      if (r.origTransition) {
+        r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
+      } else r.el.style.removeProperty("transition");
     }
     window.__contrastReportRestores = null;
   });

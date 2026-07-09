@@ -133,6 +133,13 @@ window.__contrastAuditPrepare = function () {
 
   var out = [];
   var restores = [];
+  // Registered BEFORE the walk starts (not after it finishes) and pushed to
+  // incrementally as each element is hidden: if getComputedStyle/
+  // getBoundingClientRect/etc. throws partway through the walk (e.g. on a
+  // detached or otherwise pathological element), everything hidden before
+  // the throw is still reachable for restore instead of leaking hidden
+  // indefinitely.
+  window.__contrastAuditRestores = restores;
   var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
   var node;
   while ((node = walker.nextNode())) {
@@ -197,6 +204,17 @@ window.__contrastAuditPrepare = function () {
     // never affect box geometry. `!important` beats any non-!important rule
     // that might otherwise win on specificity; we restore the exact prior
     // inline value (or remove the property entirely) afterward.
+    //
+    // A `transition` on color/fill would otherwise animate this hide instead
+    // of applying it instantly — the caller's screenshot lands in the same
+    // task-queue gap as the transition's own frames, so it can catch a
+    // partially-transparent (still partly the original color) glyph instead
+    // of a fully hidden one, contaminating the background sample. Force
+    // `transition: none` alongside color/fill so the hide is atomic, and
+    // restore it alongside them.
+    var origTransition = el.style.getPropertyValue("transition");
+    var origTransitionPriority = el.style.getPropertyPriority("transition");
+    el.style.setProperty("transition", "none", "important");
     var origColor = el.style.getPropertyValue("color");
     var origColorPriority = el.style.getPropertyPriority("color");
     el.style.setProperty("color", "transparent", "important");
@@ -209,6 +227,8 @@ window.__contrastAuditPrepare = function () {
     }
     restores.push({
       el: el,
+      origTransition: origTransition,
+      origTransitionPriority: origTransitionPriority,
       origColor: origColor,
       origColorPriority: origColorPriority,
       origFill: origFill,
@@ -227,7 +247,6 @@ window.__contrastAuditPrepare = function () {
     });
   }
 
-  window.__contrastAuditRestores = restores;
   return out;
 };
 
@@ -242,6 +261,9 @@ function __contrastAuditRestoreAll() {
       if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
       else r.el.style.removeProperty("fill");
     }
+    if (r.origTransition)
+      r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
+    else r.el.style.removeProperty("transition");
   }
   window.__contrastAuditRestores = null;
 }

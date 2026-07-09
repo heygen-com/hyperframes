@@ -248,6 +248,77 @@ describe("contrast-audit.browser clip-path visibility", () => {
   });
 });
 
+describe("contrast-audit.browser background sampling", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    document.body.innerHTML = "";
+    delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+    delete (window as unknown as { __contrastAuditPrepare?: unknown }).__contrastAuditPrepare;
+    delete (window as unknown as { __contrastAuditFinish?: unknown }).__contrastAuditFinish;
+    delete (window as unknown as { __contrastAuditRestoreIfPending?: unknown })
+      .__contrastAuditRestoreIfPending;
+    delete (window as unknown as { __contrastAuditRestores?: unknown }).__contrastAuditRestores;
+  });
+
+  // Locks in the "already correct" finding from investigating the
+  // solid-fill-pill/button false-positive report: a rounded pill/button
+  // with its own solid background, sitting on a busy/bright page
+  // background, must NOT be flagged even though the two-phase
+  // prepare()/finish() path (hide text, sample the real pixels directly
+  // inside the element's own bbox) replaced the ring+own-background-walk
+  // heuristic this used to rely on. The pixel buffer here is real per-pixel
+  // data (not the flat-white default), with a dark region standing in for
+  // the pill sitting inside a bright page background, so this exercises the
+  // actual bbox-sampling logic in __contrastAuditFinish rather than a fixed
+  // stub value.
+  it("does not flag a solid-fill pill/button with adequate contrast", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="pill">
+          <span id="label">Click me</span>
+        </div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const id = (element as Element).id;
+      return {
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        color: id === "label" ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)",
+        fontSize: "20px",
+        fontWeight: "400",
+        clipPath: "none",
+      } as unknown as CSSStyleDeclaration;
+    });
+
+    const labelRect = { left: 50, top: 50, width: 100, height: 30 };
+    vi.spyOn(document.getElementById("label")!, "getBoundingClientRect").mockReturnValue(
+      rect(labelRect),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    // Dark pill (rgb 10,10,10) covering the label's bbox and a small margin
+    // around it; everything else is a bright, busy page background
+    // (rgb 255,45,85) — the kind of scene that flagged false positives when
+    // the old algorithm sampled a ring OUTSIDE the bbox instead of the
+    // pixels actually inside it.
+    const pixels = pixelsWithRegion(
+      { left: 30, top: 30, width: 140, height: 70 },
+      [10, 10, 10],
+      [255, 45, 85],
+    );
+    installContrastScript(pixels);
+
+    const result = await runContrastAudit();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ selector: "#label", wcagAA: true, bg: "rgb(10,10,10)" });
+  });
+});
+
 // Both blocks overlap heavily; only the exemption on block A should suppress
 // the finding, so a missing exemption would surface as a failure here.
 function expectExemptFromOverlap(aOverrides: { color?: string; attrs?: string }): void {
@@ -457,7 +528,11 @@ function installAuditScript(): void {
   window.eval(script);
 }
 
-function installContrastScript(): void {
+// `pixels`, when provided, replaces the flat-white default screenshot buffer
+// — used by tests that need the "hidden text" screenshot to actually vary by
+// position (e.g. a solid-fill pill sitting on a busy page background) so the
+// two-phase prepare/finish sampling has something real to distinguish.
+function installContrastScript(pixels?: Uint8ClampedArray): void {
   class MockImage {
     onload: (() => void) | null = null;
     onerror: (() => void) | null = null;
@@ -476,10 +551,41 @@ function installContrastScript(): void {
   getContextSpy.mockReturnValue({
     drawImage() {},
     getImageData() {
-      return { data: new Uint8ClampedArray(640 * 360 * 4).fill(255) };
+      return { data: pixels ?? new Uint8ClampedArray(640 * 360 * 4).fill(255) };
     },
   } as unknown as CanvasRenderingContext2D);
   window.eval(contrastScript);
+}
+
+// Builds a 640×360 RGBA buffer that's `fillColor` inside `insideRect` and
+// `outsideColor` everywhere else — models a solid-fill pill/button (a dark
+// rounded rect) sitting on a busy/bright page background, so a test can
+// assert the two-phase prepare/finish path samples the pill's own pixels
+// (inside the element's bbox) rather than whatever's outside it.
+function pixelsWithRegion(
+  insideRect: RectInput,
+  fillColor: [number, number, number],
+  outsideColor: [number, number, number],
+): Uint8ClampedArray {
+  const width = 640;
+  const height = 360;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const inside =
+        x >= insideRect.left &&
+        x < insideRect.left + insideRect.width &&
+        y >= insideRect.top &&
+        y < insideRect.top + insideRect.height;
+      const [r, g, b] = inside ? fillColor : outsideColor;
+      const idx = (y * width + x) * 4;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  return data;
 }
 
 async function runContrastAudit(): Promise<Array<Record<string, unknown>>> {

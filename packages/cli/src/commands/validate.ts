@@ -302,20 +302,27 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
     const t = +(((i + 0.5) / CONTRAST_SAMPLES) * duration).toFixed(3);
     await seekTo(page, t);
 
-    // __contrastAuditPrepare() hides each candidate text element's own paint
-    // (color/fill → transparent, layout-neutral) so this screenshot captures
-    // the real pixels behind the glyphs — that's what __contrastAuditFinish
-    // samples directly instead of a proximity-based ring outside the text's
-    // bbox. See contrast-audit.browser.js for why: it's robust to rounded
-    // pills, cross-component panel edges, backdrop-filter blur, and
-    // partially-overlapping translucent decoration in ways a ring isn't.
-    const candidates = (await page.evaluate(() =>
-      typeof (window as unknown as Record<string, unknown>).__contrastAuditPrepare === "function"
-        ? ((window as unknown as Record<string, unknown>).__contrastAuditPrepare as () => unknown)()
-        : [],
-    )) as ContrastCandidate[];
-
     try {
+      // __contrastAuditPrepare() hides each candidate text element's own
+      // paint (color/fill → transparent, layout-neutral) so this screenshot
+      // captures the real pixels behind the glyphs — that's what
+      // __contrastAuditFinish samples directly instead of a proximity-based
+      // ring outside the text's bbox. See contrast-audit.browser.js for why:
+      // it's robust to rounded pills, cross-component panel edges,
+      // backdrop-filter blur, and partially-overlapping translucent
+      // decoration in ways a ring isn't.
+      //
+      // This call is the FIRST statement inside the try — not before it —
+      // so if prepare() itself throws partway through hiding elements, the
+      // finally below still runs and restores whatever it managed to hide.
+      const candidates = (await page.evaluate(() =>
+        typeof (window as unknown as Record<string, unknown>).__contrastAuditPrepare === "function"
+          ? (
+              (window as unknown as Record<string, unknown>).__contrastAuditPrepare as () => unknown
+            )()
+          : [],
+      )) as ContrastCandidate[];
+
       const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
       const entries = await page.evaluate(
         (b64: string, time: number, cands: ContrastCandidate[]) =>
@@ -332,9 +339,10 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
       );
       results.push(...(entries as ContrastEntry[]));
     } finally {
-      // If the screenshot or finish() call above throws, this restores any
-      // still-hidden text paint so the NEXT sample in the loop doesn't audit
-      // a page with stale invisible elements. No-op after a normal finish().
+      // If prepare(), the screenshot, or finish() above throws, this restores
+      // any still-hidden text paint so the NEXT sample in the loop doesn't
+      // audit a page with stale invisible elements. No-op after a normal
+      // finish() call.
       await page.evaluate(() => {
         const restore = (window as unknown as Record<string, unknown>)
           .__contrastAuditRestoreIfPending;
