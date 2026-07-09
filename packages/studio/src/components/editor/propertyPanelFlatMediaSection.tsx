@@ -4,9 +4,12 @@ import type { DomEditSelection } from "./domEditing";
 import {
   type BackgroundRemovalProgress,
   type BackgroundRemovalResult,
+  formatNumericValue,
+  formatTimingValue,
+  parseNumericValue,
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
-import { FlatSelectRow, FlatToggle } from "./propertyPanelFlatPrimitives";
+import { FlatSelectRow, FlatSlider, FlatToggle } from "./propertyPanelFlatPrimitives";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
@@ -36,11 +39,23 @@ export function FlatMediaSection({
   ) => Promise<BackgroundRemovalResult>;
 }) {
   const isVideo = element.tagName === "video";
-  // oxlint-disable-next-line no-unused-vars -- wired into the Volume/Rate/Muted gate in Task 4
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
   const isVisualMedia = isVideo || isImage;
   const el = element.element;
+
+  const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
+  const volumePercent = Math.round(volume * 100);
+  const mediaStart =
+    Number.parseFloat(
+      element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
+    ) || 0;
+  const playbackRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
+  const sourceDuration =
+    Number.parseFloat(element.dataAttributes["source-duration"] ?? "") ||
+    (el as HTMLMediaElement).duration ||
+    0;
+  const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
 
   const srcAttr = el.getAttribute("src") ?? "";
   const [copied, setCopied] = useState(false);
@@ -171,6 +186,39 @@ export function FlatMediaSection({
             </div>
           )}
         </div>
+      )}
+      {(isVideo || isAudio) && (
+        <>
+          <FlatSlider
+            label="Volume"
+            value={volumePercent}
+            min={0}
+            max={100}
+            tier={volumePercent === 100 ? "default" : "explicitCustom"}
+            displayValue={`${volumePercent}%`}
+            onCommit={(next) => void onSetAttribute("volume", formatNumericValue(next / 100))}
+          />
+          <FlatSlider
+            label="Rate"
+            value={playbackRate * 100}
+            min={25}
+            max={300}
+            tier={playbackRate === 1 ? "default" : "explicitCustom"}
+            displayValue={`${formatNumericValue(playbackRate)}x`}
+            onCommit={(next) =>
+              void onSetAttribute("playback-rate", formatNumericValue(next / 100))
+            }
+          />
+          <FlatSlider
+            label="Media start"
+            value={Math.round(mediaStart * 100)}
+            min={0}
+            max={mediaStartMax * 100}
+            tier={mediaStart === 0 ? "default" : "explicitCustom"}
+            displayValue={formatTimingValue(mediaStart)}
+            onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
+          />
+        </>
       )}
     </div>
   );
