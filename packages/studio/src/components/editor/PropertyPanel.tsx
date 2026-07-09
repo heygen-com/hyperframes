@@ -5,6 +5,7 @@ import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
 import {
+  buildElementInfoText,
   EMPTY_STYLES,
   formatPxMetricValue,
   parsePxMetricValue,
@@ -24,7 +25,12 @@ import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import { KeyframeNavigation } from "./KeyframeNavigation";
-import { STUDIO_GSAP_PANEL_ENABLED, STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
+import {
+  STUDIO_FLAT_INSPECTOR_ENABLED,
+  STUDIO_GSAP_PANEL_ENABLED,
+  STUDIO_KEYFRAMES_ENABLED,
+} from "./manualEditingAvailability";
+import { PropertyPanelFlat } from "./PropertyPanelFlat";
 import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
@@ -46,61 +52,64 @@ export {
 } from "./propertyPanelHelpers";
 
 // fallow-ignore-next-line complexity
-export const PropertyPanel = memo(function PropertyPanel({
-  projectId,
-  projectDir,
-  assets,
-  element,
-  multiSelectCount = 0,
-  copiedAgentPrompt: _copiedAgentPrompt,
-  onClearSelection,
-  onUngroup,
-  onSetStyle,
-  onSetAttribute,
-  onSetAttributeLive,
-  onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
-  onSetManualOffset,
-  onSetManualSize,
-  onSetManualRotation,
-  onSetText,
-  onSetTextFieldStyle,
-  onAddTextField,
-  onRemoveTextField,
-  onAskAgent: _onAskAgent,
-  onToggleElementHidden,
-  onImportAssets,
-  fontAssets = [],
-  onImportFonts,
-  previewIframeRef,
-  gsapAnimations = [],
-  gsapMultipleTimelines,
-  gsapUnsupportedTimelinePattern,
-  onUpdateGsapProperty,
-  onUpdateGsapMeta,
-  onDeleteGsapAnimation,
-  onAddGsapProperty,
-  onRemoveGsapProperty,
-  onUpdateGsapFromProperty,
-  onAddGsapFromProperty,
-  onRemoveGsapFromProperty,
-  onAddGsapAnimation,
-  onSetArcPath,
-  onUpdateArcSegment,
-  onUnroll,
-  onUpdateKeyframeEase,
-  onSetAllKeyframeEases,
-  onAddKeyframe,
-  onRemoveKeyframe,
-  onConvertToKeyframes,
-  onCommitAnimatedProperty,
-  onCommitAnimatedProperties,
-  onSeekToTime,
-  recordingState,
-  recordingDuration,
-  onToggleRecording,
-}: PropertyPanelProps) {
+export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelProps) {
+  const {
+    projectId,
+    projectDir,
+    assets,
+    element,
+    multiSelectCount = 0,
+    multiSelectedElements,
+    onGroupSelection,
+    onHideAllSelected,
+    copiedAgentPrompt: _copiedAgentPrompt,
+    onClearSelection,
+    onUngroup,
+    onSetStyle,
+    onSetAttribute,
+    onSetAttributeLive,
+    onApplyColorGradingScope,
+    onSetHtmlAttribute,
+    onRemoveBackground,
+    onSetManualOffset,
+    onSetManualSize,
+    onSetManualRotation,
+    onSetText,
+    onSetTextFieldStyle,
+    onAddTextField,
+    onRemoveTextField,
+    onToggleElementHidden,
+    onImportAssets,
+    fontAssets = [],
+    onImportFonts,
+    previewIframeRef,
+    gsapAnimations = [],
+    gsapMultipleTimelines,
+    gsapUnsupportedTimelinePattern,
+    onUpdateGsapProperty,
+    onUpdateGsapMeta,
+    onDeleteGsapAnimation,
+    onAddGsapProperty,
+    onRemoveGsapProperty,
+    onUpdateGsapFromProperty,
+    onAddGsapFromProperty,
+    onRemoveGsapFromProperty,
+    onAddGsapAnimation,
+    onSetArcPath,
+    onUpdateArcSegment,
+    onUnroll,
+    onUpdateKeyframeEase,
+    onSetAllKeyframeEases,
+    onAddKeyframe,
+    onRemoveKeyframe,
+    onConvertToKeyframes,
+    onCommitAnimatedProperty,
+    onCommitAnimatedProperties,
+    onSeekToTime,
+    recordingState,
+    recordingDuration,
+    onToggleRecording,
+  } = props;
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
@@ -170,13 +179,22 @@ export const PropertyPanel = memo(function PropertyPanel({
   };
 
   if (!element) {
-    return <PropertyPanelEmptyState multiSelectCount={multiSelectCount} />;
+    return (
+      <PropertyPanelEmptyState
+        flat={STUDIO_FLAT_INSPECTOR_ENABLED}
+        multiSelectCount={multiSelectCount}
+        multiSelectedElements={multiSelectedElements}
+        onGroupSelection={onGroupSelection}
+        onHideAllSelected={onHideAllSelected}
+        onClearSelection={onClearSelection}
+      />
+    );
   }
 
   const manualOffsetEditingDisabled = !element.capabilities.canApplyManualOffset;
   const manualSizeEditingDisabled = !element.capabilities.canApplyManualSize;
   const manualRotationEditingDisabled = !element.capabilities.canApplyManualRotation;
-  const sourceLabel = element.id ? `#${element.id}` : element.selector;
+  const sourceLabel = element.id ? `#${element.id}` : (element.selector ?? "");
   const showEditableSections = element.capabilities.canEditStyles;
   // Capabilities are already resolved on the selection; recompute only sections,
   // feeding the live GSAP tween count (arrives on the gsapAnimations prop, not the
@@ -234,54 +252,35 @@ export const PropertyPanel = memo(function PropertyPanel({
   const displayH = gsapRuntimeValues?.height ?? resolvedHeight;
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
-  // fallow-ignore-next-line complexity
   const handleCopyElementInfo = () => {
-    const file = element.sourceFile ?? "index.html";
-    let lineNum: number | null = null;
-    try {
-      const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
-      if (src && element.id) {
-        const idx = src.indexOf(`id="${element.id}"`);
-        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-      }
-      if (!lineNum && element.selector) {
-        const tag = element.tagName.toLowerCase();
-        const cls = element.selector.startsWith(".")
-          ? element.selector.slice(1).split(".")[0]
-          : null;
-        const search = cls ? `class="${cls}` : `<${tag}`;
-        const idx = src.indexOf(search);
-        if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-      }
-    } catch {}
-    const fileLoc = lineNum ? `${file}:${lineNum}` : file;
-    const lines = [
-      `Element: ${element.label} (${sourceLabel})`,
-      `File: ${fileLoc}`,
-      `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
-      `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
-      `Tag: <${element.tagName}>`,
-    ];
-    if (element.computedStyles["z-index"] && element.computedStyles["z-index"] !== "auto") {
-      lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
-    }
-    if (gsapAnimations.length > 0) {
-      const anim = gsapAnimations[0];
-      lines.push(
-        `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
-      );
-      const props = Object.entries(anim.properties)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(", ");
-      if (props) lines.push(`Properties: ${props}`);
-    }
-    const text = lines.join("\n");
+    const text = buildElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef);
     void navigator.clipboard.writeText(text);
     showToast(`Copied element info for ${element.label} — paste into any AI agent`, "info");
     setClipboardCopied(true);
     clearTimeout(clipboardTimerRef.current);
     clipboardTimerRef.current = setTimeout(() => setClipboardCopied(false), 1500);
   };
+
+  if (STUDIO_FLAT_INSPECTOR_ENABLED) {
+    // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
+    // the values the legacy path already computed above (so they aren't derived
+    // twice). PropertyPanelFlat owns the one-open/pin group state.
+    return (
+      <PropertyPanelFlat
+        {...props}
+        element={element}
+        styles={styles}
+        sections={sections}
+        sourceLabel={sourceLabel}
+        gsapBorderRadius={gsapBorderRadius}
+        showEditableSections={showEditableSections}
+        selectedElementHidden={selectedElementHidden}
+        selectedElementId={selectedElementId}
+        clipboardCopied={clipboardCopied}
+        onCopyElementInfo={handleCopyElementInfo}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
