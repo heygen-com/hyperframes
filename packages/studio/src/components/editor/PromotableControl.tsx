@@ -14,6 +14,7 @@ import {
   useVariablePromoteChannel,
   type PromoteChannel,
 } from "../../contexts/VariablePromoteContext";
+import { useVariablesManagerStore } from "../../hooks/variablesManagerStore";
 
 interface RenderArgs {
   /** When bound, the variable's default to display; otherwise undefined. */
@@ -38,6 +39,7 @@ export function PromotableControl({
   children: (args: RenderArgs) => React.ReactNode;
 }) {
   const promote = useVariablePromoteChannel(channel);
+  const openVariablesManager = useVariablesManagerStore((s) => s.setOpen);
 
   // A binding attribute (`data-var-*` / `var(--id)`) pointing at a declaration
   // that no longer exists renders as a plain unbound control — a silent
@@ -80,12 +82,17 @@ export function PromotableControl({
     <div className={`relative ${bound ? "rounded-lg ring-1 ring-studio-accent/40" : ""}`}>
       {rendered}
       {bound && (
-        <span
-          className="pointer-events-none absolute right-1.5 top-0 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent"
-          title={`Bound to variable "${promote.boundId}"`}
+        <button
+          type="button"
+          title={`Bound to variable "${promote.boundId}" — open the Variables manager`}
+          onClick={(e) => {
+            e.stopPropagation();
+            openVariablesManager(true);
+          }}
+          className="absolute right-1.5 top-0 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent transition-colors hover:bg-studio-accent/30"
         >
           ◆ {promote.boundId}
-        </span>
+        </button>
       )}
       {canPromote && (
         <button

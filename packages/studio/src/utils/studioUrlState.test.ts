@@ -33,13 +33,16 @@ describe("resolveMasterCompositionPath", () => {
 });
 
 describe("normalizeStudioUrlPanelTab", () => {
-  it("accepts slideshow and variables as valid tabs", () => {
+  it("accepts slideshow as a valid tab", () => {
     expect(normalizeStudioUrlPanelTab("slideshow", { inspectorPanelsEnabled: true })).toBe(
       "slideshow",
     );
-    expect(normalizeStudioUrlPanelTab("variables", { inspectorPanelsEnabled: true })).toBe(
-      "variables",
-    );
+  });
+
+  it("rejects the retired 'variables' tab (now an on-demand manager, not a tab)", () => {
+    expect(
+      normalizeStudioUrlPanelTab("variables" as never, { inspectorPanelsEnabled: true }),
+    ).toBeNull();
   });
 });
 

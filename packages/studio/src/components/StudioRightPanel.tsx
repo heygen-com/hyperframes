@@ -14,7 +14,10 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
-import { VariablesPanel } from "./panels/VariablesPanel";
+import {
+  VariablesManagerSlideOver,
+  VariablesManagerTrigger,
+} from "./panels/VariablesManagerSlideOver";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
@@ -504,12 +507,10 @@ export function StudioRightPanel({
                 active={rightPanelTab === "slideshow"}
                 onClick={() => setRightPanelTab("slideshow")}
               />
-              <PanelTabButton
-                label="Variables"
-                tooltip="Template variables — declare, preview with values"
-                active={rightPanelTab === "variables"}
-                onClick={() => setRightPanelTab("variables")}
-              />
+              {/* Variables is no longer a tab: creation/default-editing is inline
+                  in the Design panel (promote pill + bound chip); this opens the
+                  on-demand manager for the full list. */}
+              <VariablesManagerTrigger />
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (
@@ -525,13 +526,6 @@ export function StudioRightPanel({
                   scenes={slideshowScenes}
                   onPersist={onPersistSlideshow}
                   onPersistNotes={onPersistSlideshowNotes}
-                />
-              ) : rightPanelTab === "variables" ? (
-                <VariablesPanel
-                  sdkSession={sdkSession}
-                  reloadPreview={reloadPreview}
-                  domEditSaveTimestampRef={domEditSaveTimestampRef}
-                  recordEdit={recordEdit}
                 />
               ) : layersPaneOpen && designPaneOpen ? (
                 <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
@@ -585,6 +579,12 @@ export function StudioRightPanel({
           </>
         )}
       </div>
+      <VariablesManagerSlideOver
+        sdkSession={sdkSession}
+        reloadPreview={reloadPreview}
+        domEditSaveTimestampRef={domEditSaveTimestampRef}
+        recordEdit={recordEdit}
+      />
     </>
   );
 }

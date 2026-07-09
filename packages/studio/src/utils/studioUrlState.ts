@@ -19,7 +19,11 @@ export interface StudioUrlState {
   selection: StudioUrlSelectionState | null;
 }
 
-const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow", "variables"];
+// "variables" is intentionally absent: variables are no longer a tab — they're
+// managed inline in the Design panel + an on-demand slide-over (see
+// useVariablesManagerStore), so a persisted ?tab=variables deep link falls back
+// to the default rather than selecting a tab that no longer exists.
+const VALID_TABS: RightPanelTab[] = ["layers", "design", "renders", "slideshow"];
 
 /**
  * The composition a schema-level panel (Variables / Slideshow) targets on the

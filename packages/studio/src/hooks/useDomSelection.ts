@@ -207,11 +207,9 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          // Keep the Variables tab in place — selecting elements is part of
-          // the bind flow there; yanking to Design would lose the context.
-          if (rightPanelTabRef.current !== "variables") {
-            setRightPanelTab("design");
-          }
+          // Reveal the Design panel to inspect/promote the selection. The
+          // Variables manager (if open) is an overlay, so it stays put on top.
+          setRightPanelTab("design");
         }
         const nextSelectedTimelineId =
           findMatchingTimelineElementId(nextSelection, timelineElements) ??

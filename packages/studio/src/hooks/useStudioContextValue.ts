@@ -97,12 +97,7 @@ export function useInspectorState(
         STUDIO_INSPECTOR_PANELS_ENABLED && !rightCollapsed && inspectorPanelActive,
       // Keep the selection box + motion path drawn even when the Inspector is
       // collapsed — closing the panel shouldn't visually deselect the element.
-      // The Variables tab also works against the canvas selection (bind card),
-      // so the selection outline stays visible there too.
-      shouldShowSelectedDomBounds:
-        (inspectorPanelActive || rightPanelTab === "variables") &&
-        !isPlaying &&
-        !isGestureRecording,
+      shouldShowSelectedDomBounds: inspectorPanelActive && !isPlaying && !isGestureRecording,
     };
   }, [rightPanelTab, rightInspectorPanes, rightCollapsed, isPlaying, isGestureRecording]);
 }
