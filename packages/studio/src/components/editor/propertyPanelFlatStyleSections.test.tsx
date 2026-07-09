@@ -214,3 +214,66 @@ describe("FlatStyleSection — Stroke and Radius", () => {
     act(() => root.unmount());
   });
 });
+
+function getFlatSelectRow(host: HTMLElement, label: string) {
+  const rows = Array.from(host.querySelectorAll<HTMLElement>(".group"));
+  const row = rows.find((el) => el.querySelector("span")?.textContent === label);
+  if (!row) throw new Error(`expected a select row for "${label}"`);
+  const select = row.querySelector<HTMLSelectElement>("select");
+  if (!select) throw new Error(`expected a select for "${label}"`);
+  const resetButton = row.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
+  return { row, select, resetButton };
+}
+
+function changeFlatSelectRow(host: HTMLElement, label: string, nextValue: string) {
+  const { select } = getFlatSelectRow(host, label);
+  act(() => {
+    select.value = nextValue;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+describe("FlatStyleSection — Shadow and Blend", () => {
+  it("renders Shadow with the inferred preset and a reset when set, Blend with a plain select", () => {
+    const { host, root } = renderSection({ "box-shadow": "0 8px 24px rgba(0,0,0,.35)" });
+    expect(host.textContent).toContain("Shadow");
+    expect(host.textContent).toContain("Blend");
+    const selects = host.querySelectorAll("select");
+    expect(selects.length).toBeGreaterThanOrEqual(2);
+    act(() => root.unmount());
+  });
+
+  it("commits a shadow preset change through onSetStyle", () => {
+    const { host, root, onSetStyle } = renderSection({});
+    changeFlatSelectRow(host, "Shadow", "soft");
+    expect(onSetStyle).toHaveBeenCalledWith("box-shadow", expect.any(String));
+    act(() => root.unmount());
+  });
+
+  it("commits a blend mode change through onSetStyle", () => {
+    const { host, root, onSetStyle } = renderSection({});
+    changeFlatSelectRow(host, "Blend", "multiply");
+    expect(onSetStyle).toHaveBeenCalledWith("mix-blend-mode", "multiply");
+    act(() => root.unmount());
+  });
+
+  it("resets the shadow preset back to none via the reset button", () => {
+    const { host, root, onSetStyle } = renderSection({
+      "box-shadow": "0 12px 36px rgba(0, 0, 0, 0.28)",
+    });
+    const { resetButton } = getFlatSelectRow(host, "Shadow");
+    if (!resetButton) throw new Error("expected the shadow reset button");
+    act(() => resetButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetStyle).toHaveBeenCalledWith("box-shadow", "none");
+    act(() => root.unmount());
+  });
+
+  it("resets the blend mode back to normal via the reset button", () => {
+    const { host, root, onSetStyle } = renderSection({ "mix-blend-mode": "multiply" });
+    const { resetButton } = getFlatSelectRow(host, "Blend");
+    if (!resetButton) throw new Error("expected the blend reset button");
+    act(() => resetButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetStyle).toHaveBeenCalledWith("mix-blend-mode", "normal");
+    act(() => root.unmount());
+  });
+});

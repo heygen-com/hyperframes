@@ -6,16 +6,19 @@ import { Link as LinkIcon } from "../../icons/SystemIcons";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 import { formatStrokeSummary, parseStrokeSummary } from "./propertyPanelFlatStyleHelpers";
 import {
+  buildBoxShadowPresetValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   extractBackgroundImageUrl,
   formatNumericValue,
   formatPxMetricValue,
+  inferBoxShadowPreset,
   normalizePanelPxValue,
   parseNumericValue,
   parsePxMetricValue,
+  type BoxShadowPreset,
 } from "./propertyPanelHelpers";
-import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
+import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
@@ -268,6 +271,52 @@ function FlatRadiusRow({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Flat Shadow + Blend rows                                           */
+/* ------------------------------------------------------------------ */
+
+function FlatShadowBlendRows({
+  styles,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const boxShadowPreset = inferBoxShadowPreset(styles["box-shadow"]);
+  const blendValue = styles["mix-blend-mode"] || "normal";
+
+  return (
+    <>
+      <FlatSelectRow
+        label="Shadow"
+        value={boxShadowPreset}
+        options={["none", "soft", "lift", "glow", "custom"]}
+        tier={resolveValueTier(boxShadowPreset === "none" ? undefined : boxShadowPreset, "none")}
+        disabled={disabled}
+        onChange={(next) => {
+          if (next === "custom") return;
+          void onSetStyle(
+            "box-shadow",
+            buildBoxShadowPresetValue(next as BoxShadowPreset, styles["box-shadow"]),
+          );
+        }}
+        onReset={() => void onSetStyle("box-shadow", "none")}
+      />
+      <FlatSelectRow
+        label="Blend"
+        value={blendValue}
+        options={["normal", "multiply", "screen", "overlay", "darken", "lighten"]}
+        tier={resolveValueTier(styles["mix-blend-mode"], "normal")}
+        disabled={disabled}
+        onChange={(next) => void onSetStyle("mix-blend-mode", next)}
+        onReset={() => void onSetStyle("mix-blend-mode", "normal")}
+      />
+    </>
+  );
+}
+
 export function FlatStyleSection({
   projectId,
   element,
@@ -300,6 +349,11 @@ export function FlatStyleSection({
       <FlatRadiusRow
         styles={styles}
         gsapBorderRadius={gsapBorderRadius}
+        disabled={styleEditingDisabled}
+        onSetStyle={onSetStyle}
+      />
+      <FlatShadowBlendRows
+        styles={styles}
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
       />
