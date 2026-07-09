@@ -1,6 +1,6 @@
 # Wiring Components
 
-Components are effect snippets — HTML, CSS, and optionally JS that you merge directly into an existing composition. Unlike blocks, components have no standalone timeline; they participate in the host composition's timeline.
+Components are effect snippets: HTML, CSS, and optionally JS that you merge directly into an existing composition. Unlike blocks, components have no standalone timeline; they participate in the host composition's timeline.
 
 ## General process
 
@@ -8,10 +8,10 @@ Components are effect snippets — HTML, CSS, and optionally JS that you merge d
 2. Open the installed file (e.g., `compositions/components/grain-overlay.html`)
 3. Read the comment header for usage instructions
 4. Copy the parts into your host composition:
-   - **HTML elements** — inside your `<div data-composition-id="...">`
-   - **CSS styles** — into your composition's `<style>` block
-   - **JS setup** — into your composition's `<script>`, before your timeline code
-   - **Timeline calls** — into your GSAP timeline (if the component exposes them)
+   - **HTML elements**: inside your `<div data-composition-id="...">`
+   - **CSS styles**: into your composition's `<style>` block
+   - **JS setup**: into your composition's `<script>`, before your timeline code
+   - **Timeline calls**: into your animation timeline (anime.js or GSAP, whichever the host composition uses), if the component exposes them
 
 ## Example: grain-overlay (CSS-only, no timeline integration)
 
@@ -25,7 +25,7 @@ Components are effect snippets — HTML, CSS, and optionally JS that you merge d
 </div>
 ```
 
-Then paste the CSS keyframes and `.grain-texture` rule into your styles. No GSAP timeline calls needed — the grain animates via CSS `@keyframes`.
+Then paste the CSS keyframes and `.grain-texture` rule into your styles. No animation timeline calls needed, the grain animates via CSS `@keyframes`.
 
 ## Example: shimmer-sweep (needs timeline integration)
 

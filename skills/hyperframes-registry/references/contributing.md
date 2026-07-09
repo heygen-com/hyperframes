@@ -5,15 +5,15 @@ Guide the user from idea to merged PR for a new registry block or component.
 ## Workflow
 
 ```
-1. Clarify → 2. Scaffold → 3. Build → 4. Validate → 5. Preview → 6. Ship
+1. Clarify -> 2. Scaffold -> 3. Build -> 4. Validate -> 5. Preview -> 6. Ship
 ```
 
 ### Step 1: Clarify
 
 Ask what they're building. The registry has two item types:
 
-- **Block** (`registry/blocks/`, type `hyperframes:block`) — a full standalone composition with fixed dimensions and duration. Caption styles, VFX effects, title cards, lower thirds.
-- **Component** (`registry/components/`, type `hyperframes:component`) — a reusable snippet with no fixed dimensions or duration. CSS effects, text treatments, overlays that adapt to any composition size.
+- **Block** (`registry/blocks/`, type `hyperframes:block`): a full standalone composition with fixed dimensions and duration. Caption styles, VFX effects, title cards, lower thirds.
+- **Component** (`registry/components/`, type `hyperframes:component`): a reusable snippet with no fixed dimensions or duration. CSS effects, text treatments, overlays that adapt to any composition size.
 
 Then ask:
 
@@ -51,7 +51,7 @@ registry/components/{component-name}/
 
 Use a 2-3 letter prefix. ALL element IDs must use this prefix to avoid collisions in sub-compositions.
 
-**registry-item.json** — use the canonical templates in [templates.md](templates.md) (block and component variants, both with all required fields).
+**registry-item.json**: use the canonical templates in [templates.md](templates.md), block and component variants, both with all required fields.
 
 ### Step 3: Build
 
@@ -61,18 +61,48 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 **Non-negotiable caption rules:**
 
-- Font: **96px minimum** for proportional fonts. **64-72px acceptable for monospace** (wider characters need less size).
+- Font: **96px minimum** for proportional fonts. **64-72px acceptable for monospace** because wider characters need less size.
 - Readability: `-webkit-text-stroke: 2-3px` OR multi-layer `text-shadow`
 - Overflow: call `window.__hyperframes.fitTextFontSize()` on every group
-- Karaoke: highlight active word via `tl.to(wordEl, { color/scale }, WORDS[wi].start)`
-- Hard kill: `tl.set(groupEl, { opacity: 0, visibility: "hidden" }, g.end)` on EVERY group
-- **Never use `tl.from(el, { opacity: 0 })` at the same position as `tl.set(el, { opacity: 1 })`** — the from clobbers the set. Use `tl.to` instead.
+- Karaoke: highlight active word with anime.js timeline calls at `WORDS[wi].start * 1000`
+- Hard kill: add a zero-duration anime.js step at `g.end * 1000` that sets `opacity: 0` and `visibility: "hidden"` on EVERY group
+- Never put a zero-duration show step and a separate hidden-from entrance step at the same position. Author the entrance as one explicit property-keyframe `.add()` so the initial and final values are in the same call.
+
+**Anime.js caption idioms:**
+
+```js
+const tl = anime.createTimeline({ autoplay: false });
+
+// Show immediately at the group start.
+tl.add(groupEl, { opacity: 1, visibility: "visible", duration: 0 }, g.start * 1000);
+
+// Entrance from scale 1.3 to 1 over 150ms.
+tl.add(
+  groupEl,
+  {
+    scale: [
+      { to: 1.3, duration: 0, ease: "linear" },
+      { to: 1, duration: 150, ease: "outBack(2)" },
+    ],
+  },
+  g.start * 1000,
+);
+
+// Karaoke highlight.
+tl.add(wordEl, { color: "#FFD700", scale: 1.1, duration: 60 }, WORDS[wi].start * 1000);
+tl.add(wordEl, { color: "#FFFFFF", scale: 1, duration: 80 }, WORDS[wi].end * 1000);
+
+// Hard kill.
+tl.add(groupEl, { opacity: 0, visibility: "hidden", duration: 0 }, g.end * 1000);
+```
+
+**Non-default GSAP adapter path.** Existing or ported GSAP caption styles may keep `tl.to(...)`, `tl.set(...)`, and `tl.from(...)` patterns, but new contributions default to anime.js.
 
 **Per-character animation** (typewriter, scramble):
 
 - Wrap each character in `<span>` with ID `{prefix}-ch-{group}-{char}`
-- Stagger via `tl.set` at computed intervals from word timestamps
-- Cursors/decorative elements: use `tl.set` at intervals — NOT CSS animation (not seekable)
+- Stagger via zero-duration anime.js `.add()` calls at computed intervals from word timestamps
+- Cursors/decorative elements: use timeline steps at intervals, NOT CSS animation, so the effect is seekable
 
 **Positioning variants:**
 
@@ -83,16 +113,24 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 #### VFX blocks (Three.js)
 
 - Use `three@0.147.0` from CDN (global script)
-- `tl.eventCallback("onUpdate", renderScene); renderScene();` — NO requestAnimationFrame
-- State proxy pattern: GSAP animates plain JS object, render function reads it
+- Use anime.js by default: `anime.createTimeline({ autoplay: false, onUpdate: renderScene })`
+- Call `renderScene()` once synchronously after creating the timeline for the initial paint before seek
+- State proxy pattern: anime.js animates a plain JS object, the render function reads it
 - Seeded PRNG (`mulberry32`) for randomness
+- No `requestAnimationFrame`
 
 #### All types
 
-- `data-composition-id` MUST match `window.__timelines["id"]`
+- `data-composition-id` should match the id passed to `hyperframesAnime.register(id, ...)`
 - All element IDs prefixed with block abbreviation
-- `gsap.timeline({ paused: true })` — always paused
+- `anime.createTimeline({ autoplay: false })` by default
+- Register with `hyperframesAnime.register(id, instance, { labels })`; labels are seconds
+- Anime.js API timing is milliseconds: `duration`, `delay`, `loopDelay`, and timeline positions are all milliseconds
+- HyperFrames `data-start`, `data-duration`, and anime registration labels are seconds
+- One property owner per element across registered instances. Do not let two independently registered anime.js instances, or an anime.js instance and a GSAP timeline, animate the same property on the same element.
 - No `Math.random()`, no `Date.now()`
+
+> **Non-default GSAP adapter path.** GSAP remains accepted for existing and ported items. New registry contributions should set `"runtime": "animejs"` and use anime.js unless there is a specific adapter reason not to.
 
 ### Step 4: Validate
 
@@ -114,7 +152,7 @@ hyperframes snapshot --at "1.0,3.0,5.0,7.0"
 npx hyperframes publish
 ```
 
-**Catalog preview image** — The catalog card uses a PNG at `docs/images/catalog/{kind}/{name}.png` (where `{kind}` is `blocks` or `components`). Generate it from a snapshot, then:
+**Catalog preview image**: The catalog card uses a PNG at `docs/images/catalog/{kind}/{name}.png` (where `{kind}` is `blocks` or `components`). Generate it from a snapshot, then:
 
 - **HeyGen internal contributors:** run `scripts/upload-docs-images.sh` (requires AWS profile `engineering-767398024897`)
 - **External contributors:** attach the preview MP4 to your PR description. A maintainer will generate and upload the catalog image before merging.
@@ -132,7 +170,7 @@ git checkout -b feat/registry-{name}
 # 2. Format HTML
 npx oxfmt registry/{kind}/{name}/*.html
 
-# 3. Update registry/registry.json — add entry to the "items" array:
+# 3. Update registry/registry.json: add entry to the "items" array:
 #    { "name": "{name}", "type": "hyperframes:block" }  (or "hyperframes:component")
 
 # 4. Generate catalog docs page
@@ -145,7 +183,7 @@ npx hyperframes publish
 git add registry/{kind}/{name}/ registry/registry.json docs/catalog/
 
 # 7. Commit
-git commit -m "feat(registry): add {name} — {one sentence}"
+git commit -m "feat(registry): add {name}: {one sentence}"
 
 # 8. Push and open PR with hyperframes.dev link
 git push origin feat/registry-{name}
@@ -156,8 +194,8 @@ gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.dev-
 
 ## Quality Gate
 
-- [ ] `hyperframes lint` → 0 errors
-- [ ] `hyperframes validate` → 0 console errors
+- [ ] `hyperframes lint` -> 0 errors
+- [ ] `hyperframes validate` -> 0 console errors
 - [ ] `npx oxfmt --check` passes
 - [ ] `registry/registry.json` updated with new entry
 - [ ] `scripts/generate-catalog-pages.ts` run (docs page generated)
