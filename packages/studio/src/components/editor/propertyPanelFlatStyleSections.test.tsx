@@ -47,6 +47,7 @@ function makeElement(overrides: Partial<DomEditSelection> = {}): DomEditSelectio
 function renderSection(
   styles: Record<string, string> = {},
   overrides: Partial<DomEditSelection> = {},
+  gsapBorderRadius: { tl: number; tr: number; br: number; bl: number } | null = null,
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -62,7 +63,7 @@ function renderSection(
         styles={mergedStyles}
         assets={[]}
         onSetStyle={onSetStyle}
-        gsapBorderRadius={null}
+        gsapBorderRadius={gsapBorderRadius}
       />,
     );
   });
@@ -119,6 +120,97 @@ describe("FlatStyleSection — Fill", () => {
     clickSegment(host, "Image");
     expect(host.textContent).toContain("Upload image");
     expect(onSetStyle).not.toHaveBeenCalledWith("background-image", expect.anything());
+    act(() => root.unmount());
+  });
+});
+
+function getFlatRowInput(host: HTMLElement, label: string): HTMLInputElement {
+  const rows = Array.from(host.querySelectorAll<HTMLElement>(".group"));
+  const row = rows.find((el) => el.querySelector("span")?.textContent === label);
+  const input = row?.querySelector<HTMLInputElement>("input");
+  if (!input) throw new Error(`expected an input for row "${label}"`);
+  return input;
+}
+
+async function commitFlatRowInput(host: HTMLElement, label: string, nextValue: string) {
+  const input = getFlatRowInput(host, label);
+  act(() => {
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    nativeInputValueSetter?.call(input, nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    input.dispatchEvent(new Event("focusout", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+const STROKE_STYLES = {
+  "border-width": "1px",
+  "border-style": "solid",
+  "border-color": "rgba(255,255,255,.12)",
+};
+
+describe("FlatStyleSection — Stroke and Radius", () => {
+  it("renders the combined stroke row and commits width+style together on blur", () => {
+    const { host, root } = renderSection(STROKE_STYLES);
+    expect(host.textContent).toContain("Stroke");
+    expect(getFlatRowInput(host, "Stroke").value).toBe("1px solid");
+    act(() => root.unmount());
+  });
+
+  it("commits the stroke row's new width and style together on blur", async () => {
+    const { host, root, onSetStyle } = renderSection(STROKE_STYLES);
+    await commitFlatRowInput(host, "Stroke", "2px dashed");
+    expect(onSetStyle).toHaveBeenCalledWith("border-width", "2px");
+    expect(onSetStyle).toHaveBeenCalledWith("border-style", "dashed");
+    act(() => root.unmount());
+  });
+
+  it("renders a single Radius value with a Linked indicator when corners are uniform", () => {
+    const { host, root } = renderSection({ "border-radius": "12px" });
+    expect(host.textContent).toContain("Radius");
+    expect(getFlatRowInput(host, "Radius").value).toBe("12px");
+    expect(host.textContent).toContain("Linked");
+    act(() => root.unmount());
+  });
+
+  it("commits the radius row's new value to border-radius on blur when corners are uniform", async () => {
+    const { host, root, onSetStyle } = renderSection({ "border-radius": "12px" });
+    await commitFlatRowInput(host, "Radius", "20px");
+    expect(onSetStyle).toHaveBeenCalledWith("border-radius", "20px");
+    act(() => root.unmount());
+  });
+
+  it("falls back to the legacy BorderRadiusEditor when corners are not uniform", () => {
+    const { host, root } = renderSection({}, {}, { tl: 4, tr: 12, br: 4, bl: 4 });
+    expect(host.textContent).not.toContain("Linked");
+    act(() => root.unmount());
+  });
+
+  it("commits a per-corner radius update through the legacy BorderRadiusEditor when unlinked", () => {
+    const { host, root, onSetStyle } = renderSection({}, {}, { tl: 4, tr: 12, br: 4, bl: 4 });
+    const trInput = Array.from(host.querySelectorAll<HTMLInputElement>("input")).find(
+      (el) => el.value === "12",
+    );
+    if (!trInput) throw new Error("expected the TR corner input");
+    act(() => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(trInput, "18");
+      trInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => {
+      trInput.dispatchEvent(new Event("focusout", { bubbles: true }));
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("border-top-right-radius", "18px");
     act(() => root.unmount());
   });
 });

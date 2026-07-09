@@ -2,10 +2,20 @@
 import { useEffect, useState } from "react";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
-import { extractBackgroundImageUrl } from "./propertyPanelHelpers";
-// oxlint-disable-next-line no-unused-vars
+import { Link as LinkIcon } from "../../icons/SystemIcons";
+import { BorderRadiusEditor } from "./BorderRadiusEditor";
+import { formatStrokeSummary, parseStrokeSummary } from "./propertyPanelFlatStyleHelpers";
+import {
+  buildStrokeStyleUpdates,
+  buildStrokeWidthStyleUpdates,
+  extractBackgroundImageUrl,
+  formatNumericValue,
+  formatPxMetricValue,
+  normalizePanelPxValue,
+  parseNumericValue,
+  parsePxMetricValue,
+} from "./propertyPanelHelpers";
 import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
-// oxlint-disable-next-line no-unused-vars
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
@@ -115,6 +125,149 @@ function FlatFillFields({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Flat Stroke row — combined width+style+color                       */
+/* ------------------------------------------------------------------ */
+
+// fallow-ignore-next-line complexity
+function FlatStrokeRow({
+  styles,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const borderWidthValue =
+    parsePxMetricValue(styles["border-width"] ?? "") ??
+    parsePxMetricValue(styles["border-top-width"] ?? "") ??
+    0;
+  const borderStyleValue = styles["border-style"] || styles["border-top-style"] || "none";
+  const borderColorValue =
+    styles["border-color"] || styles["border-top-color"] || "rgba(255, 255, 255, 0.18)";
+  const summary = formatStrokeSummary(borderWidthValue, borderStyleValue);
+  const tier = resolveValueTier(
+    styles["border-width"] != null || styles["border-style"] != null ? summary : undefined,
+    formatStrokeSummary(0, "none"),
+  );
+
+  return (
+    <FlatRow
+      label="Stroke"
+      value={summary}
+      tier={tier}
+      disabled={disabled}
+      onCommit={async (next) => {
+        const parsed = parseStrokeSummary(next);
+        if (!parsed) return;
+        for (const [property, value] of buildStrokeWidthStyleUpdates(
+          formatPxMetricValue(parsed.widthPx),
+          parsed.style,
+        )) {
+          await onSetStyle(property, value);
+        }
+        for (const [property, value] of buildStrokeStyleUpdates(
+          parsed.style,
+          formatPxMetricValue(parsed.widthPx),
+        )) {
+          await onSetStyle(property, value);
+        }
+      }}
+      suffix={
+        <>
+          <span
+            className="h-4 w-4 flex-shrink-0 rounded border border-panel-border-input"
+            style={{ backgroundColor: borderColorValue }}
+          />
+          <span className="font-mono text-[10px] text-panel-text-3">{borderColorValue}</span>
+        </>
+      }
+    />
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Flat Radius row — uniform case; legacy fallback otherwise          */
+/* ------------------------------------------------------------------ */
+
+// fallow-ignore-next-line complexity
+function FlatRadiusRow({
+  styles,
+  gsapBorderRadius,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
+  const radiusTL =
+    gsapBorderRadius?.tl ?? parseNumericValue(styles["border-top-left-radius"]) ?? radiusValue;
+  const radiusTR =
+    gsapBorderRadius?.tr ?? parseNumericValue(styles["border-top-right-radius"]) ?? radiusValue;
+  const radiusBR =
+    gsapBorderRadius?.br ?? parseNumericValue(styles["border-bottom-right-radius"]) ?? radiusValue;
+  const radiusBL =
+    gsapBorderRadius?.bl ?? parseNumericValue(styles["border-bottom-left-radius"]) ?? radiusValue;
+  const uniform = radiusTL === radiusTR && radiusTR === radiusBR && radiusBR === radiusBL;
+
+  const commit = (corner: "all" | "tl" | "tr" | "br" | "bl", value: number) => {
+    const px = `${formatNumericValue(value)}px`;
+    if (corner === "all") {
+      void onSetStyle("border-radius", px);
+      return;
+    }
+    const prop = {
+      tl: "border-top-left-radius",
+      tr: "border-top-right-radius",
+      br: "border-bottom-right-radius",
+      bl: "border-bottom-left-radius",
+    }[corner];
+    void onSetStyle(prop, px);
+  };
+
+  if (!uniform) {
+    return (
+      <BorderRadiusEditor
+        tl={radiusTL}
+        tr={radiusTR}
+        br={radiusBR}
+        bl={radiusBL}
+        disabled={disabled}
+        onCommit={commit}
+      />
+    );
+  }
+
+  return (
+    <FlatRow
+      label="Radius"
+      value={`${formatNumericValue(radiusTL)}px`}
+      tier={resolveValueTier(styles["border-radius"], "0px")}
+      disabled={disabled}
+      onCommit={(next) => {
+        const parsed = parsePxMetricValue(next.endsWith("px") ? next : `${next}px`);
+        if (parsed == null) return;
+        const normalized = normalizePanelPxValue(`${parsed}px`, {
+          min: 0,
+          max: 400,
+          fallback: radiusTL,
+        });
+        commit("all", normalized != null ? (parsePxMetricValue(normalized) ?? radiusTL) : radiusTL);
+      }}
+      suffix={
+        <span className="flex items-center gap-1 text-[10px] text-panel-text-4">
+          <LinkIcon size={10} />
+          Linked
+        </span>
+      }
+    />
+  );
+}
+
 export function FlatStyleSection({
   projectId,
   element,
@@ -122,7 +275,6 @@ export function FlatStyleSection({
   assets,
   onSetStyle,
   onImportAssets,
-  // oxlint-disable-next-line no-unused-vars
   gsapBorderRadius,
 }: {
   projectId: string;
@@ -133,6 +285,7 @@ export function FlatStyleSection({
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
 }) {
+  const styleEditingDisabled = !element.capabilities.canEditStyles;
   return (
     <div className="space-y-1.5">
       <FlatFillFields
@@ -142,6 +295,13 @@ export function FlatStyleSection({
         assets={assets}
         onSetStyle={onSetStyle}
         onImportAssets={onImportAssets}
+      />
+      <FlatStrokeRow styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+      <FlatRadiusRow
+        styles={styles}
+        gsapBorderRadius={gsapBorderRadius}
+        disabled={styleEditingDisabled}
+        onSetStyle={onSetStyle}
       />
     </div>
   );
