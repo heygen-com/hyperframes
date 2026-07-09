@@ -2,6 +2,7 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -62,6 +63,7 @@ export const TimelineClip = memo(function TimelineClip({
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
     showDefaultText ? "" : "is-micro",
+    isAudioTimelineElement(el) ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");

@@ -9,7 +9,7 @@ import {
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import { TRACK_H, RULER_H } from "./timelineLayout";
-import { isMusicTrack } from "../../utils/timelineInspector";
+import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
 import {
   TIMELINE_SNAP_PX,
@@ -216,7 +216,18 @@ export function useTimelineClipDrag({
       const rowFloat = scroll
         ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
         : 0;
-      const insertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
+      const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
+      // Inserting a new track only makes sense in the visual zone. Suppress the
+      // insertion affordance at/below the first audio lane so it never appears
+      // under the bottom (audio stays pinned to the bottom).
+      const audioStart = elementsRef.current.reduce(
+        (min, e) => (isAudioTimelineElement(e) ? Math.min(min, e.track) : min),
+        Number.POSITIVE_INFINITY,
+      );
+      const insertRow =
+        rawInsertRow !== null && Number.isFinite(audioStart) && rawInsertRow > audioStart
+          ? null
+          : rawInsertRow;
       // Free placement: land on the hovered lane at the (snapped) time. Overlaps are
       // allowed — layered overlays are real HyperFrames content — so there's no
       // collision-push to a free lane and no main-track magnet. Snapping (when the

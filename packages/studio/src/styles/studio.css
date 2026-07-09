@@ -141,6 +141,22 @@ body {
   opacity: 1;
 }
 
+/* Audio clips read as a distinct kind — a persistent violet tint vs the teal-
+   accented visual clips — so the audio zone at the bottom is visually separate
+   at a glance (the timeline's kinds: visual on top, audio below). */
+.timeline-clip.is-audio {
+  background-color: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.timeline-clip.is-audio.is-hovered {
+  background-color: rgba(167, 139, 250, 0.24);
+}
+
+.timeline-clip.is-audio.is-dragging {
+  background-color: rgba(60, 52, 84, 0.96);
+}
+
 .timeline-clip.is-hovered {
   background-color: rgba(255, 255, 255, 0.09);
 }
