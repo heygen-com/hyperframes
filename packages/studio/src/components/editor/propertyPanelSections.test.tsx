@@ -132,4 +132,30 @@ describe("FlatTextSection", () => {
     expect(onSetTextFieldStyle).toHaveBeenCalledWith("field-0", "font-weight", "700");
     act(() => root.unmount());
   });
+
+  it("suppresses TextSection's own heading when falling back for a multi-field element", () => {
+    const { host, root } = renderSection({
+      textFields: [
+        makeElement().textFields[0],
+        {
+          key: "field-1",
+          label: "Text",
+          value: "SECOND FIELD",
+          tagName: "div",
+          attributes: [],
+          inlineStyles: {},
+          computedStyles: {},
+          source: "self",
+        },
+      ],
+    });
+    // TextSection's own Section wrapper (data-panel-section="text") must not
+    // render here — the caller (PropertyPanelFlat's FlatGroup) already shows
+    // a "Text" heading, so a second one from the legacy component would be a
+    // doubled heading.
+    expect(host.querySelector('[data-panel-section="text"]')).toBeNull();
+    // The multi-field fallback's own content must still render.
+    expect(host.textContent).toContain("Text layers");
+    act(() => root.unmount());
+  });
 });
