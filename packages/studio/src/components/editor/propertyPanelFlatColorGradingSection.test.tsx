@@ -31,6 +31,36 @@ function neutralGrading() {
   return grading;
 }
 
+function findRowByText(
+  host: HTMLElement,
+  selector: string,
+  text: string,
+  match: "includes" | "startsWith" = "includes",
+) {
+  const row = Array.from(host.querySelectorAll(selector)).find((el) =>
+    el.textContent?.[match](text),
+  );
+  if (!row) throw new Error(`expected a ${text} row`);
+  return row;
+}
+
+function dragSliderTrack(row: Element, clientX: number, trackWidth: number) {
+  const track = row.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+  if (!track) throw new Error("expected a slider track");
+  Object.defineProperty(track, "getBoundingClientRect", {
+    value: () => ({ left: 0, width: trackWidth, top: 0, height: 2, right: trackWidth, bottom: 2 }),
+  });
+  act(() => {
+    track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX }));
+  });
+}
+
+function clickSliderReset(row: Element) {
+  const resetButton = row.querySelector<HTMLButtonElement>('[data-flat-slider-reset="true"]');
+  expect(resetButton).not.toBeNull();
+  act(() => resetButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
 describe("FlatColorGradingAccessory", () => {
   it("shows a 5px status dot colored by runtime status, with the message as its title", () => {
     const { host, root } = renderInto(
@@ -206,15 +236,8 @@ describe("FlatColorGradingSection — Adjust sliders", () => {
         onCommitColorGrading={onCommitColorGrading}
       />,
     );
-    const contrastRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
-      (row) => row.textContent?.includes("Contrast"),
-    );
-    if (!contrastRow) throw new Error("expected a Contrast row");
-    const resetButton = contrastRow.querySelector<HTMLButtonElement>(
-      '[data-flat-slider-reset="true"]',
-    );
-    expect(resetButton).not.toBeNull();
-    act(() => resetButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const contrastRow = findRowByText(host, '[data-flat-grade-adjust="true"]', "Contrast");
+    clickSliderReset(contrastRow);
     expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
     expect(onCommitColorGrading.mock.calls[0][0].adjust.contrast).toBe(0);
     act(() => root.unmount());
@@ -228,19 +251,9 @@ describe("FlatColorGradingSection — Adjust sliders", () => {
         onCommitColorGrading={onCommitColorGrading}
       />,
     );
-    const contrastRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
-      (row) => row.textContent?.includes("Contrast"),
-    );
-    if (!contrastRow) throw new Error("expected a Contrast row");
-    const track = contrastRow.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a slider track");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
-    });
-    act(() => {
-      // min=-100, max=100, step=1, ratio=0.75 -> raw=50 -> commit(50) -> adjust.contrast = 50/100 = 0.5
-      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 75 }));
-    });
+    const contrastRow = findRowByText(host, '[data-flat-grade-adjust="true"]', "Contrast");
+    // min=-100, max=100, step=1, ratio=0.75 -> raw=50 -> commit(50) -> adjust.contrast = 50/100 = 0.5
+    dragSliderTrack(contrastRow, 75, 100);
     expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
     expect(onCommitColorGrading.mock.calls[0][0].adjust.contrast).toBe(0.5);
     act(() => root.unmount());
@@ -259,22 +272,75 @@ describe("FlatColorGradingSection — Adjust sliders", () => {
         onCommitColorGrading={onCommitColorGrading}
       />,
     );
-    const exposureRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
-      (row) => row.textContent?.includes("Exposure"),
-    );
-    if (!exposureRow) throw new Error("expected an Exposure row");
-    const track = exposureRow.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
-    if (!track) throw new Error("expected a slider track");
-    Object.defineProperty(track, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 200, top: 0, height: 2, right: 200, bottom: 2 }),
-    });
-    act(() => {
-      // min=-200, max=200, step=5, ratio=1.0 -> raw=200 -> commit(200) -> adjust.exposure = 200/100 = 2
-      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 200 }));
-    });
+    const exposureRow = findRowByText(host, '[data-flat-grade-adjust="true"]', "Exposure");
+    // min=-200, max=200, step=5, ratio=1.0 -> raw=200 -> commit(200) -> adjust.exposure = 200/100 = 2
+    dragSliderTrack(exposureRow, 200, 200);
     expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
     expect(onCommitColorGrading.mock.calls[0][0].adjust.exposure).toBe(2);
     expect(onCommitColorGrading.mock.calls[0][0].adjust.saturation).toBe(0.2);
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatColorGradingSection — Vignette and Grain", () => {
+  it("renders Vignette and Grain amount rows with a settings gear, expanding tuned sliders on click", () => {
+    const { host, root } = renderInto(<FlatColorGradingSection {...neutralPropsBase()} />);
+    const vignetteGear = host.querySelector<HTMLButtonElement>(
+      '[data-flat-grade-settings="vignette"]',
+    );
+    expect(vignetteGear).not.toBeNull();
+    act(() => vignetteGear?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(host.textContent).toContain("Midpoint");
+    expect(host.textContent).toContain("Feather");
+    act(() => root.unmount());
+  });
+
+  it("shows tuned Midpoint at its 50% default with no reset until moved from default", () => {
+    const { host, root } = renderInto(<FlatColorGradingSection {...neutralPropsBase()} />);
+    const gear = host.querySelector<HTMLButtonElement>('[data-flat-grade-settings="vignette"]');
+    act(() => gear?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const midpointRow = findRowByText(host, "div", "Midpoint", "startsWith");
+    expect(midpointRow.querySelector('[data-flat-slider-reset="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("commits a dragged Roundness value on slider track pointerdown, scaled from percent back into the -1..1 detail range", () => {
+    const onCommitColorGrading = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const gear = host.querySelector<HTMLButtonElement>('[data-flat-grade-settings="vignette"]');
+    act(() => gear?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const roundnessRow = findRowByText(host, "div", "Roundness", "startsWith");
+    // min=-100, max=100, step=1, ratio=0.75 -> raw=50 -> commit(50) -> details.vignetteRoundness = 50/100 = 0.5
+    dragSliderTrack(roundnessRow, 75, 100);
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].details.vignetteRoundness).toBe(0.5);
+    act(() => root.unmount());
+  });
+
+  it("resets a non-default Roundness back to its 0 default via the tuned slider's reset button", () => {
+    const onCommitColorGrading = vi.fn();
+    const grading = {
+      ...neutralGrading(),
+      details: { ...neutralGrading().details, vignetteRoundness: 0.4 },
+    };
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        grading={grading}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const gear = host.querySelector<HTMLButtonElement>('[data-flat-grade-settings="vignette"]');
+    act(() => gear?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const roundnessRow = findRowByText(host, "div", "Roundness", "startsWith");
+    clickSliderReset(roundnessRow);
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].details.vignetteRoundness).toBe(0);
     act(() => root.unmount());
   });
 });
