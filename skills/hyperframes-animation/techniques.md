@@ -2,7 +2,7 @@
 
 13 proven techniques from production HyperFrames videos. Use these in your storyboard and compositions to create visually rich, professional output. Each technique includes a minimal code pattern you can adapt.
 
-These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of.
+These are NOT advanced - they're standard motion design patterns that every composition should use at least 2-3 of.
 
 ## Contents
 
@@ -14,18 +14,18 @@ These are NOT advanced — they're standard motion design patterns that every co
 - Video compositing
 - Character-by-character typing
 - Variable font axis animation
-- GSAP MotionPathPlugin
+- anime.svg.createMotionPath
 - Velocity-matched transitions
 - Audio-reactive animation
 - Clip-path reveal masks
 - WebGL fragment shader art
 - When to use what
 
-> **Capturing live HTML/CSS as a GPU texture** (3D rotation + bloom, magnetic warp, shatter, liquid surface, portal, plus GLSL post-processing) is a separate, heavier capability — see `adapters/html-in-canvas-patterns.md`. Use it for 1–3 hero beats per video, not every beat.
+> **Capturing live HTML/CSS as a GPU texture** (3D rotation + bloom, magnetic warp, shatter, liquid surface, portal, plus GLSL post-processing) is a separate, heavier capability - see `adapters/html-in-canvas-patterns.md`. Use it for 1–3 hero beats per video, not every beat.
 >
-> **Easing vocabulary** — the full ease-family palette (character + mood mapping) lives in `adapters/gsap-easing-and-stagger.md`. Every composition should use at least 3 different easings.
+> **Easing vocabulary**: use the anime.js ease strings from `adapters/animejs.md`. Every composition should use at least 3 different easings.
 >
-> **Named text-animation effects** (24 IDs like `typewriter`, `kinetic-center-build`, `soft-blur-in`) come from the external `animate-text` skill — see `adapters/animate-text.md` for the vocabulary and how to load it.
+> **Named text-animation effects** (24 IDs like `typewriter`, `kinetic-center-build`, `soft-blur-in`) come from the external `animate-text` skill - see `adapters/animate-text.md` for the vocabulary and how to load it.
 
 ---
 
@@ -44,24 +44,19 @@ A path draws itself in real-time, like someone tracing with a pen. Use for revea
     stroke-linecap="round"
   />
 </svg>
-<style>
-  .draw-path {
-    stroke-dasharray: 280;
-    stroke-dashoffset: 280;
-  }
-</style>
 <script>
-  tl.to(".draw-path", { strokeDashoffset: 0, duration: 0.7, ease: "power2.out" }, 0.5);
+  const [drawablePath] = anime.svg.createDrawable(".draw-path");
+  tl.add(drawablePath, { draw: ["0 0", "0 1"], duration: 700, ease: "outCubic" }, 500);
 </script>
 ```
 
-Use `path.getTotalLength()` to calculate the dasharray value dynamically.
+Use `anime.svg.createDrawable()` instead of hand-rolled `stroke-dasharray` / `stroke-dashoffset` math.
 
 ---
 
 ## 2. Canvas 2D Procedural Art
 
-Animated noise, particle fields, data visualizations — anything that evolves frame-by-frame. Drive it with a GSAP proxy.
+Animated noise, particle fields, data visualizations: anything that evolves frame-by-frame. Drive it with an anime.js proxy.
 
 ```html
 <canvas id="proc-canvas" width="1920" height="1080"></canvas>
@@ -90,12 +85,12 @@ Animated noise, particle fields, data visualizations — anything that evolves f
   }
 
   var proxy = { time: 0 };
-  tl.to(
+  tl.add(
     proxy,
     {
       time: 5,
-      duration: 5,
-      ease: "none",
+      duration: 5000,
+      ease: "linear",
       onUpdate: function () {
         drawFrame(proxy.time);
       },
@@ -105,7 +100,7 @@ Animated noise, particle fields, data visualizations — anything that evolves f
 </script>
 ```
 
-The `hash()` function is deterministic — same frame renders identically every time.
+The `hash()` function is deterministic - same frame renders identically every time.
 
 ---
 
@@ -121,7 +116,7 @@ Perspective rotations create depth. Use for product showcases, card flips, archi
   </div>
 </div>
 <script>
-  tl.to(".card-3d", { rotationY: 360, rotationX: 15, duration: 1.2, ease: "sine.inOut" }, 0);
+  tl.add(".card-3d", { rotateY: 360, rotateX: 15, duration: 1200, ease: "inOutSine" }, 0);
 </script>
 ```
 
@@ -154,22 +149,22 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
   var slides = [80, 60, 50, 25, 12]; // horizontal slide decay (px)
 
   document.querySelectorAll(".word").forEach(function (word, i) {
-    tl.from(
+    tl.add(
       word,
       {
-        x: slides[i],
-        y: 14,
-        opacity: 0,
-        duration: 0.35,
-        ease: "power2.out",
+        translateX: [slides[i], 0],
+        translateY: [14, 0],
+        opacity: [0, 1],
+        duration: 350,
+        ease: "outCubic",
       },
-      timings[i],
+      timings[i] * 1000,
     );
   });
 </script>
 ```
 
-The slide distance DECAYS per word (80→12px) — mimics a camera settling.
+The slide distance DECAYS per word (80→12px) - mimics a camera settling.
 
 ---
 
@@ -190,14 +185,14 @@ Vector animations that play inside a composition. Use for logos, character anima
     autoplay: false,
     path: "../capture/assets/lottie/animation-0.json",
   });
-  window.__hfLottie.push(anim); // REQUIRED — adapter seeks every registered instance
+  window.__hfLottie.push(anim); // REQUIRED - adapter seeks every registered instance
 
-  gsap.set("#logo-anim", { scale: 0.3, opacity: 0 });
-  tl.to("#logo-anim", { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
+  tl.add("#logo-anim", { scale: 0.3, opacity: 0, duration: 0 }, 0);
+  tl.add("#logo-anim", { scale: 1, opacity: 1, duration: 350, ease: "outBack(1.6)" }, 200);
 </script>
 ```
 
-`autoplay: false` + `loop: false` + `window.__hfLottie.push()` are mandatory — HyperFrames seeks each registered player to composition time, so anything left on `autoplay`/`loop` runs in wall-clock and renders non-deterministically. The adapter seeks absolute time (no modulo loop, no playback-rate scaling): bake repeating cycles or non-default speed into the Lottie asset or an explicit timeline, then verify the render. Full contract + `.lottie`/dotLottie variant: `adapters/lottie.md`.
+`autoplay: false` + `loop: false` + `window.__hfLottie.push()` are mandatory - HyperFrames seeks each registered player to composition time, so anything left on `autoplay`/`loop` runs in wall-clock and renders non-deterministically. The adapter seeks absolute time (no modulo loop, no playback-rate scaling): bake repeating cycles or non-default speed into the Lottie asset or an explicit timeline, then verify the render. Full contract + `.lottie`/dotLottie variant: `adapters/lottie.md`.
 
 ---
 
@@ -216,8 +211,8 @@ Embed real video footage inside compositions. Videos must be `muted` with `plays
   ></video>
 </div>
 <script>
-  // Video playback is controlled by the framework — don't call play() manually
-  tl.from(".video-frame", { scale: 0.9, opacity: 0, duration: 0.3, ease: "power2.out" }, 0);
+  // Video playback is controlled by the framework - don't call play() manually
+  tl.add(".video-frame", { scale: [0.9, 1], opacity: [0, 1], duration: 300, ease: "outCubic" }, 0);
 </script>
 ```
 
@@ -240,7 +235,11 @@ Terminal typing effect using `tl.call()` to update text content character by cha
   var typed = document.getElementById("typed-text");
 
   // Cursor blinks
-  tl.to(".cursor", { opacity: 0, duration: 0.12, yoyo: true, repeat: 20, ease: "steps(1)" }, 0);
+  tl.add(
+    ".cursor",
+    { opacity: [1, 0], duration: 120, loop: 21, alternate: true, ease: "steps(1)" },
+    0,
+  );
 
   // Type each character
   for (var i = 0; i < CMD.length; i++) {
@@ -249,15 +248,14 @@ Terminal typing effect using `tl.call()` to update text content character by cha
         function () {
           typed.textContent = CMD.substring(0, idx + 1);
         },
-        null,
-        (idx / CMD.length) * 0.9,
+        (idx / CMD.length) * 900,
       );
     })(i);
   }
 </script>
 ```
 
-Use `ease: "steps(1)"` for cursor blink — creates discrete on/off.
+Use `ease: "steps(1)"` for cursor blink - creates discrete on/off.
 
 ---
 
@@ -267,7 +265,7 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 
 ```html
 <style>
-  /* Load the captured local variable font — do NOT use Google Fonts @import.
+  /* Load the captured local variable font - do NOT use Google Fonts @import.
      Replace this placeholder with an @font-face pointing to ../capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
@@ -287,29 +285,31 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
   }
 </style>
 <script>
-  tl.to(".wordmark", { "--opsz": 72, "--wght": 300, duration: 0.45, ease: "power2.out" }, 0);
+  tl.add(".wordmark", { "--opsz": 72, "--wght": 300, duration: 450, ease: "outCubic" }, 0);
 </script>
 ```
 
-The glyph subtly reshapes as axes animate — optical size adjusts detail, weight changes thickness.
+The glyph subtly reshapes as axes animate - optical size adjusts detail, weight changes thickness.
 
 ---
 
-## 9. GSAP MotionPathPlugin
+## 9. anime.svg.createMotionPath
 
 Animate an element along an arbitrary SVG path. Use for sliders following curves, particles along trajectories, guided reveals.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js"></script>
 <div class="dot" style="width:20px;height:20px;background:#2a8a7c;border-radius:50%;"></div>
+<svg width="0" height="0" aria-hidden="true">
+  <path id="curve-path" d="M 12 300 C 280 280 520 80 820 50 S 1200 48 1308 38" />
+</svg>
 <script>
-  gsap.registerPlugin(MotionPathPlugin);
-  tl.to(
+  const path = anime.svg.createMotionPath("#curve-path");
+  tl.add(
     ".dot",
     {
-      motionPath: { path: "M 12 300 C 280 280 520 80 820 50 S 1200 48 1308 38" },
-      duration: 1.5,
-      ease: "power2.out",
+      ...path,
+      duration: 1500,
+      ease: "outCubic",
     },
     0,
   );
@@ -320,45 +320,45 @@ Animate an element along an arbitrary SVG path. Use for sliders following curves
 
 ## 10. Velocity-Matched Transitions
 
-Exit one beat and enter the next with matched velocities — creates perceived continuous motion.
+Exit one beat and enter the next with matched velocities - creates perceived continuous motion.
 
 ```javascript
 // EXIT (in outgoing composition): accelerating with blur
-tl.to(
+tl.add(
   ".content",
   {
-    y: -150,
+    translateY: -150,
     filter: "blur(30px)",
     opacity: 0,
-    duration: 0.33,
-    ease: "power2.in", // accelerates
+    duration: 330,
+    ease: "inCubic", // accelerates
   },
-  beatDuration - 0.33,
+  beatDurationMs - 330,
 );
 
 // ENTRY (in incoming composition): decelerating from blur
-gsap.set(".content", { y: 150, filter: "blur(30px)" });
-tl.to(
+tl.add(".content", { translateY: 150, filter: "blur(30px)", duration: 0 }, 0);
+tl.add(
   ".content",
   {
-    y: 0,
+    translateY: 0,
     filter: "blur(0px)",
-    duration: 1.0,
-    ease: "power2.out", // decelerates
+    duration: 1000,
+    ease: "outCubic", // decelerates
   },
   0,
 );
 ```
 
-The fastest point of both curves meets at the cut — the viewer perceives smooth camera motion. Match ease families: `.in` for exits, `.out` for entries.
+The fastest point of both curves meets at the cut - the viewer perceives smooth camera motion. Match ease families: `.in` for exits, `.out` for entries.
 
 ---
 
 ## 11. Audio-Reactive Animation
 
-Drive any GSAP-tweenable property from the playing audio. Bass pulses a logo on kick drums. Treble glows a CTA on cymbals. Amplitude breathes a background during quiet phrases. The result: motion that feels locked to the track in a way pre-authored tweens never can.
+Drive any anime-settable property from the playing audio. Bass pulses a logo on kick drums. Treble glows a CTA on cymbals. Amplitude breathes a background during quiet phrases. The result: motion that feels locked to the track in a way pre-authored tweens never can.
 
-**When to use:** Any video with music or dramatic narration — brand reels, product launches, hype edits. Skip for calm/tutorial pacing.
+**When to use:** Any video with music or dramatic narration - brand reels, product launches, hype edits. Skip for calm/tutorial pacing.
 
 **How it works:** Pre-extract audio frequency bands into a JSON file, then sample per-frame via `tl.call()`:
 
@@ -370,23 +370,22 @@ for (var f = 0; f < AUDIO_DATA.totalFrames; f++) {
       return function () {
         var bass = frame.bands[0]; // 0–1
         var treble = frame.bands[13];
-        gsap.set(".logo", { scale: 1 + bass * 0.04 }); // 3–4% pulse on bass
-        gsap.set(".cta", { filter: `drop-shadow(0 0 ${treble * 24}px #00C3FF)` });
+        anime.utils.set(".logo", { scale: 1 + bass * 0.04 }); // 3-4% pulse on bass
+        anime.utils.set(".cta", { filter: `drop-shadow(0 0 ${treble * 24}px #00C3FF)` });
       };
     })(AUDIO_DATA.frames[f]),
-    [],
-    f / AUDIO_DATA.fps,
+    (f / AUDIO_DATA.fps) * 1000,
   );
 }
 ```
 
-Per-frame sampling is required — a single tween will not react. Use the extract script:
+Per-frame sampling is required - a single tween will not react. Use the extract script:
 
 ```bash
 python3 skills/hyperframes-creative/scripts/extract-audio-data.py narration.wav --fps 30 --bands 16 -o audio-data.json
 ```
 
-Keep text/logo intensity subtle (≤5% scale, ≤30% glow) — audio-reactive motion on tiny elements reads as jitter. Bigger backgrounds can push to 10–30%.
+Keep text/logo intensity subtle (≤5% scale, ≤30% glow) - audio-reactive motion on tiny elements reads as jitter. Bigger backgrounds can push to 10–30%.
 
 **Never do:** equalizer bars, spectrum analyzers, waveform displays, strobing, rainbow color cycling. The audio provides _timing and intensity_; the visual vocabulary still comes from the brand. See `skills/hyperframes-creative/references/audio-reactive.md` for the full API and anti-patterns.
 
@@ -394,7 +393,7 @@ Keep text/logo intensity subtle (≤5% scale, ≤30% glow) — audio-reactive mo
 
 ## 12. Clip-Path Reveal Masks
 
-A fixed window that content slides through — text or images enter from one side and are clipped by an invisible boundary. Different from SVG path drawing: the mask is static, the content moves.
+A fixed window that content slides through - text or images enter from one side and are clipped by an invisible boundary. Different from SVG path drawing: the mask is static, the content moves.
 
 ```html
 <div id="reveal-mask">
@@ -416,8 +415,8 @@ A fixed window that content slides through — text or images enter from one sid
 </style>
 <script>
   // Content starts offscreen right, slides left through the mask window
-  gsap.set("#reveal-content", { x: 400, opacity: 0 });
-  tl.to("#reveal-content", { x: 0, opacity: 1, duration: 1, ease: "power2.out" }, 0);
+  tl.add("#reveal-content", { translateX: 400, opacity: 0, duration: 0 }, 0);
+  tl.add("#reveal-content", { translateX: 0, opacity: 1, duration: 1000, ease: "outCubic" }, 0);
 </script>
 ```
 
@@ -427,7 +426,7 @@ Variations: `clip-path: circle(0% at 50% 50%)` → `circle(100%)` for iris revea
 
 ## 13. WebGL Fragment Shader Art
 
-Full GPU generative backgrounds — domain-warped FBM noise, cosine palette coloring, iridescent organic patterns. Far richer than Canvas 2D.
+Full GPU generative backgrounds - domain-warped FBM noise, cosine palette coloring, iridescent organic patterns. Far richer than Canvas 2D.
 
 ```html
 <canvas id="shader-bg" width="1920" height="1080"></canvas>
@@ -474,14 +473,14 @@ Full GPU generative backgrounds — domain-warped FBM noise, cosine palette colo
     }
   `;
 
-  // Compile, link, set up fullscreen quad, then render via GSAP proxy:
+  // Compile, link, set up fullscreen quad, then render via anime.js proxy:
   var proxy = { time: 0.5 };
-  tl.to(
+  tl.add(
     proxy,
     {
       time: 5,
-      duration: BEAT_DUR,
-      ease: "none",
+      duration: BEAT_DUR * 1000,
+      ease: "linear",
       onUpdate: function () {
         gl.uniform1f(uTime, proxy.time);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -498,10 +497,10 @@ Always include a Canvas 2D gradient fallback for environments without WebGL.
 
 ## When to Use What
 
-| Video energy                   | Techniques to combine                                           |
-| ------------------------------ | --------------------------------------------------------------- |
-| High impact (launches, promos) | Per-word typography + velocity transitions + counter animations |
-| Cinematic (tours, stories)     | SVG path drawing + video compositing + 3D transforms            |
-| Technical (dev tools, APIs)    | Character typing + Canvas 2D procedural + MotionPath            |
-| Premium (luxury, enterprise)   | Variable font animation + Lottie + slow velocity transitions    |
-| Data-driven (stats, metrics)   | Canvas 2D procedural + counter animations + SVG path drawing    |
+| Video energy                   | Techniques to combine                                                |
+| ------------------------------ | -------------------------------------------------------------------- |
+| High impact (launches, promos) | Per-word typography + velocity transitions + counter animations      |
+| Cinematic (tours, stories)     | SVG path drawing + video compositing + 3D transforms                 |
+| Technical (dev tools, APIs)    | Character typing + Canvas 2D procedural + anime.svg.createMotionPath |
+| Premium (luxury, enterprise)   | Variable font animation + Lottie + slow velocity transitions         |
+| Data-driven (stats, metrics)   | Canvas 2D procedural + counter animations + SVG path drawing         |

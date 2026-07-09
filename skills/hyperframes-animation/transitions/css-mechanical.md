@@ -5,12 +5,12 @@
 Two full-screen halves close from top and bottom, meet in the middle. Swap while closed. Open again.
 
 ```js
-tl.to("#shutter-top", { y: 0, duration: 0.25, ease: "power3.in" }, T);
-tl.to("#shutter-bot", { y: 0, duration: 0.25, ease: "power3.in" }, T);
-tl.set(old, { opacity: 0 }, T + 0.25);
-tl.set(new, { opacity: 1 }, T + 0.25);
-tl.to("#shutter-top", { y: -540, duration: 0.25, ease: "power3.out" }, T + 0.3);
-tl.to("#shutter-bot", { y: 540, duration: 0.25, ease: "power3.out" }, T + 0.3);
+tl.add("#shutter-top", { translateY: 0, duration: 250, ease: "inQuart" }, T);
+tl.add("#shutter-bot", { translateY: 0, duration: 250, ease: "inQuart" }, T);
+tl.add(old, { opacity: 0, duration: 0 }, T + 250);
+tl.add(new, { opacity: 1, duration: 0 }, T + 250);
+tl.add("#shutter-top", { translateY: -540, duration: 250, ease: "outQuart" }, T + 300);
+tl.add("#shutter-bot", { translateY: 540, duration: 250, ease: "outQuart" }, T + 300);
 ```
 
 ### Clock Wipe
@@ -18,13 +18,13 @@ tl.to("#shutter-bot", { y: 540, duration: 0.25, ease: "power3.out" }, T + 0.3);
 Radial polygon sweep stepping through quadrants. Use 9-point polygon with intermediate edge positions for smooth sweep.
 
 ```js
-tl.set(new, { opacity: 1, zIndex: 10 }, T);
-var d = 0.1; // duration per quadrant
-tl.set(new, { clipPath: "polygon(50% 50%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%)" }, T);
-tl.to(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%)", duration: d, ease: "none" }, T);
-tl.to(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 50% 100%, 50% 100%, 50% 100%)", duration: d, ease: "none" }, T + d);
-tl.to(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 50%)", duration: d, ease: "none" }, T + d*2);
-tl.to(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 0%)", duration: d, ease: "none" }, T + d*3);
-tl.set(new, { clipPath: "none", zIndex: "auto" }, T + d*4 + 0.02);
-tl.set(old, { opacity: 0, zIndex: "auto" }, T + d*4 + 0.02);
+tl.add(new, { opacity: 1, zIndex: 10, duration: 0 }, T);
+var d = 100; // duration per quadrant in milliseconds
+tl.add(new, { clipPath: "polygon(50% 50%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%)", duration: 0 }, T);
+tl.add(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%)", duration: d, ease: "linear" }, T);
+tl.add(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 50% 100%, 50% 100%, 50% 100%)", duration: d, ease: "linear" }, T + d);
+tl.add(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 50%)", duration: d, ease: "linear" }, T + d*2);
+tl.add(new, { clipPath: "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 0%)", duration: d, ease: "linear" }, T + d*3);
+tl.add(new, { clipPath: "none", zIndex: "auto", duration: 0 }, T + d*4 + 20);
+tl.add(old, { opacity: 0, zIndex: "auto", duration: 0 }, T + d*4 + 20);
 ```

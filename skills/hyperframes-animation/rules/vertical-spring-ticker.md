@@ -1,13 +1,13 @@
 ---
 name: vertical-spring-ticker
-description: Slot-machine style vertical scrolling using additive spring physics within a masked container — each spring contributes one "step" of scroll.
+description: Slot-machine style vertical scrolling using additive spring physics within a masked container - each spring contributes one "step" of scroll.
 metadata:
   tags: text, ticker, spring, scroll, vertical, slot-machine, sequence
 ---
 
 # Vertical Spring Ticker (Slot Machine)
 
-Multiple spring tweens are ADDED TOGETHER to produce total Y translation. Each spring contributes one discrete "step." The combined motion has snappy distinct moves with natural settling — instead of a single linear scroll, you get the slot-machine "click click click" rhythm.
+Multiple spring tweens are ADDED TOGETHER to produce total Y translation. Each spring contributes one discrete "step." The combined motion has snappy distinct moves with natural settling - instead of a single linear scroll, you get the slot-machine "click click click" rhythm.
 
 ## How It Works
 
@@ -98,7 +98,7 @@ Each spring fires at a different time, settles, then the next fires. When summed
   letter-spacing: 8px;
   text-transform: uppercase;
   color: {textColor};
-  /* font-variant-numeric: tabular-nums; — for numeric tickers */
+  /* font-variant-numeric: tabular-nums; - for numeric tickers */
 }
 .brand {
   font-size: BRAND_FONT_SIZE;
@@ -109,13 +109,12 @@ Each spring fires at a different time, settles, then the next fires. When summed
 }
 ```
 
-## GSAP Timeline
+## Anime.js Timeline
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
   const innerEl = document.getElementById("stack-inner");
 
@@ -129,64 +128,69 @@ Each spring fires at a different time, settles, then the next fires. When summed
   }
   applyTransform(); // initial state
 
-  // Fire each spring sequentially with overlap — each one snaps in one step
+  // Fire each spring sequentially with overlap: each one snaps in one step.
   springs.forEach((spring, i) => {
-    tl.to(
+    tl.add(
       spring,
       {
         p: 1,
-        duration: STEP_DUR,
-        ease: `back.out(${BOUNCE_FACTOR})`,
+        duration: STEP_DUR * 1000,
+        ease: `outBack(${BOUNCE_FACTOR})`,
         onUpdate: applyTransform,
       },
-      STEP_START + i * STEP_SPACING,
+      (STEP_START + i * STEP_SPACING) * 1000,
     );
   });
 
   // Footer reveals after the ticker settles on the final item.
-  tl.from(
+  tl.add(
     ".brand",
-    { opacity: 0, y: BRAND_Y, duration: BRAND_FADE_DUR, ease: "power3.out" },
-    STEP_START + STEPS * STEP_SPACING + BRAND_DELAY,
+    {
+      opacity: [0, 1],
+      translateY: [BRAND_Y, 0],
+      duration: BRAND_FADE_DUR * 1000,
+      ease: "outQuart",
+    },
+    (STEP_START + STEPS * STEP_SPACING + BRAND_DELAY) * 1000,
   );
 
-  window.__timelines["ticker-scene"] = tl;
+  hyperframesAnime.register("ticker-scene", tl);
 </script>
 ```
 
 ## How to Choose Values
 
-- **ITEM_HEIGHT** — px height of each ticker slot AND the masked window.
+- **ITEM_HEIGHT** - px height of each ticker slot AND the masked window.
   - Range: ~`ITEM_FONT_SIZE × 1.25`; the line must hold capital descenders without clipping
-  - Constraints: **`.ticker` height MUST equal `.item` height** exactly — mismatched values cause partial items to peek above/below the mask
+  - Constraints: **`.ticker` height MUST equal `.item` height** exactly - mismatched values cause partial items to peek above/below the mask
   - Reference: ../../examples/proof-logo-chain.html uses `204px`
-- **TICKER_WIDTH** — px width of the masked window.
+- **TICKER_WIDTH** - px width of the masked window.
   - Range: wide enough to hold the longest item without ellipsis; typically 30-60% of viewport width
-- **STEPS** — number of additive springs (number of state transitions, not number of items).
+- **STEPS** - number of additive springs (number of state transitions, not number of items).
   - Range: typically 1-4; each step = one "click" in the slot-machine cadence
   - Constraints: `STEPS ≤ itemCount − 1` (you can only roll as far as there are items below the visible one)
   - Reference: ../../examples/proof-logo-chain.html uses `1` (single roll between two states)
-- **STEP_DUR** — duration of each spring tween.
+- **STEP_DUR** - duration of each spring tween.
   - Range: 0.3-0.7s; under 0.3 the overshoot is invisible, over 0.7 the click reads as a slide
   - Reference: ../../examples/proof-logo-chain.html uses `0.45s`
-- **STEP_SPACING** — seconds between consecutive springs' start times.
+- **STEP_SPACING** - seconds between consecutive springs' start times.
   - Range: 0.3-0.5s; closer and the steps blur together (looks like linear scroll), further and the ticker feels lazy
   - Constraints: `STEP_SPACING ≤ STEP_DUR` so the previous step is still settling when the next fires (this is what makes them "additive")
-- **STEP_START** — when the first spring fires.
+- **STEP_START** - when the first spring fires.
   - Range: 0+; gate behind any preceding beat
-- **BOUNCE_FACTOR** — `back.out(BOUNCE_FACTOR)` overshoot strength per step.
+- **BOUNCE_FACTOR** - `outBack(BOUNCE_FACTOR)` overshoot strength per step.
   - Range: 1.4 (gentle click) → 2.0 (firm click) → 2.5+ (cartoony spin-and-land for a climax step)
   - Effects: low end reads as polished UI, high end reads as casino / game show
-- **BRAND_DELAY** — gap after the final step before the footer line reveals, in seconds.
+- **BRAND_DELAY** - gap after the final step before the footer line reveals, in seconds.
   - Range: 0.2-0.5s; lets the final overshoot settle before the next element competes for attention
-- **BRAND_FADE_DUR** — footer fade-in duration.
+- **BRAND_FADE_DUR** - footer fade-in duration.
   - Range: 0.4-0.7s
-- **BRAND_Y** — initial vertical offset of the footer before fade-up (in px).
+- **BRAND_Y** - initial vertical offset of the footer before fade-up (in px).
   - Range: 8-24 px; bigger feels "punched in," smaller feels gentle
-- **EYEBROW_FONT_SIZE / ITEM_FONT_SIZE / BRAND_FONT_SIZE / STACK_GAP** — typographic + layout scaling.
+- **EYEBROW_FONT_SIZE / ITEM_FONT_SIZE / BRAND_FONT_SIZE / STACK_GAP** - typographic + layout scaling.
   - Constraints: items are the focal beat, sized 4-8× larger than eyebrow/footer
-- **{bgColor} / {accentColor} / {textColor} / {dividerColor}** — semantic color tokens; accent reserved for the eyebrow and footer so the ticker items stay neutral.
-- **{font}** — base typography stack. For numeric tickers add `font-variant-numeric: tabular-nums` so digit widths stay constant.
+- **{bgColor} / {accentColor} / {textColor} / {dividerColor}** - semantic color tokens; accent reserved for the eyebrow and footer so the ticker items stay neutral.
+- **{font}** - base typography stack. For numeric tickers add `font-variant-numeric: tabular-nums` so digit widths stay constant.
 
 ## Variations
 
@@ -200,7 +204,7 @@ Swap the sign on the translate: `transform: translateY(${sumP * ITEM_HEIGHT}px)`
 
 ### Continuous infinite ticker (no settling)
 
-Loop forever (e.g. news ticker) — use linear ease on a single long tween, duplicate the items list, reset when translation exceeds total height. NOT this rule — see [sine-wave-loop](sine-wave-loop.md) pattern for continuous motion vs this rule's discrete-step semantics.
+Loop forever (e.g. news ticker) - use linear ease on a single long tween, duplicate the items list, reset when translation exceeds total height. NOT this rule - see [sine-wave-loop](sine-wave-loop.md) pattern for continuous motion vs this rule's discrete-step semantics.
 
 ### Pause between groups
 
@@ -208,32 +212,33 @@ For dramatic "spin then land" feel, group several fast spring steps (`STEP_SPACI
 
 ## Key Principles
 
-- **Container height MUST equal item height** — otherwise items don't snap cleanly into the visible window. If container is 200px and items are 220px, every step shows a partial item edge above/below.
-- **`overflow: hidden` on container, NOT on inner stack** — the mask is the window; the stack inside is free to extend below.
-- **`flex-direction: column` on inner stack** — required for vertical stacking; row would make items horizontal.
-- **Step spacing tighter than step duration** — overlap is what makes the springs additive and gives the "click click" cadence; non-overlapping steps read as a linear scroll.
-- **`back.out` per step** — the overshoot is what makes each step feel like a "click." Linear ease or out-only ease loses the slot-machine feel.
-- **Sum the springs in onUpdate, don't tween the final position directly** — this is the "additive" trick; each spring contributes its OWN snap, which is the slot-machine pacing.
-- **❗ Don't update items via `innerHTML` between steps** — the ticker moves the SAME items via translate; replacing content makes the previous item visible AS the new one (broken illusion).
-- **❗ Climax dwell ≥1s after final step** — see SKILL universal constraints.
+- **Container height MUST equal item height** - otherwise items don't snap cleanly into the visible window. If container is 200px and items are 220px, every step shows a partial item edge above/below.
+- **`overflow: hidden` on container, NOT on inner stack** - the mask is the window; the stack inside is free to extend below.
+- **`flex-direction: column` on inner stack** - required for vertical stacking; row would make items horizontal.
+- **Step spacing tighter than step duration** - overlap is what makes the springs additive and gives the "click click" cadence; non-overlapping steps read as a linear scroll.
+- **`outBack` per step** - the overshoot is what makes each step feel like a "click." Linear ease or out-only ease loses the slot-machine feel.
+- **Sum the springs in onUpdate, don't tween the final position directly** - this is the "additive" trick; each spring contributes its OWN snap, which is the slot-machine pacing.
+- **❗ Don't update items via `innerHTML` between steps** - the ticker moves the SAME items via translate; replacing content makes the previous item visible AS the new one (broken illusion).
+- **❗ Climax dwell ≥1s after final step** - see SKILL universal constraints.
 
 ## Critical Constraints
 
-- **Timeline must be paused**: `gsap.timeline({ paused: true })`
-- **Registry key = `data-composition-id`**
-- **No CSS `transition`** on stack-inner — competes with the additive transform
-- **`will-change: transform`** on stack-inner — many small transform updates per second
-- **All items same height (pixel-exact)** — mismatched heights cause cumulative drift
-- **For numeric: `font-variant-numeric: tabular-nums`** — variable digit widths break alignment
+- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
+- **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
+- **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
+- **No CSS `transition`** on stack-inner - competes with the additive transform
+- **`will-change: transform`** on stack-inner - many small transform updates per second
+- **All items same height (pixel-exact)** - mismatched heights cause cumulative drift
+- **For numeric: `font-variant-numeric: tabular-nums`** - variable digit widths break alignment
 
 ## Combinations
 
-- [reactive-displacement.md](reactive-displacement.md) — ticker is "pushed" by an incoming element
-- [scale-swap-transition.md](scale-swap-transition.md) — ticker scales out after settling on final state, scaled-in subtitle replaces it
-- [press-release-spring.md](press-release-spring.md) — button press TRIGGERS the ticker spin
+- [reactive-displacement.md](reactive-displacement.md) - ticker is "pushed" by an incoming element
+- [scale-swap-transition.md](scale-swap-transition.md) - ticker scales out after settling on final state, scaled-in subtitle replaces it
+- [press-release-spring.md](press-release-spring.md) - button press TRIGGERS the ticker spin
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` — additive spring tweens via shared onUpdate
-- `/hyperframes-core` — composition wiring
-- `/hyperframes-cli` — `hyperframes lint`
+- `/hyperframes-animation` - additive spring tweens via shared onUpdate
+- `/hyperframes-core` - composition wiring
+- `/hyperframes-cli` - `hyperframes lint`

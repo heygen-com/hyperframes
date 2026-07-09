@@ -1,13 +1,13 @@
 ---
 name: physics-press-reaction
-description: Cursor + element synchronized press via subtractive spring forces — cursor lands on element, both compress together, then release. Distinct from press-release-spring (which has no cursor).
+description: Cursor + element synchronized press via subtractive spring forces - cursor lands on element, both compress together, then release. Distinct from press-release-spring (which has no cursor).
 metadata:
   tags: spring, click, physics, cursor, subtractive, interaction, synchronized
 ---
 
 # Physics Press Reaction (Cursor + Element Synced)
 
-Models a real click: a cursor approaches a button, lands, and both compress IN SYNC, then release together. Two distinct timing events (down-frame and up-frame) bound by spring forces. Distinct from [press-release-spring](press-release-spring.md) (which has no cursor — just a press happening); this rule is the COMBINED cursor + element behavior.
+Models a real click: a cursor approaches a button, lands, and both compress IN SYNC, then release together. Two distinct timing events (down-frame and up-frame) bound by spring forces. Distinct from [press-release-spring](press-release-spring.md) (which has no cursor - just a press happening); this rule is the COMBINED cursor + element behavior.
 
 ## How It Works
 
@@ -97,102 +97,111 @@ The cursor ALSO translates to the button's center during the approach phase BEFO
   color: {brandColor};
   text-transform: uppercase;
 }
-/* Cursor — absolute, positioned by GSAP */
+/* Cursor - absolute, positioned by anime.js */
 .cursor {
   position: absolute;
   width: CURSOR_SIZE;
   height: CURSOR_SIZE;
   pointer-events: none;
   z-index: 100;
-  /* initial position is set by gsap.set() */
+  /* initial position is set by anime.utils.set() */
   transform-origin: 0 0; /* arrow point is the click point */
   filter: {cursorDropShadow};
 }
 ```
 
-## GSAP Timeline
+## Anime.js Timeline
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
   // Position cursor initially off-target (off-screen or far corner).
-  gsap.set("#cursor", { x: CURSOR_START_X, y: CURSOR_START_Y });
+  anime.utils.set("#cursor", { translateX: CURSOR_START_X, translateY: CURSOR_START_Y });
 
   // The button's screen center, in composition coordinates.
   const BUTTON_CENTER = { x: BUTTON_CENTER_X, y: BUTTON_CENTER_Y };
 
-  // Phase 1 — cursor approaches button
-  tl.to(
+  // Phase 1: cursor approaches button
+  tl.add(
     "#cursor",
     {
-      x: BUTTON_CENTER.x,
-      y: BUTTON_CENTER.y,
-      duration: APPROACH_DUR,
-      ease: "power2.inOut",
+      translateX: BUTTON_CENTER.x,
+      translateY: BUTTON_CENTER.y,
+      duration: APPROACH_DUR * 1000,
+      ease: "inOutCubic",
     },
-    APPROACH_START,
+    APPROACH_START * 1000,
   );
 
-  // Phase 2 — coordinated press down (button + cursor both scale to 1 - PRESS_INTENSITY)
-  tl.to(
+  // Phase 2: coordinated press down (button + cursor both scale to 1 - PRESS_INTENSITY)
+  tl.add(
     ["#btn", "#cursor"],
     {
       scale: 1 - PRESS_INTENSITY,
-      duration: PRESS_DOWN_DUR,
-      ease: "power1.in",
+      duration: PRESS_DOWN_DUR * 1000,
+      ease: "inQuad",
     },
-    PRESS_DOWN_AT,
+    PRESS_DOWN_AT * 1000,
   );
 
-  // Phase 3 — release (both spring back to 1.0 with overshoot)
-  tl.to(
+  // Phase 3: release (both spring back to 1.0 with overshoot)
+  tl.add(
     ["#btn", "#cursor"],
     {
       scale: 1,
-      duration: RELEASE_DUR,
-      ease: `back.out(${BOUNCE_FACTOR})`,
+      duration: RELEASE_DUR * 1000,
+      ease: `outBack(${BOUNCE_FACTOR})`,
     },
-    RELEASE_AT,
+    RELEASE_AT * 1000,
   );
 
-  // Phase 4 — inner glow during press (boxShadow change synced to press scale)
-  tl.to(
+  // Phase 4: inner glow during press (boxShadow change synced to press scale)
+  tl.add(
     "#btn",
     {
       boxShadow: `{btnPressedShadow}`,
-      duration: PRESS_DOWN_DUR,
-      ease: "power1.in",
+      duration: PRESS_DOWN_DUR * 1000,
+      ease: "inQuad",
     },
-    PRESS_DOWN_AT,
+    PRESS_DOWN_AT * 1000,
   );
-  tl.to(
+  tl.add(
     "#btn",
     {
       boxShadow: `{btnRestingShadow}`,
-      duration: RELEASE_DUR,
-      ease: "power2.out",
+      duration: RELEASE_DUR * 1000,
+      ease: "outCubic",
     },
-    RELEASE_AT,
+    RELEASE_AT * 1000,
   );
 
   // Brand fades in early (context)
-  tl.from(
+  tl.add(
     ".brand",
-    { opacity: 0, y: BRAND_REVEAL_Y_PX, duration: BRAND_REVEAL_DUR, ease: "power3.out" },
-    BRAND_REVEAL_AT,
+    {
+      opacity: [0, 1],
+      translateY: [BRAND_REVEAL_Y_PX, 0],
+      duration: BRAND_REVEAL_DUR * 1000,
+      ease: "outQuart",
+    },
+    BRAND_REVEAL_AT * 1000,
   );
 
   // Cursor optionally moves off after press (or holds for dwell)
-  tl.to(
+  tl.add(
     "#cursor",
-    { x: CURSOR_EXIT_X, y: CURSOR_EXIT_Y, duration: CURSOR_EXIT_DUR, ease: "power2.out" },
-    CURSOR_EXIT_AT,
+    {
+      translateX: CURSOR_EXIT_X,
+      translateY: CURSOR_EXIT_Y,
+      duration: CURSOR_EXIT_DUR * 1000,
+      ease: "outCubic",
+    },
+    CURSOR_EXIT_AT * 1000,
   );
 
-  window.__timelines["press-react-scene"] = tl;
+  hyperframesAnime.register("press-react-scene", tl);
 </script>
 ```
 
@@ -212,19 +221,19 @@ During the hold phase, the inner glow pulses (sin-driven). Suggests "processing"
 
 ```js
 const holdGlow = { p: 0 };
-tl.to(
+tl.add(
   holdGlow,
   {
     p: Math.PI * GLOW_PULSE_CYCLES * 2,
-    duration: HOLD_DUR,
-    ease: "none",
+    duration: HOLD_DUR * 1000,
+    ease: "linear",
     onUpdate: () => {
       const alpha = GLOW_BASE_ALPHA + Math.sin(holdGlow.p) * GLOW_PULSE_AMP;
       document.getElementById("btn").style.boxShadow =
         `inset 0 0 GLOW_BLUR rgba(255, 255, 255, ${alpha})`;
     },
   },
-  HOLD_START_AT,
+  HOLD_START_AT * 1000,
 );
 ```
 
@@ -232,119 +241,120 @@ tl.to(
 
 ### Timing (seconds)
 
-- **APPROACH_START** — when the cursor begins moving toward the button.
+- **APPROACH_START** - when the cursor begins moving toward the button.
   - Range: 0-0.3 s (small lead-in is fine; long delays read as a dead frame)
-- **APPROACH_DUR** — cursor approach duration.
+- **APPROACH_DUR** - cursor approach duration.
   - Range: 0.7-1.3 s; faster reads as urgent, slower as deliberate
-- **PRESS_DOWN_AT** — when the press fires.
+- **PRESS_DOWN_AT** - when the press fires.
   - Constraints: MUST equal `APPROACH_START + APPROACH_DUR` so the cursor arrives exactly when the press begins (avoids "tapping on air")
-- **PRESS_DOWN_DUR** — compression duration.
+- **PRESS_DOWN_DUR** - compression duration.
   - Range: 0.1-0.25 s
-- **RELEASE_AT** — when the release fires.
+- **RELEASE_AT** - when the release fires.
   - Constraints: must be > `PRESS_DOWN_AT + PRESS_DOWN_DUR`; an optional brief hold (0.05-0.4 s, or `HOLD_DUR` for the Hold-press variation) for "thinking" interactions
-- **RELEASE_DUR** — release spring duration.
+- **RELEASE_DUR** - release spring duration.
   - Range: 0.4-0.7 s (long enough for the overshoot to settle)
-- **BRAND_REVEAL_AT** — when the brand line fades in.
+- **BRAND_REVEAL_AT** - when the brand line fades in.
   - Constraints: must be < `PRESS_DOWN_AT` (context precedes interaction)
-- **BRAND_REVEAL_DUR** — brand fade-in duration.
+- **BRAND_REVEAL_DUR** - brand fade-in duration.
   - Range: 0.4-0.8 s
-- **CURSOR_EXIT_AT / CURSOR_EXIT_DUR** — optional outbound cursor motion after release.
+- **CURSOR_EXIT_AT / CURSOR_EXIT_DUR** - optional outbound cursor motion after release.
   - Constraints: `CURSOR_EXIT_AT` must be ≥ `RELEASE_AT + RELEASE_DUR` so the cursor exits AFTER the press settles, not during
 
 ### Physics
 
-- **PRESS_INTENSITY** — how deep the press compression goes.
+- **PRESS_INTENSITY** - how deep the press compression goes.
   - Range: 0.05 (subtle) - 0.10 (standard) - 0.15 (heavy)
-  - Applied as `scale: 1 - PRESS_INTENSITY` on both cursor and button (single GSAP target array)
-- **BOUNCE_FACTOR** — `back.out(${BOUNCE_FACTOR})` overshoot on the release.
+  - Applied as `scale: 1 - PRESS_INTENSITY` on both cursor and button (single anime.js target array)
+- **BOUNCE_FACTOR** - `outBack(${BOUNCE_FACTOR})` overshoot on the release.
   - Range: 1.6 (soft) - 2.0 (firm) - 2.4 (cartoony)
 
 ### Positioning
 
-- **CURSOR_START_X / CURSOR_START_Y** — initial cursor position in composition coordinates.
+- **CURSOR_START_X / CURSOR_START_Y** - initial cursor position in composition coordinates.
   - Constraints: off-screen or in a corner far from the button so the approach reads as motion-in, not a teleport
-- **BUTTON_CENTER_X / BUTTON_CENTER_Y** — the button's measured screen-space center.
+- **BUTTON_CENTER_X / BUTTON_CENTER_Y** - the button's measured screen-space center.
   - Source: measured at composition coordinates; for `place-items: center` at 1920×1080 this is `(960, 540)`
-- **CURSOR_EXIT_X / CURSOR_EXIT_Y** — where the cursor moves after release (if used).
+- **CURSOR_EXIT_X / CURSOR_EXIT_Y** - where the cursor moves after release (if used).
   - Range: any off-stage or out-of-the-way position
-- **BRAND_REVEAL_Y_PX** — brand initial y offset.
+- **BRAND_REVEAL_Y_PX** - brand initial y offset.
   - Range: 8-20 px
 
 ### Layout / typography
 
-- **STACK_GAP** — gap between button and brand line.
+- **STACK_GAP** - gap between button and brand line.
   - Range: 40-96 px
-- **BTN_PADDING_V / BTN_PADDING_H** — button padding.
+- **BTN_PADDING_V / BTN_PADDING_H** - button padding.
   - Range: V 24-40 px, H 60-100 px (horizontal padding 2-3× vertical reads as pill-shaped CTA)
-- **BTN_INNER_GAP** — gap between icon and label inside the button.
+- **BTN_INNER_GAP** - gap between icon and label inside the button.
   - Range: 16-32 px
-- **BTN_RADIUS** — button corner radius.
+- **BTN_RADIUS** - button corner radius.
   - Range: 20-40 px, or `BTN_PADDING_V + BTN_FONT_SIZE/2` for fully rounded ends
-- **BTN_FONT_SIZE / BTN_ICON_SIZE** — typographic sizes inside the button.
+- **BTN_FONT_SIZE / BTN_ICON_SIZE** - typographic sizes inside the button.
   - Range: font 60-100 px at 1080p; icon ~1.0-1.1× font size
-- **BTN_TRACKING** — letter-spacing on uppercase button text.
+- **BTN_TRACKING** - letter-spacing on uppercase button text.
   - Range: 4-12 px
-- **BRAND_SIZE / BRAND_TRACKING** — brand line typography.
+- **BRAND_SIZE / BRAND_TRACKING** - brand line typography.
   - Range: 40-60 px, tracking 8-16 px
-- **CURSOR_SIZE** — cursor SVG size.
+- **CURSOR_SIZE** - cursor SVG size.
   - Range: 48-96 px at 1080p
 
 ### Hold-press variation
 
-- **HOLD_DUR** — hold window between press down and release.
+- **HOLD_DUR** - hold window between press down and release.
   - Range: 0.3-0.8 s
-- **HOLD_START_AT** — when the glow pulse begins.
+- **HOLD_START_AT** - when the glow pulse begins.
   - Constraints: typically equal to `PRESS_DOWN_AT + PRESS_DOWN_DUR`
-- **GLOW_PULSE_CYCLES** — number of full sine cycles across `HOLD_DUR`.
+- **GLOW_PULSE_CYCLES** - number of full sine cycles across `HOLD_DUR`.
   - Range: 1-4 (more cycles read as faster "processing")
-- **GLOW_BASE_ALPHA** — center of the alpha pulse.
+- **GLOW_BASE_ALPHA** - center of the alpha pulse.
   - Range: 0.15-0.3
-- **GLOW_PULSE_AMP** — peak deviation from `GLOW_BASE_ALPHA`.
+- **GLOW_PULSE_AMP** - peak deviation from `GLOW_BASE_ALPHA`.
   - Range: 0.1-0.2; must satisfy `GLOW_BASE_ALPHA - GLOW_PULSE_AMP ≥ 0`
-- **GLOW_BLUR** — inset glow blur radius (px).
+- **GLOW_BLUR** - inset glow blur radius (px).
   - Range: 24-48 px
 
 ### Tokens
 
-- **{sceneBg}** — background gradient/color
-- **{font}** — typographic stack
-- **{btnBg}** — button background (typically gradient toward an accent hue)
-- **{btnTextColor}** — button text color
-- **{btnRestingShadow}** / **{btnPressedShadow}** — outer + inset box-shadow strings for the resting and pressed states
-- **{brandColor}** — accent brand color
-- **{cursorFill}** / **{cursorStroke}** — cursor SVG fill and stroke
-- **{cursorDropShadow}** — `filter: drop-shadow(...)` value for cursor depth
-- **{Brand}** — brand line copy
-- **{ctaCopy}** / **{ctaIcon}** — button label and inline icon glyph
+- **{sceneBg}** - background gradient/color
+- **{font}** - typographic stack
+- **{btnBg}** - button background (typically gradient toward an accent hue)
+- **{btnTextColor}** - button text color
+- **{btnRestingShadow}** / **{btnPressedShadow}** - outer + inset box-shadow strings for the resting and pressed states
+- **{brandColor}** - accent brand color
+- **{cursorFill}** / **{cursorStroke}** - cursor SVG fill and stroke
+- **{cursorDropShadow}** - `filter: drop-shadow(...)` value for cursor depth
+- **{Brand}** - brand line copy
+- **{ctaCopy}** / **{ctaIcon}** - button label and inline icon glyph
 
 ## Key Principles
 
-- **Same press scale on cursor AND button** — physical synchronicity. If only the button scales, the cursor appears to "tap on air"; if only the cursor scales, the button feels disconnected.
-- **Cursor arrives BEFORE press starts** — there must be a clear moment of "cursor over target" before scale change. Otherwise the press is unattributed.
-- **`back.out(${BOUNCE_FACTOR})` for release** — both elements need spring overshoot together. Linear release loses the tactile feel.
-- **Inner glow appears DURING press, fades on release** — visual confirmation of contact. Outer shadow shrinks (pushed-in), inner glow appears (energy concentrated).
-- **Cursor `pointer-events: none`** — the cursor is decorative; if it captures events, hover/click behaviors on button below break.
-- **Cursor `transform-origin: 0 0`** — the arrow's tip is the click point, not its center. Scale around the tip keeps the click point stable.
-- **Climax dwell ≥1 s** — after release, the comp must continue ≥1 s. The press is a beat; viewer needs time to see the result.
+- **Same press scale on cursor AND button** - physical synchronicity. If only the button scales, the cursor appears to "tap on air"; if only the cursor scales, the button feels disconnected.
+- **Cursor arrives BEFORE press starts** - there must be a clear moment of "cursor over target" before scale change. Otherwise the press is unattributed.
+- **`outBack(${BOUNCE_FACTOR})` for release** - both elements need spring overshoot together. Linear release loses the tactile feel.
+- **Inner glow appears DURING press, fades on release** - visual confirmation of contact. Outer shadow shrinks (pushed-in), inner glow appears (energy concentrated).
+- **Cursor `pointer-events: none`** - the cursor is decorative; if it captures events, hover/click behaviors on button below break.
+- **Cursor `transform-origin: 0 0`** - the arrow's tip is the click point, not its center. Scale around the tip keeps the click point stable.
+- **Climax dwell ≥1 s** - after release, the comp must continue ≥1 s. The press is a beat; viewer needs time to see the result.
 
 ## Critical Constraints
 
-- **Timeline must be paused**: `gsap.timeline({ paused: true })`
-- **Registry key = `data-composition-id`**
-- **No CSS `transition`** on either cursor or button — competes with GSAP
+- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
+- **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
+- **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
+- **No CSS `transition`** on either cursor or button - competes with anime.js
 - **Cursor SVG with `pointer-events: none`**
 - **`will-change: transform`** on button (and cursor if desired)
-- **`up-frame > down-frame`** — release MUST come after press; otherwise the comp shows release without press
-- **Don't use real `mouseenter` / `click` events** — HF is a render context, not a UI; everything must run via the timeline
+- **`up-frame > down-frame`** - release MUST come after press; otherwise the comp shows release without press
+- **Don't use real `mouseenter` / `click` events** - HF is a render context, not a UI; everything must run via the timeline
 
 ## Combinations
 
-- [press-release-spring.md](press-release-spring.md) — the BUTTON-only press variant; this rule layers cursor on top
-- [cursor-click-ripple.md](cursor-click-ripple.md) — adds a ripple effect at the click point
-- [scale-swap-transition.md](scale-swap-transition.md) — the press TRIGGERS the swap
+- [press-release-spring.md](press-release-spring.md) - the BUTTON-only press variant; this rule layers cursor on top
+- [cursor-click-ripple.md](cursor-click-ripple.md) - adds a ripple effect at the click point
+- [scale-swap-transition.md](scale-swap-transition.md) - the press TRIGGERS the swap
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` — coordinated multi-target tweens via array
-- `/hyperframes-core` — composition wiring
-- `/hyperframes-cli` — `hyperframes lint`
+- `/hyperframes-animation` - coordinated multi-target tweens via array
+- `/hyperframes-core` - composition wiring
+- `/hyperframes-cli` - `hyperframes lint`

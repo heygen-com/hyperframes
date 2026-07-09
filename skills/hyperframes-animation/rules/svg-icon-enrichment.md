@@ -7,18 +7,18 @@ metadata:
 
 # SVG Icon Enrichment
 
-Treats an SVG icon as a composition of animated PARTS, not an opaque image. Each meaningful internal element (a clock hand, scissor blade, recording dot, data line) gets its own GSAP-driven micro-animation. Distinct from [svg-path-draw](svg-path-draw.md) (which animates the OUTLINE drawing) — enrichment animates INTERNAL PARTS, ideally after the outline has drawn.
+Treats an SVG icon as a composition of animated PARTS, not an opaque image. Each meaningful internal element (a clock hand, scissor blade, recording dot, data line) gets its own anime.js-driven micro-animation. Distinct from [svg-path-draw](svg-path-draw.md) (which animates the OUTLINE drawing) - enrichment animates INTERNAL PARTS, ideally after the outline has drawn.
 
 ## How It Works
 
-The SVG is authored with named `<line>`, `<circle>`, `<path>`, or `<g>` children. The GSAP timeline targets these by selector and applies one of 4 signature motion patterns:
+The SVG is authored with named `<line>`, `<circle>`, `<path>`, or `<g>` children. The anime.js timeline targets these by selector and applies one of 4 signature motion patterns:
 
-1. **Rotation** — clock hand, gear, loading spinner (`transform: rotate(deg)`)
-2. **Oscillation** — scissor blades, wing flap, toggle (`transform: rotate(±sin*amp)` on opposing groups)
-3. **Pulse** — recording dot, heart, notification (`scale + opacity` via sin)
-4. **Dash flow** — moving dashes along a stroke, like a data stream (`strokeDashoffset` linear)
+1. **Rotation** - clock hand, gear, loading spinner (`transform: rotate(deg)`)
+2. **Oscillation** - scissor blades, wing flap, toggle (`transform: rotate(±sin*amp)` on opposing groups)
+3. **Pulse** - recording dot, heart, notification (`scale + opacity` via sin)
+4. **Dash flow** - moving dashes along a stroke, like a data stream (`strokeDashoffset` linear)
 
-All run inside the paused GSAP timeline so HF seeks deterministically.
+All run inside the paused anime.js timeline so HF seeks deterministically.
 
 ## HTML
 
@@ -32,7 +32,7 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
 >
   <div class="stack">
     <div class="row">
-      <!-- Clock icon — minute hand rotates -->
+      <!-- Clock icon - minute hand rotates -->
       <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
         <circle cx="60" cy="60" r="50" fill="none" stroke="{accentColor}" stroke-width="6" />
         <line
@@ -60,7 +60,7 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
         <circle cx="60" cy="60" r="6" fill="{textColor}" />
       </svg>
 
-      <!-- Recording dot — pulses -->
+      <!-- Recording dot - pulses -->
       <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
         <circle
           id="rec-ring"
@@ -74,7 +74,7 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
         <circle id="rec-dot" cx="60" cy="60" r="22" fill="{recordColor}" />
       </svg>
 
-      <!-- Data stream — dashes flow along the line -->
+      <!-- Data stream - dashes flow along the line -->
       <svg class="icon-svg" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
         <rect
           x="14"
@@ -145,23 +145,22 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
 }
 ```
 
-## GSAP Timeline
+## Anime.js Timeline
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
 
-  // Pattern 1 — Rotation (clock hands)
+  // Pattern 1: Rotation (clock hands)
   // Minute hand: MIN_REVOLUTIONS full rotations over TOTAL_DURATION
   const minState = { deg: 0 };
-  tl.to(
+  tl.add(
     minState,
     {
       deg: 360 * MIN_REVOLUTIONS,
-      duration: TOTAL_DURATION,
-      ease: "none",
+      duration: TOTAL_DURATION * 1000,
+      ease: "linear",
       onUpdate: () => {
         document.getElementById("hand-min").style.transform = `rotate(${minState.deg}deg)`;
       },
@@ -171,12 +170,12 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
 
   // Second hand: SEC_REVOLUTIONS full rotations over TOTAL_DURATION (faster)
   const secState = { deg: 0 };
-  tl.to(
+  tl.add(
     secState,
     {
       deg: 360 * SEC_REVOLUTIONS,
-      duration: TOTAL_DURATION,
-      ease: "none",
+      duration: TOTAL_DURATION * 1000,
+      ease: "linear",
       onUpdate: () => {
         document.getElementById("hand-sec").style.transform = `rotate(${secState.deg}deg)`;
       },
@@ -184,14 +183,14 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
     0,
   );
 
-  // Pattern 2 — Pulse (recording dot, ring opacity inverse)
+  // Pattern 2: Pulse (recording dot, ring opacity inverse)
   const pulseState = { p: 0 };
-  tl.to(
+  tl.add(
     pulseState,
     {
       p: Math.PI * 2 * PULSE_CYCLES,
-      duration: TOTAL_DURATION,
-      ease: "none",
+      duration: TOTAL_DURATION * 1000,
+      ease: "linear",
       onUpdate: () => {
         const dotScale = 1 + Math.sin(pulseState.p) * PULSE_DOT_AMP;
         const ringScale = 1 + Math.sin(pulseState.p + Math.PI / 2) * PULSE_RING_AMP;
@@ -209,14 +208,14 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
     0,
   );
 
-  // Pattern 3 — Dash flow (data stream)
+  // Pattern 3: Dash flow (data stream)
   const flowState = { offset: 0 };
-  tl.to(
+  tl.add(
     flowState,
     {
-      offset: DASH_FLOW_TOTAL_OFFSET, // negative for L→R flow, positive for R→L
-      duration: TOTAL_DURATION,
-      ease: "none",
+      offset: DASH_FLOW_TOTAL_OFFSET, // negative for left-to-right flow, positive for right-to-left
+      duration: TOTAL_DURATION * 1000,
+      ease: "linear",
       onUpdate: () => {
         document.getElementById("data-flow").style.strokeDashoffset = String(flowState.offset);
       },
@@ -225,48 +224,52 @@ All run inside the paused GSAP timeline so HF seeks deterministically.
   );
 
   // Brand fades in early
-  tl.from(".brand", { opacity: 0, y: 16, duration: 0.6, ease: "power3.out" }, BRAND_AT);
+  tl.add(
+    ".brand",
+    { opacity: [0, 1], translateY: [16, 0], duration: 600, ease: "outQuart" },
+    BRAND_AT * 1000,
+  );
 
-  window.__timelines["enrichment-scene"] = tl;
+  hyperframesAnime.register("enrichment-scene", tl);
 </script>
 ```
 
 ## How to Choose Values
 
-- **MIN_REVOLUTIONS** — minute-hand revolutions across TOTAL_DURATION
+- **MIN_REVOLUTIONS** - minute-hand revolutions across TOTAL_DURATION
   - Range: 0.5–2.0 (continuous; faster reads as time-lapse)
   - Constraints: avoid integer revolutions if visible end frame matters (lands back at start)
 
-- **SEC_REVOLUTIONS** — second-hand revolutions across TOTAL_DURATION
+- **SEC_REVOLUTIONS** - second-hand revolutions across TOTAL_DURATION
   - Range: 4–10 (should be visibly faster than the minute hand)
   - Constraints: SEC_REVOLUTIONS > MIN_REVOLUTIONS × 3 for the speed difference to read
 
-- **PULSE_CYCLES** — number of pulse cycles across TOTAL_DURATION
+- **PULSE_CYCLES** - number of pulse cycles across TOTAL_DURATION
   - Range: 2–4 over a 3–5 s comp
   - Effects: ≥ 5 reads as anxious flicker; ≤ 1 reads as forgotten
 
-- **PULSE_DOT_AMP** — dot scale amplitude
+- **PULSE_DOT_AMP** - dot scale amplitude
   - Range: 0.05–0.20
   - Effects: 0.05 = breathing; 0.20 = throbbing
 
-- **PULSE_RING_AMP** — ring scale amplitude (typically lower than DOT_AMP)
+- **PULSE_RING_AMP** - ring scale amplitude (typically lower than DOT_AMP)
   - Range: 0.04–0.12
   - Constraints: must be < PULSE_DOT_AMP or ring overshadows dot
 
-- **PULSE_RING_OPACITY_BASE / PULSE_RING_OPACITY_AMP** — ring opacity baseline + sine amplitude
+- **PULSE_RING_OPACITY_BASE / PULSE_RING_OPACITY_AMP** - ring opacity baseline + sine amplitude
   - Range: BASE 0.4–0.6; AMP 0.3–0.5
   - Constraints: BASE − AMP ≥ 0 and BASE + AMP ≤ 1
 
-- **DASH_FLOW_TOTAL_OFFSET** — total stroke-dashoffset change across TOTAL_DURATION
+- **DASH_FLOW_TOTAL_OFFSET** - total stroke-dashoffset change across TOTAL_DURATION
   - Range: −400 to −100 (negative for L→R) or +100 to +400 (R→L)
   - Effects: |large| = fast flow; |small| = slow drift
   - Constraints: must be an integer multiple of the dash period (dash + gap) or the loop end frame shows a phase jump
 
-- **BRAND_AT** — when the brand phrase fades in
+- **BRAND_AT** - when the brand phrase fades in
   - Range: 0.3–1.0 s
   - Effects: too early competes with icon entries; too late feels appended
 
-- **Ease family choices**: rotation = `none` (linear motion is the point); pulse driver = `none` (sine handles the curve); reveal of brand = `power3.out`
+- **Ease family choices**: rotation = `linear` (linear motion is the point); pulse driver = `linear` (sine handles the curve); reveal of brand = `outQuart`
 
 ## Signature Motion Patterns
 
@@ -285,10 +288,9 @@ Draw the icon outline first (via [svg-path-draw](svg-path-draw.md)), THEN activa
 
 ```js
 // Phase 1: outline draws (0 → OUTLINE_DUR)
-tl.fromTo(
+tl.add(
   "#icon-outline",
-  { strokeDashoffset: 360 },
-  { strokeDashoffset: 0, duration: OUTLINE_DUR, ease: "power2.inOut" },
+  { strokeDashoffset: [360, 0], duration: OUTLINE_DUR * 1000, ease: "inOutCubic" },
   0,
 );
 // Phase 2: enrichment starts at OUTLINE_DUR
@@ -296,34 +298,35 @@ tl.fromTo(
 
 ### Per-icon entry stagger
 
-For a row of icons all animating, stagger their entries. Each icon's enrichment starts as it fades in, not synchronized — feels organic.
+For a row of icons all animating, stagger their entries. Each icon's enrichment starts as it fades in, not synchronized - feels organic.
 
 ## Key Principles
 
-- **❗ For rotation around an explicit point inside SVG, use the SVG `transform` attribute, NOT CSS transform** — `el.setAttribute('transform', `rotate(${deg} ${cx} ${cy})`)`. The CSS combination `transform: rotate(...)` + `transform-origin: 60px 60px` + `transform-box: fill-box` interprets the origin in the element's OWN bbox-local coordinates, NOT in viewBox coordinates. For a thin `<line>` (whose bbox is the line's narrow envelope), `60 60` in bbox-local refers to a point OUTSIDE the line, so the hand flies along an off-center arc instead of rotating in place. Same trap for small inner shapes (rec-dot circle whose bbox is the small circle, not the full viewBox).
-- **For scaling around a center point inside SVG**, use `el.setAttribute('transform', `translate(${cx} ${cy}) scale(${s}) translate(-${cx} -${cy})`)`. Same reason — avoids the CSS bbox-local origin trap.
-- **Run continuous animations inside the timeline** — never CSS `@keyframes` or `requestAnimationFrame`. Both desync from HF's frame-by-frame seek.
-- **Amplitudes subtle** — icons are decorative, not headlines. Pulse scale within the ranges above; rotation speeds calibrated against composition length, not absolute time.
-- **Multiple parts of the same icon at different phases** — clock minute vs second hand at different speeds, ring vs dot pulse offset by π/2. Pure-sync looks mechanical; phase-offset looks alive.
-- **❗ Climax dwell ≥ 1 s** — if the enrichment is the headline beat, the composition must continue ≥ 1 s after the most dramatic moment.
+- **❗ For rotation around an explicit point inside SVG, use the SVG `transform` attribute, NOT CSS transform** - `el.setAttribute('transform', `rotate(${deg} ${cx} ${cy})`)`. The CSS combination `transform: rotate(...)` + `transform-origin: 60px 60px` + `transform-box: fill-box` interprets the origin in the element's OWN bbox-local coordinates, NOT in viewBox coordinates. For a thin `<line>` (whose bbox is the line's narrow envelope), `60 60` in bbox-local refers to a point OUTSIDE the line, so the hand flies along an off-center arc instead of rotating in place. Same trap for small inner shapes (rec-dot circle whose bbox is the small circle, not the full viewBox).
+- **For scaling around a center point inside SVG**, use `el.setAttribute('transform', `translate(${cx} ${cy}) scale(${s}) translate(-${cx} -${cy})`)`. Same reason - avoids the CSS bbox-local origin trap.
+- **Run continuous animations inside the timeline** - never CSS `@keyframes` or `requestAnimationFrame`. Both desync from HF's frame-by-frame seek.
+- **Amplitudes subtle** - icons are decorative, not headlines. Pulse scale within the ranges above; rotation speeds calibrated against composition length, not absolute time.
+- **Multiple parts of the same icon at different phases** - clock minute vs second hand at different speeds, ring vs dot pulse offset by π/2. Pure-sync looks mechanical; phase-offset looks alive.
+- **❗ Climax dwell ≥ 1 s** - if the enrichment is the headline beat, the composition must continue ≥ 1 s after the most dramatic moment.
 
 ## Critical Constraints
 
-- **Timeline must be paused**: `gsap.timeline({ paused: true })`
-- **Registry key = `data-composition-id`**
-- **No CSS `animation`** on SVG children — must be timeline-driven
-- **`transform-origin` matters per child** — set explicitly per animated element
+- **Timeline must be paused**: `anime.createTimeline({ autoplay: false })`
+- **Registration id = `data-composition-id`**: call `hyperframesAnime.register("<id>", tl)` with the same id as the scene root.
+- **One property owner per registered instance**: do not animate the same CSS property on the same element from two independently registered anime.js timelines; keep render-critical ownership in one timeline or split properties.
+- **No CSS `animation`** on SVG children - must be timeline-driven
+- **`transform-origin` matters per child** - set explicitly per animated element
 - **`stroke-linecap: round`** on flowing/dashed lines for clean dash edges
-- **Target SVG children by id** — `document.getElementById` is fine; selector chains into `<svg>` work the same as HTML
+- **Target SVG children by id** - `document.getElementById` is fine; selector chains into `<svg>` work the same as HTML
 
 ## Combinations
 
-- [svg-path-draw.md](svg-path-draw.md) — outline draws first, enrichment activates second
-- [orbit-3d-entry.md](orbit-3d-entry.md) — orbiting items are enriched icons (clock orbits a brand label)
-- [sine-wave-loop.md](sine-wave-loop.md) — entire icon floats while internal parts animate
+- [svg-path-draw.md](svg-path-draw.md) - outline draws first, enrichment activates second
+- [orbit-3d-entry.md](orbit-3d-entry.md) - orbiting items are enriched icons (clock orbits a brand label)
+- [sine-wave-loop.md](sine-wave-loop.md) - entire icon floats while internal parts animate
 
 ## Pairs with HF skills
 
-- `/hyperframes-animation` — onUpdate writes transform/opacity per SVG child
-- `/hyperframes-core` — composition wiring
-- `/hyperframes-cli` — `hyperframes lint`
+- `/hyperframes-animation` - onUpdate writes transform/opacity per SVG child
+- `/hyperframes-core` - composition wiring
+- `/hyperframes-cli` - `hyperframes lint`

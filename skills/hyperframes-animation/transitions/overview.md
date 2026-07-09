@@ -19,31 +19,31 @@ A transition tells the viewer how two scenes relate. A crossfade says "this cont
 These are non-negotiable for every multi-scene composition:
 
 1. **Every composition uses transitions.** No exceptions. Scenes without transitions feel like jump cuts.
-2. **Every scene uses entrance animations.** Elements animate IN — opacity, position, scale, etc. No scene should pop fully-formed onto screen. Use `gsap.fromTo()` (not `gsap.from()`) so the start state is explicit: `from()` animates _to_ current CSS, so pairing it with CSS `opacity: 0` is a 0→0 noop and the element never appears (see `/hyperframes-core` → sub-compositions).
-3. **Exit animations are BANNED** except on the final scene. Do NOT use `gsap.to()` to animate elements out before a transition fires. The transition IS the exit. Outgoing scene content must be fully visible when the transition starts — the transition handles the visual handoff.
+2. **Every scene uses entrance animations.** Elements animate IN: opacity, position, scale, etc. No scene should pop fully-formed onto screen. Anime.js has no `.from()` shorthand, so state entrance ranges explicitly in `.add()`: `opacity: [0, 1]`, `translateY: [40, 0]`. Do not rely on current computed CSS as an implicit endpoint.
+3. **Exit animations are BANNED** except on the final scene. Do NOT use `tl.add()` to animate elements out before a transition fires. The transition IS the exit. Outgoing scene content must be fully visible when the transition starts, the transition handles the visual handoff.
 4. **Final scene exception:** The last scene MAY fade elements out (e.g., fade to black at the end of the composition). This is the only scene where exit animations are allowed.
 
 ```js
-// ❌ BANNED — fading the outgoing scene out, then the next scene just runs its entrance.
+// BANNED: fading the outgoing scene out, then the next scene just runs its entrance.
 //    This is a jump cut with a dip, not a transition.
-tl.to("#s1", { opacity: 0, duration: 0.4 }, 4.0);
-tl.from("#s2 .headline", { y: 40, opacity: 0 }, 4.4);
+tl.add("#s1", { opacity: 0, duration: 400 }, 4000);
+tl.add("#s2 .headline", { translateY: [40, 0], opacity: [0, 1], duration: 500 }, 4400);
 
-// ✅ CORRECT — outgoing and incoming animate AT THE SAME TIME T; the motion IS the handoff.
-const T = 4.0;
-tl.to("#s1", { yPercent: -100, filter: "blur(8px)", duration: 0.5, ease: "power3.in" }, T);
-tl.fromTo("#s2", { yPercent: 100 }, { yPercent: 0, duration: 0.5, ease: "power3.out" }, T);
+// CORRECT: outgoing and incoming animate AT THE SAME TIME T; the motion IS the handoff.
+const T = 4000;
+tl.add("#s1", { translateY: "-100%", filter: "blur(8px)", duration: 500, ease: "inQuart" }, T);
+tl.add("#s2", { translateY: ["100%", "0%"], duration: 500, ease: "outQuart" }, T);
 ```
 
-> **You are NOT done after this file.** This overview gives you _which_ transition and _when_. Before writing any transition you MUST open **`catalog.md`** in this directory for the GSAP code and the hard rule every transition follows — _position new scene → animate outgoing → swap → animate incoming → clean up overlays_ — plus the per-category `css-*.md` files for specifics. Authoring transitions from this overview alone is how you end up shipping the ❌ pattern above.
+> **You are NOT done after this file.** This overview gives you _which_ transition and _when_. Before writing any transition you MUST open **`catalog.md`** in this directory for the anime.js code and the hard rule every transition follows: _position new scene, animate outgoing, swap, animate incoming, clean up overlays_. Also open the per-category `css-*.md` files for specifics. Authoring transitions from this overview alone is how you end up shipping the banned pattern above.
 
 ## Energy → Primary Transition
 
-| Energy                                   | CSS Primary                  | Shader Primary                       | Accent                         | Duration  | Easing                 |
-| ---------------------------------------- | ---------------------------- | ------------------------------------ | ------------------------------ | --------- | ---------------------- |
-| **Calm** (wellness, brand story, luxury) | Blur crossfade, focus pull   | Cross-warp morph, thermal distortion | Light leak, circle iris        | 0.5-0.8s  | `sine.inOut`, `power1` |
-| **Medium** (corporate, SaaS, explainer)  | Push slide, staggered blocks | Whip pan, cinematic zoom             | Squeeze, vertical push         | 0.3-0.5s  | `power2`, `power3`     |
-| **High** (promos, sports, music, launch) | Zoom through, overexposure   | Ridged burn, glitch, chromatic split | Staggered blocks, gravity drop | 0.15-0.3s | `power4`, `expo`       |
+| Energy                                   | CSS Primary                  | Shader Primary                       | Accent                         | Duration  | Easing                     |
+| ---------------------------------------- | ---------------------------- | ------------------------------------ | ------------------------------ | --------- | -------------------------- |
+| **Calm** (wellness, brand story, luxury) | Blur crossfade, focus pull   | Cross-warp morph, thermal distortion | Light leak, circle iris        | 0.5-0.8s  | `inOutSine`, `inOutQuad`   |
+| **Medium** (corporate, SaaS, explainer)  | Push slide, staggered blocks | Whip pan, cinematic zoom             | Squeeze, vertical push         | 0.3-0.5s  | `inOutCubic`, `inOutQuart` |
+| **High** (promos, sports, music, launch) | Zoom through, overexposure   | Ridged burn, glitch, chromatic split | Staggered blocks, gravity drop | 0.15-0.3s | `inOutQuint`, `outExpo`    |
 
 Pick ONE primary (60-70% of scene changes) + 1-2 accents. Never use a different transition for every scene.
 
@@ -54,7 +54,7 @@ Think about what the transition _communicates_, not just what it looks like.
 | Mood                     | Transitions                                                                                                                          | Why it works                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | **Warm / inviting**      | Light leak, blur crossfade, focus pull, film burn · **Shader:** thermal distortion, light leak, cross-warp morph                     | Soft edges, warm color washes. Nothing sharp or mechanical.                                 |
-| **Cold / clinical**      | Squeeze, zoom out, blinds, shutter, grid dissolve · **Shader:** gravitational lens                                                   | Content transforms mechanically — compressed, shrunk, sliced, gridded.                      |
+| **Cold / clinical**      | Squeeze, zoom out, blinds, shutter, grid dissolve · **Shader:** gravitational lens                                                   | Content transforms mechanically - compressed, shrunk, sliced, gridded.                      |
 | **Editorial / magazine** | Push slide, vertical push, diagonal split, shutter · **Shader:** whip pan                                                            | Like turning a page or slicing a layout. Clean directional movement.                        |
 | **Tech / futuristic**    | Grid dissolve, staggered blocks, blinds, chromatic aberration · **Shader:** glitch, chromatic split                                  | Grid dissolve is the core "data" transition. Shader glitch adds posterization + scan lines. |
 | **Tense / edgy**         | Glitch, VHS, chromatic aberration, ripple · **Shader:** ridged burn, glitch, domain warp                                             | Instability, distortion, digital breakdown. Ridged burn adds sharp lightning-crack edges.   |
@@ -68,9 +68,9 @@ Think about what the transition _communicates_, not just what it looks like.
 | Position                   | Use                                                                        | Why                                                   |
 | -------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- |
 | **Opening**                | Your most distinctive transition. Match the mood. 0.4-0.6s                 | Sets the visual language for the entire piece.        |
-| **Between related points** | Your primary transition. Consistent. 0.3s                                  | Don't distract — the content is continuing.           |
-| **Topic change**           | Something different from your primary. Staggered blocks, shutter, squeeze. | Signals "new section" — the viewer's brain resets.    |
-| **Climax / hero reveal**   | Your boldest accent. Fastest or most dramatic.                             | This is the payoff — spend your best transition here. |
+| **Between related points** | Your primary transition. Consistent. 0.3s                                  | Don't distract - the content is continuing.           |
+| **Topic change**           | Something different from your primary. Staggered blocks, shutter, squeeze. | Signals "new section" - the viewer's brain resets.    |
+| **Climax / hero reveal**   | Your boldest accent. Fastest or most dramatic.                             | This is the payoff - spend your best transition here. |
 | **Wind-down**              | Return to gentle. Blur crossfade, crossfade. 0.5-0.7s                      | Let the viewer exhale after the climax.               |
 | **Outro**                  | Slowest, simplest. Crossfade, color dip to black. 0.6-1.0s                 | Closure. Don't introduce new energy at the end.       |
 
@@ -84,18 +84,18 @@ Think about what the transition _communicates_, not just what it looks like.
 
 ## Presets
 
-| Preset     | Duration | Easing            |
-| ---------- | -------- | ----------------- |
-| `snappy`   | 0.2s     | `power4.inOut`    |
-| `smooth`   | 0.4s     | `power2.inOut`    |
-| `gentle`   | 0.6s     | `sine.inOut`      |
-| `dramatic` | 0.5s     | `power3.in` → out |
-| `instant`  | 0.15s    | `expo.inOut`      |
-| `luxe`     | 0.7s     | `power1.inOut`    |
+| Preset     | Duration | Easing                  |
+| ---------- | -------- | ----------------------- |
+| `snappy`   | 0.2s     | `inOutQuint`            |
+| `smooth`   | 0.4s     | `inOutCubic`            |
+| `gentle`   | 0.6s     | `inOutSine`             |
+| `dramatic` | 0.5s     | `inQuart` to `outQuart` |
+| `instant`  | 0.15s    | `inOutExpo`             |
+| `luxe`     | 0.7s     | `inOutQuad`             |
 
 ## Implementation
 
-Read `catalog.md` in this directory for GSAP code and hard rules for every transition type, and the `css-*.md` files for per-category implementation details.
+Read `catalog.md` in this directory for anime.js code and hard rules for every transition type, and the `css-*.md` files for per-category implementation details.
 
 | Category    | CSS                                                            | Shader (WebGL)                                                            |
 | ----------- | -------------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -103,10 +103,10 @@ Read `catalog.md` in this directory for GSAP code and hard rules for every trans
 | Scale/zoom  | Zoom through, zoom out, gravity drop, 3D flip                  | Cinematic zoom, gravitational lens                                        |
 | Reveal/mask | Circle iris, diamond iris, diagonal split, clock wipe, shutter | SDF iris                                                                  |
 | Dissolve    | Crossfade, blur crossfade, focus pull, color dip               | Cross-warp morph, domain warp                                             |
-| Cover       | Staggered blocks, horizontal blinds, vertical blinds           | —                                                                         |
+| Cover       | Staggered blocks, horizontal blinds, vertical blinds           | -                                                                         |
 | Light       | Light leak, overexposure burn, film burn                       | Light leak (shader), thermal distortion                                   |
 | Distortion  | Glitch, chromatic aberration, ripple, VHS tape                 | Glitch (shader), chromatic split, ridged burn, ripple waves, swirl vortex |
-| Pattern     | Grid dissolve, morph circle                                    | —                                                                         |
+| Pattern     | Grid dissolve, morph circle                                    | -                                                                         |
 
 ## Transitions That Don't Work in CSS
 
@@ -114,9 +114,9 @@ Avoid: star iris, tilt-shift, lens flare, hinge/door. See catalog.md for why.
 
 ## CSS vs Shader
 
-CSS transitions animate scene containers with opacity, transforms, clip-path, and filters. Shader transitions composite both scene textures per-pixel on a WebGL canvas — they can warp, dissolve, and morph in ways CSS cannot.
+CSS transitions animate scene containers with opacity, transforms, clip-path, and filters. Shader transitions composite both scene textures per-pixel on a WebGL canvas - they can warp, dissolve, and morph in ways CSS cannot.
 
-**Both are first-class options.** Shaders are provided by the `@hyperframes/shader-transitions` package — import from the package instead of writing raw GLSL. CSS transitions are simpler to set up. Choose based on the effect you want, not based on which is easier.
+**Both are first-class options.** Shaders are provided by the `@hyperframes/shader-transitions` package - import from the package instead of writing raw GLSL. CSS transitions are simpler to set up. Choose based on the effect you want, not based on which is easier.
 
 **Mixing is supported.** You can have some transitions use WebGL shaders and others use a CSS crossfade in the same composition. Omit the `shader` field on any `TransitionConfig` entry to get a smooth opacity crossfade instead of a WebGL effect:
 
@@ -150,4 +150,4 @@ These rules only apply to shader transition compositions. CSS-only compositions 
 
 ## Visual Pattern Warning
 
-Avoid transitions that create visible repeating geometric patterns — grids of tiles, hexagonal cells, uniform dot arrays, evenly-spaced blob circles. These look cheap and artificial regardless of the math behind them. Organic noise (FBM, domain warping) is good because it's irregular. Geometric repetition is bad because the eye instantly sees the grid.
+Avoid transitions that create visible repeating geometric patterns - grids of tiles, hexagonal cells, uniform dot arrays, evenly-spaced blob circles. These look cheap and artificial regardless of the math behind them. Organic noise (FBM, domain warping) is good because it's irregular. Geometric repetition is bad because the eye instantly sees the grid.
