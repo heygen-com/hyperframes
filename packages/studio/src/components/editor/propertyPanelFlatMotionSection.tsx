@@ -1,20 +1,9 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { Clock } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
-import { MetricField, Section } from "./propertyPanelPrimitives";
+import { parseTimingValue } from "./propertyPanelTimingSection";
+import { CommitField } from "./propertyPanelPrimitives";
 
-export function parseTimingValue(input: string): number | null {
-  const cleaned = input.replace(/s$/i, "").trim();
-  const parsed = Number.parseFloat(cleaned);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-/**
- * Derive a time range from the element's GSAP tweens (earliest start → latest
- * end) so an element animated purely by GSAP — with no `data-start` /
- * `data-duration` — still shows a meaningful Timing range instead of 0s.
- */
 function deriveTimingFromAnimations(
   animations: GsapAnimation[],
 ): { start: number; duration: number } | null {
@@ -30,7 +19,7 @@ function deriveTimingFromAnimations(
   return { start: lo, duration: hi - lo };
 }
 
-export function TimingSection({
+export function FlatTimingRow({
   element,
   animations = [],
   onSetAttribute,
@@ -45,7 +34,6 @@ export function TimingSection({
       element.dataAttributes.duration ?? element.dataAttributes["hf-authored-duration"] ?? "0",
     ) || 0;
 
-  // No authored clip timing → infer the range from the element's animations.
   const derived = explicitDuration > 0 ? null : deriveTimingFromAnimations(animations);
   const start = derived ? derived.start : explicitStart;
   const duration = derived ? derived.duration : explicitDuration;
@@ -69,24 +57,25 @@ export function TimingSection({
     void onSetAttribute("duration", (parsed - start).toFixed(2));
   };
 
+  const cell = (label: string, value: string, onCommit: (next: string) => void) => (
+    <div className="grid gap-px">
+      <span className="text-[9px] text-panel-text-4">{label}</span>
+      <span className="border-b border-transparent font-mono text-[11px] text-panel-text-0 hover:border-panel-border-input">
+        <CommitField value={value} onCommit={onCommit} />
+      </span>
+    </div>
+  );
+
   return (
-    <Section title="Timing" icon={<Clock size={15} />}>
-      <div className={RESPONSIVE_GRID}>
-        <MetricField label="Start" value={formatTimingValue(start)} onCommit={commitStart} />
-        <MetricField label="End" value={formatTimingValue(end)} onCommit={commitEnd} />
-      </div>
-      <div className="mt-3">
-        <MetricField
-          label="Duration"
-          value={formatTimingValue(duration)}
-          onCommit={commitDuration}
-        />
-      </div>
+    <div className={RESPONSIVE_GRID}>
+      {cell("Start", formatTimingValue(start), commitStart)}
+      {cell("End", formatTimingValue(end), commitEnd)}
+      {cell("Duration", formatTimingValue(duration), commitDuration)}
       {derived && (
-        <p className="mt-2 text-[10px] leading-snug text-neutral-500">
-          Inferred from this element’s animation — edit to pin an explicit clip range.
+        <p className="col-span-3 mt-1 text-[10px] leading-snug text-panel-text-3">
+          Inferred from this element's animation — edit to pin an explicit clip range.
         </p>
       )}
-    </Section>
+    </div>
   );
 }
