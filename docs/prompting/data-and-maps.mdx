@@ -24,7 +24,7 @@ Feed data inline or as a file. Small series go straight in the prompt; a CSV get
 
 **State the block *or* opt out of it — don't leave it implicit.** "Animate this data" without a decision drifts between a generic block and an improvised layout.
 - ❌ `animate this CSV as a chart`
-- ✅ `turn this CSV into an animated bar chart — use the `data-chart` registry block` **or** `…hand-draw everything, no chart library`
+- ✅ `turn this CSV into an animated bar chart — use the data-chart registry block` **or** `…hand-draw everything, no chart library`
 
 **Format numbers for the animation you asked for.** An odometer count-up needs fixed digit columns; a `$0 → $4.2M` range forces an awkward `$0.0M` start.
 - ❌ `counts from $0 to $4.2M`
@@ -67,7 +67,7 @@ The US map encodings combine — asking to "shade states *and* draw flows betwee
 
 **Name the region's block.** The choropleths are region-specific with baked-in projections (`spain-map` is D3 conic conformal, `world-map` is Natural Earth) — there's no generic "any country" map.
 - ❌ `a map of Spain's regions` (leaves the projection and geography to chance)
-- ✅ `use the `spain-map` registry block`
+- ✅ `use the spain-map registry block`
 
 ### Routes and flights
 
@@ -82,6 +82,6 @@ For a point-to-point journey — a route drawing across a map with a landing bea
 ### Where to go next
 
 - [Anatomy of a one-shot prompt](/prompting/anatomy) — the skeleton, and why odometers need fixed digit columns.
-- [Copy-paste examples](/prompting/examples) — bar-chart race and stat-grid prompts to adapt.
+- [Copy-paste examples](/prompting/examples) — bar-chart race and stat-tile prompts to adapt.
 - [Generated artwork](/prompting/generated-artwork) — where hand-drawn HTML/CSS/SVG shines, and where it doesn't.
 - [The specification dial](/prompting/specification-dial) — deciding when to name a block versus hand-draw.

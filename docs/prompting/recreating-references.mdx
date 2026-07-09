@@ -1,15 +1,15 @@
 ---
 title: Recreating something you saw
-description: "Transcribe motion, iterate with absolute targets, distill the constants - and know where the text-only ceiling is."
+description: "Transcribe motion, iterate with absolute targets, distill the constants — and know where the text-only ceiling is."
 ---
 
-Matching a specific reference from text alone is possible to roughly 90% — but only with a specific workflow, and knowing where the ceiling is.
+In practice, matching a specific reference from text alone reaches roughly 90% — but only with a specific workflow, and knowing where the ceiling is.
 
 **Transcribe motion, not just composition.** Watch the reference frame by frame and write down: the exact duration, the camera's path, what each element does with timestamps, how entrances overlap, which layers are blurred, sampled colors. A prompt built this way one-shots ~75% of the target — structure and motion arc land, rendering calibration doesn't.
 
 **Iterate with absolute targets.** Compare your render against the reference frame by frame, then correct one axis at a time while freezing everything that already matches. State corrections as absolute values, not relative nudges — "dot radius = 25% of row spacing", not "make dots 2x finer". Relative corrections pendulum: too big, then too small, then too big. Expect a handful of rounds to converge.
 
-**Distill the converged values back into the prompt.** Iteration is a search; the found constants are reusable. A prompt carrying them one-shots ~80-90% of the converged quality on a fresh build — the discrete facts (timings, counts, hexes, ratios, camera arcs) transfer losslessly, while continuous qualities (glow prominence, framing feel) still vary by a calibration note or two. And the converged composition file itself is the pixel-exact artifact: renders are deterministic, so re-rendering it reproduces the result bit-for-bit.
+**Distill the converged values back into the prompt.** Iteration is a search; the found constants are reusable. A prompt carrying them one-shots ~80–90% of the converged quality on a fresh build — the discrete facts (timings, counts, hexes, ratios, camera arcs) transfer losslessly, while continuous qualities (glow prominence, framing feel) still vary by a calibration note or two. And the converged composition file itself is the pixel-exact artifact: renders are deterministic, so re-rendering it reproduces the result bit-for-bit.
 
 A distilled spec that one-shots a broadcast-style animated globe:
 
@@ -18,7 +18,7 @@ A distilled spec that one-shots a broadcast-style animated globe:
   >
   > FIELD: blue-violet background, linear #2a24a8 → #12105e top-to-bottom with a soft radial lift at center; faint blurred vertical cyan light-streaks (#5ee0e8 at ~10% opacity, ~340px spacing) drifting 70px left across the piece; deep corner vignette; soft-light film grain at ~6% (seeded noise).
   >
-  > GLOBE: royal-blue sphere (#4348f2), lit from upper-left with a 0.58 ambient floor; a broad subtle satin band (#6470ff, very wide falloff, ~30% mix) sweeping the upper curve; a strong cyan rim-light line (#5ee8f0) tracing only the top edge. Continents in TWO layers: (a) a heavily-blurred darker-blue silhouette (#3439c2, 80% opacity) just under the surface, reading as a soft shadow shape; (b) a dot-matrix just above the surface on an equal-area grid (0.9° latitude rows, longitude step widening with latitude): dot radius = 24–28% of row spacing — clear blue gaps between dots — growing slightly toward the equator, 85% dot opacity; two color populations — cyan-aqua #5ee0e8 north, spring-green #7ce97a from latitude ~32° southward — with seeded ±30% per-dot brightness variance; dots dimmed to 40% in the view-space lower-right shadow zone. Continents read as distinct dotted landmasses with royal-blue ocean dominating (~30–35% coverage of the visible hemisphere).
+  > GLOBE: royal-blue sphere (#4348f2), lit from upper-left with a 0.58 ambient floor; a broad subtle satin band (#6470ff, very wide falloff, ~30% mix) sweeping the upper curve; a strong cyan rim-light line (#5ee8f0) tracing only the top edge. Continents in TWO layers: (a) a heavily-blurred darker-blue silhouette (#3439c2, 80% opacity) just under the surface, reading as a soft shadow shape; (b) a dot-matrix just above the surface on an equal-area grid (0.9° latitude rows, longitude step widening with latitude): dot radius = 24–28% of row spacing — clear blue gaps between dots — growing slightly toward the equator, 85% dot opacity; two color populations — cyan-aqua #5ee0e8 north, spring-green #7ce97a from latitude ~32° southward — with seeded ±30% per-dot brightness variance; dots dimmed to 40% in the view-space lower-right shadow zone. Continents read as distinct dotted landmasses covering ~30–35% of the visible hemisphere, with royal-blue ocean dominating the rest.
   >
   > CAMERA: open EXTREMELY close — the sphere's curve fills the entire frame, horizon exiting the upper corners — then one continuous pull-back + crane (fov 52°→40°) ending with the dome filling the lower half edge-to-edge, its silhouette touching both frame edges, horizon at ~45%. Ease power1.inOut computed over a 2.0s window while rendering 1.8s so the move never settles on-screen. The globe rotates 28° about its vertical axis, linear, continents drifting right-to-left, never stopping.
   >
