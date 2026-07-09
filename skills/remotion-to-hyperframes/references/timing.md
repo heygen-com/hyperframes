@@ -4,12 +4,13 @@ The single highest-leverage reference. Easings and timings are what readers
 notice; getting them wrong costs more SSIM than any other translation choice.
 Empirically validated against tiers T1–T3.
 
-## Conversion: frames → seconds
+## Conversion: frames -> seconds and milliseconds
 
-HF's timeline is in seconds. Remotion is frame-based. Always:
+HF `data-*` durations stay in seconds. Anime.js timeline positions and durations are milliseconds. Remotion is frame-based. Always compute both:
 
 ```
 time_seconds = frame / fps
+time_ms = time_seconds * 1000
 ```
 
 So at fps=30:
@@ -20,7 +21,7 @@ So at fps=30:
 
 Do this conversion once when translating, not at runtime.
 
-## interpolate — linear
+## interpolate - linear
 
 ```tsx
 const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: "clamp" });
@@ -29,49 +30,49 @@ const opacity = interpolate(frame, [0, 30], [0, 1], { extrapolateRight: "clamp" 
 Translates to:
 
 ```js
-gsap.to(target, { opacity: 1, duration: 1.0, ease: "none" }, 0);
-// fromTo if the property starts at 0 and CSS doesn't already set it
-gsap.fromTo(target, { opacity: 0 }, { opacity: 1, duration: 1.0, ease: "none" }, 0);
+tl.add(target, { opacity: 1, duration: 1000, ease: "linear" }, 0);
+// Use an explicit from-to array if CSS doesn't already set the from value.
+tl.add(target, { opacity: [0, 1], duration: 1000, ease: "linear" }, 0);
 ```
 
-`ease: "none"` matches Remotion's default linear interpolation. CSS sets the
+`ease: "linear"` matches Remotion's default linear interpolation. CSS sets the
 `from` value if your initial state is in CSS; otherwise use `fromTo`.
 
 `extrapolateLeft`/`extrapolateRight` defaults to `"extend"` in Remotion but
-`"clamp"` is what the agent will see most often. GSAP doesn't extend — values
-hold at the start and end of the tween. So for `clamp`, GSAP matches; for
+`"clamp"` is what the agent will see most often. Anime.js tweens hold at the
+start and end of the tween. So for `clamp`, anime.js matches; for
 `extend`, you'd need to extend the input range manually before emitting.
 
-## interpolate — multi-segment
+## interpolate - multi-segment
 
 ```tsx
 const opacity = interpolate(frame, [0, 15, 75, 90], [0, 1, 1, 0]);
 ```
 
-Three keyframed tweens at offsets `[0]/fps`, `[1]/fps`, `[2]/fps`:
+Three keyframed tweens at millisecond offsets `[0]/fps`, `[1]/fps`, `[2]/fps`:
 
 ```js
-const tl = gsap.timeline({ paused: true });
-tl.to(target, { opacity: 1, duration: 0.5, ease: "none" }, 0);
-tl.to(target, { opacity: 1, duration: 2.0, ease: "none" }, 0.5);
-tl.to(target, { opacity: 0, duration: 0.5, ease: "none" }, 2.5);
+const tl = anime.createTimeline({ autoplay: false });
+tl.add(target, { opacity: 1, duration: 500, ease: "linear" }, 0);
+tl.add(target, { opacity: 1, duration: 2000, ease: "linear" }, 500);
+tl.add(target, { opacity: 0, duration: 500, ease: "linear" }, 2500);
 ```
 
-Validated in T1 — mean SSIM 0.974 against Remotion baseline.
+Validated in T1 - mean SSIM 0.974 against Remotion baseline.
 
-## spring → GSAP back.out
+## spring -> anime.js outBack
 
 Remotion's `spring()` is the most lossy translation. The mapping is approximate
 but close enough that real-world compositions hold ≥ 0.92 SSIM (T2: 0.985, T3: 0.953).
 
-| Remotion `spring` config                          | GSAP equivalent                                      | Validated in                     |
-| ------------------------------------------------- | ---------------------------------------------------- | -------------------------------- |
-| `{damping: 12, stiffness: 100, mass: 1}` (snappy) | `back.out(1.4)` over ~0.7 s                          | T2, T3 (TitleScene)              |
-| `{damping: 14, stiffness: 90, mass: 1}` (calmer)  | `back.out(1.2)` over ~0.7 s                          | T3 (StatCard)                    |
-| `{damping: 8, stiffness: 200}` (very bouncy)      | `back.out(2.0)` or `elastic.out(1, 0.5)` over ~0.6 s | not validated; budget ~0.05 SSIM |
-| `{overshootClamping: true}`                       | `power3.out` over ~0.6 s (no overshoot)              | not validated                    |
+| Remotion `spring` config                          | anime.js equivalent                                | Validated in                     |
+| ------------------------------------------------- | -------------------------------------------------- | -------------------------------- |
+| `{damping: 12, stiffness: 100, mass: 1}` (snappy) | `outBack(1.4)` over ~700 ms                        | T2, T3 (TitleScene)              |
+| `{damping: 14, stiffness: 90, mass: 1}` (calmer)  | `outBack(1.2)` over ~700 ms                        | T3 (StatCard)                    |
+| `{damping: 8, stiffness: 200}` (very bouncy)      | `outBack(2.0)` or `outElastic(1, .5)` over ~600 ms | not validated; budget ~0.05 SSIM |
+| `{overshootClamping: true}`                       | `outQuart` over ~600 ms (no overshoot)             | not validated                    |
 
-**Rule of thumb**: `back.out(N)` overshoot ratio ≈ `(stiffness / damping^2) * 1.4`. For
+**Rule of thumb**: `outBack(N)` overshoot ratio ≈ `(stiffness / damping^2) * 1.4`. For
 `damping:12, stiffness:100` that gives `1.4 * 100/144 = 0.97`, which is close to
 the validated 1.4 (the formula is rough; tune by visual). Default duration is
 ~0.7 s for the typical config.
@@ -86,16 +87,16 @@ import { Easing } from "remotion";
 interpolate(frame, [0, 30], [0, 1], { easing: Easing.out(Easing.cubic) });
 ```
 
-| Remotion                     | GSAP                                                                                   |
-| ---------------------------- | -------------------------------------------------------------------------------------- |
-| `Easing.in(Easing.linear)`   | `ease: "none"`                                                                         |
-| `Easing.out(Easing.cubic)`   | `ease: "power3.out"`                                                                   |
-| `Easing.inOut(Easing.cubic)` | `ease: "power3.inOut"`                                                                 |
-| `Easing.out(Easing.poly(N))` | `ease: "power<N>.out"` (N=2 quad, 3 cubic, 4 quart, 5 quint)                           |
-| `Easing.bezier(a,b,c,d)`     | `CustomEase.create("c", "M0,0 C${a},${b} ${c},${d} 1,1")` (requires CustomEase plugin) |
-| `Easing.elastic(bounciness)` | `ease: "elastic.out(${bounciness}, 0.3)"`                                              |
-| `Easing.bounce`              | `ease: "bounce.out"`                                                                   |
-| `Easing.back(overshoot)`     | `ease: "back.out(${overshoot * 1.7})"` (Remotion's overshoot scale differs)            |
+| Remotion                     | anime.js                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `Easing.in(Easing.linear)`   | `ease: "linear"`                                                           |
+| `Easing.out(Easing.cubic)`   | `ease: "outCubic"`                                                         |
+| `Easing.inOut(Easing.cubic)` | `ease: "inOutCubic"`                                                       |
+| `Easing.out(Easing.poly(N))` | `ease: "outQuad"` / `"outCubic"` / `"outQuart"` / `"outQuint"`             |
+| `Easing.bezier(a,b,c,d)`     | custom ease path when representable, otherwise closest native ease         |
+| `Easing.elastic(bounciness)` | `ease: "outElastic(${bounciness}, .3)"`                                    |
+| `Easing.bounce`              | `ease: "outBounce"`                                                        |
+| `Easing.back(overshoot)`     | `ease: "outBack(${overshoot * 1.7})"` (Remotion's overshoot scale differs) |
 
 ## interpolate driving non-numeric properties
 
@@ -103,10 +104,10 @@ interpolate(frame, [0, 30], [0, 1], { easing: Easing.out(Easing.cubic) });
 const color = interpolateColors(frame, [0, 30], ["#ff0000", "#0000ff"]);
 ```
 
-GSAP does color tweens natively:
+Anime.js does color tweens natively:
 
 ```js
-gsap.to(target, { color: "#0000ff", duration: 1.0, ease: "none" }, 0);
+tl.add(target, { color: "#0000ff", duration: 1000, ease: "linear" }, 0);
 ```
 
 Same for `backgroundColor`, `borderColor`. The `from` value is read from CSS
@@ -123,16 +124,16 @@ const value = Math.round(target * eased);
 return <div>{value.toLocaleString()}</div>;
 ```
 
-GSAP equivalent — tween a counter object, write `textContent` on update:
+Anime.js equivalent, tween a counter object and write `textContent` on update:
 
 ```js
 const counter = { v: 0 };
-tl.to(
+tl.add(
   counter,
   {
     v: target,
-    duration: 1.5,
-    ease: "power3.out",
+    duration: 1500,
+    ease: "outQuart",
     onUpdate: () => {
       el.textContent = Math.round(counter.v).toLocaleString();
     },
@@ -141,9 +142,9 @@ tl.to(
 );
 ```
 
-`power3.out` matches `1 - (1-t)^3` exactly. Validated in T3 (mean SSIM 0.953).
+`outQuart` is the anime.js vocabulary mapping for cubic-style ease-out timing. Validated in T3 (mean SSIM 0.953).
 Per-frame digit mismatches occur on sub-frame timing offsets but final values
-converge — no SSIM impact above the noise floor.
+converge - no SSIM impact above the noise floor.
 
 ## Stagger via per-instance prop
 
@@ -153,13 +154,13 @@ When custom subcomponents take a `delayInFrames` prop:
 <StatCard delayInFrames={i * 12} value={...} />
 ```
 
-Translate to GSAP timeline offsets:
+Translate to anime.js timeline offsets:
 
 ```js
 cards.forEach((card, i) => {
-  const start = base + i * (12 / fps); // i * 0.4s at fps=30
-  tl.to(card, { ... }, start);
+  const startMs = (base + i * (12 / fps)) * 1000; // i * 400ms at fps=30
+  tl.add(card, { ... }, startMs);
 });
 ```
 
-Validated in T3 — three StatCards staggered at 0.0/0.4/0.8 s.
+Validated in T3 - three StatCards staggered at 0.0/0.4/0.8 s.

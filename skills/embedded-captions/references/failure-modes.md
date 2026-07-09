@@ -1,4 +1,4 @@
-# Failure Modes — learned the hard way
+# Failure Modes - learned the hard way
 
 Things that broke during skill development. Check against this list before you ship.
 
@@ -6,19 +6,19 @@ Things that broke during skill development. Check against this list before you s
 
 ### CoreML execution provider corrupts face alpha
 
-Running the matting ONNX through the CoreML EP partitions the graph across providers; the mixed-precision boundary produced alpha ≈ 30 (out of 255) inside the subject's face while the background correctly read 0 (observed with the previous RVM engine — don't re-try). Result: caption text visibly shines THROUGH the face.
+Running the matting ONNX through the CoreML EP partitions the graph across providers; the mixed-precision boundary produced alpha ≈ 30 (out of 255) inside the subject's face while the background correctly read 0 (observed with the previous RVM engine - don't re-try). Result: caption text visibly shines THROUGH the face.
 
 **Fix**: Only ever use `providers=["CPUExecutionProvider"]` for the matting ONNX. Our script does this; don't "optimize" it by adding CoreML.
 
 ### Aspect distortion / sharp channel-stride make the alpha garbage
 
-(historical — the PP-MattingV2 engine was replaced 2026-06-12 by hyperframes `remove-background`; kept because the lessons generalize) Two earned scars from the ONNX era: (1) fixed-size model exports — squashing a portrait clip into a landscape canvas distorts humans; contain-pad (aspect preserved, centered, alpha cropped back) instead. (2) sharp returns a **3-channel** buffer from `.raw()` after resizing a 1-channel raw input — reading it with a 1-channel stride silently produces a smeared, striped, displaced matte that can _look_ plausible. Always `toBuffer({resolveWithObject:true})` and stride by `info.channels` (other scripts in this skill still use sharp).
+(historical - the PP-MattingV2 engine was replaced 2026-06-12 by hyperframes `remove-background`; kept because the lessons generalize) Two earned scars from the ONNX era: (1) fixed-size model exports - squashing a portrait clip into a landscape canvas distorts humans; contain-pad (aspect preserved, centered, alpha cropped back) instead. (2) sharp returns a **3-channel** buffer from `.raw()` after resizing a 1-channel raw input - reading it with a 1-channel stride silently produces a smeared, striped, displaced matte that can _look_ plausible. Always `toBuffer({resolveWithObject:true})` and stride by `info.channels` (other scripts in this skill still use sharp).
 
 **Fix**: both handled inside `matte.cjs`; preserve them if you touch it.
 
 ### isnet-general-use / u2net_human_seg miss props
 
-rembg's general/human models capture the person but drop handheld props (mic, notebook). If the caption crosses the mic, it will NOT be occluded by the mic — text floats in front of it unnaturally.
+rembg's general/human models capture the person but drop handheld props (mic, notebook). If the caption crosses the mic, it will NOT be occluded by the mic - text floats in front of it unnaturally.
 
 **Fix**: For scenes where props matter, either (a) accept that the human-matting model captures what it captures, or (b) add a manual mask ROI for the prop region. We haven't productized (b) yet.
 
@@ -46,7 +46,7 @@ If you set `align-items: flex-end` on the plane and don't constrain width, each 
 
 ### letterSpacing animation causes inline-block reflow jumps
 
-Had `letterSpacing: "0.04em"` as the "from" value in `tl.fromTo(word, {opacity:0, letterSpacing: ".04em"}, {letterSpacing:"0"}, w.start)`. GSAP snaps the "from" state at w.start. The width of the word then changes over the tween → inline-block reflow → the `.cap` line box recomputes → "Some" visibly jumped between rows as "memories" entered.
+Had `letterSpacing: "0.04em"` as the start value in `tl.add(word, { opacity: 0, letterSpacing: ".04em", duration: 0 }, ms(w.start)); tl.add(word, { letterSpacing: "0", duration: 420, ease: "outCubic" }, ms(w.start));`. The width of the word changes over the tween, then inline-block reflow recomputes the `.cap` line box, and "Some" visibly jumped between rows as "memories" entered.
 
 **Fix**: Animate only **transform** properties (opacity, y, scale). NEVER animate letter-spacing, font-size, or filter:blur on `.w` spans. Templates follow this.
 
@@ -54,7 +54,7 @@ Had `letterSpacing: "0.04em"` as the "from" value in `tl.fromTo(word, {opacity:0
 
 Fading both the group container AND each word independently multiplies: effective_opacity = container.opacity × word.opacity. Even with matched eases, the combined curve is nonlinear and feels like a snap-in around the 40% mark.
 
-**Fix**: Keep container at fixed `opacity: 1` during the group's life (set via `tl.set` just before first word). Animate only per-word opacity. Templates do this.
+**Fix**: Keep container at fixed `opacity: 1` during the group's life (set via zero-duration `tl.add` just before first word). Animate only per-word opacity. Templates do this.
 
 ## Blending
 
@@ -66,7 +66,7 @@ Fading both the group container AND each word independently multiplies: effectiv
 
 ### Bright backgrounds wash out screen blend
 
-Opposite problem: `screen(white, bright) ≈ white` regardless of the text — letters become invisible on bright backgrounds like sunlit windows or white walls.
+Opposite problem: `screen(white, bright) ≈ white` regardless of the text - letters become invisible on bright backgrounds like sunlit windows or white walls.
 
 **Fix**: If average luminance of the caption region exceeds 180/255, switch CSS to `mix-blend-mode: normal` with an opaque color. Sample the background pixels in the caption bbox across the clip to check.
 
@@ -74,7 +74,7 @@ Opposite problem: `screen(white, bright) ≈ white` regardless of the text — l
 
 ### Frame-rate mismatch between bg render and matte PNGs
 
-If hyperframes renders at 30fps default but the matte was extracted at 24fps source rate, ffmpeg overlay gets a temporal mismatch — alpha from frame N is overlaid on bg content of some fractional frame ≠ N. Result: person's current silhouette and matte silhouette are shifted by a few frames, so the occlusion lags or leads the body.
+If hyperframes renders at 30fps default but the matte was extracted at 24fps source rate, ffmpeg overlay gets a temporal mismatch - alpha from frame N is overlaid on bg content of some fractional frame ≠ N. Result: person's current silhouette and matte silhouette are shifted by a few frames, so the occlusion lags or leads the body.
 
 **Fix**: Always pass `--fps` to hyperframes render matching the source's native FPS (usually 24). `render-and-composite.sh` reads fps from plan.json and passes it through.
 
@@ -110,7 +110,7 @@ Template defaults (66/78/92/140) assume a ~560px column. Expanding the plane to 
 
 The matte is temporally smoothed (EMA in matte.cjs) but moderate motion only. Fast camera pans (vlog selfie) still produce frame-to-frame alpha jitter that shows as flickering caption edges.
 
-**Fix**: SKILL.md decision gate lists handheld vlog as `⚠️` — degrade or refuse. Production version would add `vidstabdetect` compensation; v1 does not.
+**Fix**: SKILL.md decision gate lists handheld vlog as `⚠️` - degrade or refuse. Production version would add `vidstabdetect` compensation; v1 does not.
 
 ### Multi-person scenes → matte is ambiguous
 
@@ -120,7 +120,7 @@ The human-matting model segments "foreground" as a single alpha. With two people
 
 ### Undetected shot cut inside the clip
 
-Some sources (interviews, broadcast clips) cut to B-roll/archive footage mid-clip. The matte + caption layout assumes the subject is the same person throughout — a hard cut mid-render creates garbage (caption placement relative to old subject applied to a totally different shot).
+Some sources (interviews, broadcast clips) cut to B-roll/archive footage mid-clip. The matte + caption layout assumes the subject is the same person throughout - a hard cut mid-render creates garbage (caption placement relative to old subject applied to a totally different shot).
 
 **Fix for v1**: Probe the clip at 3-5 timestamps before accepting it. If any frame doesn't contain the primary subject at the same position, trim the clip to end before the cut. `Steve Jobs 60 Minutes` cut to Beatles archival at t≈9s, was manually trimmed to 8.5s.
 
@@ -134,9 +134,9 @@ TV archive clips often have pillarbox (black bars at sides) plus baked lower-thi
 
 ### transcribe.cjs sees an existing transcript and skips
 
-Transcription is Whisper now, via `transcribe.cjs` (it wraps `hyperframes transcribe` — no API key). `hyperframes init --video <mp4>` may itself auto-write a `transcript.json` in hyperframes' raw whisper shape (a flat word array, no top-level `language_code`). `transcribe.cjs` only treats a transcript as done when it's ALREADY in our normalized schema (`{ words: [...], language_code }`); otherwise it (re-)runs Whisper and normalizes the flat word list into `{ words:[{text,start,end,type:"word"}], language_code }`.
+Transcription is Whisper now, via `transcribe.cjs` (it wraps `hyperframes transcribe` - no API key). `hyperframes init --video <mp4>` may itself auto-write a `transcript.json` in hyperframes' raw whisper shape (a flat word array, no top-level `language_code`). `transcribe.cjs` only treats a transcript as done when it's ALREADY in our normalized schema (`{ words: [...], language_code }`); otherwise it (re-)runs Whisper and normalizes the flat word list into `{ words:[{text,start,end,type:"word"}], language_code }`.
 
-**Fix / expectation**: If you init via hyperframes first, expect `transcribe.cjs` to normalize that transcript into our schema. Don't hand-leave a half-normalized file (e.g. our `words` shape but no `language_code`) — that's the one state the skip-guard can misread.
+**Fix / expectation**: If you init via hyperframes first, expect `transcribe.cjs` to normalize that transcript into our schema. Don't hand-leave a half-normalized file (e.g. our `words` shape but no `language_code`) - that's the one state the skip-guard can misread.
 
 ### Transcript gaps > 3s with no speech
 

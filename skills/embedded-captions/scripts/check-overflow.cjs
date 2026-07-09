@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * check-overflow.cjs — mode-agnostic frame-overflow WARNING for custom mode.
+ * check-overflow.cjs - mode-agnostic frame-overflow WARNING for custom mode.
  *
  * Template mode has check-occlusion.cjs (which also flags frame-edge overflow),
  * but custom mode runs no gates. This is the cheap safety net: it loads the
- * rendered index.html, seeks the GSAP timeline across the clip, and flags ANY
- * visible text element (regardless of class) whose box leaves the canvas — i.e.
+ * rendered index.html, seeks the registered timeline across the clip, and flags ANY
+ * visible text element (regardless of class) whose box leaves the canvas, i.e.
  * captions that fall off-frame (the bug we otherwise only catch by eye).
  *
- * WARNING ONLY — never fails the build (custom designs may bleed intentionally).
+ * WARNING ONLY - never fails the build (custom designs may bleed intentionally).
  * Exit 0 if it ran (with or without findings); exit 3 if it couldn't run.
  *
  * Usage: node check-overflow.cjs <project-dir>
@@ -85,10 +85,32 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: Math.round(W), height: Math.round(H), deviceScaleFactor: 1 });
+    await page.evaluateOnNewDocument(() => {
+      const registry = {};
+      window.__hfAnime = registry;
+      window.hyperframesAnime = {
+        register(id, instance, options) {
+          const entry = { id, instance, labels: (options && options.labels) || {} };
+          registry[id] = entry;
+          return entry;
+        },
+        get(id) {
+          return registry[id] || null;
+        },
+        entries() {
+          return Object.values(registry);
+        },
+      };
+    });
     const waitTL = async () => {
       const t0 = Date.now();
       while (Date.now() - t0 < 12000) {
-        if (await page.evaluate(() => !!(window.__timelines && window.__timelines.main)))
+        if (
+          await page.evaluate(() => {
+            const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+            return !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main);
+          })
+        )
           return true;
         await new Promise((r) => setTimeout(r, 200));
       }
@@ -97,14 +119,14 @@ async function main() {
     await page.goto(`file://${indexPath}`, { waitUntil: "load", timeout: 20000 });
     let hasTL = await waitTL();
     if (!hasTL) {
-      // GSAP loads from CDN — a blip leaves no timeline; retry once
+      // CDN script loads can blip and leave no timeline; retry once.
       await page.reload({ waitUntil: "load", timeout: 20000 }).catch(() => {});
       hasTL = await waitTL();
     }
     if (!hasTL) {
       // NEVER claim "ok" when we couldn't actually evaluate the animated layout.
       console.error(
-        "[overflow] ⚠ timeline did not register (GSAP CDN blocked?) — overflow check " +
+        "[overflow] timeline did not register, overflow check " +
           "INCONCLUSIVE; eyeball the render for off-frame captions.",
       );
       await browser.close();
@@ -121,7 +143,12 @@ async function main() {
 
     for (const t of times) {
       await page.evaluate((t) => {
-        window.__timelines.main.seek(t);
+        const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+        if (animeEntry && animeEntry.instance && typeof animeEntry.instance.seek === "function") {
+          animeEntry.instance.seek(t * 1000);
+        } else {
+          window.__timelines.main.seek(t);
+        }
         void document.body.offsetHeight;
       }, t);
       await new Promise((r) => setTimeout(r, 25));
@@ -173,10 +200,10 @@ async function main() {
     }
 
     if (found.size === 0) {
-      console.log(`[overflow] ok — no caption text leaves the ${W}x${H} frame`);
+      console.log(`[overflow] ok - no caption text leaves the ${W}x${H} frame`);
     } else {
       console.error(
-        `[overflow] ⚠ ${found.size} caption(s) leave the frame (custom mode — WARNING only, not blocking):`,
+        `[overflow] ⚠ ${found.size} caption(s) leave the frame (custom mode - WARNING only, not blocking):`,
       );
       for (const [text, info] of found)
         console.error(`           "${text}"  → off-frame: ${info.sides}  (@${info.t}s)`);

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// w2h-verify.mjs — verification report for a website-to-video project.
+// w2h-verify.mjs - verification report for a website-to-video project.
 //
 // Computes quality signals the agent cannot fudge. Each check is designed to
 // catch a specific failure mode observed across three real agent debriefs.
-// Result becomes the Step 6 deliverable — paste verbatim into the final
+// Result becomes the Step 6 deliverable - paste verbatim into the final
 // user-facing summary so the user sees exactly what shipped.
 //
 // Pure file analysis. No shell spawns. Run lint + inspect separately and
@@ -23,9 +23,9 @@ import { existsSync } from "node:fs";
 
 const PROJECT_DIR = resolve(process.argv[2] || ".");
 
-// Thresholds — change here, not by interpretation.
+// Thresholds - change here, not by interpretation.
 const HEADLINE_MIN_PX = 80; // 80px floor for primary headline at 1920×1080
-const TIMELINE_COVERAGE_MIN = 0.7; // max GSAP event position must reach ≥70% of beat duration
+const TIMELINE_COVERAGE_MIN = 0.7; // max timeline event position must reach ≥70% of beat duration
 const SFX_DRIFT_TOLERANCE_S = 0.1; // 3 frames at 30fps; matches step-5 evidence rule + step-6 playback floor
 const BEAT_DURATION_DRIFT_TOLERANCE_S = 0.5;
 
@@ -117,7 +117,7 @@ async function checkBrandVisualsUsed() {
       detail: `${beatsUsingBrand.length}/${compositions.length} beats reference a hero/image/svg captured asset`,
       extra:
         beatsUsingBrand.length === 1
-          ? "Only 1 beat uses a captured visual — consider whether the brand's hero illustrations or signature graphics fit other beats too."
+          ? "Only 1 beat uses a captured visual - consider whether the brand's hero illustrations or signature graphics fit other beats too."
           : null,
     };
   }
@@ -130,7 +130,7 @@ async function checkBrandVisualsUsed() {
   };
 }
 
-// Catches "headlines too small to read" — inspect typically catches the
+// Catches "headlines too small to read" - inspect typically catches the
 // overflow afterward, but this catches the cause earlier.
 async function checkPerBeatHeadlineSize() {
   const compositions = await readBeatCompositions();
@@ -156,7 +156,7 @@ async function checkPerBeatHeadlineSize() {
     }
     const max = Math.max(...sizes);
     if (max < HEADLINE_FLOOR_FOR_CHECK) {
-      skipped.push({ beat: beat.name, reason: `largest font is ${max}px — no headline by design` });
+      skipped.push({ beat: beat.name, reason: `largest font is ${max}px - no headline by design` });
       continue;
     }
     if (max < HEADLINE_MIN_PX) {
@@ -185,7 +185,7 @@ async function checkPerBeatHeadlineSize() {
   };
 }
 
-// Catches "webpage not shot" failures — entrance tweens in the first second
+// Catches "webpage not shot" failures - entrance tweens in the first second
 // then nothing. Snapshots look fine (static end state) but motion is dead.
 async function checkPerBeatTimelineCoverage() {
   const compositions = await readBeatCompositions();
@@ -198,9 +198,9 @@ async function checkPerBeatTimelineCoverage() {
   const skipped = [];
   // Pattern detectors: beats that use these idioms have events at positions
   // the static parser can't read (loop iterators, variable arithmetic).
-  // Don't flag them as "webpage not shot" — they have events the parser
+  // Don't flag them as "webpage not shot" - they have events the parser
   // simply can't see. Note: single-tween yoyo/repeat is NOT enough to skip
-  // — it only oscillates one element, not the whole beat.
+  // - it only oscillates one element, not the whole beat.
   const dynamicPatterns = [
     {
       name: "forEach with tweens",
@@ -220,19 +220,19 @@ async function checkPerBeatTimelineCoverage() {
       continue;
     }
 
-    // Check for dynamic patterns first — if present, coverage cannot be
+    // Check for dynamic patterns first - if present, coverage cannot be
     // statically determined; treat as informational, not a failure.
     const matchedDynamic = dynamicPatterns.find((p) => p.re.test(beat.content));
     if (matchedDynamic) {
       skipped.push({
         beat: beat.name,
-        reason: `dynamic event pattern detected (${matchedDynamic.name}) — coverage not statically measurable`,
+        reason: `dynamic event pattern detected (${matchedDynamic.name}) - coverage not statically measurable`,
       });
       continue;
     }
 
     // Long-duration tween check: if there's a tween with duration ≥ 70% of
-    // beat duration, that single tween covers the whole beat — likely a
+    // beat duration, that single tween covers the whole beat - likely a
     // camera dolly, breathing animation, or persistent motion. Skip the
     // position-based coverage check.
     const durationRe = /\btl\.(?:to|set|fromTo|from)\([\s\S]{0,500}?duration:\s*([0-9.]+)/g;
@@ -250,17 +250,17 @@ async function checkPerBeatTimelineCoverage() {
     if (hasLongTween) {
       skipped.push({
         beat: beat.name,
-        reason: `long-duration tween covers ${longTweenDur.toFixed(2)}s of ${dur.toFixed(2)}s beat — full coverage via persistent motion`,
+        reason: `long-duration tween covers ${longTweenDur.toFixed(2)}s of ${dur.toFixed(2)}s beat - full coverage via persistent motion`,
       });
       continue;
     }
 
-    // Extract GSAP event positions for static cases.
+    // Extract timeline event positions for static cases.
     // Use balanced-paren scanning so multi-line calls and rgba(...) values
     // inside option objects don't false-match.
     const positions = extractTopLevelPositionArgs(beat.content);
     if (positions.length === 0) {
-      offenders.push({ beat: beat.name, reason: "no GSAP events with explicit position found" });
+      offenders.push({ beat: beat.name, reason: "no timeline events with explicit position found" });
       continue;
     }
 
@@ -281,7 +281,7 @@ async function checkPerBeatTimelineCoverage() {
     status: pass ? "PASS" : "FAIL",
     detail: pass
       ? `${checked}/${compositions.length} statically-measurable beats span ≥${Math.round(TIMELINE_COVERAGE_MIN * 100)}% of duration`
-      : `${offenders.length} beat(s) below ${Math.round(TIMELINE_COVERAGE_MIN * 100)}% static coverage — likely "webpage not shot" failures`,
+      : `${offenders.length} beat(s) below ${Math.round(TIMELINE_COVERAGE_MIN * 100)}% static coverage - likely "webpage not shot" failures`,
     extra:
       [
         ...offenders.map((o) => `${o.beat}: ${o.reason}`),
@@ -297,7 +297,7 @@ async function checkShaderTransitionsConsistency() {
     return {
       name: "Shader transitions",
       status: "INFO",
-      detail: "STORYBOARD.md or index.html missing — cannot check",
+      detail: "STORYBOARD.md or index.html missing - cannot check",
     };
   }
 
@@ -305,7 +305,7 @@ async function checkShaderTransitionsConsistency() {
   const index = await readFile(indexPath, "utf-8");
 
   // For each shader name, count it as "declared" only if it appears in a
-  // transition-use context — NOT in an inventory list (3+ names on one line)
+  // transition-use context - NOT in an inventory list (3+ names on one line)
   // and NOT exclusively as part of an SFX filename (sfx/glitch-1.mp3).
   const sbLines = storyboard.split("\n");
   // Longest-name matching to avoid substring double-counting.
@@ -337,7 +337,7 @@ async function checkShaderTransitionsConsistency() {
     return {
       name: "Shader transitions",
       status: "PASS",
-      detail: "STORYBOARD declared none — no shader transitions expected",
+      detail: "STORYBOARD declared none - no shader transitions expected",
     };
   }
 
@@ -363,7 +363,7 @@ async function checkShaderTransitionsConsistency() {
     detail: `STORYBOARD declared ${declared.length}, ${present.length} present in index.html, ${missing.length} missing`,
     extra: pass
       ? null
-      : `Missing from build: ${missing.join(", ")}. STORYBOARD.md and index.html disagree — either re-add the transitions or update STORYBOARD.md.`,
+      : `Missing from build: ${missing.join(", ")}. STORYBOARD.md and index.html disagree - either re-add the transitions or update STORYBOARD.md.`,
   };
 }
 
@@ -401,7 +401,7 @@ async function checkSfxTimestampConsistency() {
 
   // Collect ALL audio tags per file (multi-timestamp SFX like click.mp3 have
   // 3 tags). Use a two-step extraction so we don't depend on src= and
-  // data-start= attribute ordering — the documented canonical pattern in
+  // data-start= attribute ordering - the documented canonical pattern in
   // capabilities.md puts src= LAST in the tag, which an order-dependent
   // regex would miss → false MISSING reports.
   const indexSfx = new Map();
@@ -453,7 +453,7 @@ async function checkSfxTimestampConsistency() {
   };
 }
 
-// Catches storyboard staleness on beat timings — agent shipped with different
+// Catches storyboard staleness on beat timings - agent shipped with different
 // beat durations than the storyboard documented, leaving the spec lying.
 async function checkBeatDurationConsistency() {
   const storyboardPath = join(PROJECT_DIR, "STORYBOARD.md");
@@ -475,10 +475,10 @@ async function checkBeatDurationConsistency() {
   }
 
   // Parse storyboard beat durations. The expected pattern is a timing-table row:
-  //   | B4 — MetaBrain | 16.600 – 21.000s | ... |
+  //   | B4 - MetaBrain | 16.600 – 21.000s | ... |
   // We extract start–end and compute duration = end - start. Falls back to a
   // direct duration mention ("duration: X.Xs") if the range format isn't found.
-  // A beat with no parseable duration is skipped — we don't flag missing rows.
+  // A beat with no parseable duration is skipped - we don't flag missing rows.
   const drifts = [];
   const unparseable = [];
   for (const beatId of buildBeatIds) {
@@ -486,7 +486,7 @@ async function checkBeatDurationConsistency() {
     if (!num) continue;
     let storyT = null;
 
-    // Strategy 1: standalone beat row "B4 — Name | 16.600 – 21.000s |".
+    // Strategy 1: standalone beat row "B4 - Name | 16.600 – 21.000s |".
     // Require `B${num}` to be followed by a non-digit-non-dot char so "B3.1"
     // doesn't false-match for B3.
     const rangeRe = new RegExp(
@@ -497,7 +497,7 @@ async function checkBeatDurationConsistency() {
     if (rm) {
       storyT = parseFloat(rm[2]) - parseFloat(rm[1]);
     } else {
-      // Strategy 2: sum sub-beats "B${num}.X — ... | start – end s |".
+      // Strategy 2: sum sub-beats "B${num}.X - ... | start – end s |".
       // Useful when a beat is broken into sub-rows (B3.1, B3.2, ...) instead
       // of having a standalone row.
       const subRe = new RegExp(
@@ -515,7 +515,7 @@ async function checkBeatDurationConsistency() {
     }
 
     if (storyT === null) {
-      // Strategy 3: bare-number timing table — "| 1 | 0.00s | 5.20s | 5.20s |"
+      // Strategy 3: bare-number timing table - "| 1 | 0.00s | 5.20s | 5.20s |"
       // (Beat | Start | End | Duration). The duration column is the 4th cell,
       // OR derive from end - start (columns 2 and 3). Match a row that starts
       // with `| <num> |` and has at least 2 time cells.
@@ -531,8 +531,8 @@ async function checkBeatDurationConsistency() {
         storyT = end - start;
       }
     }
-    // Note: removed the previous "duration: X.Xs near beat label" fallback —
-    // it false-matched non-beat durations (e.g., "shader runs — duration 0.7s"
+    // Note: removed the previous "duration: X.Xs near beat label" fallback -
+    // it false-matched non-beat durations (e.g., "shader runs - duration 0.7s"
     // near a "Beat 1" mention). If a storyboard's timing format isn't a clean
     // range or table row, the beat is reported as unparseable rather than
     // guessed at.
@@ -556,7 +556,7 @@ async function checkBeatDurationConsistency() {
       detail: `${parseable}/${buildBeatIds.length} beats parseable, storyboard durations match within ±${BEAT_DURATION_DRIFT_TOLERANCE_S}s`,
       extra:
         unparseable.length > 0
-          ? `(skipped: ${unparseable.join(", ")} — could not find duration in STORYBOARD.md)`
+          ? `(skipped: ${unparseable.join(", ")} - could not find duration in STORYBOARD.md)`
           : null,
     };
   }
@@ -570,7 +570,7 @@ async function checkBeatDurationConsistency() {
           `${d.beat}: storyboard=${d.storyboardDuration.toFixed(2)}s build=${d.buildDuration}s drift=${d.drift.toFixed(2)}s`,
       ),
       ...(unparseable.length > 0
-        ? [`(skipped: ${unparseable.join(", ")} — could not find duration in STORYBOARD.md)`]
+        ? [`(skipped: ${unparseable.join(", ")} - could not find duration in STORYBOARD.md)`]
         : []),
     ].join("\n  "),
   };
@@ -597,7 +597,7 @@ async function checkMp4Exists() {
     name: "Rendered MP4",
     status: "INFO",
     detail:
-      "no .mp4 found — preview-only delivery; if claiming verified motion, render is required (Path 2 of audio+motion verification)",
+      "no .mp4 found - preview-only delivery; if claiming verified motion, render is required (Path 2 of audio+motion verification)",
   };
 }
 

@@ -3,8 +3,8 @@
 The `@remotion/transitions` package is Remotion's library of pre-built
 scene-to-scene transitions. HF has two paths to translate them:
 
-1. **Manual GSAP crossfade** — for simple opacity/transform transitions. Free, no extra package.
-2. **HF shader-transitions package** — for visually-rich transitions that match the @remotion/transitions presets.
+1. **Manual anime.js crossfade** - for simple opacity/transform transitions. Free, no extra package.
+2. **HF shader-transitions package** - for visually-rich transitions that match the @remotion/transitions presets.
 
 ## Pattern: `<TransitionSeries>` is `<Series>` with overlap
 
@@ -28,33 +28,33 @@ Translates to scenes that overlap by the transition duration:
 - SceneA: [0, 60] = `data-start="0" data-duration="2"`
 - SceneB: [60-15, 60-15+60] = `data-start="1.5" data-duration="2"` (the transition window overlaps the end of A and start of B)
 
-Then drive the transition with GSAP:
+Then drive the transition with anime.js:
 
 ```js
 // Manual fade (presentation={fade()})
-tl.to(sceneA, { opacity: 0, duration: 0.5, ease: "none" }, 1.5);
-tl.fromTo(sceneB, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "none" }, 1.5);
+tl.add(sceneA, { opacity: 0, duration: 500, ease: "linear" }, 1500);
+tl.add(sceneB, { opacity: [0, 1], duration: 500, ease: "linear" }, 1500);
 ```
 
 ## Presentation table
 
-| Remotion `presentation`            | HF translation                                                                            |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| `fade()`                           | manual `gsap.to(opacity)` crossfade                                                       |
-| `slide({direction: "from-right"})` | `gsap.fromTo(translateX: "100%" → 0)` on incoming + `to(translateX: "-100%")` on outgoing |
-| `wipe({direction: "from-left"})`   | `gsap.fromTo(clip-path: inset(0 100% 0 0) → inset(0 0 0 0))` on incoming                  |
-| `clockWipe()`                      | use HF's `sdf-iris` shader-transition (`npx hyperframes add sdf-iris`)                    |
-| `flip()`                           | `gsap.to(rotateY)` 180° split between scenes                                              |
-| `cube()`                           | use HF's `cinematic-zoom` or build manually with `rotateY` + `transform-origin`           |
-| `iris()`                           | use HF's `sdf-iris` shader-transition                                                     |
-| `none()`                           | no transition; hard cut at the boundary                                                   |
+| Remotion `presentation`            | HF translation                                                                    |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `fade()`                           | manual `tl.add(opacity)` crossfade                                                |
+| `slide({direction: "from-right"})` | `tl.add(translateX: ["100%", 0])` on incoming + `translateX: "-100%"` on outgoing |
+| `wipe({direction: "from-left"})`   | `tl.add(clipPath: ["inset(0 100% 0 0)", "inset(0 0 0 0)"])` on incoming           |
+| `clockWipe()`                      | use HF's `sdf-iris` shader-transition (`npx hyperframes add sdf-iris`)            |
+| `flip()`                           | `tl.add(rotateY)` 180° split between scenes                                       |
+| `cube()`                           | use HF's `cinematic-zoom` or build manually with `rotateY` + `transform-origin`   |
+| `iris()`                           | use HF's `sdf-iris` shader-transition                                             |
+| `none()`                           | no transition; hard cut at the boundary                                           |
 
 ## Timing translations
 
 ```tsx
-linearTiming({durationInFrames: 15})              → ease: "none"
+linearTiming({durationInFrames: 15})              → ease: "linear"
 linearTiming({durationInFrames: 15, easing: ...}) → ease per the easing table in timing.md
-springTiming({config: {damping: 12}})             → ease: "back.out(1.4)" (~0.7 s)
+springTiming({config: {damping: 12}})             → ease: "outBack(1.4)" (~700 ms)
 ```
 
 Convert `durationInFrames` to seconds (`/fps`).
@@ -63,7 +63,7 @@ Convert `durationInFrames` to seconds (`/fps`).
 
 For transitions Remotion presets that have visually-rich GLSL equivalents
 (iris, ripple, zoom, glitch), use HF's [shader-transitions](https://hyperframes.heygen.com/catalog/blocks)
-package. They produce richer output than manual GSAP transforms.
+package. They produce richer output than manual transform tweens.
 
 ```bash
 npx hyperframes add sdf-iris
@@ -105,8 +105,8 @@ const customPresentation: PresentationComponent = ({
 ```
 
 Translation: extract the math from the `style={...}` block and emit
-equivalent GSAP tweens. Specifically the transform formula maps directly
-to a `gsap.to(target, { transform: ... })` parameterized by `progress`.
+equivalent anime.js tweens. Specifically the transform formula maps directly
+to a `tl.add(target, { transform: ... })` parameterized by `progress`.
 
 If the custom presentation uses `useCurrentFrame()` internally to
 animate something _outside_ the simple progress curve, treat the source

@@ -7,7 +7,7 @@
          DROP-IN circle-highlight (editorial amber annotation style). To reuse:
            1) set CFG below (asset path, EVEN stage dims, BOX from the locate protocol, LABEL)
            2) render with even width/height (ODD width => ffmpeg encode fails!)
-         BOX comes from grounding/PROTOCOL.md (locate.mjs loop) — NEVER eyeball coords.
+         BOX comes from grounding/PROTOCOL.md (locate.mjs loop) - NEVER eyeball coords.
          Everything (wash pool, double ring, connector, callout, brackets) is
          computed from BOX. Set MODE='full' (ring+label+brackets) or 'circle'
          (ring only). Gotchas are flagged inline.
@@ -156,7 +156,7 @@
   </head>
   <body>
     <!-- ⚠ data-width/height + the #stage width/height MUST be set STATICALLY here
-         (the renderer's StaticGuard reads them at compile time, BEFORE JS runs — JS
+         (the renderer's StaticGuard reads them at compile time, BEFORE JS runs - JS
          setAttribute is too late and the render falls back to portrait 1080×1920).
          Keep these EQUAL to CFG.W/CFG.H below, and EVEN. -->
     <div
@@ -169,7 +169,7 @@
       data-width="1998"
       data-height="1368"
     >
-      <div class="scene clip" data-start="0" data-duration="6" data-track-index="0">
+      <div id="main-scene" class="scene clip" data-start="0" data-duration="6" data-track-index="0">
         <img id="shot" alt="asset" />
         <div id="wash"></div>
         <svg id="ann">
@@ -184,9 +184,9 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
-      // ====== CONFIG — set these (BOX from the locate protocol) ======
+      // ====== CONFIG - set these (BOX from the locate protocol) ======
       const CFG = {
         asset: "assets/shot.png",
         W: 1998,
@@ -247,21 +247,20 @@
       );
 
       // ====== seek-safe timeline ======
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
       // GOTCHA: getTotalLength can read 0 before layout -> dash fails -> a solid
       // line shows at t=0. Fall back to a constant AND gate with autoAlpha:0.
       const lenA = ra.getTotalLength() || 1900,
         lenB = rb.getTotalLength() || 1750,
         lenC = conn.getTotalLength() || 220;
       const full = CFG.mode === "full";
-      gsap.set("#wash", { autoAlpha: 0 });
-      gsap.set(ra, { strokeDasharray: lenA, strokeDashoffset: lenA, autoAlpha: 0 });
-      gsap.set(rb, { strokeDasharray: lenB, strokeDashoffset: lenB, autoAlpha: 0 });
-      gsap.set(conn, { strokeDasharray: lenC, strokeDashoffset: lenC, autoAlpha: 0 });
-      gsap.set("#callout", { autoAlpha: 0, scale: 0.6 });
-      gsap.set("#scan", { autoAlpha: 0 });
-      gsap.set(".tick", { autoAlpha: 0 });
+      tl.add("#wash", { opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add(ra, { strokeDasharray: lenA, strokeDashoffset: lenA, opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add(rb, { strokeDasharray: lenB, strokeDashoffset: lenB, opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add(conn, { strokeDasharray: lenC, strokeDashoffset: lenC, opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add("#callout", { opacity: 0, visibility: "hidden", scale: 0.6, duration: 0 }, 0);
+      tl.add("#scan", { opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add(".tick", { opacity: 0, visibility: "hidden", duration: 0 }, 0);
       if (!full) {
         document.getElementById("conn").remove();
         document.getElementById("callout").remove();
@@ -269,21 +268,29 @@
         document.querySelectorAll(".tick").forEach((t) => t.remove());
       }
 
-      tl.to("#wash", { autoAlpha: 1, duration: 0.9, ease: "power2.out" }, 0.6);
+      tl.add("#wash", { opacity: 1, visibility: "visible", duration: 900, ease: "outCubic" }, 600);
       if (full) {
-        tl.to("#scan", { autoAlpha: 1, duration: 0.8 }, 0.7);
-        tl.to(".tick", { autoAlpha: 0.55, duration: 0.5, stagger: 0.06 }, 0.8);
+        tl.add("#scan", { opacity: 1, visibility: "visible", duration: 800 }, 700);
+        tl.add(
+          ".tick",
+          { opacity: 0.55, visibility: "visible", duration: 500, delay: anime.stagger(60) },
+          800,
+        );
       }
-      tl.to(ra, { autoAlpha: 1, duration: 0.08 }, 1.3);
-      tl.to(ra, { strokeDashoffset: 0, duration: 0.6, ease: "power2.inOut" }, 1.3);
-      tl.to(rb, { autoAlpha: 1, duration: 0.08 }, 1.68);
-      tl.to(rb, { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" }, 1.68);
+      tl.add(ra, { opacity: 1, visibility: "visible", duration: 80 }, 1300);
+      tl.add(ra, { strokeDashoffset: 0, duration: 600, ease: "inOutCubic" }, 1300);
+      tl.add(rb, { opacity: 1, visibility: "visible", duration: 80 }, 1680);
+      tl.add(rb, { strokeDashoffset: 0, duration: 500, ease: "inOutCubic" }, 1680);
       if (full) {
-        tl.to(conn, { autoAlpha: 1, duration: 0.05 }, 2.55);
-        tl.to(conn, { strokeDashoffset: 0, duration: 0.35, ease: "power3.out" }, 2.6);
-        tl.to("#callout", { autoAlpha: 1, scale: 1, duration: 0.45, ease: "back.out(2.4)" }, 2.95);
+        tl.add(conn, { opacity: 1, visibility: "visible", duration: 50 }, 2550);
+        tl.add(conn, { strokeDashoffset: 0, duration: 350, ease: "outQuart" }, 2600);
+        tl.add(
+          "#callout",
+          { opacity: 1, visibility: "visible", scale: 1, duration: 450, ease: "outBack(2.4)" },
+          2950,
+        );
       }
-      window.__timelines["circle-highlight"] = tl;
+      hyperframesAnime.register("circle-highlight", tl);
       tl.seek(0);
       if (!window.__HYPERFRAMES_HOST__) {
         const fit = () => {
@@ -298,7 +305,6 @@
         };
         addEventListener("resize", fit);
         fit();
-        tl.eventCallback("onComplete", () => setTimeout(() => tl.restart(), 1000));
         tl.play();
       }
     </script>

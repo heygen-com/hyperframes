@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1280, height=720" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -30,16 +30,16 @@
       }
 
       /* Foreground matte sits above the captions so the person & mic occlude
-         the text — classic cinematic lower-third layering. */
+         the text - classic cinematic lower-third layering. */
       #fg-overlay {
         z-index: 3;
         pointer-events: none;
       }
 
       /*
-        Caption stage — perspective container so the text plane lies on the
+        Caption stage, perspective container so the text plane lies on the
         acoustic-foam wall in the upper-right of the frame. Small jitter is
-        applied to the stage by GSAP to fake handheld motion tracking.
+        applied to the stage by anime.js to fake handheld motion tracking.
       */
       #stage {
         position: absolute;
@@ -98,7 +98,7 @@
       }
 
       /*
-        Unified cinematic typography — no mode switch between soft & sharp.
+        Unified cinematic typography - no mode switch between soft & sharp.
         Elegant serif-inflected sans, italic for the dreamy first half,
         upright for the second half. One look, one feeling, progressing.
       */
@@ -147,6 +147,7 @@
         src="source.mp4"
         muted
         playsinline
+        data-start="0"
         data-duration="8.04"
         data-track-index="0"
         style="z-index: 1"
@@ -194,13 +195,11 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
+      const ms = (seconds) => Math.max(0, Math.round((Number(seconds) || 0) * 1000));
       const DUR = 8.04;
 
-      /* ─────────────────────────────────────────────────────────────────
-         Word-level transcript — ElevenLabs timestamps.
-         ───────────────────────────────────────────────────────────────── */
+      /* Word-level transcript, ElevenLabs timestamps. */
       const GROUPS = [
         {
           id: "cg-0",
@@ -249,11 +248,11 @@
         },
       ];
 
-      /* ─────────────────────────────────────────────────────────────────
+      /*
          Each caption group: cinematic word-by-word reveal. No flashes, no
-         grain — purely text animation. Soft groups drift up gently, later
+         grain - purely text animation. Soft groups drift up gently, later
          groups resolve firmly into place to match the sentence turn.
-         ───────────────────────────────────────────────────────────────── */
+       */
       GROUPS.forEach(function (g) {
         var sel = "#" + g.id;
         var words = g.words.map(function (_, i) {
@@ -262,65 +261,46 @@
 
         var isSoft = g.tone === "soft";
 
-        /* Container stays fully visible — each word animates its own fade.
+        /* Container stays fully visible, each word animates its own fade.
            This avoids a double-fade (container × word) that produced a
            non-linear pop in the first ~100ms of the first caption. */
-        tl.set(sel, { opacity: 1, y: 0 }, Math.max(0, g.in - 0.01));
+        tl.add(sel, { opacity: 1, y: 0, duration: 0 }, ms(Math.max(0, g.in - 0.01)));
 
-        /* Per-word reveal — opacity + translate only. No letter-spacing
+        /* Per-word reveal, opacity + translate only. No letter-spacing
            or filter:blur here: both can perturb inline-block metrics
            mid-animation and cause the cap line-box to reflow, which
            makes words like "Some" visibly shift between rows when a
            sibling word enters. transform-only = no reflow. */
         g.words.forEach(function (w, i) {
           if (isSoft) {
-            tl.fromTo(
-              words[i],
-              { opacity: 0, y: 8 },
-              {
-                opacity: 1,
-                y: 0,
-                duration: 0.45,
-                ease: "power2.out",
-                overwrite: "auto",
-              },
-              w.start,
-            );
+            tl.add(words[i], { opacity: 0, y: 8, duration: 0 }, ms(w.start));
+            tl.add(words[i], { opacity: 1, y: 0, duration: 450, ease: "outCubic" }, ms(w.start));
           } else {
-            tl.fromTo(
-              words[i],
-              { opacity: 0, y: 6, scale: 1.04 },
-              {
-                opacity: 1,
-                y: 0,
-                scale: 1.0,
-                duration: 0.22,
-                ease: "power3.out",
-                overwrite: "auto",
-                transformOrigin: "50% 50%",
-              },
-              w.start,
-            );
+            tl.add(words[i], { opacity: 0, y: 6, scale: 1.04, duration: 0 }, ms(w.start));
+            tl.add(words[i], {
+              opacity: 1,
+              y: 0,
+              scale: 1.0,
+              duration: 220,
+              ease: "outQuart",
+              transformOrigin: "50% 50%",
+            }, ms(w.start));
           }
         });
 
-        /* Group exit — soft groups linger and fade as the sentence turns,
+        /* Group exit, soft groups linger and fade as the sentence turns,
            present groups hold to the end. Clean fades, no trickery. */
         if (g.out < DUR) {
-          tl.to(
-            sel,
-            { opacity: 0, duration: 0.5, ease: "power2.in", overwrite: "auto" },
-            g.out - 0.5,
-          );
+          tl.add(sel, { opacity: 0, duration: 500, ease: "inCubic" }, ms(g.out - 0.5));
         }
-        tl.set(sel, { opacity: 0, visibility: "hidden" }, g.out);
+        tl.add(sel, { opacity: 0, visibility: "hidden", duration: 0 }, ms(g.out));
       });
 
       /* Self-lint */
       GROUPS.forEach(function (g) {
         var el = document.getElementById(g.id);
         if (!el) return;
-        tl.seek(g.out + 0.01);
+        tl.seek(ms(g.out + 0.01));
         var cs = window.getComputedStyle(el);
         if (cs.opacity !== "0" && cs.visibility !== "hidden") {
           console.warn("[caption-lint] " + g.id + " visible at t=" + (g.out + 0.01).toFixed(2));
@@ -328,7 +308,7 @@
       });
       tl.seek(0);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

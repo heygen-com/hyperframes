@@ -1,14 +1,15 @@
+<!doctype html>
 <!--
-  Frame: hairline — double stroke + four-corner viewfinder ticks
+  Frame: hairline - double stroke + four-corner viewfinder ticks
   ─────────────────────────────────────────────────────────────────────
   When to use
     - Professional / cinematographic feel without going full polaroid.
     - Pairs well with: split, stack, pip layouts.
     - Pairs well with: academic, audit, swiss, terminal styles.
-    - Skip on overlay layout — the decorative chrome clashes with full-bleed video.
+    - Skip on overlay layout - the decorative chrome clashes with full-bleed video.
 
   How to apply in the composition
-    Add ONE decorative div as a sibling of #video-wrap (not a child — the
+    Add ONE decorative div as a sibling of #video-wrap (not a child - the
     video element is muted/playsinline and the decorative div should sit
     above it). The accent color is configurable per scene.
 
@@ -24,7 +25,7 @@
       <span class="tick br"></span>
     </div>
 
-    CSS (4 corners via explicit spans — preferred over ::before/::after
+    CSS (4 corners via explicit spans - preferred over ::before/::after
     because pseudo-elements give you at most 2 corners cleanly):
 
     .frame-deco { position: absolute; pointer-events: none; z-index: 3; }
@@ -41,11 +42,10 @@
     .frame-deco .tick.br { bottom: -3px; right: -3px; border-bottom: 4px solid var(--frame-accent); border-right: 4px solid var(--frame-accent); }
 
   When the layout changes mid-composition
-    Move + resize the frame-deco div together with #video-wrap using GSAP:
-       tl.to('#video-wrap, .frame-deco', { left:, top:, width:, height:, ... }, T);
+    Move + resize the frame-deco div together with #video-wrap using anime.js:
+       tl.add('#video-wrap, .frame-deco', { left:, top:, width:, height:, duration: 600, ease: 'inOutCubic' }, T * 1000);
     Or fade out the deco entirely before transitioning to a clean PiP.
 -->
-<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -150,9 +150,10 @@
         letter-spacing: 0.12em;
       }
     </style>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div class="stage">
+    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
       <div class="video-wrap">
         <span class="v-label">VIDEO</span>
       </div>
@@ -163,9 +164,14 @@
         <span class="tick br"></span>
       </div>
       <div class="note">
-        HAIRLINE — double stroke (2px inner + soft 6px halo) + four-corner viewfinder ticks. Accent
+        HAIRLINE - double stroke (2px inner + soft 6px halo) + four-corner viewfinder ticks. Accent
         color matches the card style.
       </div>
     </div>
+      <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
+      hyperframesAnime.register("main", tl);
+    </script>
   </body>
 </html>

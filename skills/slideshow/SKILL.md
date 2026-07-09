@@ -1,7 +1,7 @@
 ---
 name: slideshow
 description: >
-  Author a HyperFrames slideshow — a presentation, pitch deck, or interactive
+  Author a HyperFrames slideshow - a presentation, pitch deck, or interactive
   deck with discrete slides, fragment reveals, branching, hotspot navigation,
   and built-in presenter mode with speaker notes; also converts an existing
   page into a deck. Output is a navigable deck, not a rendered MP4. If the
@@ -9,19 +9,19 @@ description: >
   Unclear → /hyperframes.
 ---
 
-> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+> **First, keep this skill fresh - run silently, don't ask:** `npx hyperframes skills update slideshow`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Slideshow authoring contract
 
-A HyperFrames slideshow is a normal HyperFrames composition — scenes, clips, GSAP timelines — with one extra ingredient: a **JSON island** that declares which scenes are slides and how they connect. The player's `SlideshowController` reads the island and turns the continuous GSAP timeline into a discrete, navigable deck.
+A HyperFrames slideshow is a normal HyperFrames composition, scenes, clips, anime.js timelines, with one extra ingredient: a **JSON island** that declares which scenes are slides and how they connect. The player's `SlideshowController` reads the island and turns the continuous anime.js timeline into a discrete, navigable deck.
 
 **Read `/hyperframes-core` first** for the base composition contract (clips, tracks, `data-*` attributes, determinism rules). This skill covers only what is new: the island schema, slide writing rules, fragments, branching, validation, and the wrapping component.
 
-## Output — a navigable deck, not a linear MP4
+## Output - a navigable deck, not a linear MP4
 
-A slideshow's output is the **running deck**: serve it with `hyperframes present <project-dir>` (or Studio present mode) — the player's `SlideshowController` reads the island and drives navigation, fragments, branching, and presenter mode. See **Presenting and handoff** below.
+A slideshow's output is the **running deck**: serve it with `hyperframes present <project-dir>` (or Studio present mode) - the player's `SlideshowController` reads the island and drives navigation, fragments, branching, and presenter mode. See **Presenting and handoff** below.
 
-**Do not `hyperframes render` a slideshow into a single MP4.** A deck is authored as several top-level scene compositions (one `data-composition-id` per slide) with **no master-root composition** wrapping them, so `render` resolves only the **first** composition and emits a **silently truncated** MP4 (e.g. 6s of a 40-second deck). A linear main-line export (main slides only, branch sequences excluded) is **deferred** — until it ships, the supported outputs are the live `present` deck and per-slide `snapshot` stills. If a user needs a linear MP4 today, surface this limitation rather than pointing `render` at the deck.
+**Do not `hyperframes render` a slideshow into a single MP4.** A deck is authored as several top-level scene compositions (one `data-composition-id` per slide) with **no master-root composition** wrapping them, so `render` resolves only the **first** composition and emits a **silently truncated** MP4 (e.g. 6s of a 40-second deck). A linear main-line export (main slides only, branch sequences excluded) is **deferred** - until it ships, the supported outputs are the live `present` deck and per-slide `snapshot` stills. If a user needs a linear MP4 today, surface this limitation rather than pointing `render` at the deck.
 
 ## Intent confirmation
 
@@ -35,13 +35,13 @@ Then ask a short confirmation question:
 
 Use a yes/no choice UI when the environment provides one; otherwise ask the question in plain text.
 
-Do not implement the slideshow until the user says yes. If they say no, stop using this skill and switch to the appropriate non-slideshow workflow. This confirmation is a **routing decision**, not a preference gate — per `../hyperframes-core/references/brief-contract.md` § 1 it survives autonomous mode ("surprise me" does not skip it): building the wrong deliverable type is a quality failure, not a creative call.
+Do not implement the slideshow until the user says yes. If they say no, stop using this skill and switch to the appropriate non-slideshow workflow. This confirmation is a **routing decision**, not a preference gate - per `../hyperframes-core/references/brief-contract.md` § 1 it survives autonomous mode ("surprise me" does not skip it): building the wrong deliverable type is a quality failure, not a creative call.
 
 ---
 
 ## The two pieces
 
-### 1. Scenes — declared the normal way
+### 1. Scenes - declared the normal way
 
 Every slide is backed by a scene. Declare scenes with `data-composition-id`, `data-start`, `data-duration`, and `data-label`:
 
@@ -58,9 +58,9 @@ Every slide is backed by a scene. Declare scenes with `data-composition-id`, `da
 </div>
 ```
 
-Branch slides (reachable only via a hotspot, excluded from the main line) are declared exactly the same way — they just appear only in a `slideSequences` entry in the island, not in the main `slides` array.
+Branch slides (reachable only via a hotspot, excluded from the main line) are declared exactly the same way - they just appear only in a `slideSequences` entry in the island, not in the main `slides` array.
 
-### 2. The JSON island — one script block per composition
+### 2. The JSON island - one script block per composition
 
 Add exactly one `<script type="application/hyperframes-slideshow+json">` block to the composition HTML. It holds all slideshow metadata:
 
@@ -86,10 +86,10 @@ Do not hide the slideshow manifest behind an alternate `<script type="applicatio
 ```json
 {
   "slides": [
-    /* SlideRef[] — the main line, in order */
+    /* SlideRef[] - the main line, in order */
   ],
   "slideSequences": [
-    /* SlideSequence[] — off-line branch sequences */
+    /* SlideSequence[] - off-line branch sequences */
   ]
 }
 ```
@@ -115,8 +115,8 @@ Do not hide the slideshow manifest behind an alternate `<script type="applicatio
 | ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sceneId`                                   | yes      | Must match a scene's `data-composition-id` exactly (or provide explicit `startTime`/`endTime`). The lint rule resolves scenes by `data-composition-id`. |
 | `notes`                                     | no       | Presenter-only text. Never shown to the audience.                                                                                                       |
-| `fragments`                                 | no       | Array of times (seconds) within the slide's `[start, end]` range — see Fragments below.                                                                 |
-| `hotspots`                                  | no       | Interactive overlays that trigger a branch — see Branching below.                                                                                       |
+| `fragments`                                 | no       | Array of times (seconds) within the slide's `[start, end]` range - see Fragments below.                                                                 |
+| `hotspots`                                  | no       | Interactive overlays that trigger a branch - see Branching below.                                                                                       |
 | `startTime`                                 | no       | Optional. Override the matched scene's time bounds; defaults to the scene's start/end.                                                                  |
 | `endTime`                                   | no       | Optional. Override the matched scene's time bounds; defaults to the scene's start/end.                                                                  |
 | `ttsScript`, `ttsAudioUrl`, `ttsDurationMs` | no       | **Reserved.** Schema fields exist but TTS playback is not yet wired. Omit unless you are pre-populating for a future build.                             |
@@ -159,7 +159,7 @@ These are hard constraints, not suggestions. A slide that violates them will be 
 
 - **Headline is a complete-sentence claim, not a label.** Write "SMBs spend 14 hours/week on manual scheduling" not "Scheduling problem". The sentence should stand alone if the visual is ignored.
 - **One idea + one visual per slide.** If you are tempted to add a second bullet cluster or a second chart, split the slide.
-- **Lead with the punchline.** The strongest point goes first — on the slide and in the deck order. Investors read left-to-right, top-to-bottom, and they stop.
+- **Lead with the punchline.** The strongest point goes first - on the slide and in the deck order. Investors read left-to-right, top-to-bottom, and they stop.
 - **Bottom-up market sizing only.** Never write "$50B TAM" without showing the math. Build from unit economics up: accounts × ACV, or transactions × take-rate.
 - **Font minimum 30pt equivalent.** At 1920×1080, a headline is 72–96px; body copy is 48px. Never go below 40px for any text the audience must read.
 
@@ -201,14 +201,14 @@ A fragment is an absolute composition-timeline time (seconds) within a slide's `
 
 **How it works:**
 
-1. Player enters a fragmented slide — seeks directly to `fragments[0]` and holds there.
-2. User presses Next (or →) — controller seeks to `fragments[1]` and holds.
+1. Player enters a fragmented slide - seeks directly to `fragments[0]` and holds there.
+2. User presses Next (or →) - controller seeks to `fragments[1]` and holds.
 3. After the last fragment, Next advances to the next slide.
 4. A slide without fragments enters at a rest frame inside the slide, usually its midpoint, not exactly at `slide.end`.
 
 Fragment times must fall within `[start, end]` (inclusive of both bounds). The lint rule rejects only fragments outside that range (`time < start` or `time > end`).
 
-Fragment times are **absolute composition-timeline positions** — the same coordinate space as `data-start` — not offsets relative to the scene's start.
+Fragment times are **absolute composition-timeline positions** - the same coordinate space as `data-start` - not offsets relative to the scene's start.
 
 Navigation is seek-driven, not play-driven. The controller never starts playback just to move between fragments; each navigation command is a deterministic seek to the target hold time. Design fragment states so they are correct at the target timeline time.
 
@@ -216,7 +216,7 @@ Navigation is seek-driven, not play-driven. The controller never starts playback
 
 ## Branching: hotspots and slide sequences
 
-Branch slides are real scenes in the same composition timeline. They are listed only under `slideSequences` and are excluded from main-line navigation — the player never visits them unless a hotspot fires.
+Branch slides are real scenes in the same composition timeline. They are listed only under `slideSequences` and are excluded from main-line navigation - the player never visits them unless a hotspot fires.
 
 **Navigation model:**
 
@@ -274,7 +274,7 @@ Branch slides are real scenes in the same composition timeline. They are listed 
     }
   </script>
 
-  <!-- Slide 1 — hook -->
+  <!-- Slide 1 - hook -->
   <div
     data-composition-id="hook"
     data-start="0"
@@ -297,7 +297,7 @@ Branch slides are real scenes in the same composition timeline. They are listed 
     </section>
   </div>
 
-  <!-- Slide 2 — problem (3 fragments) -->
+  <!-- Slide 2 - problem (3 fragments) -->
   <div
     data-composition-id="problem"
     data-start="6"
@@ -329,7 +329,7 @@ Branch slides are real scenes in the same composition timeline. They are listed 
     </section>
   </div>
 
-  <!-- Slide 3 — solution -->
+  <!-- Slide 3 - solution -->
   <div
     data-composition-id="solution"
     data-start="21"
@@ -347,12 +347,12 @@ Branch slides are real scenes in the same composition timeline. They are listed 
       style="position: absolute; inset: 0; display: grid; place-items: center"
     >
       <h2 id="solution-headline" style="font-size: 72px; color: #fff; font-family: sans-serif">
-        Acme automates scheduling for service SMBs — no-shows down 80% in 90 days
+        Acme automates scheduling for service SMBs - no-shows down 80% in 90 days
       </h2>
     </section>
   </div>
 
-  <!-- Branch slide — excluded from main line -->
+  <!-- Branch slide - excluded from main line -->
   <div
     data-composition-id="mkt-math"
     data-start="29"
@@ -376,19 +376,15 @@ Branch slides are real scenes in the same composition timeline. They are listed 
   </div>
 
   <script>
-    window.__timelines = window.__timelines || {};
-
     // Slide 2 fragment entrance animations
-    gsap.registerPlugin(); // load any plugins before use
+    const tl = anime.createTimeline({ autoplay: false });
 
-    const tl = gsap.timeline({ paused: true });
-    window.__timelines["problem"] = tl;
-
-    // Insert positions are absolute composition-timeline times (same as data-start / fragment values).
-    tl.from("#pain-1", { opacity: 0, y: 20, duration: 0.4 }, 11.0);
-    tl.from("#pain-2", { opacity: 0, y: 20, duration: 0.4 }, 15.0);
+    // Insert positions are absolute composition-timeline times in milliseconds.
+    tl.add("#pain-1", { opacity: [0, 1], translateY: [20, 0], duration: 400 }, 11000);
+    tl.add("#pain-2", { opacity: [0, 1], translateY: [20, 0], duration: 400 }, 15000);
     // pain-3 lands at end of slide
-    tl.from("#pain-3", { opacity: 0, y: 20, duration: 0.4 }, 13.0);
+    tl.add("#pain-3", { opacity: [0, 1], translateY: [20, 0], duration: 400 }, 13000);
+    hyperframesAnime.register("problem", tl);
   </script>
 </body>
 ```
@@ -396,10 +392,10 @@ Branch slides are real scenes in the same composition timeline. They are listed 
 ### Key points in the example
 
 - The island `sceneId` values (`"hook"`, `"problem"`, `"solution"`, `"mkt-math"`) exactly match `data-composition-id` values on scene divs.
-- `mkt-math` appears only in `slideSequences` — it is never in the top-level `slides` array.
+- `mkt-math` appears only in `slideSequences` - it is never in the top-level `slides` array.
 - Fragment times (`11.0`, `15.0`) are within the `problem` scene's `[6, 21]` range (times are absolute composition-timeline positions).
 - The hotspot `region` (`x: 55, y: 60, w: 40, h: 20`) positions the clickable area in the lower-right quadrant of the problem slide.
-- GSAP timelines are registered on `window.__timelines` and are paused — the HyperFrames engine drives playback; do not call `.play()` at construction time.
+- Anime.js timelines are registered with `hyperframesAnime.register` and are paused, the HyperFrames engine drives playback; do not call `.play()` at construction time.
 
 ---
 
@@ -415,14 +411,14 @@ Wrap the composition in `<hyperframes-slideshow>` around `<hyperframes-player>` 
 
 `<hyperframes-slideshow>` provides the navigation chrome (Present, Prev / Next, counter, global mute when `sound` is present, fullscreen), keyboard handling (← / →, Space / Backspace, and P for Present), touch swipe, and hotspot overlays.
 
-The slideshow automatically sets the `interactive` attribute on every inner `<hyperframes-player>` at mount time, so clickable controls, links, native media controls, and custom players inside the composition iframe receive pointer events as expected. (Outside a slideshow wrapper, you must add `interactive` manually on `<hyperframes-player>` — the player defaults to `pointer-events: none` on the iframe so clicks on the player host don't get hijacked into toggling timeline playback.)
+The slideshow automatically sets the `interactive` attribute on every inner `<hyperframes-player>` at mount time, so clickable controls, links, native media controls, and custom players inside the composition iframe receive pointer events as expected. (Outside a slideshow wrapper, you must add `interactive` manually on `<hyperframes-player>` - the player defaults to `pointer-events: none` on the iframe so clicks on the player host don't get hijacked into toggling timeline playback.)
 
 **Presenter mode:** use the built-in Present icon button in the slideshow nav capsule, or press P. It calls `window.open('?mode=audience')` for a fullscreen audience tab; the originating tab becomes the presenter view (current slide reduced, next-slide preview, notes, elapsed timer). The two tabs sync via `BroadcastChannel('hf-slideshow:' + location.pathname)`. Do not add a custom wrapper-level Present button; the shared component owns its placement, icon, styling, and audience-mode hiding.
 
 **Presenting over Google Meet / Zoom (screen share):** share the _audience_ surface, keep the presenter view on your own screen.
 
-- **Google Meet (or any in-Chrome share):** Present → in Meet choose **Share screen → A tab** → pick the audience tab → switch back to the presenter tab. Chrome keeps a captured tab rendering while backgrounded, so animations and slide nav stay live. Do **not** share "A window" or "Entire screen" — a fully covered window stops rendering (frozen slides for viewers), and entire-screen exposes your notes.
-- **Zoom (desktop app):** drag the audience tab out into its own window and share that window. Zoom captures via the OS, so if the audience window becomes _fully_ covered it freezes — use a second monitor, or keep a sliver of the audience window visible behind the presenter view.
+- **Google Meet (or any in-Chrome share):** Present → in Meet choose **Share screen → A tab** → pick the audience tab → switch back to the presenter tab. Chrome keeps a captured tab rendering while backgrounded, so animations and slide nav stay live. Do **not** share "A window" or "Entire screen" - a fully covered window stops rendering (frozen slides for viewers), and entire-screen exposes your notes.
+- **Zoom (desktop app):** drag the audience tab out into its own window and share that window. Zoom captures via the OS, so if the audience window becomes _fully_ covered it freezes - use a second monitor, or keep a sliver of the audience window visible behind the presenter view.
 
 Presenter-driven media playback has an autoplay-policy constraint: `BroadcastChannel` can sync intent, time, and state, but it cannot transfer the presenter's user activation to the audience tab. The shared slideshow player mirrors native media events and starts remote audience playback muted first; only fall back to the standalone harness's audience unlock behavior if muted `media.play()` is rejected or if the deck specifically requires audible audience playback. Do not keep applying remote `timeupdate` messages after a rejected play, or the audience will silently seek through the video without playback.
 
@@ -500,7 +496,7 @@ Until then, standalone demos (a composition opened via the bare player bundle in
 skills/slideshow/references/standalone-harness.md
 ```
 
-Do not treat the patterns there as the blessed model — they exist only to bridge the gap until the engine-hosted path lands.
+Do not treat the patterns there as the blessed model - they exist only to bridge the gap until the engine-hosted path lands.
 
 ## Handoff
 

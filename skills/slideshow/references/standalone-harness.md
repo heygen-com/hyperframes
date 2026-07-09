@@ -1,12 +1,12 @@
 # Standalone HyperFrames Slideshow Harness
 
-## 1. Interim framing — why this exists
+## 1. Interim framing - why this exists
 
 These patterns are a **temporary workaround** for standalone demos. The durable solution is engine-hosted: a future `hyperframes preview --slideshow` / studio present mode will host the composition over the real HyperFrames engine, which drives seek-timelines frame-by-frame, owns the gesture frame, and reads the slideshow island directly from the composition. When that path ships, most of what follows collapses.
 
 Until then, a standalone slideshow opened via the bare player bundle must work around three facts:
 
-1. The composition must expose a seekable `window.__timelines.root` timeline. Anything outside that seek path, such as Three.js loops or imperative entrance effects, must be self-driving.
+1. The composition must expose a seekable `hyperframesAnime.register("root", tl)` timeline. Anything outside that seek path, such as Three.js loops or imperative entrance effects, must be self-driving.
 2. `<hyperframes-slideshow>` reads the slideshow island from its **own innerHTML** (the wrapper element), not from the composition the player loads. The island must be duplicated into the wrapper.
 3. The composition runs in the player's **iframe**; user keypresses and pointer events land on the **parent page**. Wrapper-owned SFX/global audio should live in the parent, where the activation token is reliable. Normal slide media stays in the composition and is stopped by the slideshow player on slide exit.
 
@@ -14,8 +14,8 @@ Do not treat these as the blessed authoring model. When the engine-hosted path s
 
 **Living reference implementations:**
 
-- `registry/examples/airbnb-deck/index.html` + `demo.html` — full pattern set (Three.js, fragments, SFX, branch slide)
-- `registry/examples/startup-pitch/index.html` — minimal version (no 3D), good starting point
+- `registry/examples/airbnb-deck/index.html` + `demo.html` - full pattern set (Three.js, fragments, SFX, branch slide)
+- `registry/examples/startup-pitch/index.html` - minimal version (no 3D), good starting point
 
 ---
 
@@ -31,12 +31,12 @@ For public or user-facing generated projects, make this wrapper the root `index.
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Deck — Slideshow Demo</title>
+    <title>My Deck - Slideshow Demo</title>
 
     <!--
       Load both bundles from packages/player/dist.
       The global builds register <hyperframes-player> and <hyperframes-slideshow>
-      as custom elements — no import map needed.
+      as custom elements - no import map needed.
     -->
     <script src="../../../packages/player/dist/hyperframes-player.global.js"></script>
     <script src="../../../packages/player/dist/slideshow/hyperframes-slideshow.global.js"></script>
@@ -60,7 +60,7 @@ For public or user-facing generated projects, make this wrapper the root `index.
   </head>
   <body>
     <!--
-      tabindex="0" is critical — <hyperframes-slideshow> binds keydown
+      tabindex="0" is critical - <hyperframes-slideshow> binds keydown
       (ArrowLeft/Right, Space, Backspace) to itself. Without tabindex the
       element cannot receive focus and arrow keys are dead.
     -->
@@ -75,7 +75,7 @@ For public or user-facing generated projects, make this wrapper the root `index.
       ></hyperframes-player>
 
       <!--
-        DUPLICATED ISLAND — keep in sync with the island inside index.html.
+        DUPLICATED ISLAND - keep in sync with the island inside index.html.
         <hyperframes-slideshow> reads from its own innerHTML, not from the
         composition the player loads. Every time slides/fragments/hotspots/
         sequences change in index.html, update this copy too.
@@ -102,7 +102,7 @@ For public or user-facing generated projects, make this wrapper the root `index.
     </hyperframes-slideshow>
     <!-- The built-in slideshow nav capsule renders Present; do not add a wrapper-level button. -->
 
-    <!-- Audio player lives here — see Section 6 -->
+    <!-- Audio player lives here - see Section 6 -->
   </body>
 </html>
 ```
@@ -111,7 +111,7 @@ For public or user-facing generated projects, make this wrapper the root `index.
 
 ### Per-slide `autoplay`
 
-Add `"autoplay": true` to a slide in the island to play that slide's first `<video>` from the start when the presenter lands on it. The slideshow still holds — it never auto-advances — so the presenter clicks Next when ready; autoplay only saves a manual play click into the composition.
+Add `"autoplay": true` to a slide in the island to play that slide's first `<video>` from the start when the presenter lands on it. The slideshow still holds - it never auto-advances - so the presenter clicks Next when ready; autoplay only saves a manual play click into the composition.
 
 ```json
 {
@@ -121,7 +121,7 @@ Add `"autoplay": true` to a slide in the island to play that slide's first `<vid
 }
 ```
 
-Use `autoplay` when the video **is** the slide's primary content and its natural end is the cue to advance — a cold-open promo, a demo clip you let run and then move on from. Do **not** use it for background/ambient loops or for footage the presenter talks over; those should start on the presenter's own cue (a click on the clip's controls via `interactive`), not automatically. One autoplay clip per slide (the first `<video>` in the scene).
+Use `autoplay` when the video **is** the slide's primary content and its natural end is the cue to advance - a cold-open promo, a demo clip you let run and then move on from. Do **not** use it for background/ambient loops or for footage the presenter talks over; those should start on the presenter's own cue (a click on the clip's controls via `interactive`), not automatically. One autoplay clip per slide (the first `<video>` in the scene).
 
 ### Presenter media bridge for interactive media
 
@@ -431,7 +431,7 @@ Clearing the textarea must save an empty string, not remove the local value, bec
 
 ## 3. Playhead-driven scene visibility
 
-Without the engine, scenes are driven by a `root` GSAP timeline that the composition manages on its own clock. The visibility controller reads `window.__timelines.root.time()` via that timeline's `onUpdate` callback and sets `opacity` accordingly. Only the active scene is visible.
+Without the engine, scenes are driven by a `root` anime.js timeline that the composition manages on its own clock. The visibility controller reads the registered root timeline's current time via an `onUpdate` callback and sets `opacity` accordingly. Only the active scene is visible.
 
 The key insight: scene backgrounds must be `transparent` (not opaque) if you want a Three.js canvas behind them; the body/html background and scene inline `background` set the visual fill.
 
@@ -503,7 +503,7 @@ Before validation, resolve source font variables. HyperFrames lint accepts concr
 ```html
 <!-- In index.html (composition) -->
 
-<!-- Shared scene CSS — all scenes start hidden -->
+<!-- Shared scene CSS - all scenes start hidden -->
 <style>
   .scene-frame {
     position: absolute;
@@ -512,7 +512,7 @@ Before validation, resolve source font variables. HyperFrames lint accepts concr
     width: 1920px;
     height: 1080px;
     overflow: hidden;
-    opacity: 0; /* hidden at rest — visibility controller shows the active one */
+    opacity: 0; /* hidden at rest - visibility controller shows the active one */
     visibility: hidden; /* opacity:0 alone still lets invisible frames block clicks */
     pointer-events: none; /* inactive scenes must not swallow events */
   }
@@ -548,14 +548,13 @@ Before validation, resolve source font variables. HyperFrames lint accepts concr
   <!-- content here -->
 </div>
 
-<!-- Root timeline — spans the full composition duration -->
+<!-- Root timeline - spans the full composition duration -->
 <script>
   (function () {
-    window.__timelines = window.__timelines || {};
-    var tl = gsap.timeline({ paused: true });
-    // A single to() for the full duration establishes the seekable range
-    tl.to({}, { duration: 108 }); // replace 108 with your total seconds
-    window.__timelines["root"] = tl;
+    var tl = anime.createTimeline({ autoplay: false });
+    // A single add() for the full duration establishes the seekable range
+    tl.add({}, { duration: 108000 }); // replace 108000 with your total milliseconds
+    hyperframesAnime.register("root", tl);
   })();
 </script>
 
@@ -585,20 +584,21 @@ Before validation, resolve source font variables. HyperFrames lint accepts concr
           fireEntrance(el); // see Section 4
         }
       }
-      // fragment reveals here — see Section 4
+      // fragment reveals here - see Section 4
     }
 
     window.__hfSetTime = updateVisibility;
 
-    // Show first slide immediately — avoids blank on load
+    // Show first slide immediately - avoids blank on load
     updateVisibility(0);
 
     // Hook the root timeline so every seek drives visibility
-    var root = window.__timelines && window.__timelines["root"];
+    var entry = window.hyperframesAnime && window.hyperframesAnime.get("root");
+    var root = entry && entry.instance;
     if (root) {
-      root.eventCallback("onUpdate", function () {
-        updateVisibility(root.time());
-      });
+      root.onUpdate = function (self) {
+        updateVisibility((self.currentTime || 0) / 1000);
+      };
     }
   })();
 </script>
@@ -608,7 +608,7 @@ Before validation, resolve source font variables. HyperFrames lint accepts concr
 
 ## 4. Imperative entrances on slide-activate
 
-The engine-hosted path drives GSAP seek-timelines frame by frame. Without it, seek-timeline tweens never fire. Instead, fire imperative `gsap.from()` calls each time a scene becomes active — these run on GSAP's own ticker and are independent of any playhead.
+The engine-hosted path drives anime.js seek-timelines frame by frame. Without it, seek-timeline tweens never fire. Instead, fire imperative `anime.animate()` calls each time a scene becomes active, these run on anime.js's own ticker and are independent of any playhead.
 
 Fragment reveals use playhead-crossing: the visibility controller checks whether the playhead has passed each fragment's hold-time and fires an animation on the first crossing. Bunch fragment hold-times near the scene start (within the first 300–500 ms of the scene) so successive ArrowRight presses feel like snappy sequential reveals rather than long waits.
 
@@ -620,13 +620,12 @@ function fireEntrance(sceneEl) {
   // Add data-anim to eyebrows, headlines, subheads, and card grids.
   var animEls = sceneEl.querySelectorAll("[data-anim]");
   if (!animEls.length) return;
-  gsap.from(animEls, {
-    opacity: 0,
-    y: 28,
-    duration: 0.4,
-    stagger: 0.07,
-    ease: "power2.out",
-    overwrite: true, // cancel any in-flight animation on rapid slide changes
+  anime.animate(animEls, {
+    opacity: [0, 1],
+    translateY: [28, 0],
+    duration: 400,
+    delay: anime.stagger(70),
+    ease: "outCubic",
   });
 }
 
@@ -642,11 +641,7 @@ var fragments = [
 function revealFragment(id) {
   var el = document.getElementById(id);
   if (!el) return;
-  gsap.fromTo(
-    el,
-    { opacity: 0, x: -24 },
-    { opacity: 1, x: 0, duration: 0.35, ease: "power2.out", overwrite: true },
-  );
+  anime.animate(el, { opacity: [0, 1], translateX: [-24, 0], duration: 350, ease: "outCubic" });
 }
 
 // Inside updateVisibility(t):
@@ -662,7 +657,10 @@ if (active && lastActiveId !== s.id && s.id === "scene-problem") {
   for (var f = 0; f < fragments.length; f++) {
     fragments[f].revealed = false;
     var pEl = document.getElementById(fragments[f].id);
-    if (pEl) gsap.set(pEl, { opacity: 0, clearProps: "transform" });
+    if (pEl) {
+      pEl.style.opacity = "0";
+      pEl.style.transform = "";
+    }
   }
 }
 ```
@@ -678,20 +676,20 @@ Fragment items start with `opacity: 0` in CSS. The visibility controller reveals
 Post the manifest from the composition (index.html), not the parent wrapper:
 
 ```js
-// In index.html — post after a brief delay so the parent frame has settled
+// In index.html - post after a brief delay so the parent frame has settled
 (function () {
   var FPS = 30;
   var totalSeconds = 108; // match your composition's data-duration
   var totalFrames = totalSeconds * FPS;
 
   var scenes = [
-    // EVERY scene — including branch scenes — must appear here.
+    // EVERY scene - including branch scenes - must appear here.
     // id must match data-composition-id; start/duration in seconds.
     { id: "cover", start: 0, duration: 9 },
     { id: "problem", start: 9, duration: 9 },
     { id: "solution", start: 18, duration: 9 },
     // ... all main-line scenes ...
-    // branch scene — listed last, NOT in main slides array in the island
+    // branch scene - listed last, NOT in main slides array in the island
     { id: "market-sizing", start: 99, duration: 9 },
   ];
 
@@ -722,9 +720,9 @@ Omitting any scene (including branch scenes) from this manifest means the slides
 
 ---
 
-## 6. Audio/SFX — built-in mute control via `<hyperframes-slideshow sound>`
+## 6. Audio/SFX - built-in mute control via `<hyperframes-slideshow sound>`
 
-Wrapper-owned SFX should live in the parent page. Browsers enforce user-activation for AudioContext and HTMLAudioElement.play() — an iframe without its own activation (i.e., the user never clicked inside it) is often autoplay-blocked. The user's keypress lands on the parent, so the parent is the reliable frame for click/transition sound effects.
+Wrapper-owned SFX should live in the parent page. Browsers enforce user-activation for AudioContext and HTMLAudioElement.play() - an iframe without its own activation (i.e., the user never clicked inside it) is often autoplay-blocked. The user's keypress lands on the parent, so the parent is the reliable frame for click/transition sound effects.
 
 Normal slide media should stay in the composition. The slideshow player now stops slide media automatically on slide/sequence changes by calling `hyperframes-player.stopMedia()`, which pauses iframe `<video>` / `<audio>`, runtime WebAudio, and parent proxies adopted from iframe media. Same-slide fragment reveals do not stop media, and global/deck-level parent audio such as `audio-src` is left alone. Do not hand-roll per-slide cleanup scripts for regular video/audio players.
 
@@ -746,7 +744,7 @@ Use `data-has-audio="true"` only for audible media. Muted autoplay loops can omi
 
 Implementation detail: iframe media elements belong to the iframe's DOM realm. Fallback code in the parent page/player must not use the parent page's `el instanceof HTMLMediaElement` check for iframe nodes; in real browsers that fails and leaves videos audible. Use `el.ownerDocument.defaultView.HTMLMediaElement` or a tag/duck-type guard before setting `muted` or calling `pause()`.
 
-### Mute toggle — built-in chrome control
+### Mute toggle - built-in chrome control
 
 Add the `sound` boolean attribute to `<hyperframes-slideshow>` in demo.html. The component renders a speaker/speaker-muted SVG button as the **leftmost item in the nav capsule**, styled identically to the prev/next ghost buttons. No separate mute button in the composition.
 
@@ -779,16 +777,16 @@ if (slideshow) {
 if (muted) return; // skip play
 ```
 
-If `sound` is **not** present on `<hyperframes-slideshow>` (decks without audio), the mute control is hidden — the capsule shows only nav.
+If `sound` is **not** present on `<hyperframes-slideshow>` (decks without audio), the mute control is hidden - the capsule shows only nav.
 
 ### Composition: post cues unconditionally
 
-The composition posts sfx cues **unconditionally** — it does not track mute state. The parent gates on `muted`:
+The composition posts sfx cues **unconditionally** - it does not track mute state. The parent gates on `muted`:
 
 **In the composition (index.html):**
 
 ```js
-// Post an sfx cue at transition points — unconditionally.
+// Post an sfx cue at transition points - unconditionally.
 // The parent audio player gates on the slideshow component's mute state.
 function playSfx(name) {
   try {
@@ -797,10 +795,10 @@ function playSfx(name) {
 }
 
 // Fire at scene transitions:
-//   playSfx("advance")      — moving to the next main-line slide
-//   playSfx("back")         — returning from a branch
-//   playSfx("branch-enter") — entering a branch
-//   playSfx("fragment")     — a fragment item is revealed
+//   playSfx("advance")      - moving to the next main-line slide
+//   playSfx("back")         - returning from a branch
+//   playSfx("branch-enter") - entering a branch
+//   playSfx("fragment")     - a fragment item is revealed
 ```
 
 Do NOT add a mute button inside the composition. The `#sfx-mute` coral button pattern is removed; the nav capsule in the parent chrome owns mute.
@@ -865,7 +863,7 @@ Do NOT add a mute button inside the composition. The `#sfx-mute` coral button pa
     window.addEventListener("message", function (e) {
       var d = e.data;
       if (!d || d.type !== "hf-sfx") return;
-      // Gate on mute state — the component owns this.
+      // Gate on mute state - the component owns this.
       if (muted) return;
       var el = clips[d.name];
       if (!el || !unlocked) return;
@@ -878,7 +876,7 @@ Do NOT add a mute button inside the composition. The `#sfx-mute` coral button pa
 </script>
 ```
 
-**Sourcing SFX files:** use the HeyGen MCP `search_audio_sounds` tool with `type=sound_effects` and keywords like "whoosh", "click", "transition". Download the results to a local `sfx/` directory next to `demo.html` and reference them by relative path. Do not fetch SFX at render time — the HyperFrames determinism rule forbids runtime network requests; pre-download and commit them.
+**Sourcing SFX files:** use the HeyGen MCP `search_audio_sounds` tool with `type=sound_effects` and keywords like "whoosh", "click", "transition". Download the results to a local `sfx/` directory next to `demo.html` and reference them by relative path. Do not fetch SFX at render time - the HyperFrames determinism rule forbids runtime network requests; pre-download and commit them.
 
 ---
 
@@ -886,15 +884,15 @@ Do NOT add a mute button inside the composition. The `#sfx-mute` coral button pa
 
 Add a Three.js scene behind the slides for ambient motion. The key rules:
 
-- **Own rAF loop** — do not integrate with the HF seek timeline. Three.js runs its own `requestAnimationFrame` loop independent of playhead position.
-- **One persistent canvas** — create the canvas once; update geometry/materials in-place per scene.
-- **Guard renderer creation** — WebGL may be unavailable (software-GL environments, some CI contexts). Create the renderer inside try/catch once; if it fails, hide the canvas and expose no-op stubs. Do not spam `console.error` — silence it during creation and restore it in `finally`.
-- **Full-bleed, behind content** — fix the canvas at `z-index: 0`, `pointer-events: none`, behind scene frames at `z-index: 1`.
-- **Transparent scene frames** — set scene backgrounds to `transparent` so the 3D canvas shows through. Use a radial-gradient scrim on the text container (not the scene frame itself) to keep type legible while letting 3D show in the margins.
-- **Expose a mood hook** — export `window.__threeApplyMood(sceneKey)` so the visibility controller can switch particle colors, toggle sub-objects, or change the clear color when the active scene changes.
+- **Own rAF loop** - do not integrate with the HF seek timeline. Three.js runs its own `requestAnimationFrame` loop independent of playhead position.
+- **One persistent canvas** - create the canvas once; update geometry/materials in-place per scene.
+- **Guard renderer creation** - WebGL may be unavailable (software-GL environments, some CI contexts). Create the renderer inside try/catch once; if it fails, hide the canvas and expose no-op stubs. Do not spam `console.error` - silence it during creation and restore it in `finally`.
+- **Full-bleed, behind content** - fix the canvas at `z-index: 0`, `pointer-events: none`, behind scene frames at `z-index: 1`.
+- **Transparent scene frames** - set scene backgrounds to `transparent` so the 3D canvas shows through. Use a radial-gradient scrim on the text container (not the scene frame itself) to keep type legible while letting 3D show in the margins.
+- **Expose a mood hook** - export `window.__threeApplyMood(sceneKey)` so the visibility controller can switch particle colors, toggle sub-objects, or change the clear color when the active scene changes.
 
 ```js
-// In index.html — Three.js setup (module script)
+// In index.html - Three.js setup (module script)
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 
 var canvas = document.getElementById("three-canvas");
@@ -910,7 +908,7 @@ try {
 }
 
 if (!renderer) {
-  // Graceful degradation — branded layout is the fallback.
+  // Graceful degradation - branded layout is the fallback.
   canvas.style.display = "none";
   window.__threeApplyMood = function () {};
   // Do NOT start the rAF loop.
@@ -960,7 +958,7 @@ if (!renderer) {
 **CSS for transparent scene frames + scrim:**
 
 ```css
-/* Three.js canvas — always behind everything */
+/* Three.js canvas - always behind everything */
 #three-canvas {
   position: fixed;
   top: 0;
@@ -978,11 +976,11 @@ if (!renderer) {
   left: 0;
   width: 1920px;
   height: 1080px;
-  background: transparent; /* NOT opaque — 3D would be occluded */
+  background: transparent; /* NOT opaque - 3D would be occluded */
   z-index: 1;
 }
 
-/* Scrim on the TEXT container — not the scene frame.
+/* Scrim on the TEXT container - not the scene frame.
    Radial gradient: opaque in the center where text is, transparent at edges
    so 3D shows in the whitespace margins. */
 .slide-inner.scrim-light {
@@ -1003,12 +1001,12 @@ if (!renderer) {
 | ----------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Island not duplicated in wrapper                      | Slideshow chrome never renders; no slide counter, no prev/next  | Copy the `<script type="application/hyperframes-slideshow+json">` block verbatim into the `<hyperframes-slideshow>` element in demo.html         |
 | Wrapper SFX in the iframe                             | Click/transition sounds silent                                  | Move SFX Audio elements and unlock logic to demo.html; post `{type:'hf-sfx',name}` from index.html                                               |
-| No self-clock in composition                          | All scene frames stacked / wrong slide visible at load          | Add the root GSAP timeline (`window.__timelines["root"]`) and the `onUpdate` visibility controller as shown in Section 3                         |
-| Content opacity:0 with no engine                      | Blank slides — `[data-anim]` elements invisible at rest         | Call `updateVisibility(0)` synchronously after defining the controller so the first slide is shown immediately                                   |
+| No self-clock in composition                          | All scene frames stacked / wrong slide visible at load          | Add the root anime.js timeline (`hyperframesAnime.register("root", tl)`) and the `onUpdate` visibility controller as shown in Section 3          |
+| Content opacity:0 with no engine                      | Blank slides - `[data-anim]` elements invisible at rest         | Call `updateVisibility(0)` synchronously after defining the controller so the first slide is shown immediately                                   |
 | Keydown bound to the element without focus            | ArrowLeft/Right dead                                            | Add `tabindex="0"` to `<hyperframes-slideshow>` so it can receive keyboard focus                                                                 |
 | Opaque scene background occluding Three.js canvas     | 3D never visible                                                | Set `background: transparent` on `.scene-frame`; put the visual fill on the text scrim container instead                                         |
 | WebGL renderer creation spams errors in headless envs | Console noise, rAF loop starts anyway                           | Silence `console.error` during `new THREE.WebGLRenderer(...)`, restore in `finally`, guard the rAF start on `renderer !== null`                  |
-| Branch scene missing from postMessage manifest        | Hotspot navigates but slide is blank                            | Include every scene — main line and branch — in the `scenes` array of the `postTimeline()` message                                               |
+| Branch scene missing from postMessage manifest        | Hotspot navigates but slide is blank                            | Include every scene - main line and branch - in the `scenes` array of the `postTimeline()` message                                               |
 | Prominent 3D/content in nav-capsule zone              | Bright element bleeds behind/beside the nav pill                | Keep the bottom-right ~360×140px region clear; add a background-matching gradient overlay on any slide whose 3D mood is bright in that corner    |
 | Custom media visualizer uses its own timer            | Canvas/playhead drifts from the actual video or native controls | Drive visual state from media events and `media.currentTime`; do not use an independent `setTimeout` clock                                       |
 | One `data-wired` flag means two different things      | Pre-rendered timeline HTML skips media listener setup           | Use separate markers such as `data-timeline-rendered` and `data-media-sync-wired`                                                                |

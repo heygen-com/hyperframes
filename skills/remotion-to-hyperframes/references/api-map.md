@@ -16,10 +16,10 @@ details (timing, transitions, etc.).
 | Remotion                                             | HyperFrames                                                                                                          |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `<Composition id durationInFrames fps width height>` | root `<div id="stage" data-composition-id data-start="0" data-duration="<dur/fps>" data-fps data-width data-height>` |
-| `defaultProps={...}`                                 | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays — see [parameters.md](parameters.md)    |
+| `defaultProps={...}`                                 | `data-*` attributes on `#stage` (one per scalar prop). Nested objects/arrays - see [parameters.md](parameters.md)    |
 | `schema={z.object(...)}`                             | not represented in HTML; the schema lives in the agent's translation step only                                       |
 | `calculateMetadata` (sync)                           | resolve at translation time, write concrete values into `data-*`                                                     |
-| `calculateMetadata` (async)                          | **refuse + interop** — see [escape-hatch.md](escape-hatch.md)                                                        |
+| `calculateMetadata` (async)                          | **refuse + interop** - see [escape-hatch.md](escape-hatch.md)                                                        |
 | `registerRoot(RemotionRoot)`                         | drop                                                                                                                 |
 | `<AbsoluteFill style>`                               | `<div style="position:absolute;inset:0;{style}">`                                                                    |
 
@@ -27,27 +27,27 @@ details (timing, transitions, etc.).
 
 See [sequencing.md](sequencing.md) for nesting and stagger details.
 
-| Remotion                                   | HyperFrames                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `<Sequence from={F} durationInFrames={D}>` | `<div data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">`                                 |
-| `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                              |
-| `<Loop durationInFrames={D}>`              | not a primitive — emit a custom GSAP `repeat: -1` loop with manual offset math                            |
-| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op |
+| Remotion                                   | HyperFrames                                                                                                 |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `<Sequence from={F} durationInFrames={D}>` | `<div data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">`                                   |
+| `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                                |
+| `<Loop durationInFrames={D}>`              | not a primitive - emit repeated anime.js timeline segments or a finite `loop` count with manual offset math |
+| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op   |
 
 ## Timing
 
-See [timing.md](timing.md) — this is the highest-leverage section.
+See [timing.md](timing.md) - this is the highest-leverage section.
 
-| Remotion                                                   | HyperFrames                                                                                                        |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `useCurrentFrame()`                                        | drop — HF seeks the timeline. The math derived from `frame` becomes an animatable property of a paused GSAP tween. |
-| `useVideoConfig()` for `fps` / `durationInFrames`          | drop — read from `data-fps` / `data-duration` on `#stage`                                                          |
-| `interpolate(frame, [a,b], [x,y])` (linear)                | `gsap.fromTo(t, {p:x}, {p:y, duration:(b-a)/fps, ease:"none"})` at offset `a/fps`                                  |
-| `interpolate(frame, [a,b,c,d], [x,y,y,z])` (multi-segment) | three `gsap.to` calls at offsets `a/fps`, `b/fps`, `c/fps`                                                         |
-| `interpolate(..., {easing: Easing.bezier})`                | GSAP `CustomEase.create("c", "M0,0 C${a},${b} ${c},${d} 1,1")`                                                     |
-| `spring({frame, fps, config: {damping, stiffness, mass}})` | GSAP `back.out(N)` — see [timing.md](timing.md) for damping → overshoot table                                      |
-| `interpolateColors(frame, range, colors)`                  | `gsap.to({...}, { backgroundColor, color, duration, ease })` — GSAP handles color tweens natively                  |
-| `Easing.in / .out / .inOut(power)`                         | GSAP `power<N>.in` / `power<N>.out` / `power<N>.inOut`                                                             |
+| Remotion                                                   | HyperFrames                                                                                                            |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `useCurrentFrame()`                                        | drop - HF seeks the timeline. The math derived from `frame` becomes an animatable property of a paused anime.js tween. |
+| `useVideoConfig()` for `fps` / `durationInFrames`          | drop - read from `data-fps` / `data-duration` on `#stage`                                                              |
+| `interpolate(frame, [a,b], [x,y])` (linear)                | `tl.add(t, { p:[x,y], duration:((b-a)/fps)*1000, ease:"linear" }, (a/fps)*1000)`                                       |
+| `interpolate(frame, [a,b,c,d], [x,y,y,z])` (multi-segment) | three `tl.add` calls at offsets `(a/fps)*1000`, `(b/fps)*1000`, `(c/fps)*1000`                                         |
+| `interpolate(..., {easing: Easing.bezier})`                | anime.js custom ease path when representable, otherwise approximate with the closest native ease                       |
+| `spring({frame, fps, config: {damping, stiffness, mass}})` | anime.js `outBack(N)` or `outElastic(...)` - see [timing.md](timing.md) for damping → overshoot table                  |
+| `interpolateColors(frame, range, colors)`                  | `tl.add(target, { backgroundColor, color, duration, ease }, offsetMs)`                                                 |
+| `Easing.in / .out / .inOut(power)`                         | anime.js `inQuad` / `outCubic` / `inOutQuart` style names, based on power                                              |
 
 ## Media
 
@@ -58,11 +58,11 @@ See [media.md](media.md) for trim, volume ramps, and decoder notes.
 | `<Audio src volume>`                   | `<audio data-start data-duration data-track-index data-volume src>`         |
 | `<Audio playbackRate startFrom endAt>` | `data-playback-rate`, `data-trim-start`, `data-trim-end`                    |
 | `<Video src>`                          | `<video muted playsinline data-start data-duration data-track-index src>`   |
-| `<OffthreadVideo>`                     | `<video>` — HF doesn't need the off-thread variant (uses headless Chrome)   |
+| `<OffthreadVideo>`                     | `<video>` - HF doesn't need the off-thread variant (uses headless Chrome)   |
 | `<Img src>`                            | `<img>`                                                                     |
-| `<IFrame src>`                         | `<iframe>` — HF auto-falls back to screenshot mode for nested iframes       |
-| `staticFile("x.png")`                  | `"assets/x.png"` — copy the file into `hf-src/assets/` next to `index.html` |
-| `delayRender()` / `continueRender()`   | drop — HF waits on asset readiness via the Frame Adapter pattern            |
+| `<IFrame src>`                         | `<iframe>` - HF auto-falls back to screenshot mode for nested iframes       |
+| `staticFile("x.png")`                  | `"assets/x.png"` - copy the file into `hf-src/assets/` next to `index.html` |
+| `delayRender()` / `continueRender()`   | drop - HF waits on asset readiness via the Frame Adapter pattern            |
 
 ## Transitions
 
@@ -70,10 +70,10 @@ See [transitions.md](transitions.md).
 
 | Remotion                                                                       | HyperFrames                                                                                               |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `<TransitionSeries>` + `<TransitionSeries.Transition presentation={fade()} />` | manual `gsap.to(scene, {opacity: 0/1, duration})` crossfade at the boundary                               |
-| `slide()`, `wipe()`, `clockWipe()`, `fade()`                                   | HF [shader-transitions](https://hyperframes.heygen.com/catalog/blocks) package presets — pick the closest |
+| `<TransitionSeries>` + `<TransitionSeries.Transition presentation={fade()} />` | manual `tl.add(scene, { opacity, duration }, boundaryMs)` crossfade at the boundary                       |
+| `slide()`, `wipe()`, `clockWipe()`, `fade()`                                   | HF [shader-transitions](https://hyperframes.heygen.com/catalog/blocks) package presets - pick the closest |
 | `linearTiming({durationInFrames})`                                             | duration in seconds (`/fps`)                                                                              |
-| `springTiming({config})`                                                       | duration in seconds, ease `back.out` — see [timing.md](timing.md)                                         |
+| `springTiming({config})`                                                       | duration in seconds, ease `outBack(...)` - see [timing.md](timing.md)                                     |
 
 ## Lottie
 
@@ -83,7 +83,7 @@ See [lottie.md](lottie.md).
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `<Lottie animationData={data}>` | `<div id="lottie-N">` + `<script>const anim = lottie.loadAnimation({...}); window.__hfLottie.push(anim)</script>` |
 | `loop` / `playbackRate` props   | translate only after checking player seek behavior; HF adapter seeks absolute time via `goToAndStop`              |
-| `@remotion/lottie` runtime      | `lottie-web` from CDN — drop the React wrapper                                                                    |
+| `@remotion/lottie` runtime      | `lottie-web` from CDN - drop the React wrapper                                                                    |
 
 ## Fonts
 
@@ -92,7 +92,7 @@ See [fonts.md](fonts.md).
 | Remotion                                            | HyperFrames                                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `loadFont()` from `@remotion/google-fonts/<Family>` | `@font-face` rule referencing the Google Fonts CSS, OR `<link>` to Google Fonts in `<head>` |
-| Local font via `@font-face`                         | same — paste the rule into `<style>`                                                        |
+| Local font via `@font-face`                         | same - paste the rule into `<style>`                                                        |
 | System font fallback                                | document the font-fallback divergence cost (see [eval.md](eval.md))                         |
 
 ## Parameters
@@ -115,13 +115,13 @@ See [parameters.md](parameters.md).
 | `useReducer` driving animation                     | **refuse + interop**                                             |
 | `useEffect(fn, [deps])` (non-empty deps)           | **refuse + interop**                                             |
 | `useEffect(fn, [])` (mount-once side effect)       | drop the effect; use `queueMicrotask` if startup work is needed  |
-| `useCallback`, `useMemo`                           | drop the wrappers — decorative                                   |
+| `useCallback`, `useMemo`                           | drop the wrappers - decorative                                   |
 | Custom hook (pure derivation of `useCurrentFrame`) | inline the body                                                  |
 | Custom hook with state/effects                     | refuse + interop                                                 |
 
 ## Distributed rendering
 
-`@remotion/lambda` and `@remotion/cloudrun` are deployment configuration —
+`@remotion/lambda` and `@remotion/cloudrun` are deployment configuration -
 orthogonal to the rendered composition itself. The skill emits these as
 **warnings** (not blockers) and drops them in step 3 (Generate) with a note
 in `TRANSLATION_NOTES.md`. HF is single-machine today; document the gap.
