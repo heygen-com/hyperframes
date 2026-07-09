@@ -238,6 +238,8 @@
     <script>
       (function () {
         const tl = anime.createTimeline({ autoplay: false });
+        const fullFrameClipPath =
+          "polygon(0% 0%, 100% 0%, 100% 0%, 100% 100%, 100% 100%, 0% 100%, 0% 100%, 0% 0%, 0% 0%)";
 
         // === TITLE CARD (3s) ===
         tl.add("#title-label", { opacity: 1, translateY: 0, duration: 400, ease: "outCubic" }, 300);
@@ -247,7 +249,7 @@
           600,
         );
         tl.add("#title-count", { opacity: [0, 1], duration: 400, ease: "outCubic" }, 1000);
-        tl.add("#title-card", { opacity: 0, duration: 400, ease: "inOutCubic" }, 2400);
+        tl.add("#title-card", { opacity: [1, 0], duration: 400, ease: "inOutCubic" }, 2400);
 
         // === TRANSITION 1: Shutter ===
         tl.add(
@@ -260,7 +262,7 @@
             scaleX: 1,
             rotate: 0,
             filter: "none",
-            clipPath: "none",
+            clipPath: fullFrameClipPath,
             zIndex: 1,
             skewX: 0,
             duration: 0,
@@ -277,7 +279,7 @@
             scaleX: 1,
             rotate: 0,
             filter: "none",
-            clipPath: "none",
+            clipPath: fullFrameClipPath,
             zIndex: 2,
             skewX: 0,
             duration: 0,
@@ -340,7 +342,7 @@
             scaleX: 1,
             rotate: 0,
             filter: "none",
-            clipPath: "none",
+            clipPath: fullFrameClipPath,
             zIndex: 1,
             skewX: 0,
             duration: 0,
@@ -357,7 +359,7 @@
             scaleX: 1,
             rotate: 0,
             filter: "none",
-            clipPath: "none",
+            clipPath: fullFrameClipPath,
             zIndex: 2,
             skewX: 0,
             duration: 0,
@@ -450,7 +452,7 @@
           },
           9300,
         );
-        tl.add("#scene2", { clipPath: "none", zIndex: 2, duration: 0 }, 9420);
+        tl.add("#scene2", { clipPath: fullFrameClipPath, zIndex: 2, duration: 0 }, 9420);
         tl.add("#scene1", { opacity: 0, duration: 0 }, 9420);
         tl.add("#info-2", { opacity: 0, duration: 200 }, 11500);
 
