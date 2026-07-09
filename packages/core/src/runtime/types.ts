@@ -240,6 +240,7 @@ export type RuntimeAnimeInstance = {
 
 export type RuntimeAnimeRegistration = {
   id: string;
+  registryKey?: string;
   instance: RuntimeAnimeInstance;
   labels: RuntimeAnimeLabelMap;
 };

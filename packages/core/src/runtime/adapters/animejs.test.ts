@@ -282,6 +282,27 @@ describe("animejs adapter", () => {
       expect(b.seek).toHaveBeenCalledWith(1500);
     });
 
+    it("seeks sub-composition instances using local time offset by the host start", () => {
+      document.body.innerHTML = `
+        <div data-composition-id="root" data-start="0" data-duration="20">
+          <div data-composition-id="scene2-4-canvas" data-start="1.5" data-duration="12.5"></div>
+        </div>
+      `;
+      const root = createAnimeInstance({ duration: 20_000 });
+      const subComposition = createAnimeInstance({ duration: 12_500 });
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("root", root);
+      animeWindow.hyperframesAnime?.register("scene2-4-canvas", subComposition);
+      root.seek.mockClear();
+      subComposition.seek.mockClear();
+      const adapter = createAnimeJsAdapter();
+
+      adapter.seek({ time: 1.6 });
+
+      expect(root.seek).toHaveBeenCalledWith(1600);
+      expect(subComposition.seek).toHaveBeenCalledWith(100);
+    });
+
     it("continues seeking remaining instances if one throws", () => {
       const bad = {
         seek: vi.fn(() => {

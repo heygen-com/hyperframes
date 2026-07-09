@@ -9,6 +9,7 @@ import type {
   RuntimeDeterministicAdapter,
 } from "../types";
 import { swallow } from "../diagnostics";
+import { createRuntimeStartTimeResolver } from "../startResolver";
 
 /**
  * anime.js adapter for HyperFrames.
@@ -40,11 +41,12 @@ export function createAnimeJsAdapter(): RuntimeDeterministicAdapter {
     },
 
     seek: (ctx) => {
-      const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);
+      const globalTimeSeconds = Math.max(0, Number(ctx.time) || 0);
+      const resolvers = createAnimeRuntimeTimingResolvers();
       for (const entry of collectAnimeRegistrations()) {
         try {
           if (typeof entry.instance.seek === "function") {
-            entry.instance.seek(timeMs);
+            entry.instance.seek(resolveAnimeSeekTimeMs(entry, globalTimeSeconds, resolvers));
           }
         } catch (err) {
           swallow("runtime.adapters.animejs.site1", err);
@@ -82,10 +84,13 @@ export function createAnimeJsAdapter(): RuntimeDeterministicAdapter {
 
     getInferredDurationSeconds: () => {
       let maxSeconds = 0;
+      const resolvers = createAnimeRuntimeTimingResolvers();
       for (const entry of collectAnimeRegistrations()) {
-        const durationMs = readDurationMs(entry.instance);
+        const host = findAnimeCompositionHost(entry);
+        const durationMs = resolveAnimeDurationMs(entry, host, resolvers.authoredDurations);
         if (durationMs == null) continue;
-        maxSeconds = Math.max(maxSeconds, durationMs / 1000);
+        const startSeconds = host ? resolvers.starts.resolveStartForElement(host, 0) : 0;
+        maxSeconds = Math.max(maxSeconds, startSeconds + durationMs / 1000);
       }
       return maxSeconds > 0 ? maxSeconds : null;
     },
@@ -111,6 +116,7 @@ export function installHyperframesAnimeApi(): RuntimeAnimeApi {
       primeAnimeInstance(instance);
       const registration: RuntimeAnimeRegistration = {
         id,
+        registryKey: id,
         instance,
         labels: normalizeLabels(options),
       };
@@ -122,10 +128,14 @@ export function installHyperframesAnimeApi(): RuntimeAnimeApi {
       const registry = ensureAnimeRegistry();
       Reflect.deleteProperty(registry, id);
     },
-    get: (id) => collectAnimeRegistrations().find((entry) => entry.id === id) ?? null,
+    get: (id) =>
+      collectAnimeRegistrations().find((entry) => entry.id === id || entry.registryKey === id) ??
+      null,
     entries: () => collectAnimeRegistrations(),
     resolveLabel: (id, label) => {
-      const entry = collectAnimeRegistrations().find((candidate) => candidate.id === id);
+      const entry = collectAnimeRegistrations().find(
+        (candidate) => candidate.id === id || candidate.registryKey === id,
+      );
       return resolveRuntimeLabelSeconds(entry?.labels, label);
     },
   };
@@ -177,6 +187,7 @@ function normalizeRegistration(
     primeAnimeInstance(value.instance);
     return {
       id: value.id || fallbackId,
+      registryKey: value.registryKey || fallbackId,
       instance: value.instance,
       labels: value.labels,
     };
@@ -185,11 +196,102 @@ function normalizeRegistration(
     primeAnimeInstance(value);
     return {
       id: fallbackId,
+      registryKey: fallbackId,
       instance: value,
       labels: {},
     };
   }
   return null;
+}
+
+type AnimeStartTimeResolver = ReturnType<typeof createRuntimeStartTimeResolver>;
+
+type AnimeTimingResolvers = {
+  starts: AnimeStartTimeResolver;
+  authoredDurations: AnimeStartTimeResolver;
+};
+
+function createAnimeRuntimeTimingResolvers(): AnimeTimingResolvers {
+  const win: AnimeWindow = window;
+  return {
+    starts: createRuntimeStartTimeResolver({
+      timelineRegistry: win.__timelines ?? {},
+      includeAuthoredTimingAttrs: true,
+    }),
+    authoredDurations: createRuntimeStartTimeResolver({
+      timelineRegistry: {},
+      includeAuthoredTimingAttrs: true,
+    }),
+  };
+}
+
+function resolveAnimeSeekTimeMs(
+  entry: RuntimeAnimeRegistration,
+  globalTimeSeconds: number,
+  resolvers: AnimeTimingResolvers,
+): number {
+  const host = findAnimeCompositionHost(entry);
+  const startSeconds = host ? resolvers.starts.resolveStartForElement(host, 0) : 0;
+  const localTimeMs = secondsToMilliseconds(globalTimeSeconds - startSeconds);
+  const durationMs = resolveAnimeDurationMs(entry, host, resolvers.authoredDurations);
+  return durationMs == null ? localTimeMs : Math.min(localTimeMs, durationMs);
+}
+
+function resolveAnimeDurationMs(
+  entry: RuntimeAnimeRegistration,
+  host: Element | null,
+  resolver: AnimeStartTimeResolver,
+): number | null {
+  if (host) {
+    const hostDuration = resolver.resolveDurationForElement(host);
+    if (hostDuration != null && hostDuration > 0) {
+      return secondsToMilliseconds(hostDuration);
+    }
+  }
+  return readDurationMs(entry.instance);
+}
+
+function secondsToMilliseconds(seconds: number): number {
+  if (!Number.isFinite(seconds)) return 0;
+  return Math.max(0, Math.round(seconds * 1_000_000_000) / 1_000_000);
+}
+
+function findAnimeCompositionHost(entry: RuntimeAnimeRegistration): Element | null {
+  if (typeof document === "undefined") return null;
+  for (const compositionId of getAnimeCompositionIdCandidates(entry)) {
+    const host = document.querySelector(
+      `[data-composition-id="${escapeCssAttributeValue(compositionId)}"]`,
+    );
+    if (host) return host;
+  }
+  return null;
+}
+
+function getAnimeCompositionIdCandidates(entry: RuntimeAnimeRegistration): string[] {
+  const candidates: string[] = [];
+  appendAnimeCompositionIdCandidates(candidates, entry.registryKey);
+  appendAnimeCompositionIdCandidates(candidates, entry.id);
+  return candidates;
+}
+
+function appendAnimeCompositionIdCandidates(candidates: string[], rawId: string | undefined): void {
+  if (!rawId) return;
+  appendUniqueCandidate(candidates, rawId);
+  const scopeSeparatorIndex = rawId.indexOf("::");
+  if (scopeSeparatorIndex > 0) {
+    appendUniqueCandidate(candidates, rawId.slice(0, scopeSeparatorIndex));
+  }
+}
+
+function appendUniqueCandidate(candidates: string[], value: string): void {
+  if (!candidates.includes(value)) candidates.push(value);
+}
+
+function escapeCssAttributeValue(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 // Fallback priming distance for duck-typed wrappers that expose seek() but no
