@@ -7,6 +7,7 @@ import {
   FlatGroup,
   FlatRow,
   FlatSegmentedRow,
+  FlatSelectRow,
   FlatSlider,
   PinnedZoneDivider,
 } from "./propertyPanelFlatPrimitives";
@@ -223,6 +224,65 @@ describe("FlatSlider", () => {
       track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
     });
     expect(onCommit).toHaveBeenCalledWith(50);
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatSelectRow", () => {
+  it("renders the default tier with no reset button", () => {
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Blend"
+        value="normal"
+        options={["normal", "multiply", "screen"]}
+        tier="default"
+        onChange={vi.fn()}
+      />,
+    );
+    const select = host.querySelector("select");
+    expect(select?.value).toBe("normal");
+    expect(host.querySelector('[data-flat-select-reset="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("renders the explicitCustom tier with a reset button and fires onReset", () => {
+    const onReset = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Shadow"
+        value="soft"
+        options={["none", "soft", "lift", "glow"]}
+        tier="explicitCustom"
+        onChange={vi.fn()}
+        onReset={onReset}
+      />,
+    );
+    const select = host.querySelector<HTMLSelectElement>("select");
+    expect(select?.className).toContain("text-panel-accent");
+    const reset = host.querySelector<HTMLButtonElement>('[data-flat-select-reset="true"]');
+    act(() => reset?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onReset).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("fires onChange when the select value changes", () => {
+    const onChange = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Overflow"
+        value="visible"
+        options={["visible", "hidden", "clip", "auto", "scroll"]}
+        tier="default"
+        onChange={onChange}
+      />,
+    );
+    const select = host.querySelector<HTMLSelectElement>("select");
+    if (!select) throw new Error("expected a select");
+    act(() => {
+      select.value = "hidden";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith("hidden");
     act(() => root.unmount());
   });
 });

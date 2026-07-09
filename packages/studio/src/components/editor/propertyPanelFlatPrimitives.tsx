@@ -311,3 +311,67 @@ export function FlatSlider({
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  FlatSelectRow — label/value row backed by a native <select>        */
+/* ------------------------------------------------------------------ */
+
+export function FlatSelectRow({
+  label,
+  value,
+  options,
+  tier,
+  disabled,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  tier: PropertyValueTier;
+  disabled?: boolean;
+  onChange: (nextValue: string) => void;
+  onReset?: () => void;
+}) {
+  return (
+    <div className="group flex min-h-[30px] items-center justify-between">
+      <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
+      <span className="flex items-center gap-2">
+        <label className="flex items-center gap-1.5">
+          <select
+            value={value}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
+          >
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="currentColor"
+            className="flex-shrink-0 text-panel-text-5"
+          >
+            <path d="M2 3l3 4 3-4z" />
+          </svg>
+        </label>
+        {tier === "explicitCustom" && onReset && (
+          <button
+            type="button"
+            data-flat-select-reset="true"
+            title="Remove — fall back to default"
+            onClick={onReset}
+            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+          >
+            <RotateCcw size={11} />
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
