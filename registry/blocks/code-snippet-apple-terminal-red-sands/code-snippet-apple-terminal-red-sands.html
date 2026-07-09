@@ -148,6 +148,7 @@
     <div
       id="scene"
       data-composition-id="code-snippet-apple-terminal-red-sands"
+      data-start="0"
       data-width="1920"
       data-height="1080"
     >
@@ -181,64 +182,104 @@
       </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
-      window.__timelines = window.__timelines || {};
-
       const command = "curl -s api.example.com/status | jq";
       const typedEl = document.querySelector(".typed-command");
       const cursorEl = document.querySelector(".cursor-block");
-      const outputLines = document.querySelectorAll(".output-line");
-
-      const tl = gsap.timeline({ paused: true });
-
-      tl.set(typedEl, { text: "" }, 0);
-
+      const inputLine = document.querySelector(".input-line");
+      const outputLines = [...document.querySelectorAll(".output-line")];
+      const finalPrompt = document.createElement("div");
+      finalPrompt.className = "input-line";
+      finalPrompt.innerHTML =
+        '<span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block" id="final-cursor"></span>';
+      inputLine.parentNode.appendChild(finalPrompt);
+      const finalCursorEl = document.getElementById("final-cursor");
+      const stateChangeTimes = [0];
       const charDuration = 1.5 / command.length;
-      command.split("").forEach((char, i) => {
-        tl.add(
-          () => {
-            typedEl.textContent = command.slice(0, i + 1);
-          },
-          0.5 + i * charDuration,
-        );
+      const hideCursorTimeMs = 2200;
+      const clearCommandTimeMs = 2500;
+      const promptTimeMs = 4400;
+      const finalCursorStopMs = 7000;
+      const outputStartMs = 2800;
+      const outputStepMs = 100;
+      const firstOutputMs = 2300;
+      const skipFirstOutput = true;
+
+      command.split("").forEach((_, i) => {
+        stateChangeTimes.push((0.5 + i * charDuration) * 1000);
       });
-
-      tl.set(cursorEl, { opacity: 0 }, 2.2);
-      tl.set(outputLines[0], { opacity: 1 }, 2.3);
-
-      tl.add(() => {
-        typedEl.textContent = "";
-      }, 2.5);
-
-      outputLines.forEach((line, i) => {
-        if (i === 0) return;
-        tl.set(line, { opacity: 1 }, 2.8 + i * 0.1);
+      outputLines.forEach((_, i) => {
+        stateChangeTimes.push(outputRevealTimeMs(i));
       });
-
-      tl.add(() => {
-        const inputLine = document.querySelector(".input-line");
-        const newPrompt = document.createElement("div");
-        newPrompt.className = "input-line";
-        newPrompt.innerHTML =
-          '<span class="prompt">user@Mac ~ % </span><span class="typed-command"></span><span class="cursor-block" id="final-cursor"></span>';
-        inputLine.style.display = "none";
-        inputLine.parentNode.appendChild(newPrompt);
-      }, 4.4);
-
-      const blinkTimes = [4.6, 5.0, 5.4, 5.8, 6.2, 6.6];
-      blinkTimes.forEach((t, i) => {
-        tl.add(() => {
-          const fc = document.getElementById("final-cursor");
-          if (fc) fc.style.opacity = i % 2 === 0 ? "0" : "1";
-        }, t);
+      stateChangeTimes.push(hideCursorTimeMs, clearCommandTimeMs, promptTimeMs);
+      const blinkTimes = [4.6, 5, 5.4, 5.8, 6.2, 6.6];
+      blinkTimes.forEach((t) => {
+        stateChangeTimes.push(t * 1000);
       });
-      tl.add(() => {
-        const fc = document.getElementById("final-cursor");
-        if (fc) fc.style.opacity = "1";
-      }, 7.0);
+      stateChangeTimes.push(finalCursorStopMs);
 
-      window.__timelines["code-snippet-apple-terminal-red-sands"] = tl;
+      function outputRevealTimeMs(index) {
+        if (skipFirstOutput && index === 0) return firstOutputMs;
+        return outputStartMs + index * outputStepMs;
+      }
+
+      function typedTextAt(timeMs) {
+        if (timeMs >= clearCommandTimeMs) return "";
+        if (timeMs < 500) return "";
+        const charIndex = Math.floor((timeMs / 1000 - 0.5) / charDuration);
+        return command.slice(0, Math.max(0, Math.min(command.length, charIndex + 1)));
+      }
+
+      function finalCursorOpacityAt(timeMs) {
+        if (timeMs >= finalCursorStopMs) return "1";
+        let opacity = "1";
+        blinkTimes.forEach((t, i) => {
+          if (timeMs >= t * 1000) opacity = i % 2 === 0 ? "0" : "1";
+        });
+        return opacity;
+      }
+
+      function renderStateFor(timeMs) {
+        typedEl.textContent = typedTextAt(timeMs);
+        cursorEl.style.opacity = timeMs >= hideCursorTimeMs ? "0" : "1";
+        inputLine.style.display = timeMs >= promptTimeMs ? "none" : "flex";
+        finalPrompt.style.display = timeMs >= promptTimeMs ? "flex" : "none";
+        finalCursorEl.style.opacity = finalCursorOpacityAt(timeMs);
+
+        outputLines.forEach((line, i) => {
+          line.style.opacity = timeMs >= outputRevealTimeMs(i) ? "1" : "0";
+        });
+      }
+
+      const stateChanges = stateChangeTimes
+        .sort((a, b) => a - b)
+        .map((t) => ({ t, apply: () => renderStateFor(t) }));
+
+      function applyStateAt(timeMs) {
+        for (let i = stateChanges.length - 1; i >= 0; i--) {
+          if (timeMs >= stateChanges[i].t) {
+            stateChanges[i].apply();
+            break;
+          }
+        }
+      }
+
+      const tl = anime.createTimeline({ autoplay: false });
+      const driver = { t: 0 };
+      applyStateAt(0);
+      tl.add(
+        driver,
+        {
+          t: finalCursorStopMs,
+          duration: finalCursorStopMs,
+          ease: "linear",
+          onUpdate: () => applyStateAt(driver.t),
+        },
+        0,
+      );
+
+      hyperframesAnime.register("code-snippet-apple-terminal-red-sands", tl);
     </script>
   </body>
 </html>

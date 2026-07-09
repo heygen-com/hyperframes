@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-snippet-apple-terminal-ocean",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Code Snippet - Apple Terminal Ocean",
   "description": "Apple Terminal Ocean profile: deep blue background with white text, per-character typing animation of a shell session.",
   "tags": ["code", "developer", "showcase", "terminal", "apple", "apple-terminal"],

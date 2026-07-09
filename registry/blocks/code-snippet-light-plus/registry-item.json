@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-snippet-light-plus",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Code Snippet - Light+",
   "description": "VS Code workbench with per-character typing animation in the Light+ theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.",
   "tags": ["code", "developer", "showcase", "vscode"],

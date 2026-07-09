@@ -10,6 +10,8 @@
       <div
         class="vscode-theme-scene"
         data-composition-id="vscode-light-modern"
+        data-start="0"
+        data-duration="11"
         data-width="1920"
         data-height="1080"
       >
@@ -176,7 +178,7 @@
             overflow: hidden;
             background:
               linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.32)),
-              url("../assets/background.jpeg") center / cover no-repeat;
+              url("assets/background.jpeg") center / cover no-repeat;
             color: var(--editor-fg);
           }
 
@@ -599,7 +601,7 @@
             display: block;
           }
         </style>
-        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
         <script>
           (() => {
             const codeLines = [
@@ -911,87 +913,149 @@
               return lineBox.top - editorBox.top;
             }
 
+            function setTransformPoint(el, point) {
+              el.style.transform = "translate(" + point.x + "px, " + point.y + "px)";
+            }
+
+            function setLineHighlight(activeLine, y) {
+              activeLine.style.transform = "translateY(" + y + "px)";
+            }
+
             function buildTimeline(root, compositionId) {
-              const tl = gsap.timeline({ paused: true });
+              const tl = anime.createTimeline({ autoplay: false });
               const editor = root.querySelector(".editor");
               const caret = root.querySelector(".caret");
               const activeLine = root.querySelector(".active-line");
-              const lineEls = gsap.utils.toArray(root.querySelectorAll(".line"));
+              const lineEls = [...root.querySelectorAll(".line")];
               const lineStartTimes = [];
               const charSchedule = [];
-              let cursorTime = 0.95;
+              const caretEvents = [{ time: 0, point: caretPointForLineStart(editor, lineEls[0]) }];
+              const stateChangeTimes = [0];
+              let cursorTime = 950;
 
               lineEls.forEach((line, lineIndex) => {
-                const lineChars = gsap.utils.toArray(line.querySelectorAll(".char"));
+                const lineChars = [...line.querySelectorAll(".char")];
                 lineStartTimes[lineIndex] = cursorTime;
+                caretEvents.push({ time: cursorTime, point: caretPointForLineStart(editor, line) });
+                stateChangeTimes.push(cursorTime);
                 lineChars.forEach((char, charIndex) => {
-                  charSchedule.push({ char, time: cursorTime + charIndex * 0.012 });
+                  const time = cursorTime + charIndex * 12;
+                  charSchedule.push({ char, time });
+                  caretEvents.push({ time: time + 2, point: caretPointForElement(editor, char) });
+                  stateChangeTimes.push(time, time + 2);
                 });
-                cursorTime += Math.max(lineChars.length * 0.012, 0.08) + 0.045;
+                cursorTime += Math.max(lineChars.length * 12, 80) + 45;
               });
 
-              gsap.set(activeLine, { y: lineHighlightY(editor, lineEls[0]) });
-              gsap.set(caret, caretPointForLineStart(editor, lineEls[0]));
+              for (let i = 0; i <= 26; i++) {
+                stateChangeTimes.push(950 + i * 340);
+              }
 
-              tl.from(
+              function caretOpacityAt(time) {
+                if (time < 950 || time >= 950 + 26 * 340) return "1";
+                const step = Math.floor((time - 950) / 340);
+                return step % 2 === 0 ? "0" : "1";
+              }
+
+              function renderStateFor(time) {
+                const activeIndex = lineStartTimes.reduce(
+                  (latest, lineTime, index) => (time >= lineTime ? index : latest),
+                  0,
+                );
+                const active = lineEls[activeIndex] || lineEls[0];
+                setLineHighlight(activeLine, lineHighlightY(editor, active));
+                lineEls.forEach((item) => item.classList.toggle("is-active", item === active));
+
+                charSchedule.forEach(({ char, time: charTime }) => {
+                  char.style.opacity = time >= charTime ? "1" : "0";
+                });
+
+                for (let i = caretEvents.length - 1; i >= 0; i--) {
+                  if (time >= caretEvents[i].time) {
+                    setTransformPoint(caret, caretEvents[i].point);
+                    break;
+                  }
+                }
+                caret.style.opacity = caretOpacityAt(time);
+              }
+
+              const stateChanges = stateChangeTimes
+                .sort((a, b) => a - b)
+                .map((time) => ({ time, apply: () => renderStateFor(time) }));
+
+              function applyStateAt(time) {
+                for (let i = stateChanges.length - 1; i >= 0; i--) {
+                  if (time >= stateChanges[i].time) {
+                    stateChanges[i].apply();
+                    break;
+                  }
+                }
+              }
+
+              applyStateAt(0);
+
+              tl.add(
                 root.querySelector(".header"),
-                { y: 24, opacity: 0, duration: 0.45, ease: "power3.out" },
+                { translateY: [24, 0], opacity: [0, 1], duration: 450, ease: "outQuart" },
                 0,
               );
-              tl.from(
+              tl.add(
                 root.querySelector(".workbench"),
-                { y: 42, opacity: 0, scale: 0.986, duration: 0.58, ease: "power3.out" },
-                0.1,
+                {
+                  translateY: [42, 0],
+                  opacity: [0, 1],
+                  scale: [0.986, 1],
+                  duration: 580,
+                  ease: "outQuart",
+                },
+                100,
               );
-              tl.from(activeLine, { opacity: 0, duration: 0.22, ease: "power2.out" }, 0.74);
-              lineStartTimes.forEach((time, lineIndex) => {
-                const line = lineEls[lineIndex];
-                tl.set(activeLine, { y: lineHighlightY(editor, line) }, time);
-                tl.set(caret, caretPointForLineStart(editor, line), time);
-                tl.call(
-                  () => {
-                    lineEls.forEach((item) => item.classList.toggle("is-active", item === line));
-                  },
-                  [],
-                  time,
-                );
-              });
-              charSchedule.forEach(({ char, time }) => {
-                tl.set(char, { opacity: 1 }, time);
-                tl.set(caret, caretPointForElement(editor, char), time + 0.002);
-              });
-              tl.to(
-                root.querySelector(".caret"),
-                { opacity: 0, duration: 0.34, repeat: 25, yoyo: true, ease: "steps(1)" },
-                0.95,
+              tl.add(activeLine, { opacity: [0, 1], duration: 220, ease: "outCubic" }, 740);
+
+              const driver = { t: 0 };
+              const totalMs = Math.round((Number(root.dataset.duration) || 11) * 1000);
+              tl.add(
+                driver,
+                {
+                  t: totalMs,
+                  duration: totalMs,
+                  ease: "linear",
+                  onUpdate: () => applyStateAt(driver.t),
+                },
+                0,
               );
-              tl.from(
+              tl.add(
                 root.querySelector(".terminal"),
-                { y: 140, opacity: 0, duration: 0.56, ease: "power3.out" },
-                7.55,
+                { translateY: [140, 0], opacity: [0, 1], duration: 560, ease: "outQuart" },
+                7550,
               );
-              tl.from(
-                root.querySelector(".terminal-body").children,
-                { opacity: 0, y: 8, duration: 0.24, stagger: 0.16, ease: "power2.out" },
-                8.05,
+              tl.add(
+                [...root.querySelector(".terminal-body").children],
+                {
+                  opacity: [0, 1],
+                  translateY: [8, 0],
+                  duration: 240,
+                  delay: anime.stagger(160),
+                  ease: "outCubic",
+                },
+                8050,
               );
-              tl.to(
+              tl.add(
                 root.querySelector(".workbench"),
-                { rotateY: -10.5, z: 74, duration: 0.72, ease: "power2.inOut" },
-                9.35,
+                { rotateY: -10.5, translateZ: 74, duration: 720, ease: "inOutCubic" },
+                9350,
               );
-              tl.to(
+              tl.add(
                 root.querySelector(".workbench"),
-                { rotateY: 0, z: 0, duration: 0.62, ease: "power2.inOut" },
-                10.08,
+                { rotateY: 0, translateZ: 0, duration: 620, ease: "inOutCubic" },
+                10080,
               );
 
-              window.__timelines = window.__timelines || {};
-              window.__timelines[compositionId] = tl;
+              hyperframesAnime.register(compositionId, tl);
 
               const previewTime = new URLSearchParams(window.location.search).get("t");
               if (previewTime !== null) {
-                tl.time(Number(previewTime));
+                tl.seek(Number(previewTime) * 1000);
               }
             }
 
@@ -1018,9 +1082,6 @@
           })();
         </script>
         <script>
-          window.__timelines = window.__timelines || {};
-          window.__timelines["vscode-light-modern"] =
-            window.__timelines["vscode-light-modern"] || gsap.timeline({ paused: true });
           window.createVSCodeThemeComposition("vscode-light-modern", {
             id: "light-modern",
             label: "Light Modern",
@@ -1083,5 +1144,29 @@
         </script>
       </div>
     </template>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+    <script>
+      (() => {
+        const template = document.getElementById("vscode-light-modern-template");
+        const fragment = template.content.cloneNode(true);
+        const scripts = [...fragment.querySelectorAll("script")];
+        scripts.forEach((script) => script.remove());
+        document.body.appendChild(fragment);
+
+        const root = document.querySelector(
+          '.vscode-theme-scene[data-composition-id="vscode-light-modern"]',
+        );
+        if (root) root.dataset.duration = "11";
+
+        scripts
+          .filter((script) => !script.src)
+          .forEach((script) => {
+            const liveScript = document.createElement("script");
+            liveScript.textContent = script.textContent;
+            document.body.appendChild(liveScript);
+            liveScript.remove();
+          });
+      })();
+    </script>
   </body>
 </html>
