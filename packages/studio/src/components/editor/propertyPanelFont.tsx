@@ -123,12 +123,14 @@ function loadImportedFontStylesheet(asset: ImportedFontAsset): void {
 export function FontFamilyField({
   value,
   disabled,
+  flat,
   importedFonts,
   onImportFonts,
   onCommit,
 }: {
   value: string;
   disabled?: boolean;
+  flat?: boolean;
   importedFonts: ImportedFontAsset[];
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onCommit: (nextValue: string) => void;
@@ -366,6 +368,130 @@ export function FontFamilyField({
     setOpen(false);
   };
 
+  const dropdown = open && (
+    <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 shadow-2xl">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-neutral-800 p-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          disabled={disabled}
+          placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setOpen(false);
+            }
+            if (e.key === "Enter" && filteredOptions[0]) {
+              e.preventDefault();
+              commitFamily(filteredOptions[0]);
+            }
+          }}
+          className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
+        />
+        {canQueryLocalFonts && (
+          <button
+            type="button"
+            disabled={disabled || loadingLocalFonts}
+            onClick={loadBrowserLocalFonts}
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
+          >
+            {loadingLocalFonts ? "..." : "Local"}
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={disabled || importingFonts || !onImportFonts}
+          onClick={() => fontInputRef.current?.click()}
+          className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
+        >
+          {importingFonts ? "..." : "Import"}
+        </button>
+        <input
+          ref={fontInputRef}
+          type="file"
+          accept=".ttf,.otf,.ttc,.woff,.woff2,.eot,font/*"
+          multiple
+          aria-label="Import local font files"
+          disabled={disabled || importingFonts || !onImportFonts}
+          className="hidden"
+          onChange={async (event) => {
+            await handleImportFonts(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      </div>
+      {fontNotice && (
+        <div className="border-b border-neutral-800 px-3 py-2 text-[10px] leading-4 text-neutral-500">
+          {fontNotice}
+        </div>
+      )}
+      <div className="max-h-64 overflow-y-auto p-1">
+        {filteredOptions.length === 0 ? (
+          <div className="px-2 py-3 text-[11px] text-neutral-500">No fonts found.</div>
+        ) : (
+          filteredOptions.map((option) => (
+            <button
+              key={`${option.source}-${option.family}`}
+              type="button"
+              onClick={() => commitFamily(option)}
+              className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-[11px] transition-colors ${
+                option.family === currentFamily
+                  ? "bg-studio-accent/15 text-neutral-50"
+                  : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-medium">{option.family}</span>
+                {renderAliasFor(option.family) && (
+                  <span className="flex-shrink-0 text-[9px] text-neutral-500">
+                    → {renderAliasFor(option.family)}
+                  </span>
+                )}
+              </span>
+              <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
+                {option.source}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  if (flat) {
+    return (
+      <div ref={containerRef} className="relative flex min-h-[30px] items-center justify-between">
+        <span className="text-[11px] text-panel-text-2">Font</span>
+        <button
+          type="button"
+          data-flat-font-trigger="true"
+          disabled={disabled}
+          onClick={() => setOpen((next) => !next)}
+          className="flex items-center gap-1.5 disabled:cursor-not-allowed"
+        >
+          <span
+            className="max-w-[200px] truncate font-mono text-[11px] text-panel-text-0"
+            style={{ fontFamily: value }}
+          >
+            {currentFamily}
+          </span>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="currentColor"
+            className="flex-shrink-0 text-panel-text-5"
+          >
+            <path d="M2 3l3 4 3-4z" />
+          </svg>
+        </button>
+        {dropdown}
+      </div>
+    );
+  }
+
   return (
     <div ref={containerRef} className="relative grid min-w-0 gap-1.5">
       <span className={LABEL}>Font family</span>
@@ -385,98 +511,7 @@ export function FontFamilyField({
           Font
         </span>
       </button>
-
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 shadow-2xl">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2 border-b border-neutral-800 p-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              disabled={disabled}
-              placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setOpen(false);
-                }
-                if (e.key === "Enter" && filteredOptions[0]) {
-                  e.preventDefault();
-                  commitFamily(filteredOptions[0]);
-                }
-              }}
-              className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
-            />
-            {canQueryLocalFonts && (
-              <button
-                type="button"
-                disabled={disabled || loadingLocalFonts}
-                onClick={loadBrowserLocalFonts}
-                className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
-              >
-                {loadingLocalFonts ? "..." : "Local"}
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={disabled || importingFonts || !onImportFonts}
-              onClick={() => fontInputRef.current?.click()}
-              className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
-            >
-              {importingFonts ? "..." : "Import"}
-            </button>
-            <input
-              ref={fontInputRef}
-              type="file"
-              accept=".ttf,.otf,.ttc,.woff,.woff2,.eot,font/*"
-              multiple
-              aria-label="Import local font files"
-              disabled={disabled || importingFonts || !onImportFonts}
-              className="hidden"
-              onChange={async (event) => {
-                await handleImportFonts(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </div>
-          {fontNotice && (
-            <div className="border-b border-neutral-800 px-3 py-2 text-[10px] leading-4 text-neutral-500">
-              {fontNotice}
-            </div>
-          )}
-          <div className="max-h-64 overflow-y-auto p-1">
-            {filteredOptions.length === 0 ? (
-              <div className="px-2 py-3 text-[11px] text-neutral-500">No fonts found.</div>
-            ) : (
-              filteredOptions.map((option) => (
-                <button
-                  key={`${option.source}-${option.family}`}
-                  type="button"
-                  onClick={() => commitFamily(option)}
-                  className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-lg px-2 py-2 text-left text-[11px] transition-colors ${
-                    option.family === currentFamily
-                      ? "bg-studio-accent/15 text-neutral-50"
-                      : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate font-medium">{option.family}</span>
-                    {renderAliasFor(option.family) && (
-                      <span className="flex-shrink-0 text-[9px] text-neutral-500">
-                        → {renderAliasFor(option.family)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
-                    {option.source}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }

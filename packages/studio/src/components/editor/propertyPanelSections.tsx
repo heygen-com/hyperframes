@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Plus, Type } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -59,17 +59,19 @@ function detectAvailableWeights(fontFamily: string): string[] {
   return available.length > 0 ? available : ALL_WEIGHTS;
 }
 
-function TextAreaField({
+export function TextAreaField({
   label,
   value,
   disabled,
   autoFocus,
+  flat,
   onCommit,
 }: {
   label: string;
   value: string;
   disabled?: boolean;
   autoFocus?: boolean;
+  flat?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -105,6 +107,38 @@ function TextAreaField({
     }, 120);
   };
 
+  const handleFocus = () => {
+    focusedRef.current = true;
+  };
+  const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value);
+    scheduleCommit(e.target.value);
+  };
+  const handleBlur = () => {
+    focusedRef.current = false;
+    commitDraft(draft);
+  };
+
+  if (flat) {
+    return (
+      <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
+        <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+          {label}
+        </div>
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          disabled={disabled}
+          rows={2}
+          onFocus={handleFocus}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          className="w-full resize-none bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
+        />
+      </div>
+    );
+  }
+
   return (
     <label className="grid min-w-0 gap-1.5">
       <span className={LABEL}>{label}</span>
@@ -114,17 +148,9 @@ function TextAreaField({
           value={draft}
           disabled={disabled}
           rows={4}
-          onFocus={() => {
-            focusedRef.current = true;
-          }}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            scheduleCommit(e.target.value);
-          }}
-          onBlur={() => {
-            focusedRef.current = false;
-            commitDraft(draft);
-          }}
+          onFocus={handleFocus}
+          onChange={handleChange}
+          onBlur={handleBlur}
           className="w-full resize-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
         />
       </div>

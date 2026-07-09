@@ -319,6 +319,12 @@
       "file": "packages/studio/src/components/editor/manualEditingAvailability.ts",
       "exports": ["STUDIO_FLAT_INSPECTOR_ENABLED"],
     },
+    // TextAreaField: newly exported for FlatTextSection (flat inspector
+    // redesign, Task 8), which lands in a later commit on this branch.
+    {
+      "file": "packages/studio/src/components/editor/propertyPanelSections.tsx",
+      "exports": ["TextAreaField"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
