@@ -1133,7 +1133,8 @@ async function pollSubCompositionTimelines(
   const hasRegisteredTimeline = `function hasRegisteredTimeline(id) {
     return !!(
       (window.__timelines && window.__timelines[id]) ||
-      (window.__hfAnime && window.__hfAnime[id])
+      (window.__hfAnime && window.__hfAnime[id]) ||
+      (window.__hfAnime && window.__hfAnime[id + "::" + id])
     );
   }`;
   const expression = `(function() {
