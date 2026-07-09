@@ -5,6 +5,7 @@
   "title": "Mechanical Transitions",
   "description": "Showcase of mechanical shutter and iris transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

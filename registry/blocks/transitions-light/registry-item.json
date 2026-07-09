@@ -5,6 +5,7 @@
   "title": "Light Transitions",
   "description": "Showcase of light-based glow and flash transitions",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

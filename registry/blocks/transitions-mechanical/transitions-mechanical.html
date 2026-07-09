@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -237,186 +237,236 @@
 
     <script>
       (function () {
-        var tl = gsap.timeline({ paused: true });
-        var t = 0;
+        const tl = anime.createTimeline({ autoplay: false });
 
         // === TITLE CARD (3s) ===
-        tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
+        tl.add("#title-label", { opacity: 1, translateY: 0, duration: 400, ease: "outCubic" }, 300);
+        tl.add(
           "#title-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+          { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+          600,
         );
-        tl.fromTo(
-          "#title-count",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.4, ease: "power2.out" },
-          t + 1.0,
-        );
-        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
-        t += 3;
-
-        function resetScenes() {
-          tl.set(
-            "#scene1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 1,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#scene2",
-            {
-              opacity: 0,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 2,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#s1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              filter: "none",
-              skewX: 0,
-              scaleX: 1,
-              transformOrigin: "50% 50%",
-            },
-            t,
-          );
-          tl.set(
-            "#s2",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              filter: "none",
-              skewX: 0,
-              scaleX: 1,
-              transformOrigin: "50% 50%",
-            },
-            t,
-          );
-          tl.set("#shutter-top", { y: 0 }, t);
-          tl.set("#shutter-bot", { y: 0 }, t);
-        }
+        tl.add("#title-count", { opacity: [0, 1], duration: 400, ease: "outCubic" }, 1000);
+        tl.add("#title-card", { opacity: 0, duration: 400, ease: "inOutCubic" }, 2400);
 
         // === TRANSITION 1: Shutter ===
-        resetScenes();
-        tl.to("#info-1", { opacity: 1, duration: 0.3 }, t + 0.2);
-        var T = t + 1.5;
-        tl.to("#shutter-top", { y: 540, duration: 0.25, ease: "power3.in" }, T);
-        tl.to("#shutter-bot", { y: -540, duration: 0.25, ease: "power3.in" }, T);
-        tl.set("#scene1", { opacity: 0 }, T + 0.25);
-        tl.set("#scene2", { opacity: 1 }, T + 0.25);
-        tl.to("#shutter-top", { y: 0, duration: 0.25, ease: "power3.out" }, T + 0.3);
-        tl.to("#shutter-bot", { y: 0, duration: 0.25, ease: "power3.out" }, T + 0.3);
-        t = T + 1.5 + 1.0;
-        tl.to("#info-1", { opacity: 0, duration: 0.2 }, t);
-        // Reset shutters after demo
-        tl.set("#shutter-top", { y: 0 }, t + 0.2);
-        tl.set("#shutter-bot", { y: 0 }, t + 0.2);
-        t += 0.5;
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add("#shutter-top", { translateY: 0, duration: 0 }, 3000);
+        tl.add("#shutter-bot", { translateY: 0, duration: 0 }, 3000);
+        tl.add("#info-1", { opacity: 1, duration: 300 }, 3200);
+        tl.add("#shutter-top", { translateY: 540, duration: 250, ease: "inQuart" }, 4500);
+        tl.add("#shutter-bot", { translateY: -540, duration: 250, ease: "inQuart" }, 4500);
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 4750);
+        tl.add("#scene2", { opacity: 1, duration: 0 }, 4750);
+        tl.add("#shutter-top", { translateY: 0, duration: 250, ease: "outQuart" }, 4800);
+        tl.add("#shutter-bot", { translateY: 0, duration: 250, ease: "outQuart" }, 4800);
+        tl.add("#info-1", { opacity: 0, duration: 200 }, 7000);
+        tl.add("#shutter-top", { translateY: 0, duration: 0 }, 7200);
+        tl.add("#shutter-bot", { translateY: 0, duration: 0 }, 7200);
 
         // === TRANSITION 2: Clock Wipe ===
-        resetScenes();
-        tl.to("#info-2", { opacity: 1, duration: 0.3 }, t + 0.2);
-        T = t + 1.5;
-        var d = 0.1;
-        tl.set(
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            filter: "none",
+            skewX: 0,
+            scaleX: 1,
+            transformOrigin: "50% 50%",
+            duration: 0,
+          },
+          7500,
+        );
+        tl.add("#shutter-top", { translateY: 0, duration: 0 }, 7500);
+        tl.add("#shutter-bot", { translateY: 0, duration: 0 }, 7500);
+        tl.add("#info-2", { opacity: 1, duration: 300 }, 7700);
+        tl.add(
           "#scene2",
           {
             opacity: 1,
             zIndex: 10,
             clipPath:
               "polygon(50% 50%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%, 50% 0%)",
+            duration: 0,
           },
-          T,
+          9000,
         );
-        tl.to(
+        tl.add(
           "#scene2",
           {
             clipPath:
               "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%, 100% 50%)",
-            duration: d,
-            ease: "none",
+            duration: 100,
+            ease: "linear",
           },
-          T,
+          9000,
         );
-        tl.to(
+        tl.add(
           "#scene2",
           {
             clipPath:
               "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 50% 100%, 50% 100%, 50% 100%)",
-            duration: d,
-            ease: "none",
+            duration: 100,
+            ease: "linear",
           },
-          T + d,
+          9100,
         );
-        tl.to(
+        tl.add(
           "#scene2",
           {
             clipPath:
               "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 50%)",
-            duration: d,
-            ease: "none",
+            duration: 100,
+            ease: "linear",
           },
-          T + d * 2,
+          9200,
         );
-        tl.to(
+        tl.add(
           "#scene2",
           {
             clipPath:
               "polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%, 0% 0%)",
-            duration: d,
-            ease: "none",
+            duration: 100,
+            ease: "linear",
           },
-          T + d * 3,
+          9300,
         );
-        tl.set("#scene2", { clipPath: "none", zIndex: 2 }, T + d * 4 + 0.02);
-        tl.set("#scene1", { opacity: 0 }, T + d * 4 + 0.02);
-        t = T + 1.5 + 1.0;
-        tl.to("#info-2", { opacity: 0, duration: 0.2 }, t);
-        t += 0.5;
+        tl.add("#scene2", { clipPath: "none", zIndex: 2, duration: 0 }, 9420);
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 9420);
+        tl.add("#info-2", { opacity: 0, duration: 200 }, 11500);
 
         // === OUTRO (3s) ===
-        tl.set("#scene1", { opacity: 0 }, t);
-        tl.set("#scene2", { opacity: 0 }, t);
-        tl.to("#outro-card", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, t);
-        tl.to("#outro-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 12000);
+        tl.add("#scene2", { opacity: 0, duration: 0 }, 12000);
+        tl.add("#outro-card", { opacity: 1, duration: 400, ease: "inOutCubic" }, 12000);
+        tl.add("#outro-label", { opacity: 1, duration: 400, ease: "outCubic" }, 12300);
+        tl.add(
           "#outro-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+          { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+          12600,
         );
-        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        tl.add("#outro-card", { opacity: 0, duration: 400, ease: "inOutCubic" }, 14400);
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["main"] = tl;
+        hyperframesAnime.register("main", tl);
       })();
     </script>
   </body>

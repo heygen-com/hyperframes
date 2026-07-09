@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920" />
     <title>Radial Transitions</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -186,169 +186,286 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
       (function () {
-        var tl = gsap.timeline({ paused: true });
-        var t = 0;
-
-        var demos = [
-          { name: "Circle Iris", time: 0 },
-          { name: "Diamond Iris", time: 0 },
-          { name: "Diagonal Split", time: 0 },
-        ];
-
-        function resetScenes() {
-          tl.set(
-            "#scene1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              rotationY: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 1,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#scene2",
-            {
-              opacity: 0,
-              x: 0,
-              y: 0,
-              scale: 1,
-              scaleX: 1,
-              rotation: 0,
-              rotationY: 0,
-              filter: "none",
-              clipPath: "none",
-              zIndex: 2,
-              skewX: 0,
-            },
-            t,
-          );
-          tl.set(
-            "#s1",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              rotationY: 0,
-              filter: "none",
-              skewX: 0,
-              clipPath: "none",
-            },
-            t,
-          );
-          tl.set(
-            "#s2",
-            {
-              opacity: 1,
-              x: 0,
-              y: 0,
-              scale: 1,
-              rotation: 0,
-              rotationY: 0,
-              filter: "none",
-              skewX: 0,
-              clipPath: "none",
-            },
-            t,
-          );
-        }
+        const tl = anime.createTimeline({ autoplay: false });
 
         /* ── Title card (3s) ── */
-        tl.set("#title-card", { opacity: 1 }, 0);
-        tl.to("#title-card", { opacity: 0, duration: 0.5 }, 2.5);
-        t = 3;
+        tl.add("#title-card", { opacity: 1, duration: 0 }, 0);
+        tl.add("#title-card", { opacity: 0, duration: 500 }, 2500);
 
         /* ── Demo 1: Circle Iris ── */
-        resetScenes();
-        tl.set("#info-text", { textContent: "Circle Iris" }, t);
-        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
-        t += 1.5;
-        var T = t;
-        demos[0].time = T;
-        tl.set("#scene2", { opacity: 1, clipPath: "circle(0% at 50% 50%)" }, T);
-        tl.to(
-          "#scene2",
-          { clipPath: "circle(75% at 50% 50%)", duration: 0.5, ease: "power2.out" },
-          T,
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
         );
-        tl.set("#scene1", { opacity: 0 }, T + 0.5);
-        tl.set("#scene2", { clipPath: "none" }, T + 0.55);
-        t = T + 1.5;
-        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
-        t += 0.5;
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          3000,
+        );
+        tl.add("#info-text", { textContent: "Circle Iris", duration: 0 }, 3000);
+        tl.add("#info-bar", { opacity: 1, duration: 300 }, 3000);
+        tl.add("#scene2", { opacity: 1, clipPath: "circle(0% at 50% 50%)", duration: 0 }, 4500);
+        tl.add(
+          "#scene2",
+          { clipPath: "circle(75% at 50% 50%)", duration: 500, ease: "outCubic" },
+          4500,
+        );
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 5000);
+        tl.add("#scene2", { clipPath: "none", duration: 0 }, 5050);
+        tl.add("#info-bar", { opacity: 0, duration: 300 }, 6000);
 
         /* ── Demo 2: Diamond Iris ── */
-        resetScenes();
-        tl.set("#info-text", { textContent: "Diamond Iris" }, t);
-        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
-        t += 1.5;
-        T = t;
-        demos[1].time = T;
-        tl.set(
-          "#scene2",
-          { opacity: 1, clipPath: "polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)" },
-          T,
+        tl.add(
+          "#scene1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          6500,
         );
-        tl.to(
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          6500,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          6500,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          6500,
+        );
+        tl.add("#info-text", { textContent: "Diamond Iris", duration: 0 }, 6500);
+        tl.add("#info-bar", { opacity: 1, duration: 300 }, 6500);
+        tl.add(
+          "#scene2",
+          {
+            opacity: 1,
+            clipPath: "polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)",
+            duration: 0,
+          },
+          8000,
+        );
+        tl.add(
           "#scene2",
           {
             clipPath: "polygon(50% -20%, 120% 50%, 50% 120%, -20% 50%)",
-            duration: 0.5,
-            ease: "power2.out",
+            duration: 500,
+            ease: "outCubic",
           },
-          T,
+          8000,
         );
-        tl.set("#scene1", { opacity: 0 }, T + 0.5);
-        tl.set("#scene2", { clipPath: "none" }, T + 0.55);
-        t = T + 1.5;
-        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
-        t += 0.5;
+        tl.add("#scene1", { opacity: 0, duration: 0 }, 8500);
+        tl.add("#scene2", { clipPath: "none", duration: 0 }, 8550);
+        tl.add("#info-bar", { opacity: 0, duration: 300 }, 9500);
 
         /* ── Demo 3: Diagonal Split ── */
-        resetScenes();
-        tl.set("#info-text", { textContent: "Diagonal Split" }, t);
-        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
-        t += 1.5;
-        T = t;
-        demos[2].time = T;
-        tl.set("#scene2", { opacity: 1, zIndex: 1 }, T);
-        tl.set(
+        tl.add(
           "#scene1",
-          { zIndex: 10, clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)" },
-          T,
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 1,
+            skewX: 0,
+            duration: 0,
+          },
+          10000,
         );
-        tl.to(
+        tl.add(
+          "#scene2",
+          {
+            opacity: 0,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            scaleX: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            clipPath: "none",
+            zIndex: 2,
+            skewX: 0,
+            duration: 0,
+          },
+          10000,
+        );
+        tl.add(
+          "#s1",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          10000,
+        );
+        tl.add(
+          "#s2",
+          {
+            opacity: 1,
+            translateX: 0,
+            translateY: 0,
+            scale: 1,
+            rotate: 0,
+            rotateY: 0,
+            filter: "none",
+            skewX: 0,
+            clipPath: "none",
+            duration: 0,
+          },
+          10000,
+        );
+        tl.add("#info-text", { textContent: "Diagonal Split", duration: 0 }, 10000);
+        tl.add("#info-bar", { opacity: 1, duration: 300 }, 10000);
+        tl.add("#scene2", { opacity: 1, zIndex: 1, duration: 0 }, 11500);
+        tl.add(
+          "#scene1",
+          {
+            zIndex: 10,
+            clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)",
+            duration: 0,
+          },
+          11500,
+        );
+        tl.add(
           "#scene1",
           {
             clipPath: "polygon(60% 0%, 100% 0%, 100% 40%, 60% 0%)",
-            duration: 0.5,
-            ease: "power3.inOut",
+            duration: 500,
+            ease: "inOutQuart",
           },
-          T,
+          11500,
         );
-        tl.set("#scene1", { opacity: 0, zIndex: 1, clipPath: "none" }, T + 0.55);
-        tl.set("#scene2", { zIndex: 2 }, T + 0.55);
-        t = T + 1.5;
-        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
-        t += 0.5;
+        tl.add("#scene1", { opacity: 0, zIndex: 1, clipPath: "none", duration: 0 }, 12050);
+        tl.add("#scene2", { zIndex: 2, duration: 0 }, 12050);
+        tl.add("#info-bar", { opacity: 0, duration: 300 }, 13000);
 
         /* ── Outro (3s) ── */
-        tl.set("#outro-card", { opacity: 1 }, t);
-        tl.to("#outro-card", { opacity: 0, duration: 0.5 }, t + 2.5);
+        tl.add("#outro-card", { opacity: 1, duration: 0 }, 13500);
+        tl.add("#outro-card", { opacity: 0, duration: 500 }, 16000);
 
-        window.__timelines["main"] = tl;
+        hyperframesAnime.register("main", tl);
       })();
     </script>
   </body>

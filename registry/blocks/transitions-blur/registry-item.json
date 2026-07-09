@@ -5,6 +5,7 @@
   "title": "Blur Transitions",
   "description": "Showcase of blur-based transitions between scenes",
   "tags": ["transition", "showcase"],
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080
