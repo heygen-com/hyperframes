@@ -337,7 +337,10 @@ function ensureIndexHtml(projectDir: string, item: RegistryItem): void {
 function isStandaloneCompositionFile(path: string): boolean {
   if (!existsSync(path)) return false;
   const html = readFileSync(path, "utf-8");
-  return html.includes("data-composition-id") && html.includes("__timelines");
+  return (
+    html.includes("data-composition-id") &&
+    (html.includes("__timelines") || html.includes("hyperframesAnime.register("))
+  );
 }
 
 function htmlFiles(projectDir: string): string[] {
