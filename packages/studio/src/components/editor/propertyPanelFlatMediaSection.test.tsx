@@ -80,3 +80,52 @@ describe("FlatMediaSection — source row", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatMediaSection — cutout", () => {
+  it("shows the WebM label for video and fires background removal on click", async () => {
+    const onRemoveBackground = vi.fn().mockResolvedValue({ outputPath: "assets/intro-loop.webm" });
+    const onSetHtmlAttribute = vi.fn();
+    const onSetAttribute = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const element = makeVideoElement();
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+          onRemoveBackground={onRemoveBackground}
+        />,
+      );
+    });
+    expect(host.textContent).toContain("transparent WebM");
+    const removeBgButton = host.querySelector<HTMLButtonElement>(
+      '[data-flat-media-remove-bg="true"]',
+    );
+    expect(removeBgButton).not.toBeNull();
+    await act(async () => {
+      removeBgButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onRemoveBackground).toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("toggles BG plate via FlatToggle", () => {
+    const { host, root } = renderSection();
+    const plateToggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="BG plate"]',
+    );
+    expect(plateToggle).not.toBeNull();
+    expect(plateToggle?.getAttribute("aria-checked")).toBe("false");
+    act(() => plateToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(plateToggle?.getAttribute("aria-checked")).toBe("true");
+    act(() => root.unmount());
+  });
+});

@@ -6,7 +6,9 @@ import {
   type BackgroundRemovalResult,
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
+import { FlatSelectRow, FlatToggle } from "./propertyPanelFlatPrimitives";
 
+// fallow-ignore-next-line complexity
 export function FlatMediaSection({
   projectDir,
   element,
@@ -43,10 +45,8 @@ export function FlatMediaSection({
   const srcAttr = el.getAttribute("src") ?? "";
   const [copied, setCopied] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
-  // oxlint-disable-next-line no-unused-vars -- rendered by the progress bar added in Task 3
   const [removeProgress, setRemoveProgress] = useState<BackgroundRemovalProgress | null>(null);
   const [createPlate, setCreatePlate] = useState(false);
-  // oxlint-disable-next-line no-unused-vars -- wired into the Quality FlatSelectRow in Task 3
   const [quality, setQuality] = useState<"fast" | "balanced" | "best">("balanced");
 
   const absoluteSrc =
@@ -55,7 +55,6 @@ export function FlatMediaSection({
     srcAttr && !/^(?:https?:|data:|blob:)/i.test(srcAttr)
       ? stripQueryAndHash(srcAttr.startsWith("./") ? srcAttr.slice(2) : srcAttr)
       : "";
-  // oxlint-disable-next-line no-unused-vars -- gates the Remove BG button added in Task 3
   const canRemoveBackground = Boolean(onRemoveBackground && isVisualMedia && projectSrc);
 
   useEffect(() => {
@@ -71,7 +70,6 @@ export function FlatMediaSection({
     }
   };
 
-  // oxlint-disable-next-line no-unused-vars -- called by the Remove BG button added in Task 3
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
     setRemoveBusy(true);
@@ -120,6 +118,60 @@ export function FlatMediaSection({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
+      {isVisualMedia && (
+        <div className="ml-[1px] border-l-2 border-panel-border-input py-1 pl-[10px]">
+          <div className="flex min-h-6 items-center justify-between">
+            <span className="flex items-baseline gap-[7px]">
+              <span className="text-[11px] font-semibold text-panel-text-1">Cutout</span>
+              <span className="font-mono text-[9px] text-panel-text-4">
+                transparent {isVideo ? "WebM" : "PNG"}
+              </span>
+            </span>
+            <button
+              type="button"
+              data-flat-media-remove-bg="true"
+              disabled={!canRemoveBackground || removeBusy}
+              onClick={() => void runBackgroundRemoval()}
+              className="flex items-center gap-1 text-[10px] font-medium text-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                canRemoveBackground
+                  ? "Remove background and save a transparent asset"
+                  : "Select a project-local image or video asset"
+              }
+            >
+              {removeBusy ? "Working" : "Remove BG"}
+            </button>
+          </div>
+          <FlatSelectRow
+            label="Quality"
+            value={quality}
+            options={["fast", "balanced", "best"]}
+            tier="explicitDefault"
+            onChange={(next) => setQuality(next as typeof quality)}
+          />
+          {isVideo && (
+            <FlatToggle label="BG plate" checked={createPlate} onChange={setCreatePlate} />
+          )}
+          {removeProgress && (
+            <div className="mt-1 space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-panel-text-4">
+                <span className="min-w-0 flex-1 truncate">
+                  {removeProgress.error ?? removeProgress.stage ?? "Processing"}
+                </span>
+                <span>{Math.round(removeProgress.progress)}%</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-panel-hover">
+                <div
+                  className={`h-full rounded-full ${
+                    removeProgress.status === "failed" ? "bg-red-400" : "bg-panel-accent"
+                  }`}
+                  style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
