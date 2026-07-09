@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FlatTimingRow } from "./propertyPanelFlatMotionSection";
+import { FlatMotionSection, FlatTimingRow } from "./propertyPanelFlatMotionSection";
 import type { DomEditSelection } from "./domEditing";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -99,6 +99,121 @@ describe("FlatTimingRow", () => {
       startInput.dispatchEvent(new Event("focusout", { bubbles: true }));
     });
     expect(onSetAttribute).toHaveBeenCalledWith("start", "10.00");
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatMotionSection", () => {
+  it("renders Timing when showTiming is true and the effect list when showEffects is true", () => {
+    const { host, root } = renderInto(
+      <FlatMotionSection
+        element={baseElement()}
+        animations={[
+          {
+            id: "a1",
+            method: "to",
+            position: 0.8,
+            duration: 1.2,
+            ease: "power2.out",
+            properties: { opacity: 1 },
+          } as never,
+        ]}
+        showTiming
+        showEffects
+        onSetAttribute={vi.fn()}
+        onAddAnimation={vi.fn()}
+        onUpdateProperty={vi.fn()}
+        onUpdateMeta={vi.fn()}
+        onDeleteAnimation={vi.fn()}
+        onAddProperty={vi.fn()}
+        onRemoveProperty={vi.fn()}
+      />,
+    );
+    expect(host.textContent).toContain("Start");
+    expect(host.textContent).toContain("power2.out");
+    act(() => root.unmount());
+  });
+
+  it("omits Timing entirely when showTiming is false", () => {
+    const { host, root } = renderInto(
+      <FlatMotionSection
+        element={baseElement()}
+        animations={[]}
+        showTiming={false}
+        showEffects
+        onSetAttribute={vi.fn()}
+        onAddAnimation={vi.fn()}
+        onUpdateProperty={vi.fn()}
+        onUpdateMeta={vi.fn()}
+        onDeleteAnimation={vi.fn()}
+        onAddProperty={vi.fn()}
+        onRemoveProperty={vi.fn()}
+      />,
+    );
+    expect(host.textContent).not.toContain("Start");
+    act(() => root.unmount());
+  });
+
+  it("omits the effect list entirely when showEffects is false", () => {
+    const { host, root } = renderInto(
+      <FlatMotionSection
+        element={baseElement()}
+        animations={[
+          {
+            id: "a1",
+            method: "to",
+            position: 0.8,
+            duration: 1.2,
+            ease: "power2.out",
+            properties: { opacity: 1 },
+          } as never,
+        ]}
+        showTiming
+        showEffects={false}
+        onSetAttribute={vi.fn()}
+        onAddAnimation={vi.fn()}
+        onUpdateProperty={vi.fn()}
+        onUpdateMeta={vi.fn()}
+        onDeleteAnimation={vi.fn()}
+        onAddProperty={vi.fn()}
+        onRemoveProperty={vi.fn()}
+      />,
+    );
+    expect(host.textContent).not.toContain("power2.out");
+    act(() => root.unmount());
+  });
+
+  it("opens the add-method menu on '+ Add effect' and calls onAddAnimation with the chosen method", () => {
+    const onAddAnimation = vi.fn();
+    const { host, root } = renderInto(
+      <FlatMotionSection
+        element={baseElement()}
+        animations={[]}
+        showTiming
+        showEffects
+        onSetAttribute={vi.fn()}
+        onAddAnimation={onAddAnimation}
+        onUpdateProperty={vi.fn()}
+        onUpdateMeta={vi.fn()}
+        onDeleteAnimation={vi.fn()}
+        onAddProperty={vi.fn()}
+        onRemoveProperty={vi.fn()}
+      />,
+    );
+    const buttons = () => Array.from(host.querySelectorAll("button"));
+    const addTrigger = buttons().find((b) => b.textContent === "+ Add effect");
+    if (!addTrigger) throw new Error("expected an '+ Add effect' trigger button");
+    act(() => {
+      addTrigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const animateButton = buttons().find((b) => b.textContent === "Animate");
+    if (!animateButton) throw new Error("expected an 'Animate' method button");
+    act(() => {
+      animateButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onAddAnimation).toHaveBeenCalledWith("to");
+    // The menu closes back to the trigger after a selection.
+    expect(buttons().some((b) => b.textContent === "+ Add effect")).toBe(true);
     act(() => root.unmount());
   });
 });
