@@ -42,6 +42,10 @@ type GsapWindow = {
   end: number;
   properties: string[];
   propertyValues: Record<string, string | number>;
+  // fromTo()'s first ("from") vars object — the true state at the tween's start,
+  // as opposed to propertyValues which is always the destination (toVars). Only
+  // set for method === "fromTo"; other methods have no separate from-state.
+  fromPropertyValues?: Record<string, string | number>;
   overwriteAuto: boolean;
   method: string;
   raw: string;
@@ -141,6 +145,7 @@ async function extractGsapWindows(script: string): Promise<GsapWindow[]> {
       end: animation.position + effectiveDuration,
       properties: Object.keys(animation.properties),
       propertyValues: animation.properties,
+      fromPropertyValues: animation.fromProperties,
       overwriteAuto: unwrapRaw(animation.extras?.overwrite) === "auto",
       method: animation.method,
       raw: synthesizeWindowRaw(parsed.timelineVar, animation),
@@ -207,6 +212,16 @@ function isVisibleGsapState(values: Record<string, string | number>): boolean {
   if (display && display !== "none") return true;
 
   return false;
+}
+
+// The property values a window's element actually holds at the window's own
+// start (position). For fromTo() this is the authored fromVars, not the
+// destination toVars captured in propertyValues — a fade-in via
+// `fromTo(el, {opacity:0}, {opacity:1}, 0)` genuinely starts hidden even
+// though propertyValues (the toVars) says opacity: 1.
+function windowStartStateValues(win: GsapWindow): Record<string, string | number> {
+  if (win.method === "fromTo") return win.fromPropertyValues ?? win.propertyValues;
+  return win.propertyValues;
 }
 
 function makesOverlayVisible(win: GsapWindow): boolean {
@@ -680,7 +695,8 @@ export const gsapRules: LintRule<LintContext>[] = [
           .sort((a, b) => a.position - b.position);
         const startsHiddenAtZero = visibilityWindows.some(
           (win) =>
-            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS && isHiddenGsapState(win.propertyValues),
+            win.position <= SCENE_BOUNDARY_EPSILON_SECONDS &&
+            isHiddenGsapState(windowStartStateValues(win)),
         );
         if (startsHiddenAtZero) continue;
         const firstVisible = visibilityWindows.find((win) => makesOverlayVisible(win));
