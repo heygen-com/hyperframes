@@ -163,7 +163,7 @@ export function TimelinePane({
         aria-disabled={timelineDisabled || undefined}
       >
         <div
-          className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
+          className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-700/60 bg-[#131316]"
           onDoubleClick={(e) => {
             if ((e.target as HTMLElement).closest("[data-clip]")) return;
             if (timelineDisabled) return;

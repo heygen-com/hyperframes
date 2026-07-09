@@ -113,7 +113,7 @@ export const LeftSidebar = memo(
 
     return (
       <div
-        className="flex flex-col h-full overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
+        className="flex flex-col h-full overflow-hidden rounded-lg border border-neutral-700/60 bg-[#131316]"
         style={{ width }}
       >
         {takeoverContent ? (

@@ -108,8 +108,8 @@ export function PreviewPane({
       ref={containerRef}
       // Panel chrome (rounded border) is dropped in fullscreen so the preview
       // fills the screen edge-to-edge.
-      className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-neutral-950 ${
-        isFullscreen ? "" : "rounded-lg border border-neutral-800/50"
+      className={`flex-1 min-h-0 flex flex-col overflow-hidden bg-[#131316] ${
+        isFullscreen ? "" : "rounded-lg border border-neutral-700/60"
       }`}
       data-studio-fullscreen-target=""
     >
@@ -142,7 +142,7 @@ export function PreviewPane({
         </div>
         {!isFullscreen && previewOverlay}
       </div>
-      <div className="bg-neutral-950 border-t border-neutral-800/50 flex-shrink-0">
+      <div className="bg-[#131316] border-t border-neutral-800/60 flex-shrink-0">
         {!isFullscreen && compositionStack.length > 1 && (
           <CompositionBreadcrumb stack={compositionStack} onNavigate={handleNavigateComposition} />
         )}

@@ -43,12 +43,15 @@ const TRACK_STYLE: TimelineTrackStyle = {
 };
 
 export const defaultTimelineTheme: TimelineTheme = {
-  shellBackground: "#0A0A0B",
+  // Matches the panel-card surface (#131316) so the timeline card reads one
+  // step lighter than the #050506 shell canvas; rows sit slightly darker as
+  // inset lanes but stay clearly above the shell tone.
+  shellBackground: "#131316",
   shellBorder: "rgba(255,255,255,0.05)",
   rulerBorder: "rgba(255,255,255,0.16)",
-  rowBackground: "#0B0C0F",
+  rowBackground: "#0F0F13",
   rowBorder: "rgba(255,255,255,0.06)",
-  gutterBackground: "#0E0F12",
+  gutterBackground: "#121216",
   gutterBorder: "rgba(255,255,255,0.10)",
   textPrimary: "rgba(255,255,255,0.92)",
   textSecondary: "rgba(255,255,255,0.62)",

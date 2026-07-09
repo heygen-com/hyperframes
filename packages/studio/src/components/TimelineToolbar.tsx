@@ -83,6 +83,10 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
+  // Subscribe (not getState) so the split button enables/disables the moment
+  // the selection changes, not only on the next playhead tick.
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const displayedTimelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
   const {
@@ -116,28 +120,30 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
+  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
+  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
+  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
+  const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
+  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
+
   return (
-    <div className="border-b border-neutral-800/40 bg-neutral-950/96">
-      <div className="flex items-center justify-between px-3 py-0.5">
-        <div className="flex items-center gap-3">
-          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-            Timeline
-          </div>
+    // The "TIMELINE" label is dropped for CapCut-like density — the pane's
+    // position (tracks right below) makes it self-evident.
+    <div className="border-b border-neutral-800/60">
+      <div className="flex items-center justify-between px-2 py-0.5">
+        <div className="flex items-center gap-0.5">
           {STUDIO_RAZOR_TOOL_ENABLED && (
-            <div className="flex items-center border border-neutral-800 rounded overflow-hidden">
+            <>
               <Tooltip label="Selection tool (V)">
                 <button
                   type="button"
                   onClick={() => setActiveTool("select")}
                   aria-label="Selection tool"
                   aria-pressed={activeTool === "select"}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
-                    activeTool === "select"
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "text-neutral-500 hover:text-neutral-300"
-                  }`}
+                  className={activeTool === "select" ? flatActive : flatIdle}
                 >
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                  <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
                     <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
                   </svg>
                 </button>
@@ -148,16 +154,12 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   onClick={() => setActiveTool("razor")}
                   aria-label="Razor tool"
                   aria-pressed={activeTool === "razor"}
-                  className={`flex h-6 w-6 items-center justify-center transition-colors active:scale-[0.98] ${
-                    activeTool === "razor"
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "text-neutral-500 hover:text-neutral-300"
-                  }`}
+                  className={activeTool === "razor" ? flatActive : flatIdle}
                 >
-                  <Scissors size={11} />
+                  <Scissors size={16} />
                 </button>
               </Tooltip>
-            </div>
+            </>
           )}
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
             <button
@@ -165,13 +167,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
               aria-label="Toggle timeline snapping"
               aria-pressed={timelineSnapEnabled}
-              className={`flex h-6 w-6 items-center justify-center rounded border transition-colors active:scale-[0.98] ${
-                timelineSnapEnabled
-                  ? "border-neutral-700 bg-neutral-700 text-neutral-200"
-                  : "border-neutral-800 text-neutral-500 hover:text-neutral-300"
-              }`}
+              className={timelineSnapEnabled ? flatActive : flatIdle}
             >
-              <Magnet size={13} weight="bold" aria-hidden="true" />
+              <Magnet size={16} weight="bold" aria-hidden="true" />
             </button>
           </Tooltip>
           {STUDIO_KEYFRAMES_ENABLED && onToggleKeyframe && (
@@ -194,7 +192,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     ? "Remove keyframe at playhead"
                     : "Add keyframe at playhead"
                 }
-                className={`flex h-6 w-6 items-center justify-center rounded transition-colors active:scale-[0.98] ${
+                className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
                   keyframeState === "active"
                     ? "text-studio-accent"
                     : keyframeState === "inactive"
@@ -230,7 +228,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
                 aria-label="Auto-record manual edits as keyframes"
                 aria-pressed={autoKeyframeEnabled}
-                className={`flex h-6 w-6 items-center justify-center rounded transition-colors active:scale-[0.98] ${
+                className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
                   autoKeyframeEnabled
                     ? "text-red-400 hover:text-red-300"
                     : "text-neutral-600 hover:text-neutral-400"
@@ -257,7 +255,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             (() => {
               // Render the button unconditionally (disabled when unusable):
               // mounting/unmounting mid-task shifts the neighboring controls.
-              const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+              // Mirrors the S-key gate: selected clip + playhead strictly inside it.
               const el = selectedElementId
                 ? elements.find((e) => (e.key ?? e.id) === selectedElementId)
                 : null;
@@ -268,7 +266,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 <Tooltip
                   label={
                     canSplit
-                      ? "Split clip at playhead (S)"
+                      ? "Split at playhead (S)"
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
@@ -277,17 +275,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   <button
                     type="button"
                     disabled={!canSplit}
-                    aria-label="Split clip at playhead"
+                    aria-label="Split at playhead"
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
-                    className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
-                      canSplit
-                        ? "text-neutral-500 hover:text-neutral-200 active:scale-[0.98]"
-                        : "text-neutral-700 cursor-not-allowed"
-                    }`}
+                    className={canSplit ? flatIdle : flatDisabled}
                   >
-                    <Scissors size={13} />
+                    <Scissors size={16} />
                   </button>
                 </Tooltip>
               );
@@ -306,13 +300,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     onClick={() => {
                       if (canAdd) addBeatAtCompositionTime(currentTime);
                     }}
-                    className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+                    className={
                       canAdd
-                        ? "text-neutral-500 hover:text-[#22c55e] active:scale-[0.98]"
-                        : "text-neutral-700 cursor-not-allowed"
-                    }`}
+                        ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
+                        : flatDisabled
+                    }
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                       <path
                         d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
                         stroke="currentColor"
@@ -326,15 +320,15 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               );
             })()}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-0.5">
           <Tooltip label="Fit timeline to width">
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
-              className={`h-6 px-2 rounded-md border text-[11px] font-medium transition-colors ${
+              className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
-                  ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
-                  : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+                  ? "bg-studio-accent/10 text-studio-accent"
+                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
               }`}
             >
               Fit
@@ -350,9 +344,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent),
                 );
               }}
-              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200 active:scale-[0.96]"
+              className={flatIdle}
             >
-              <MagnifyingGlassMinus size={14} aria-hidden="true" />
+              <MagnifyingGlassMinus size={16} aria-hidden="true" />
             </button>
           </Tooltip>
           <input
@@ -366,7 +360,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               setZoomMode("manual");
               setManualZoomPercent(timelineSliderToZoomPercent(Number(e.target.value)));
             }}
-            className="w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#0a0a0a,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
+            className="mx-1 w-[96px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[2px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neutral-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[10px] [&::-webkit-slider-thumb]:h-[10px] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:shadow-[0_0_0_2px_#131316,0_1px_3px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb:active]:cursor-grabbing"
           />
           <Tooltip label="Zoom in">
             <button
@@ -376,9 +370,9 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 setZoomMode("manual");
                 setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
               }}
-              className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:text-neutral-200 active:scale-[0.96]"
+              className={flatIdle}
             >
-              <MagnifyingGlassPlus size={14} aria-hidden="true" />
+              <MagnifyingGlassPlus size={16} aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
