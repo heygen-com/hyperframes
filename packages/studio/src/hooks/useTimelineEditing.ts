@@ -128,18 +128,20 @@ export function useTimelineEditing({
       // clip end in this file (grows if moved past the end, shrinks if the furthest
       // clip moved left).
       const movedEnd = updates.start + element.duration;
-      const moveContentEnd = timelineElements.reduce(
-        (max, te) =>
-          (te.sourceFile || activeCompPath || "index.html") === targetPath
-            ? Math.max(
-                max,
-                (te.key ?? te.id) === (element.key ?? element.id)
-                  ? movedEnd
-                  : te.start + te.duration,
-              )
-            : max,
-        0,
-      );
+      const moveContentEnd = usePlayerStore
+        .getState()
+        .elements.reduce(
+          (max, te) =>
+            (te.sourceFile || activeCompPath || "index.html") === targetPath
+              ? Math.max(
+                  max,
+                  (te.key ?? te.id) === (element.key ?? element.id)
+                    ? movedEnd
+                    : te.start + te.duration,
+                )
+              : max,
+          0,
+        );
       const buildMovePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         let patched = applyPatchByTarget(original, target, {
           type: "attribute",
@@ -203,7 +205,6 @@ export function useTimelineEditing({
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
-      timelineElements,
     ],
   );
 
@@ -248,18 +249,20 @@ export function useTimelineEditing({
       // Content-driven duration: after the trim, set data-duration to the furthest
       // clip end in this file (shrinks when the furthest clip is trimmed shorter).
       const resizedEnd = updates.start + updates.duration;
-      const resizeContentEnd = timelineElements.reduce(
-        (max, te) =>
-          (te.sourceFile || activeCompPath || "index.html") === targetPath
-            ? Math.max(
-                max,
-                (te.key ?? te.id) === (element.key ?? element.id)
-                  ? resizedEnd
-                  : te.start + te.duration,
-              )
-            : max,
-        0,
-      );
+      const resizeContentEnd = usePlayerStore
+        .getState()
+        .elements.reduce(
+          (max, te) =>
+            (te.sourceFile || activeCompPath || "index.html") === targetPath
+              ? Math.max(
+                  max,
+                  (te.key ?? te.id) === (element.key ?? element.id)
+                    ? resizedEnd
+                    : te.start + te.duration,
+                )
+              : max,
+          0,
+        );
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
         let patched = applyPatchByTarget(original, target, {
@@ -346,7 +349,6 @@ export function useTimelineEditing({
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
-      timelineElements,
     ],
   );
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({

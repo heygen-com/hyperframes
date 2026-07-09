@@ -169,6 +169,8 @@ export function useTimelineClipDrag({
   onMoveElementRef.current = onMoveElement;
   const onMoveElementsRef = useRef(onMoveElements);
   onMoveElementsRef.current = onMoveElements;
+  const onBlockedEditAttemptRef = useRef(onBlockedEditAttempt);
+  onBlockedEditAttemptRef.current = onBlockedEditAttempt;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
 
@@ -219,15 +221,14 @@ export function useTimelineClipDrag({
       const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
       // Inserting a new track only makes sense in the visual zone. Suppress the
       // insertion affordance at/below the first audio lane so it never appears
-      // under the bottom (audio stays pinned to the bottom).
-      const audioStart = elementsRef.current.reduce(
-        (min, e) => (isAudioTimelineElement(e) ? Math.min(min, e.track) : min),
-        Number.POSITIVE_INFINITY,
+      // under the bottom. Compare in ROW-INDEX space (position in trackOrder), not
+      // raw track values — track indices can shift, but the display row is stable.
+      const order = trackOrderRef.current;
+      const audioRow = order.findIndex((t) =>
+        elementsRef.current.some((e) => e.track === t && isAudioTimelineElement(e)),
       );
       const insertRow =
-        rawInsertRow !== null && Number.isFinite(audioStart) && rawInsertRow > audioStart
-          ? null
-          : rawInsertRow;
+        rawInsertRow !== null && audioRow >= 0 && rawInsertRow > audioRow ? null : rawInsertRow;
       // Free placement: land on the hovered lane at the (snapped) time. Overlaps are
       // allowed — layered overlays are real HyperFrames content — so there's no
       // collision-push to a free lane and no main-track magnet. Snapping (when the
@@ -436,7 +437,7 @@ export function useTimelineClipDrag({
           suppressClickRef.current = true;
           setShowPopover(false);
           setRangeSelectionRef.current?.(null);
-          onBlockedEditAttempt?.(blocked.element, blocked.intent);
+          onBlockedEditAttemptRef.current?.(blocked.element, blocked.intent);
         }
         return;
       }
