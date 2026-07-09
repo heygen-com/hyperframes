@@ -469,10 +469,24 @@ export function useTimelinePlayer() {
       applyPreviewAudioState,
     });
   const saveSeekPosition = useCallback(() => {
-    const adapter = getAdapter();
-    pendingSeekRef.current = adapter
-      ? adapter.getTime()
-      : (usePlayerStore.getState().currentTime ?? 0);
+    // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
+    // file drop = upload reload + insert reload back-to-back) call this while
+    // the iframe from the FIRST reload is mid-teardown: getAdapter() can still
+    // return that dying document's adapter, whose getTime() reads 0 — and the
+    // store's currentTime can lag the visual playhead. Overwriting the
+    // still-unconsumed pendingSeek with either value is exactly how the
+    // playhead used to end up at 0 after a Finder drop (verified live via a
+    // currentTime write-trace). So: while a refresh is already in flight and a
+    // save exists, keep it; otherwise trust the live adapter, then the store.
+    const refreshInFlight = isRefreshingRef.current && pendingSeekRef.current != null;
+    if (!refreshInFlight) {
+      const adapter = getAdapter();
+      if (adapter) {
+        pendingSeekRef.current = adapter.getTime();
+      } else if (pendingSeekRef.current == null) {
+        pendingSeekRef.current = usePlayerStore.getState().currentTime ?? 0;
+      }
+    }
     isRefreshingRef.current = true;
     stopRAFLoop();
     stopReverseLoop();
