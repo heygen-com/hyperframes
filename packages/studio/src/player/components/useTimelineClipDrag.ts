@@ -4,6 +4,7 @@ import {
   resolveTimelineMove,
   resolveTimelineResize,
   resolveTimelineAutoScroll,
+  resolveTimelineDragEscape,
   type BlockedTimelineEditIntent,
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
@@ -522,7 +523,12 @@ export function useTimelineClipDrag({
       }
 
       const drag = draggedClipRef.current;
-      if (!drag) return;
+      if (!drag) {
+        // Escape-cancel leaves the click suppressor armed so the click this
+        // pointerup generates can't act on the clip; disarm it right after.
+        if (suppressClickRef.current) clearSuppressedClick();
+        return;
+      }
       draggedClipRef.current = null;
       setDraggedClip(null);
       if (!drag.started) return;
@@ -541,14 +547,43 @@ export function useTimelineClipDrag({
       });
     };
 
+    // Escape cancels the in-progress gesture: no commit, no undo entry. The
+    // previews live only in the drag/resize state (the store is untouched
+    // until the pointerup commit), so clearing them restores the pre-drag
+    // timeline. Clip drags never take pointer capture (all tracking runs on
+    // these window listeners), so there is no capture to release; the null
+    // refs make the remaining pointermove/pointerup a no-op.
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      const decision = resolveTimelineDragEscape({
+        key: e.key,
+        drag: draggedClipRef.current,
+        resize: resizingClipRef.current,
+        blocked: blockedClipRef.current,
+      });
+      if (!decision.cancel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stopClipDragAutoScrollRef.current();
+      draggedClipRef.current = null;
+      setDraggedClip(null);
+      resizingClipRef.current = null;
+      setResizingClip(null);
+      blockedClipRef.current = null;
+      // The pointer is usually still down; keep the suppressor armed until the
+      // eventual pointerup (which disarms it) so its click can't reselect.
+      if (decision.suppressClick) suppressClickRef.current = true;
+    };
+
     window.addEventListener("pointermove", handleWindowPointerMove);
     window.addEventListener("pointerup", handleWindowPointerUp);
     window.addEventListener("pointercancel", handleWindowPointerUp);
+    window.addEventListener("keydown", handleWindowKeyDown, true);
     return () => {
       stopClipDragAutoScrollRef.current();
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);
       window.removeEventListener("pointercancel", handleWindowPointerUp);
+      window.removeEventListener("keydown", handleWindowKeyDown, true);
     };
   });
 

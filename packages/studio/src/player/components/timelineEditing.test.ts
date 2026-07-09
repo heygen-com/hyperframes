@@ -8,6 +8,7 @@ import {
   hasPatchableTimelineTarget,
   resolveBlockedTimelineEditIntent,
   resolveTimelineAutoScroll,
+  resolveTimelineDragEscape,
   resolveTimelineMove,
   resolveTimelineResize,
   MAGNETIC_TRACK_THRESHOLD,
@@ -667,5 +668,47 @@ describe("buildPromptCopyText", () => {
     expect(buildPromptCopyText("  Tighten the headline timing  ")).toBe(
       "Tighten the headline timing",
     );
+  });
+});
+
+describe("resolveTimelineDragEscape", () => {
+  const started = { started: true };
+  const pending = { started: false };
+  const none = { drag: null, resize: null, blocked: null };
+
+  it("cancels only on Escape", () => {
+    expect(resolveTimelineDragEscape({ key: "Enter", ...none, drag: started })).toEqual({
+      cancel: false,
+      suppressClick: false,
+    });
+    expect(resolveTimelineDragEscape({ key: "Escape", ...none, drag: started })).toEqual({
+      cancel: true,
+      suppressClick: true,
+    });
+  });
+
+  it("does nothing when no gesture is in progress", () => {
+    expect(resolveTimelineDragEscape({ key: "Escape", ...none })).toEqual({
+      cancel: false,
+      suppressClick: false,
+    });
+  });
+
+  it("cancels a resize or a pending blocked-drag", () => {
+    expect(resolveTimelineDragEscape({ key: "Escape", ...none, resize: started })).toEqual({
+      cancel: true,
+      suppressClick: true,
+    });
+    expect(resolveTimelineDragEscape({ key: "Escape", ...none, blocked: pending })).toEqual({
+      cancel: true,
+      suppressClick: false,
+    });
+  });
+
+  it("suppresses the pointerup click only for gestures past the drag threshold", () => {
+    expect(resolveTimelineDragEscape({ key: "Escape", ...none, drag: pending })).toEqual({
+      cancel: true,
+      suppressClick: false,
+    });
   });
 });
