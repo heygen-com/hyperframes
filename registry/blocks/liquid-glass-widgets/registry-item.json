@@ -5,6 +5,7 @@
   "title": "Liquid Glass Widgets",
   "description": "Frosted glass stat cards, showcase panel and pill chips over an aurora shader background",
   "stability": "experimental",
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

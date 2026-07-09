@@ -5,6 +5,7 @@
   "title": "Liquid Glass Context Menu",
   "description": "Frosted glass context menu panel drifting over an aurora shader background",
   "stability": "experimental",
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080

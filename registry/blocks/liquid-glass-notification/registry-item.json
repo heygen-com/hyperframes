@@ -5,6 +5,7 @@
   "title": "Liquid Glass Notification",
   "description": "Frosted glass notification cards floating over an aurora shader background",
   "stability": "experimental",
+  "runtime": "animejs",
   "dimensions": {
     "width": 1920,
     "height": 1080
