@@ -109,6 +109,7 @@ export function StudioRightPanel({
     copiedAgentPrompt,
     clearDomSelection,
     handleUngroupSelection,
+    handleGroupSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
     handleDomAttributeLiveCommit,
@@ -342,6 +343,10 @@ export function StudioRightPanel({
     [projectId, refreshFileTree, showToast],
   );
 
+  const handleHideAllSelected = () =>
+    domEditGroupSelections
+      .map((el) => el.id ?? el.selector)
+      .forEach((key) => key && void onToggleElementHidden?.(key, true));
   const propertyPanel = (
     <DesignPanelPromoteProvider
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
@@ -359,6 +364,9 @@ export function StudioRightPanel({
         assets={assets}
         element={domEditGroupSelections.length > 1 ? null : domEditSelection}
         multiSelectCount={domEditGroupSelections.length}
+        multiSelectedElements={domEditGroupSelections}
+        onGroupSelection={handleGroupSelection}
+        onHideAllSelected={handleHideAllSelected}
         copiedAgentPrompt={copiedAgentPrompt}
         onClearSelection={clearDomSelection}
         onToggleElementHidden={onToggleElementHidden}
