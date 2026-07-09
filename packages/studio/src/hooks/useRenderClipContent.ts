@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import type { TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
+import { ImageThumbnail } from "../player/components/ImageThumbnail";
+import { resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -138,9 +140,17 @@ export function useRenderClipContent({
         !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
-        const mediaSrc = el.src.startsWith("http")
-          ? el.src
-          : `/api/projects/${pid}/preview/${el.src}`;
+        const mediaSrc = resolveMediaPreviewUrl(el.src, pid);
+        // Still images can't be decoded by VideoThumbnail's <video> extractor
+        // (the error event fires and the shimmer never resolves) — render the
+        // image itself as the strip.
+        if (el.tag === "img") {
+          return createElement(ImageThumbnail, {
+            imageSrc: mediaSrc,
+            label: "",
+            labelColor: style.label,
+          });
+        }
         return createElement(VideoThumbnail, {
           videoSrc: mediaSrc,
           label: "",

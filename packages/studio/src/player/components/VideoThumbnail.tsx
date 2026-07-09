@@ -1,5 +1,6 @@
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -8,7 +9,7 @@ interface VideoThumbnailProps {
   duration?: number;
 }
 
-const CLIP_HEIGHT = 66;
+const CLIP_HEIGHT = THUMBNAIL_CLIP_HEIGHT;
 const MAX_UNIQUE_FRAMES: number = 6;
 
 /**
@@ -141,8 +142,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     };
   }, [visible, videoSrc, duration]);
 
-  const frameW = Math.round(CLIP_HEIGHT * aspect);
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">

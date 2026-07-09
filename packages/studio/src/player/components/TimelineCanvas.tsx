@@ -187,7 +187,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
       {renderClipOverlay?.(element)}
       {!renderClipContent && <ClipLintDot element={element} />}
       {renderClipContent && (
-        <div className="absolute inset-0 overflow-hidden">
+        // borderRadius: inherit — the clip itself is overflow-visible (keyframe
+        // diamonds hang outside its bounds), so the thumbnail layer must clip
+        // itself to the clip's rounded corners or sharp corners poke out.
+        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "inherit" }}>
           {renderClipContent(element, clipStyle)}
         </div>
       )}
