@@ -105,6 +105,12 @@ If the root omits `data-duration`, HyperFrames infers render duration from the l
 - Do not derive stagger amounts, target order, random-looking offsets, or jitter from unseeded `Math.random()` or wall-clock reads.
 - Do not mutate render-critical state from `onUpdate` using clocks, network, input state, or accumulated previous-frame state.
 
+### Imperative DOM mutation is not seek-safe
+
+Imperative DOM mutations, such as `element.textContent` writes or `.call()`-driven content changes, are not seek-reversible and break cold-seek priming and Studio scrubbing. Render-critical content reveals must be property tweens on pre-rendered elements, such as spans for text, not callbacks that mutate DOM state as a side effect of a driver value changing.
+
+A tween's `onUpdate` may derive a value that is purely a function of the timeline's own current position. For example, it can drive a shader uniform from the timeline's own `currentTime`, or write a formatted number from a value that anime.js is itself tweening. It must never be the only mechanism revealing or hiding actual render-critical content, because there is no guarantee the callback fires for every seek in every direction on every render or scrub path.
+
 ### One Property Owner
 
 Two independently registered anime.js instances must never animate the same CSS property on the same element at overlapping times. HyperFrames seeks registered instances independently, and the last property writer can become order-dependent. Anime.js does not provide an automatic overwrite manager for separate registered instances.
