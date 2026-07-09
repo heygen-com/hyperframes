@@ -72,6 +72,32 @@
             ]
           },
           {
+            "group": "Prompt Guide",
+            "pages": [
+              "prompting/overview",
+              {
+                "group": "Fundamentals",
+                "pages": [
+                  "prompting/anatomy",
+                  "prompting/examples",
+                  "prompting/specification-dial",
+                  "prompting/vocabulary",
+                  "prompting/iterating",
+                  "prompting/rules-and-anti-patterns"
+                ]
+              },
+              {
+                "group": "Making it look good",
+                "pages": [
+                  "prompting/visual-specs",
+                  "prompting/motion",
+                  "prompting/generated-artwork",
+                  "prompting/recreating-references"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Guides",
             "pages": [
               "guides/pipeline",
@@ -86,7 +112,6 @@
               "guides/copilot-cli",
               "guides/claude-design",
               "guides/open-design",
-              "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/keyframes",
@@ -410,5 +435,11 @@
     "socials": {
       "github": "https://github.com/heygen-com/hyperframes"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/guides/prompting",
+      "destination": "/prompting/overview"
+    }
+  ]
 }

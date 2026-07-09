@@ -1,0 +1,40 @@
+---
+title: Iterating
+description: "Talk to the agent like a video editor - small targeted edits beat re-specification."
+---
+
+## Iterating
+
+Hyperframes is a conversation. After the first render, talk to the agent the way you'd talk to a video editor — don't re-prompt from scratch:
+
+> Make the title 2x bigger.
+
+> Swap to dark mode.
+
+> Add a fade-out at the end and a lower third at 0:03 with my name and title.
+
+> The captions are too small and they overlap the lower third. Move them up and shrink them.
+
+> Replace the background music with `assets/track.mp3`.
+
+The agent already has the composition open and the skills loaded — small targeted edits produce better results than long re-specifications.
+
+## Editing is for nudging, not gambling
+
+Three moves keep iteration convergent instead of circular:
+
+1. **One variable per edit.** Change one thing, render, judge, repeat. A request that moves three things at once ("bigger title, warmer colors, faster cuts") makes it impossible to attribute what helped and what hurt.
+2. **Layer one element type at a time.** Building up a complex scene? Start with the minimal version (subject + its motion only), confirm it reads, then add exactly one layer per pass — camera move, then background motion, then style treatment. Every addition stays attributable.
+3. **Strip, then re-layer.** When a scene keeps misfiring, don't pile on corrections — strip it back to the simplest version that works (freeze the camera, simplify the motion, clear the background), confirm, then reintroduce complexity one layer at a time until you find the ingredient that breaks it.
+
+## Calibrate with absolute targets
+
+When you're dialing in a look, relative corrections oscillate — "make the dots finer" overshoots, "a bit bigger" overshoots back. State targets as absolute values and the agent lands them in one pass:
+
+- ❌ `make the dots 2x finer`
+- ✅ `dot radius = 25% of row spacing, with clear gaps between dots`
+
+- ❌ `the glow is too strong`
+- ✅ `glow at ~35% peak opacity, always subtler than the orb itself`
+
+And freeze what already works: "the framing and motion are right — don't touch them; only change the dot size." Without the freeze clause, a rebuild can drift on axes you'd already settled.

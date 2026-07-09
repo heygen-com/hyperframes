@@ -1,0 +1,170 @@
+---
+title: Vocabulary that changes output
+description: "Natural-language adjectives the skills map to specific framework settings - easing, captions, transitions, audio, voices."
+---
+
+## Vocabulary that changes output
+
+The skills map natural-language adjectives to specific framework settings. Using the right word gets you the right result without specifying technical details.
+
+### Motion & easing
+
+Describe how motion should *feel* and the agent picks the matching GSAP ease:
+
+| Say this    | Agent uses       | Feels like                     |
+| ----------- | ---------------- | ------------------------------ |
+| smooth      | `power2.out`     | Natural deceleration           |
+| snappy      | `power4.out`     | Quick and decisive             |
+| bouncy      | `back.out`       | Overshoots then settles        |
+| springy     | `elastic.out`    | Oscillates into place          |
+| dramatic    | `expo.out`       | Fast start, long glide         |
+| dreamy      | `sine.inOut`     | Slow, symmetrical              |
+
+**Timing shorthand:** fast (0.2s) = energy, medium (0.4s) = professional, slow (0.6s) = luxury, very slow (1–2s) = cinematic.
+
+### Camera language
+
+Compositions have no physical camera, but camera words translate directly into scene transforms (or real camera moves in Three.js scenes):
+
+| Say this            | Agent builds                                              |
+| ------------------- | --------------------------------------------------------- |
+| slow push-in        | 4–8% scale increase across the scene, gentle ease          |
+| pull back / widen   | scale decrease, often paired with elements entering        |
+| pan across          | horizontal translate of the scene layer                    |
+| drone orbit         | continuous camera orbit (Three.js scenes)                  |
+| crane down/up       | vertical camera drift combined with a look-at shift        |
+| whip to             | fast blurred slide into the next framing                   |
+| parallax            | layers translating at different rates for depth            |
+
+### Depth language
+
+| Say this               | Agent builds                                             |
+| ---------------------- | -------------------------------------------------------- |
+| near-lens / foreground bokeh | large, heavily-blurred elements drifting close to camera |
+| depth planes           | 2–3 layers moving at different speeds                     |
+| out-of-focus background | blurred, slower-moving back layer                        |
+| shallow depth of field | sharp subject, blurred everything-else                    |
+
+### Pacing language
+
+| Say this          | Agent builds                                        |
+| ----------------- | --------------------------------------------------- |
+| punchy cuts       | 1.5–4s per idea, hard cuts, overlapping entrances    |
+| cinematic holds   | longer beats with ambient idle motion                |
+| beat-synced       | cuts and accents on the music's beat grid            |
+| breathing room    | a held moment before the next beat starts            |
+| ambient idle      | 1–2% breathing scale + slow drift during holds       |
+
+### Caption tones
+
+Describe the *energy* of your captions and the agent picks matching typography, size, and animation:
+
+| Tone         | Typography             | Animation    | Size range |
+| ------------ | ---------------------- | ------------ | ---------- |
+| Hype         | Heavy weight fonts     | Scale-pop    | 72–96px    |
+| Corporate    | Clean sans-serif       | Fade + slide | 56–72px    |
+| Tutorial     | Monospace              | Typewriter   | 48–64px    |
+| Storytelling | Serif                  | Slow fade    | 44–56px    |
+| Social       | Rounded, playful       | Bounce       | 56–80px    |
+
+```
+"Hype-style captions with scale-pop"
+"Calm, elegant subtitles with slow fades"
+"Karaoke-style word highlighting"
+```
+
+Per-word styling also works:
+
+```
+"Make brand names larger with accent color"
+"Add bounce to emotional keywords"
+"Highlight numbers differently"
+```
+
+### Transitions
+
+Every multi-scene composition benefits from transitions. Describe the energy level:
+
+| Energy  | CSS option       | Shader option       |
+| ------- | ---------------- | ------------------- |
+| Calm    | Blur crossfade   | Cross-warp morph    |
+| Medium  | Push slide       | Whip pan            |
+| High    | Zoom through     | Glitch, ridged burn |
+
+Or describe by mood:
+
+```
+"Warm transitions for this wellness brand"
+"Cold, clinical transitions for tech"
+"Playful bouncy transitions"
+"Dramatic zoom for the reveal"
+```
+
+### Audio-reactive animation
+
+Map audio frequency bands to visual properties. The agent uses these defaults:
+
+| Audio band | Maps to   | Visual effect       |
+| ---------- | --------- | ------------------- |
+| Bass       | `scale`   | Pulse on the beat   |
+| Treble     | `glow`    | Shimmer intensity   |
+| Amplitude  | `opacity` | Breathing           |
+| Mids       | `shape`   | Morphing            |
+
+```
+"Make the text pulse with the beat"
+"Add bass-driven scale to the logo"
+"Create glow that responds to treble"
+```
+
+<Tip>
+  Keep audio-reactive effects subtle for text (3–6% intensity). Go bigger for backgrounds (10–30%).
+</Tip>
+
+### Marker highlights
+
+Hand-drawn emphasis effects for text:
+
+| Mode        | Effect             | Best for      |
+| ----------- | ------------------ | ------------- |
+| `highlight` | Marker sweep       | Key phrases   |
+| `circle`    | Hand-drawn ellipse | Single words  |
+| `burst`     | Radiating lines    | Hype moments  |
+| `scribble`  | Chaotic scratch    | Crossing out  |
+| `sketchout` | Rectangle outline  | Callouts      |
+
+```
+"Add a marker highlight sweep on 'revolutionary'"
+"Circle this keyword with hand-drawn effect"
+"Add burst lines around 'AMAZING'"
+```
+
+### Text-to-speech voices
+
+TTS runs locally via Kokoro (no API key needed). Describe the content and the agent picks a voice, or request one directly:
+
+| Content type  | Recommended voices         |
+| ------------- | -------------------------- |
+| Product demo  | `af_heart`, `af_nova`      |
+| Tutorial      | `am_adam`, `bf_emma`       |
+| Marketing     | `af_sky`, `am_michael`     |
+
+```
+"Generate narration for this script"
+"Create voiceover with a professional female voice"
+"Add TTS with British male voice at 1.1x speed"
+```
+
+### Rendering quality
+
+| Quality    | Use for                  |
+| ---------- | ------------------------ |
+| `draft`    | Fast iteration           |
+| `standard` | Review and feedback      |
+| `high`     | Final delivery           |
+
+```
+"Quick draft render"
+"Render at high quality"
+"Export as transparent WebM"
+```

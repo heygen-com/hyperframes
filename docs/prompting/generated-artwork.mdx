@@ -1,0 +1,16 @@
+---
+title: When to generate artwork
+description: "Code-drawn wins for UI, type, geometry, and 3D; illustration-led hero art comes from an image model, animated as layers."
+---
+
+## When to generate artwork instead of drawing it
+
+Code-drawn HTML/CSS/SVG excels where the medium is native: UI mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js. For **illustration-led** hero art — characters, painterly scenes, sculptural objects — hand-drawn SVG tops out at clipart quality no matter how well you prompt. The fix is a hybrid:
+
+> Generate the hero artwork as an image (via the media skill's image generation), then animate it with code. Anything that must move independently — eyelids, light beams, drawing lines — stays a code layer on top of the static art.
+
+Three rules that make this work:
+
+1. **Generate on a solid contrasting background** (magenta works) so the subject keys out cleanly. A light subject on a light background gets silently eaten.
+2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI background removal — saliency matting can invert on flat art and keep the background instead. Save `remove-background` for photographic subjects.
+3. **Put a restraint clause in the generation prompt** ("minimal, lots of negative space") — image models fill the frame by default, and a busy generated texture reads as cheap as bad vector art.
