@@ -3,7 +3,10 @@
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
-import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
+import {
+  furthestClipEndFromDocument,
+  furthestClipEndFromSource,
+} from "../player/lib/timelineElementHelpers";
 import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
@@ -116,6 +119,17 @@ export function useTimelineEditing({
     ],
   );
 
+  // Optimistically push the composition's content-driven length into the player
+  // store right after the live DOM patch, so the duration readout + seek bar
+  // update immediately. The readout binds to store.duration (PlayerControls);
+  // edits only patched store.elements, so the number stayed frozen (esp. on
+  // shrink) until a manual refresh. Read from the just-patched preview DOM (raw
+  // data-duration) so it's immune to the runtime's truncated live durations.
+  const syncReadoutDurationFromPreview = useCallback(() => {
+    const end = furthestClipEndFromDocument(previewIframeRef.current?.contentDocument ?? null);
+    if (end > 0) usePlayerStore.getState().setDuration(end);
+  }, [previewIframeRef]);
+
   // fallow-ignore-next-line complexity
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
@@ -124,6 +138,7 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-track-index", String(updates.track)],
       ]);
+      syncReadoutDurationFromPreview();
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       const buildMovePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         let patched = applyPatchByTarget(original, target, {
@@ -194,6 +209,7 @@ export function useTimelineEditing({
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
+      syncReadoutDurationFromPreview,
     ],
   );
 
@@ -234,6 +250,7 @@ export function useTimelineEditing({
         liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
+      syncReadoutDurationFromPreview();
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
         const pbs = resolveResizePlaybackStart(original, target, element, updates);
@@ -324,6 +341,7 @@ export function useTimelineEditing({
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
+      syncReadoutDurationFromPreview,
     ],
   );
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
@@ -392,10 +410,10 @@ export function useTimelineEditing({
         // deleting the last/longest clip removes trailing empty space. Measured
         // from the source, not the store, whose durations are runtime-truncated
         // (HANDOFF-3 §6.1 feedback loop).
-        const patchedContent = setCompositionDurationToContent(
-          removedContent,
-          furthestClipEndFromSource(removedContent),
-        );
+        const deleteContentEnd = furthestClipEndFromSource(removedContent);
+        const patchedContent = setCompositionDurationToContent(removedContent, deleteContentEnd);
+        // Optimistically reflect the shrunk length in the readout/seek bar.
+        if (deleteContentEnd > 0) usePlayerStore.getState().setDuration(deleteContentEnd);
         domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,

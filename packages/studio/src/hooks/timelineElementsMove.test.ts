@@ -52,6 +52,12 @@ describe("furthestClipEndFromSource", () => {
 // duration. Without the source-based calc this shrinks/stalls the composition.
 const h = vi.hoisted(() => ({ source: "", savedFiles: [] as Record<string, string>[] }));
 
+// Stub the player store so persist's optimistic setDuration() doesn't mutate the
+// real store and leak duration into later suite tests (test isolation).
+vi.mock("../player", () => ({
+  usePlayerStore: { getState: () => ({ setDuration: () => {} }) },
+}));
+
 vi.mock("../utils/studioFileHistory", () => ({
   saveProjectFilesWithHistory: vi.fn(async (input: { files: Record<string, string> }) => {
     h.savedFiles.push(input.files);

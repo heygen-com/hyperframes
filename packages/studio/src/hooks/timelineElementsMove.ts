@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { MutableRefObject, RefObject } from "react";
+import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import type { EditHistoryKind } from "../utils/editHistory";
@@ -114,6 +115,14 @@ export async function persistTimelineElementsMove(
     const contentEnd = furthestClipEndFromSource(patched);
     patched = setCompositionDurationToContent(patched, contentEnd);
     if (patched === original) continue;
+
+    // Optimistically reflect the new composition length in the player store so
+    // the duration readout + seek bar update immediately (they bind to
+    // store.duration; without this the number stays frozen until a manual
+    // refresh). Only for the composition currently displayed.
+    if (contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
+      usePlayerStore.getState().setDuration(contentEnd);
+    }
 
     domEditSaveTimestampRef.current = Date.now();
     await saveProjectFilesWithHistory({
