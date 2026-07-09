@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
@@ -134,8 +135,9 @@ function buildPayload(events: readonly QueuedEvent[]): string | null {
 
 /**
  * Flush all queued events to PostHog via async HTTP POST.
- * Called before normal process exit via `beforeExit`, and eagerly after
- * high-value events (render_complete / render_error).
+ * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
+ * after high-value events (trackRenderComplete / trackRenderError), and the
+ * `events` beacon command, which awaits delivery before its process exits.
  *
  * Events are only removed from the queue once the request has completed.
  * The old drain-first version silently lost the whole batch whenever the
@@ -186,7 +188,6 @@ export function flushSync(): void {
   eventQueue = [];
 
   try {
-    const { spawn } = require("node:child_process") as typeof import("node:child_process");
     const child = spawn(
       process.execPath,
       [
