@@ -183,3 +183,98 @@ describe("FlatColorGradingSection — Preset + LUT", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatColorGradingSection — Adjust sliders", () => {
+  it("renders all 10 adjust rows with a center tick, formatting exposure distinctly from percentage sliders", () => {
+    const { host, root } = renderInto(<FlatColorGradingSection {...neutralPropsBase()} />);
+    const adjustRows = host.querySelectorAll('[data-flat-grade-adjust="true"]');
+    expect(adjustRows).toHaveLength(10);
+    for (const row of Array.from(adjustRows)) {
+      expect(row.querySelector('[data-flat-slider-center-tick="true"]')).not.toBeNull();
+    }
+    expect(host.textContent).toContain("+0.00");
+    act(() => root.unmount());
+  });
+
+  it("commits an adjust change scaled correctly and shows a reset when non-neutral", () => {
+    const onCommitColorGrading = vi.fn();
+    const grading = { ...neutralGrading(), adjust: { ...neutralGrading().adjust, contrast: 0.12 } };
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        grading={grading}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const contrastRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
+      (row) => row.textContent?.includes("Contrast"),
+    );
+    if (!contrastRow) throw new Error("expected a Contrast row");
+    const resetButton = contrastRow.querySelector<HTMLButtonElement>(
+      '[data-flat-slider-reset="true"]',
+    );
+    expect(resetButton).not.toBeNull();
+    act(() => resetButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].adjust.contrast).toBe(0);
+    act(() => root.unmount());
+  });
+
+  it("commits a dragged contrast value on slider track pointerdown, scaled from percent back to the internal -1..1 range", () => {
+    const onCommitColorGrading = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const contrastRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
+      (row) => row.textContent?.includes("Contrast"),
+    );
+    if (!contrastRow) throw new Error("expected a Contrast row");
+    const track = contrastRow.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a slider track");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      // min=-100, max=100, step=1, ratio=0.75 -> raw=50 -> commit(50) -> adjust.contrast = 50/100 = 0.5
+      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 75 }));
+    });
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].adjust.contrast).toBe(0.5);
+    act(() => root.unmount());
+  });
+
+  it("commits a dragged exposure value scaled into stops, keeping other adjust keys untouched", () => {
+    const onCommitColorGrading = vi.fn();
+    const grading = {
+      ...neutralGrading(),
+      adjust: { ...neutralGrading().adjust, saturation: 0.2 },
+    };
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        grading={grading}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const exposureRow = Array.from(host.querySelectorAll('[data-flat-grade-adjust="true"]')).find(
+      (row) => row.textContent?.includes("Exposure"),
+    );
+    if (!exposureRow) throw new Error("expected an Exposure row");
+    const track = exposureRow.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a slider track");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 2, right: 200, bottom: 2 }),
+    });
+    act(() => {
+      // min=-200, max=200, step=5, ratio=1.0 -> raw=200 -> commit(200) -> adjust.exposure = 200/100 = 2
+      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 200 }));
+    });
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].adjust.exposure).toBe(2);
+    expect(onCommitColorGrading.mock.calls[0][0].adjust.saturation).toBe(0.2);
+    act(() => root.unmount());
+  });
+});

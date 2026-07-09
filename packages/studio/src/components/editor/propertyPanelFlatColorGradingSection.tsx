@@ -3,6 +3,7 @@ import {
   HF_COLOR_GRADING_PRESETS,
   isHfColorGradingActive,
   normalizeHfColorGrading,
+  type HfColorGradingAdjustKey,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Compare, Plus, RotateCcw } from "../../icons/SystemIcons";
@@ -77,6 +78,33 @@ export function FlatColorGradingAccessory({
 }
 
 const PRESET_OPTIONS = HF_COLOR_GRADING_PRESETS.map((p) => ({ value: p.id, label: p.label }));
+
+const ADJUST_SLIDERS: Array<{
+  key: HfColorGradingAdjustKey;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}> = [
+  { key: "exposure", label: "Exposure", min: -200, max: 200, step: 5 },
+  { key: "contrast", label: "Contrast", min: -100, max: 100, step: 1 },
+  { key: "highlights", label: "Highlights", min: -100, max: 100, step: 1 },
+  { key: "shadows", label: "Shadows", min: -100, max: 100, step: 1 },
+  { key: "whites", label: "White Point", min: -100, max: 100, step: 1 },
+  { key: "blacks", label: "Black Point", min: -100, max: 100, step: 1 },
+  { key: "temperature", label: "Warmth", min: -100, max: 100, step: 1 },
+  { key: "tint", label: "Tint", min: -100, max: 100, step: 1 },
+  { key: "vibrance", label: "Vibrance", min: -100, max: 100, step: 1 },
+  { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1 },
+];
+
+function formatAdjustValue(key: HfColorGradingAdjustKey, rawPercent: number): string {
+  if (key === "exposure") {
+    const stops = rawPercent / 100;
+    return `${stops >= 0 ? "+" : ""}${stops.toFixed(2)}`;
+  }
+  return `${Math.round(rawPercent)}%`;
+}
 
 export function FlatColorGradingSection({
   grading,
@@ -227,6 +255,43 @@ export function FlatColorGradingSection({
             )}
           </div>
         )}
+      </div>
+
+      <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
+        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+          Adjust
+        </div>
+        {ADJUST_SLIDERS.map((slider) => {
+          const scale = slider.key === "exposure" ? 100 : 100;
+          const rawPercent = grading.adjust[slider.key] * scale;
+          const isSet = Math.abs(grading.adjust[slider.key]) > 1e-6;
+          return (
+            <div key={slider.key} data-flat-grade-adjust="true">
+              <FlatSlider
+                label={slider.label}
+                value={rawPercent}
+                min={slider.min}
+                max={slider.max}
+                step={slider.step}
+                tier={isSet ? "explicitCustom" : "default"}
+                displayValue={formatAdjustValue(slider.key, rawPercent)}
+                centerTick
+                onCommit={(next) =>
+                  onCommitColorGrading({
+                    ...grading,
+                    adjust: { ...grading.adjust, [slider.key]: next / scale },
+                  })
+                }
+                onReset={() =>
+                  onCommitColorGrading({
+                    ...grading,
+                    adjust: { ...grading.adjust, [slider.key]: 0 },
+                  })
+                }
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
