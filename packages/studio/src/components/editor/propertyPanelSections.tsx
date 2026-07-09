@@ -18,14 +18,14 @@ function formatTextFieldPreview(value: string): string {
   return `${collapsed.slice(0, 55)}…`;
 }
 
-function getTextFieldColor(
+export function getTextFieldColor(
   field: { computedStyles: Record<string, string> },
   inheritedStyles: Record<string, string>,
 ): string {
   return field.computedStyles.color || inheritedStyles.color || "rgb(0, 0, 0)";
 }
 
-function getTextStyleValue(
+export function getTextStyleValue(
   field: { computedStyles: Record<string, string> },
   inheritedStyles: Record<string, string>,
   property: string,
@@ -35,7 +35,7 @@ function getTextStyleValue(
 }
 
 const ALL_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"];
-const WEIGHT_LABELS: Record<string, string> = {
+export const WEIGHT_LABELS: Record<string, string> = {
   "100": "100 · Thin",
   "200": "200 · Extra Light",
   "300": "300 · Light",
@@ -47,7 +47,7 @@ const WEIGHT_LABELS: Record<string, string> = {
   "900": "900 · Black",
 };
 
-function detectAvailableWeights(fontFamily: string): string[] {
+export function detectAvailableWeights(fontFamily: string): string[] {
   const fonts = document.fonts;
   if (!fonts) return ALL_WEIGHTS;
   const family = fontFamily.split(",")[0]?.trim().replace(/['"]/g, "");
