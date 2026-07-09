@@ -94,7 +94,7 @@ export function PropertyPanelFlat({
   commitManualRotation,
   gsapAnimId,
   navKeyframes,
-  currentPct,
+  currentTime,
   animIdForProp,
   gsapRuntimeValues,
   // Renamed: PropertyPanel.tsx still computes/passes these for its own legacy
@@ -186,7 +186,6 @@ export function PropertyPanelFlat({
     | "commitManualRotation"
     | "gsapAnimId"
     | "navKeyframes"
-    | "currentPct"
     | "animIdForProp"
     | "gsapRuntimeValues"
     | "elStart"
@@ -207,6 +206,7 @@ export function PropertyPanelFlat({
     selectedElementId: string | null;
     clipboardCopied: boolean;
     onCopyElementInfo: () => void;
+    currentTime: number;
   }) {
   // Lazy initializer: pick whichever group actually renders for this element
   // (Text if text-editable, else Style if style-editable, else none open) so a
@@ -236,6 +236,14 @@ export function PropertyPanelFlat({
   // Trivial percentage→time seek, derived here rather than threaded from
   // PropertyPanel (keeps that file under its 600-LOC gate).
   const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);
+  // Playhead position within the SAME corrected elStart/elDuration basis as
+  // seekFromKfPct above — recomputed here (not threaded as `currentPct` from
+  // PropertyPanel, which still derives it against its own naive basis for the
+  // legacy panel) so KeyframeNavigation's diamond active-state and prev/next
+  // arrow targeting agree with where a keyframe click actually seeks to
+  // (follow-up fix to 684ec4e87, which corrected the seek basis but left this
+  // one still naive).
+  const currentPct = elDuration > 0 ? ((currentTime - elStart) / elDuration) * 100 : 0;
 
   // Motion group double-gate — reproduces the legacy PropertyPanel gate exactly:
   //  • Timing (sections.timing) shows via resolveEditingSections, same as today.

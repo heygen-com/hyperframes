@@ -181,6 +181,7 @@ async function renderPanel(
   flatEnabled: boolean,
   elementOverride: ReturnType<typeof baseElement> = baseElement(),
   propsOverride: Partial<PropertyPanelProps> = {},
+  currentTime?: number,
 ) {
   vi.resetModules();
   vi.doMock("./manualEditingAvailability", async () => {
@@ -189,6 +190,13 @@ async function renderPanel(
     );
     return { ...actual, STUDIO_FLAT_INSPECTOR_ENABLED: flatEnabled };
   });
+  // Seed the playhead on the SAME store instance PropertyPanel.tsx will read via
+  // usePlayerStore (module-fresh since the resetModules() above) — must happen
+  // before PropertyPanel is imported/rendered so its initial render sees it.
+  if (currentTime !== undefined) {
+    const { usePlayerStore } = await import("../../player/store/playerStore");
+    usePlayerStore.getState().setCurrentTime(currentTime);
+  }
   const { PropertyPanel } = await import("./PropertyPanel");
   const host = document.createElement("div");
   document.body.append(host);
@@ -483,10 +491,20 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
     "Layout's X-row keyframe gutter seeks to the SAME absolute time Motion's Timing row shows as the midpoint (50% of an inferred 2s-5s range = 3.5s)",
     async () => {
       const onSeekToTime = vi.fn();
-      const { host, root } = await renderPanel(true, inferredMotionElement(), {
-        gsapAnimations: [INFERRED_TIMING_ANIMATION],
-        onSeekToTime,
-      });
+      // Seed the playhead at the clip's real start (t=2, the 0% keyframe's
+      // absolute time) — now that the follow-up fix also recomputes
+      // `currentPct` from the corrected elStart/elDuration basis, "current
+      // position is at the 0% keyframe" must be expressed as an actual t=2
+      // seek rather than relying on the store's untouched t=0 default (which,
+      // post-fix, resolves to a currentPct of -66.7% — well outside the 0%
+      // keyframe's tolerance window, and no longer "the case the coherence
+      // bug affected" that this test documents).
+      const { host, root } = await renderPanel(
+        true,
+        inferredMotionElement(),
+        { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
+        2,
+      );
       openFlatGroup(host, "Layout");
       const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
       if (!layoutGroup) throw new Error("expected the Layout group to be open");
@@ -498,7 +516,7 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
       const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
       if (!gutter) throw new Error("expected a keyframe gutter on the X row");
       // The diamond button always carries a `title`; the two plain arrow
-      // buttons don't. At currentPct=0 with keyframes at 0/50/100%, the prev
+      // buttons don't. At currentPct=0 (playhead on the 0% keyframe), the prev
       // arrow is disabled (no earlier keyframe) and the next arrow seeks to
       // the 50% keyframe — exactly the case the coherence bug affected.
       const nextArrow = Array.from(gutter.querySelectorAll<HTMLButtonElement>("button")).find(
@@ -509,6 +527,89 @@ describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan cohe
 
       // Same basis as the Timing row: start 2 + 50% * duration 3 = 3.5.
       expect(onSeekToTime).toHaveBeenCalledWith(3.5);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+// Follow-up fix (review of 684ec4e87): the seek-basis fix above corrected
+// WHERE a keyframe click seeks to, but `currentPct` — the value that drives
+// KeyframeNavigation's diamond active/inactive state and prev/next arrow
+// targeting — still used the OLD naive basis. For an inferred-duration
+// element, seeking to a keyframe's actual absolute time no longer lit that
+// keyframe's diamond as active. Prove the round-trip here: seek to the exact
+// absolute time of the 50% keyframe (2 + 0.5*3 = 3.5) and confirm its diamond
+// renders "active" (title="Remove x keyframe"), not "inactive"/"ghost".
+describe("PropertyPanel — flat Layout currentPct basis (currentPct follow-up fix)", () => {
+  it(
+    "lights the X-row keyframe diamond as active when the playhead is seeked to that keyframe's real absolute time (inferred 2s-5s range, 50% keyframe = 3.5s)",
+    async () => {
+      const { host, root } = await renderPanel(
+        true,
+        inferredMotionElement(),
+        { gsapAnimations: [INFERRED_TIMING_ANIMATION] },
+        3.5,
+      );
+      openFlatGroup(host, "Layout");
+      const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
+      if (!layoutGroup) throw new Error("expected the Layout group to be open");
+
+      const xRow = Array.from(layoutGroup.querySelectorAll<HTMLElement>(".group")).find(
+        (el) => el.querySelector("span")?.textContent === "X",
+      );
+      if (!xRow) throw new Error("expected an X row");
+      const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
+      if (!gutter) throw new Error("expected a keyframe gutter on the X row");
+      const diamond = gutter.querySelector<HTMLButtonElement>("button[title]");
+      if (!diamond) throw new Error("expected a keyframe diamond button");
+      // KeyframeDiamond's title mapping: active -> "Remove ... keyframe",
+      // inactive -> "Add ... keyframe", ghost -> "Convert ... to keyframes".
+      // Before this fix, currentPct was computed against the naive
+      // elStart=0/elDuration=1 basis, so t=3.5 produced currentPct=350% —
+      // nowhere near the 50% keyframe within KeyframeNavigation's tolerance —
+      // and the diamond stayed "inactive" even though the playhead was
+      // exactly on that keyframe's real time.
+      expect(diamond.title).toBe("Remove x keyframe");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "prev/next arrows re-center on the current keyframe once currentPct agrees with the corrected seek basis",
+    async () => {
+      const onSeekToTime = vi.fn();
+      const { host, root } = await renderPanel(
+        true,
+        inferredMotionElement(),
+        { gsapAnimations: [INFERRED_TIMING_ANIMATION], onSeekToTime },
+        3.5,
+      );
+      openFlatGroup(host, "Layout");
+      const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
+      if (!layoutGroup) throw new Error("expected the Layout group to be open");
+
+      const xRow = Array.from(layoutGroup.querySelectorAll<HTMLElement>(".group")).find(
+        (el) => el.querySelector("span")?.textContent === "X",
+      );
+      if (!xRow) throw new Error("expected an X row");
+      const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
+      if (!gutter) throw new Error("expected a keyframe gutter on the X row");
+      const buttons = Array.from(gutter.querySelectorAll<HTMLButtonElement>("button"));
+      const [prevArrow, , nextArrow] = buttons;
+      if (!prevArrow || !nextArrow) throw new Error("expected prev/next arrow buttons");
+      // At the 50% keyframe (t=3.5), prev should target the 0% keyframe
+      // (absolute t=2) and next should target the 100% keyframe (absolute
+      // t=5) — both only resolvable once currentPct agrees with elStart=2/
+      // elDuration=3, the same basis the seek fix already uses.
+      expect(prevArrow.disabled).toBe(false);
+      act(() => prevArrow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(onSeekToTime).toHaveBeenLastCalledWith(2);
+
+      expect(nextArrow.disabled).toBe(false);
+      act(() => nextArrow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(onSeekToTime).toHaveBeenLastCalledWith(5);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,
