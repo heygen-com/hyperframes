@@ -334,3 +334,135 @@ describe("FlatStyleSection — blur sliders", () => {
     act(() => root.unmount());
   });
 });
+
+function getInsetSideInputOrNull(host: HTMLElement, label: "T" | "R" | "B" | "L") {
+  const span = Array.from(host.querySelectorAll("span")).find((el) => el.textContent === label);
+  return span?.parentElement?.querySelector<HTMLInputElement>("input") ?? null;
+}
+
+function getInsetSideInput(host: HTMLElement, label: "T" | "R" | "B" | "L"): HTMLInputElement {
+  const input = getInsetSideInputOrNull(host, label);
+  if (!input) throw new Error(`expected an inset side input for "${label}"`);
+  return input;
+}
+
+async function commitInsetSideInput(
+  host: HTMLElement,
+  label: "T" | "R" | "B" | "L",
+  nextValue: string,
+) {
+  const input = getInsetSideInput(host, label);
+  act(() => {
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    nativeInputValueSetter?.call(input, nextValue);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => {
+    input.dispatchEvent(new Event("focusout", { bubbles: true }));
+    await Promise.resolve();
+  });
+}
+
+describe("FlatStyleSection — Overflow and Mask", () => {
+  it("renders Overflow and Mask selects, and inset-side rows when the mask is an inset", () => {
+    const { host, root } = renderSection({
+      overflow: "hidden",
+      "clip-path": "inset(8px round 4px)",
+    });
+    expect(host.textContent).toContain("Overflow");
+    expect(host.textContent).toContain("Mask");
+    expect(host.textContent).toContain("hidden");
+    act(() => root.unmount());
+  });
+
+  it("commits an overflow change through onSetStyle", () => {
+    const onSetStyle = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatStyleSection
+          projectId="proj-1"
+          element={makeElement()}
+          styles={{}}
+          assets={[]}
+          onSetStyle={onSetStyle}
+          gsapBorderRadius={null}
+        />,
+      );
+    });
+    const overflowSelect = Array.from(host.querySelectorAll("select")).find((s) =>
+      Array.from(s.options).some((o) => o.value === "scroll"),
+    );
+    if (!overflowSelect) throw new Error("expected the overflow select");
+    act(() => {
+      overflowSelect.value = "hidden";
+      overflowSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("overflow", "hidden");
+    act(() => root.unmount());
+  });
+
+  it("resets overflow back to visible via the reset button", () => {
+    const { host, root, onSetStyle } = renderSection({ overflow: "scroll" });
+    const { resetButton } = getFlatSelectRow(host, "Overflow");
+    if (!resetButton) throw new Error("expected the overflow reset button");
+    act(() => resetButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetStyle).toHaveBeenCalledWith("overflow", "visible");
+    act(() => root.unmount());
+  });
+
+  it("commits a mask preset change through onSetStyle, building an inset() clip-path", () => {
+    const { host, root, onSetStyle } = renderSection({});
+    changeFlatSelectRow(host, "Mask", "inset");
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(0 round 0px)");
+    act(() => root.unmount());
+  });
+
+  it("resets the mask back to none via the reset button", () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "circle(50% at 50% 50%)" });
+    const { resetButton } = getFlatSelectRow(host, "Mask");
+    if (!resetButton) throw new Error("expected the mask reset button");
+    act(() => resetButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "none");
+    act(() => root.unmount());
+  });
+
+  it("does not render inset-side rows when the mask is not an inset", () => {
+    const { host, root } = renderSection({ "clip-path": "circle(50% at 50% 50%)" });
+    expect(getInsetSideInputOrNull(host, "T")).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("commits a T inset-side edit through onSetStyle, preserving the other sides and radius", async () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
+    await commitInsetSideInput(host, "T", "10");
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(10px 8px 8px 8px round 4px)");
+    act(() => root.unmount());
+  });
+
+  it("commits an L inset-side edit through onSetStyle", async () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
+    await commitInsetSideInput(host, "L", "2");
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(8px 8px 8px 2px round 4px)");
+    act(() => root.unmount());
+  });
+
+  it("commits an R inset-side edit through onSetStyle", async () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
+    await commitInsetSideInput(host, "R", "3");
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(8px 3px 8px 8px round 4px)");
+    act(() => root.unmount());
+  });
+
+  it("commits a B inset-side edit through onSetStyle", async () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
+    await commitInsetSideInput(host, "B", "5");
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(8px 8px 5px 8px round 4px)");
+    act(() => root.unmount());
+  });
+});

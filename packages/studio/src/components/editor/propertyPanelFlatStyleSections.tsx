@@ -7,18 +7,24 @@ import { BorderRadiusEditor } from "./BorderRadiusEditor";
 import { formatStrokeSummary, parseStrokeSummary } from "./propertyPanelFlatStyleHelpers";
 import {
   buildBoxShadowPresetValue,
+  buildClipPathValue,
+  buildInsetClipPathSides,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   extractBackgroundImageUrl,
   formatNumericValue,
   formatPxMetricValue,
+  getClipPathInsetPx,
   getCssFilterFunctionPx,
   inferBoxShadowPreset,
+  inferClipPathPreset,
   normalizePanelPxValue,
+  parseInsetClipPathSides,
   parseNumericValue,
   parsePxMetricValue,
   setCssFilterFunctionPx,
   type BoxShadowPreset,
+  type ClipPathInsetSides,
 } from "./propertyPanelHelpers";
 import {
   FlatRow,
@@ -26,6 +32,7 @@ import {
   FlatSelectRow,
   FlatSlider,
 } from "./propertyPanelFlatPrimitives";
+import { MetricField } from "./propertyPanelPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
@@ -373,6 +380,103 @@ function FlatBlurSliders({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Flat Overflow + Mask rows (+ inset sides)                          */
+/* ------------------------------------------------------------------ */
+
+function FlatOverflowMaskRows({
+  styles,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
+  const clipPathValue = styles["clip-path"] || "none";
+  const clipPathPreset = inferClipPathPreset(clipPathValue);
+  const parsedClipInsets = parseInsetClipPathSides(clipPathValue);
+  const clipInsetValue = getClipPathInsetPx(clipPathValue);
+  const clipInsetSides = parsedClipInsets ?? {
+    top: clipInsetValue,
+    right: clipInsetValue,
+    bottom: clipInsetValue,
+    left: clipInsetValue,
+    radius: radiusValue,
+  };
+  const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
+
+  const commitClipInsetSide = (side: keyof ClipPathInsetSides, nextValue: string) => {
+    const next = parsePxMetricValue(nextValue);
+    if (next == null) return;
+    const sides: ClipPathInsetSides = {
+      top: clipInsetSides.top,
+      right: clipInsetSides.right,
+      bottom: clipInsetSides.bottom,
+      left: clipInsetSides.left,
+    };
+    sides[side] = next;
+    void onSetStyle("clip-path", buildInsetClipPathSides(sides, clipInsetSides.radius));
+  };
+
+  return (
+    <>
+      <FlatSelectRow
+        label="Overflow"
+        value={styles.overflow || "visible"}
+        options={["visible", "hidden", "clip", "auto", "scroll"]}
+        tier={resolveValueTier(styles.overflow, "visible")}
+        disabled={disabled}
+        onChange={(next) => void onSetStyle("overflow", next)}
+        onReset={() => void onSetStyle("overflow", "visible")}
+      />
+      <FlatSelectRow
+        label="Mask"
+        value={clipPathPreset === "custom" ? "none" : clipPathPreset}
+        options={["none", "inset", "circle"]}
+        tier={resolveValueTier(clipPathPreset === "none" ? undefined : clipPathPreset, "none")}
+        disabled={disabled}
+        onChange={(next) => {
+          void onSetStyle(
+            "clip-path",
+            buildClipPathValue(next as "none" | "inset" | "circle", radiusValue, clipPathValue),
+          );
+        }}
+        onReset={() => void onSetStyle("clip-path", "none")}
+      />
+      {showClipInsetSides && (
+        <div className="grid grid-cols-4 gap-2">
+          <MetricField
+            label="T"
+            value={formatPxMetricValue(clipInsetSides.top)}
+            disabled={disabled}
+            onCommit={(next) => commitClipInsetSide("top", next)}
+          />
+          <MetricField
+            label="R"
+            value={formatPxMetricValue(clipInsetSides.right)}
+            disabled={disabled}
+            onCommit={(next) => commitClipInsetSide("right", next)}
+          />
+          <MetricField
+            label="B"
+            value={formatPxMetricValue(clipInsetSides.bottom)}
+            disabled={disabled}
+            onCommit={(next) => commitClipInsetSide("bottom", next)}
+          />
+          <MetricField
+            label="L"
+            value={formatPxMetricValue(clipInsetSides.left)}
+            disabled={disabled}
+            onCommit={(next) => commitClipInsetSide("left", next)}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 export function FlatStyleSection({
   projectId,
   element,
@@ -414,6 +518,11 @@ export function FlatStyleSection({
         onSetStyle={onSetStyle}
       />
       <FlatBlurSliders styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
+      <FlatOverflowMaskRows
+        styles={styles}
+        disabled={styleEditingDisabled}
+        onSetStyle={onSetStyle}
+      />
     </div>
   );
 }
