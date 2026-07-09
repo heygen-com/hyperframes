@@ -13,7 +13,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -89,8 +89,6 @@ Copy-paste starter templates for each component type. These embed the proven pat
     </div>
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         // REPLACE with actual transcript data
         var WORDS = [
           { text: "Welcome", start: 0.3, end: 0.65 },
@@ -138,32 +136,41 @@ Copy-paste starter templates for each component type. These embed the proven pat
           container.appendChild(groupEl);
         });
 
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
 
         GROUPS.forEach(function (g, gi) {
           var groupEl = document.getElementById("PREFIX-cg-" + gi);
 
-          // SHOW — set opacity to 1 (never use tl.from with opacity:0 here)
-          tl.set(groupEl, { opacity: 1, visibility: "visible" }, g.start);
+          // SHOW: set opacity to 1 at the group start.
+          tl.add(groupEl, { opacity: 1, visibility: "visible", duration: 0 }, g.start * 1000);
 
-          // ENTRANCE — customize this per style
-          tl.from(groupEl, { scale: 1.3, duration: 0.15, ease: "back.out(2)" }, g.start);
+          // ENTRANCE: customize this per style.
+          tl.add(
+            groupEl,
+            {
+              scale: [
+                { to: 1.3, duration: 0, ease: "linear" },
+                { to: 1, duration: 150, ease: "outBack(2)" },
+              ],
+            },
+            g.start * 1000,
+          );
 
-          // KARAOKE — highlight each word
+          // KARAOKE: highlight each word.
           for (var wi = g.wordStart; wi <= g.wordEnd; wi++) {
             var wordEl = document.getElementById("PREFIX-cw-" + wi);
-            tl.to(wordEl, { color: "#FFD700", scale: 1.1, duration: 0.06 }, WORDS[wi].start);
-            tl.to(wordEl, { color: "#FFFFFF", scale: 1, duration: 0.08 }, WORDS[wi].end);
+            tl.add(wordEl, { color: "#FFD700", scale: 1.1, duration: 60 }, WORDS[wi].start * 1000);
+            tl.add(wordEl, { color: "#FFFFFF", scale: 1, duration: 80 }, WORDS[wi].end * 1000);
           }
 
           // EXIT
-          tl.to(groupEl, { opacity: 0, scale: 0.9, duration: 0.1 }, g.end - 0.1);
+          tl.add(groupEl, { opacity: 0, scale: 0.9, duration: 100 }, (g.end - 0.1) * 1000);
 
           // HARD KILL (mandatory)
-          tl.set(groupEl, { opacity: 0, visibility: "hidden" }, g.end);
+          tl.add(groupEl, { opacity: 0, visibility: "hidden", duration: 0 }, g.end * 1000);
         });
 
-        window.__timelines["BLOCKNAME"] = tl;
+        hyperframesAnime.register("BLOCKNAME", tl, { labels: {} });
       })();
     </script>
   </body>
@@ -172,12 +179,14 @@ Copy-paste starter templates for each component type. These embed the proven pat
 
 **Replace checklist:**
 
-- `BLOCKNAME` → your block name (e.g., `cap-swoosh`)
-- `PREFIX` → short unique prefix for IDs (e.g., `sw`)
-- Font family, weight, size → your style's typography
-- Entrance animation → your style's entrance
-- Karaoke highlight → your style's active word treatment
-- Colors → your style's palette
+- `BLOCKNAME` -> your block name (e.g., `cap-swoosh`)
+- `PREFIX` -> short unique prefix for IDs (e.g., `sw`)
+- Font family, weight, size -> your style's typography
+- Entrance animation -> your style's entrance
+- Karaoke highlight -> your style's active word treatment
+- Colors -> your style's palette
+
+> **Non-default GSAP adapter path.** Existing GSAP caption blocks can keep the GSAP CDN and paused GSAP timeline. New templates default to anime.js. When porting GSAP timings, multiply durations, delays, staggers, and positions by 1000 for anime.js, while label values stay in seconds.
 
 ---
 
@@ -188,7 +197,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <style>
       *,
@@ -239,9 +248,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
     </div>
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
-        // Seeded PRNG — NEVER use Math.random()
+        // Seeded PRNG: NEVER use Math.random()
         function mulberry32(a) {
           return function () {
             a |= 0;
@@ -272,19 +279,19 @@ Copy-paste starter templates for each component type. These embed the proven pat
         // - geometry
         // - materials
 
-        // State proxy — GSAP animates this, render reads it
+        // State proxy: anime.js animates this, render reads it.
         var st = {
           rotY: 0,
           camZ: 8,
           // add your animated properties
         };
 
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false, onUpdate: renderScene });
 
         // YOUR TWEENS HERE
-        tl.to(st, { rotY: Math.PI * 2, duration: 10, ease: "none" }, 0);
+        tl.add(st, { rotY: Math.PI * 2, duration: 10000, ease: "linear" }, 0);
 
-        window.__timelines["BLOCKNAME"] = tl;
+        hyperframesAnime.register("BLOCKNAME", tl, { labels: { end: 10 } });
 
         function renderScene() {
           // Apply state to Three.js objects
@@ -294,8 +301,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
           renderer.render(scene, camera);
         }
 
-        // Render via onUpdate — NO requestAnimationFrame
-        tl.eventCallback("onUpdate", renderScene);
+        // Render via onUpdate and one initial paint. NO requestAnimationFrame.
         renderScene();
       })();
     </script>
@@ -305,11 +311,13 @@ Copy-paste starter templates for each component type. These embed the proven pat
 
 **Replace checklist:**
 
-- `BLOCKNAME` → your block name (e.g., `vfx-chrome-blob`)
-- Scene setup → your geometry, lights, materials
-- State proxy → your animated properties
-- Tweens → your animation timeline
-- renderScene → apply state to your Three.js objects
+- `BLOCKNAME` -> your block name (e.g., `vfx-chrome-blob`)
+- Scene setup -> your geometry, lights, materials
+- State proxy -> your animated properties
+- Tweens -> your animation timeline
+- renderScene -> apply state to your Three.js objects
+
+> **Non-default GSAP adapter path.** Existing GSAP VFX blocks can keep a paused GSAP timeline and `eventCallback("onUpdate", renderScene)`. New VFX templates default to anime.js with `onUpdate: renderScene`.
 
 ---
 
@@ -322,6 +330,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "BLOCKNAME",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Human-Readable Title",
   "description": "One sentence: what it does and who uses it",
   "dimensions": { "width": 1920, "height": 1080 },
@@ -344,6 +353,7 @@ Copy-paste starter templates for each component type. These embed the proven pat
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "COMPONENTNAME",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Human-Readable Title",
   "description": "One sentence: what it does",
   "tags": ["category"],
@@ -369,12 +379,13 @@ Tags by category:
 
 ## Component Template
 
+Components do not own a runtime. They are engine-agnostic snippets that inherit the host composition's timeline, whether the host uses anime.js or the non-default GSAP adapter. Only include a runtime CDN in a component snippet if the component itself creates and registers a standalone runtime instance, which is unusual for components.
+
 ```html
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       *,
       *::before,
@@ -401,7 +412,7 @@ Tags by category:
     </div>
     <script>
       (function () {
-        // Component snippet — no data-composition-id, no __timelines.
+        // Component snippet: no data-composition-id and no registered timeline.
         // The parent composition controls timing.
         // Keep all class names and IDs prefixed with COMPNAME.
       })();
@@ -412,6 +423,6 @@ Tags by category:
 
 **Replace checklist:**
 
-- `COMPNAME` → your component name (e.g., `shimmer-sweep`)
+- `COMPNAME` -> your component name (e.g., `shimmer-sweep`)
 - Background should be `transparent` so it overlays cleanly
-- No `data-composition-id` or `window.__timelines` — the parent owns timing
+- No `data-composition-id` and no standalone runtime registration; the parent owns timing

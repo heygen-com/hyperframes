@@ -1,16 +1,16 @@
 # lint, validate, inspect, snapshot
 
-The correctness pipeline. Run in this order: `lint` (static, fast) → `validate` (runtime, headless Chrome) → `inspect` (layout sweep). `snapshot` is a separate utility for capturing still frames.
+The correctness pipeline. Run in this order: `lint` (static, fast) -> `validate` (runtime, headless Chrome) -> `inspect` (layout sweep). `snapshot` is a separate utility for capturing still frames.
 
 ## Discipline (motion-heavy work)
 
 When the composition is animation-driven, run the checks before you reach for `preview` or `render`:
 
-- Run `lint` after the first HTML pass — earlier, not later.
+- Run `lint` after the first HTML pass, earlier, not later.
 - Capture `snapshot` at meaningful timeline states; look at the PNGs.
-- Inspect snapshots _before_ tuning automated warnings — your eye catches what the auditor misses.
+- Inspect snapshots _before_ tuning automated warnings, your eye catches what the auditor misses.
 - Treat layout warnings as defects unless a snapshot proves the overflow is intentional, in which case mark it with `data-layout-allow-overflow`.
-- State motion intent in a `*.motion.json` sidecar so `inspect` checks it automatically — entrances firing under seek, stagger order, in-frame, liveness. This is the closest automated proxy for "watch the MP4" and catches render-≠-preview bugs the eye misses (see **Motion verification** below).
+- State motion intent in a `*.motion.json` sidecar so `inspect` checks it automatically: entrances firing under seek, stagger order, in-frame, liveness. This is the closest automated proxy for "watch the MP4" and catches render != preview bugs the eye misses (see **Motion verification** below).
 
 ## lint
 
@@ -23,13 +23,21 @@ npx hyperframes lint --json           # machine-readable
 
 Lints `index.html` and all files in `compositions/`. Reports errors (must fix), warnings (should fix), and info (with `--verbose`). Catches missing `data-composition-id`, overlapping tracks on the same `data-track-index`, and unregistered timelines.
 
-**Blind spot — media inside a sub-composition (not yet a lint rule).** A `<video>`/`<audio>` inside a `compositions/*.html` `<template>` (or nested in a wrapper `<div>` anywhere) is never seeked/decoded and renders blank/black; `lint`/`validate`/`inspect` all pass. Media must be a direct child of the host root (`index.html`) — see `hyperframes-core` → `variables-and-media.md`. Until a rule exists, check manually before render:
+**Blind spot: media inside a sub-composition (not yet a lint rule).** A `<video>`/`<audio>` inside a `compositions/*.html` `<template>` (or nested in a wrapper `<div>` anywhere) is never seeked/decoded and renders blank/black; `lint`/`validate`/`inspect` all pass. Media must be a direct child of the host root (`index.html`), see `hyperframes-core` -> `variables-and-media.md`. Until a rule exists, check manually before render:
 
 ```bash
 grep -nE '<(video|audio)\b' compositions/*.html   # expect NO matches; media belongs in index.html
 ```
 
-A non-empty result is a defect. Then `snapshot` each scene that has a video and confirm the panel actually shows footage (a blank/black panel where a clip should play is a bug, not a placeholder — treat it as render-blocking).
+A non-empty result is a defect. Then `snapshot` each scene that has a video and confirm the panel actually shows footage. A blank/black panel where a clip should play is a bug, not a placeholder, treat it as render-blocking.
+
+**Anime.js runtime rules.** `lint` also reports anime-specific findings:
+
+- `animejs_script_not_registered` (error): "anime.js is present but no instance is registered with HyperFrames. The runtime needs an explicit registration call to connect anime.js to the master clock and infer duration." Fix: "After creating a finite anime.js instance, call `hyperframesAnime.register(id, instance, { labels })` using the composition's data-composition-id."
+- `animejs_autoplay_not_disabled` (warning): "anime.js timelines must be paused for HyperFrames. A playing timeline breaks deterministic seek-based rendering." Fix: "Set `autoplay: false` in the `createTimeline`/`animate` options."
+- `animejs_infinite_loop_missing_duration` (error): "anime.js uses an infinite loop but the root composition has no data-duration. Infinite loops make total render length undeterminable without an explicit duration." Fix: "Add data-duration=\"<seconds>\" to the root element with the intended total length."
+
+`npx hyperframes keyframes` extracts anime.js timelines and animations the same way it extracts GSAP ones: targets, timing, labels, and eases are surfaced through the acorn-based anime parser. The diagnostic loop in this file, `lint` -> `validate` -> `inspect` -> `snapshot`, and the `keyframes` command referenced from `hyperframes-keyframes`, works for either runtime.
 
 ## validate
 
@@ -45,12 +53,12 @@ Static lint is fast but blind to runtime failures. `validate` loads the composit
 
 - JavaScript console errors and unhandled exceptions
 - Failed network requests (media-file `ERR_ABORTED` filtered out)
-- WCAG AA contrast violations on visible text — sampled at 5 timestamps across the timeline. Disable with `--no-contrast`.
+- WCAG AA contrast violations on visible text, sampled at 5 timestamps across the timeline. Disable with `--no-contrast`.
 
-**Fixing contrast warnings** — thresholds are 4.5:1 for normal text, 3:1 for large text (24px+, or 19px+ bold):
+**Fixing contrast warnings**: thresholds are 4.5:1 for normal text, 3:1 for large text (24px+, or 19px+ bold):
 
 - On dark backgrounds, brighten the failing color until it clears the threshold; on light backgrounds, darken it.
-- Stay within the palette family — don't invent a new color, adjust the existing one.
+- Stay within the palette family, don't invent a new color, adjust the existing one.
 - Re-run `validate` until clean.
 
 Run `validate` before `inspect` when an animation has scripts, fetched data, or theming. Combine with `render --strict` in CI.
@@ -78,16 +86,16 @@ Errors should be fixed before rendering. Warnings are surfaced for agent review;
 
 **Escape hatches:**
 
-- `data-layout-allow-overflow` — mark an element or ancestor when overflow is intentional for an entrance/exit animation.
-- `data-layout-ignore` — mark a decorative element that should never be audited.
+- `data-layout-allow-overflow`: mark an element or ancestor when overflow is intentional for an entrance/exit animation.
+- `data-layout-ignore`: mark a decorative element that should never be audited.
 
 `npx hyperframes layout` remains available as a compatibility alias for the same visual inspection pass.
 
 ### Motion verification (`*.motion.json` sidecar)
 
-`inspect` also checks **motion intent** against the same seeked timeline the renderer uses — the closest automated proxy for "render the MP4 and watch it". It catches render-≠-preview bugs layout sampling can't: an entrance reveal the seek lands past, a broken stagger order, an element drifting off-frame mid-tween, a frozen shot.
+`inspect` also checks **motion intent** against the same seeked timeline the renderer uses, the closest automated proxy for "render the MP4 and watch it". It catches render != preview bugs layout sampling can't: an entrance reveal the seek lands past, a broken stagger order, an element drifting off-frame mid-tween, a frozen shot.
 
-Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir). `inspect` discovers it automatically — no flag, no authoring-framework changes. With no sidecar, `inspect` behaves exactly as before.
+Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir). `inspect` discovers it automatically, no flag, no authoring-framework changes. With no sidecar, `inspect` behaves exactly as before.
 
 ```json
 {
@@ -101,14 +109,14 @@ Drop a `*.motion.json` sidecar next to the composition (matching the html basena
 }
 ```
 
-| Assertion                      | Fails (code) when                                                           |
-| ------------------------------ | --------------------------------------------------------------------------- |
-| `appearsBy(selector, bySec)`   | not visible (opacity ≥ 0.5) by `bySec` — `motion_appears_late`              |
-| `before(a, b)`                 | `a` does not first appear strictly before `b` — `motion_out_of_order`       |
-| `staysInFrame(selector)`       | once visible, its box leaves the canvas — `motion_off_frame`                |
-| `keepsMoving(withinSelector?)` | a fully-static window exceeds `maxStaticSec` (default 2s) — `motion_frozen` |
+| Assertion                      | Fails (code) when                                                          |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `appearsBy(selector, bySec)`   | not visible (opacity >= 0.5) by `bySec`: `motion_appears_late`             |
+| `before(a, b)`                 | `a` does not first appear strictly before `b`: `motion_out_of_order`       |
+| `staysInFrame(selector)`       | once visible, its box leaves the canvas: `motion_off_frame`                |
+| `keepsMoving(withinSelector?)` | a fully-static window exceeds `maxStaticSec` (default 2s): `motion_frozen` |
 
-`duration`, `withinSelector`, and `maxStaticSec` are optional. Findings are **errors by default** (a failed assertion fails the run, like a layout error — `--strict` still gates warnings) and appear in the same human and `--json` output as layout findings. A selector that matches nothing is reported as `motion_selector_missing` rather than silently passing — so a typo'd selector fails loudly. Use this in the feedback loop instead of eyeballing the render: assert what the motion is supposed to do, and let `inspect` tell you when the seek diverges from intent.
+`duration`, `withinSelector`, and `maxStaticSec` are optional. Findings are **errors by default** (a failed assertion fails the run, like a layout error, `--strict` still gates warnings) and appear in the same human and `--json` output as layout findings. A selector that matches nothing is reported as `motion_selector_missing` rather than silently passing, so a typo'd selector fails loudly. Use this in the feedback loop instead of eyeballing the render: assert what the motion is supposed to do, and let `inspect` tell you when the seek diverges from intent.
 
 ## snapshot
 

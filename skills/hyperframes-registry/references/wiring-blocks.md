@@ -1,6 +1,6 @@
 # Wiring Blocks
 
-Blocks are standalone compositions with their own `data-composition-id`, dimensions, duration, and GSAP timeline. Include them in a host composition using `data-composition-src` on a `<div>`.
+Blocks are standalone compositions with their own `data-composition-id`, dimensions, duration, and a registered animation runtime (anime.js by default, GSAP also supported). Include them in a host composition using `data-composition-src` on a `<div>`.
 
 ## Basic wiring
 
@@ -31,13 +31,13 @@ After `hyperframes add data-chart`, wire it into your `index.html`:
 | `data-composition-id`  | Unique ID matching the block's internal composition ID               |
 | `data-start`           | When the block appears in the host timeline (seconds)                |
 | `data-duration`        | How long the block plays (seconds, at most the block's own duration) |
-| `data-track-index`     | Layer ordering — higher numbers render in front                      |
+| `data-track-index`     | Layer ordering, higher numbers render in front                       |
 | `data-width`           | Block canvas width (match the block's dimensions)                    |
 | `data-height`          | Block canvas height (match the block's dimensions)                   |
 
 ## Timeline coordination
 
-The block's internal GSAP timeline runs independently from the host timeline. The HyperFrames runtime loads the sub-composition, finds its `window.__timelines` registration, and seeks the block in sync with the host, offset by `data-start`. You do NOT need to reference the block's timeline in your host's GSAP code.
+The block's internal animation runtime (anime.js or GSAP) runs independently from the host timeline. The HyperFrames runtime loads the sub-composition, finds its registration (`hyperframesAnime` registry or non-default GSAP adapter `window.__timelines`), and seeks the block in sync with the host, offset by `data-start`. You do NOT need to reference the block's timeline in your host's script.
 
 ## Positioning blocks
 
@@ -58,4 +58,4 @@ To position a block in a specific area of the screen, add CSS:
 
 ## Multiple blocks
 
-Add additional `<div data-composition-src="...">` siblings with non-overlapping or overlapping `data-start` values — each block's timeline is independent and seeked in sync by the runtime.
+Add additional `<div data-composition-src="...">` siblings with non-overlapping or overlapping `data-start` values. Each block's timeline is independent and seeked in sync by the runtime.
