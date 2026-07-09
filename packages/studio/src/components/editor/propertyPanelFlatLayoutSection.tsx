@@ -1,7 +1,8 @@
-import { FlatRow } from "./propertyPanelFlatPrimitives";
+import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
 import { KeyframeNavigation } from "./KeyframeNavigation";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
+import { resolveValueTier } from "./propertyPanelValueTier";
 
 type KeyframeEntry = Array<{
   percentage: number;
@@ -154,5 +155,83 @@ export function LayoutGeometryRows({
         suffix={<KeyframeGutter property="rotation" displayValue={displayR} {...gutterProps} />}
       />
     </>
+  );
+}
+
+export function LayoutZIndexRow({
+  styles,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const zIndex = String(parseInt(styles["z-index"] || "auto", 10) || 0);
+  return (
+    <FlatRow
+      label="Z-index"
+      value={zIndex}
+      tier="default"
+      onCommit={(next) => void onSetStyle("z-index", next)}
+    />
+  );
+}
+
+export function LayoutFlexBlock({
+  styles,
+  onSetStyle,
+  disabled,
+}: {
+  styles: Record<string, string>;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  disabled: boolean;
+}) {
+  const isFlex = styles.display === "flex" || styles.display === "inline-flex";
+  if (!isFlex) return null;
+  const direction = styles["flex-direction"] || "row";
+  return (
+    <div className="border-l-2 border-panel-border-input py-0.5 pl-[10px]">
+      <div className="mb-[3px] text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+        Flex
+      </div>
+      <FlatSegmentedRow
+        label="Direction"
+        options={[
+          { key: "row", node: "→ Row", active: direction === "row" },
+          { key: "column", node: "Column", active: direction === "column" },
+        ]}
+        disabled={disabled}
+        onChange={(next) => void onSetStyle("flex-direction", next)}
+      />
+      <FlatSelectRow
+        label="Justify"
+        value={styles["justify-content"] || "flex-start"}
+        tier={resolveValueTier(styles["justify-content"], "flex-start")}
+        disabled={disabled}
+        options={[
+          "flex-start",
+          "center",
+          "space-between",
+          "space-around",
+          "space-evenly",
+          "flex-end",
+        ]}
+        onChange={(next) => void onSetStyle("justify-content", next)}
+      />
+      <FlatSelectRow
+        label="Align"
+        value={styles["align-items"] || "stretch"}
+        tier={resolveValueTier(styles["align-items"], "stretch")}
+        disabled={disabled}
+        options={["stretch", "flex-start", "center", "flex-end", "baseline"]}
+        onChange={(next) => void onSetStyle("align-items", next)}
+      />
+      <FlatRow
+        label="Gap"
+        value={styles.gap ?? "0px"}
+        tier={resolveValueTier(styles.gap, "0px")}
+        disabled={disabled}
+        onCommit={(next) => void onSetStyle("gap", next.endsWith("px") ? next : `${next}px`)}
+      />
+    </div>
   );
 }
