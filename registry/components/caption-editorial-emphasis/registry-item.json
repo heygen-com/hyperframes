@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-editorial-emphasis",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Editorial Emphasis",
   "description": "Dual-font system with dramatic size contrast for emphasis words",
   "tags": ["captions", "caption-style", "editorial", "typography", "emphasis"],

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-weight-shift",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Weight Shift",
   "description": "Elegant font-weight transition between caption lines",
   "tags": ["captions", "caption-style", "minimal", "typography"],

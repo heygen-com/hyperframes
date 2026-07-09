@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -364,9 +364,10 @@
       var WORDS = normalizeWords(TRANSCRIPT);
       var GROUPS = makeGroups(WORDS);
       buildCaptions(GROUPS);
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
       GROUPS.forEach(function (group, groupIndex) {
         var groupEl = document.getElementById("caption-group-" + groupIndex);
@@ -378,24 +379,49 @@
         var visibleStart = Math.max(0, group.start);
         var visibleEnd = Math.max(visibleStart + 0.01, effectiveEnd);
 
-        tl.set(groupEl, { opacity: 1 }, visibleStart);
-        tl.set(groupEl, { opacity: 0 }, visibleEnd);
+        tl.add(
+          groupEl,
+          {
+            opacity: 1,
+            duration: 0,
+          },
+          toMs(visibleStart),
+        );
+        tl.add(
+          groupEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(visibleEnd),
+        );
 
         group.words.forEach(function (word, wordIndex) {
           var wordEl = document.getElementById("caption-word-" + groupIndex + "-" + wordIndex);
           var isFirstWord = wordIndex === 0;
           var wordStart = Math.max(visibleStart, word.start - WORD_FADE_LEAD);
-          tl.set(wordEl, { color: isFirstWord ? COLOR_ACTIVE : COLOR_INACTIVE }, visibleStart);
-          if (isFirstWord) return;
-          tl.to(
+          tl.add(
             wordEl,
-            { color: COLOR_ACTIVE, duration: COLOR_FADE_DURATION, ease: "none" },
-            wordStart,
+            {
+              color: isFirstWord ? COLOR_ACTIVE : COLOR_INACTIVE,
+              duration: 0,
+            },
+            toMs(visibleStart),
+          );
+          if (isFirstWord) return;
+          tl.add(
+            wordEl,
+            {
+              color: COLOR_ACTIVE,
+              duration: toMs(COLOR_FADE_DURATION),
+              ease: "linear",
+            },
+            toMs(wordStart),
           );
         });
       });
 
-      window.__timelines["caption-pill-karaoke"] = tl;
+      hyperframesAnime.register("caption-pill-karaoke", tl, { labels: {} });
     </script>
   </body>
 </html>

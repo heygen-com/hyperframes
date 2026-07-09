@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -317,9 +317,11 @@
         });
       }
       applyBehindScales();
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
+      var __hfNoopTarget = { value: 0 };
 
       function blockStart(bi) {
         var b = BLOCKS[bi];
@@ -334,38 +336,118 @@
         var fEl = allFront[bi];
 
         allBehind.forEach(function (other, oi) {
-          if (oi !== bi) tl.set(other, { opacity: 0 }, start);
+          if (oi !== bi)
+            tl.add(
+              other,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(start),
+            );
         });
         allFront.forEach(function (other, oi) {
-          if (oi !== bi) tl.set(other, { opacity: 0 }, start);
+          if (oi !== bi)
+            tl.add(
+              other,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(start),
+            );
         });
 
         if (block.behind) {
-          tl.set(bEl, { opacity: 1 }, start);
+          tl.add(
+            bEl,
+            {
+              opacity: 1,
+              duration: 0,
+            },
+            toMs(start),
+          );
           block.behind.forEach(function (wi_arr, wi) {
             var wordEl = document.getElementById("bb" + bi + "w" + wi);
             var wordStart = W[wi_arr[0]].start;
-            tl.set(wordEl, { opacity: 0 }, start);
-            tl.to(wordEl, { opacity: 1, duration: ENTRY_DUR, ease: "power2.out" }, wordStart);
+            tl.add(
+              wordEl,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(start),
+            );
+            tl.add(
+              wordEl,
+              {
+                opacity: 1,
+                duration: toMs(ENTRY_DUR),
+                ease: "outCubic",
+              },
+              toMs(wordStart),
+            );
           });
         }
 
         if (block.front) {
-          tl.set(fEl, { opacity: 1 }, start);
+          tl.add(
+            fEl,
+            {
+              opacity: 1,
+              duration: 0,
+            },
+            toMs(start),
+          );
           block.front.forEach(function (wi_arr, wi) {
             var wordEl = document.getElementById("fb" + bi + "w" + wi);
             var wordStart = W[wi_arr[0]].start;
-            tl.set(wordEl, { opacity: 0 }, start);
-            tl.set(wordEl, { opacity: 1 }, wordStart);
+            tl.add(
+              wordEl,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(start),
+            );
+            tl.add(
+              wordEl,
+              {
+                opacity: 1,
+                duration: 0,
+              },
+              toMs(wordStart),
+            );
           });
         }
 
-        tl.set(bEl, { opacity: 0 }, nextStart);
-        tl.set(fEl, { opacity: 0 }, nextStart);
+        tl.add(
+          bEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(nextStart),
+        );
+        tl.add(
+          fEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(nextStart),
+        );
       });
 
-      tl.to({}, { duration: DURATION }, 0);
-      window.__timelines["caption-parallax-layers"] = tl;
+      tl.add(
+        __hfNoopTarget,
+        {
+          value: 1,
+          duration: toMs(DURATION),
+        },
+        0,
+      );
+      hyperframesAnime.register("caption-parallax-layers", tl, { labels: {} });
 
       document.fonts.ready.then(function () {
         applyBehindScales();

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-texture",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Texture",
   "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
   "tags": ["captions", "caption-style", "texture", "mask"],

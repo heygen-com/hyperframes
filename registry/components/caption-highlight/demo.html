@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -115,8 +115,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
@@ -182,7 +180,10 @@
         });
 
         var container = document.getElementById("hl-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
@@ -219,12 +220,22 @@
 
           container.appendChild(grp);
 
-          tl.set(grp, { visibility: "visible" }, g.start);
-          tl.fromTo(
+          tl.add(
             grp,
-            { opacity: 0 },
-            { opacity: 1, duration: 0.12, ease: "power2.out" },
-            g.start,
+            {
+              visibility: "visible",
+              duration: 0,
+            },
+            toMs(g.start),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: [0, 1],
+              duration: 120,
+              ease: "outCubic",
+            },
+            toMs(g.start),
           );
 
           groupWords.forEach(function (w, i) {
@@ -232,27 +243,74 @@
             var bgEl = document.getElementById("hl-bg-" + wi);
             var wordEl = document.getElementById("hl-w-" + wi);
 
-            tl.to(bgEl, { opacity: 1, scaleX: 1, duration: 0.15, ease: "power2.out" }, w.start);
-            tl.to(
-              wordEl,
-              { filter: "brightness(1.05)", duration: 0.08, ease: "power2.out" },
-              w.start,
+            tl.add(
+              bgEl,
+              {
+                opacity: 1,
+                scaleX: 1,
+                duration: 150,
+                ease: "outCubic",
+              },
+              toMs(w.start),
             );
-            tl.to(
+            tl.add(
               wordEl,
-              { filter: "brightness(1)", duration: 0.16, ease: "power2.out" },
-              w.start + 0.08,
+              {
+                filter: "brightness(1.05)",
+                duration: 80,
+                ease: "outCubic",
+              },
+              toMs(w.start),
             );
-            tl.to(bgEl, { opacity: 0, scaleX: 1.02, duration: 0.1, ease: "power2.in" }, w.end);
-            tl.set(bgEl, { scaleX: 0 }, w.end + 0.1);
+            tl.add(
+              wordEl,
+              {
+                filter: "brightness(1)",
+                duration: 160,
+                ease: "outCubic",
+              },
+              toMs(w.start + 0.08),
+            );
+            tl.add(
+              bgEl,
+              {
+                opacity: 0,
+                scaleX: 1.02,
+                duration: 100,
+                ease: "inCubic",
+              },
+              toMs(w.end),
+            );
+            tl.add(
+              bgEl,
+              {
+                scaleX: 0,
+                duration: 0,
+              },
+              toMs(w.end + 0.1),
+            );
           });
 
-          tl.to(grp, { opacity: 0, duration: 0.1, ease: "power2.in" }, g.end - 0.1);
-          tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              duration: 100,
+              ease: "inCubic",
+            },
+            toMs(g.end - 0.1),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(g.end),
+          );
         });
-
-        tl.seek(0);
-        window.__timelines["caption-highlight"] = tl;
+        hyperframesAnime.register("caption-highlight", tl, { labels: {} });
       })();
     </script>
   </body>

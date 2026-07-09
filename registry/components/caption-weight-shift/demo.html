@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -356,9 +356,10 @@
       var WORDS = normalizeWords(TRANSCRIPT);
       var GROUPS = makeGroups(WORDS);
       buildCaptions(GROUPS);
-
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      var tl = anime.createTimeline({ autoplay: false });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
       var visibleStarts = GROUPS.map(function (group, groupIndex) {
         var prev = GROUPS[groupIndex - 1];
@@ -377,14 +378,35 @@
         var visibleEnd = groupIndex < GROUPS.length - 1 ? visibleStarts[groupIndex + 1] : DURATION;
 
         allGroupEls.forEach(function (otherEl, otherIndex) {
-          if (otherIndex !== groupIndex) tl.set(otherEl, { opacity: 0 }, visibleStart);
+          if (otherIndex !== groupIndex)
+            tl.add(
+              otherEl,
+              {
+                opacity: 0,
+                duration: 0,
+              },
+              toMs(visibleStart),
+            );
         });
 
-        tl.set(groupEl, { opacity: 0, scale: 0.85 }, visibleStart);
-        tl.to(
+        tl.add(
           groupEl,
-          { opacity: 1, scale: 1, duration: ENTRY_DURATION, ease: "power3.out", force3D: true },
-          visibleStart,
+          {
+            opacity: 0,
+            scale: 0.85,
+            duration: 0,
+          },
+          toMs(visibleStart),
+        );
+        tl.add(
+          groupEl,
+          {
+            opacity: 1,
+            scale: 1,
+            duration: toMs(ENTRY_DURATION),
+            ease: "outQuart",
+          },
+          toMs(visibleStart),
         );
 
         if (group.lines.length === 2) {
@@ -393,22 +415,37 @@
           var line2FirstWord = group.lines[1].words[0];
           var switchTime = line2FirstWord.start;
 
-          tl.to(
+          tl.add(
             line1El,
-            { fontWeight: FONT_WEIGHT_LIGHT, duration: WEIGHT_TRANSITION, ease: "power2.out" },
-            switchTime,
+            {
+              fontWeight: FONT_WEIGHT_LIGHT,
+              duration: toMs(WEIGHT_TRANSITION),
+              ease: "outCubic",
+            },
+            toMs(switchTime),
           );
-          tl.to(
+          tl.add(
             line2El,
-            { fontWeight: FONT_WEIGHT_BOLD, duration: WEIGHT_TRANSITION, ease: "power2.out" },
-            switchTime,
+            {
+              fontWeight: FONT_WEIGHT_BOLD,
+              duration: toMs(WEIGHT_TRANSITION),
+              ease: "outCubic",
+            },
+            toMs(switchTime),
           );
         }
 
-        tl.set(groupEl, { opacity: 0 }, visibleEnd);
+        tl.add(
+          groupEl,
+          {
+            opacity: 0,
+            duration: 0,
+          },
+          toMs(visibleEnd),
+        );
       });
 
-      window.__timelines["caption-weight-shift"] = tl;
+      hyperframesAnime.register("caption-weight-shift", tl, { labels: {} });
     </script>
   </body>
 </html>

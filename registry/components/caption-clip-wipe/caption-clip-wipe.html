@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -107,8 +107,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
@@ -176,7 +174,10 @@
         });
 
         var container = document.getElementById("wp-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
@@ -203,40 +204,71 @@
 
           container.appendChild(grp);
 
-          tl.set(grp, { visibility: "visible" }, g.start);
+          tl.add(
+            grp,
+            {
+              visibility: "visible",
+              duration: 0,
+            },
+            toMs(g.start),
+          );
 
           groupWords.forEach(function (w, i) {
             var wi = g.wordStart + i;
             var wordEl = document.getElementById("wp-w-" + wi);
             var isKW = KEYWORDS.has(wi);
 
-            tl.to(
+            tl.add(
               wordEl,
-              { clipPath: "inset(0 0% 0 0)", duration: 0.3, ease: "power2.out" },
-              w.start,
+              {
+                clipPath: "inset(0 0% 0 0)",
+                duration: 300,
+                ease: "outCubic",
+              },
+              toMs(w.start),
             );
             if (isKW) {
-              tl.to(wordEl, { color: "#FFD700", duration: 0.05 }, w.start + 0.1);
+              tl.add(
+                wordEl,
+                {
+                  color: "#FFD700",
+                  duration: 50,
+                },
+                toMs(w.start + 0.1),
+              );
             }
-            tl.to(wordEl, { color: "rgba(255,255,255,0.4)", duration: 0.2 }, w.end);
+            tl.add(
+              wordEl,
+              {
+                color: "rgba(255,255,255,0.4)",
+                duration: 200,
+              },
+              toMs(w.end),
+            );
           });
 
           var wordEls = grp.querySelectorAll(".wp-word");
-          tl.to(
+          tl.add(
             wordEls,
             {
               clipPath: "inset(0 0% 0 100%)",
-              duration: 0.25,
-              stagger: 0.04,
-              ease: "power2.in",
+              duration: 250,
+              delay: anime.stagger(40),
+              ease: "inCubic",
             },
-            g.end - 0.2,
+            toMs(g.end - 0.2),
           );
-          tl.set(grp, { visibility: "hidden", opacity: 0 }, g.end);
+          tl.add(
+            grp,
+            {
+              visibility: "hidden",
+              opacity: 0,
+              duration: 0,
+            },
+            toMs(g.end),
+          );
         });
-
-        tl.seek(0);
-        window.__timelines["caption-clip-wipe"] = tl;
+        hyperframesAnime.register("caption-clip-wipe", tl, { labels: {} });
       })();
     </script>
   </body>

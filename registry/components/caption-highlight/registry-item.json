@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "caption-highlight",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Highlight",
   "description": "Red background sweep behind each active word, TikTok-style",
   "tags": ["captions", "caption-style", "highlight", "social", "tiktok"],

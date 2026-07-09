@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -115,8 +115,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
@@ -207,7 +205,10 @@
         var NUM_PARTICLES = 10;
 
         var container = document.getElementById("bs-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
@@ -261,12 +262,23 @@
           var grp = document.getElementById("bs-grp-" + gi);
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
 
-          tl.set(grp, { visibility: "visible" }, g.start);
-          tl.fromTo(
+          tl.add(
             grp,
-            { opacity: 0, scale: 0.92 },
-            { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(1.5)" },
-            g.start,
+            {
+              visibility: "visible",
+              duration: 0,
+            },
+            toMs(g.start),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: [0, 1],
+              scale: [0.92, 1],
+              duration: 200,
+              ease: "outBack(1.5)",
+            },
+            toMs(g.start),
           );
 
           groupWords.forEach(function (w, i) {
@@ -274,37 +286,91 @@
             var wordEl = document.getElementById("bs-w-" + wi);
             var isKW = KEYWORDS.has(wi);
 
-            tl.to(
+            tl.add(
               wordEl,
-              { color: isKW ? "#FFD700" : "#ffffff", scale: isKW ? 1.12 : 1.05, duration: 0.08 },
-              w.start,
+              {
+                color: isKW ? "#FFD700" : "#ffffff",
+                scale: isKW ? 1.12 : 1.05,
+                duration: 80,
+              },
+              toMs(w.start),
             );
-            tl.to(wordEl, { color: "rgba(255,255,255,0.4)", scale: 1.0, duration: 0.1 }, w.end);
+            tl.add(
+              wordEl,
+              {
+                color: "rgba(255,255,255,0.4)",
+                scale: 1.0,
+                duration: 100,
+              },
+              toMs(w.end),
+            );
 
             if (isKW && particleData[wi]) {
               particleData[wi].forEach(function (pd, pi) {
-                tl.set(pd.el, { x: 0, y: 0, opacity: 0 }, w.start);
-                tl.to(
+                tl.add(
                   pd.el,
-                  { x: pd.dx, y: pd.dy, opacity: 1, duration: 0.12, ease: "power3.out" },
-                  w.start + pi * 0.018,
+                  {
+                    translateX: 0,
+                    translateY: 0,
+                    opacity: 0,
+                    duration: 0,
+                  },
+                  toMs(w.start),
                 );
-                tl.to(
+                tl.add(
                   pd.el,
-                  { opacity: 0, duration: 0.45, ease: "power1.in" },
-                  w.start + 0.12 + pi * 0.018,
+                  {
+                    translateX: pd.dx,
+                    translateY: pd.dy,
+                    opacity: 1,
+                    duration: 120,
+                    ease: "outQuart",
+                  },
+                  toMs(w.start + pi * 0.018),
                 );
-                tl.set(pd.el, { opacity: 0, x: 0, y: 0 }, w.start + 0.7);
+                tl.add(
+                  pd.el,
+                  {
+                    opacity: 0,
+                    duration: 450,
+                    ease: "inQuad",
+                  },
+                  toMs(w.start + 0.12 + pi * 0.018),
+                );
+                tl.add(
+                  pd.el,
+                  {
+                    opacity: 0,
+                    translateX: 0,
+                    translateY: 0,
+                    duration: 0,
+                  },
+                  toMs(w.start + 0.7),
+                );
               });
             }
           });
 
-          tl.to(grp, { opacity: 0, duration: 0.14, ease: "power2.in" }, g.end - 0.14);
-          tl.set(grp, { opacity: 0, visibility: "hidden" }, g.end);
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              duration: 140,
+              ease: "inCubic",
+            },
+            toMs(g.end - 0.14),
+          );
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(g.end),
+          );
         });
-
-        tl.seek(0);
-        window.__timelines["caption-particle-burst"] = tl;
+        hyperframesAnime.register("caption-particle-burst", tl, { labels: {} });
       })();
     </script>
   </body>

@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -92,8 +92,6 @@
 
     <script>
       (function () {
-        window.__timelines = window.__timelines || {};
-
         var _fitCanvas = document.createElement("canvas");
         var _fitCtx = _fitCanvas.getContext("2d");
         function fitFontSize(text, baseFontSize, fontWeight, fontFamily, maxWidth) {
@@ -158,7 +156,10 @@
           "white 50.5%, white 100%)";
 
         var container = document.getElementById("gr-container");
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function toMs(seconds) {
+          return seconds * 1000;
+        }
 
         GROUPS.forEach(function (g, gi) {
           var groupWords = WORDS.slice(g.wordStart, g.wordEnd + 1);
@@ -189,7 +190,15 @@
 
           container.appendChild(grp);
 
-          tl.set(grp, { visibility: "visible", opacity: 1 }, g.start);
+          tl.add(
+            grp,
+            {
+              visibility: "visible",
+              opacity: 1,
+              duration: 0,
+            },
+            toMs(g.start),
+          );
 
           var lastWordEnd = groupWords[groupWords.length - 1].end;
           var nextStart = gi < GROUPS.length - 1 ? GROUPS[gi + 1].start : lastWordEnd + 0.5;
@@ -203,23 +212,70 @@
             var el = document.getElementById("gr-w-" + wi);
             var dur = w.end - w.start;
 
-            tl.set(el, { backgroundPosition: "100% 0", scale: 1 }, g.start);
-            tl.set(el, { scale: 1.04 }, w.start);
-            tl.fromTo(
+            tl.add(
               el,
-              { backgroundPosition: "45% 0" },
-              { backgroundPosition: "0% 0", duration: dur, ease: "none" },
-              w.start,
+              {
+                backgroundPosition: "100% 0",
+                scale: 1,
+                duration: 0,
+              },
+              toMs(g.start),
             );
-            tl.set(el, { backgroundPosition: "100% 0" }, w.end);
-            tl.to(el, { scale: 1, duration: 0.15, ease: "power2.out" }, w.end);
+            tl.add(
+              el,
+              {
+                scale: 1.04,
+                duration: 0,
+              },
+              toMs(w.start),
+            );
+            tl.add(
+              el,
+              {
+                backgroundPosition: ["45% 0", "0% 0"],
+                duration: toMs(dur),
+                ease: "linear",
+              },
+              toMs(w.start),
+            );
+            tl.add(
+              el,
+              {
+                backgroundPosition: "100% 0",
+                duration: 0,
+              },
+              toMs(w.end),
+            );
+            tl.add(
+              el,
+              {
+                scale: 1,
+                duration: 150,
+                ease: "outCubic",
+              },
+              toMs(w.end),
+            );
           });
 
-          tl.to(grp, { opacity: 0, duration: fadeDur }, fadeStart);
-          tl.set(grp, { visibility: "hidden" }, groupEnd);
+          tl.add(
+            grp,
+            {
+              opacity: 0,
+              duration: toMs(fadeDur),
+            },
+            toMs(fadeStart),
+          );
+          tl.add(
+            grp,
+            {
+              visibility: "hidden",
+              duration: 0,
+            },
+            toMs(groupEnd),
+          );
         });
 
-        window.__timelines["caption-gradient-fill"] = tl;
+        hyperframesAnime.register("caption-gradient-fill", tl, { labels: {} });
       })();
     </script>
   </body>

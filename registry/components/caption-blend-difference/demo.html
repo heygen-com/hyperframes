@@ -65,16 +65,14 @@
 
   Timeline integration — animate captions normally, blend mode is passive:
 
-  tl.from(".caption", {
-    y: 50, opacity: 0, duration: 0.6, ease: "expo.out"
-  }, 0.2);
+  tl.add(".caption", { translateY: [50, 0], opacity: [0, 1], duration: 600, ease: "outExpo" }, 200);
 
 
   Notes:
   - isolation: isolate on the composition root is REQUIRED.
     Without it, blend mode composes against the page background
     (usually white or black) and you get no inversion.
-  - Works with any GSAP animation — the blend composites every frame.
+  - Works with any animation runtime — the blend composites every frame.
   - For caption containers with multiple text elements, apply the
     class to the shared parent, not each text element individually.
   - On pure black backgrounds, white text stays white (difference
