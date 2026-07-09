@@ -63,10 +63,9 @@ describe("auth/client", () => {
     });
   });
 
-  it("buildAuthHeaders uses x-api-key for api_key", () => {
+  it("buildAuthHeaders uses x-api-key for api_key, without the cli-source header", () => {
     expect(buildAuthHeaders(apiKeyCred())).toEqual({
       "x-api-key": "hg_x",
-      [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
     });
   });
 

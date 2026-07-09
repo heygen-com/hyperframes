@@ -23,6 +23,10 @@ import type { OAuthTokens } from "./store.js";
 const DEFAULT_BASE_URL = "https://api.heygen.com";
 export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
 export const HEYGEN_CLI_SOURCE = "cli";
+// The backend reads X-HeyGen-Client-Origin (→ request.client_origin, e.g.
+// "cli:claude_code"). Not emitted yet — exported so future `cli:<origin>`
+// consumers send it without re-typing the header name.
+export const HEYGEN_CLI_ORIGIN_HEADER = "X-HeyGen-Client-Origin";
 
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
@@ -184,7 +188,10 @@ export function buildAuthHeaders(credential: ResolvedCredential): Record<string,
       [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE,
     };
   }
-  return { "x-api-key": credential.key, [HEYGEN_CLI_SOURCE_HEADER]: HEYGEN_CLI_SOURCE };
+  // API-key traffic keeps the normal billing path; the backend ignores the
+  // cli-source header for it, so we don't send it (avoids a contradictory
+  // "cli-source claim on an API-key request").
+  return { "x-api-key": credential.key };
 }
 
 async function safeText(res: Response): Promise<string> {

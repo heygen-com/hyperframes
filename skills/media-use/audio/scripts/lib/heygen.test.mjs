@@ -24,12 +24,13 @@ function withCleanHeygenEnv(fn) {
   }
 }
 
-test("heygenAuthHeaders tags API-key requests as CLI traffic", () => {
+test("heygenAuthHeaders does not tag API-key requests as CLI traffic", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";
+    // API-key requests use normal billing; the backend ignores the cli-source
+    // header for them, so it's not sent.
     assert.deepEqual(heygenAuthHeaders(), {
       "X-Api-Key": "hg_test",
-      "X-HeyGen-Source": "cli",
     });
   });
 });

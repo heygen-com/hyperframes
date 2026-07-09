@@ -72,7 +72,13 @@ export function heygenCredential() {
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
   const cred = heygenCredential();
-  if (cred?.headers) return { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS };
+  if (cred?.headers) {
+    // Only tag OAuth (Bearer) traffic as cli-source — the backend uses it to
+    // grant the free allowance for OAuth requests and ignores it for API-key
+    // (X-Api-Key) traffic, where it's dead metadata.
+    const isOauth = "Authorization" in cred.headers;
+    return isOauth ? { ...cred.headers, ...HEYGEN_CLI_SOURCE_HEADERS } : { ...cred.headers };
+  }
   if (cred?.expired)
     throw new Error(
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",

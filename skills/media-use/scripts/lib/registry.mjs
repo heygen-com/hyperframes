@@ -72,6 +72,10 @@ const REGISTRY = {
     // HeyGen TTS first when credentialed so CLI/OAuth users consume the free
     // web-plan allowance (10 min/month) before any paid path. --local-only skips
     // it and keeps Kokoro as the private/offline fallback.
+    // Deliberately kept `paid` (X4 confirm-before-call) even though the first
+    // 10 min/month are free: the client can't know the remaining allowance, so
+    // confirming is safer than risking a silent charge once it's spent. (A
+    // tri-state "quota-first, paid after" would need backend quota state.)
     P("heygen.tts", { generate: heygenTtsGenerate }),
     A("kokoro.local", { generate: localTtsGenerate }),
   ],
