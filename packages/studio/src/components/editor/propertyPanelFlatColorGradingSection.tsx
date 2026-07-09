@@ -5,6 +5,7 @@ import {
   normalizeHfColorGrading,
   type HfColorGradingAdjustKey,
   type HfColorGradingDetailKey,
+  type HfColorGradingEffectKey,
   type NormalizedHfColorGrading,
 } from "@hyperframes/core/color-grading";
 import { Compare, Plus, RotateCcw, Settings } from "../../icons/SystemIcons";
@@ -131,6 +132,11 @@ const VIGNETTE_TUNE_KEYS: HfColorGradingDetailKey[] = [
   "vignetteFeather",
 ];
 const GRAIN_TUNE_KEYS: HfColorGradingDetailKey[] = ["grainSize", "grainRoughness"];
+
+const EFFECT_SLIDERS: Array<{ key: HfColorGradingEffectKey; label: string }> = [
+  { key: "blur", label: "Blur" },
+  { key: "pixelate", label: "Pixelate" },
+];
 
 // fallow-ignore-next-line complexity
 export function FlatColorGradingSection({
@@ -383,6 +389,40 @@ export function FlatColorGradingSection({
             )}
           </div>
         )}
+      </div>
+
+      <div className="space-y-0.5 border-t border-panel-hairline pt-1.5">
+        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+          Effects
+        </div>
+        {EFFECT_SLIDERS.map((slider) => {
+          const value = grading.effects[slider.key];
+          const isSet = value > 1e-6;
+          return (
+            <div key={slider.key} data-flat-grade-effect="true">
+              <FlatSlider
+                label={slider.label}
+                value={Math.round(value * 100)}
+                min={0}
+                max={100}
+                tier={isSet ? "explicitCustom" : "default"}
+                displayValue={`${Math.round(value * 100)}%`}
+                onCommit={(next) =>
+                  onCommitColorGrading({
+                    ...grading,
+                    effects: { ...grading.effects, [slider.key]: next / 100 },
+                  })
+                }
+                onReset={() =>
+                  onCommitColorGrading({
+                    ...grading,
+                    effects: { ...grading.effects, [slider.key]: 0 },
+                  })
+                }
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
