@@ -10,7 +10,7 @@ The [copy-paste examples](/prompting/examples) share one skeleton. Each part rem
 [spec]       8-second 1920x1080 video.
 [beats]      Beat 1 (0-4s): ...  Beat 2 (4-5s): ...  Beat 3 (5-8s): ...
 [copy]       the exact on-screen text, quoted
-[technique]  Use the `code-typing` and `vfx-shatter` registry blocks.
+[technique]  Adapt the `code-typing` and `vfx-shatter` registry blocks.
 [negatives]  No narration, no image or media files.
 ```
 
@@ -18,12 +18,16 @@ The [copy-paste examples](/prompting/examples) share one skeleton. Each part rem
 - **Spec** duration and resolution up front. Defaults are 1920x1080 at 30fps.
 - **Beats** get timestamps. Include pacing instructions ("then hold on the blinking cursor") — agents skip breathing room unless told.
 - **Copy** is quoted exactly, with `/` for line breaks. Unquoted copy gets paraphrased.
-- **Technique**: name registry blocks exactly as they appear in the [catalog](/catalog/blocks/data-chart), and pin a technique wherever the default choice can fail (see [the specification dial](/prompting/specification-dial)).
+- **Technique**: name registry blocks exactly as they appear in the [catalog](/catalog/blocks/data-chart) — they're adapted starting points, not drop-ins (blocks ship with demo content the agent rewrites to your beat, so naming one pins the *technique*). Pin a technique wherever the default choice can fail (see [the specification dial](/prompting/specification-dial)).
 - **Negatives** close the gaps: "no narration" is not "silent" — if you want no sound at all, say "no audio". Avoid ambiguous phrases like "no external assets" (CDN-loaded runtimes are normal; say "no image or media files" if that's what you mean).
 
 Assembled:
 
-> /motion-graphics Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Use the `code-typing` and `vfx-shatter` registry blocks. No narration, no image or media files.
+> /motion-graphics Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Adapt the `code-typing` and `vfx-shatter` registry blocks; hand-author the kinetic text. No narration, no image or media files.
+
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/c91c74e1-29a0-491e-a4ff-897880ddda94/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
 
 ## The beat formula
 

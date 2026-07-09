@@ -31,9 +31,9 @@ The first four are the workhorses of a code *walkthrough* — they keep the code
 
 ### Prompting a typing reveal
 
-`code-typing` streams tokens with a caret that tracks the frontier — no CSS animation, so it seeks cleanly. Give it the exact code and a pace.
+`code-typing` reveals code character by character with a caret that tracks the frontier — no CSS animation, so it seeks cleanly. Give it the exact code and a pace; the agent re-bakes the block's syntax tokens to your snippet.
 
-> /motion-graphics 6-second 1920x1080 video. A dark editor types this snippet, token by token, caret tracking the frontier, then holds on the blinking cursor for the final second:
+> /motion-graphics 6-second 1920x1080 video. A dark editor types this snippet, character by character, caret tracking the frontier, then holds on the blinking cursor for the final second:
 > ```
 > export async function render(comp: Composition) {
 >   await comp.seek(0);
@@ -41,6 +41,10 @@ The first four are the workhorses of a code *walkthrough* — they keep the code
 > }
 > ```
 > Use the `code-typing` registry block. No narration, no image or media files.
+
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/a3a2da5a-9261-4d0b-a1a8-8e3d54ecb3ed/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
 
 **Quote the code as a literal block.** Prose descriptions of code get paraphrased.
 - ❌ `type out a function that seeks to zero and captures`

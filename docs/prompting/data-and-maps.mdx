@@ -49,9 +49,17 @@ Each map block answers a different geographic question. Say what the map is *for
 | Shade Spain by autonomous community             | [`spain-map`](/catalog/blocks/spain-map)           | 12s    |
 | Shade the world country by country              | [`world-map`](/catalog/blocks/world-map)           | 14s    |
 
-The US maps are composable — `us-map-bubble` and `us-map-flow` are built to layer over the base `us-map`, so "shade states *and* draw flows between two cities" is one composition, not two.
+The US map encodings combine — asking to "shade states *and* draw flows between two cities" gets you one composition: the agent merges the blocks at source onto a shared projection so arcs land exactly on the choropleth's states.
 
 > 12-second 1920x1080 video. A US choropleth shades states by adoption rate with staggered reveals and a gradient legend, then connection arcs draw between San Francisco, Austin, and New York. Use the `us-map` and `us-map-flow` registry blocks. No audio.
+
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/38f2da53-7257-4880-9de2-99d71606cbf0/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+<Note>
+  The map blocks fetch their geo data from a CDN at runtime, which violates the deterministic-render rules — the agent bakes the projected geometry into the composition instead. You never need to ask for this; it's part of building the map correctly.
+</Note>
 
 **Pick the encoding, don't just say "map."** Choropleth (color), bubble (size), hex (equal weight), and flow (arcs) tell different stories from the same data.
 - ❌ `put California's number on a US map`

@@ -9,7 +9,14 @@ The trigger phrase is simple — call out the slots:
 
 > Build a 6-second title card. Make the **name**, the **logo**, and the **accent color** variables; everything else stays fixed.
 
-The agent declares `data-composition-variables` on the composition root with the right type for each slot — `string` for the name, `color` for the accent, and a `string` URL for the logo (the escape hatch for any media asset — image, video, audio, or logo). One composition, many fills.
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/d732b28b-be6f-43bb-8c9c-2218453420a0/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Default variable values.*
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/24e059df-ea0a-4fc5-a44f-55c58bf0a8bd/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The same composition re-rendered with `--variables` overrides — different name, logo, and accent, zero re-prompting.*
+
+
+
+The agent declares `data-composition-variables` on the composition root with the right type for each slot — `string` for the name, `color` for the accent, and a `string` URL for the logo (the escape hatch for any media asset — image, video, audio, or logo). A plain `<img>` logo needs no timing attributes; only `<video>`/`<audio>` variables involve the media wiring described in [variables](/concepts/variables). One composition, many fills.
 
 ## Say what type each slot is
 

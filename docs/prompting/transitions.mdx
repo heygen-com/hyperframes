@@ -14,6 +14,10 @@ Two families, both first-class:
 
 Choose by the effect you want, not by which is easier. See also the transitions table in [vocabulary](/prompting/vocabulary).
 
+<Note>
+  The catalog pages linked here are standalone demos of each effect. In a real multi-scene build the agent wires the same effects through the `@hyperframes/shader-transitions` package (`HyperShader.init`) — you never need to say that; naming the transition is enough.
+</Note>
+
 ## Energy → transition
 
 Pick **one primary** transition for most scene changes, plus one or two accents for topic changes and the climax. Never use a different transition on every seam — that reads as chaos, not design.
@@ -47,6 +51,10 @@ Special-purpose seams: [`flash-through-white`](/catalog/blocks/flash-through-whi
 Name the block and the seam — transitions are the one place where per-seam control usually beats letting the agent decide.
 
 > /general-video Six-scene SaaS explainer. Use [`whip-pan`](/catalog/blocks/whip-pan) as the primary transition between related points, and one [`cinematic-zoom`](/catalog/blocks/cinematic-zoom) into the final pricing reveal. Medium energy, ~0.4s each.
+
+<video controls muted loop playsinline preload="metadata" src="https://www.heygenverse.com/s/8d9a4342-74fd-4664-bac2-81ca8c48b786/raw" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited — whip-pan on four seams, cinematic-zoom into the pricing reveal.*
+
 
 > Between beats 2 and 3, transition with [`swirl-vortex`](/catalog/blocks/swirl-vortex); keep every other seam on a plain blur crossfade.
 
