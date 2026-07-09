@@ -52,6 +52,13 @@ print(json.dumps({
 }))
 `;
 
+// espeak-ng maps Mandarin Chinese to ISO 639-3 "cmn", not Kokoro's own "zh"
+// voice-prefix convention. Translate at the Python/espeak boundary only —
+// keep "zh" as the public --lang value since it matches Kokoro's docs.
+const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
+  zh: "cmn",
+};
+
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
@@ -154,9 +161,10 @@ export async function synthesize(
   // 5. Run synthesis
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
   try {
+    const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
       python,
-      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, lang],
+      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, espeakLang],
       {
         encoding: "utf-8",
         timeout: 300_000,
