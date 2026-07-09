@@ -61,11 +61,18 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   // Probe the image once visible — measures the natural aspect ratio so the
   // tile width matches, and flips to the error state (plain clip background)
   // if the src can't load. The browser cache makes the tile <img>s free.
+  //
+  // SVG handling: SVGs without intrinsic width/height report naturalWidth=0 on
+  // load (treat as success with the 16:9 default aspect) and may fire onerror
+  // in some environments even though the file is valid and can be displayed —
+  // fall back to loaded-at-16:9 rather than hiding the strip entirely.
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
     setStatus("loading");
+
+    const isSvg = /\.svg($|\?)/i.test(imageSrc);
 
     const probe = new Image();
     probe.onload = () => {
@@ -73,10 +80,20 @@ export const ImageThumbnail = memo(function ImageThumbnail({
       if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
         setAspect(probe.naturalWidth / probe.naturalHeight);
       }
+      // naturalWidth===0 (e.g. SVG with no intrinsic dimensions) falls through
+      // to "loaded" with the default 16:9 aspect already set in state.
       setStatus("loaded");
     };
     probe.onerror = () => {
-      if (!cancelled) setStatus("error");
+      if (cancelled) return;
+      // SVGs can fail the probe in certain browser/sandbox environments even
+      // though the <img> tiles themselves render fine (different security
+      // context). Show the strip at the 16:9 fallback rather than blanking.
+      if (isSvg) {
+        setStatus("loaded");
+      } else {
+        setStatus("error");
+      }
     };
     probe.src = imageSrc;
 

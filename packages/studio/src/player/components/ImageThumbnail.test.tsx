@@ -120,10 +120,38 @@ describe("ImageThumbnail", () => {
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
-  it("drops the shimmer and renders no tiles when the image fails to load", () => {
+  it("drops the shimmer and renders no tiles when a raster image fails to load", () => {
     render({ imageSrc: "/api/projects/p/preview/assets/missing.png" });
     act(() => lastProbe().onerror?.());
     expect(host.querySelectorAll("img").length).toBe(0);
+    expect(host.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("renders tiles at 16:9 when an SVG has no intrinsic dimensions (naturalWidth=0)", () => {
+    render({ imageSrc: "/api/projects/p/preview/assets/logo.svg" });
+    const probe = lastProbe();
+
+    act(() => {
+      // naturalWidth stays 0 — SVG with no width/height attribute
+      probe.onload?.();
+    });
+
+    const imgs = [...host.querySelectorAll("img")];
+    expect(imgs.length).toBeGreaterThanOrEqual(1);
+    expect(imgs[0].getAttribute("src")).toBe("/api/projects/p/preview/assets/logo.svg");
+    expect(host.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("renders SVG tiles at 16:9 fallback even when the probe fires onerror", () => {
+    // Some browser/sandbox environments fire onerror for SVGs even though the
+    // <img> element itself can render the file — we must not blank the strip.
+    render({ imageSrc: "/api/projects/p/preview/assets/icon.svg" });
+
+    act(() => lastProbe().onerror?.());
+
+    const imgs = [...host.querySelectorAll("img")];
+    expect(imgs.length).toBeGreaterThanOrEqual(1);
+    expect(imgs[0].getAttribute("src")).toBe("/api/projects/p/preview/assets/icon.svg");
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 

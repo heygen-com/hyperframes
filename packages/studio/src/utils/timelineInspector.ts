@@ -29,3 +29,32 @@ export function isMusicTrack(
   const id = element.domId ?? element.id ?? "";
   return MUSIC_ID_RE.test(id);
 }
+
+/**
+ * Resolve the best audio source for beat analysis. An explicitly tagged or
+ * named music track wins; when none is present (e.g. an audio file dropped
+ * from Finder with a generic id), the LONGEST untagged audio clip is used as a
+ * fallback. Returns the element and whether it was found via the fallback path.
+ *
+ * The `isMusicTrack` predicate is unchanged so beat-snap and drag-exclusion
+ * logic remain unaffected by this fallback.
+ */
+export function resolveBeatSourceTrack(
+  elements: readonly Pick<
+    TimelineElement,
+    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration"
+  >[],
+): { element: (typeof elements)[number]; isFallback: boolean } | null {
+  const explicit = elements.find(isMusicTrack);
+  if (explicit) return { element: explicit, isFallback: false };
+
+  // Fallback: pick the longest audio clip (skipping explicitly non-music roles
+  // like "sfx" or "voiceover" to avoid triggering beat analysis on those).
+  let best: (typeof elements)[number] | null = null;
+  for (const el of elements) {
+    if (!isAudioTimelineElement(el)) continue;
+    if (el.timelineRole && el.timelineRole !== "music") continue;
+    if (!best || el.duration > best.duration) best = el;
+  }
+  return best ? { element: best, isFallback: true } : null;
+}

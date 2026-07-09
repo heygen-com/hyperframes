@@ -39,6 +39,21 @@ describe("getTimelineAssetKind", () => {
     expect(getTimelineAssetKind("assets/music.mp3")).toBe("audio");
     expect(getTimelineAssetKind("assets/music.wav")).toBe("audio");
   });
+
+  it("classifies svg as image", () => {
+    expect(getTimelineAssetKind("assets/logo.svg")).toBe("image");
+    expect(getTimelineAssetKind("assets/ICON.SVG")).toBe("image");
+  });
+
+  it("classifies avif and webp as image", () => {
+    expect(getTimelineAssetKind("assets/photo.avif")).toBe("image");
+    expect(getTimelineAssetKind("assets/photo.webp")).toBe("image");
+  });
+
+  it("returns null for unknown extensions", () => {
+    expect(getTimelineAssetKind("assets/data.json")).toBeNull();
+    expect(getTimelineAssetKind("assets/font.woff2")).toBeNull();
+  });
 });
 
 describe("buildTimelineAssetInsertHtml", () => {

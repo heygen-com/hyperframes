@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
-import { isMusicTrack } from "../utils/timelineInspector";
+import { resolveBeatSourceTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
@@ -71,9 +71,12 @@ export function useMusicBeatAnalysis(): void {
       ? { readOptionalProjectFile, writeProjectFile }
       : null;
 
-  const musicSrc = useMemo(() => {
-    const el = elements.find((e) => isMusicTrack(e));
-    return el?.src ?? null;
+  const { musicSrc, isFallbackTrack } = useMemo(() => {
+    const resolved = resolveBeatSourceTrack(elements);
+    return {
+      musicSrc: resolved?.element.src ?? null,
+      isFallbackTrack: resolved?.isFallback ?? false,
+    };
   }, [elements]);
 
   // ── Load: decode for strength data, then use the saved beat file if present,
@@ -95,24 +98,31 @@ export function useMusicBeatAnalysis(): void {
     const beatPath = beatFilePathForSrc(musicSrc);
     const io = ioRef.current;
 
-    // Only run expensive audio decode + beat analysis when the user has an
-    // explicit beats file saved. Without one, skip entirely — no surprise
-    // green lines on the timeline after dragging unrelated assets.
+    // For explicitly tagged/named music tracks: only run expensive audio decode
+    // + beat analysis when the user has an explicit beats file saved. Without
+    // one, skip entirely — no surprise green lines on the timeline after
+    // dragging unrelated assets.
+    //
+    // For fallback tracks (audio dropped from Finder with no role/music-id):
+    // always run analysis so the Beat tool becomes usable immediately.
     (async () => {
       if (!beatPath || !io) return;
-      let hasSavedBeats = false;
-      try {
-        const content = await io.readOptionalProjectFile(beatPath);
-        const parsed = content ? parseBeats(content) : null;
-        hasSavedBeats = !!(parsed && parsed.times.length > 0);
-      } catch {
-        /* no file */
+      if (!isFallbackTrack) {
+        let hasSavedBeats = false;
+        try {
+          const content = await io.readOptionalProjectFile(beatPath);
+          const parsed = content ? parseBeats(content) : null;
+          hasSavedBeats = !!(parsed && parsed.times.length > 0);
+        } catch {
+          /* no file */
+        }
+        if (cancelled) return;
+        if (!hasSavedBeats) {
+          setBeatAnalysis(null);
+          return;
+        }
       }
       if (cancelled) return;
-      if (!hasSavedBeats) {
-        setBeatAnalysis(null);
-        return;
-      }
 
       let promise = analysisCache.get(musicSrc);
       if (!promise) {
@@ -138,7 +148,7 @@ export function useMusicBeatAnalysis(): void {
     return () => {
       cancelled = true;
     };
-  }, [musicSrc, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
+  }, [musicSrc, isFallbackTrack, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
 
   // ── Persist: register a debounced writer fired by every beat edit/undo/redo.
   //    Flushes any pending write on cleanup so the last edit is never lost. ──
