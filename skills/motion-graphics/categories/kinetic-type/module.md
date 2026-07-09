@@ -1,10 +1,10 @@
-# kinetic-type — category module
+# kinetic-type - category module
 
 Text is the hero; typography + motion carry the message. Usually asset-free (`asset_needs: []`).
 
 ## Plan (Director)
 
-- **Style first.** If the project has a **`design.md` / `frame.md`** (precedence: `frame.md` → `design.md` → `DESIGN.md`), READ it and use its **exact palette / fonts / constraints** — do not invent. No spec → pick a named style, or ask: mood + light/dark + any brand color/font. (Style is an input the case must exercise; the same shot in two `design.md`s should look different.)
+- **Style first.** If the project has a **`design.md` / `frame.md`** (precedence: `frame.md` → `design.md` → `DESIGN.md`), READ it and use its **exact palette / fonts / constraints** - do not invent. No spec → pick a named style, or ask: mood + light/dark + any brand color/font. (Style is an input the case must exercise; the same shot in two `design.md`s should look different.)
 - Segment the copy into scenes by meaning / breath (EN ~3–7 words; ZH ~4–12 chars). Tag each scene **Hook → Build → Punch → Resolve**.
 - 1–2 `emphasis_words` per scene. Per scene: `emotion` + `motion` (free-form) + `beats`.
 
@@ -15,5 +15,5 @@ Motion primitives + registry blocks: **`references/motion-vocabulary.md`** (slid
 ## Build (reuse-first)
 
 - Prefer a **`caption-*` block** when one fits (`caption-kinetic-slam` / `caption-editorial-emphasis` / …): `npx hyperframes add` + set words / `emphasis_words` / palette / font.
-- Else hand-author: one full-duration `.clip`; a `.group` per scene (flex-centered); words as spans; `gsap.from()` entrances per the scene `motion`; emphasis words → `glow` / `scale_pulse` on the beat; **seek-safe reveal** (`autoAlpha`). Honor `references/builder-contract.md`.
+- Else hand-author: one full-duration `.clip`; a `.group` per scene (flex-centered); words as spans; anime.js `tl.add()` entrances per the scene `motion`; emphasis words -> `glow` / `scale_pulse` on the beat; **seek-safe reveal** (zero-duration hidden state, then opacity/visibility reveal). Honor `references/builder-contract.md`.
 - Reference impl: prototype `v0-text-motion-demo` + `pipeline-demo`.

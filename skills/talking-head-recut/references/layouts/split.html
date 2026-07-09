@@ -1,11 +1,12 @@
+<!doctype html>
 <!--
-  Layout: split — 50/50 side-by-side
+  Layout: split - 50/50 side-by-side
   ─────────────────────────────────────────────────────────────────────
-  Real schema only has `card.zone` (5 enum values) — there is NO
+  Real schema only has `card.zone` (5 enum values) - there is NO
   `card.layout` field, and video bounds are composition-level
   (`videoTrack.bounds`, one-time). The "split look" is implemented by:
     1. setting card.zone = "side-panel" for each card in this stretch
-    2. tweening #video-wrap to the other half via GSAP between cards
+    2. tweening #video-wrap to the other half via anime.js between cards
 
   Recommended storyboard.json card entry (strict v3):
     {
@@ -17,30 +18,29 @@
       "contentHints": { "kicker": "...", "title": "...", "detail": "..." }
     }
 
-  GSAP target for #video-wrap during this card (paste in <script>):
+  Anime.js target for #video-wrap during this card (paste in <script>):
     landscape (1920×1080):
-      tl.to('#video-wrap',
+      tl.add('#video-wrap',
         { left: 960, top: 0, width: 960, height: 1080,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
-    portrait (1080×1920) — flips to top/bottom:
-      tl.to('#video-wrap',
+    portrait (1080×1920), flips to top/bottom:
+      tl.add('#video-wrap',
         { left: 0, top: 960, width: 1080, height: 960,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
-    4:5 (1080×1350) — derive by ×0.703 on y/h:
-      tl.to('#video-wrap',
+    4:5 (1080×1350), derive by ×0.703 on y/h:
+      tl.add('#video-wrap',
         { left: 0, top: 675, width: 1080, height: 675,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
   Notes
   - Card-host (from card.zone="side-panel") covers half the canvas;
-    opaque card background is fine — it only paints its own half.
+    opaque card background is fine - it only paints its own half.
   - Flip card/video sides: swap which side gets the speaker tween.
   - With 14–18px page-level gap, set composition bg to deep color
     (e.g. #0a0c12) so the gap reads as a clean separator.
 -->
-<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -110,12 +110,18 @@
         color: #888;
       }
     </style>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div class="stage">
+    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
       <div class="meta">SPLIT · 1920×1080 · card 960 | video 960</div>
       <div class="region card-region"><span class="label">CARD · 960×1080</span></div>
       <div class="region video-region"><span class="label">VIDEO · 960×1080</span></div>
     </div>
+      <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
+      hyperframesAnime.register("main", tl);
+    </script>
   </body>
 </html>

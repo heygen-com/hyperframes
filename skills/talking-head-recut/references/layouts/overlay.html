@@ -1,5 +1,6 @@
+<!doctype html>
 <!--
-  Layout: overlay — video full-bleed, glass card floats on bottom
+  Layout: overlay - video full-bleed, glass card floats on bottom
   ─────────────────────────────────────────────────────────────────────
   Implementation: card.zone = "video-overlay" + leave #video-wrap at
   full-bleed (no tween needed if it starts full-bleed). The "card" is
@@ -15,10 +16,10 @@
       "contentHints": { "kicker": "...", "title": "...", "detail": "..." }
     }
 
-  GSAP target for #video-wrap (full-bleed — usually unchanged):
-    tl.to('#video-wrap',
+  Anime.js target for #video-wrap (full-bleed, usually unchanged):
+    tl.add('#video-wrap',
       { left: 0, top: 0, width: COMPOSITION_W, height: COMPOSITION_H,
-        duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+        duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
     // Use defaults: landscape 1920×1080 / portrait 1080×1920 / 4:5 1080×1350
 
   Recommended card-host inline style (since zone="video-overlay" gives
@@ -62,7 +63,7 @@
     }
 
   Notes
-  - Card root MUST be transparent or use rgba/glass background — see
+  - Card root MUST be transparent or use rgba/glass background - see
     Pattern A in SKILL.md "Transparent card backgrounds".
   - Glass without legibility gradient = white-on-white catastrophe over
     bright video. Always pair them.
@@ -70,7 +71,6 @@
     rgba(15,16,22,.78) over rgba(255,255,255,.10) when source has bright
     daylight / interior shots).
 -->
-<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -153,12 +153,18 @@
         letter-spacing: 0.14em;
       }
     </style>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div class="stage">
+    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
       <div class="video-region"><span class="v-label">VIDEO · 1920×1080 (full-bleed)</span></div>
       <div class="gradient"></div>
       <div class="card-region"><span class="label">CARD · 660×540 glass</span></div>
     </div>
+      <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
+      hyperframesAnime.register("main", tl);
+    </script>
   </body>
 </html>

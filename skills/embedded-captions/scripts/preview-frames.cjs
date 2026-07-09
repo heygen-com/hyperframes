@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * preview-frames.cjs — APPROXIMATE final frames in seconds, without rendering.
+ * preview-frames.cjs - APPROXIMATE final frames in seconds, without rendering.
  *
  *   node preview-frames.cjs <project-dir> [t1 t2 ...]
  *
@@ -12,7 +12,7 @@
  * a multi-minute render. Writes <project>/preview/t<t>.png + a contact sheet
  * preview/sheet.png.
  *
- * Use it BEFORE rendering: eyeball placement, occlusion, washout, text-on-text —
+ * Use it BEFORE rendering: eyeball placement, occlusion, washout, text-on-text,
  * the failure classes the geometric gates can't judge. The QA checklist lives in
  * SKILL.md § Visual QA. (Video elements show poster/first-frame in the screenshot;
  * the REAL a-roll pixels come from frames_bg, so previews stay accurate.)
@@ -67,7 +67,7 @@ for (const r of HF_ROOTS) {
   }
 }
 if (!puppeteer || !sharp) {
-  console.error("[preview] need puppeteer+sharp — set HYPERFRAMES_ROOT");
+  console.error("[preview] need puppeteer+sharp - set HYPERFRAMES_ROOT");
   process.exit(0);
 }
 
@@ -75,17 +75,31 @@ async function shotAt(browser, file, W, H, t) {
   const page = await browser.newPage();
   try {
     await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
-    // Serve the page's own CDN <script src=gsap> request from the local bundle
-    // (offline-safe) instead of injecting gsap at document-start: a document-start
-    // evaluation runs while document.head is still null, and gsap's init then
-    // throws "appendChild of null" — which killed previews for theme projects.
+    await page.evaluateOnNewDocument(() => {
+      const registry = {};
+      window.__hfAnime = registry;
+      window.hyperframesAnime = {
+        register(id, instance, options) {
+          const entry = { id, instance, labels: (options && options.labels) || {} };
+          registry[id] = entry;
+          return entry;
+        },
+        get(id) {
+          return registry[id] || null;
+        },
+        entries() {
+          return Object.values(registry);
+        },
+      };
+    });
+    // Serve non-default GSAP CDN requests from the local bundle when present.
     await page.setRequestInterception(true);
     page.on("request", (req) => {
       const u = req.url();
       if (req.resourceType() === "script" && /gsap/i.test(u) && /^https?:/i.test(u)) {
         if (gsapSource)
           req.respond({ status: 200, contentType: "application/javascript", body: gsapSource });
-        else req.continue(); // no local bundle — let the CDN load (online machines)
+        else req.continue(); // no local bundle - let the CDN load (online machines)
       } else if (req.resourceType() === "media")
         req.abort(); // a-roll pixels come from frames_bg
       else req.continue();
@@ -94,7 +108,10 @@ async function shotAt(browser, file, W, H, t) {
     const t0 = Date.now();
     let tlReady = false;
     while (Date.now() - t0 < 15000) {
-      tlReady = await page.evaluate(() => !!(window.__timelines && window.__timelines.main));
+      tlReady = await page.evaluate(() => {
+        const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+        return !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main);
+      });
       if (tlReady) break;
       await new Promise((r) => setTimeout(r, 120));
     }
@@ -115,7 +132,12 @@ async function shotAt(browser, file, W, H, t) {
       if (v) v.style.display = "none"; // transparent hole for the bg frame
       document.body.style.background = "transparent";
       document.documentElement.style.background = "transparent";
-      window.__timelines.main.seek(t);
+      const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+      if (animeEntry && animeEntry.instance && typeof animeEntry.instance.seek === "function") {
+        animeEntry.instance.seek(t * 1000);
+      } else {
+        window.__timelines.main.seek(t);
+      }
       void document.body.offsetHeight;
     }, t);
     await new Promise((r) => setTimeout(r, 60));
@@ -133,7 +155,7 @@ async function main() {
   }
   const idx = path.join(project, "index.html");
   if (!fs.existsSync(idx)) {
-    console.error("[preview] no index.html — compile first");
+    console.error("[preview] no index.html - compile first");
     process.exit(1);
   }
   const railP = path.join(project, "rail.html");
@@ -160,7 +182,7 @@ async function main() {
     try {
       const plan = JSON.parse(fs.readFileSync(path.join(project, "plan.json"), "utf8"));
       // heroes get 2 samples each (entrance + hold); every OTHER group gets at least
-      // a shot at one midpoint — the old 2-per-group list truncated at 12 and silently
+      // a shot at one midpoint - the old 2-per-group list truncated at 12 and silently
       // dropped whole narration blocks from the sheet (cold-start agents missed bugs there)
       const gs = plan.groups || [];
       const heroes = gs.filter((g) => g.hero === true),

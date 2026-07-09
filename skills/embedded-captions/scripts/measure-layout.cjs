@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * measure-layout.cjs — pixel-perfect bbox measurement using headless Chromium.
+ * measure-layout.cjs - pixel-perfect bbox measurement using headless Chromium.
  *
- * Loads the compiled index.html, seeks the GSAP timeline to specified sample
+ * Loads the compiled index.html, seeks the registered timeline to specified sample
  * times, queries every .cap container + every .w word span via
  * getBoundingClientRect(), writes results to _layout.json.
  *
  * check-occlusion.cjs then reads _layout.json + frames_fg/*.png and computes
  * per-word occlusion against the actual subject silhouette (matte alpha via
- * sharp) — pixel accurate, no char_ratio guessing.
+ * sharp) - pixel accurate, no char_ratio guessing.
  *
  * Usage:
  *   node measure-layout.cjs <project-dir> [times...]
@@ -54,18 +54,14 @@ for (const root of HF_ROOTS) {
 }
 if (!puppeteer) {
   console.error(
-    "[measure] could not locate puppeteer — set HYPERFRAMES_ROOT to a built hyperframes checkout",
+    "[measure] could not locate puppeteer - set HYPERFRAMES_ROOT to a built hyperframes checkout",
   );
   process.exit(3);
 }
 
-// Resolve hyperframes' bundled GSAP. The templates load GSAP from a CDN
-// (cdn.jsdelivr.net), but in headless Chromium that request can be slow or
-// blocked — the page's inline `gsap.timeline()` then throws "gsap is not
-// defined" and the occlusion gate hard-fails. We inject this local copy on
-// every new document (before any page script runs) so window.gsap always
-// exists, and abort the CDN request so the parser never stalls on it. The
-// render path is unaffected — this is measurement-only.
+// Optional compatibility for GSAP as the supported non-default adapter. Older
+// templates load GSAP from a CDN (cdn.jsdelivr.net), but in headless Chromium
+// that request can be slow or blocked. We inject this local copy when present.
 let gsapSource = null;
 for (const root of HF_ROOTS) {
   const cands = [path.join(root, "node_modules", "gsap", "dist", "gsap.min.js")];
@@ -101,7 +97,7 @@ async function main() {
   }
   const indexPath = path.resolve(projectDir, "index.html");
   if (!fs.existsSync(indexPath)) {
-    console.error(`[measure] missing ${indexPath} — run make-composition.cjs first`);
+    console.error(`[measure] missing ${indexPath} - run make-composition.cjs first`);
     process.exit(2);
   }
 
@@ -118,7 +114,7 @@ async function main() {
     const allTimes = new Set();
     for (const g of plan.groups) {
       const dur = g.out - g.in;
-      // 4 samples per group: 15%, 40%, 65%, 90% through window — covers entry/peak/exit
+      // 4 samples per group: 15%, 40%, 65%, 90% through window - covers entry/peak/exit
       [0.15, 0.4, 0.65, 0.9].forEach((p) => allTimes.add(+(g.in + dur * p).toFixed(3)));
     }
     sampleTimes = [...allTimes].sort((a, b) => a - b);
@@ -149,9 +145,27 @@ async function main() {
     await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
     page.on("pageerror", (err) => console.error(`[browser-error] ${err.message}`));
 
-    // Inject local GSAP before any page script + abort the CDN <script> so the
-    // page never depends on network for GSAP (see resolver note above). Falls
-    // back to the page's own CDN load if no local copy was found.
+    await page.evaluateOnNewDocument(() => {
+      const registry = {};
+      window.__hfAnime = registry;
+      window.hyperframesAnime = {
+        register(id, instance, options) {
+          const entry = { id, instance, labels: (options && options.labels) || {} };
+          registry[id] = entry;
+          return entry;
+        },
+        get(id) {
+          return registry[id] || null;
+        },
+        entries() {
+          return Object.values(registry);
+        },
+      };
+    });
+
+    // Inject local GSAP before any page script + abort the CDN <script> for
+    // non-default GSAP templates. Falls back to the page's own CDN load if no
+    // local copy was found.
     if (gsapSource) {
       await page.evaluateOnNewDocument(gsapSource);
       await page.setRequestInterception(true);
@@ -163,11 +177,14 @@ async function main() {
     }
 
     await page.goto(`file://${indexPath}`, { waitUntil: "load", timeout: 15000 });
-    // GSAP is injected locally above; poll for the page's timeline registration.
+    // Poll for either anime.js first-party registration or non-default GSAP registration.
     const start = Date.now();
     let ready = false;
     while (Date.now() - start < 15000) {
-      const r = await page.evaluate(() => !!(window.__timelines && window.__timelines.main));
+      const r = await page.evaluate(() => {
+        const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+        return !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main);
+      });
       if (r) {
         ready = true;
         break;
@@ -175,7 +192,7 @@ async function main() {
       await new Promise((res) => setTimeout(res, 200));
     }
     if (!ready) {
-      console.error("[measure] GSAP timeline never registered");
+      console.error("[measure] timeline never registered");
       process.exit(4);
     }
     // Inject the skill's bundled @font-face set so headless Chromium measures the SAME
@@ -187,7 +204,7 @@ async function main() {
       if (fs.existsSync(fontsCss))
         await page.addStyleTag({ content: fs.readFileSync(fontsCss, "utf8") });
     } catch {
-      /* best-effort — fonts.css missing just reverts to old behavior */
+      /* best-effort - fonts.css missing just reverts to old behavior */
     }
     // let webfonts settle so measured glyph metrics match the render
     await page.evaluate(async () => {
@@ -200,8 +217,12 @@ async function main() {
     for (const t of sampleTimes) {
       // Seek timeline
       await page.evaluate((t) => {
-        const tl = window.__timelines.main;
-        tl.seek(t);
+        const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
+        if (animeEntry && animeEntry.instance && typeof animeEntry.instance.seek === "function") {
+          animeEntry.instance.seek(t * 1000);
+        } else {
+          window.__timelines.main.seek(t);
+        }
         // Force layout flush
         void document.body.offsetHeight;
       }, t);
@@ -277,7 +298,7 @@ async function main() {
     );
   } finally {
     // Chromium occasionally hangs on shutdown. This script runs synchronously
-    // inside check-occlusion.cjs, which the render gate blocks on — a hung close
+    // inside check-occlusion.cjs, which the render gate blocks on - a hung close
     // would wedge the whole render. Cap the close, then force-exit below.
     await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
   }

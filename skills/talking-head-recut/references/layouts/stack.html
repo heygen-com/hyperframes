@@ -1,5 +1,6 @@
+<!doctype html>
 <!--
-  Layout: stack — video on top, card below
+  Layout: stack - video on top, card below
   ─────────────────────────────────────────────────────────────────────
   Implementation: card.zone = "lower-third" + tween #video-wrap to top band.
 
@@ -13,33 +14,32 @@
       "contentHints": { "kicker": "...", "title": "...", "detail": "..." }
     }
 
-  GSAP target for #video-wrap (top band):
-    landscape (1920×1080) — video top 52%:
-      tl.to('#video-wrap',
+  Anime.js target for #video-wrap (top band):
+    landscape (1920×1080), video top 52%:
+      tl.add('#video-wrap',
         { left: 14, top: 14, width: 1892, height: 548,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
-    portrait (1080×1920) — video top 44%:
-      tl.to('#video-wrap',
+    portrait (1080×1920), video top 44%:
+      tl.add('#video-wrap',
         { left: 0, top: 0, width: 1080, height: 844,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
-    4:5 (1080×1350) — y/h × 0.703:
-      tl.to('#video-wrap',
+    4:5 (1080×1350), y/h × 0.703:
+      tl.add('#video-wrap',
         { left: 0, top: 0, width: 1080, height: 593,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
   Notes
   - Sleek vertical: gives the speaker a wider stage on top.
-  - Card below is a full-width statement — great for one big sentence
+  - Card below is a full-width statement - great for one big sentence
     or one big number.
   - The `lower-third` zone resolves to bottom 30% by default
-    (`resolveZoneBounds`); for a 48% card adjust the GSAP tween to also
+    (`resolveZoneBounds`); for a 48% card adjust the anime.js tween to also
     move card-host height, or use `zone="whiteboard-area"` + custom CSS.
-  - 14px gap between video and card looks clean — set composition bg to
+  - 14px gap between video and card looks clean - set composition bg to
     a deep color (#0a0c12) so the gap reads as a separator.
 -->
-<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -99,11 +99,17 @@
         border-radius: 4px;
       }
     </style>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div class="stage">
+    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
       <div class="region video-region"><span class="label">VIDEO · 1920×562 (top 52%)</span></div>
       <div class="region card-region"><span class="label">CARD · 1920×518 (bottom 48%)</span></div>
     </div>
+      <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
+      hyperframesAnime.register("main", tl);
+    </script>
   </body>
 </html>

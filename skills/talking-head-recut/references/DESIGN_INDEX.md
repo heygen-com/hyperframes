@@ -1,4 +1,4 @@
-# V—Take Visual Design Library
+# V-Take Visual Design Library
 
 This directory is a **reference library** for the talking-head-recut skill. Style, layout,
 and video frame are three **orthogonal** dimensions you can freely mix when
@@ -14,7 +14,7 @@ self-contained HTML fragment that follows the talking-head-recut card-HTML contr
 (scoped `<style>`, no `<script>`, no external URLs, animations only via
 `data-anim-*`).
 
-## Layouts — how video and card share the canvas
+## Layouts - how video and card share the canvas
 
 | key       | file                                         | what it does                                            | best for                                |
 | --------- | -------------------------------------------- | ------------------------------------------------------- | --------------------------------------- |
@@ -24,13 +24,13 @@ self-contained HTML fragment that follows the talking-head-recut card-HTML contr
 | `overlay` | [layouts/overlay.html](layouts/overlay.html) | video full-bleed, glass card floats on bottom           | cinematic / dramatic moments            |
 
 A layout is a **two-part recipe**: pick a `card.zone` value to put in
-`storyboard.json` AND author a GSAP tween for `#video-wrap` to its
+`storyboard.json` AND author an anime.js tween for `#video-wrap` to its
 target rect in the composition's `<script>`. Open the layout file's
-header for the recommended `zone` + the GSAP statement to paste.
-(Earlier docs referenced a `card.layout` field — that field does NOT
+header for the recommended `zone` + the anime.js statement to paste.
+(Earlier docs referenced a `card.layout` field - that field does NOT
 exist in the real schema; the strict v3 schema only has `card.zone`.)
 
-## Styles — the card's visual language
+## Styles - the card's visual language
 
 | key          | file                                             | character                                            | accent    | suggested font      |
 | ------------ | ------------------------------------------------ | ---------------------------------------------------- | --------- | ------------------- |
@@ -45,11 +45,11 @@ exist in the real schema; the strict v3 schema only has `card.zone`.)
 | `swiss`      | [styles/swiss.html](styles/swiss.html)           | white · Helvetica · strict double rules · red accent | `#e8190f` | Helvetica/Inter     |
 | `xhs`        | [styles/xhs.html](styles/xhs.html)               | cream + hot pink · chips · #hashtags · ❤️💬 row      | `#ff2e63` | sans                |
 
-Choose by content tone, not by content type — `academic` works for finance
+Choose by content tone, not by content type - `academic` works for finance
 too if the tone is reflective; `terminal` works for non-tech if the tone is
 "engineering rigor".
 
-## Video Frames — decoration around the video element
+## Video Frames - decoration around the video element
 
 | key        | file                                         | character                                                    | when to skip                                     |
 | ---------- | -------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
@@ -77,11 +77,11 @@ and the inline `<style>` it needs.
 These are starting points only. Look at the transcript, pick the tone, then
 pick the visual.
 
-## Portrait sizing — bigger type for mobile
+## Portrait sizing - bigger type for mobile
 
 Every `references/styles/*.html` is sized for a **1920×1080 landscape**
-preview. When the final composition is **portrait (1080×1920)** — the
-default for social / mobile — scale every visual size up so it reads on a
+preview. When the final composition is **portrait (1080×1920)** - the
+default for social / mobile - scale every visual size up so it reads on a
 phone held close.
 
 | token                 | landscape | **portrait** | scale |
@@ -127,10 +127,10 @@ flip the long axis: `split` becomes top/bottom, `pip` video bubble shrinks
 
 ## Constraints you must obey when copying from these references
 
-1. **No `<script>`** — animations only via `data-anim-*` attributes
-2. **No external URLs** — no Google Fonts CDN, no remote images; the
+1. **No `<script>`** - animations only via `data-anim-*` attributes
+2. **No external URLs** - no Google Fonts CDN, no remote images; the
    skill provides Caveat / LXGW WenKai TC / Inter / Virgil locally
-3. **All `<style>` rules must be prefixed with `.card[data-card-id="..."]`** —
+3. **All `<style>` rules must be prefixed with `.card[data-card-id="..."]`** -
    the hyperframes sanitizer auto-scopes them, but write them already-scoped to
    stay readable
 4. **No `on*=` inline handlers**

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * make-theme.cjs — THEME mode compiler (third compiler, beside standard/cinematic).
+ * make-theme.cjs - THEME mode compiler (third compiler, beside standard/cinematic).
  *
  * A theme DNA (themes/<name>.json) is a complete visual constitution composed
  * from two registries implemented HERE, once, for all DNAs:
@@ -31,7 +31,7 @@
  *
  * Render: scripts/render-theme.sh <project>   (render-and-composite + postfx)
  *
- * Determinism contract: paused GSAP on window.__timelines["main"], seeded PRNG
+ * Determinism contract: paused anime.js on hyperframesAnime.register("main", tl), seeded PRNG
  * only (mulberry32), set-chains / pure-f(t) keyframes, no Math.random/Date.now.
  */
 const fs = require("fs");
@@ -157,7 +157,7 @@ function fitHeroPx(text, basePx, emPerChar, maxFrac) {
   let px = basePx;
   const maxW = W * (maxFrac || 0.92);
   if (est(px) > maxW) px = Math.floor(maxW / (text.length * emPerChar));
-  // short words: allow growth toward the poster fill, capped — except in the
+  // short words: allow growth toward the poster fill, capped - except in the
   // calm register, where the DNA base size IS the ceiling (quiet briefs got a
   // 188px hero from this growth in the cold-start E2E)
   else if (est(px) < W * 0.55 && dna.register !== "calm")
@@ -208,7 +208,7 @@ function takeWord(authored) {
     if (norm(tWords[i].text) === target) {
       if (tWords[i].used)
         throw new Error(
-          `[make-theme] "${authored}" is already claimed by hero.match — embed setpieces own the hero word: leave it OUT of lines (rail↔climax hand-off)`,
+          `[make-theme] "${authored}" is already claimed by hero.match - embed setpieces own the hero word: leave it OUT of lines (rail↔climax hand-off)`,
         );
       tWords[i].used = true;
       cursor = i + 1;
@@ -216,7 +216,7 @@ function takeWord(authored) {
     }
   }
   throw new Error(
-    `[make-theme] cannot match authored word "${authored}" near transcript position ${cursor} ("${(tWords[cursor] || {}).text}") — lines must follow transcript order verbatim`,
+    `[make-theme] cannot match authored word "${authored}" near transcript position ${cursor} ("${(tWords[cursor] || {}).text}") - lines must follow transcript order verbatim`,
   );
 }
 
@@ -237,7 +237,7 @@ function findPhrase(phrase) {
 }
 const heroInline = !!dna.hero.inline;
 // theme.hero is OPTIONAL: a heroless theme runs pure-body (the right authoring
-// for quiet briefs — "安静/每个词都要读到" wants no setpiece at all).
+// for quiet briefs - "安静/每个词都要读到" wants no setpiece at all).
 const HEROLESS = !theme.hero;
 if (HEROLESS) theme.hero = {};
 const hero = theme.hero.match ? findPhrase(theme.hero.match) : null;
@@ -250,7 +250,7 @@ const heroDisplay = theme.hero.text || theme.hero.match; // case preserved for d
 
 // mark hero transcript words as consumed when the setpiece is EMBED (not inline):
 // the rail/panel/poem must NOT contain them (rail↔climax hand-off), except panel
-// with redact linkage (panel shows them redacted — author includes them).
+// with redact linkage (panel shows them redacted - author includes them).
 const redactLinkage = (dna.linkages || []).includes("redact-until-hero");
 if (!heroInline && !HEROLESS && !redactLinkage) {
   for (let k = 0; k < hero.len; k++) tWords[hero.idx + k].used = true;
@@ -289,7 +289,7 @@ LINES.forEach((L, i) => {
 });
 const LASTWORD = LINES[LINES.length - 1].words[LINES[LINES.length - 1].words.length - 1];
 
-// hero window: onset → bounded hold (maxHold; 0 = to clip end — neonsign's
+// hero window: onset → bounded hold (maxHold; 0 = to clip end - neonsign's
 // lit-sign design). Unbounded default holds turned short clips into wallpaper.
 const heroIn = hero ? hero.start : -999;
 const MAXHOLD = dna.hero.maxHold ?? 3.2;
@@ -340,7 +340,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (n * tw + (n - 1) * gap + 40) / 2;
   } else if (dna.hero.setpiece === "ledwipe") {
     // LED transit panel: the word lights inside a fixed departure-board panel
-    // (demo 1080×232 @ 120px VT323 ≈ 0.50em/char incl tracking) — width-fit
+    // (demo 1080×232 @ 120px VT323 ≈ 0.50em/char incl tracking) - width-fit
     // shrinks the type, never the panel; panel height derives from the type
     const panelW = Math.min(dna.hero.params.panelW || 1080, W - 120);
     const units = heroText.length * 0.5;
@@ -369,7 +369,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (heroText.length * 0.615 * HG.fontPx + (92 * HG.fontPx) / 120) / 2;
   } else if (dna.hero.setpiece === "lasercage") {
     // beam-cage word (demo: Audiowide 100px): exact em width from the measured
-    // char table — the converging beams, cage lines and glow stack all derive
+    // char table - the converging beams, cage lines and glow stack all derive
     // from the word rect, so the fit must not guess
     const em1 = wordPx(heroText, dna.fonts.hero, 1, 0.02) || heroText.length * 0.8;
     HG.fontPx = Math.min(dna.hero.fontPx || 100, Math.floor((W * 0.9) / em1));
@@ -377,7 +377,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (em1 * HG.fontPx) / 2;
   } else if (dna.hero.setpiece === "boltstrike") {
     // storm slam (demo: Anton 145px REMARKABLE): exact em width from the
-    // measured char table — the bolt offsets, word scrim and ozone glow all
+    // measured char table - the bolt offsets, word scrim and ozone glow all
     // derive from the word rect (demo rect: 720×145 → halfW 360)
     const em1 = wordPx(heroText, dna.fonts.hero, 1, 0.012) || heroText.length * 0.56;
     HG.fontPx = Math.min(dna.hero.fontPx || 145, Math.floor((W * 0.92) / em1));
@@ -385,7 +385,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (em1 * HG.fontPx) / 2;
   } else if (dna.hero.setpiece === "holoboot") {
     // volumetric projection word (demo: Orbitron 700 118px, letter-spacing 0):
-    // exact em width from the measured char table — the projection cone, seed
+    // exact em width from the measured char table - the projection cone, seed
     // beam, emitter dot and scrim all derive from the word rect
     const em1 = wordPx(heroText, dna.fonts.hero, 1, 0) || heroText.length * 0.8;
     HG.fontPx = Math.min(dna.hero.fontPx || 118, Math.floor((W * 0.9) / em1));
@@ -393,7 +393,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (em1 * HG.fontPx) / 2;
   } else if (dna.hero.setpiece === "biobloom") {
     // abyss bloom word (demo: Fredoka 700 120px RECOVER, 0.01em tracking):
-    // exact em width from the measured char table — the tendril anchors,
+    // exact em width from the measured char table - the tendril anchors,
     // pocket scrim, pre-glow and spill all derive from the word rect
     const em1 = wordPx(heroText, dna.fonts.hero, 1, 0.01) || heroText.length * 0.66;
     HG.fontPx = Math.min(dna.hero.fontPx || 120, Math.floor((W * 0.9) / em1));
@@ -451,8 +451,8 @@ if (!heroInline && !HEROLESS) {
   } else if (dna.hero.setpiece === "chalkwrite") {
     // hand-written chalk word (demo: HersheyScript "remarkable" ≈860px ink,
     // ink 130 tall, ink CENTER on HG.y): the writing starts at the board's
-    // LEFT margin — a hand writes from the left, never centered on the
-    // subject — so x derives from the body strip, not the hero anchor; the
+    // LEFT margin - a hand writes from the left, never centered on the
+    // subject - so x derives from the body strip, not the hero anchor; the
     // stroke path is parsed at compile time inside the setpiece and the
     // board rect / underlines / fg dust clap all register on the measured
     // ink box. 130 ≈ the chalk ink height (band top → ink center).
@@ -466,7 +466,7 @@ if (!heroInline && !HEROLESS) {
   } else if (dna.hero.setpiece === "spraytag") {
     // spray-painted tag (demo: HersheyScript "recover" w=1000 → ink ≈1010×120,
     // ink center (646,252)): the tag CENTERS on the hero anchor in the sky
-    // band — crossing the subject silhouette is the point; the stroke path is
+    // band - crossing the subject silhouette is the point; the stroke path is
     // parsed at compile time inside the setpiece, which registers the
     // pen-finish point on HG for the fg paint splat (fx.paintsplat). 120 ≈ the
     // tag's ink height (band top → ink center); halfW adds the halo overspray.
@@ -477,7 +477,7 @@ if (!heroInline && !HEROLESS) {
   } else if (dna.hero.setpiece === "brushwrite") {
     // sumi-e gesture (demo: HersheyScript "remarkable" w=760 → ink ≈760×115,
     // ink center (863,202)): the gesture CENTERS on the hero anchor in the sky
-    // band — crossing the subject silhouette is the point; the stroke path is
+    // band - crossing the subject silhouette is the point; the stroke path is
     // parsed at compile time inside the setpiece, which registers the
     // pen-START point on HG for the fg ink flecks (fx.brushflecks). 120 ≈ the
     // gesture's ink height (band top → ink center); halfW adds spatter margin.
@@ -488,7 +488,7 @@ if (!heroInline && !HEROLESS) {
   } else if (dna.hero.setpiece === "inkbloom") {
     // sumi drop in still water (demo: Shippori Mincho 700 132px "pixel size.",
     // 0.02em tracking, case preserved): exact em width from the measured char
-    // table — the blob stack, ripple rings and wisp anchors all derive from
+    // table - the blob stack, ripple rings and wisp anchors all derive from
     // the word rect (kx/ky scale units inside the setpiece)
     const em1 = wordPx(heroDisplay, dna.fonts.hero, 1, 0.02) || heroDisplay.length * 0.5;
     HG.fontPx = Math.min(dna.hero.fontPx || 132, Math.floor((W * 0.9) / em1));
@@ -512,7 +512,7 @@ if (!heroInline && !HEROLESS) {
     HG.halfW = (em1 * HG.fontPx + n * 6) / 2;
   } else if (dna.hero.setpiece === "coverword") {
     // metric-exact fit from the replica font's advance widths (logo case:
-    // first letter upper, rest lower — the official mark's own arrangement)
+    // first letter upper, rest lower - the official mark's own arrangement)
     const CPM = JSON.parse(
       fs.readFileSync(path.join(SKILL, "assets/brand/cyberpunk-widths.json"), "utf8"),
     );
@@ -520,7 +520,7 @@ if (!heroInline && !HEROLESS) {
     const bad = [...disp].filter((c) => !(c in CPM.widths));
     if (bad.length)
       throw new Error(
-        `[make-theme] coverword: no replica glyph for ${JSON.stringify(bad)} in "${heroText}" — pick a hero without digits/special chars or use hero.text`,
+        `[make-theme] coverword: no replica glyph for ${JSON.stringify(bad)} in "${heroText}" - pick a hero without digits/special chars or use hero.text`,
       );
     const em = [...disp].reduce((a, c) => a + CPM.widths[c], 0) + 0.01 * (disp.length - 1);
     // glyph ink is small inside the em box (x-height ~0.3em) -> size by INK:
@@ -535,7 +535,7 @@ if (!heroInline && !HEROLESS) {
     HG.coverDisp = disp;
     HG.coverInk = { inkTop, inkBot, inkH };
   }
-  // keep the word on frame (when wider than the frame, CENTER it — an inverted
+  // keep the word on frame (when wider than the frame, CENTER it - an inverted
   // Math.max/Math.min clamp would silently pin to the lower bound off-center)
   if (HG.halfW)
     HG.x =
@@ -546,7 +546,7 @@ if (!heroInline && !HEROLESS) {
 // ---------- shared emit helpers ----------
 const MULBERRY = `function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}}`;
 
-// bundled @font-face subset for this DNA's families — the renderer only
+// bundled @font-face subset for this DNA's families - the renderer only
 // auto-supplies its canonical fonts; anything else silently falls back unless
 // the page ships a local @font-face (same determinism contract as Standard).
 const FONT_FACES = (() => {
@@ -583,16 +583,76 @@ function fontCssFor(pageParts) {
   }
   return out.join("\n");
 }
-const GSAP = `<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>`;
+const ANIME = `<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>`;
+const ANIME_HELPERS = `  const ms = (seconds) => Math.max(0, Math.round((Number(seconds) || 0) * 1000));
+  const EASES = {
+    "none": "linear",
+    "power1.in": "inQuad",
+    "power1.out": "outQuad",
+    "power1.inOut": "inOutQuad",
+    "power2.in": "inCubic",
+    "power2.out": "outCubic",
+    "power2.inOut": "inOutCubic",
+    "power3.in": "inQuart",
+    "power3.out": "outQuart",
+    "power3.inOut": "inOutQuart",
+    "power4.in": "inQuint",
+    "power4.out": "outQuint",
+    "power4.inOut": "inOutQuint",
+    "expo.in": "inExpo",
+    "outExpo": "outExpo",
+    "expo.inOut": "inOutExpo",
+    "sine.in": "inSine",
+    "outSine": "outSine",
+    "inOutSine": "inOutSine",
+    "back.in": "inBack(1.70158)",
+    "back.out": "outBack(1.70158)",
+    "back.inOut": "inOutBack(1.70158)",
+    "elastic.out": "outElastic(1, .3)",
+  };
+  function animeEase(ease) {
+    if (!ease) return ease;
+    if (EASES[ease]) return EASES[ease];
+    const back = /^back\\.(in|out|inOut)\\(([^)]+)\\)$/.exec(ease);
+    if (back) return back[1] + "Back(" + back[2] + ")";
+    const elastic = /^elastic\\.(in|out|inOut)\\(([^,]+),\\s*([^)]+)\\)$/.exec(ease);
+    if (elastic) return elastic[1] + "Elastic(" + elastic[2] + ", " + elastic[3] + ")";
+    return ease;
+  }
+  function animeParams(params) {
+    const next = Object.assign({}, params);
+    if (next.duration != null) next.duration = ms(next.duration);
+    if (next.ease != null) next.ease = animeEase(next.ease);
+    if (next.autoAlpha != null) {
+      next.opacity = next.autoAlpha;
+      next.visibility = next.autoAlpha <= 0 ? "hidden" : "visible";
+      delete next.autoAlpha;
+    }
+    delete next.overwrite;
+    return next;
+  }
+  function setNow(target, params) {
+    tl.add(target, animeParams(Object.assign({}, params, { duration: 0 })), 0);
+  }
+  function setAt(target, params, at) {
+    tl.add(target, animeParams(Object.assign({}, params, { duration: 0 })), ms(at));
+  }
+  function addTo(target, params, at) {
+    tl.add(target, animeParams(params), ms(at));
+  }
+  function addFromTo(target, fromParams, toParams, at) {
+    setAt(target, fromParams, at);
+    addTo(target, toParams, at);
+  }`;
 
 function bgSkeleton(stageHtml, css, js) {
   const FONT_CSS = fontCssFor(stageHtml + css);
   return `<!doctype html>
-<!-- generated by make-theme.cjs — theme DNA "${dna.name}" (bg layer) -->
+<!-- generated by make-theme.cjs, theme DNA "${dna.name}" (bg layer) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
-${GSAP}
+${ANIME}
 <style>
 ${FONT_CSS}
   html, body { margin:0; padding:0; width:${W}px; height:${H}px; overflow:hidden; background:#000; }
@@ -614,13 +674,13 @@ ${stageHtml}
            data-track-index="3" data-volume="1"></audio>
   </div>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
+${ANIME_HELPERS}
   const F = ${F};
   ${MULBERRY}
 ${js}
   tl.seek(0);
-  window.__timelines["main"] = tl;
+  hyperframesAnime.register("main", tl);
 </script>
 </body>
 </html>`;
@@ -629,11 +689,11 @@ ${js}
 function fgSkeleton(stageHtml, css, js) {
   const FONT_CSS = fontCssFor(stageHtml + css);
   return `<!doctype html>
-<!-- generated by make-theme.cjs — theme DNA "${dna.name}" (fg alpha layer) -->
+<!-- generated by make-theme.cjs, theme DNA "${dna.name}" (fg alpha layer) -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
-${GSAP}
+${ANIME}
 <style>
 ${FONT_CSS}
   html, body { margin:0; padding:0; width:${W}px; height:${H}px; overflow:hidden; background:transparent; }
@@ -650,13 +710,13 @@ ${stageHtml}
     </div>
   </div>
 <script>
-  window.__timelines = window.__timelines || {};
-  const tl = gsap.timeline({ paused: true });
+  const tl = anime.createTimeline({ autoplay: false });
+${ANIME_HELPERS}
   const F = ${F};
   ${MULBERRY}
 ${js}
   tl.seek(0);
-  window.__timelines["main"] = tl;
+  hyperframesAnime.register("main", tl);
 </script>
 </body>
 </html>`;
@@ -666,7 +726,7 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 const J = JSON.stringify;
 
 /* =====================================================================
- * BODY PARADIGMS — each returns { css, html, js } for the fg (or bg) file
+ * BODY PARADIGMS - each returns { css, html, js } for the fg (or bg) file
  * ===================================================================== */
 
 function paradigmRail() {
@@ -711,8 +771,8 @@ function paradigmRail() {
       s.className = "w" + (minor ? (${J(stamp)} || ${J(boot)} ? " minor" : " em") : "");
       s.textContent = txt; line.appendChild(s);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
-    tl.set(line, { opacity: 1 }, L.in);
+    setNow(line, { xPercent: -50, yPercent: -100 });
+    setAt(line, { opacity: 1 }, L.in);
     const XO = L.out - ${b.exit === "drop" ? "0.18" : "0.17"};   // exit start (single source)
     let lastB = -1;                                              // line-y bounce ownership guard
     L.words.forEach(([txt, st, minor], wi) => {
@@ -720,54 +780,54 @@ function paradigmRail() {
 ${
   boot
     ? `      // BOOTFLICK: corrupted-cyan boot 1-2f -> settles to UI color
-      tl.set(el, { opacity: 0.6, color: "#00F0FF", x: 2 }, st);
-      if (rrnd() < 0.45) { tl.set(el, { opacity: 0.15, x: -2 }, st + F); tl.set(el, { opacity: 1, color: BONE, x: 0 }, st + 2 * F); }
-      else { tl.set(el, { opacity: 1, color: BONE, x: 0 }, st + F); }
+      setAt(el, { opacity: 0.6, color: "#00F0FF", x: 2 }, st);
+      if (rrnd() < 0.45) { setAt(el, { opacity: 0.15, x: -2 }, st + F); setAt(el, { opacity: 1, color: BONE, x: 0 }, st + 2 * F); }
+      else { setAt(el, { opacity: 1, color: BONE, x: 0 }, st + F); }
       if (minor) {
-        tl.fromTo(el, { scale: 1.18 }, { scale: 1, duration: 0.25, ease: "power2.out" }, st + F);
-        tl.set(el, { textShadow: "2px 0 0 #00F0FF, -2px 0 0 #FF003C, 0 2px 10px rgba(0,0,0,0.75)" }, st + 2 * F);
+        addFromTo(el, { scale: 1.18 }, { scale: 1, duration: 0.25, ease: "outCubic" }, st + F);
+        setAt(el, { textShadow: "2px 0 0 #00F0FF, -2px 0 0 #FF003C, 0 2px 10px rgba(0,0,0,0.75)" }, st + 2 * F);
       }`
     : fade
-      ? `      // FADE: 2-frame fade-up — the word simply reads (anchor register)
-      tl.fromTo(el, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.12, ease: "power2.out" }, st);
-      if (minor) tl.fromTo(el, { scale: 1.07 }, { scale: 1, duration: 0.3, ease: "power2.out" }, st);`
+      ? `      // FADE: 2-frame fade-up - the word simply reads (anchor register)
+      addFromTo(el, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.12, ease: "outCubic" }, st);
+      if (minor) addFromTo(el, { scale: 1.07 }, { scale: 1, duration: 0.3, ease: "outCubic" }, st);`
       : stamp
         ? `      // STAMP: 1f appear oversized+hot, crush, recoil, cool to bone
-      tl.set(el, { opacity: 1, scale: minor ? 2.1 : 1.28, color: HOT, transformOrigin: "50% 80%" }, st);
-      tl.to(el, { scale: 1, duration: 0.11, ease: "power3.in" }, st + 0.01);
-      tl.set(el, { scaleX: 1.05, scaleY: 0.95 }, st + 0.12);
-      tl.to(el, { scaleX: 1, scaleY: 1, duration: 0.22, ease: "elastic.out(1, 0.45)" }, st + 0.16);
-      tl.to(el, { color: minor ? ${J(dna.palette.minorCool || "#F2CFA0")} : BONE, duration: minor ? 0.6 : 0.32, ease: "power1.in" }, st + 0.15);
+      setAt(el, { opacity: 1, scale: minor ? 2.1 : 1.28, color: HOT, transformOrigin: "50% 80%" }, st);
+      addTo(el, { scale: 1, duration: 0.11, ease: "inQuart" }, st + 0.01);
+      setAt(el, { scaleX: 1.05, scaleY: 0.95 }, st + 0.12);
+      addTo(el, { scaleX: 1, scaleY: 1, duration: 0.22, ease: "outElastic(1, 0.45)" }, st + 0.16);
+      addTo(el, { color: minor ? ${J(dna.palette.minorCool || "#F2CFA0")} : BONE, duration: minor ? 0.6 : 0.32, ease: "inQuad" }, st + 0.15);
       if (st + 0.02 >= lastB && st + 0.24 <= XO) {   // one bounce owner at a time; none during exit
-        tl.set(line, { y: minor ? 4 : 2 }, st + 0.02);
-        tl.to(line, { y: 0, duration: 0.18, ease: "power2.out" }, st + 0.06);
+        setAt(line, { y: minor ? 4 : 2 }, st + 0.02);
+        addTo(line, { y: 0, duration: 0.18, ease: "outCubic" }, st + 0.06);
         lastB = st + 0.24;
       }`
         : `      // FLICK: tube lights with seeded double-flicks
-      tl.set(el, { opacity: 0.35 }, st);
-      if (rrnd() < 0.35) { tl.set(el, { opacity: 0.08 }, st + F); tl.set(el, { opacity: 1 }, st + 2 * F); }
-      else { tl.set(el, { opacity: 1 }, st + F); }
-      if (minor) tl.fromTo(el, { scale: ${dna.body.emScale || 1.18} }, { scale: 1, duration: 0.3, ease: "power2.out" }, st + F);`
+      setAt(el, { opacity: 0.35 }, st);
+      if (rrnd() < 0.35) { setAt(el, { opacity: 0.08 }, st + F); setAt(el, { opacity: 1 }, st + 2 * F); }
+      else { setAt(el, { opacity: 1 }, st + F); }
+      if (minor) addFromTo(el, { scale: ${dna.body.emScale || 1.18} }, { scale: 1, duration: 0.3, ease: "outCubic" }, st + F);`
 }
     });
 ${
   b.exit === "drop"
     ? `    // DROP exit (completes before the next line stamps)
-    tl.to(line, { y: 34, opacity: 0, duration: 0.16, ease: "power2.in" }, XO);
-    tl.set(line, { display: "none" }, XO + 0.18);`
+    addTo(line, { y: 34, opacity: 0, duration: 0.16, ease: "inCubic" }, XO);
+    setAt(line, { display: "none" }, XO + 0.18);`
     : b.exit === "fade"
       ? `    // FADE exit (quiet settle-down)
-    tl.to(line, { opacity: 0, y: 6, duration: 0.15, ease: "power1.in" }, XO);
-    tl.set(line, { display: "none" }, XO + 0.17);`
+    addTo(line, { opacity: 0, y: 6, duration: 0.15, ease: "inQuad" }, XO);
+    setAt(line, { display: "none" }, XO + 0.17);`
       : `    // POWERCUT exit (completes before the next line)
-    tl.set(line, { opacity: 0.5 }, XO); tl.set(line, { opacity: 0.12 }, XO + F);
-    tl.set(line, { opacity: 0 }, XO + 3 * F); tl.set(line, { display: "none" }, XO + 4 * F);`
+    setAt(line, { opacity: 0.5 }, XO); setAt(line, { opacity: 0.12 }, XO + F);
+    setAt(line, { opacity: 0 }, XO + 3 * F); setAt(line, { display: "none" }, XO + 4 * F);`
 }
   });
 ${
   b.rule
-    ? `  tl.fromTo("#rrule", { width: 0, opacity: 0 }, { width: ${b.rule.width}, opacity: 0.5, duration: 0.4, ease: "power2.out" }, 0.25);
-  tl.to("#rrule", { opacity: 0, duration: 0.3 }, ${(DUR - 0.2).toFixed(2)});`
+    ? `  addFromTo("#rrule", { width: 0, opacity: 0 }, { width: ${b.rule.width}, opacity: 0.5, duration: 0.4, ease: "outCubic" }, 0.25);
+  addTo("#rrule", { opacity: 0, duration: 0.3 }, ${(DUR - 0.2).toFixed(2)});`
     : ""
 }
 ${
@@ -775,15 +835,15 @@ ${
     ? `  // rail yields while the apex lands (furniture never contests the hero).
   // Overlap guards: dim starts after the line is IN, never runs into the exit;
   // restore is emitted only with clear runway before the exit (else the line
-  // simply exits dimmed — never two owners of one opacity).
+  // simply exits dimmed - never two owners of one opacity).
   RAIL.forEach((L) => {
     if (L.in < ${heroIn.toFixed(3)} + 0.9 && L.out > ${heroIn.toFixed(3)} - 0.3) {
       const XO2 = L.out - ${b.exit === "drop" ? "0.18" : "0.17"};
       const dimT = Math.max(${(heroIn - (b.yield.pre || 0.2)).toFixed(3)}, L.in + 0.05);
       if (XO2 > dimT + 0.25) {
-        tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.2 }, dimT);
+        addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.2 }, dimT);
         const resT = ${(heroIn + (b.yield.post || 0.9)).toFixed(3)};
-        if (resT + 0.3 < XO2) tl.to("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
+        if (resT + 0.3 < XO2) addTo("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
       }
     }
   });`
@@ -837,45 +897,45 @@ ${lineData.map((L) => `        <div class="ln" id="${L.id}"></div>`).join("\n")}
       </div>`;
   const js = `
   // ---- body paradigm: PANEL (typed console log, accumulate) ----
-  tl.fromTo("#panel", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.3, ease: "power2.out" }, 0.05);
+  addFromTo("#panel", { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.3, ease: "outCubic" }, 0.05);
 ${
   b.yield
-    ? `  tl.to("#panel", { opacity: ${b.yield.dim}, duration: 0.25, ease: "power1.in" }, ${(heroIn - 0.08).toFixed(3)});
-  tl.to("#panel", { opacity: 1, duration: 0.3, ease: "power1.out" }, ${(lockT + 0.15).toFixed(3)});`
+    ? `  addTo("#panel", { opacity: ${b.yield.dim}, duration: 0.25, ease: "inQuad" }, ${(heroIn - 0.08).toFixed(3)});
+  addTo("#panel", { opacity: 1, duration: 0.3, ease: "outQuad" }, ${(lockT + 0.15).toFixed(3)});`
     : ""
 }
   const LOG = ${J(lineData)};
   const MAXVIS = ${maxVis}, LINEH = ${lineH};
   LOG.forEach((L, li) => {
     if (li >= MAXVIS) {  // terminal scroll: older rows slide up out of the clip
-      tl.to("#logwrap", { y: -(li - MAXVIS + 1) * LINEH, duration: 0.28, ease: "power2.out" },
+      addTo("#logwrap", { y: -(li - MAXVIS + 1) * LINEH, duration: 0.28, ease: "outCubic" },
             L.words[0][1] - 0.10);
     }
     const line = document.getElementById(L.id);
     const p = document.createElement("span"); p.className = "pr"; p.textContent = "$";
     line.appendChild(p);
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.03);
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.03);
     L.words.forEach(([txt, st, redUntil]) => {
       const wrap = document.createElement("span"); wrap.className = "w";
       const inner = document.createElement("span");
       inner.textContent = redUntil ? "█".repeat(Math.max(3, txt.length - 1)) : txt;
       wrap.appendChild(inner); line.appendChild(wrap);
-      tl.fromTo(wrap, { width: 0 }, { width: "auto", duration: 0.12,
+      addFromTo(wrap, { width: 0 }, { width: "auto", duration: 0.12,
                 ease: "steps(" + Math.max(2, txt.length) + ")" }, st);
       if (redUntil) {
         const real = document.createElement("span");
         real.textContent = txt; real.style.display = "none"; real.className = "red";
         wrap.appendChild(real);
-        tl.set(inner, { display: "none" }, redUntil);
-        tl.set(real, { display: "inline" }, redUntil);
+        setAt(inner, { display: "none" }, redUntil);
+        setAt(real, { display: "inline" }, redUntil);
       }
     });
 ${
   b.caret
     ? `    const c = document.createElement("span"); c.className = "caret"; line.appendChild(c);
     const lastEnd = L.words[L.words.length - 1][1] + 0.25;
-    for (let bk = 0; bk < 4; bk++) tl.set(c, { opacity: bk % 2 === 0 ? 1 : 0 }, lastEnd + bk * 0.22);
-    tl.set(c, { opacity: 0 }, lastEnd + 0.9);`
+    for (let bk = 0; bk < 4; bk++) setAt(c, { opacity: bk % 2 === 0 ? 1 : 0 }, lastEnd + bk * 0.22);
+    setAt(c, { opacity: 0 }, lastEnd + 0.9);`
     : ""
 }
   });
@@ -884,9 +944,9 @@ ${
     ? `  // the feed corrupts on the final word
   const NZ = ${(LASTWORD.start + 0.04).toFixed(3)};
   [[3,0],[-4,1],[3,2],[-2,3],[0,4]].forEach(([dx, k]) => {
-    tl.set("#panel", { x: dx, filter: dx ? "hue-rotate(" + dx * 8 + "deg)" : "none" }, NZ + k * F);
+    setAt("#panel", { x: dx, filter: dx ? "hue-rotate(" + dx * 8 + "deg)" : "none" }, NZ + k * F);
   });
-  tl.set("#panel", { x: 0, filter: "none" }, NZ + 5 * F);`
+  setAt("#panel", { x: 0, filter: "none" }, NZ + 5 * F);`
     : ""
 }`;
   return { css, html, js };
@@ -905,7 +965,7 @@ function paradigmPoem() {
   });
   if (stanzas.some((s) => s.length > b.stanzaTops.length))
     console.warn(
-      "[make-theme] poem stanza exceeds available slots — extra lines share the last slot",
+      "[make-theme] poem stanza exceeds available slots - extra lines share the last slot",
     );
   const stanzaData = stanzas.map((s, si) =>
     s.map((L, li) => ({
@@ -951,8 +1011,8 @@ function paradigmPoem() {
   const stage = document.getElementById("stage");
 ${
   b.scrim
-    ? `  tl.fromTo("#pscrim", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 0.15);
-  tl.to("#pscrim", { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(LASTWORD.start + 0.15).toFixed(3)});`
+    ? `  addFromTo("#pscrim", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "outQuad" }, 0.15);
+  addTo("#pscrim", { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(LASTWORD.start + 0.15).toFixed(3)});`
     : ""
 }
   const STANZAS = ${J(stanzaData)};
@@ -971,9 +1031,9 @@ ${
         const spread = cls === "big" ? ${dna.hero.params.spread || 150} : 46;
         letters.forEach((l, li) => {
           const sx = (prnd() - 0.5) * 2 * spread, sy = (prnd() - 0.5) * 2 * spread * 0.7;
-          tl.fromTo(l, { x: sx, y: sy, opacity: 0, filter: "blur(6px)" },
+          addFromTo(l, { x: sx, y: sy, opacity: 0, filter: "blur(6px)" },
             { x: 0, y: 0, opacity: 1, filter: "blur(0px)",
-              duration: cls === "big" ? 0.7 : 0.5, ease: "power2.out" },
+              duration: cls === "big" ? 0.7 : 0.5, ease: "outCubic" },
             st - 0.04 + li * (cls === "big" ? 0.03 : 0.016));
           if (si === ${lastStanzaIdx}) lastLetters.push(l);
         });
@@ -986,14 +1046,14 @@ ${
             const s = 2 + Math.round(prnd() * 3);
             const tx = ${colLeft} + 90 + prnd() * 240, ty = lt - 20 + prnd() * 70;
             const fx = tx + (prnd() - 0.5) * 560, fy = ty + (prnd() - 0.5) * 380;
-            gsap.set(p, { width: s, height: s, left: fx, top: fy });
-            tl.to(p, { keyframes: { x: [0, (tx - fx) * 0.6, tx - fx], y: [0, (ty - fy) * 0.6, ty - fy],
+            setNow(p, { width: s, height: s, left: fx, top: fy });
+            addTo(p, { keyframes: { x: [0, (tx - fx) * 0.6, tx - fx], y: [0, (ty - fy) * 0.6, ty - fy],
                                     opacity: [0, 0.95, 0] },
-                       duration: 0.5 + prnd() * 0.2, ease: "power2.in" }, st - 0.05 + prnd() * 0.3);
+                       duration: 0.5 + prnd() * 0.2, ease: "inCubic" }, st - 0.05 + prnd() * 0.3);
           }
-          tl.fromTo(letters, { textShadow: "0 0 30px rgba(255,244,214,0.9), 0 2px 12px rgba(0,0,0,0.5)" },
+          addFromTo(letters, { textShadow: "0 0 30px rgba(255,244,214,0.9), 0 2px 12px rgba(0,0,0,0.5)" },
             { textShadow: "0 0 18px rgba(255,244,214,0.55), 0 2px 12px rgba(0,0,0,0.5)",
-              duration: 0.8, ease: "power1.out" }, st + 0.55);
+              duration: 0.8, ease: "outQuad" }, st + 0.55);
         }
       });
     });
@@ -1001,9 +1061,9 @@ ${
     if (si < STANZAS.length - 1) {
       const nextIn = STANZAS[si + 1][0].words[0][1];
       stanza.forEach((L, k) => {
-        tl.to("#" + L.id + " .l", { y: -10, opacity: 0, filter: "blur(4px)",
-          duration: 0.5, ease: "power1.in", stagger: 0.008 }, nextIn - 0.62 + k * 0.12);
-        tl.set("#" + L.id, { display: "none" }, nextIn + 0.1);
+        addTo("#" + L.id + " .l", { y: -10, opacity: 0, filter: "blur(4px)",
+          duration: 0.5, ease: "inQuad", stagger: 0.008 }, nextIn - 0.62 + k * 0.12);
+        setAt("#" + L.id, { display: "none" }, nextIn + 0.1);
       });
     }
   });
@@ -1015,8 +1075,8 @@ ${
   const DDUR = ${Math.min(0.42, Math.max(0.24, DUR - Math.min(LASTWORD.start + 0.06, DUR - 0.58) - 0.14)).toFixed(2)};
   lastLetters.forEach((l) => {
     const dx = (prnd() - 0.5) * 260, dy = (prnd() - 0.5) * 200 - 40;
-    tl.to(l, { x: dx, y: dy, opacity: 0, filter: "blur(7px)",
-               duration: DDUR, ease: "power2.in" }, NZ + prnd() * 0.05);
+    addTo(l, { x: dx, y: dy, opacity: 0, filter: "blur(7px)",
+               duration: DDUR, ease: "inCubic" }, NZ + prnd() * 0.05);
   });`
     : ""
 }`;
@@ -1071,7 +1131,7 @@ function paradigmTakeover() {
   // ---- body paradigm: TAKEOVER (hard-cut full-frame cards) + colorflip apex ----
   const stage = document.getElementById("stage");
   const ANCH = ${J(b.anchors)};
-  tl.fromTo("#dim", { opacity: 0 }, { opacity: ${b.baseDim}, duration: 0.25, ease: "power2.in" }, 0.05);
+  addFromTo("#dim", { opacity: 0 }, { opacity: ${b.baseDim}, duration: 0.25, ease: "inCubic" }, 0.05);
   const CARDS = ${J(cards)};
   CARDS.forEach((c, ci) => {
     const el = document.createElement("div");
@@ -1079,39 +1139,39 @@ function paradigmTakeover() {
     el.textContent = c.txt; el.style.fontSize = c.px + "px";
     stage.appendChild(el);
     const [ax, ay] = ANCH[ci % ANCH.length];
-    gsap.set(el, { left: ax, top: ay, xPercent: -50, yPercent: -50,
+    setNow(el, { left: ax, top: ay, xPercent: -50, yPercent: -50,
                    rotation: (ci % 2 === 0 ? 1 : -1) * (0.8 + (ci % 3) * 0.7) });
     if (c.hero) {
       // SETPIECE colorflip: crush-in, squash, settle; plate dim deepens
-      tl.set("#dim", { opacity: ${dna.hero.params.dimKick} }, c.in);
-      tl.to("#dim", { opacity: ${b.baseDim}, duration: 0.5, ease: "power2.out" }, c.in + 0.12);
-      tl.set(el, { opacity: 1, scale: ${dna.hero.params.crushFrom}, filter: "blur(10px) brightness(2.6)" }, c.in - 0.04);
-      tl.to(el, { scale: 1, filter: "blur(0px) brightness(1)", duration: 0.11, ease: "power4.in" }, c.in - 0.04);
-      tl.set(el, { scaleX: 1.10, scaleY: 0.92 }, c.in + 0.07);
-      tl.to(el, { scaleX: 1, scaleY: 1, duration: 0.45, ease: "elastic.out(1.05, 0.36)" }, c.in + 0.15);
-      tl.to(el, { scale: 1.05, duration: Math.max(0.2, c.out - c.in - 0.3), ease: "power1.inOut" }, c.in + 0.25);
+      setAt("#dim", { opacity: ${dna.hero.params.dimKick} }, c.in);
+      addTo("#dim", { opacity: ${b.baseDim}, duration: 0.5, ease: "outCubic" }, c.in + 0.12);
+      setAt(el, { opacity: 1, scale: ${dna.hero.params.crushFrom}, filter: "blur(10px) brightness(2.6)" }, c.in - 0.04);
+      addTo(el, { scale: 1, filter: "blur(0px) brightness(1)", duration: 0.11, ease: "inQuint" }, c.in - 0.04);
+      setAt(el, { scaleX: 1.10, scaleY: 0.92 }, c.in + 0.07);
+      addTo(el, { scaleX: 1, scaleY: 1, duration: 0.45, ease: "outElastic(1.05, 0.36)" }, c.in + 0.15);
+      addTo(el, { scale: 1.05, duration: Math.max(0.2, c.out - c.in - 0.3), ease: "inOutQuad" }, c.in + 0.25);
     } else if (c.hot) {
-      tl.set(el, { opacity: 1, scale: ${b.hotSnap} }, c.in);
-      tl.to(el, { scale: 1, duration: 0.22, ease: "back.out(1.8)" }, c.in + 0.02);
+      setAt(el, { opacity: 1, scale: ${b.hotSnap} }, c.in);
+      addTo(el, { scale: 1, duration: 0.22, ease: "outBack(1.8)" }, c.in + 0.02);
     } else {
-      tl.set(el, { opacity: 1, scale: 0.94 }, c.in);
-      tl.to(el, { scale: c.creep ? ${b.creepScale} : 1.0,
+      setAt(el, { opacity: 1, scale: 0.94 }, c.in);
+      addTo(el, { scale: c.creep ? ${b.creepScale} : 1.0,
                   duration: Math.max(0.08, c.out - c.in - 0.02),
-                  ease: c.creep ? "power1.in" : "power2.out" }, c.in + 0.01);
+                  ease: c.creep ? "inQuad" : "outCubic" }, c.in + 0.01);
     }
     if (c.last && ${J(!!dna.hero.params.dissolveLast)}) {
-      tl.to(el, { filter: "blur(9px)", opacity: 0, duration: 0.32, ease: "power2.in" }, c.out - 0.23);
-      tl.set(el, { display: "none" }, c.out + 0.1);
+      addTo(el, { filter: "blur(9px)", opacity: 0, duration: 0.32, ease: "inCubic" }, c.out - 0.23);
+      setAt(el, { display: "none" }, c.out + 0.1);
     } else {
-      tl.set(el, { opacity: 0, display: "none" }, c.out);
+      setAt(el, { opacity: 0, display: "none" }, c.out);
     }
   });
-  tl.to("#dim", { opacity: 0, duration: 0.3, ease: "power1.in" }, ${(DUR - 0.27).toFixed(2)});`;
+  addTo("#dim", { opacity: 0, duration: 0.3, ease: "inQuad" }, ${(DUR - 0.27).toFixed(2)});`;
   return { css, html, js };
 }
 
 /* =====================================================================
- * HERO SETPIECES (embedded, bg layer) — { css, html, js } for index.html
+ * HERO SETPIECES (embedded, bg layer) - { css, html, js } for index.html
  * ===================================================================== */
 
 function setpieceDetonation() {
@@ -1151,42 +1211,42 @@ function setpieceDetonation() {
   const js = `
   // ---- setpiece: DETONATION (charge → sheared slices snap → cool → furniture) ----
   const I = ${I.toFixed(3)}, HOTC = ${J(dna.palette.hot)}, BONEC = ${J(dna.palette.body)};
-  tl.fromTo("#scrim", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.40, ease: "power2.in" }, I - 0.42);
-  tl.set("#dimP", { opacity: ${dna.plate.dim} }, I);
-  tl.to("#dimP",  { opacity: ${(dna.plate.dim * 0.47).toFixed(2)}, duration: 0.9, ease: "power2.out" }, I + 0.10);
-  tl.to("#scrim", { opacity: 0.30, duration: 0.9, ease: "power2.out" }, I + 0.10);
-  tl.to(["#scrim","#dimP"], { opacity: 0, duration: 0.45, ease: "power1.in" }, ${(heroOut - 0.25).toFixed(3)});
-  tl.set("#det", { opacity: 1 }, I - 0.05);
-  tl.fromTo("#det", { scale: 3.4 }, { scale: 1.0, duration: 0.10, ease: "power4.in" }, I - 0.05);
+  addFromTo("#scrim", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.40, ease: "inCubic" }, I - 0.42);
+  setAt("#dimP", { opacity: ${dna.plate.dim} }, I);
+  addTo("#dimP",  { opacity: ${(dna.plate.dim * 0.47).toFixed(2)}, duration: 0.9, ease: "outCubic" }, I + 0.10);
+  addTo("#scrim", { opacity: 0.30, duration: 0.9, ease: "outCubic" }, I + 0.10);
+  addTo(["#scrim","#dimP"], { opacity: 0, duration: 0.45, ease: "inQuad" }, ${(heroOut - 0.25).toFixed(3)});
+  setAt("#det", { opacity: 1 }, I - 0.05);
+  addFromTo("#det", { scale: 3.4 }, { scale: 1.0, duration: 0.10, ease: "inQuint" }, I - 0.05);
   const BANDS = ${J(bandIds)};
   const SHEAR = ${J(p.sliceShear)};
   BANDS.forEach((sel, i) => {
-    tl.fromTo(sel, { x: SHEAR[i], filter: "blur(14px) brightness(3.4)" },
-      { x: SHEAR[i] * 0.26, filter: "blur(0px) brightness(1.5)", duration: 0.10, ease: "power4.in" }, I - 0.05);
+    addFromTo(sel, { x: SHEAR[i], filter: "blur(14px) brightness(3.4)" },
+      { x: SHEAR[i] * 0.26, filter: "blur(0px) brightness(1.5)", duration: 0.10, ease: "inQuint" }, I - 0.05);
   });
-  tl.set(BANDS, { x: 0, filter: "brightness(1.9)" }, I + 0.05);
-  tl.set("#det", { scaleX: 1.12, scaleY: 0.90 }, I + 0.05);
-  tl.to("#det",  { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1.05, 0.34)" }, I + 0.13);
-  tl.to(BANDS, { filter: "brightness(1)", duration: 0.5, ease: "power2.out" }, I + 0.15);
-  tl.set(BANDS, { color: HOTC }, I + 0.05);
-  tl.to(BANDS, { color: BONEC, duration: 0.9, ease: "power1.in" }, I + 0.22);
-${p.bars ? `  tl.fromTo(["#barT","#barB"], { scaleX: 0, opacity: 0.85 }, { scaleX: 1, duration: 0.34, ease: "expo.out" }, I + 0.16);` : ""}
+  setAt(BANDS, { x: 0, filter: "brightness(1.9)" }, I + 0.05);
+  setAt("#det", { scaleX: 1.12, scaleY: 0.90 }, I + 0.05);
+  addTo("#det",  { scaleX: 1, scaleY: 1, duration: 0.55, ease: "outElastic(1.05, 0.34)" }, I + 0.13);
+  addTo(BANDS, { filter: "brightness(1)", duration: 0.5, ease: "outCubic" }, I + 0.15);
+  setAt(BANDS, { color: HOTC }, I + 0.05);
+  addTo(BANDS, { color: BONEC, duration: 0.9, ease: "inQuad" }, I + 0.22);
+${p.bars ? `  addFromTo(["#barT","#barB"], { scaleX: 0, opacity: 0.85 }, { scaleX: 1, duration: 0.34, ease: "outExpo" }, I + 0.16);` : ""}
 ${
   p.ticks
-    ? `  tl.set(["#tickL","#tickR"], { opacity: 1 }, I + 0.42);
-  tl.fromTo(["#tickL","#tickR"], { scaleY: 0 }, { scaleY: 1, duration: 0.14, ease: "back.out(2)" }, I + 0.42);`
+    ? `  setAt(["#tickL","#tickR"], { opacity: 1 }, I + 0.42);
+  addFromTo(["#tickL","#tickR"], { scaleY: 0 }, { scaleY: 1, duration: 0.14, ease: "outBack(2)" }, I + 0.42);`
     : ""
 }
-${p.tag ? `  tl.fromTo("#tagwrap", { width: 0 }, { width: 340, duration: 0.45, ease: "steps(16)" }, I + 0.5);` : ""}
-  tl.fromTo("#heat", { opacity: 0 }, { opacity: 0.75, duration: 0.3 }, I + 0.06);
-  tl.to("#heat", { keyframes: { opacity: [0.75, 0.5, 0.6, 0.4, 0.46, 0.30] }, duration: 1.4, ease: "none" }, I + 0.5);
-  tl.to("#det", { scale: 1.035, duration: 1.2, ease: "power1.inOut" }, I + 0.75);
+${p.tag ? `  addFromTo("#tagwrap", { width: 0 }, { width: 340, duration: 0.45, ease: "steps(16)" }, I + 0.5);` : ""}
+  addFromTo("#heat", { opacity: 0 }, { opacity: 0.75, duration: 0.3 }, I + 0.06);
+  addTo("#heat", { keyframes: { opacity: [0.75, 0.5, 0.6, 0.4, 0.46, 0.30] }, duration: 1.4, ease: "linear" }, I + 0.5);
+  addTo("#det", { scale: 1.035, duration: 1.2, ease: "inOutQuad" }, I + 0.75);
   // EXIT: the stamp shears apart
   BANDS.forEach((sel, i) => {
-    tl.to(sel, { x: -SHEAR[i] * 1.5, opacity: 0, duration: 0.16, ease: "power2.in" }, ${(heroOut - 0.18).toFixed(3)} + i * 0.01);
+    addTo(sel, { x: -SHEAR[i] * 1.5, opacity: 0, duration: 0.16, ease: "inCubic" }, ${(heroOut - 0.18).toFixed(3)} + i * 0.01);
   });
-  tl.to(["#barT","#barB","#tickL","#tickR","#tagwrap","#heat"], { opacity: 0, duration: 0.13 }, ${(heroOut - 0.18).toFixed(3)});
-  tl.set("#det", { display: "none" }, ${(heroOut + 0.02).toFixed(3)});`;
+  addTo(["#barT","#barB","#tickL","#tickR","#tagwrap","#heat"], { opacity: 0, duration: 0.13 }, ${(heroOut - 0.18).toFixed(3)});
+  setAt("#det", { display: "none" }, ${(heroOut + 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -1223,8 +1283,8 @@ function setpieceDecode() {
   // ---- setpiece: DECODE (glyph reels lock left→right, CRT-off exit) ----
   const I = ${I.toFixed(3)}, TEXT = ${J(heroText)}, GLYPHS = ${J(p.glyphs)};
   const drnd = mulberry32(${p.seed || 99});
-  tl.fromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.3, ease: "power2.in" }, I - 0.25);
-  tl.to("#dimP", { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(E + 0.05).toFixed(3)});
+  addFromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.3, ease: "inCubic" }, I - 0.25);
+  addTo("#dimP", { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(E + 0.05).toFixed(3)});
   const word = document.getElementById("word");
   const reels = [];
   for (let i = 0; i < TEXT.length; i++) {
@@ -1243,33 +1303,33 @@ function setpieceDecode() {
     }
     reel.appendChild(col); word.appendChild(reel); reels.push({ el: reel, col, ch, i });
   }
-  tl.set("#blk", { opacity: 1 }, I - 0.02);
+  setAt("#blk", { opacity: 1 }, I - 0.02);
   reels.forEach((r) => {
     if (r.ch === " ") return;
     const lock = I + 0.30 + ${lockStagger} * r.i;
     const steps = parseInt(r.el.dataset.steps, 10);
-    tl.fromTo(r.col, { y: 0 }, { y: -${HG.fontPx} * steps, duration: lock - I, ease: "steps(" + steps + ")" }, I);
-    tl.set(r.el, { color: "#bfe9ff",
+    addFromTo(r.col, { y: 0 }, { y: -${HG.fontPx} * steps, duration: lock - I, ease: "steps(" + steps + ")" }, I);
+    setAt(r.el, { color: "#bfe9ff",
       textShadow: "3px 0 10px ${dna.palette.accent}cc, -3px 0 10px ${dna.palette.magenta}cc" }, I);
-    tl.set(r.el, { textShadow: "-3px 0 10px ${dna.palette.accent}cc, 3px 0 10px ${dna.palette.magenta}cc" }, I + 0.12 + 0.02 * r.i);
-    tl.set(r.el, { color: "#ffffff", textShadow: "0 0 22px rgba(255,255,255,0.95)" }, lock);
-    tl.set(r.el, { color: "#eafaff",
+    setAt(r.el, { textShadow: "-3px 0 10px ${dna.palette.accent}cc, 3px 0 10px ${dna.palette.magenta}cc" }, I + 0.12 + 0.02 * r.i);
+    setAt(r.el, { color: "#ffffff", textShadow: "0 0 22px rgba(255,255,255,0.95)" }, lock);
+    setAt(r.el, { color: "#eafaff",
       textShadow: "0 0 14px ${dna.palette.accent}8c, 0 3px 16px rgba(0,0,0,0.6)" }, lock + 0.083);
   });
   const LOCKED = I + 0.30 + ${lockStagger} * (TEXT.length - 1) + 0.083;
-  tl.set("#blk", { scale: 1.04 }, LOCKED - 0.083);
-  tl.to("#blk", { scale: 1, duration: 0.3, ease: "elastic.out(1, 0.4)" }, LOCKED);
+  setAt("#blk", { scale: 1.04 }, LOCKED - 0.083);
+  addTo("#blk", { scale: 1, duration: 0.3, ease: "outElastic(1, 0.4)" }, LOCKED);
 ${
   useBrackets
     ? `  [".br.tl",".br.tr",".br.bl",".br.brr"].forEach((sel, k) => {
-    tl.fromTo(sel, { opacity: 0, scale: 0.3 }, { opacity: 0.95, scale: 1, duration: 0.22, ease: "expo.out" }, I - 0.12 + k * 0.05);
+    addFromTo(sel, { opacity: 0, scale: 0.3 }, { opacity: 0.95, scale: 1, duration: 0.22, ease: "outExpo" }, I - 0.12 + k * 0.05);
   });`
     : ""
 }
   // EXIT: CRT power-off
-  tl.to("#blk", { filter: "brightness(2.6)", duration: 0.07, ease: "power2.in" }, ${E.toFixed(3)});
-  tl.to("#blk", { scaleY: 0.012, duration: 0.13, ease: "power4.in" }, ${(E + 0.06).toFixed(3)});
-  tl.set("#blk", { opacity: 0, display: "none" }, ${(E + 0.2).toFixed(3)});`;
+  addTo("#blk", { filter: "brightness(2.6)", duration: 0.07, ease: "inCubic" }, ${E.toFixed(3)});
+  addTo("#blk", { scaleY: 0.012, duration: 0.13, ease: "inQuint" }, ${(E + 0.06).toFixed(3)});
+  setAt("#blk", { opacity: 0, display: "none" }, ${(E + 0.2).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -1277,7 +1337,7 @@ function setpieceDrawon() {
   const h = dna.hero,
     p = h.params,
     I = heroIn;
-  // generate the stroke path at COMPILE time — any word, zero tuning
+  // generate the stroke path at COMPILE time - any word, zero tuning
   const fontPath = path.join(SKILL, "assets/strokefonts", dna.fonts.strokeFont);
   const gen = path.join(SKILL, "scripts/gen-stroke-path.py");
   const tw = Math.min(p.targetWidth || 640, W - 200);
@@ -1330,26 +1390,26 @@ function setpieceDrawon() {
                                      core: mk("coreG", d, "#fff", ${p.tubeWidth}) }));
   let total = 0;
   strokes.forEach((s) => { s.len = s.core.getTotalLength(); total += s.len; });
-  tl.fromTo("#tubeP", { opacity: 0 }, { opacity: 1, duration: 0.35 }, I - 0.6);
-  tl.fromTo("#spill", { opacity: 0 }, { opacity: ${p.spill || 0.38}, duration: WIN + 0.2, ease: "power1.in" }, I);
+  addFromTo("#tubeP", { opacity: 0 }, { opacity: 1, duration: 0.35 }, I - 0.6);
+  addFromTo("#spill", { opacity: 0 }, { opacity: ${p.spill || 0.38}, duration: WIN + 0.2, ease: "inQuad" }, I);
   const pen = document.getElementById("pen");
   let t = I;
   strokes.forEach((s) => {
     const d = WIN * s.len / total;
-    gsap.set([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
-    tl.set([s.core, s.halo], { opacity: 1 }, t);
-    tl.fromTo([s.core, s.halo], { strokeDashoffset: s.len }, { strokeDashoffset: 0, duration: d, ease: "none" }, t);
+    setNow([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
+    setAt([s.core, s.halo], { opacity: 1 }, t);
+    addFromTo([s.core, s.halo], { strokeDashoffset: s.len }, { strokeDashoffset: 0, duration: d, ease: "linear" }, t);
     const n = Math.max(4, Math.round(s.len / 14)), xs = [], ys = [];
     for (let k = 0; k <= n; k++) {
       const pt = s.core.getPointAtLength(s.len * k / n); xs.push(pt.x); ys.push(pt.y);
     }
-    tl.set(pen, { x: xs[0], y: ys[0] }, t);
-    tl.to(pen, { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, t);
+    setAt(pen, { x: xs[0], y: ys[0] }, t);
+    addTo(pen, { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, t);
     t += d;
   });
-  gsap.set(pen, { attr: { cx: 0, cy: 0 } });
-  tl.set(pen, { opacity: 1 }, I - 0.01);
-  tl.to(pen, { scale: 2.2, opacity: 0, duration: 0.12, ease: "power2.in", transformOrigin: "50% 50%" }, DRAWN);
+  setNow(pen, { attr: { cx: 0, cy: 0 } });
+  setAt(pen, { opacity: 1 }, I - 0.01);
+  addTo(pen, { scale: 2.2, opacity: 0, duration: 0.12, ease: "inCubic", transformOrigin: "50% 50%" }, DRAWN);
 ${
   p.hum
     ? `  const humStart = DRAWN + 0.08, humDur = Math.max(0.2, ENDT - humStart);
@@ -1359,16 +1419,16 @@ ${
     const tt = k / NN * humDur;
     humVals.push(0.78 + 0.06 * Math.sin(2 * Math.PI * 9 * tt) + 0.05 * Math.sin(2 * Math.PI * 13 * tt + 1.1));
   }
-  tl.to("#haloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "none" }, humStart);
-  tl.set("#coreG", { opacity: 0.45 }, ENDT + (${p.buzzDipAt || -0.18}));
-  tl.set("#coreG", { opacity: 1 }, ENDT + (${p.buzzDipAt || -0.18}) + F);`
+  addTo("#haloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "linear" }, humStart);
+  setAt("#coreG", { opacity: 0.45 }, ENDT + (${p.buzzDipAt || -0.18}));
+  setAt("#coreG", { opacity: 1 }, ENDT + (${p.buzzDipAt || -0.18}) + F);`
     : ""
 }`;
   return { css, html, js };
 }
 
 /* =====================================================================
- * FRONT FX (fg layer additions) — flash / rings / sparks / scanband
+ * FRONT FX (fg layer additions) - flash / rings / sparks / scanband
  * ===================================================================== */
 function frontFx() {
   const fx = dna.fx || {};
@@ -1382,8 +1442,8 @@ function frontFx() {
            background: radial-gradient(95% 80% at 50% 37%, rgba(255,250,240,0.95) 0%, rgba(255,235,210,0.7) 38%, rgba(120,90,60,0) 100%); }`;
     html += `      <div id="fxflash"></div>\n`;
     js += `
-  tl.set("#fxflash", { opacity: ${fx.flash} }, ${(I + 0.045).toFixed(3)});
-  tl.to("#fxflash", { opacity: 0, duration: 0.17, ease: "expo.out" }, ${(I + 0.085).toFixed(3)});`;
+  setAt("#fxflash", { opacity: ${fx.flash} }, ${(I + 0.045).toFixed(3)});
+  addTo("#fxflash", { opacity: 0, duration: 0.17, ease: "outExpo" }, ${(I + 0.085).toFixed(3)});`;
   }
   if (fx.rings) {
     css += `
@@ -1393,11 +1453,11 @@ function frontFx() {
   #fxr2 { border:3px solid rgba(255,150,70,0.8); filter:blur(3px); }`;
     html += `      <div class="fxring" id="fxr1"></div>\n      <div class="fxring" id="fxr2"></div>\n`;
     js += `
-  tl.set("#fxr1", { opacity: 1, scale: 1 }, ${(I + 0.05).toFixed(3)});
-  tl.to("#fxr1", { scale: 16, opacity: 0, duration: 0.58, ease: "expo.out" }, ${(I + 0.05).toFixed(3)});
-  tl.to("#fxr1", { filter: "blur(7px)", duration: 0.58, ease: "power1.in" }, ${(I + 0.05).toFixed(3)});
-  tl.set("#fxr2", { opacity: 0.55, scale: 1 }, ${(I + 0.13).toFixed(3)});
-  tl.to("#fxr2", { scale: 11, opacity: 0, duration: 0.72, ease: "expo.out" }, ${(I + 0.13).toFixed(3)});`;
+  setAt("#fxr1", { opacity: 1, scale: 1 }, ${(I + 0.05).toFixed(3)});
+  addTo("#fxr1", { scale: 16, opacity: 0, duration: 0.58, ease: "outExpo" }, ${(I + 0.05).toFixed(3)});
+  addTo("#fxr1", { filter: "blur(7px)", duration: 0.58, ease: "inQuad" }, ${(I + 0.05).toFixed(3)});
+  setAt("#fxr2", { opacity: 0.55, scale: 1 }, ${(I + 0.13).toFixed(3)});
+  addTo("#fxr2", { scale: 11, opacity: 0, duration: 0.72, ease: "outExpo" }, ${(I + 0.13).toFixed(3)});`;
   }
   if (fx.sparks) {
     css += `
@@ -1412,22 +1472,22 @@ function frontFx() {
       const ang = frnd() * Math.PI * 2, dist = 130 + frnd() * 330;
       const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist * 0.55;
       const grav = 40 + frnd() * 90, s = 3 + Math.round(frnd() * 5), d = 0.6 + frnd() * 0.45;
-      gsap.set(el, { width: s, height: s, x: 0, y: 0 });
-      tl.set(el, { opacity: 1 }, ${(I + 0.05).toFixed(3)});
-      tl.to(el, { keyframes: { x: [0, dx*0.55, dx*0.85, dx],
+      setNow(el, { width: s, height: s, x: 0, y: 0 });
+      setAt(el, { opacity: 1 }, ${(I + 0.05).toFixed(3)});
+      addTo(el, { keyframes: { x: [0, dx*0.55, dx*0.85, dx],
                                y: [0, dy*0.55 + grav*0.15, dy*0.85 + grav*0.55, dy + grav],
-                               opacity: [1, 1, 0.65, 0] }, duration: d, ease: "power2.out" }, ${(I + 0.05).toFixed(3)});
+                               opacity: [1, 1, 0.65, 0] }, duration: d, ease: "outCubic" }, ${(I + 0.05).toFixed(3)});
     }
     for (let i = 0; i < ${fx.embers || 0}; i++) {
       const el = document.createElement("div"); el.className = "fxember"; stg.appendChild(el);
       const s = 3 + Math.round(frnd() * 3);
-      gsap.set(el, { width: s, height: s, left: ${HG.x - 220} + frnd() * 440, top: ${HG.y + 32} + frnd() * 60 });
+      setNow(el, { width: s, height: s, left: ${HG.x - 220} + frnd() * 440, top: ${HG.y + 32} + frnd() * 60 });
       const t0 = ${(I + 0.6).toFixed(3)} + frnd() * 0.9, dr = 1.0 + frnd() * 0.7;
       const yA = -40 - frnd() * 50, yB = -80 - frnd() * 60;
       const xA = (frnd() - 0.5) * 30, xB = (frnd() - 0.5) * 50;
-      tl.to(el, { keyframes: { opacity: [0, 0.75, 0.4, 0.8, 0],
+      addTo(el, { keyframes: { opacity: [0, 0.75, 0.4, 0.8, 0],
                                y: [0, yA*0.5, yA, (yA+yB)/2, yB],
-                               x: [0, xA*0.5, xA, (xA+xB)/2, xB] }, duration: dr, ease: "power1.out" }, t0);
+                               x: [0, xA*0.5, xA, (xA+xB)/2, xB] }, duration: dr, ease: "outQuad" }, t0);
     }
   }`;
   }
@@ -1441,10 +1501,10 @@ function frontFx() {
                         rgba(255,238,210,0.45) 45%, rgba(60,50,35,0) 100%); }`;
     html += `      <div id="fxcrowd"></div>\n`;
     js += `
-  tl.set("#fxcrowd", { opacity: ${fa} }, ${I.toFixed(3)});
-  tl.to("#fxcrowd", { opacity: 0, duration: 0.10, ease: "expo.out" }, ${(I + 0.042).toFixed(3)});
-  tl.set("#fxcrowd", { opacity: ${fb} }, ${lockEnd.toFixed(3)});
-  tl.to("#fxcrowd", { opacity: 0, duration: 0.12, ease: "expo.out" }, ${(lockEnd + 0.042).toFixed(3)});`;
+  setAt("#fxcrowd", { opacity: ${fa} }, ${I.toFixed(3)});
+  addTo("#fxcrowd", { opacity: 0, duration: 0.10, ease: "outExpo" }, ${(I + 0.042).toFixed(3)});
+  setAt("#fxcrowd", { opacity: ${fb} }, ${lockEnd.toFixed(3)});
+  addTo("#fxcrowd", { opacity: 0, duration: 0.12, ease: "outExpo" }, ${(lockEnd + 0.042).toFixed(3)});`;
   }
   if (fx.paflash) {
     // PA-system flash over the board glow at apex contact (ledwipe completes)
@@ -1457,12 +1517,12 @@ function frontFx() {
           background: radial-gradient(closest-side, rgba(255,200,100,0.55), ${dna.palette.accent}00 70%); }`;
     html += `      <div id="fxpa"></div>\n`;
     js += `
-  tl.set("#fxpa", { opacity: ${fx.paflash} }, ${C2.toFixed(3)});
-  tl.to("#fxpa", { opacity: 0, duration: 0.22, ease: "expo.out" }, ${(C2 + 0.042).toFixed(3)});`;
+  setAt("#fxpa", { opacity: ${fx.paflash} }, ${C2.toFixed(3)});
+  addTo("#fxpa", { opacity: 0, duration: 0.22, ease: "outExpo" }, ${(C2 + 0.042).toFixed(3)});`;
   }
   if (fx.coinflash) {
     // 1-frame arcade impact flash at the boss-word strike (the coin blip at
-    // max amplitude) — vertical center rides the hero band
+    // max amplitude) - vertical center rides the hero band
     const FT = I + ((dna.hero.params || {}).flashDelay ?? 0.14);
     const cyP = Math.round((HG.y / H) * 100);
     css += `
@@ -1470,12 +1530,12 @@ function frontFx() {
             background: radial-gradient(58% 38% at 50% ${cyP}%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 70%); }`;
     html += `      <div id="fxcoin"></div>\n`;
     js += `
-  tl.set("#fxcoin", { opacity: ${fx.coinflash} }, ${FT.toFixed(3)});
-  tl.to("#fxcoin", { opacity: 0, duration: 0.12, ease: "expo.out" }, ${(FT + 0.042).toFixed(3)});`;
+  setAt("#fxcoin", { opacity: ${fx.coinflash} }, ${FT.toFixed(3)});
+  addTo("#fxcoin", { opacity: 0, duration: 0.12, ease: "outExpo" }, ${(FT + 0.042).toFixed(3)});`;
   }
   if (fx.inkflecks) {
     // red ink flecks spatter off the rubber-stamp contact (fg layer, ballistic
-    // with gravity) — fires at C = heroIn + params.crush, the punch anchor
+    // with gravity) - fires at C = heroIn + params.crush, the punch anchor
     const C4 = I + ((dna.hero.params || {}).crush ?? 0.074);
     css += `
   .fxfleck { position:absolute; left:${HG.x}px; top:${HG.y}px; border-radius:50%;
@@ -1488,18 +1548,18 @@ function frontFx() {
       const ang = frnd() * Math.PI * 2, dist = 70 + frnd() * 200;
       const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist * 0.6;
       const grav = 30 + frnd() * 60, sz2 = 2 + Math.round(frnd() * 3), d = 0.32 + frnd() * 0.2;
-      gsap.set(el, { width: sz2, height: sz2, x: 0, y: 0 });
-      tl.set(el, { opacity: 1 }, ${C4.toFixed(3)});
-      tl.to(el, { keyframes: { x: [0, dx * 0.6, dx],
+      setNow(el, { width: sz2, height: sz2, x: 0, y: 0 });
+      setAt(el, { opacity: 1 }, ${C4.toFixed(3)});
+      addTo(el, { keyframes: { x: [0, dx * 0.6, dx],
                                y: [0, dy * 0.6 + grav * 0.2, dy + grav],
                                opacity: [1, 0.85, 0] },
-                 duration: d, ease: "power2.out" }, ${(C4 + 0.01).toFixed(3)});
+                 duration: d, ease: "outCubic" }, ${(C4 + 0.01).toFixed(3)});
     }
   }`;
   }
   if (fx.laserflash) {
     // apex contact flash in FRONT of everything (the laser ignite pop, 4
-    // frames) — sized from the hero rect, tinted with the accent
+    // frames) - sized from the hero rect, tinted with the accent
     const fw = Math.round(2 * (HG.halfW || 330) + 80),
       fh = Math.round((HG.fontPx || 100) * 4.8);
     css += `
@@ -1508,26 +1568,26 @@ function frontFx() {
            background: radial-gradient(50% 50% at 50% 50%, rgba(235,255,244,0.9) 0%, ${dna.palette.accent}73 38%, rgba(0,0,0,0) 72%); }`;
     html += `      <div id="fxlaser"></div>\n`;
     js += `
-  tl.set("#fxlaser", { opacity: ${fx.laserflash} }, ${(I + 0.03).toFixed(3)});
-  tl.to("#fxlaser",  { opacity: 0, duration: 0.16, ease: "expo.out" }, ${(I + 0.075).toFixed(3)});`;
+  setAt("#fxlaser", { opacity: ${fx.laserflash} }, ${(I + 0.03).toFixed(3)});
+  addTo("#fxlaser",  { opacity: 0, duration: 0.16, ease: "outExpo" }, ${(I + 0.075).toFixed(3)});`;
   }
   if (fx.strikeflash) {
     // full-frame lightning flash in FRONT of everything: leader blink 2 frames
     // before contact (bright / dim alternation), return stroke at contact + 1f,
-    // expo-out decay — same flicker grammar as the bg bolt
+    // expo-out decay - same flicker grammar as the bg bolt
     css += `
   #fxstrike { position:absolute; inset:0; opacity:0;
            background: radial-gradient(80% 65% at 50% 38%, rgba(245,250,255,0.9) 0%, rgba(205,228,252,0.5) 40%, rgba(110,140,180,0) 100%); }`;
     html += `      <div id="fxstrike"></div>\n`;
     js += `
-  tl.set("#fxstrike", { opacity: ${(fx.strikeflash * 0.45).toFixed(3)} }, ${(I - 2 * F).toFixed(3)});
-  tl.set("#fxstrike", { opacity: ${(fx.strikeflash * 0.18).toFixed(3)} }, ${(I - F).toFixed(3)});
-  tl.set("#fxstrike", { opacity: ${fx.strikeflash} }, ${(I + 0.02).toFixed(3)});
-  tl.to("#fxstrike",  { opacity: 0, duration: 0.16, ease: "expo.out" }, ${(I + 0.06).toFixed(3)});`;
+  setAt("#fxstrike", { opacity: ${(fx.strikeflash * 0.45).toFixed(3)} }, ${(I - 2 * F).toFixed(3)});
+  setAt("#fxstrike", { opacity: ${(fx.strikeflash * 0.18).toFixed(3)} }, ${(I - F).toFixed(3)});
+  setAt("#fxstrike", { opacity: ${fx.strikeflash} }, ${(I + 0.02).toFixed(3)});
+  addTo("#fxstrike",  { opacity: 0, duration: 0.16, ease: "outExpo" }, ${(I + 0.06).toFixed(3)});`;
   }
   if (fx.holoflash) {
     // cyan LOCK flash in front of everything when the projection boots to
-    // full brightness — a radial centered on the hero (frame-fraction anchor)
+    // full brightness - a radial centered on the hero (frame-fraction anchor)
     const hxP = ((HG.x / W) * 100).toFixed(1),
       hyP = ((HG.y / H) * 100).toFixed(1);
     css += `
@@ -1535,12 +1595,12 @@ function frontFx() {
            background: radial-gradient(58% 44% at ${hxP}% ${hyP}%, ${dna.palette.accent}8c 0%, rgba(80,160,200,0.18) 45%, rgba(40,80,110,0) 72%); }`;
     html += `      <div id="fxholo"></div>\n`;
     js += `
-  tl.set("#fxholo", { opacity: ${fx.holoflash} }, ${(I + 0.075).toFixed(3)});
-  tl.to("#fxholo", { opacity: 0, duration: 0.22, ease: "expo.out" }, ${(I + 0.105).toFixed(3)});`;
+  setAt("#fxholo", { opacity: ${fx.holoflash} }, ${(I + 0.075).toFixed(3)});
+  addTo("#fxholo", { opacity: 0, duration: 0.22, ease: "outExpo" }, ${(I + 0.105).toFixed(3)});`;
   }
   if (fx.sporeburst) {
     // bioluminescent spores burst PAST the bloom at contact (fg, in front of
-    // the subject) — seeded radial puffs from the hero center, slight sink
+    // the subject) - seeded radial puffs from the hero center, slight sink
     const C6 = I + ((dna.hero.params || {}).crush ?? 0.11);
     css += `
   .fxspore { position:absolute; left:${HG.x}px; top:${HG.y}px; border-radius:50%;
@@ -1552,18 +1612,18 @@ function frontFx() {
     for (let i = 0; i < ${fx.sporeburst}; i++) {
       const el = document.createElement("div"); el.className = "fxspore"; stg.appendChild(el);
       const s = 2 + Math.round(frnd());
-      gsap.set(el, { width: s, height: s });
+      setNow(el, { width: s, height: s });
       const ang = frnd() * Math.PI * 2, dist = 70 + frnd() * 110;
       const dx = Math.cos(ang) * dist * 1.25, dy = Math.sin(ang) * dist * 0.7;
-      tl.to(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dy * 0.6, dy + 10],
+      addTo(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dy * 0.6, dy + 10],
                                opacity: [0.7, 0.5, 0] },
-                 duration: 0.45 + frnd() * 0.15, ease: "power2.out" }, ${(C6 + 0.01).toFixed(3)} + i * 0.012);
+                 duration: 0.45 + frnd() * 0.15, ease: "outCubic" }, ${(C6 + 0.01).toFixed(3)} + i * 0.012);
     }
   }`;
   }
   if (fx.silkmotes) {
     // gentle aurora light motes drifting up near the ribbon during its hold
-    // (fg layer) — seeded along the ribbon span at the demo's spread fractions
+    // (fg layer) - seeded along the ribbon span at the demo's spread fractions
     // (the gap around 0.4 keeps them off the subject's face)
     const halfW = HG.halfW || 440;
     css += `
@@ -1579,18 +1639,18 @@ function frontFx() {
       const c = PALM[i % 3];
       const mx = ${HG.x} + FRX[i % 6] * ${Math.round(halfW)} + (frnd() - 0.5) * 40;
       const my = ${HG.y} - 5 + frnd() * 110;
-      gsap.set(m, { width: s, height: s, left: mx, top: my,
+      setNow(m, { width: s, height: s, left: mx, top: my,
                     background: c, boxShadow: "0 0 6px " + c });
       const t0 = ${(I + 0.13).toFixed(3)} + i * 0.09 + frnd() * 0.08;
-      tl.fromTo(m, { y: 10 },
+      addFromTo(m, { y: 10 },
         { keyframes: { opacity: [0, 0.45, 0], y: [10, -16, -44] },
-          duration: 0.75, ease: "sine.out" }, Math.min(t0, ${(DUR - 0.79).toFixed(3)}));
+          duration: 0.75, ease: "outSine" }, Math.min(t0, ${(DUR - 0.79).toFixed(3)}));
     }
   }`;
   }
   if (fx.paperscraps) {
     // torn paper scraps puff PAST the subject at each apex chip contact (fg,
-    // in front) — ballistic steps(4) arcs, one accent scrap per puff
+    // in front) - ballistic steps(4) arcs, one accent scrap per puff
     // (the papermat landing rhythm); centers baked from the chip geometry
     const N9 = heroText.length;
     const pitch9 = HG.pitch || 132,
@@ -1622,8 +1682,8 @@ function frontFx() {
         const dyU = -(35 + frnd()*55);
         const dyF = dyU + 80 + frnd()*55;
         const rot = (frnd()-0.5)*240;
-        tl.set(el, { opacity: 1 }, pc);
-        tl.to(el, { keyframes: { x: [0, dx*0.6, dx], y: [0, dyU, dyF],
+        setAt(el, { opacity: 1 }, pc);
+        addTo(el, { keyframes: { x: [0, dx*0.6, dx], y: [0, dyU, dyF],
                                  rotation: [0, rot*0.6, rot], opacity: [1, 1, 0] },
                     duration: 0.42, ease: "steps(4)" }, pc);
       }
@@ -1632,7 +1692,7 @@ function frontFx() {
   }
   if (fx.confetti) {
     // paper confetti flicks up PAST the subject when the apex word pops (fg,
-    // in front) — seeded ballistic arcs with card tumble; launch line baked
+    // in front) - seeded ballistic arcs with card tumble; launch line baked
     // from the centerfold hinge (90% of the burst box, where the paper folds)
     const u0 = (HG.burstR || 220) / 220;
     const boxH0 = HG.boxH || 560;
@@ -1651,22 +1711,22 @@ function frontFx() {
     for (let i = 0; i < ${fx.confetti}; i++) {
       const el = document.createElement("div"); el.className = "fxconf";
       el.style.background = CCOL[i % CCOL.length]; stg.appendChild(el);
-      gsap.set(el, { width: 5 + Math.round(frnd() * 5), height: 4 + Math.round(frnd() * 4),
+      setNow(el, { width: 5 + Math.round(frnd() * 5), height: 4 + Math.round(frnd() * 4),
                      left: ${HG.x - 30} + frnd() * 70, top: ${hingeY - 2} + frnd() * 16 });
       const dx = (frnd() - 0.5) * 320, up = -90 - frnd() * 140, grav = 150 + frnd() * 120;
       const rot = (frnd() - 0.5) * 520, d = 0.55 + frnd() * 0.3, t0 = ${(I + 0.128).toFixed(3)} + frnd() * 0.08;
-      tl.set(el, { opacity: 1 }, t0);
-      tl.to(el, { keyframes: { x: [0, dx * 0.5, dx * 0.85, dx],
+      setAt(el, { opacity: 1 }, t0);
+      addTo(el, { keyframes: { x: [0, dx * 0.5, dx * 0.85, dx],
                                y: [0, up, up * 0.55 + grav * 0.35, up * 0.1 + grav],
                                rotation: [0, rot * 0.4, rot * 0.75, rot],
                                opacity: [1, 1, 0.8, 0] },
-                  duration: d, ease: "power1.out" }, t0);
+                  duration: d, ease: "outQuad" }, t0);
     }
   }`;
   }
   if (fx.chalkclap) {
     // hand-slap dust CLAP in FRONT of the subject the instant the chalk word
-    // completes (the bg board shakes the same frame) — seeded radial specks +
+    // completes (the bg board shakes the same frame) - seeded radial specks +
     // a soft blurred puff, centered on the pen's final contact point (baked
     // by setpieceChalkwrite into HG.clapX/Y/T)
     const cx9 = Math.round(HG.clapX ?? HG.x + (HG.halfW || 80)),
@@ -1691,18 +1751,18 @@ function frontFx() {
       clap.appendChild(s);
       const a = (i / ${fx.chalkclap}) * 6.2832 + (frnd() - 0.5) * 0.5;
       const dist = 42 + frnd() * 55;
-      tl.set(s, { opacity: 1 }, ${ct9});
-      tl.to(s, { x: Math.cos(a) * dist, y: Math.sin(a) * dist * 0.8 + 26,
-                 duration: 0.5 + frnd() * 0.15, ease: "power2.out" }, ${ct9});
-      tl.to(s, { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(ct9 + 0.1).toFixed(3)});
+      setAt(s, { opacity: 1 }, ${ct9});
+      addTo(s, { x: Math.cos(a) * dist, y: Math.sin(a) * dist * 0.8 + 26,
+                 duration: 0.5 + frnd() * 0.15, ease: "outCubic" }, ${ct9});
+      addTo(s, { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(ct9 + 0.1).toFixed(3)});
     }
-    tl.fromTo("#fxpuff", { opacity: 0.55, scale: 0.35 },
-              { opacity: 0, scale: 1.8, duration: 0.5, ease: "power2.out" }, ${ct9});
+    addFromTo("#fxpuff", { opacity: 0.55, scale: 0.35 },
+              { opacity: 0, scale: 1.8, duration: 0.5, ease: "outCubic" }, ${ct9});
   }`;
   }
   if (fx.paintsplat) {
     // paint SPLAT in FRONT of the subject the instant the spray tag completes
-    // — a hot magenta ring + a soft paint-color ring + seeded droplets with
+    // - a hot magenta ring + a soft paint-color ring + seeded droplets with
     // gravity, centered on the pen-finish point (baked by setpieceSpraytag
     // into HG.splatX/Y/T)
     const sx = Math.max(60, Math.min(W - 60, Math.round(HG.splatX ?? HG.x + (HG.halfW || 80))));
@@ -1719,32 +1779,32 @@ function frontFx() {
              border-radius:50%; opacity:0; }`;
     html += `      <div class="fxsplat" id="fxsp1"></div>\n      <div class="fxsplat" id="fxsp2"></div>\n`;
     js += `
-  tl.set("#fxsp1", { opacity: 1, scale: 0.3 }, ${st9});
-  tl.to("#fxsp1", { scale: 4.6, opacity: 0, duration: 0.42, ease: "expo.out" }, ${st9});
-  tl.to("#fxsp1", { filter: "blur(4px)", duration: 0.42, ease: "power1.in" }, ${st9});
-  tl.set("#fxsp2", { opacity: 0.8, scale: 0.4 }, ${(st9 + 0.04).toFixed(3)});
-  tl.to("#fxsp2", { scale: 3.4, opacity: 0, duration: 0.5, ease: "expo.out" }, ${(st9 + 0.04).toFixed(3)});
+  setAt("#fxsp1", { opacity: 1, scale: 0.3 }, ${st9});
+  addTo("#fxsp1", { scale: 4.6, opacity: 0, duration: 0.42, ease: "outExpo" }, ${st9});
+  addTo("#fxsp1", { filter: "blur(4px)", duration: 0.42, ease: "inQuad" }, ${st9});
+  setAt("#fxsp2", { opacity: 0.8, scale: 0.4 }, ${(st9 + 0.04).toFixed(3)});
+  addTo("#fxsp2", { scale: 3.4, opacity: 0, duration: 0.5, ease: "outExpo" }, ${(st9 + 0.04).toFixed(3)});
   { const frnd = mulberry32(${fx.seed || 20260611});
     const stg = document.getElementById("stage");
     for (let i = 0; i < ${fx.paintsplat}; i++) {
       const el = document.createElement("div");
       el.className = "fxsdrop"; stg.appendChild(el);
       const s = 3 + Math.round(frnd() * 4);
-      gsap.set(el, { width: s, height: s });
+      setNow(el, { width: s, height: s });
       const ang = frnd() * Math.PI * 2, dist = 36 + frnd() * 64; // capped: stays inside the frame edge
       const dx = Math.cos(ang) * dist, dyv = Math.sin(ang) * dist * 0.7;
       const grav = 26 + frnd() * 40, d = 0.38 + frnd() * 0.25;
-      tl.set(el, { opacity: 1, x: 0, y: 0 }, ${st9});
-      tl.to(el, { keyframes: { x: [0, dx * 0.6, dx],
+      setAt(el, { opacity: 1, x: 0, y: 0 }, ${st9});
+      addTo(el, { keyframes: { x: [0, dx * 0.6, dx],
                                y: [0, dyv * 0.6 + grav * 0.2, dyv + grav],
                                opacity: [1, 0.85, 0] },
-                  duration: d, ease: "power2.out" }, ${st9});
+                  duration: d, ease: "outCubic" }, ${st9});
     }
   }`;
   }
   if (fx.brushflecks) {
     // ink flecks kicked PAST the subject at the brush's first contact (the
-    // start-splat depth pass) — seeded upward ballistic arcs from the pen-START
+    // start-splat depth pass) - seeded upward ballistic arcs from the pen-START
     // point (baked by setpieceBrushwrite into HG.fleckX/Y/T)
     const bx = Math.max(40, Math.min(W - 40, Math.round(HG.fleckX ?? HG.x - (HG.halfW || 80))));
     const by = Math.round(HG.fleckY ?? HG.y);
@@ -1758,13 +1818,13 @@ function frontFx() {
     for (let i = 0; i < ${fx.brushflecks}; i++) {
       const el = document.createElement("div"); el.className = "fxbfleck"; stg.appendChild(el);
       const s = 3 + Math.round(frnd() * 3);
-      gsap.set(el, { width: s, height: s });
+      setNow(el, { width: s, height: s });
       const a = -0.4 - frnd() * 2.4, dist = 46 + frnd() * 90;
       const dx = Math.cos(a) * dist, dyv = Math.sin(a) * dist;
-      tl.set(el, { opacity: 1 }, ${bt});
-      tl.to(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dyv * 0.6, dyv + 26],
+      setAt(el, { opacity: 1 }, ${bt});
+      addTo(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dyv * 0.6, dyv + 26],
                                opacity: [1, 0.85, 0] },
-                  duration: 0.36, ease: "power2.out" }, ${bt});
+                  duration: 0.36, ease: "outCubic" }, ${bt});
     }
   }`;
   }
@@ -1778,11 +1838,11 @@ function frontFx() {
                background: radial-gradient(80% 60% at 52% 35%, ${dna.palette.accent}99 0%, ${dna.palette.accent}00 70%); }`;
     html += `      <div id="fxband"></div>\n      <div id="fxlock"></div>\n`;
     js += `
-  tl.set("#fxband", { opacity: 0.5 }, ${(I - 0.05).toFixed(3)});
-  tl.fromTo("#fxband", { y: 0 }, { y: ${H + 160}, duration: 0.5, ease: "power1.in" }, ${(I - 0.05).toFixed(3)});
-  tl.set("#fxband", { opacity: 0 }, ${(I + 0.46).toFixed(3)});
-  tl.set("#fxlock", { opacity: ${fx.lockflash || 0.55} }, ${(lockT - 0.083).toFixed(3)});
-  tl.to("#fxlock", { opacity: 0, duration: 0.2, ease: "expo.out" }, ${lockT.toFixed(3)});`;
+  setAt("#fxband", { opacity: 0.5 }, ${(I - 0.05).toFixed(3)});
+  addFromTo("#fxband", { y: 0 }, { y: ${H + 160}, duration: 0.5, ease: "inQuad" }, ${(I - 0.05).toFixed(3)});
+  setAt("#fxband", { opacity: 0 }, ${(I + 0.46).toFixed(3)});
+  setAt("#fxlock", { opacity: ${fx.lockflash || 0.55} }, ${(lockT - 0.083).toFixed(3)});
+  addTo("#fxlock", { opacity: 0, duration: 0.2, ease: "outExpo" }, ${lockT.toFixed(3)});`;
   }
   return { css, html, js };
 }
@@ -1851,37 +1911,37 @@ function paradigmLastpage() {
   MS.forEach((L) => {
     const line = document.getElementById(L.id);
     L.words.forEach(([txt]) => { const sp = document.createElement("span"); sp.className = "w"; sp.textContent = txt; line.appendChild(sp); });
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
-    tl.set(line, { opacity: 1 }, L.in);
+    setNow(line, { xPercent: -50, yPercent: -100 });
+    setAt(line, { opacity: 1 }, L.in);
     const XO = L.out - ${b.exit === "drop" ? "0.18" : "0.17"};   // exit start (single source)
     let lastB = -1;                                              // line-y bounce ownership guard
     L.words.forEach(([txt, st], wi) => {
       const el = line.children[wi];
-      tl.set(el, { opacity: 1 }, st);
-      tl.fromTo(el, { width: 0 }, { width: "auto", duration: Math.min(0.18, 0.03 * txt.length + 0.04),
+      setAt(el, { opacity: 1 }, st);
+      addFromTo(el, { width: 0 }, { width: "auto", duration: Math.min(0.18, 0.03 * txt.length + 0.04),
         ease: "steps(" + Math.max(2, txt.length) + ")" }, st);
     });
     const xo = L.out - 0.18;
-    tl.to(line, { opacity: 0, duration: 0.16, ease: "power2.in" }, xo);
-    tl.set(line, { display: "none" }, xo + 0.18);
+    addTo(line, { opacity: 0, duration: 0.16, ease: "inCubic" }, xo);
+    setAt(line, { display: "none" }, xo + 0.18);
   });
   // the field breathes imperceptibly (alive, unreadable)
-  ${inst.map((f, i) => `tl.to("#f${i}", { y: ${prnd() - 0.5 > 0 ? "+" : "-"}${(3 + prnd() * 5).toFixed(1)}, duration: ${(2.4 + prnd() * 2).toFixed(1)}, ease: "sine.inOut" }, 0);`).join("\n  ")}
-  // APEX: rack focus — the future was only ever one sentence
-  tl.to(".fld", { filter: "blur(0px)", duration: 0.38, ease: "power3.inOut" }, I - 0.1);
+  ${inst.map((f, i) => `addTo("#f${i}", { y: ${prnd() - 0.5 > 0 ? "+" : "-"}${(3 + prnd() * 5).toFixed(1)}, duration: ${(2.4 + prnd() * 2).toFixed(1)}, ease: "inOutSine" }, 0);`).join("\n  ")}
+  // APEX: rack focus - the future was only ever one sentence
+  addTo(".fld", { filter: "blur(0px)", duration: 0.38, ease: "inOutQuart" }, I - 0.1);
   ${inst
     .map((f, i) =>
       i === inst.indexOf(main)
-        ? `tl.to("#f${i}", { opacity: 1, scale: 1.22, duration: 0.5, ease: "power2.out" }, I + 0.15);
-  tl.to("#f${i}", { textShadow: "0 0 28px rgba(255,244,220,0.5)", duration: 0.5 }, I + 0.15);`
-        : `tl.to("#f${i}", { opacity: ${(f.op * 0.85).toFixed(2)}, duration: 0.5 }, I + 0.3);`,
+        ? `addTo("#f${i}", { opacity: 1, scale: 1.22, duration: 0.5, ease: "outCubic" }, I + 0.15);
+  addTo("#f${i}", { textShadow: "0 0 28px rgba(255,244,220,0.5)", duration: 0.5 }, I + 0.15);`
+        : `addTo("#f${i}", { opacity: ${(f.op * 0.85).toFixed(2)}, duration: 0.5 }, I + 0.3);`,
     )
     .join("\n  ")}
   // hold revealed ~1.2s, then the future blurs back except the main instance
-  tl.to(".fld", { filter: "blur(${b.fieldBlur || 9}px)", duration: 0.6, ease: "power2.inOut" }, I + 1.5);
-  tl.to("#f${inst.indexOf(main)}", { filter: "blur(0px)", duration: 0.01 }, I + 1.5);
-  ${inst.map((f, i) => (i === inst.indexOf(main) ? "" : `tl.to("#f${i}", { opacity: 0, duration: 0.6 }, I + 1.6);`)).join("\n  ")}
-  tl.to("#f${inst.indexOf(main)}", { opacity: 0, duration: 0.3, ease: "power2.in" }, ${(heroOut - 0.3).toFixed(3)});`;
+  addTo(".fld", { filter: "blur(${b.fieldBlur || 9}px)", duration: 0.6, ease: "inOutCubic" }, I + 1.5);
+  addTo("#f${inst.indexOf(main)}", { filter: "blur(0px)", duration: 0.01 }, I + 1.5);
+  ${inst.map((f, i) => (i === inst.indexOf(main) ? "" : `addTo("#f${i}", { opacity: 0, duration: 0.6 }, I + 1.6);`)).join("\n  ")}
+  addTo("#f${inst.indexOf(main)}", { opacity: 0, duration: 0.3, ease: "inCubic" }, ${(heroOut - 0.3).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -1987,8 +2047,8 @@ ${
     return s;
   }
   // chyron bar rides up; nothing visible at t=0
-  tl.fromTo("#flbar", { y: ${barH + 14} }, { y: 0, duration: 0.20, ease: "power3.out" }, 0.0);
-  tl.set("#n0", { display: "block" }, 0.18);
+  addFromTo("#flbar", { y: ${barH + 14} }, { y: 0, duration: 0.20, ease: "outQuart" }, 0.0);
+  setAt("#n0", { display: "block" }, 0.18);
   const FRAIL = ${J(lineData)};
   FRAIL.forEach((L, li) => {
     const line = document.getElementById(L.id);
@@ -2003,50 +2063,50 @@ ${
       tile.appendChild(flap); line.appendChild(tile);
       tiles.push({ tile, flap, rl, w1, w2 });
     });
-    gsap.set(line, { xPercent: -50, yPercent: -50 });
+    setNow(line, { xPercent: -50, yPercent: -50 });
     L.words.forEach(([txt, st, em], wi) => {
       const { tile, flap, rl, w1, w2 } = tiles[wi];
-      // flick 1 (wrong), flick 2 (wrong), flick 3 (real) — the flap motif
-      tl.set(tile, { opacity: 1 }, st);
-      tl.set(w1, { display: "block" }, st);
-      tl.fromTo(flap, { rotationX: -88 }, { rotationX: 0, duration: 0.05, ease: "power1.in" }, st);
-      tl.set(w1, { display: "none" }, st + 0.055);
-      tl.set(w2, { display: "block" }, st + 0.055);
-      tl.set(flap, { rotationX: -88 }, st + 0.055);
-      tl.to(flap, { rotationX: 0, duration: 0.05, ease: "power1.in" }, st + 0.06);
-      tl.set(w2, { display: "none" }, st + 0.115);
-      tl.set(rl, { visibility: "visible" }, st + 0.115);
-      tl.set(flap, { rotationX: -88, color: HOT }, st + 0.115);
-      tl.to(flap, { rotationX: 0, duration: 0.065, ease: "power2.in" }, st + 0.12);
-      // contact squash → elastic settle, paint cools (amber stays on emphasized tiles)
-      tl.set(tile, { scaleX: 1.05, scaleY: 0.92 }, st + 0.185);
-      tl.to(tile, { scaleX: 1, scaleY: 1, duration: 0.28, ease: "elastic.out(1, 0.4)" }, st + 0.21);
-      tl.to(flap, { color: em ? HOT : BONE, duration: 0.35, ease: "power1.in" }, st + 0.25);
+      // flick 1 (wrong), flick 2 (wrong), flick 3 (real) - the flap motif
+      setAt(tile, { opacity: 1 }, st);
+      setAt(w1, { display: "block" }, st);
+      addFromTo(flap, { rotationX: -88 }, { rotationX: 0, duration: 0.05, ease: "inQuad" }, st);
+      setAt(w1, { display: "none" }, st + 0.055);
+      setAt(w2, { display: "block" }, st + 0.055);
+      setAt(flap, { rotationX: -88 }, st + 0.055);
+      addTo(flap, { rotationX: 0, duration: 0.05, ease: "inQuad" }, st + 0.06);
+      setAt(w2, { display: "none" }, st + 0.115);
+      setAt(rl, { visibility: "visible" }, st + 0.115);
+      setAt(flap, { rotationX: -88, color: HOT }, st + 0.115);
+      addTo(flap, { rotationX: 0, duration: 0.065, ease: "inCubic" }, st + 0.12);
+      // contact squash → outElastic settle, paint cools (amber stays on emphasized tiles)
+      setAt(tile, { scaleX: 1.05, scaleY: 0.92 }, st + 0.185);
+      addTo(tile, { scaleX: 1, scaleY: 1, duration: 0.28, ease: "outElastic(1, 0.4)" }, st + 0.21);
+      addTo(flap, { color: em ? HOT : BONE, duration: 0.35, ease: "inQuad" }, st + 0.25);
     });
     // hold life: low breathe on the line
     const lastIn = L.words[L.words.length - 1][1] + 0.4;
     const span = (L.words.length - 1) * ${stagger} + ${exDu} + 0.02;
     const XO = L.out - span;
     if (XO - lastIn > 0.3)
-      tl.to(line, { scale: 1.014, duration: XO - lastIn, ease: "sine.inOut" }, lastIn);
+      addTo(line, { scale: 1.014, duration: XO - lastIn, ease: "inOutSine" }, lastIn);
     // exit: flip to blank, cascading left→right (completes before the next line)
     L.words.forEach((w, wi) => {
       const t = XO + wi * ${stagger};
-      tl.to(tiles[wi].flap, { rotationX: 90, duration: ${exDu}, ease: "power2.in" }, t);
-      tl.set(tiles[wi].tile, { opacity: 0 }, t + ${exDu});
+      addTo(tiles[wi].flap, { rotationX: 90, duration: ${exDu}, ease: "inCubic" }, t);
+      setAt(tiles[wi].tile, { opacity: 0 }, t + ${exDu});
     });
-    tl.set(line, { display: "none" }, L.out);
+    setAt(line, { display: "none" }, L.out);
   });
   // row counter flips at each line change
   FRAIL.slice(1).forEach((L, k) => {
     const t = L.words[0][1];
-    tl.set("#n" + k, { display: "none" }, t);
-    tl.set("#n" + (k + 1), { display: "block" }, t);
-    // immediateRender:false — the flap is visible from t=0; the from-state must
+    setAt("#n" + k, { display: "none" }, t);
+    setAt("#n" + (k + 1), { display: "block" }, t);
+    // immediateRender:false - the flap is visible from t=0; the from-state must
     // not leak into the opening hold (paused timeline + seek renders it)
-    tl.fromTo("#ctrflap", { rotationX: -80 }, { rotationX: 0, duration: 0.07, ease: "power2.in", immediateRender: false }, t);
-    tl.set("#ctrflap", { scaleY: 0.92 }, t + 0.07);
-    tl.to("#ctrflap", { scaleY: 1, duration: 0.18, ease: "elastic.out(1, 0.45)" }, t + 0.09);
+    addFromTo("#ctrflap", { rotationX: -80 }, { rotationX: 0, duration: 0.07, ease: "inCubic", immediateRender: false }, t);
+    setAt("#ctrflap", { scaleY: 0.92 }, t + 0.07);
+    addTo("#ctrflap", { scaleY: 1, duration: 0.18, ease: "outElastic(1, 0.45)" }, t + 0.09);
   });
 ${
   chipL
@@ -2062,28 +2122,28 @@ ${
       s.textContent = Math.floor(frnd2() * 10); stack.appendChild(s); }
     const f = document.createElement("span"); f.textContent = fin; stack.appendChild(f);
     col.appendChild(stack);
-    tl.fromTo(stack, { y: 0 }, { y: -36 * steps, duration: 0.42 + ci * 0.13,
+    addFromTo(stack, { y: 0 }, { y: -36 * steps, duration: 0.42 + ci * 0.13,
               ease: "steps(" + steps + ")" }, CIN + 0.08 + ci * 0.04);
   });
-  tl.set("#flchip", { opacity: 1 }, CIN);
-  tl.fromTo("#chipflap", { rotationX: -85 }, { rotationX: 0, duration: 0.09, ease: "power2.in" }, CIN);
-  tl.set("#chipflap", { scaleX: 1.04, scaleY: 0.93 }, CIN + 0.09);
-  tl.to("#chipflap", { scaleX: 1, scaleY: 1, duration: 0.24, ease: "elastic.out(1, 0.42)" }, CIN + 0.11);
-  tl.set(".dcol span", { color: HOT }, CIN + 0.67);
-  tl.to(".dcol span", { color: BONE, duration: 0.4 }, CIN + 0.87);
+  setAt("#flchip", { opacity: 1 }, CIN);
+  addFromTo("#chipflap", { rotationX: -85 }, { rotationX: 0, duration: 0.09, ease: "inCubic" }, CIN);
+  setAt("#chipflap", { scaleX: 1.04, scaleY: 0.93 }, CIN + 0.09);
+  addTo("#chipflap", { scaleX: 1, scaleY: 1, duration: 0.24, ease: "outElastic(1, 0.42)" }, CIN + 0.11);
+  setAt(".dcol span", { color: HOT }, CIN + 0.67);
+  addTo(".dcol span", { color: BONE, duration: 0.4 }, CIN + 0.87);
   for (let k = 0; k < 4; k++) {
     const t = CIN + 0.64 + k * 0.22;
-    if (t + 0.11 < COUT - 0.05) { tl.set("#bdot", { opacity: 1 }, t); tl.set("#bdot", { opacity: 0.15 }, t + 0.11); }
+    if (t + 0.11 < COUT - 0.05) { setAt("#bdot", { opacity: 1 }, t); setAt("#bdot", { opacity: 0.15 }, t + 0.11); }
   }
-  tl.to("#chipflap", { rotationX: 88, duration: 0.09, ease: "power2.in" }, COUT);
-  tl.set("#flchip", { display: "none" }, COUT + 0.10);`
+  addTo("#chipflap", { rotationX: 88, duration: 0.09, ease: "inCubic" }, COUT);
+  setAt("#flchip", { display: "none" }, COUT + 0.10);`
     : ""
 }
 ${
   b.yield
     ? `  // rail yields while the apex board locks
-  tl.to("#flwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
-  tl.to("#flwrap", { opacity: 1, duration: 0.22, ease: "power1.out" }, ${(heroIn + (b.yield.post || 0.47)).toFixed(3)});`
+  addTo("#flwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "inQuad" }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
+  addTo("#flwrap", { opacity: 1, duration: 0.22, ease: "outQuad" }, ${(heroIn + (b.yield.post || 0.47)).toFixed(3)});`
     : ""
 }`;
   return { css, html, js };
@@ -2190,58 +2250,58 @@ function paradigmLedboard() {
   TRAIL.forEach((L) => {
     const line = document.createElement("div"); line.className = "tline";
     twin.appendChild(line);
-    gsap.set(line, { y: ${winH + 2} });                                // parked below the window
-    tl.to(line, { y: 0,   duration: 0.22, ease: "steps(6)" }, L.pin);  // page in
-    tl.to(line, { y: ${-(winH + 2)}, duration: 0.20, ease: "steps(6)" }, L.pout); // page out
+    setNow(line, { y: ${winH + 2} });                                // parked below the window
+    addTo(line, { y: 0,   duration: 0.22, ease: "steps(6)" }, L.pin);  // page in
+    addTo(line, { y: ${-(winH + 2)}, duration: 0.20, ease: "steps(6)" }, L.pout); // page out
     L.words.forEach(([txt, st, em]) => {
       const w = document.createElement("span"); w.className = "w";
       w.textContent = txt; line.appendChild(w); lastW = w;
       const steps = Math.max(3, txt.length);
-      tl.fromTo(w, { clipPath: "inset(0% 100% 0% 0%)" },
+      addFromTo(w, { clipPath: "inset(0% 100% 0% 0%)" },
                 { clipPath: "inset(0% 0% 0% 0%)", duration: 0.12, ease: "steps(" + steps + ")" }, st);
-      tl.set(w, { clipPath: "none" }, st + 0.17);            // free the glow
-      tl.set(w, { opacity: 0.5 }, st + 0.13);                // 1-frame arrival flicker
-      tl.set(w, { opacity: 1 },   st + 0.172);
+      setAt(w, { clipPath: "none" }, st + 0.17);            // free the glow
+      setAt(w, { opacity: 0.5 }, st + 0.13);                // 1-frame arrival flicker
+      setAt(w, { opacity: 1 },   st + 0.172);
       if (em && st + 0.56 < L.pout) {                        // LED refresh: blinks twice
-        tl.set(w, { opacity: 0.22 }, st + 0.30);
-        tl.set(w, { opacity: 1 },    st + 0.383);
-        tl.set(w, { opacity: 0.22 }, st + 0.466);
-        tl.set(w, { opacity: 1 },    st + 0.55);
+        setAt(w, { opacity: 0.22 }, st + 0.30);
+        setAt(w, { opacity: 1 },    st + 0.383);
+        setAt(w, { opacity: 0.22 }, st + 0.466);
+        setAt(w, { opacity: 1 },    st + 0.55);
       }
     });
   });
 ${
   lateT + 0.05 < DUR - 0.25
     ? `  // the final word gets one late LED refresh blink (kept inside the clip)
-  tl.set(lastW, { opacity: 0.22 }, ${lateT.toFixed(3)});
-  tl.set(lastW, { opacity: 1 },    ${(lateT + 0.042).toFixed(3)});`
+  setAt(lastW, { opacity: 0.22 }, ${lateT.toFixed(3)});
+  setAt(lastW, { opacity: 1 },    ${(lateT + 0.042).toFixed(3)});`
     : ""
 }
 
   // ===== furniture =====
   // status blinks while we wait, then the gag: pages to the OK row
   ${J(statBlinks)}.forEach((t) => {
-    tl.set("#tstrow1", { opacity: 0.35 }, t);
-    tl.set("#tstrow1", { opacity: 1 },    t + 0.042);
+    setAt("#tstrow1", { opacity: 0.35 }, t);
+    setAt("#tstrow1", { opacity: 1 },    t + 0.042);
   });
-  tl.to("#tstatstack", { y: -24, duration: 0.16, ease: "steps(4)" }, ${swapT.toFixed(3)});
-  tl.set("#tstrow2", { opacity: 0.5 }, ${(swapT + 0.18).toFixed(3)});
-  tl.set("#tstrow2", { opacity: 1 },   ${(swapT + 0.222).toFixed(3)});
+  addTo("#tstatstack", { y: -24, duration: 0.16, ease: "steps(4)" }, ${swapT.toFixed(3)});
+  setAt("#tstrow2", { opacity: 0.5 }, ${(swapT + 0.18).toFixed(3)});
+  setAt("#tstrow2", { opacity: 1 },   ${(swapT + 0.222).toFixed(3)});
 
   // clock seconds tick (stacked digit column, stepped shifts)
-  for (let k = 1; k <= ${nDig - 1}; k++) tl.set("#tdigcol", { y: -22 * k }, k);
+  for (let k = 1; k <= ${nDig - 1}; k++) setAt("#tdigcol", { y: -22 * k }, k);
 
   // idle LED refresh shimmer in the dead air (board never freezes)
   ${J(shimmers)}.forEach((t) => {
-    tl.set("#twin", { opacity: 0.88 }, t);
-    tl.set("#twin", { opacity: 1 },    t + 0.042);
+    setAt("#twin", { opacity: 0.88 }, t);
+    setAt("#twin", { opacity: 1 },    t + 0.042);
   });
 ${
   b.yield
     ? `
   // ===== hierarchy: board yields while the apex lands =====
-  tl.to("#tboard", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
-  tl.to("#tboard", { opacity: 1,   duration: 0.25, ease: "power1.out" }, ${(heroIn + (b.yield.post || 0.9)).toFixed(3)});`
+  addTo("#tboard", { opacity: ${b.yield.dim}, duration: 0.18, ease: "inQuad" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
+  addTo("#tboard", { opacity: 1,   duration: 0.25, ease: "outQuad" }, ${(heroIn + (b.yield.post || 0.9)).toFixed(3)});`
     : ""
 }`;
   return { css, html, js };
@@ -2269,7 +2329,7 @@ function paradigmVhsrail() {
     GRN = dna.palette.green || dna.palette.accent,
     RED = dna.palette.red || "#FF2E2E",
     CYN = dna.palette.cyan || "#3FE8E8";
-  // line windows: `out` is the REWIND start — early into dead air (with the
+  // line windows: `out` is the REWIND start - early into dead air (with the
   // PLAY→REW gag), before the clip end for the last line
   const lineData = LINES.map((L, i) => {
     const lastEnd = L.words[L.words.length - 1].end;
@@ -2371,18 +2431,18 @@ function paradigmVhsrail() {
   const I = ${heroIn.toFixed(3)}, X = ${X.toFixed(3)};
 
   // ===== OSD furniture: present the whole clip, 1-frame power-on glitch =====
-  tl.set(["#osdplay","#osdts"], { opacity: 1, x: 5 }, 0.02);
-  tl.set(["#osdplay","#osdts"], { x: 0 }, 0.02 + F);
+  setAt(["#osdplay","#osdts"], { opacity: 1, x: 5 }, 0.02);
+  setAt(["#osdplay","#osdts"], { x: 0 }, 0.02 + F);
   // timestamp colon blinks at 1 Hz
   for (let k = 0; 0.50 + k < ${(DUR - 0.04).toFixed(2)}; k++) {
-    tl.set("#col", { opacity: 0 }, 0.50 + k);
-    if (1.00 + k < ${(DUR - 0.04).toFixed(2)}) tl.set("#col", { opacity: 1 }, 1.00 + k);
+    setAt("#col", { opacity: 0 }, 0.50 + k);
+    if (1.00 + k < ${(DUR - 0.04).toFixed(2)}) setAt("#col", { opacity: 1 }, 1.00 + k);
   }
   // PLAY -> REW gag on each dead-air rewind, and again at the final rewind
   ${J(gags)}.forEach(([a, b]) => {
-    tl.set("#pmode", { display: "none" }, a);
-    tl.set("#rmode", { display: "flex" }, a);
-    if (b) { tl.set("#rmode", { display: "none" }, b); tl.set("#pmode", { display: "flex" }, b); }
+    setAt("#pmode", { display: "none" }, a);
+    setAt("#rmode", { display: "flex" }, a);
+    if (b) { setAt("#rmode", { display: "none" }, b); setAt("#pmode", { display: "flex" }, b); }
   });
 
   // ===== body rail =====
@@ -2398,34 +2458,34 @@ function paradigmVhsrail() {
       const n = document.createElement("span"); n.className = "vnz";
       w.appendChild(a); w.appendChild(b2); w.appendChild(n); line.appendChild(w);
     });
-    gsap.set([line, echo], { xPercent: -50, yPercent: -50 });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.02);
+    setNow([line, echo], { xPercent: -50, yPercent: -50 });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.02);
 
     L.words.forEach(([txt, st, em], wi) => {
       const w = line.children[wi];
       const b2 = w.children[1], n = w.children[2];
       // tracking glitch entrance: instant on, 2-frame y-shake, 1-frame band slice shift
-      tl.set(w, { opacity: 1, y: 3 }, st);
-      tl.set(b2, { x: 7 }, st);
-      tl.set(w, { y: -3 }, st + F);
-      tl.set(b2, { x: 0 }, st + F);
-      tl.set(w, { y: 0 }, st + 2 * F);
+      setAt(w, { opacity: 1, y: 3 }, st);
+      setAt(b2, { x: 7 }, st);
+      setAt(w, { y: -3 }, st + F);
+      setAt(b2, { x: 0 }, st + F);
+      setAt(w, { y: 0 }, st + 2 * F);
       if (em) {
         // PAUSE jitter: y oscillation +-1px for 0.3s + white noise band flicker
         const e = st + 0.125;
-        [-1, 1, -1, 1, 0].forEach((v, k) => tl.set(w, { y: v }, e + k * 0.05));
-        [0.5, 0, 0.35, 0].forEach((o, k) => tl.set(n, { opacity: o }, e + k * 0.065));
+        [-1, 1, -1, 1, 0].forEach((v, k) => setAt(w, { y: v }, e + k * 0.05));
+        [0.5, 0, 0.35, 0].forEach((o, k) => setAt(n, { opacity: o }, e + k * 0.065));
       }
     });
 
     // REWIND exit: streak left + echo copy + 2 scrub lines
     const ed = L.out >= ${(DUR - 0.25).toFixed(2)} ? 0.12 : 0.16;
-    tl.to(line, { x: -60, opacity: 0, duration: 0.12, ease: "power2.in" }, L.out);
-    tl.set(echo, { opacity: 0.35 }, L.out + 0.01);
-    tl.to(echo, { x: -110, opacity: 0, duration: ed, ease: "power2.in" }, L.out + 0.02);
-    tl.set([line, echo], { display: "none" }, Math.min(L.out + 0.22, ${(DUR - 0.02).toFixed(2)}));
+    addTo(line, { x: -60, opacity: 0, duration: 0.12, ease: "inCubic" }, L.out);
+    setAt(echo, { opacity: 0.35 }, L.out + 0.01);
+    addTo(echo, { x: -110, opacity: 0, duration: ed, ease: "inCubic" }, L.out + 0.02);
+    setAt([line, echo], { display: "none" }, Math.min(L.out + 0.22, ${(DUR - 0.02).toFixed(2)}));
     [0.6, 0.25, 0.5, 0].forEach((o, k) => {
-      tl.set(["#scrub1","#scrub2"], { opacity: o }, Math.min(L.out + k * F, ${(DUR - 0.02).toFixed(2)}));
+      setAt(["#scrub1","#scrub2"], { opacity: o }, Math.min(L.out + k * F, ${(DUR - 0.02).toFixed(2)}));
     });
   });
 ${
@@ -2436,9 +2496,9 @@ ${
     if (L.in < I + 0.9 && L.out > I - 0.3) {
       const dimT = Math.max(I - ${(b.yield.pre || 0.2).toFixed(2)}, L.in + 0.05);
       if (L.out > dimT + 0.25) {
-        tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.12, ease: "power1.in" }, dimT);
+        addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.12, ease: "inQuad" }, dimT);
         const resT = I + ${(b.yield.post || 0.9).toFixed(2)};
-        if (resT + 0.3 < L.out) tl.to("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
+        if (resT + 0.3 < L.out) addTo("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
       }
     }
   });`
@@ -2447,36 +2507,36 @@ ${
 
   // idle tape noise in dead air
   VRAIL.filter((L) => L.gag).forEach((L) => {
-    tl.set("#drift", { opacity: 0.12 }, L.out + 0.2);
-    tl.fromTo("#drift", { y: 0 }, { y: -55, duration: 0.5, ease: "none" }, L.out + 0.2);
-    tl.set("#drift", { opacity: 0 }, L.out + 0.7);
+    setAt("#drift", { opacity: 0.12 }, L.out + 0.2);
+    addFromTo("#drift", { y: 0 }, { y: -55, duration: 0.5, ease: "linear" }, L.out + 0.2);
+    setAt("#drift", { opacity: 0 }, L.out + 0.7);
   });
 
   // ===== REC FREEZE artifacts (apex-coupled, in FRONT of the subject) =====
   // 1-frame full white tear band
-  tl.set("#tear", { opacity: 0.95 }, I);
-  tl.set("#tear", { opacity: 0 }, I + F);
+  setAt("#tear", { opacity: 0.95 }, I);
+  setAt("#tear", { opacity: 0 }, I + F);
   // ● REC blinks top-right (1-frame glitch entrance)
-  tl.set("#rec", { opacity: 1, x: 6 }, I + 0.04);
-  tl.set("#rec", { x: 0 }, I + 0.04 + F);
+  setAt("#rec", { opacity: 1, x: 6 }, I + 0.04);
+  setAt("#rec", { x: 0 }, I + 0.04 + F);
   [[0.49, 0], [0.79, 1], [1.24, 0], [1.54, 1]].forEach(([dt, o]) => {
-    if (I + dt < X - 0.05) tl.set("#rdot", { opacity: o }, I + dt);
+    if (I + dt < X - 0.05) setAt("#rdot", { opacity: o }, I + dt);
   });
-  tl.set("#rec", { opacity: 0 }, X);
+  setAt("#rec", { opacity: 0 }, X);
   // head-switching noise bar: sets every frame for 10 frames
   const HSX = [0, 140, 60, 220, 30, 180, 90, 250, 10, 120];
   HSX.forEach((px, k) => {
-    tl.set("#hsbar", { opacity: k % 2 ? 0.62 : 0.9, backgroundPositionX: px + "px" }, I + k * F);
+    setAt("#hsbar", { opacity: k % 2 ? 0.62 : 0.9, backgroundPositionX: px + "px" }, I + k * F);
   });
-  tl.set("#hsbar", { opacity: 0 }, I + 10 * F);
+  setAt("#hsbar", { opacity: 0 }, I + 10 * F);
 
   // apex REWIND exit: 2 scrub lines at the apex band
-  [0.6, 0.25, 0.5, 0].forEach((o, k) => tl.set(["#scrub3","#scrub4"], { opacity: o }, X + k * F));
+  [0.6, 0.25, 0.5, 0].forEach((o, k) => setAt(["#scrub3","#scrub4"], { opacity: o }, X + k * F));
   // head-switch reprise on the final rewind
   [[0, 0.85, 40], [0.04, 0.6, 190], [0.08, 0.8, 90]].forEach(([dt, o, px]) => {
-    tl.set("#hsbar", { opacity: o, backgroundPositionX: px + "px" }, ${lastOut.toFixed(3)} + dt);
+    setAt("#hsbar", { opacity: o, backgroundPositionX: px + "px" }, ${lastOut.toFixed(3)} + dt);
   });
-  tl.set("#hsbar", { opacity: 0 }, ${Math.min(lastOut + 0.12, DUR - 0.02).toFixed(3)});`;
+  setAt("#hsbar", { opacity: 0 }, ${Math.min(lastOut + 0.12, DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -2535,14 +2595,14 @@ ${lineData.map((L) => `        <div class="hln" id="${L.id}"></div>`).join("\n")
   const js = `
   // ---- body paradigm: HUDRAIL (coin-pop words on an arcade HUD bar) ----
   // world overlays: scanlines + slight vignette
-  tl.set("#crtscan", { opacity: ${b.scan ?? 0.06} }, 0.03);
-  tl.set("#crtvig",  { opacity: 1 },    0.03);
+  setAt("#crtscan", { opacity: ${b.scan ?? 0.06} }, 0.03);
+  setAt("#crtvig",  { opacity: 1 },    0.03);
   // HUD bar boots up
-  tl.set("#hud", { opacity: 1 }, 0.05);
-  tl.fromTo("#hud", { y: 14 }, { y: 0, duration: 0.12, ease: "steps(2)" }, 0.05);
+  setAt("#hud", { opacity: 1 }, 0.05);
+  addFromTo("#hud", { y: 14 }, { y: 0, duration: 0.12, ease: "steps(2)" }, 0.05);
   // 1UP blink, classic cadence (baked sets)
   for (let t = 0.28, k = 0; t < ${(DUR - 0.06).toFixed(2)}; t += 0.45, k++) {
-    tl.set("#tagL", { opacity: k % 2 === 0 ? 0.3 : 1 }, t);
+    setAt("#tagL", { opacity: k % 2 === 0 ? 0.3 : 1 }, t);
   }
   const HUD = ${J(lineData)};
   HUD.forEach((L) => {
@@ -2552,36 +2612,36 @@ ${lineData.map((L) => `        <div class="hln" id="${L.id}"></div>`).join("\n")
       const tick = document.createElement("div"); tick.className = "htick";
       w.appendChild(tick); line.appendChild(w);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -50 });
-    tl.set(line, { opacity: 1 }, L.in);
+    setNow(line, { xPercent: -50, yPercent: -50 });
+    setAt(line, { opacity: 1 }, L.in);
     L.words.forEach(([txt, st, em], wi) => {
       const el = line.children[wi], tick = el.lastChild;
       // coin pop: instant-on + steps(2) scale from the baseline + 1-frame blip
-      tl.set(el, { opacity: 1 }, st);
-      tl.fromTo(el, { scale: 0 }, { scale: 1, duration: 0.12, ease: "steps(2)",
+      setAt(el, { opacity: 1 }, st);
+      addFromTo(el, { scale: 0 }, { scale: 1, duration: 0.12, ease: "steps(2)",
                                     transformOrigin: "50% 100%" }, st);
-      tl.set(tick, { opacity: 0.95 }, st);                // coin blip, exactly 1 frame
-      tl.set(tick, { opacity: 0 }, st + 0.042);
+      setAt(tick, { opacity: 0.95 }, st);                // coin blip, exactly 1 frame
+      setAt(tick, { opacity: 0 }, st + 0.042);
       if (em) {  // 3-frame palette swap (body -> accent -> magenta -> body)
-        tl.set(el, { color: ${J(A)} }, st + 0.13);
-        tl.set(el, { color: ${J(MG)} }, st + 0.172);
-        tl.set(el, { color: ${J(dna.palette.body)} }, st + 0.214);
+        setAt(el, { color: ${J(A)} }, st + 0.13);
+        setAt(el, { color: ${J(MG)} }, st + 0.172);
+        setAt(el, { color: ${J(dna.palette.body)} }, st + 0.214);
       }
     });
     // checkerboard dissolve: words vanish in 2 alternating set passes
     L.words.forEach((w, wi) => {
-      tl.set(line.children[wi], { opacity: 0 },
+      setAt(line.children[wi], { opacity: 0 },
              wi % 2 === 0 ? L.xo : Math.min(L.xo + 0.083, ${(DUR - 0.03).toFixed(2)}));
     });
-    tl.set(line, { opacity: 0, display: "none" }, Math.min(L.xo + 0.15, ${(DUR - 0.02).toFixed(2)}));
+    setAt(line, { opacity: 0, display: "none" }, Math.min(L.xo + 0.15, ${(DUR - 0.02).toFixed(2)}));
   });
 ${
   b.yield
     ? `  // HUD yields while the boss lands (restore only with runway)
-  tl.to("#hud", { opacity: ${b.yield.dim}, duration: 0.15, ease: "power1.in" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
+  addTo("#hud", { opacity: ${b.yield.dim}, duration: 0.15, ease: "inQuad" }, ${(heroIn - (b.yield.pre || 0.2)).toFixed(3)});
 ${
   heroIn + (b.yield.post || 0.9) + 0.3 < DUR - 0.1
-    ? `  tl.to("#hud", { opacity: 1, duration: 0.25, ease: "power1.out" }, ${(heroIn + (b.yield.post || 0.9)).toFixed(3)});`
+    ? `  addTo("#hud", { opacity: 1, duration: 0.25, ease: "outQuad" }, ${(heroIn + (b.yield.post || 0.9)).toFixed(3)});`
     : ""
 }`
     : ""
@@ -2592,13 +2652,13 @@ ${
 function paradigmCarbonstrip() {
   // CARBONSTRIP: cold-war case-file transcript strip docked on the clearer
   // side (manila gradient, punch holes, faint red watermark, typed case
-  // header). Carbon type HAMMERS in per word — per-char sets 30ms apart,
-  // scale 1.35→1 in one frame (the stamp motif at low amplitude) — every
+  // header). Carbon type HAMMERS in per word - per-char sets 30ms apart,
+  // scale 1.35→1 in one frame (the stamp motif at low amplitude) - every
   // strike kicks the strip 1px (y-channel locked while the strip itself is
   // tweened); seeded ±1.2px baselines + seeded ribbon-ink weight. Emphasis
   // words get a red ink ellipse drawn around them. Lines live on up to
   // body.rows fixed slots; PAGES (broken at full rows, dead-air gaps > 0.7s,
-  // and after the hero hand-off line — it is filed away while the stamp owns
+  // and after the hero hand-off line - it is filed away while the stamp owns
   // the frame) exit by X-row over-strike (3 chunks per line, lines 0.16s
   // apart) then a carriage yank-down feed; the final page is pulled with the
   // whole strip at clip end. The strip top-shadow breathes during the
@@ -2733,18 +2793,18 @@ ${pageData
   // ---- body paradigm: CARBONSTRIP (typewriter hammer in / X-strike + carriage-feed out) ----
   const strip = document.getElementById("strip");
   const krnd = mulberry32(${b.seed || 180618});
-  // y-channel windows where the strip is tweened — no kicks allowed inside
+  // y-channel windows where the strip is tweened - no kicks allowed inside
   const YLOCK = ${J(YLOCK)};
   function kick(t) {
     for (const [a, b] of YLOCK) if (t >= a && t <= b + 0.045) return;
-    tl.set(strip, { y: 1 }, t);
-    tl.set(strip, { y: 0 }, t + 0.042);
+    setAt(strip, { y: 1 }, t);
+    setAt(strip, { y: 0 }, t + 0.042);
   }
 
   // ===== strip entrance: the carriage feeds the paper up =====
-  tl.set(strip, { opacity: 1 }, 0.02);
-  tl.fromTo(strip, { y: 130 }, { y: 0, duration: 0.19, ease: "power3.out" }, 0.02);
-  tl.fromTo("#hdrwrap", { width: 0 }, { width: ${hdrW}, duration: 0.42, ease: "steps(${hdrSteps})" }, 0.10);
+  setAt(strip, { opacity: 1 }, 0.02);
+  addFromTo(strip, { y: 130 }, { y: 0, duration: 0.19, ease: "outQuart" }, 0.02);
+  addFromTo("#hdrwrap", { width: 0 }, { width: ${hdrW}, duration: 0.42, ease: "steps(${hdrSteps})" }, 0.10);
 
   // ===== body: typewriter hammer (per-char sets, 30ms apart) =====
   const PAGES = ${J(pageData)};
@@ -2778,16 +2838,16 @@ ${pageData
   strikes.forEach(([c, t]) => {
     const off = (krnd() - 0.5) * 2.4;                  // ±1.2px baseline wobble
     const ink = 0.84 + krnd() * 0.16;                  // uneven ribbon ink
-    gsap.set(c, { y: off, transformOrigin: "50% 85%" });
-    tl.set(c, { opacity: ink, scale: 1.35 }, t);       // hammer = the stamp motif, low amplitude
-    tl.set(c, { scale: 1 }, t + 0.042);
+    setNow(c, { y: off, transformOrigin: "50% 85%" });
+    setAt(c, { opacity: ink, scale: 1.35 }, t);       // hammer = the stamp motif, low amplitude
+    setAt(c, { scale: 1 }, t + 0.042);
     kick(t);                                           // every strike kicks the strip
   });
   // red ink circles draw around the emphasis words
   circles.forEach(([el, t, d]) => {
     const len = el.getTotalLength();
-    gsap.set(el, { attr: { "stroke-dasharray": len, "stroke-dashoffset": len } });
-    tl.to(el, { attr: { "stroke-dashoffset": 0 }, duration: d, ease: "power2.inOut" }, t);
+    setNow(el, { attr: { "stroke-dasharray": len, "stroke-dashoffset": len } });
+    addTo(el, { attr: { "stroke-dashoffset": 0 }, duration: d, ease: "inOutCubic" }, t);
   });
 
   // ===== exits: X-row over-strike (3 chunks per line) then carriage yank =====
@@ -2804,46 +2864,46 @@ ${pageData
         const s = document.createElement("span"); s.textContent = "X".repeat(nC);
         row.appendChild(s);
         const t = pg.xs + k * 0.16 + j * 0.05;
-        tl.set(s, { opacity: 1 }, t);
+        setAt(s, { opacity: 1 }, t);
         kick(t);
       }
     });
     if (pg.yank) {
       const [yt, yd, ht, rt, rd] = pg.yank;
-      tl.to(strip, { y: 30, duration: yd, ease: "power3.in" }, yt);
-      tl.set(hides, { opacity: 0 }, ht);
-      tl.to(strip, { y: 0, duration: rd, ease: "power2.out" }, rt);
+      addTo(strip, { y: 30, duration: yd, ease: "inQuart" }, yt);
+      setAt(hides, { opacity: 0 }, ht);
+      addTo(strip, { y: 0, duration: rd, ease: "outCubic" }, rt);
     }
   });
 ${
   b.yield
     ? `
   // ===== apex etiquette: the strip yields while the stamp lands =====
-  tl.to(strip, { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${dimT});
-${resT + 0.3 < FY ? `  tl.to(strip, { opacity: 1, duration: 0.25, ease: "power1.out" }, ${resT});` : ""}`
+  addTo(strip, { opacity: ${b.yield.dim}, duration: 0.18, ease: "inQuad" }, ${dimT});
+${resT + 0.3 < FY ? `  addTo(strip, { opacity: 1, duration: 0.25, ease: "outQuad" }, ${resT});` : ""}`
     : ""
 }
 ${
   shadeDur > 0.4
     ? `
   // strip top-shadow breathes during the stamp's dead-still hold
-  tl.to("#shade", { keyframes: { opacity: [0.5, 0.72, 0.54, 0.7, 0.55, 0.66, 0.5] },
-                    duration: ${shadeDur.toFixed(2)}, ease: "none" }, ${shadeStart});`
+  addTo("#shade", { keyframes: { opacity: [0.5, 0.72, 0.54, 0.7, 0.55, 0.66, 0.5] },
+                    duration: ${shadeDur.toFixed(2)}, ease: "linear" }, ${shadeStart});`
     : ""
 }
 
-  // ===== ending: the file is pulled — strip yanks down and is gone =====
-  tl.to(strip, { y: 34, duration: 0.09, ease: "power3.in" }, ${FY});
-  tl.to(strip, { opacity: 0, duration: 0.06 }, ${(FY + 0.02).toFixed(3)});`;
+  // ===== ending: the file is pulled - strip yanks down and is gone =====
+  addTo(strip, { y: 34, duration: 0.09, ease: "inQuart" }, ${FY});
+  addTo(strip, { opacity: 0, duration: 0.06 }, ${(FY + 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
 function paradigmLaserrail() {
-  // LASERRAIL: concert lower third — every word is IGNITED where two thin
+  // LASERRAIL: concert lower third - every word is IGNITED where two thin
   // laser beams (accent from the top-left, magenta from the top-right) sweep
   // to CONVERGE on its position 2 frames early; at convergence a flare pops
   // and the word snaps on in laser color (the apex motif at low amplitude:
-  // crush → contact squash → elastic settle, brightness cool). Emphasis words
+  // crush → contact squash → outElastic settle, brightness cool). Emphasis words
   // strobe once (1 frame off / back on) and their beams linger. Exits: a
   // sweeper beam crosses L→R and carries the words (streak x+44 + blur).
   // Word centers are BAKED at compile time from the measured char-width table
@@ -2935,8 +2995,8 @@ function paradigmLaserrail() {
       s.className = "w" + (em ? " em" : ""); s.textContent = txt;
       line.appendChild(s);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -100, transformOrigin: "50% 100%" });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.03);
+    setNow(line, { xPercent: -50, yPercent: -100, transformOrigin: "50% 100%" });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.03);
     L.words.forEach(([txt, st, em], wi) => {
       const el = line.children[wi];
       const [wx, wy] = L.pos[wi];
@@ -2948,26 +3008,26 @@ function paradigmLaserrail() {
       [[-25, -15, LACC, wx - 170], [${W + 25}, -15, LMAG, wx + 170]].forEach(([ex, ey, col, sx]) => {
         const halo = lrLine(ex, ey, sx, wy - 30, col, 5);
         const core = lrLine(ex, ey, sx, wy - 30, col, 1.5);
-        tl.set(halo, { opacity: 0.24 * yld }, t0);
-        tl.set(core, { opacity: 0.92 * yld }, t0);
-        tl.to([halo, core], { attr: { x2: wx, y2: wy }, duration: cv - t0, ease: "power2.out" }, t0);
-        tl.to([halo, core], { opacity: 0, duration: em ? 0.45 : 0.2, ease: "power1.in" }, st + 0.03);
+        setAt(halo, { opacity: 0.24 * yld }, t0);
+        setAt(core, { opacity: 0.92 * yld }, t0);
+        addTo([halo, core], { attr: { x2: wx, y2: wy }, duration: cv - t0, ease: "outCubic" }, t0);
+        addTo([halo, core], { opacity: 0, duration: em ? 0.45 : 0.2, ease: "inQuad" }, st + 0.03);
       });
       // convergence flare
       const f = document.createElement("div");
       f.className = "lflare"; lrStage.appendChild(f);
       f.style.left = (wx - 27) + "px"; f.style.top = (wy - 27) + "px";
-      tl.set(f, { opacity: 0.85, scale: 0.5 }, cv);
-      tl.to(f, { scale: 1.35, opacity: 0, duration: 0.13, ease: "power2.out" }, st - 0.01);
+      setAt(f, { opacity: 0.85, scale: 0.5 }, cv);
+      addTo(f, { scale: 1.35, opacity: 0, duration: 0.13, ease: "outCubic" }, st - 0.01);
       // IGNITE (apex motif at low amplitude): on in 1 frame, crush, squash, settle
-      tl.set(el, { opacity: 1, scale: 1.12, filter: "brightness(1.85)", transformOrigin: "50% 80%" }, st);
-      tl.to(el,  { scale: 1, duration: 0.09, ease: "power3.in" }, st + 0.005);
-      tl.set(el, { scaleX: 1.05, scaleY: 0.94 }, st + 0.1);
-      tl.to(el,  { scaleX: 1, scaleY: 1, duration: 0.3, ease: "elastic.out(1, 0.42)" }, st + 0.14);
-      tl.to(el,  { filter: "brightness(1)", duration: 0.22, ease: "power2.out" }, st + 0.07);
+      setAt(el, { opacity: 1, scale: 1.12, filter: "brightness(1.85)", transformOrigin: "50% 80%" }, st);
+      addTo(el,  { scale: 1, duration: 0.09, ease: "inQuart" }, st + 0.005);
+      setAt(el, { scaleX: 1.05, scaleY: 0.94 }, st + 0.1);
+      addTo(el,  { scaleX: 1, scaleY: 1, duration: 0.3, ease: "outElastic(1, 0.42)" }, st + 0.14);
+      addTo(el,  { filter: "brightness(1)", duration: 0.22, ease: "outCubic" }, st + 0.07);
       if (em) { // single strobe: 1 frame off, back on
-        tl.set(el, { opacity: 0 }, st + 0.18);
-        tl.set(el, { opacity: 1 }, st + 0.222);
+        setAt(el, { opacity: 0 }, st + 0.18);
+        setAt(el, { opacity: 1 }, st + 0.222);
       }
     });
     // hold life: gentle breathe + laser shimmer while the line waits
@@ -2975,12 +3035,12 @@ function paradigmLaserrail() {
     const free = L.sweepT - lastSt - 0.35;
     if (free > 0.45) {
       const half = Math.min(0.55, free / 2);
-      tl.to(line, { scale: 1.013, duration: half, ease: "sine.inOut" }, lastSt + 0.35);
-      tl.to(line, { scale: 1.0,   duration: half, ease: "sine.inOut" }, lastSt + 0.35 + half);
+      addTo(line, { scale: 1.013, duration: half, ease: "inOutSine" }, lastSt + 0.35);
+      addTo(line, { scale: 1.0,   duration: half, ease: "inOutSine" }, lastSt + 0.35 + half);
     }
     if (free > 0.9) {
-      tl.to(line, { keyframes: { filter: ["brightness(1)","brightness(1.07)","brightness(1)","brightness(1.05)","brightness(1)"] },
-                    duration: 0.9, ease: "none" }, lastSt + 0.5);
+      addTo(line, { keyframes: { filter: ["brightness(1)","brightness(1.07)","brightness(1)","brightness(1.05)","brightness(1)"] },
+                    duration: 0.9, ease: "linear" }, lastSt + 0.5);
     }
     // EXIT: sweeper beam crosses L→R, words streak away as it passes them
     const xs = L.pos.map((p) => p[0]);
@@ -2988,16 +3048,16 @@ function paradigmLaserrail() {
     const sw = document.createElement("div");
     sw.className = "lsweep"; lrStage.appendChild(sw);
     sw.style.left = x0 + "px"; sw.style.top = (L.pos[0][1] - 58) + "px";
-    tl.set(sw, { opacity: 0.9 }, L.sweepT);
-    tl.to(sw,  { x: x1 - x0, duration: 0.13, ease: "power1.in" }, L.sweepT);
-    tl.to(sw,  { opacity: 0, duration: 0.05 }, L.sweepT + 0.13);
+    setAt(sw, { opacity: 0.9 }, L.sweepT);
+    addTo(sw,  { x: x1 - x0, duration: 0.13, ease: "inQuad" }, L.sweepT);
+    addTo(sw,  { opacity: 0, duration: 0.05 }, L.sweepT + 0.13);
     L.words.forEach((w, wi) => {
       const el = line.children[wi];
       const frac = (L.pos[wi][0] - x0) / Math.max(1, x1 - x0);
-      tl.to(el, { x: 44, opacity: 0, filter: "blur(5px)", duration: 0.11, ease: "power2.in" },
+      addTo(el, { x: 44, opacity: 0, filter: "blur(5px)", duration: 0.11, ease: "inCubic" },
             L.sweepT + 0.11 * frac);
     });
-    tl.set(line, { display: "none" }, Math.min(L.sweepT + 0.32, ${(DUR - 0.02).toFixed(3)}));
+    setAt(line, { display: "none" }, Math.min(L.sweepT + 0.32, ${(DUR - 0.02).toFixed(3)}));
   });
 ${
   b.yield
@@ -3006,9 +3066,9 @@ ${
     if (L.in < ${heroIn.toFixed(3)} + 0.9 && L.sweepT > ${heroIn.toFixed(3)} - 0.3) {
       const dimT = Math.max(${(heroIn - (b.yield.pre || 0.04)).toFixed(3)}, L.in + 0.05);
       if (L.sweepT > dimT + 0.25) {
-        tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.15 }, dimT);
+        addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.15 }, dimT);
         const resT = ${(heroIn + (b.yield.post || 0.9)).toFixed(3)};
-        if (resT + 0.3 < L.sweepT) tl.to("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
+        if (resT + 0.3 < L.sweepT) addTo("#" + L.id, { opacity: 1, duration: 0.25 }, resT);
       }
     }
   });`
@@ -3034,7 +3094,7 @@ function paradigmStormrail() {
   const lineData = LINES.map((L) => ({
     id: "st" + L.id,
     in: +L.in.toFixed(3),
-    // wash start: just before the next line — but a line facing dead air
+    // wash start: just before the next line - but a line facing dead air
     // washes away early (the demo's r1 exits at lastWord + 1.08s)
     out: +Math.min(L.out - 0.05, L.words[L.words.length - 1].end + 1.08, DUR - 0.2).toFixed(3),
     words: L.words.map((w) => [w.display, +w.start.toFixed(3), w.minor ? 1 : 0]),
@@ -3070,15 +3130,15 @@ function paradigmStormrail() {
       const x0 = 20 + rnd() * ${W - 40}, d = 0.55 + rnd() * 0.55;
       const len = 46 + rnd() * 70, frac = rnd();
       const travel = ${H + 300}, dx = -160; // slanted fall, one wind vector
-      gsap.set(el, { height: len, rotation: 9, x: x0, y: -160 });
+      setNow(el, { height: len, rotation: 9, x: x0, y: -160 });
       let t = t0;
       // partial first cycle so rain is mid-fall at t0
-      tl.fromTo(el, { y: -160 + travel * frac, x: x0 + dx * frac },
-                    { y: ${H + 140}, x: x0 + dx, duration: d * (1 - frac), ease: "none" }, t);
+      addFromTo(el, { y: -160 + travel * frac, x: x0 + dx * frac },
+                    { y: ${H + 140}, x: x0 + dx, duration: d * (1 - frac), ease: "linear" }, t);
       t += d * (1 - frac);
       while (t < t1) {
-        tl.fromTo(el, { y: -160, x: x0 },
-                      { y: ${H + 140}, x: x0 + dx, duration: d, ease: "none" }, t);
+        addFromTo(el, { y: -160, x: x0 },
+                      { y: ${H + 140}, x: x0 + dx, duration: d, ease: "linear" }, t);
         t += d;
       }
     }
@@ -3086,12 +3146,12 @@ function paradigmStormrail() {
   makeRain(document.getElementById("rain"),  ${r.count ?? 18}, ${r.seed ?? 9021}, 0, ${(DUR - 0.02).toFixed(2)});
   makeRain(document.getElementById("rain2"), ${r.count ?? 18}, ${r.seed2 ?? 4477}, ${(heroIn - 0.11).toFixed(3)}, ${Math.min(heroIn + 1.24, DUR - 0.02).toFixed(3)});
   // rain doubles for ~1s after the strike
-  tl.set("#rain2", { opacity: 0.11 }, I + 0.02);
-  tl.to("#rain2",  { opacity: 0, duration: 0.30 }, ${Math.min(heroIn + 1.02, DUR - 0.34).toFixed(3)});
+  setAt("#rain2", { opacity: 0.11 }, I + 0.02);
+  addTo("#rain2",  { opacity: 0, duration: 0.30 }, ${Math.min(heroIn + 1.02, DUR - 0.34).toFixed(3)});
 
   // rail scrim (stable reading surface against the busy lower frame)
-  tl.to("#stscrim", { opacity: 1, duration: 0.20 }, 0.05);
-  tl.to("#stscrim", { opacity: 0, duration: 0.16 }, ${(DUR - 0.18).toFixed(3)});
+  addTo("#stscrim", { opacity: 1, duration: 0.20 }, 0.05);
+  addTo("#stscrim", { opacity: 0, duration: 0.16 }, ${(DUR - 0.18).toFixed(3)});
 
   const SRAIL = ${J(lineData)};
   SRAIL.forEach((L) => {
@@ -3100,26 +3160,26 @@ function paradigmStormrail() {
       const s = document.createElement("span");
       s.className = "w"; s.textContent = txt; line.appendChild(s);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.025);
+    setNow(line, { xPercent: -50, yPercent: -100 });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.025);
     L.words.forEach(([txt, st, em], wi) => {
       const el = line.children[wi];
       // entrance = the apex motif at low amplitude: lit-bright pop + micro settle
-      tl.set(el, { opacity: 1, y: 4, scale: 1.06, filter: "brightness(2.2)",
+      setAt(el, { opacity: 1, y: 4, scale: 1.06, filter: "brightness(2.2)",
                    transformOrigin: "50% 85%" }, st);
-      tl.to(el, { y: 0, scale: 1, duration: 0.12, ease: "power2.out" }, st + F);
-      tl.to(el, { filter: "brightness(1)", duration: 0.14, ease: "power1.out" }, st + F);
+      addTo(el, { y: 0, scale: 1, duration: 0.12, ease: "outCubic" }, st + F);
+      addTo(el, { filter: "brightness(1)", duration: 0.14, ease: "outQuad" }, st + F);
       if (em && st + 0.20 + 3 * F < ${(DUR - 0.04).toFixed(2)}) { // sheet lightning: 2-frame double flash
         const t0 = st + 0.20;
-        tl.set(el, { filter: "brightness(1.9)" }, t0);
-        tl.set(el, { filter: "brightness(1.0)" }, t0 + F);
-        tl.set(el, { filter: "brightness(1.8)" }, t0 + 2 * F);
-        tl.to(el,  { filter: "brightness(1)", duration: 0.12 }, t0 + 3 * F);
+        setAt(el, { filter: "brightness(1.9)" }, t0);
+        setAt(el, { filter: "brightness(1.0)" }, t0 + F);
+        setAt(el, { filter: "brightness(1.8)" }, t0 + 2 * F);
+        addTo(el,  { filter: "brightness(1)", duration: 0.12 }, t0 + 3 * F);
       }
     });
     // EXIT: wash downward with the rain
-    tl.to(line, { y: 22, opacity: 0, filter: "blur(3px)", duration: 0.18, ease: "power1.in" }, L.out);
-    tl.set(line, { display: "none" }, Math.min(L.out + 0.20, ${(DUR - 0.02).toFixed(2)}));
+    addTo(line, { y: 22, opacity: 0, filter: "blur(3px)", duration: 0.18, ease: "inQuad" }, L.out);
+    setAt(line, { display: "none" }, Math.min(L.out + 0.20, ${(DUR - 0.02).toFixed(2)}));
   });
 ${
   b.yield
@@ -3129,14 +3189,14 @@ ${
     if (L.in < I + 0.9 && L.out > I - 0.3) {
       const dimT = Math.max(I - ${(b.yield.pre ?? 0.15).toFixed(2)}, L.in + 0.05);
       if (L.out > dimT + 0.25) {
-        tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.12 }, dimT);
+        addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.12 }, dimT);
         const resT = I + ${(b.yield.post ?? 0.29).toFixed(2)};
-        if (resT + 0.3 < L.out) tl.to("#" + L.id, { opacity: 1, duration: 0.10 }, resT);
+        if (resT + 0.3 < L.out) addTo("#" + L.id, { opacity: 1, duration: 0.10 }, resT);
       }
     }
     if (L.in <= I - 2 * F && L.out > I) {
-      tl.set("#" + L.id, { textShadow: "${12 * sgn}px 4px 12px rgba(2,8,18,0.85), 0 0 14px ${A}73" }, I - 2 * F);
-      tl.set("#" + L.id, { textShadow: "0 6px 16px rgba(2,8,18,0.85), 0 2px 4px rgba(2,8,18,0.7), 0 0 14px ${A}47" }, I + 0.09);
+      setAt("#" + L.id, { textShadow: "${12 * sgn}px 4px 12px rgba(2,8,18,0.85), 0 0 14px ${A}73" }, I - 2 * F);
+      setAt("#" + L.id, { textShadow: "0 6px 16px rgba(2,8,18,0.85), 0 2px 4px rgba(2,8,18,0.7), 0 0 14px ${A}47" }, I + 0.09);
     }
   });`
     : ""
@@ -3209,14 +3269,14 @@ function paradigmHolorail() {
   const breaths = Math.max(1, Math.floor((pCut - 0.5) / 0.8) - 1);
   const js = `
   // ---- body paradigm: HOLORAIL (projection plate, sweep-boot words, projector-cut exits) ----
-  gsap.set("#plate", { xPercent: -50, yPercent: -50, transformOrigin: "50% 50%" });
+  setNow("#plate", { xPercent: -50, yPercent: -50, transformOrigin: "50% 50%" });
 
   // plate boots like a projector turning ON (inverse of the projector-cut exit)
-  tl.set("#plate", { opacity: 1 }, 0.10);
-  tl.fromTo("#plate", { scaleY: 0.03 }, { scaleY: 1, duration: 0.13, ease: "expo.out" }, 0.10);
-  tl.set("#plate", { opacity: 0.35 }, 0.155);
-  tl.set("#plate", { opacity: 1 }, 0.195);
-  tl.to("#plate", { opacity: 0.93, duration: 0.8, ease: "sine.inOut", yoyo: true, repeat: ${breaths} }, 0.5);
+  setAt("#plate", { opacity: 1 }, 0.10);
+  addFromTo("#plate", { scaleY: 0.03 }, { scaleY: 1, duration: 0.13, ease: "outExpo" }, 0.10);
+  setAt("#plate", { opacity: 0.35 }, 0.155);
+  setAt("#plate", { opacity: 1 }, 0.195);
+  addTo("#plate", { opacity: 0.93, duration: 0.8, ease: "inOutSine", yoyo: true, repeat: ${breaths} }, 0.5);
 
   const HRAIL = ${J(lineData)};
   const HSH_BASE = ${J(shadowBase)}, HSH_EM = ${J(shadowEm)};
@@ -3228,63 +3288,63 @@ function paradigmHolorail() {
       if (wi === L.words.length - 1) s.style.marginRight = "0";
       line.appendChild(s);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -50, transformPerspective: 700, transformOrigin: "50% 50%" });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.03);
+    setNow(line, { xPercent: -50, yPercent: -50, transformPerspective: 700, transformOrigin: "50% 50%" });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.03);
 
     L.words.forEach(([txt, st, em], wi) => {
       const el = line.children[wi];
       // BOOT (low-amplitude apex motif): instant opacity + vertical sweep reveal
-      tl.set(el, { opacity: 1, clipPath: "inset(-20% -10% 100% -10%)" }, st);
-      tl.to(el, { clipPath: "inset(-20% -10% -30% -10%)", duration: 0.15, ease: "power2.out" }, st);
-      tl.set(el, { clipPath: "none" }, st + 0.16);
+      setAt(el, { opacity: 1, clipPath: "inset(-20% -10% 100% -10%)" }, st);
+      addTo(el, { clipPath: "inset(-20% -10% -30% -10%)", duration: 0.15, ease: "outCubic" }, st);
+      setAt(el, { clipPath: "none" }, st + 0.16);
       // 1-frame interference glitch
-      tl.set(el, { x: 2 },  st + 0.05);
-      tl.set(el, { x: -2 }, st + 0.09);
-      tl.set(el, { x: 0 },  st + 0.13);
+      setAt(el, { x: 2 },  st + 0.05);
+      setAt(el, { x: -2 }, st + 0.09);
+      setAt(el, { x: 0 },  st + 0.13);
       // EMPHASIS: 2-frame projection dropout, restores brighter (delay shrinks
       // near the line's projector-cut so dropout+restore always complete)
       if (em) {
         const d = Math.min(${b.emphDelay ?? 0.34}, L.exit - st - 0.183);
         if (d >= 0.083) {
-          tl.set(el, { opacity: 0.2 }, st + d);
-          tl.set(el, { opacity: 1, color: ${J(dna.palette.em || "#f4feff")}, textShadow: HSH_EM }, st + d + 0.083);
+          setAt(el, { opacity: 0.2 }, st + d);
+          setAt(el, { opacity: 1, color: ${J(dna.palette.em || "#f4feff")}, textShadow: HSH_EM }, st + d + 0.083);
           const sb = st + d + 0.51;
           if (sb < L.exit - 0.05)
-            tl.to(el, { color: ${J((dna.palette.body || "#c7f1ff") + "ed")}, textShadow: HSH_BASE,
-                        duration: Math.min(0.4, ${(DUR - 0.04).toFixed(2)} - sb), ease: "power1.in" }, sb);
+            addTo(el, { color: ${J((dna.palette.body || "#c7f1ff") + "ed")}, textShadow: HSH_BASE,
+                        duration: Math.min(0.4, ${(DUR - 0.04).toFixed(2)} - sb), ease: "inQuad" }, sb);
         }
       }
     });
 
-    // slow rotateY drift — it IS a projection
+    // slow rotateY drift - it IS a projection
     const dS = L.words[0][1] + 0.08;
     const dD = Math.max(0.3, L.exit - dS - 0.04);
-    tl.to(line, { keyframes: { rotationY: [-3.5, 3.5, -2.5] }, duration: dD, ease: "none" }, dS);
+    addTo(line, { keyframes: { rotationY: [-3.5, 3.5, -2.5] }, duration: dD, ease: "linear" }, dS);
 
-    // EXIT: projector cut — line collapses to a bright slit, then to a dot
+    // EXIT: projector cut - line collapses to a bright slit, then to a dot
     const ex = L.exit;
-    tl.set(line, { filter: "brightness(2.2)" }, ex);
-    tl.to(line, { scaleY: 0.045, duration: 0.07, ease: "power3.in" }, ex + 0.005);
-    tl.to(line, { scaleX: 0.015, duration: 0.06, ease: "power3.in" }, ex + 0.08);
-    tl.set(line, { opacity: 0, display: "none" }, ex + 0.15);
+    setAt(line, { filter: "brightness(2.2)" }, ex);
+    addTo(line, { scaleY: 0.045, duration: 0.07, ease: "inQuart" }, ex + 0.005);
+    addTo(line, { scaleX: 0.015, duration: 0.06, ease: "inQuart" }, ex + 0.08);
+    setAt(line, { opacity: 0, display: "none" }, ex + 0.15);
   });
 ${
   b.yield
     ? `  // the whole rail (plate included) yields while the apex lands
-  tl.to("#railwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${(heroIn - (b.yield.pre ?? 0.18)).toFixed(3)});
-  tl.to("#railwrap", { opacity: 1, duration: 0.22, ease: "power1.out" }, ${(heroIn + (b.yield.post ?? 0.37)).toFixed(3)});`
+  addTo("#railwrap", { opacity: ${b.yield.dim}, duration: 0.18, ease: "inQuad" }, ${(heroIn - (b.yield.pre ?? 0.18)).toFixed(3)});
+  addTo("#railwrap", { opacity: 1, duration: 0.22, ease: "outQuad" }, ${(heroIn + (b.yield.post ?? 0.37)).toFixed(3)});`
     : ""
 }
   // end: the plate itself gets the projector cut
-  tl.set("#plate", { filter: "brightness(2.2)" }, ${pCut});
-  tl.to("#plate", { scaleY: 0.03, duration: 0.07, ease: "power3.in" }, ${(pCut + 0.005).toFixed(3)});
-  tl.to("#plate", { scaleX: 0.012, duration: 0.05, ease: "power3.in" }, ${(pCut + 0.08).toFixed(3)});
-  tl.set("#plate", { opacity: 0 }, ${Math.min(pCut + 0.12, DUR - 0.02).toFixed(3)});`;
+  setAt("#plate", { filter: "brightness(2.2)" }, ${pCut});
+  addTo("#plate", { scaleY: 0.03, duration: 0.07, ease: "inQuart" }, ${(pCut + 0.005).toFixed(3)});
+  addTo("#plate", { scaleX: 0.012, duration: 0.05, ease: "inQuart" }, ${(pCut + 0.08).toFixed(3)});
+  setAt("#plate", { opacity: 0 }, ${Math.min(pCut + 0.12, DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
 function paradigmPlanktonrail() {
-  // PLANKTONRAIL: deep-sea lower third on TWO coexisting row slots — even
+  // PLANKTONRAIL: deep-sea lower third on TWO coexisting row slots - even
   // lines ride the upper row, odd lines the lower, so couplets share the
   // water like drifting strata. Words GLOW ON like jellyfish (the apex bloom
   // at low amplitude): 2-frame opacity + radial bloom from center (scale
@@ -3294,7 +3354,7 @@ function paradigmPlanktonrail() {
   // Furniture: seeded plankton motes drift f(t) in the open water; the ones
   // seeded in a ring around the apex get ATTRACTED to the bloom and brighten
   // as it lands. The line feeding the apex dims while the bloom owns the
-  // frame (no restore — it exits dimmed, by design); a line entering during
+  // frame (no restore - it exits dimmed, by design); a line entering during
   // the hold arrives dimmed and restores once the bloom settles.
   const b = dna.body;
   const A = dna.palette.accent,
@@ -3371,27 +3431,27 @@ function paradigmPlanktonrail() {
     }
     L = Math.max(20, Math.min(${W - 25}, L)); T = Math.max(25, Math.min(${H - 175}, T));
     const s = 2 + Math.round(mrnd() * 2);
-    gsap.set(el, { width: s, height: s, left: L, top: T });
+    setNow(el, { width: s, height: s, left: L, top: T });
     const tin = 0.04 + mrnd() * 0.35;
-    tl.to(el, { opacity: 0.1, duration: 0.3, ease: "power1.out" }, tin);
+    addTo(el, { opacity: 0.1, duration: 0.3, ease: "outQuad" }, tin);
     // slow seeded drift walk
     const a1 = (mrnd() - 0.5) * 36, a2 = a1 + (mrnd() - 0.5) * 36, a3 = a2 + (mrnd() - 0.5) * 30;
     const b1 = (mrnd() - 0.5) * 28, b2 = b1 + (mrnd() - 0.5) * 28, b3 = b2 + (mrnd() - 0.5) * 24;
     const dEnd = near ? I - 0.25 : ${(DUR - 0.34).toFixed(3)};
-    tl.to(el, { keyframes: { x: [a1, a2, a3], y: [b1, b2, b3],
+    addTo(el, { keyframes: { x: [a1, a2, a3], y: [b1, b2, b3],
                              opacity: [0.13, 0.07, 0.11] },
-               duration: dEnd - (tin + 0.32), ease: "sine.inOut" }, tin + 0.32);
+               duration: dEnd - (tin + 0.32), ease: "inOutSine" }, tin + 0.32);
     if (near) {
       // ATTRACTION: pulled toward the bloom, brightening
       const tx = (APX - L) * 0.72 + (mrnd() - 0.5) * 24;
       const ty = (APY - T) * 0.72 + (mrnd() - 0.5) * 18;
-      tl.to(el, { x: tx, y: ty, opacity: 0.42, scale: 1.7,
-                 duration: 0.75, ease: "power2.in" }, I - 0.19 + i * 0.045);
-      tl.to(el, { keyframes: { x: [tx + 4, tx - 3, tx + 2], y: [ty - 4, ty + 3, ty - 2] },
-                 duration: 0.32, ease: "sine.inOut" }, ${Math.min(heroIn + 0.59, DUR - 0.42).toFixed(3)});
-      tl.to(el, { y: ty + 18, opacity: 0, duration: 0.18, ease: "power1.in" }, ${(DUR - 0.22).toFixed(3)});
+      addTo(el, { x: tx, y: ty, opacity: 0.42, scale: 1.7,
+                 duration: 0.75, ease: "inCubic" }, I - 0.19 + i * 0.045);
+      addTo(el, { keyframes: { x: [tx + 4, tx - 3, tx + 2], y: [ty - 4, ty + 3, ty - 2] },
+                 duration: 0.32, ease: "inOutSine" }, ${Math.min(heroIn + 0.59, DUR - 0.42).toFixed(3)});
+      addTo(el, { y: ty + 18, opacity: 0, duration: 0.18, ease: "inQuad" }, ${(DUR - 0.22).toFixed(3)});
     } else {
-      tl.to(el, { y: "+=14", opacity: 0, duration: 0.16, ease: "power1.in" }, ${(DUR - 0.2).toFixed(3)});
+      addTo(el, { y: "+=14", opacity: 0, duration: 0.16, ease: "inQuad" }, ${(DUR - 0.2).toFixed(3)});
     }
   }
 
@@ -3406,37 +3466,37 @@ function paradigmPlanktonrail() {
       const ink = document.createElement("span"); ink.className = "ink";
       ink.textContent = txt; w.appendChild(ink); line.appendChild(w);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -50 });
+    setNow(line, { xPercent: -50, yPercent: -50 });
 
     // gentle float while held (everything in the abyss floats)
     const t0 = Math.max(0.02, L.words[0][1] - 0.02);
     const D = (L.out ?? ${(DUR - 0.06).toFixed(3)}) - t0 - 0.04;
     const yArr = D > 1.5 ? [-2, 2, -3, 1, 3, 0] : [-2, 1, -2, 0];
-    tl.to(line, { keyframes: { y: yArr }, duration: D, ease: "sine.inOut" }, t0);
+    addTo(line, { keyframes: { y: yArr }, duration: D, ease: "inOutSine" }, t0);
 
     L.words.forEach(([txt, st, em], wi) => {
       const w = line.children[wi], ink = w.children[0];
       // GLOW ON: radial bloom from word center (the apex bloom at low amplitude)
-      tl.set(w, { opacity: 1 }, st - 0.01);
-      tl.fromTo(ink, { opacity: 0 }, { opacity: 1, duration: 0.083, ease: "none" }, st);
-      tl.fromTo(ink, { scale: 0.92, filter: "blur(5px) brightness(0.45)" },
-                { scale: 1, filter: "blur(0px) brightness(1)", duration: 0.4, ease: "sine.out" }, st);
-      tl.to(ink, { textShadow: em ? SH_EM : SH_ON, duration: 0.4, ease: "sine.out" }, st);
+      setAt(w, { opacity: 1 }, st - 0.01);
+      addFromTo(ink, { opacity: 0 }, { opacity: 1, duration: 0.083, ease: "linear" }, st);
+      addFromTo(ink, { scale: 0.92, filter: "blur(5px) brightness(0.45)" },
+                { scale: 1, filter: "blur(0px) brightness(1)", duration: 0.4, ease: "outSine" }, st);
+      addTo(ink, { textShadow: em ? SH_EM : SH_ON, duration: 0.4, ease: "outSine" }, st);
       // EMPHASIS: slow double-beat pulse (jellyfish propulsion)
       if (em && st + 1.07 <= ${(DUR - 0.09).toFixed(3)}) {
-        tl.to(ink, { keyframes: {
+        addTo(ink, { keyframes: {
             filter: ["blur(0px) brightness(1.4)", "blur(0px) brightness(1.06)",
                      "blur(0px) brightness(1.5)", "blur(0px) brightness(1.12)",
                      "blur(0px) brightness(1)"],
             scale: [1.035, 1.01, 1.05, 1.015, 1] },
-          duration: 0.55, ease: "sine.inOut" }, st + 0.52);
+          duration: 0.55, ease: "inOutSine" }, st + 0.52);
       }
     });
 
-    // EXIT: light sinks — drift down +15 while dimming
+    // EXIT: light sinks - drift down +15 while dimming
     if (L.out != null) {
-      tl.to(line, { y: 15, opacity: 0, duration: 0.3, ease: "power1.in" }, L.out);
-      tl.set(line, { display: "none" }, Math.min(L.out + 0.32, ${(DUR - 0.02).toFixed(2)}));
+      addTo(line, { y: 15, opacity: 0, duration: 0.3, ease: "inQuad" }, L.out);
+      setAt(line, { display: "none" }, Math.min(L.out + 0.32, ${(DUR - 0.02).toFixed(2)}));
     }
   });
 
@@ -3445,13 +3505,13 @@ function paradigmPlanktonrail() {
   // arrives at ${yld.enter ?? 0.8} and restores once the bloom settles
   PRAIL.forEach((L, i) => {
     if (i === ${activeIdx} && (L.out ?? 99) > I - ${(yld.pre ?? 0.17).toFixed(2)} + 0.25) {
-      tl.to("#" + L.id, { opacity: ${yld.dim ?? 0.55}, duration: 0.18, ease: "power1.out" }, I - ${(yld.pre ?? 0.17).toFixed(2)});
+      addTo("#" + L.id, { opacity: ${yld.dim ?? 0.55}, duration: 0.18, ease: "outQuad" }, I - ${(yld.pre ?? 0.17).toFixed(2)});
       if ((L.out ?? 99) > I + 1.2)
-        tl.to("#" + L.id, { opacity: 1, duration: 0.25, ease: "power1.out" }, I + 0.9);
+        addTo("#" + L.id, { opacity: 1, duration: 0.25, ease: "outQuad" }, I + 0.9);
     }
     if (L.in > I && L.in < I + 0.9) {
-      tl.set("#" + L.id, { opacity: ${yld.enter ?? 0.8} }, L.in);
-      tl.to("#" + L.id, { opacity: 1, duration: 0.25, ease: "power1.out" },
+      setAt("#" + L.id, { opacity: ${yld.enter ?? 0.8} }, L.in);
+      addTo("#" + L.id, { opacity: 1, duration: 0.25, ease: "outQuad" },
             Math.min(Math.max(I + ${(yld.post ?? 0.63).toFixed(2)}, L.in + 0.1), ${(DUR - 0.28).toFixed(2)}));
     }
   });`;
@@ -3459,18 +3519,18 @@ function paradigmPlanktonrail() {
 }
 
 function paradigmSheenrail() {
-  // SHEENRAIL: iridescent silk lower third on TWO coexisting row slots — even
+  // SHEENRAIL: iridescent silk lower third on TWO coexisting row slots - even
   // lines ride the upper row (H − bottomPx − rowDy), odd lines the lower
   // (H − bottomPx), so couplets read together like a woven pair. Words are
   // aurora-gradient ink (background-clip:text over a rose→teal→violet wash
-  // whose backgroundPosition DRIFTS f(t) across the whole clip — the body's
+  // whose backgroundPosition DRIFTS f(t) across the whole clip - the body's
   // hold life) above a blurred dark understroke; entrance = 2-frame opacity
   // + y8 settle (the ribbon's flow at low amplitude); emphasis = ONE bright
   // sheen sweep marching through the word + a brightness pulse. Exits
   // dissolve UPWARD (y−12, blur 3, staggered) and each line releases 3-4
   // drifting light streaks that float up from its row. A soft radial band
-  // scrim sits under the rows (stable reading surface); the whole rail —
-  // band included — yields while the ribbon writes. Line scheduling mirrors
+  // scrim sits under the rows (stable reading surface); the whole rail -
+  // band included - yields while the ribbon writes. Line scheduling mirrors
   // planktonrail's two-row coexistence: a row clears when next needed (line
   // i+2) or shortly after its couplet finishes speaking (staggered pair
   // exits); the pre-apex leftover clears at heroIn−0.32 while the FEEDING
@@ -3540,7 +3600,7 @@ function paradigmSheenrail() {
   const stg = document.getElementById("stage");
   const PAL = ${J(PAL)};
   const SRAIL = ${J(lineData)};
-  tl.to("#band", { opacity: 1, duration: 0.35, ease: "sine.out" }, 0.12);
+  addTo("#band", { opacity: 1, duration: 0.35, ease: "outSine" }, 0.12);
   const allGrads = [];
   SRAIL.forEach((L) => {
     const line = document.getElementById(L.id);
@@ -3553,51 +3613,51 @@ function paradigmSheenrail() {
       w.appendChild(sh); w.appendChild(g); w.appendChild(sn);
       line.appendChild(w); wraps.push(w); allGrads.push(g);
       // FLOW ON: 2-frame opacity + y8 settle (the ribbon's flow at low amplitude)
-      tl.fromTo(w, { opacity: 0 }, { opacity: 1, duration: 2 * F, ease: "none" }, st);
-      tl.fromTo(w, { y: 8 }, { y: 0, duration: 0.38, ease: "sine.out" }, st);
+      addFromTo(w, { opacity: 0 }, { opacity: 1, duration: 2 * F, ease: "linear" }, st);
+      addFromTo(w, { y: 8 }, { y: 0, duration: 0.38, ease: "outSine" }, st);
       // EMPHASIS: the sheen pulses bright once through the word
       if (em) {
         const pt = st + 0.16;
-        tl.set(sn, { opacity: 1 }, pt);
-        tl.fromTo(sn, { backgroundPosition: "-80% 50%" },
-                  { backgroundPosition: "180% 50%", duration: 0.42, ease: "power2.inOut" }, pt);
-        tl.to(sn, { opacity: 0, duration: 0.12, ease: "none" }, pt + 0.34);
-        tl.to(g, { keyframes: { filter: ["brightness(1)", "brightness(1.55)", "brightness(1)"] },
-                   duration: 0.42, ease: "none" }, pt);
+        setAt(sn, { opacity: 1 }, pt);
+        addFromTo(sn, { backgroundPosition: "-80% 50%" },
+                  { backgroundPosition: "180% 50%", duration: 0.42, ease: "inOutCubic" }, pt);
+        addTo(sn, { opacity: 0, duration: 0.12, ease: "linear" }, pt + 0.34);
+        addTo(g, { keyframes: { filter: ["brightness(1)", "brightness(1.55)", "brightness(1)"] },
+                   duration: 0.42, ease: "linear" }, pt);
       }
     });
-    gsap.set(line, { xPercent: -50 });
+    setNow(line, { xPercent: -50 });
     // EXIT: the line dissolves upward and releases drifting light streaks
     if (L.out != null) {
-      tl.to(wraps, { opacity: 0, y: -12, filter: "blur(3px)",
-                     duration: 0.32, ease: "power1.in", stagger: 0.035 }, L.out);
-      tl.set(line, { display: "none" }, L.out + 0.6);
+      addTo(wraps, { opacity: 0, y: -12, filter: "blur(3px)",
+                     duration: 0.32, ease: "inQuad", stagger: 0.035 }, L.out);
+      setAt(line, { display: "none" }, L.out + 0.6);
       const nS = ${b.streaks ?? 4};
       for (let i = 0; i < nS; i++) {
         const s = document.createElement("div"); s.className = "streak"; stg.appendChild(s);
         const c = PAL[i % 3];
         const x = ${W / 2} + (i - (nS - 1) / 2) * 95 + (srnd() - 0.5) * 50;
         const hh = 40 + Math.round(srnd() * 28);
-        gsap.set(s, { left: x, top: L.top + 14, height: hh,
+        setNow(s, { left: x, top: L.top + 14, height: hh,
                       background: "linear-gradient(to top, rgba(255,255,255,0) 0%, " + c + " 50%, rgba(255,255,255,0) 100%)" });
-        tl.fromTo(s, { y: 14 },
+        addFromTo(s, { y: 14 },
           { keyframes: { opacity: [0, 0.7, 0], y: [14, -28, -78] },
-            duration: 0.62, ease: "power1.out" }, Math.min(L.out + 0.04 + i * 0.05, ${(DUR - 0.66).toFixed(3)}));
+            duration: 0.62, ease: "outQuad" }, Math.min(L.out + 0.04 + i * 0.05, ${(DUR - 0.66).toFixed(3)}));
       }
     }
   });
-  // continuous iridescent sheen drift f(t) — the body's hold life
-  tl.fromTo(allGrads, { backgroundPosition: "0% 50%" },
-            { backgroundPosition: "300% 50%", duration: ${(DUR - 0.04).toFixed(3)}, ease: "none" }, 0);
-  // rail yields — band included — while the ribbon writes (apex owns the frame)
-  tl.to("#skwrap", { opacity: ${yld.dim ?? 0.5}, duration: 0.2, ease: "sine.in" }, I - ${(yld.pre ?? 0.16).toFixed(2)});
-  tl.to("#skwrap", { opacity: 1, duration: 0.3, ease: "sine.out" }, I + ${(yld.post ?? 0.62).toFixed(2)});`;
+  // continuous iridescent sheen drift f(t) - the body's hold life
+  addFromTo(allGrads, { backgroundPosition: "0% 50%" },
+            { backgroundPosition: "300% 50%", duration: ${(DUR - 0.04).toFixed(3)}, ease: "linear" }, 0);
+  // rail yields - band included - while the ribbon writes (apex owns the frame)
+  addTo("#skwrap", { opacity: ${yld.dim ?? 0.5}, duration: 0.2, ease: "inSine" }, I - ${(yld.pre ?? 0.16).toFixed(2)});
+  addTo("#skwrap", { opacity: 1, duration: 0.3, ease: "outSine" }, I + ${(yld.post ?? 0.62).toFixed(2)});`;
   return { css, html, js };
 }
 
 function paradigmScoperail() {
   // SCOPERAIL: oscilloscope lower third. A dark phosphor scope band (HUD
-  // readouts, graticule) hosts an ALWAYS-ALIVE waveform — an SVG polyline
+  // readouts, graticule) hosts an ALWAYS-ALIVE waveform - an SVG polyline
   // rebuilt from baked point-set states (seeded pseudo-RMS envelope: speech
   // grows it, silence flattens it, every word arrival kicks a local gaussian
   // burst for ~3 frames; the hero words kick WIDE bursts where the trace
@@ -3607,7 +3667,7 @@ function paradigmScoperail() {
   // words get a ticking frequency-readout chip; the trig LED blinks on every
   // word arrival. Lines collapse INTO the waveform on exit. At the FINAL word
   // the trace explodes to max-amp chaos, flatlines, collapses to a single dot
-  // and `body.siglost` stamps — the scope dies with the clip.
+  // and `body.siglost` stamps - the scope dies with the clip.
   const b = dna.body;
   const A = dna.palette.accent,
     BRT = dna.palette.bright || "#d6ffe4",
@@ -3618,7 +3678,7 @@ function paradigmScoperail() {
   const bandTop = H - bandH;
   const waveH = b.waveH || 84;
   const NZ = +LASTWORD.start.toFixed(3); // the scope-death beat
-  // line windows: exits collapse into the trace — early into dead air
+  // line windows: exits collapse into the trace - early into dead air
   // (lastWordStart+0.67), else just before the next line needs the slot
   const lineData = LINES.map((L, i) => {
     const lastSt = L.words[L.words.length - 1].start;
@@ -3705,13 +3765,13 @@ function paradigmScoperail() {
     lineData.map((L) => `        <div class="scln" id="${L.id}"></div>`).join("\n") +
     `
       </div>
-      <div id="scsiglost">${esc(b.siglost || "— SIGNAL LOST —")}</div>
+      <div id="scsiglost">${esc(b.siglost || "- SIGNAL LOST -")}</div>
       <div id="scdot"></div>`;
   const js = `
   // ---- body paradigm: SCOPERAIL (trace-wipe words, waveform alive all clip) ----
   const rnd = mulberry32(${b.waveSeed || 7});
   const NZ = ${NZ.toFixed(3)}, ENDC = ${(DUR - 0.02).toFixed(3)};
-  const BURST = ${J(burst)};            // [t, x, big] — word arrivals kick the trace
+  const BURST = ${J(burst)};            // [t, x, big] - word arrivals kick the trace
   const allT = BURST.map((q) => q[0]);
   const burstAt = {}; const bigAt = {};
   BURST.forEach(([t, x, big]) => { burstAt[t] = x; if (big) bigAt[t] = 1; });
@@ -3762,18 +3822,18 @@ function paradigmScoperail() {
   });
   const scwave = document.getElementById("scwave");
   scwave.setAttribute("points", wavePts[0][1]);
-  wavePts.forEach(([t, str]) => { tl.set(scwave, { attr: { points: str } }, Math.min(t, ENDC)); });
+  wavePts.forEach(([t, str]) => { setAt(scwave, { attr: { points: str } }, Math.min(t, ENDC)); });
 
   // ===== scope power-on =====
-  tl.fromTo("#scband", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power1.out" }, 0.02);
-  tl.fromTo("#scwavewrap", { scaleX: 0.04, transformOrigin: "50% 50%" },
-            { scaleX: 1, duration: 0.22, ease: "power2.out" }, 0.04);
+  addFromTo("#scband", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "outQuad" }, 0.02);
+  addFromTo("#scwavewrap", { scaleX: 0.04, transformOrigin: "50% 50%" },
+            { scaleX: 1, duration: 0.22, ease: "outCubic" }, 0.04);
 ${
   b.yield && !heroInline
     ? `
   // rail yields while the apex trace writes (band carries lines + wave + HUD)
-  tl.to("#scband", { opacity: ${b.yield.dim}, duration: 0.18, ease: "power1.in" }, ${Math.max(heroIn - (b.yield.pre || 0.13), 0.2).toFixed(3)});
-  tl.to("#scband", { opacity: 1, duration: 0.25, ease: "power1.out" }, ${Math.min(heroIn + (b.yield.post || 0.97), DUR - 0.4).toFixed(3)});`
+  addTo("#scband", { opacity: ${b.yield.dim}, duration: 0.18, ease: "inQuad" }, ${Math.max(heroIn - (b.yield.pre || 0.13), 0.2).toFixed(3)});
+  addTo("#scband", { opacity: 1, duration: 0.25, ease: "outQuad" }, ${Math.min(heroIn + (b.yield.post || 0.97), DUR - 0.4).toFixed(3)});`
     : ""
 }
 
@@ -3795,7 +3855,7 @@ ${
   let chipIdx = 0;
   SRAIL.forEach((L) => {
     const line = document.getElementById(L.id);
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.03);
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.03);
     L.words.forEach(([txt, wt, minor, death]) => {
       // reserved-width slot: sizer keeps the centered line static (no
       // re-center drift as words arrive); the clip wipes the word in over it.
@@ -3808,16 +3868,16 @@ ${
       clip.appendChild(inner); wrap.appendChild(sizer); wrap.appendChild(clip);
       line.appendChild(wrap);
       // entrance = apex motif at low amplitude: the trace draws it L→R
-      tl.fromTo(clip, { width: 0 }, { width: "auto", duration: 0.10, ease: "none" }, wt);
+      addFromTo(clip, { width: 0 }, { width: "auto", duration: 0.10, ease: "linear" }, wt);
       // phosphor just-traced flash (full brightness instantly, settle in 2 frames)
       const settle = death
         ? { color: ${J(EM)}, textShadow: "0 0 9px ${EM}8c" }
         : { color: ${J(A)}, textShadow: "0 0 8px ${A}73" };
-      tl.set(inner, { color: ${J(FLSH)}, textShadow: "0 0 16px ${BRT}f2" }, wt);
-      tl.set(inner, settle, wt + 2 * F);
+      setAt(inner, { color: ${J(FLSH)}, textShadow: "0 0 16px ${BRT}f2" }, wt);
+      setAt(inner, settle, wt + 2 * F);
       // trigger LED blink on every word arrival
-      tl.set("#sctrig", { opacity: 1, scale: 1.35 }, wt);
-      tl.set("#sctrig", { opacity: 0.45, scale: 1 }, wt + 2 * F);
+      setAt("#sctrig", { opacity: 1, scale: 1.35 }, wt);
+      setAt("#sctrig", { opacity: 0.45, scale: 1 }, wt + 2 * F);
       // emphasis: ticking frequency readout (seeded, ascending)
       if (minor) {
         const chip = document.createElement("span"); chip.className = "scchip";
@@ -3826,44 +3886,44 @@ ${
           chip.appendChild(s); return s;
         });
         wrap.appendChild(chip);
-        tl.set(chip, { opacity: 1 }, wt + 0.12);
+        setAt(chip, { opacity: 1 }, wt + 0.12);
         cvs.forEach((s, i) => {
-          tl.set(s, { opacity: 1 }, wt + 0.12 + i * 2 * F);
-          if (i < cvs.length - 1) tl.set(s, { opacity: 0 }, wt + 0.12 + (i + 1) * 2 * F);
+          setAt(s, { opacity: 1 }, wt + 0.12 + i * 2 * F);
+          if (i < cvs.length - 1) setAt(s, { opacity: 0 }, wt + 0.12 + (i + 1) * 2 * F);
         });
       }
     });
     // exit: the line collapses INTO the waveform
-    tl.to(line, { y: 30, opacity: 0, duration: 0.13, ease: "power2.in" }, L.out);
+    addTo(line, { y: 30, opacity: 0, duration: 0.13, ease: "inCubic" }, L.out);
   });
 
   // ===== the death beat: explosion / band shake / flatline / dot / siglost =====
   [[3, 0], [-4, 1], [3, 2], [-2, 3], [0, 4]].forEach(([dx, k]) => {
-    tl.set("#scband", { x: dx }, Math.min(NZ + k * 0.042, ENDC));
+    setAt("#scband", { x: dx }, Math.min(NZ + k * 0.042, ENDC));
   });
-  tl.set("#scband", { x: 0 }, Math.min(NZ + 0.21, ENDC));
+  setAt("#scband", { x: 0 }, Math.min(NZ + 0.21, ENDC));
   // trig LED panics, then dies
   [0, 1, 2, 3].forEach((k) => {
-    tl.set("#sctrig", { opacity: k % 2 ? 0.2 : 1, background: ${J(dna.palette.panic || "#ff5f47")},
+    setAt("#sctrig", { opacity: k % 2 ? 0.2 : 1, background: ${J(dna.palette.panic || "#ff5f47")},
                         boxShadow: "0 0 8px ${(dna.palette.panic || "#ff5f47") + "e6"}" }, Math.min(NZ + k * 2 * F, ENDC));
   });
-  tl.set("#sctrig", { opacity: 0.18 }, Math.min(NZ + 0.35, ENDC));
+  setAt("#sctrig", { opacity: 0.18 }, Math.min(NZ + 0.35, ENDC));
   // flatline → trace shrinks to a single dot
-  tl.to("#scwavewrap", { scaleX: 0.015, duration: 0.055, ease: "power3.in",
+  addTo("#scwavewrap", { scaleX: 0.015, duration: 0.055, ease: "inQuart",
                          transformOrigin: "50% 50%" }, Math.min(NZ + 0.365, ENDC - 0.06));
-  tl.set("#scwavewrap", { opacity: 0 }, Math.min(NZ + 0.425, ENDC));
-  tl.set("#scdot", { opacity: 1 }, Math.min(NZ + 0.39, ENDC));
-  tl.set("#scdot", { opacity: 0.45 }, Math.min(NZ + 0.465, ENDC));
-  tl.set("#scdot", { opacity: 1 }, Math.min(NZ + 0.49, ENDC));
+  setAt("#scwavewrap", { opacity: 0 }, Math.min(NZ + 0.425, ENDC));
+  setAt("#scdot", { opacity: 1 }, Math.min(NZ + 0.39, ENDC));
+  setAt("#scdot", { opacity: 0.45 }, Math.min(NZ + 0.465, ENDC));
+  setAt("#scdot", { opacity: 1 }, Math.min(NZ + 0.49, ENDC));
   // SIGNAL LOST stamp (2-frame flicker in; clamped ≤ DUR−0.02)
-  tl.set("#scsiglost", { opacity: 1 }, Math.min(NZ + 0.43, ENDC - 2 * F));
-  tl.set("#scsiglost", { opacity: 0.35 }, Math.min(NZ + 0.43 + F, ENDC - F));
-  tl.set("#scsiglost", { opacity: 1 }, Math.min(NZ + 0.43 + 2 * F, ENDC));`;
+  setAt("#scsiglost", { opacity: 1 }, Math.min(NZ + 0.43, ENDC - 2 * F));
+  setAt("#scsiglost", { opacity: 0.35 }, Math.min(NZ + 0.43 + F, ENDC - F));
+  setAt("#scsiglost", { opacity: 1 }, Math.min(NZ + 0.43 + 2 * F, ENDC));`;
   return { css, html, js };
 }
 
 function paradigmPaperrail() {
-  // PAPERRAIL: stop-motion craft table — a kraft strip (torn top edge, washi-
+  // PAPERRAIL: stop-motion craft table - a kraft strip (torn top edge, washi-
   // taped corners, handwritten tag) holds cream paper chips that are PLACED
   // one by one: opacity full in 0 frames, y −16 + scale 1.06→1 with steps(2),
   // seeded ±2.5° crooked = the papermat drop at low amplitude. The strip
@@ -3955,29 +4015,29 @@ ${lineData.map((L) => `        <div class="pline" id="${L.id}"></div>`).join("\n
     pts.push("${stripW}px ${stripH}px", "0px ${stripH}px");
     document.querySelector("#pstrip .paper").style.clipPath = "polygon(" + pts.join(",") + ")";
   })();
-  gsap.set("#pwtL", { rotation: -38 });
-  gsap.set("#pwtR", { rotation: 33 });
-  gsap.set("#ptag", { rotation: -2 });
+  setNow("#pwtL", { rotation: -38 });
+  setNow("#pwtR", { rotation: 33 });
+  setNow("#ptag", { rotation: -2 });
 
   // ===== STRIP: placed on the table, then handmade jitter every 4 frames =====
-  tl.set("#pstrip", { opacity: 1 }, 0.10);
-  tl.fromTo("#pstrip", { y: ${stripH + 26} }, { y: 0, duration: 0.18, ease: "steps(3)" }, 0.10);
+  setAt("#pstrip", { opacity: 1 }, 0.10);
+  addFromTo("#pstrip", { y: ${stripH + 26} }, { y: 0, duration: 0.18, ease: "steps(3)" }, 0.10);
   for (let t = 0.45; t < ${(DUR - 0.06).toFixed(3)}; t += 1/6)
-    tl.set("#pstrip", { x: (rrnd()-0.5)*1.4, y: (rrnd()-0.5)*1.4, rotation: (rrnd()-0.5)*0.36 }, t);
+    setAt("#pstrip", { x: (rrnd()-0.5)*1.4, y: (rrnd()-0.5)*1.4, rotation: (rrnd()-0.5)*0.36 }, t);
 ${
   b.yield && !heroInline
     ? `
   // rail yields while the apex chips land (furniture never contests the hero)
-  tl.to(["#pstrip", "#plines"], { opacity: ${b.yield.dim}, duration: 0.10 }, ${dimT});
-${resT + 0.3 < DUR ? `  tl.to(["#pstrip", "#plines"], { opacity: 1, duration: 0.22 }, ${resT});` : ""}`
+  addTo(["#pstrip", "#plines"], { opacity: ${b.yield.dim}, duration: 0.10 }, ${dimT});
+${resT + 0.3 < DUR ? `  addTo(["#pstrip", "#plines"], { opacity: 1, duration: 0.22 }, ${resT});` : ""}`
     : ""
 }
 
   // ===== BODY: paper chips placed one by one =====
   RAILP.forEach((L) => {
     const line = document.getElementById(L.id);
-    gsap.set(line, { xPercent: -50 });
-    tl.set(line, { opacity: 1 }, L.in);
+    setNow(line, { xPercent: -50 });
+    setAt(line, { opacity: 1 }, L.in);
     L.words.forEach(([txt, st, kind, tapeT], wi) => {
       let el;
       if (kind === 2) {                  // apex hand-off: red paper star in the slot
@@ -3985,9 +4045,9 @@ ${resT + 0.3 < DUR ? `  tl.to(["#pstrip", "#plines"], { opacity: 1, duration: 0.
         const s = document.createElement("span"); s.className = "pstar";
         el.appendChild(s); line.appendChild(el);
         // placement pulse when the apex word starts landing
-        tl.set(s, { scale: 1.18 }, st + 0.09);
-        tl.set(s, { scale: 1.06 }, st + 0.17);
-        tl.set(s, { scale: 1 },    st + 0.25);
+        setAt(s, { scale: 1.18 }, st + 0.09);
+        setAt(s, { scale: 1.06 }, st + 0.17);
+        setAt(s, { scale: 1 },    st + 0.25);
       } else {
         el = document.createElement("span");
         el.className = "pchip" + (kind === 3 ? " red" : "");
@@ -3995,26 +4055,26 @@ ${resT + 0.3 < DUR ? `  tl.to(["#pstrip", "#plines"], { opacity: 1, duration: 0.
         line.appendChild(el);
       }
       const r0 = (rrnd()-0.5)*5;         // seeded ±2.5° crooked placement
-      gsap.set(el, { transformOrigin: "50% 80%" });
-      // PLACED: the apex drop at low amplitude — opacity full in 0 frames
-      tl.set(el, { opacity: 1, rotation: r0 }, st);
-      tl.fromTo(el, { y: -16, scale: 1.06 }, { y: 0, scale: 1, duration: 0.12, ease: "steps(2)" }, st);
+      setNow(el, { transformOrigin: "50% 80%" });
+      // PLACED: the apex drop at low amplitude - opacity full in 0 frames
+      setAt(el, { opacity: 1, rotation: r0 }, st);
+      addFromTo(el, { y: -16, scale: 1.06 }, { y: 0, scale: 1, duration: 0.12, ease: "steps(2)" }, st);
       // handmade hold wobble (rotation only, ~5fps)
       for (let t = st + 0.40; t < L.xo - 0.06; t += 0.21)
-        tl.set(el, { rotation: r0 + (rrnd()-0.5)*1.0 }, t);
+        setAt(el, { rotation: r0 + (rrnd()-0.5)*1.0 }, t);
       // washi-tape slap pins the emphasis words
       if (kind === 1 && tapeT > 0) {
         const tape = document.createElement("span"); tape.className = "ptape";
         const ti = document.createElement("i"); tape.appendChild(ti);
         el.appendChild(tape);
-        gsap.set(tape, { rotation: -36 });
-        tl.set(tape, { opacity: 0.92 }, tapeT);
-        tl.fromTo(tape, { scale: 1.7 }, { scale: 1, duration: 0.0833, ease: "steps(2)" }, tapeT);
-        tl.set(el, { y: 2 }, tapeT);     // chip pressed by the slap
-        tl.set(el, { y: 0 }, tapeT + 0.0833);
+        setNow(tape, { rotation: -36 });
+        setAt(tape, { opacity: 0.92 }, tapeT);
+        addFromTo(tape, { scale: 1.7 }, { scale: 1, duration: 0.0833, ease: "steps(2)" }, tapeT);
+        setAt(el, { y: 2 }, tapeT);     // chip pressed by the slap
+        setAt(el, { y: 0 }, tapeT + 0.0833);
       }
       // EXIT: peeled off
-      tl.to(el, { rotation: r0 - 8, y: -40, opacity: 0, duration: 0.18, ease: "steps(3)" },
+      addTo(el, { rotation: r0 - 8, y: -40, opacity: 0, duration: 0.18, ease: "steps(3)" },
             L.xo + wi*0.03);
     });
   });`;
@@ -4022,9 +4082,9 @@ ${resT + 0.3 < DUR ? `  tl.to(["#pstrip", "#plines"], { opacity: 1, duration: 0.
 }
 
 function paradigmPopuprail() {
-  // POPUPRAIL: pop-up book page — a cream page strip (center foldline) unfolds
-  // up from the bottom edge (scaleY back.out, the stage is built); words POP
-  // UP on a baseline hinge (rotationX 85→0, back.out = the centerfold motif at
+  // POPUPRAIL: pop-up book page - a cream page strip (center foldline) unfolds
+  // up from the bottom edge (scaleY outBack(1.70158), the stage is built); words POP
+  // UP on a baseline hinge (rotationX 85→0, outBack(1.70158) = the centerfold motif at
   // low amplitude) on two reading rows that alternate per line. Emphasis words
   // land bigger with a contact squash the strip FEELS (1px dip), then flick-
   // wobble; blue paper struts lean in behind emphasis + the sign-off word; the
@@ -4106,12 +4166,12 @@ ${lineData.map((L) => `        <div class="puline" id="${L.id}"></div>`).join("\
   const ROWY = ${J(rowY)};
 
   // ===== PAGE STRIP: unfolds up from the bottom edge (the stage is built) =====
-  gsap.set("#pustrip", { xPercent: -50, yPercent: -100, transformOrigin: "50% 100%", scaleY: 0.02 });
-  tl.set("#pustrip", { opacity: 1 }, 0.14);
-  tl.to("#pustrip", { scaleY: 1, duration: 0.24, ease: "back.out(1.5)" }, 0.14);
+  setNow("#pustrip", { xPercent: -50, yPercent: -100, transformOrigin: "50% 100%", scaleY: 0.02 });
+  setAt("#pustrip", { opacity: 1 }, 0.14);
+  addTo("#pustrip", { scaleY: 1, duration: 0.24, ease: "outBack(1.5)" }, 0.14);
   // hold life: the whole page breathes very gently
-  tl.to("#pupage", { keyframes: { y: [0, -1.6, -0.4, -1.4, 0] },
-                     duration: ${Math.min(5.3, DUR - 0.75).toFixed(2)}, ease: "sine.inOut" }, 0.40);
+  addTo("#pupage", { keyframes: { y: [0, -1.6, -0.4, -1.4, 0] },
+                     duration: ${Math.min(5.3, DUR - 0.75).toFixed(2)}, ease: "inOutSine" }, 0.40);
 
   // ===== BODY: words pop up on the baseline hinge =====
   RAILU.forEach((L) => {
@@ -4131,65 +4191,65 @@ ${lineData.map((L) => `        <div class="puline" id="${L.id}"></div>`).join("\
       line.appendChild(slot);
       return { w, strut, slot };
     });
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
+    setNow(line, { xPercent: -50, yPercent: -100 });
 
     L.words.forEach(([txt, st, kind, wobT, wobD, strutT], wi) => {
       const { w, strut, slot } = els[wi];
-      gsap.set(w, { transformPerspective: 650, transformOrigin: "50% 100%", rotationX: 85 });
-      // POP UP — baseline hinge, paper overshoot; back-shadow grows as it rises
-      tl.set(w, { opacity: 1, textShadow: "0 0px 0px rgba(70,50,25,0)" }, st);
-      tl.to(w, { rotationX: 0, duration: 0.25, ease: "back.out(1.4)" }, st);
-      tl.to(w, { textShadow: "0 3px 5px rgba(70,50,25,0.38)", duration: 0.25, ease: "power1.out" }, st);
+      setNow(w, { transformPerspective: 650, transformOrigin: "50% 100%", rotationX: 85 });
+      // POP UP - baseline hinge, paper overshoot; back-shadow grows as it rises
+      setAt(w, { opacity: 1, textShadow: "0 0px 0px rgba(70,50,25,0)" }, st);
+      addTo(w, { rotationX: 0, duration: 0.25, ease: "outBack(1.4)" }, st);
+      addTo(w, { textShadow: "0 3px 5px rgba(70,50,25,0.38)", duration: 0.25, ease: "outQuad" }, st);
       if (kind === 1 || kind === 2) {           // contact squash on the big words
-        tl.set(w, { scaleX: 1.06, scaleY: 0.93 }, st + 0.12);
-        tl.to(w, { scaleX: 1, scaleY: 1, duration: 0.30, ease: "elastic.out(1, 0.4)" }, st + 0.16);
-        tl.set("#pustrip", { y: 1 }, st + 0.13);  // the page feels the landing
-        tl.to("#pustrip", { y: 0, duration: 0.16, ease: "power2.out" }, st + 0.18);
+        setAt(w, { scaleX: 1.06, scaleY: 0.93 }, st + 0.12);
+        addTo(w, { scaleX: 1, scaleY: 1, duration: 0.30, ease: "outElastic(1, 0.4)" }, st + 0.16);
+        setAt("#pustrip", { y: 1 }, st + 0.13);  // the page feels the landing
+        addTo("#pustrip", { y: 0, duration: 0.16, ease: "outCubic" }, st + 0.18);
       }
-      if (wobT) tl.to(w, { keyframes: { rotationX: [0, -4, 2.8, -1.4, 0.5, 0] },
-                          duration: wobD, ease: "sine.inOut" }, wobT);
+      if (wobT) addTo(w, { keyframes: { rotationX: [0, -4, 2.8, -1.4, 0.5, 0] },
+                          duration: wobD, ease: "inOutSine" }, wobT);
       if (strut && strutT) {                    // visible paper strut leans in behind
-        gsap.set(strut, { transformOrigin: "50% 100%", scaleY: 0 });
-        tl.set(strut, { opacity: 1 }, strutT);
-        tl.to(strut, { scaleY: 1, duration: 0.12, ease: "back.out(2)" }, strutT);
+        setNow(strut, { transformOrigin: "50% 100%", scaleY: 0 });
+        setAt(strut, { opacity: 1 }, strutT);
+        addTo(strut, { scaleY: 1, duration: 0.12, ease: "outBack(2)" }, strutT);
       }
-      // EXIT — the page closes: words fold flat in an L→R wave
+      // EXIT - the page closes: words fold flat in an L→R wave
       const ft = L.foldT + wi * 0.045;
-      tl.to(w, { rotationX: 88, duration: 0.12, ease: "power2.in" }, ft);
-      tl.to(w, { textShadow: "0 0px 0px rgba(70,50,25,0)", duration: 0.12 }, ft);
-      if (strut) tl.to(strut, { scaleY: 0, duration: 0.10, ease: "power2.in" }, ft);
-      tl.set(slot, { opacity: 0 }, ft + 0.13);
+      addTo(w, { rotationX: 88, duration: 0.12, ease: "inCubic" }, ft);
+      addTo(w, { textShadow: "0 0px 0px rgba(70,50,25,0)", duration: 0.12 }, ft);
+      if (strut) addTo(strut, { scaleY: 0, duration: 0.10, ease: "inCubic" }, ft);
+      setAt(slot, { opacity: 0 }, ft + 0.13);
     });
   });
 ${
   b.yield && !heroInline
     ? `
-  // APEX OWNS ITS WINDOW — page yields while the centerfold lands, restores
-  tl.to("#pupage", { opacity: ${b.yield.dim}, duration: 0.12, ease: "power1.out" }, ${(heroIn - (b.yield.pre || 0.03)).toFixed(3)});
-  tl.to("#pupage", { opacity: 1, duration: 0.22, ease: "power1.in" }, ${(heroIn + (b.yield.post || 0.47)).toFixed(3)});`
+  // APEX OWNS ITS WINDOW - page yields while the centerfold lands, restores
+  addTo("#pupage", { opacity: ${b.yield.dim}, duration: 0.12, ease: "outQuad" }, ${(heroIn - (b.yield.pre || 0.03)).toFixed(3)});
+  addTo("#pupage", { opacity: 1, duration: 0.22, ease: "inQuad" }, ${(heroIn + (b.yield.post || 0.47)).toFixed(3)});`
     : ""
 }
 ${
   b.tilt !== false
     ? `
   // paper-world physics: on the final word the whole page TILTS and slides
-  tl.to("#pupage", { rotation: 2, x: 6, transformOrigin: "50% 100%",
-                     duration: 0.26, ease: "back.out(2.2)" }, ${(LASTWORD.start + 0.02).toFixed(3)});`
+  addTo("#pupage", { rotation: 2, x: 6, transformOrigin: "50% 100%",
+                     duration: 0.26, ease: "outBack(2.2)" }, ${(LASTWORD.start + 0.02).toFixed(3)});`
     : ""
 }
   // ending: after the last fold the strip itself closes (book shut)
-  tl.to("#pustrip", { scaleY: 0.03, duration: 0.07, ease: "power3.in" }, ${(DUR - 0.082).toFixed(3)});
-  tl.set("#pustrip", { opacity: 0 }, ${(DUR - 0.017).toFixed(3)});`;
+  addTo("#pustrip", { scaleY: 0.03, duration: 0.07, ease: "inQuart" }, ${(DUR - 0.082).toFixed(3)});
+  setAt("#pustrip", { opacity: 0 }, ${(DUR - 0.017).toFixed(3)});`;
   return { css, html, js };
 }
 
 function paradigmChalkrail() {
-  // CHALKRAIL: night-lecture chalk band — a deep-green board strip (worn top
+  // CHALKRAIL: night-lecture chalk band - a deep-green board strip (worn top
   // hairline, eraser smudges, handwritten header tag, two chalk sticks) docked
   // at the bottom edge holds reading rows that ACCUMULATE: lines fill the rows
   // top→bottom in phases of rows.length; when the next phase needs the rows an
   // ERASER SWIPE clears the board (a blurred light band sweeps across, the
-  // words SMEAR out scaleX 1.3 + blur(8), faint ghost smudges stay — chalk
+  // words SMEAR out scaleX 1.3 + blur(8), faint ghost smudges stay - chalk
   // never fully erases). Words are chalk-written fast: 2-frame pop + scribble
   // clip-reveal steps(4) + 6 seeded dust specks puffing at the base + seeded
   // ±2° tilt = the chalkwrite verb at low amplitude. Emphasis = double
@@ -4214,7 +4274,7 @@ function paradigmChalkrail() {
       li === LINES.length - 1 && wi === L.words.length - 1 ? 1 : 0, // yellow sign-off
     ]),
   }));
-  // eraser passes: one per phase boundary — swipe after the previous phase's
+  // eraser passes: one per phase boundary - swipe after the previous phase's
   // last word ends, always landing clear of the next phase's first word
   const erases = [];
   for (let pi = R; pi < LINES.length; pi += R) {
@@ -4285,10 +4345,10 @@ ${lineData.map((L) => `        <div class="crow" id="${L.id}" style="top:${L.top
   const SVGNS = "http://www.w3.org/2000/svg";
 
   // ===== band furniture =====
-  tl.fromTo("#cband", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.22, ease: "power2.out" }, 0.03);
-  tl.fromTo("#chdr",    { opacity: 0 }, { opacity: 1, duration: 0.25 }, 0.30);
-  tl.fromTo("#cstickW", { opacity: 0 }, { opacity: 0.92, duration: 0.2 }, 0.36);
-  tl.fromTo("#cstickY", { opacity: 0 }, { opacity: 0.92, duration: 0.2 }, 0.42);
+  addFromTo("#cband", { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.22, ease: "outCubic" }, 0.03);
+  addFromTo("#chdr",    { opacity: 0 }, { opacity: 1, duration: 0.25 }, 0.30);
+  addFromTo("#cstickW", { opacity: 0 }, { opacity: 0.92, duration: 0.2 }, 0.36);
+  addFromTo("#cstickY", { opacity: 0 }, { opacity: 0.92, duration: 0.2 }, 0.42);
 
   // ===== body words: chalk-dust pop (entrance = the apex motif, low amplitude) =====
   RAILC.forEach((L) => {
@@ -4297,20 +4357,20 @@ ${lineData.map((L) => `        <div class="crow" id="${L.id}" style="top:${L.top
       const w = document.createElement("span"); w.className = "w" + (yel ? " yel" : "");
       const inner = document.createElement("span"); inner.className = "txt"; inner.textContent = txt;
       w.appendChild(inner); line.appendChild(w);
-      gsap.set(w, { rotation: (rrnd() * 4 - 2), transformOrigin: "50% 100%" });
-      gsap.set(inner, { clipPath: "inset(-30% 102% -30% -2%)" });
+      setNow(w, { rotation: (rrnd() * 4 - 2), transformOrigin: "50% 100%" });
+      setNow(inner, { clipPath: "inset(-30% 102% -30% -2%)" });
       // 2-frame pop + fast scribble reveal + tiny drop-settle
-      tl.fromTo(w, { opacity: 0 }, { opacity: 1, duration: 0.07, ease: "power1.in" }, st);
-      tl.to(inner, { clipPath: "inset(-30% -2% -30% -2%)", duration: 0.12, ease: "steps(4)" }, st);
-      tl.fromTo(w, { y: 4 }, { y: 0, duration: 0.2, ease: "power2.out" }, st);
+      addFromTo(w, { opacity: 0 }, { opacity: 1, duration: 0.07, ease: "inQuad" }, st);
+      addTo(inner, { clipPath: "inset(-30% -2% -30% -2%)", duration: 0.12, ease: "steps(4)" }, st);
+      addFromTo(w, { y: 4 }, { y: 0, duration: 0.2, ease: "outCubic" }, st);
       // 6 seeded dust specks puff at the word base
       for (let k = 0; k < 6; k++) {
         const d = document.createElement("span"); d.className = "d";
         d.style.left = (6 + rrnd() * 84) + "%";
         w.appendChild(d);
-        tl.set(d, { opacity: 0.85 }, st + 0.02);
-        tl.to(d, { y: 12 + rrnd() * 16, x: rrnd() * 16 - 8, opacity: 0,
-                   duration: 0.36 + rrnd() * 0.15, ease: "power1.in" }, st + 0.02);
+        setAt(d, { opacity: 0.85 }, st + 0.02);
+        addTo(d, { y: 12 + rrnd() * 16, x: rrnd() * 16 - 8, opacity: 0,
+                   duration: 0.36 + rrnd() * 0.15, ease: "inQuad" }, st + 0.02);
       }
       // emphasis: double underline dashes drawn beneath
       if (em) {
@@ -4328,9 +4388,9 @@ ${lineData.map((L) => `        <div class="crow" id="${L.id}" style="top:${L.top
           p.setAttribute("opacity", "0");
           svg.appendChild(p);
           const len = p.getTotalLength();
-          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
-          tl.set(p, { opacity: 0.9 }, tu);
-          tl.to(p, { strokeDashoffset: 0, duration: du, ease: "power2.in" }, tu);
+          setNow(p, { strokeDasharray: len, strokeDashoffset: len });
+          setAt(p, { opacity: 0.9 }, tu);
+          addTo(p, { strokeDashoffset: 0, duration: du, ease: "inCubic" }, tu);
         });
         w.appendChild(svg);
       }
@@ -4339,30 +4399,30 @@ ${lineData.map((L) => `        <div class="crow" id="${L.id}" style="top:${L.top
 
   // ===== ERASER SWIPE between phases: light band sweeps, old words smear out =====
   ERASES.forEach((E, ei) => {
-    tl.set("#ceraser", { opacity: 1, x: -160 }, E.t);
-    tl.to("#ceraser", { x: ${stripW + 60}, duration: 0.42, ease: "power1.inOut" }, E.t);
-    tl.set("#ceraser", { opacity: 0 }, E.t + 0.44);
+    setAt("#ceraser", { opacity: 1, x: -160 }, E.t);
+    addTo("#ceraser", { x: ${stripW + 60}, duration: 0.42, ease: "inOutQuad" }, E.t);
+    setAt("#ceraser", { opacity: 0 }, E.t + 0.44);
     E.lines.forEach((id, r) => {
       const kids = document.getElementById(id).children;
       for (let i = 0; i < kids.length; i++)
-        tl.to(kids[i], { scaleX: 1.3, x: "+=24", opacity: 0, filter: "blur(8px)",
-                         transformOrigin: "0% 80%", duration: 0.18, ease: "power2.in" },
+        addTo(kids[i], { scaleX: 1.3, x: "+=24", opacity: 0, filter: "blur(8px)",
+                         transformOrigin: "0% 80%", duration: 0.18, ease: "inCubic" },
               E.t + 0.03 + r * 0.01 + i * 0.06);
     });
     // faint smudges the eraser leaves behind (stay)
     if (ei === 0) {
-      tl.fromTo("#cgh1", { opacity: 0 }, { opacity: 0.8, duration: 0.25 }, E.t + 0.17);
-      tl.fromTo("#cgh2", { opacity: 0 }, { opacity: 0.8, duration: 0.25 }, E.t + 0.27);
+      addFromTo("#cgh1", { opacity: 0 }, { opacity: 0.8, duration: 0.25 }, E.t + 0.17);
+      addFromTo("#cgh2", { opacity: 0 }, { opacity: 0.8, duration: 0.25 }, E.t + 0.27);
     }
   });
 ${
   b.yield && !heroInline
     ? `
-  // APEX OWNS ITS WINDOW — band yields while the chalk word writes, restores
-  tl.to("#cband", { opacity: ${b.yield.dim}, duration: 0.14, ease: "power1.in"  }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
+  // APEX OWNS ITS WINDOW - band yields while the chalk word writes, restores
+  addTo("#cband", { opacity: ${b.yield.dim}, duration: 0.14, ease: "inQuad"  }, ${(heroIn - (b.yield.pre || 0.07)).toFixed(3)});
 ${
   heroIn + (b.yield.post || 0.41) < DUR - 0.3
-    ? `  tl.to("#cband", { opacity: 1,    duration: 0.22, ease: "power1.out" }, ${(heroIn + (b.yield.post || 0.41)).toFixed(3)});`
+    ? `  addTo("#cband", { opacity: 1,    duration: 0.22, ease: "outQuad" }, ${(heroIn + (b.yield.post || 0.41)).toFixed(3)});`
     : ""
 }`
     : ""
@@ -4371,13 +4431,13 @@ ${
 }
 
 function paradigmMarkerrail() {
-  // MARKERRAIL: street handstyle rail — marker words FLICK onto a stable
+  // MARKERRAIL: street handstyle rail - marker words FLICK onto a stable
   // bottom rail (opacity full in 1 frame + 1-frame squeak skew, seeded crooked
-  // rotation settling back.out — the spray-write verb at low amplitude);
+  // rotation settling outBack(1.70158) - the spray-write verb at low amplitude);
   // emphasis words take an alternating paint color (`palette.em`/`em2`) + a
   // spray-underline SWOOSH (dash-revealed squiggle) with 8 seeded overspray
   // dots; the FINAL transcript word lands BIG in `palette.em` with mini
-  // apex-impact physics (crush → squash → elastic — it rides the plate punch).
+  // apex-impact physics (crush → squash → elastic - it rides the plate punch).
   // Spent lines are ROLLER-BUFFED: a gray paint roller sweeps across, the
   // words vanish under it and the wet smear lingers before fading; the last
   // line is never buffed (the sign-off stays painted). Rail yields while the
@@ -4436,19 +4496,19 @@ function paradigmMarkerrail() {
     path.setAttribute("opacity", "0");
     svg.appendChild(path); span.appendChild(svg);
     const len = path.getTotalLength();
-    gsap.set(path, { strokeDasharray: len, strokeDashoffset: len });
-    tl.set(path, { opacity: 0.95 }, t0);
-    tl.to(path, { strokeDashoffset: 0, duration: 0.2, ease: "power2.out" }, t0);
+    setNow(path, { strokeDasharray: len, strokeDashoffset: len });
+    setAt(path, { opacity: 0.95 }, t0);
+    addTo(path, { strokeDashoffset: 0, duration: 0.2, ease: "outCubic" }, t0);
     for (let i = 0; i < 8; i++) {
       const d = document.createElement("div");
       d.className = "modot"; d.style.background = color; span.appendChild(d);
       const s = 3 + Math.round(mrnd() * 3);
-      gsap.set(d, { width: s, height: s, left: (4 + mrnd() * 92) + "%",
+      setNow(d, { width: s, height: s, left: (4 + mrnd() * 92) + "%",
                     bottom: -(2 + mrnd() * 18) });
       const td = t0 + 0.03 + mrnd() * 0.15;
-      tl.set(d, { opacity: 0.9, scale: 0.4 }, td);
-      tl.to(d, { scale: 1.25, duration: 0.12, ease: "power2.out" }, td);
-      tl.to(d, { opacity: 0, duration: 0.3, ease: "power1.in" }, td + 0.12);
+      setAt(d, { opacity: 0.9, scale: 0.4 }, td);
+      addTo(d, { scale: 1.25, duration: 0.12, ease: "outCubic" }, td);
+      addTo(d, { opacity: 0, duration: 0.3, ease: "inQuad" }, td + 0.12);
     }
   }
   RAILM.forEach((L) => {
@@ -4457,53 +4517,53 @@ function paradigmMarkerrail() {
     txt.style.position = "relative"; line.appendChild(txt);
     const roller = document.createElement("div");
     roller.className = "mroller"; line.appendChild(roller);
-    gsap.set(roller, { scaleX: 0, transformOrigin: "0% 50%" });
+    setNow(roller, { scaleX: 0, transformOrigin: "0% 50%" });
     L.words.forEach(([w]) => {
       const s = document.createElement("span");
       s.className = "w"; s.textContent = w; txt.appendChild(s);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.02);
+    setNow(line, { xPercent: -50, yPercent: -100 });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.02);
     L.words.forEach(([w, st, em, big], wi) => {
       const el = txt.children[wi];
       const rot0 = (mrnd() - 0.5) * 12, rotF = (mrnd() - 0.5) * 4;
-      // FLICK IN: opacity full in 1 frame, squeak skew for 1 frame, back.out settle
-      tl.set(el, { opacity: 1, scale: big ? 1.5 : 1.18, rotation: rot0, skewX: 7,
+      // FLICK IN: opacity full in 1 frame, squeak skew for 1 frame, outBack(1.70158) settle
+      setAt(el, { opacity: 1, scale: big ? 1.5 : 1.18, rotation: rot0, skewX: 7,
                    color: em || ${J(dna.palette.body)}, transformOrigin: "50% 88%" }, st);
-      tl.set(el, { skewX: 0 }, st + F);
-      if (big) { // sign-off lands with the plate punch — mini apex-impact physics
-        tl.to(el, { scale: 1, duration: 0.09, ease: "power3.in" }, st + F);
-        tl.set(el, { scaleX: 1.1, scaleY: 0.9 }, st + F + 0.09);
-        tl.to(el, { scaleX: 1, scaleY: 1, duration: 0.26, ease: "elastic.out(1, 0.4)" }, st + F + 0.09 + 2 * F);
-        tl.to(el, { rotation: rotF, duration: 0.2, ease: "power2.out" }, st + F);
+      setAt(el, { skewX: 0 }, st + F);
+      if (big) { // sign-off lands with the plate punch - mini apex-impact physics
+        addTo(el, { scale: 1, duration: 0.09, ease: "inQuart" }, st + F);
+        setAt(el, { scaleX: 1.1, scaleY: 0.9 }, st + F + 0.09);
+        addTo(el, { scaleX: 1, scaleY: 1, duration: 0.26, ease: "outElastic(1, 0.4)" }, st + F + 0.09 + 2 * F);
+        addTo(el, { rotation: rotF, duration: 0.2, ease: "outCubic" }, st + F);
       } else {
-        tl.to(el, { scale: 1, rotation: rotF, duration: 0.18, ease: "back.out(2.2)" }, st + F);
+        addTo(el, { scale: 1, rotation: rotF, duration: 0.18, ease: "outBack(2.2)" }, st + F);
       }
       if (em && !big) mUnderline(el, em, Math.min(st + 0.22, ${(DUR - 0.5).toFixed(3)}));
     });
     if (!L.last) { // BUFF EXIT: gray roller sweeps the line, smear lingers
       const XO = L.out - 0.15;
-      tl.set(roller, { opacity: 0.92 }, XO);
-      tl.fromTo(roller, { scaleX: 0 }, { scaleX: 1, duration: 0.15, ease: "power2.in" }, XO);
-      tl.set(txt, { opacity: 0 }, XO + 0.15);
-      tl.to(roller, { opacity: 0.15, filter: "blur(2px)", duration: 0.22, ease: "power1.out" }, XO + 0.17);
-      tl.to(roller, { opacity: 0, duration: 0.35 }, Math.min(XO + 0.55, DURM - 0.36));
-      tl.set(line, { display: "none" }, Math.min(XO + 0.95, DURM));
+      setAt(roller, { opacity: 0.92 }, XO);
+      addFromTo(roller, { scaleX: 0 }, { scaleX: 1, duration: 0.15, ease: "inCubic" }, XO);
+      setAt(txt, { opacity: 0 }, XO + 0.15);
+      addTo(roller, { opacity: 0.15, filter: "blur(2px)", duration: 0.22, ease: "outQuad" }, XO + 0.17);
+      addTo(roller, { opacity: 0, duration: 0.35 }, Math.min(XO + 0.55, DURM - 0.36));
+      setAt(line, { display: "none" }, Math.min(XO + 0.95, DURM));
     }
   });
 ${
   b.yield && !heroInline
-    ? `  // APEX OWNS ITS WINDOW — the line visible at the tag's onset yields.
+    ? `  // APEX OWNS ITS WINDOW - the line visible at the tag's onset yields.
   // Restore only with runway before the buff (else the line exits dimmed).
   RAILM.forEach((L) => {
     if (L.in <= ${heroIn.toFixed(3)} && L.out > ${(heroIn - (b.yield.pre || 0.04)).toFixed(3)}) {
       const dimT = Math.max(${(heroIn - (b.yield.pre || 0.04)).toFixed(3)}, L.in + 0.05);
       const XO2 = L.out - 0.15;
       if (XO2 > dimT + 0.2 || L.last) {
-        tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.16 }, dimT);
+        addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.16 }, dimT);
         const resT = ${(heroIn + (b.yield.post || 0.17)).toFixed(3)};
         if (L.last ? resT < DURM - 0.3 : resT + 0.15 < XO2)
-          tl.to("#" + L.id, { opacity: 1, duration: 0.18 }, resT);
+          addTo("#" + L.id, { opacity: 1, duration: 0.18 }, resT);
       }
     }
   });`
@@ -4513,7 +4573,7 @@ ${
 }
 
 function paradigmBrushrail() {
-  // BRUSHRAIL: washi paper band — a deckle-edged paper band (two faintly
+  // BRUSHRAIL: washi paper band - a deckle-edged paper band (two faintly
   // rotated under-sheets + a warm translucent main sheet) swipes in L→R behind
   // a traveling brush-head shadow (the ink gesture at low amplitude); body
   // words are brush-WIPED on (clip reveal 0.16s behind a per-word brush head)
@@ -4600,15 +4660,15 @@ ${lineData.map((L) => `        <div class="bline" id="${L.id}"></div>`).join("\n
   const ULD2 = "M 2 9 C 32 12.5, 66 4.5, 98 7.5";
 
   // ===== BAND: swipes in L→R behind a brush head (the gesture, low amplitude) =====
-  gsap.set("#band", { xPercent: -50, yPercent: -50, clipPath: "inset(0% 100% 0% 0%)" });
-  tl.to("#band", { clipPath: "inset(0% 0% 0% 0%)", duration: 0.2, ease: "power2.out" }, 0.08);
-  tl.fromTo("#bandbh", { left: -30, opacity: 0.6 },
-            { left: "100%", opacity: 0.6, duration: 0.2, ease: "power2.out" }, 0.08);
-  tl.set("#bandbh", { opacity: 0 }, 0.30);
+  setNow("#band", { xPercent: -50, yPercent: -50, clipPath: "inset(0% 100% 0% 0%)" });
+  addTo("#band", { clipPath: "inset(0% 0% 0% 0%)", duration: 0.2, ease: "outCubic" }, 0.08);
+  addFromTo("#bandbh", { left: -30, opacity: 0.6 },
+            { left: "100%", opacity: 0.6, duration: 0.2, ease: "outCubic" }, 0.08);
+  setAt("#bandbh", { opacity: 0 }, 0.30);
   // paper under light: the deckle under-sheet breathes faintly (baked f(t))
   const bnB = ${breN}, bvB = [];
   for (let k = 0; k <= bnB; k++) bvB.push(0.40 + 0.05 * Math.sin(2 * Math.PI * 0.32 * (k / bnB * ${breD})));
-  tl.to("#bandu1", { keyframes: { opacity: bvB }, duration: ${breD}, ease: "none" }, 0.3);
+  addTo("#bandu1", { keyframes: { opacity: bvB }, duration: ${breD}, ease: "linear" }, 0.3);
 
   // ===== BODY: words brush-wiped on, lines wiped off like a wet cloth =====
   RAILB.forEach((L) => {
@@ -4640,68 +4700,68 @@ ${lineData.map((L) => `        <div class="bline" id="${L.id}"></div>`).join("\n
     });
     const ebh = document.createElement("div"); ebh.className = "ebh";
     line.appendChild(ebh);
-    gsap.set(line, { xPercent: -50, yPercent: -50, rotation: rot });
-    tl.set(line, { opacity: 1 }, L.words[0][1] - 0.02);
+    setNow(line, { xPercent: -50, yPercent: -50, rotation: rot });
+    setAt(line, { opacity: 1 }, L.words[0][1] - 0.02);
 
     L.words.forEach(([txt, st, em], wi) => {
       const cell = line.children[wi];
       const wrap = cell.firstChild, bh = wrap.children[1];
-      gsap.set(wrap, { clipPath: "inset(-14% 100% -14% 0%)" });
-      tl.to(wrap, { clipPath: "inset(-14% 0% -14% 0%)", duration: 0.16, ease: "power2.out" }, st);
-      tl.fromTo(bh, { left: -26, opacity: 0.55 },
-                { left: "100%", opacity: 0.55, duration: 0.16, ease: "power2.out" }, st);
-      tl.set(bh, { opacity: 0 }, st + 0.17);
+      setNow(wrap, { clipPath: "inset(-14% 100% -14% 0%)" });
+      addTo(wrap, { clipPath: "inset(-14% 0% -14% 0%)", duration: 0.16, ease: "outCubic" }, st);
+      addFromTo(bh, { left: -26, opacity: 0.55 },
+                { left: "100%", opacity: 0.55, duration: 0.16, ease: "outCubic" }, st);
+      setAt(bh, { opacity: 0 }, st + 0.17);
       if (em) {
         [[cell._ulFat, 0.12], [cell._ulCore, 0.15]].forEach(([p, dly]) => {
           const len = p.getTotalLength();
           const tu = Math.min(st + dly, ${(DUR - 0.3).toFixed(3)});
-          gsap.set(p, { strokeDasharray: len, strokeDashoffset: len });
-          tl.set(p, { opacity: 1 }, tu);
-          tl.to(p, { strokeDashoffset: 0, duration: 0.22, ease: "power2.out" }, tu);
+          setNow(p, { strokeDasharray: len, strokeDashoffset: len });
+          setAt(p, { opacity: 1 }, tu);
+          addTo(p, { strokeDashoffset: 0, duration: 0.22, ease: "outCubic" }, tu);
         });
       }
     });
 
-    // EXIT: the reveal in reverse — a wet cloth wipes R→L, erase head riding
-    gsap.set(line, { clipPath: "inset(-30% 0% -30% 0%)" });
-    tl.to(line, { clipPath: "inset(-30% 100% -30% 0%)", duration: L.eraseEnd - L.eraseT,
-                  ease: "power2.in" }, L.eraseT);
-    tl.fromTo(ebh, { left: "100%", opacity: 0.5 },
-              { left: -34, opacity: 0.5, duration: L.eraseEnd - L.eraseT, ease: "power2.in" }, L.eraseT);
-    tl.set(ebh, { opacity: 0 }, L.eraseEnd + 0.01);
-    tl.set(line, { opacity: 0 }, L.eraseEnd + 0.02);
+    // EXIT: the reveal in reverse - a wet cloth wipes R→L, erase head riding
+    setNow(line, { clipPath: "inset(-30% 0% -30% 0%)" });
+    addTo(line, { clipPath: "inset(-30% 100% -30% 0%)", duration: L.eraseEnd - L.eraseT,
+                  ease: "inCubic" }, L.eraseT);
+    addFromTo(ebh, { left: "100%", opacity: 0.5 },
+              { left: -34, opacity: 0.5, duration: L.eraseEnd - L.eraseT, ease: "inCubic" }, L.eraseT);
+    setAt(ebh, { opacity: 0 }, L.eraseEnd + 0.01);
+    setAt(line, { opacity: 0 }, L.eraseEnd + 0.02);
   });
 ${
   b.yield && !heroInline
     ? `
-  // APEX OWNS ITS WINDOW — band + the line under the gesture yield, band restores
-  tl.to(${heroLi >= 0 ? `["#band", "#br${heroLi}"]` : `"#band"`}, { opacity: ${b.yield.dim}, duration: 0.16 }, ${(heroIn - (b.yield.pre || 0.16)).toFixed(3)});
+  // APEX OWNS ITS WINDOW - band + the line under the gesture yield, band restores
+  addTo(${heroLi >= 0 ? `["#band", "#br${heroLi}"]` : `"#band"`}, { opacity: ${b.yield.dim}, duration: 0.16 }, ${(heroIn - (b.yield.pre || 0.16)).toFixed(3)});
 ${
   heroIn + (b.yield.post || 0.46) + 0.3 < DUR
-    ? `  tl.to("#band", { opacity: 1, duration: 0.18 }, ${(heroIn + (b.yield.post || 0.46)).toFixed(3)});`
+    ? `  addTo("#band", { opacity: 1, duration: 0.18 }, ${(heroIn + (b.yield.post || 0.46)).toFixed(3)});`
     : ""
 }`
     : ""
 }
 
   // ending: the band itself is wiped off with the last line (one final R→L wipe)
-  tl.to("#band", { clipPath: "inset(0% 100% 0% 0%)", duration: 0.13, ease: "power2.in" }, ${lastE});
-  tl.fromTo("#bandbh", { left: "100%", opacity: 0.6 },
-            { left: -30, opacity: 0.6, duration: 0.13, ease: "power2.in" }, ${lastE});
-  tl.set("#bandbh", { opacity: 0 }, ${Math.min(lastE + 0.14, DUR - 0.01).toFixed(3)});`;
+  addTo("#band", { clipPath: "inset(0% 100% 0% 0%)", duration: 0.13, ease: "inCubic" }, ${lastE});
+  addFromTo("#bandbh", { left: "100%", opacity: 0.6 },
+            { left: -30, opacity: 0.6, duration: 0.13, ease: "inCubic" }, ${lastE});
+  setAt("#bandbh", { opacity: 0 }, ${Math.min(lastE + 0.14, DUR - 0.01).toFixed(3)});`;
   return { css, html, js };
 }
 
 function paradigmInkrail() {
-  // INKRAIL: sumi ink on still water — up to three fixed reading ROWS at the
+  // INKRAIL: sumi ink on still water - up to three fixed reading ROWS at the
   // bottom center (rows cycle in pairs, the closing line takes the third row,
   // so the final thought ACCUMULATES instead of replacing) where Mincho-serif
   // ink words BLEED in over a paper-white halo glow (opacity snaps in 2
-  // frames; blur 12→0 + scale 1.25→1 carry the bleed — the apex bloom at low
+  // frames; blur 12→0 + scale 1.25→1 carry the bleed - the apex bloom at low
   // amplitude) while a duplicate blurred dark halo overshoots then tightens;
   // an ink-settling RULE (gradient hairline) draws beneath each line;
   // emphasis words shed a faint ink wisp curling off the word top; spent
-  // lines RE-DISSOLVE (blur up + spread + fade + slight rise — ink dispersing
+  // lines RE-DISSOLVE (blur up + spread + fade + slight rise - ink dispersing
   // back into the water) as the line-after-next approaches (= the next
   // occupant of their row); the closing lines persist to clip end; the rows
   // visible under the bloom yield while the drop blooms.
@@ -4767,43 +4827,43 @@ function paradigmInkrail() {
       const ink = document.createElement("span"); ink.className = "ink"; ink.textContent = txt;
       w.appendChild(halo); w.appendChild(ink); line.appendChild(w);
     });
-    gsap.set(line, { xPercent: -50, yPercent: -50 });
-    tl.set(line, { opacity: 1 }, L.in);
+    setNow(line, { xPercent: -50, yPercent: -50 });
+    setAt(line, { opacity: 1 }, L.in);
     L.words.forEach(([txt, st, em], wi) => {
       const w = line.children[wi + 1]; // children[0] is the rule
       const halo = w.children[0], ink = w.children[1];
       // BLEED IN: opacity snaps (2 frames); blur 12→0 + scale 1.25→1 carry the
       // bleed (late words bleed faster so they fully resolve before clip end)
       const late = st > IKLATE;
-      tl.fromTo(ink, { opacity: 0 }, { opacity: 1, duration: 0.083, ease: "none" }, st);
-      tl.fromTo(ink, { filter: "blur(12px)", scale: 1.25 },
-                { filter: "blur(0px)", scale: 1, duration: late ? 0.4 : 0.6, ease: "power2.out",
+      addFromTo(ink, { opacity: 0 }, { opacity: 1, duration: 0.083, ease: "linear" }, st);
+      addFromTo(ink, { filter: "blur(12px)", scale: 1.25 },
+                { filter: "blur(0px)", scale: 1, duration: late ? 0.4 : 0.6, ease: "outCubic",
                   transformOrigin: "50% 60%" }, st);
       // the dark halo overshoots then tightens (the bloom motif, low amplitude)
-      tl.fromTo(halo, { opacity: em ? 0.55 : 0.5, scale: 1.5 },
+      addFromTo(halo, { opacity: em ? 0.55 : 0.5, scale: 1.5 },
                 { scale: 1.04, opacity: em ? 0.3 : 0.25, duration: late ? 0.5 : 0.7,
-                  ease: "power2.out", transformOrigin: "50% 60%" }, st);
+                  ease: "outCubic", transformOrigin: "50% 60%" }, st);
       // emphasis: a faint ink wisp curls off the word top (skipped near clip end)
       if (em && st + 1.55 <= ${(DUR - 0.03).toFixed(3)}) {
         const wsp = document.createElement("div"); wsp.className = "iwisp"; w.appendChild(wsp);
         const dir = li % 2 === 0 ? 1 : -1;
-        tl.set(wsp, { opacity: 0.5, transformOrigin: "50% 50%" }, st + 0.55);
-        tl.fromTo(wsp, { y: 0, x: 0, rotation: 12 * dir, scaleY: 1 },
+        setAt(wsp, { opacity: 0.5, transformOrigin: "50% 50%" }, st + 0.55);
+        addFromTo(wsp, { y: 0, x: 0, rotation: 12 * dir, scaleY: 1 },
                   { y: -38, x: 10 * dir, rotation: 92 * dir, scaleY: 1.55,
-                    duration: 1.0, ease: "power1.out" }, st + 0.55);
-        tl.to(wsp, { opacity: 0, duration: 0.42, ease: "power1.in" }, st + 1.12);
+                    duration: 1.0, ease: "outQuad" }, st + 0.55);
+        addTo(wsp, { opacity: 0, duration: 0.42, ease: "inQuad" }, st + 1.12);
       }
     });
     // ink-settling rule beneath the line
-    tl.set(rule, { opacity: 0.55 }, L.words[0][1] + 0.12);
-    tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power2.out" },
+    setAt(rule, { opacity: 0.55 }, L.words[0][1] + 0.12);
+    addFromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "outCubic" },
               L.words[0][1] + 0.12);
-    // EXIT: re-dissolve — blur up + spread + fade + slight rise, ink dispersing
-    // (the closing lines persist — the final thought stays readable)
+    // EXIT: re-dissolve - blur up + spread + fade + slight rise, ink dispersing
+    // (the closing lines persist - the final thought stays readable)
     if (L.outT !== null) {
-      tl.to(line, { filter: "blur(9px)", scale: 1.13, opacity: 0, y: -8,
-                    duration: L.outDur, ease: "power1.in", transformOrigin: "50% 50%" }, L.outT);
-      tl.set(line, { display: "none" }, L.outT + L.outDur + 0.02);
+      addTo(line, { filter: "blur(9px)", scale: 1.13, opacity: 0, y: -8,
+                    duration: L.outDur, ease: "inQuad", transformOrigin: "50% 50%" }, L.outT);
+      setAt(line, { display: "none" }, L.outT + L.outDur + 0.02);
     }
   });
 ${
@@ -4811,14 +4871,14 @@ ${
     ? `
   // rows visible under the bloom yield while the drop blooms, restore after.
   // Overlap guards: dim only after the line is IN with runway before its exit;
-  // restore only with clear runway (else the line exits dimmed — one owner).
+  // restore only with clear runway (else the line exits dimmed - one owner).
   RAILI.forEach((L) => {
     const dimT = ${(heroIn + (b.yield.delay ?? 0.12)).toFixed(3)};
     if (L.in < dimT - 0.05 && (L.outT === null || L.outT > dimT + 0.35)) {
-      tl.to("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.3, ease: "power1.out" }, dimT);
+      addTo("#" + L.id, { opacity: ${b.yield.dim}, duration: 0.3, ease: "outQuad" }, dimT);
       const resT = ${(heroIn + (b.yield.post ?? 1.07)).toFixed(3)};
       if (L.outT === null || resT + 0.33 < L.outT)
-        tl.to("#" + L.id, { opacity: 1, duration: 0.3, ease: "power1.out" }, resT);
+        addTo("#" + L.id, { opacity: 1, duration: 0.3, ease: "outQuad" }, resT);
     }
   });`
     : ""
@@ -4828,7 +4888,7 @@ ${
 
 // ---- ransom shared pieces: the cutout-chip recipes and the seeded paper-tear
 // polygon are ONE paper stock used by both layers (ransomrail body chips in the
-// fg, ransomnote letter chips in the bg) — emitted into each page separately
+// fg, ransomnote letter chips in the bg) - emitted into each page separately
 function ransomChipCss(ls) {
   const p = dna.palette;
   return `
@@ -4837,7 +4897,7 @@ function ransomChipCss(ls) {
   .cc { background:${p.news || "#d8d3c5"}; color:${p.newsInk || "#262017"}; font-family:'${dna.fonts.news}', monospace; }
   .cd { background:${p.accent || "#ffd23f"}; color:${p.accentInk || "#1c160c"}; font-family:'${dna.fonts.accent}', cursive; }`;
 }
-// seeded 12-vertex tear polygon — j() call order matches the demo exactly so
+// seeded 12-vertex tear polygon - j() call order matches the demo exactly so
 // identical seeds reproduce the demo's torn edges
 const RANSOM_TEAR = `function tearPoly(r){
     const j = () => +(r()*5).toFixed(1);
@@ -4847,13 +4907,13 @@ const RANSOM_TEAR = `function tearPoly(r){
   }`;
 
 function paradigmRansomrail() {
-  // RANSOMRAIL: kidnapper's collage — every transcript word is a cutout chip
+  // RANSOMRAIL: kidnapper's collage - every transcript word is a cutout chip
   // in one of 4 cycled recipes (paper/Anton, black/Inter-800, newsprint/
   // Special Elite, accent/Permanent Marker; emphasis words snap to the accent
   // chip) PASTED along the bottom rail line with seeded crookedness, seeded
-  // ±px sizes and misaligned baselines — the paste is the apex slam motif at
-  // low amplitude (1f appear at scale 1.12 → power3.in crush → 2-frame contact
-  // squash → elastic settle). Emphasis = 1-frame RE-PASTE lift (shadow grows,
+  // ±px sizes and misaligned baselines - the paste is the apex slam motif at
+  // low amplitude (1f appear at scale 1.12 → inQuart crush → 2-frame contact
+  // squash → outElastic settle). Emphasis = 1-frame RE-PASTE lift (shadow grows,
   // rotation flips sign for good); exits = chips RIPPED off one by one with
   // 1-frame paper-tear flashes under each; lines breathe through their hold;
   // the whole railwrap yields while the apex letters slam behind the subject.
@@ -4864,7 +4924,7 @@ function paradigmRansomrail() {
     const stag = li === last ? 0.04 : 0.045;
     const ripDur = li === last ? 0.12 : 0.14;
     const lastSt = L.words[n - 1].start;
-    // rip cadence (demo): chips tear off just before the next line pastes —
+    // rip cadence (demo): chips tear off just before the next line pastes -
     // the rip tail overlaps the new line a beat (collage chaos, by design);
     // a line whose last word just spoke waits lastWord+0.14 first
     let ripStart =
@@ -4916,7 +4976,7 @@ ${lineData.map((L) => `        <div class="rline" id="${L.id}"></div>`).join("\n
   }
   RAILR.forEach((L, li) => {
     const line = document.getElementById(L.id);
-    gsap.set(line, { xPercent: -50, yPercent: -100 });
+    setNow(line, { xPercent: -50, yPercent: -100 });
     L.words.forEach(([txt, st, emphT, R, em], wi) => {
       const w = document.createElement("div"); w.className = "w";
       const fl = document.createElement("div"); fl.className = "rflash";
@@ -4933,35 +4993,35 @@ ${lineData.map((L) => `        <div class="rline" id="${L.id}"></div>`).join("\n
       const rot = sgn * (2 + crnd() * 2.5);
       const dy = -sgn * (1 + crnd() * 2);
       // PASTE = apex slam motif at low amplitude
-      tl.set(mv, { opacity: 1, scale: 1.12, rotation: rot * 1.5, y: dy - 8 }, st);
-      tl.to(mv,  { scale: 1, rotation: rot, y: dy, duration: 0.08, ease: "power3.in" }, st + 0.005);
-      tl.set(mv, { scaleX: 1.05, scaleY: 0.95 }, st + 0.09);
-      tl.to(mv,  { scaleX: 1, scaleY: 1, duration: 0.22, ease: "elastic.out(1, 0.4)" }, st + 0.173);
+      setAt(mv, { opacity: 1, scale: 1.12, rotation: rot * 1.5, y: dy - 8 }, st);
+      addTo(mv,  { scale: 1, rotation: rot, y: dy, duration: 0.08, ease: "inQuart" }, st + 0.005);
+      setAt(mv, { scaleX: 1.05, scaleY: 0.95 }, st + 0.09);
+      addTo(mv,  { scaleX: 1, scaleY: 1, duration: 0.22, ease: "outElastic(1, 0.4)" }, st + 0.173);
       // EMPHASIS = re-paste: 1-frame lift (shadow grows), rotation flips sign for good
       if (emphT) {
-        tl.set(mv, { y: dy - 7, scale: 1.08, rotation: -rot, filter: LIFTR }, emphT);
-        tl.to(mv,  { y: dy, scale: 1, duration: 0.09, ease: "power3.in" }, emphT + 0.083);
-        tl.set(mv, { filter: HARDR }, emphT + 0.175);
-        tl.set(mv, { scaleX: 1.04, scaleY: 0.96 }, emphT + 0.178);
-        tl.to(mv,  { scaleX: 1, scaleY: 1, duration: 0.16, ease: "elastic.out(1, 0.4)" }, emphT + 0.262);
+        setAt(mv, { y: dy - 7, scale: 1.08, rotation: -rot, filter: LIFTR }, emphT);
+        addTo(mv,  { y: dy, scale: 1, duration: 0.09, ease: "inQuart" }, emphT + 0.083);
+        setAt(mv, { filter: HARDR }, emphT + 0.175);
+        setAt(mv, { scaleX: 1.04, scaleY: 0.96 }, emphT + 0.178);
+        addTo(mv,  { scaleX: 1, scaleY: 1, duration: 0.16, ease: "outElastic(1, 0.4)" }, emphT + 0.262);
       }
       // EXIT = ripped off, paper-tear flash 1 frame under the chip
-      tl.set(fl, { opacity: 0.85 }, R);
-      tl.set(fl, { opacity: 0 }, R + 0.045);
-      tl.to(mv,  { rotation: rot + (wi % 2 ? 16 : -17), y: dy - 30, opacity: 0,
-                   duration: L.ripDur, ease: "power2.in" }, R);
+      setAt(fl, { opacity: 0.85 }, R);
+      setAt(fl, { opacity: 0 }, R + 0.045);
+      addTo(mv,  { rotation: rot + (wi % 2 ? 16 : -17), y: dy - 30, opacity: 0,
+                   duration: L.ripDur, ease: "inCubic" }, R);
     });
-    if (L.bd) tl.to(line, { keyframes: { scale: [1, 1.015, 1.005, 1.016, 1] },
-                            duration: L.bd, ease: "none" }, L.bs);
+    if (L.bd) addTo(line, { keyframes: { scale: [1, 1.015, 1.005, 1.016, 1] },
+                            duration: L.bd, ease: "linear" }, L.bs);
   });
 ${
   b.yield && !heroInline
     ? `  // rail yields while the apex letters slam behind the subject (container
-  // opacity — never contests the per-chip channels)
-  tl.to("#rrailwrap", { opacity: ${b.yield.dim}, duration: 0.12 }, ${Math.max(0.05, heroIn - (b.yield.pre ?? 0.02)).toFixed(3)});
+  // opacity - never contests the per-chip channels)
+  addTo("#rrailwrap", { opacity: ${b.yield.dim}, duration: 0.12 }, ${Math.max(0.05, heroIn - (b.yield.pre ?? 0.02)).toFixed(3)});
 ${
   heroIn + (b.yield.post ?? 0.71) < DUR - 0.3
-    ? `  tl.to("#rrailwrap", { opacity: 1, duration: 0.2 }, ${(heroIn + (b.yield.post ?? 0.71)).toFixed(3)});`
+    ? `  addTo("#rrailwrap", { opacity: 1, duration: 0.2 }, ${(heroIn + (b.yield.post ?? 0.71)).toFixed(3)});`
     : ""
 }`
     : ""
@@ -4999,7 +5059,7 @@ function setpieceCpslam() {
   // CP-language EMBED climax: acid-yellow word slams in BEHIND the subject with
   // REAL notch cuts (SVG mask = true transparency over footage), a chromatic
   // split that settles to a PERMANENT registration error, seeded glitch ticks,
-  // and a glitch-out exit. The frame stays footage — the word is set dressing.
+  // and a glitch-out exit. The frame stays footage - the word is set dressing.
   const h = dna.hero,
     p = h.params || {},
     I = heroIn;
@@ -5023,7 +5083,7 @@ function setpieceCpslam() {
     BH = Math.round(hpx * 1.5);
   const CX = BW - 80 > W ? W / 2 : Math.max(BW / 2 - 40, Math.min(W - BW / 2 + 40, HG.x)),
     CY = HG.y;
-  // seeded diagonal cuts through the letter band (precision is not the point —
+  // seeded diagonal cuts through the letter band (precision is not the point -
   // the cuts read as stencil damage wherever they land)
   const nN = Math.max(2, Math.floor(DISP.length / 2.2));
   const used = [];
@@ -5072,49 +5132,49 @@ function setpieceCpslam() {
   // ---- setpiece: CPSLAM (band charge -> crush slam -> permanent registration -> glitch-out) ----
   const I = ${I.toFixed(3)};
   const crnd = mulberry32(${p.seed || 2077});
-  tl.set("#cpband", { opacity: 1 }, I - 0.35);
-  tl.fromTo("#cpband", { y: 0 }, { y: ${H + 160}, duration: 0.36, ease: "power1.in" }, I - 0.35);
-  tl.set("#cpband", { opacity: 0 }, I + 0.01);
+  setAt("#cpband", { opacity: 1 }, I - 0.35);
+  addFromTo("#cpband", { y: 0 }, { y: ${H + 160}, duration: 0.36, ease: "inQuad" }, I - 0.35);
+  setAt("#cpband", { opacity: 0 }, I + 0.01);
   // crush slam (weighted), chromatic layers split wide on impact
-  tl.set("#cps", { opacity: 1 }, I - 0.04);
-  tl.fromTo("#cpsW", { scale: 2.6, filter: "blur(9px) brightness(2.2) drop-shadow(0 4px 18px rgba(0,0,0,0.5))" },
-    { scale: 1, filter: "blur(0px) brightness(1) drop-shadow(0 4px 18px rgba(0,0,0,0.5))", duration: 0.11, ease: "power4.in" }, I - 0.04);
-  tl.set("#cpsW", { scaleX: 1.09, scaleY: 0.93 }, I + 0.08);
-  tl.to("#cpsW", { scaleX: 1, scaleY: 1, duration: 0.46, ease: "elastic.out(1.05, 0.36)" }, I + 0.16);
-  // SVG <g> children move via attr.transform ONLY (banned: gsap x/y component
-  // props on SVG children — getBBox parse path). Frame-quantized step chain
+  setAt("#cps", { opacity: 1 }, I - 0.04);
+  addFromTo("#cpsW", { scale: 2.6, filter: "blur(9px) brightness(2.2) drop-shadow(0 4px 18px rgba(0,0,0,0.5))" },
+    { scale: 1, filter: "blur(0px) brightness(1) drop-shadow(0 4px 18px rgba(0,0,0,0.5))", duration: 0.11, ease: "inQuint" }, I - 0.04);
+  setAt("#cpsW", { scaleX: 1.09, scaleY: 0.93 }, I + 0.08);
+  addTo("#cpsW", { scaleX: 1, scaleY: 1, duration: 0.46, ease: "outElastic(1.05, 0.36)" }, I + 0.16);
+  // SVG <g> children move via attr.transform ONLY (banned: x/y component
+  // props on SVG children - getBBox parse path). Frame-quantized step chain
   // replaces the 0.16s recoil tween (identical on screen at 24fps).
-  const RG = (dx, dy, at) => { tl.set("#cpC", { attr: { transform: "translate(" + dx + " " + dy + ")" } }, at); tl.set("#cpR", { attr: { transform: "translate(" + (-dx) + " " + (-dy) + ")" } }, at); };
+  const RG = (dx, dy, at) => { setAt("#cpC", { attr: { transform: "translate(" + dx + " " + dy + ")" } }, at); setAt("#cpR", { attr: { transform: "translate(" + (-dx) + " " + (-dy) + ")" } }, at); };
   RG(9, 0, I - 0.04);
   RG(6, 0, I + 0.02); RG(3, 0, I + 0.02 + F); RG(1, 0, I + 0.02 + 2 * F); RG(0, 0, I + 0.02 + 3 * F);
   // ...then the print settles WRONG: permanent registration error (the look)
   RG(2.5, -1, I + 0.3);
-  tl.fromTo("#cpkana", { opacity: 0 }, { opacity: 0.92, duration: 0.18 }, I + 0.22);
+  addFromTo("#cpkana", { opacity: 0 }, { opacity: 0.92, duration: 0.18 }, I + 0.22);
   // living word: seeded glitch ticks (registration jolts / 1f slips)
   let gt = I + 0.62;
   while (gt < ${EX.toFixed(3)} - 0.25) {
     if (crnd() < 0.55) {
       RG(8, -1, gt); RG(2.5, -1, gt + F);
     } else {
-      tl.set("#cps", { x: (crnd() - 0.5) * 10 }, gt);
-      tl.set("#cps", { x: 0 }, gt + F);
+      setAt("#cps", { x: (crnd() - 0.5) * 10 }, gt);
+      setAt("#cps", { x: 0 }, gt + F);
     }
     gt += 0.45 + crnd() * 0.6;
   }
-  tl.to("#cpsW", { scale: 1.035, duration: 1.1, ease: "power1.inOut" }, I + 0.72);
+  addTo("#cpsW", { scale: 1.035, duration: 1.1, ease: "inOutQuad" }, I + 0.72);
   // EXIT: glitch-out
   const E = ${EX.toFixed(3)};
-  tl.set("#cpkana", { opacity: 0 }, E);
+  setAt("#cpkana", { opacity: 0 }, E);
   RG(15, -1, E);
-  tl.set("#cps", { x: -7 }, E + F);
-  tl.set("#cps", { opacity: 0, display: "none" }, E + 2 * F);`;
+  setAt("#cps", { x: -7 }, E + F);
+  setAt("#cps", { opacity: 0, display: "none" }, E + 2 * F);`;
   return { css, html, js };
 }
 
 function setpieceCoverword() {
   // CP2077 COVER-LETTERFORM slam, precision pass: the spoken apex word set in
   // the replica typeface of the official mark (assets/brand/CyberpunkReplica.ttf
-  // — lowercase glyphs carry the logo's actual brush chops, blade terminals and
+  // - lowercase glyphs carry the logo's actual brush chops, blade terminals and
   // spikes), in logo case (First-upper). The setpiece adds only what the FONT
   // does not carry: the solid cyan duplicate offset down-left, the baseline
   // streak + cyan pixel debris, the circuit trace off the tail, and the
@@ -5244,41 +5304,41 @@ function setpieceCoverword() {
   // ---- setpiece: COVERWORD v2 (replica letterforms; tear-in -> living print -> tear-out) ----
   const I = ${I.toFixed(3)};
   const wrnd = mulberry32(${p.seed || 77});
-  const TB = (sel, dx, dy, at) => tl.set(sel, { attr: { transform: "translate(" + dx + " " + (dy || 0) + ")" } }, at);
+  const TB = (sel, dx, dy, at) => setAt(sel, { attr: { transform: "translate(" + dx + " " + (dy || 0) + ")" } }, at);
   // corrupted boot-flick of the whole lockup during the charge
-  tl.set("#cw", { opacity: 0.35, filter: "saturate(0) brightness(1.6)" }, I - 0.30);
-  tl.set("#cw", { opacity: 0 }, I - 0.30 + F);
-  tl.set("#cw", { opacity: 0.5, filter: "saturate(0) brightness(2)" }, I - 0.13);
-  tl.set("#cw", { opacity: 0 }, I - 0.13 + F);
+  setAt("#cw", { opacity: 0.35, filter: "saturate(0) brightness(1.6)" }, I - 0.30);
+  setAt("#cw", { opacity: 0 }, I - 0.30 + F);
+  setAt("#cw", { opacity: 0.5, filter: "saturate(0) brightness(2)" }, I - 0.13);
+  setAt("#cw", { opacity: 0 }, I - 0.13 + F);
   // SLAM: crush in with slice displacement, snap into register
-  tl.set("#cw", { opacity: 1, filter: "none" }, I - 0.02);
-  tl.fromTo("#cwW", { scale: 2.4 }, { scale: 1, duration: 0.10, ease: "power4.in" }, I - 0.02);
+  setAt("#cw", { opacity: 1, filter: "none" }, I - 0.02);
+  addFromTo("#cwW", { scale: 2.4 }, { scale: 1, duration: 0.10, ease: "inQuint" }, I - 0.02);
   TB("#cwY0", -34, 0, I - 0.02); TB("#cwY1", 26, 0, I - 0.02); TB("#cwY2", -18, 0, I - 0.02);
   TB("#cwC", -44, 8, I - 0.02);
-  tl.set("#cwD", { opacity: 0 }, I - 0.02);
+  setAt("#cwD", { opacity: 0 }, I - 0.02);
   TB("#cwY0", 0, 0, I + 0.10); TB("#cwY1", 0, 0, I + 0.10); TB("#cwY2", 0, 0, I + 0.10);
   TB("#cwC", -7, 8, I + 0.10);
-  tl.set("#cwW", { scaleX: 1.08, scaleY: 0.94 }, I + 0.10);
-  tl.to("#cwW", { scaleX: 1, scaleY: 1, duration: 0.45, ease: "elastic.out(1.05, 0.38)" }, I + 0.16);
-  tl.set("#cwD", { opacity: 1 }, I + 0.12);
-  tl.set("#cwT", { opacity: 0.9 }, I + 0.34);
+  setAt("#cwW", { scaleX: 1.08, scaleY: 0.94 }, I + 0.10);
+  addTo("#cwW", { scaleX: 1, scaleY: 1, duration: 0.45, ease: "outElastic(1.05, 0.38)" }, I + 0.16);
+  setAt("#cwD", { opacity: 1 }, I + 0.12);
+  setAt("#cwT", { opacity: 0.9 }, I + 0.34);
   // living print: seeded slice slips + cyan jolts
   let gt = I + 0.55;
   while (gt < ${EX.toFixed(3)} - 0.25) {
     const r = wrnd();
     if (r < 0.4) { const b = Math.floor(wrnd() * 3); TB("#cwY" + b, (wrnd() - 0.5) * 22, 0, gt); TB("#cwY" + b, 0, 0, gt + F); }
     else if (r < 0.7) { TB("#cwC", -16, 8, gt); TB("#cwC", -7, 8, gt + F); }
-    else { tl.set("#cw", { x: (wrnd() - 0.5) * 9 }, gt); tl.set("#cw", { x: 0 }, gt + F); }
+    else { setAt("#cw", { x: (wrnd() - 0.5) * 9 }, gt); setAt("#cw", { x: 0 }, gt + F); }
     gt += 0.4 + wrnd() * 0.55;
   }
-  tl.to("#cwW", { scale: 1.04, duration: 1.1, ease: "power1.inOut" }, I + 0.66);
+  addTo("#cwW", { scale: 1.04, duration: 1.1, ease: "inOutQuad" }, I + 0.66);
   // EXIT: tear cascade -> gone
   const E = ${EX.toFixed(3)};
   TB("#cwY0", 52, 0, E); TB("#cwY1", -38, 0, E); TB("#cwY2", 30, 0, E);
   TB("#cwC", -30, 8, E);
-  tl.set("#cwT", { opacity: 0 }, E);
-  tl.set("#cw", { opacity: 0.45 }, E + F);
-  tl.set("#cw", { opacity: 0, display: "none" }, E + 2 * F);`;
+  setAt("#cwT", { opacity: 0 }, E);
+  setAt("#cw", { opacity: 0.45 }, E + F);
+  setAt("#cw", { opacity: 0, display: "none" }, E + 2 * F);`;
   return { css, html, js };
 }
 function setpieceSettle() {
@@ -5302,22 +5362,22 @@ function setpieceSettle() {
   const I = ${I.toFixed(3)};
 ${
   dna.plate.dim
-    ? `  tl.fromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.35, ease: "power2.in" }, I - 0.3);
-  tl.to("#dimP", { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(E + 0.02).toFixed(3)});`
+    ? `  addFromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.35, ease: "inCubic" }, I - 0.3);
+  addTo("#dimP", { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(E + 0.02).toFixed(3)});`
     : ""
 }
   // opacity lands in ~2 frames; the transform settles separately (no ghost ramp)
-  tl.fromTo("#stl-w", { opacity: 0 }, { opacity: 1, duration: 0.09, ease: "power1.out" }, I);
-  tl.fromTo("#stl-w", { y: 14, scale: 1.05, filter: "blur(9px)" },
-            { y: 0, scale: 1, filter: "blur(0px)", duration: 0.45, ease: "power3.out" }, I);
-  tl.fromTo("#stl-rule", { width: 0 }, { width: ${ruleW}, duration: 0.35, ease: "expo.out" }, I + 0.28);
+  addFromTo("#stl-w", { opacity: 0 }, { opacity: 1, duration: 0.09, ease: "outQuad" }, I);
+  addFromTo("#stl-w", { y: 14, scale: 1.05, filter: "blur(9px)" },
+            { y: 0, scale: 1, filter: "blur(0px)", duration: 0.45, ease: "outQuart" }, I);
+  addFromTo("#stl-rule", { width: 0 }, { width: ${ruleW}, duration: 0.35, ease: "outExpo" }, I + 0.28);
   // hold life: one slow visible loom
-  tl.to("#stl", { scale: 1.018, duration: ${holdDur.toFixed(2)}, ease: "power1.inOut" }, I + 0.6);
+  addTo("#stl", { scale: 1.018, duration: ${holdDur.toFixed(2)}, ease: "inOutQuad" }, I + 0.6);
   // exit: soften and lift (asymmetric to the landing)
-  tl.to("#stl-rule", { width: 0, opacity: 0, duration: 0.2, ease: "power2.in" }, ${(E - 0.05).toFixed(3)});
-  tl.to("#stl-w", { filter: "blur(5px)", duration: 0.22, ease: "power1.in" }, ${(E - 0.02).toFixed(3)});
-  tl.to("#stl", { opacity: 0, y: -10, duration: 0.24, ease: "power2.in" }, ${E.toFixed(3)});
-  tl.set("#stl", { display: "none" }, ${(E + 0.26).toFixed(3)});`;
+  addTo("#stl-rule", { width: 0, opacity: 0, duration: 0.2, ease: "inCubic" }, ${(E - 0.05).toFixed(3)});
+  addTo("#stl-w", { filter: "blur(5px)", duration: 0.22, ease: "inQuad" }, ${(E - 0.02).toFixed(3)});
+  addTo("#stl", { opacity: 0, y: -10, duration: 0.24, ease: "inCubic" }, ${E.toFixed(3)});
+  setAt("#stl", { display: "none" }, ${(E + 0.26).toFixed(3)});`;
   return { css, html, js };
 }
 function setpieceFlapboard() {
@@ -5403,11 +5463,11 @@ function setpieceFlapboard() {
   const HOTB = ${J(dna.palette.hot)}, BONEB = ${J(dna.palette.boardBone || dna.palette.body)};
   const brnd = mulberry32(${p.seed || 8088});
   // scene reaction: floodlights swing onto the board
-  tl.fromTo("#dimF",   { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.16, ease: "power2.in" }, AIN - 0.08);
-  tl.fromTo("#scrimF", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.16, ease: "power2.in" }, AIN - 0.08);
-  tl.to("#dimF",   { opacity: ${(dna.plate.dim * 0.59).toFixed(2)}, duration: 0.8, ease: "power2.out" }, ${(lockEnd - 0.23).toFixed(3)});
-  tl.to("#scrimF", { opacity: ${(dna.plate.charge * 0.61).toFixed(2)}, duration: 0.8, ease: "power2.out" }, ${(lockEnd - 0.23).toFixed(3)});
-  tl.to(["#dimF", "#scrimF"], { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(E - 0.39).toFixed(3)});
+  addFromTo("#dimF",   { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.16, ease: "inCubic" }, AIN - 0.08);
+  addFromTo("#scrimF", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.16, ease: "inCubic" }, AIN - 0.08);
+  addTo("#dimF",   { opacity: ${(dna.plate.dim * 0.59).toFixed(2)}, duration: 0.8, ease: "outCubic" }, ${(lockEnd - 0.23).toFixed(3)});
+  addTo("#scrimF", { opacity: ${(dna.plate.charge * 0.61).toFixed(2)}, duration: 0.8, ease: "outCubic" }, ${(lockEnd - 0.23).toFixed(3)});
+  addTo(["#dimF", "#scrimF"], { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(E - 0.39).toFixed(3)});
   // build the flap tiles (one per char; spaces are blank tiles)
   const slots = document.getElementById("slots");
   const btiles = [];
@@ -5430,68 +5490,68 @@ function setpieceFlapboard() {
     atile.appendChild(flap); slots.appendChild(atile);
     btiles.push({ atile, flap, rl, wrongs, n });
   }
-  gsap.set("#board", { xPercent: -50, yPercent: -50 });
+  setNow("#board", { xPercent: -50, yPercent: -50 });
   // housing clacks down (the flap motif at housing scale)
-  tl.set("#board", { opacity: 1 }, AIN);
-  tl.fromTo("#board", { rotationX: -52 }, { rotationX: 0, duration: 0.13, ease: "power3.in" }, AIN);
-  tl.set("#board", { scaleX: 1.012, scaleY: 0.965 }, AIN + 0.13);
-  tl.to("#board", { scaleX: 1, scaleY: 1, duration: 0.28, ease: "elastic.out(1, 0.42)" }, AIN + 0.16);
+  setAt("#board", { opacity: 1 }, AIN);
+  addFromTo("#board", { rotationX: -52 }, { rotationX: 0, duration: 0.13, ease: "inQuart" }, AIN);
+  setAt("#board", { scaleX: 1.012, scaleY: 0.965 }, AIN + 0.13);
+  addTo("#board", { scaleX: 1, scaleY: 1, duration: 0.28, ease: "outElastic(1, 0.42)" }, AIN + 0.16);
   // flip-cycle wrong chars, lock left→right with clack rhythm
   btiles.forEach((T, i) => {
     if (!T) return;
     const Li = LOCK0 + i * LSTEP;
     const Si = AIN + 0.035 + i * 0.008;
     const cyc = (Li - Si) / T.n;
-    tl.set(T.wrongs[0], { display: "block" }, AIN);
-    tl.fromTo(T.flap, { rotationX: -85 }, { rotationX: 0, duration: cyc * 0.8, ease: "power1.in" }, Si);
+    setAt(T.wrongs[0], { display: "block" }, AIN);
+    addFromTo(T.flap, { rotationX: -85 }, { rotationX: 0, duration: cyc * 0.8, ease: "inQuad" }, Si);
     for (let k = 1; k < T.n; k++) {
       const c = Si + k * cyc;
-      tl.set(T.wrongs[k - 1], { display: "none" }, c);
-      tl.set(T.wrongs[k], { display: "block" }, c);
-      tl.fromTo(T.flap, { rotationX: -85 }, { rotationX: 0, duration: cyc * 0.8, ease: "power1.in" }, c);
+      setAt(T.wrongs[k - 1], { display: "none" }, c);
+      setAt(T.wrongs[k], { display: "block" }, c);
+      addFromTo(T.flap, { rotationX: -85 }, { rotationX: 0, duration: cyc * 0.8, ease: "inQuad" }, c);
     }
-    // LOCK: real char drops in, hot flash, squash, elastic settle, cool to bone
-    tl.set(T.wrongs[T.n - 1], { display: "none" }, Li);
-    tl.set(T.rl, { visibility: "visible" }, Li);
-    tl.set(T.flap, { color: HOTB, filter: "brightness(2.1)" }, Li);
-    tl.fromTo(T.flap, { rotationX: -90 }, { rotationX: 0, duration: 0.075, ease: "power2.in" }, Li);
-    tl.set(T.atile, { scaleX: 1.05, scaleY: 0.92 }, Li + 0.075);
-    tl.to(T.atile, { scaleX: 1, scaleY: 1, duration: 0.3, ease: "elastic.out(1, 0.38)" }, Li + 0.1);
-    tl.to(T.flap, { color: BONEB, filter: "brightness(1)", duration: 0.45, ease: "power2.out" }, Li + 0.15);
+    // LOCK: real char drops in, hot flash, squash, outElastic settle, cool to bone
+    setAt(T.wrongs[T.n - 1], { display: "none" }, Li);
+    setAt(T.rl, { visibility: "visible" }, Li);
+    setAt(T.flap, { color: HOTB, filter: "brightness(2.1)" }, Li);
+    addFromTo(T.flap, { rotationX: -90 }, { rotationX: 0, duration: 0.075, ease: "inCubic" }, Li);
+    setAt(T.atile, { scaleX: 1.05, scaleY: 0.92 }, Li + 0.075);
+    addTo(T.atile, { scaleX: 1, scaleY: 1, duration: 0.3, ease: "outElastic(1, 0.38)" }, Li + 0.1);
+    addTo(T.flap, { color: BONEB, filter: "brightness(1)", duration: 0.45, ease: "outCubic" }, Li + 0.15);
   });
   // clack rhythm: baked y-jitter on the housing across the lock window
-  tl.to("#board", { keyframes: { y: [0, 2, 0, 1.4, 0, 2, 0, 1.2, 0, 1.8, 0] },
-                    duration: ${(lockWin + 0.08).toFixed(2)}, ease: "none" }, LOCK0 - 0.01);
+  addTo("#board", { keyframes: { y: [0, 2, 0, 1.4, 0, 2, 0, 1.2, 0, 1.8, 0] },
+                    duration: ${(lockWin + 0.08).toFixed(2)}, ease: "linear" }, LOCK0 - 0.01);
   // lock-complete: the big clack (plate punch lands here)
-  tl.set("#board", { scaleX: 1.03, scaleY: 0.96 }, ${lockEnd.toFixed(3)});
-  tl.to("#board", { scaleX: 1, scaleY: 1, duration: 0.42, ease: "elastic.out(1, 0.4)" }, ${(lockEnd + 0.03).toFixed(3)});
-  tl.fromTo("#glowF", { opacity: 0 }, { opacity: 0.85, duration: 0.12, ease: "power2.out" }, ${lockEnd.toFixed(3)});
-  tl.to("#glowF", { keyframes: { opacity: [0.85, 0.55, 0.7, 0.45, 0.6, 0.42, 0.5] },
-                    duration: ${Math.max(0.4, E - 0.49 - (lockEnd + 0.15)).toFixed(2)}, ease: "none" }, ${(lockEnd + 0.15).toFixed(3)});
-  tl.fromTo("#ruleF", { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 0.3, ease: "expo.out" }, ${(lockEnd + 0.05).toFixed(3)});
-${p.tag ? `  tl.to("#tagwrapF", { width: ${tagW}, duration: 0.4, ease: "steps(16)" }, ${(lockEnd + 0.11).toFixed(3)});` : ""}
-  // hold life: loom + one mechanical re-flutter tic — boards do this
-  tl.to("#board", { scaleX: 1.022, scaleY: 1.022, duration: ${Math.max(0.4, Math.min(1.0, exit0 - lockEnd - 0.55)).toFixed(2)}, ease: "power1.inOut" }, ${(lockEnd + 0.5).toFixed(3)});
+  setAt("#board", { scaleX: 1.03, scaleY: 0.96 }, ${lockEnd.toFixed(3)});
+  addTo("#board", { scaleX: 1, scaleY: 1, duration: 0.42, ease: "outElastic(1, 0.4)" }, ${(lockEnd + 0.03).toFixed(3)});
+  addFromTo("#glowF", { opacity: 0 }, { opacity: 0.85, duration: 0.12, ease: "outCubic" }, ${lockEnd.toFixed(3)});
+  addTo("#glowF", { keyframes: { opacity: [0.85, 0.55, 0.7, 0.45, 0.6, 0.42, 0.5] },
+                    duration: ${Math.max(0.4, E - 0.49 - (lockEnd + 0.15)).toFixed(2)}, ease: "linear" }, ${(lockEnd + 0.15).toFixed(3)});
+  addFromTo("#ruleF", { scaleX: 0, opacity: 1 }, { scaleX: 1, duration: 0.3, ease: "outExpo" }, ${(lockEnd + 0.05).toFixed(3)});
+${p.tag ? `  addTo("#tagwrapF", { width: ${tagW}, duration: 0.4, ease: "steps(16)" }, ${(lockEnd + 0.11).toFixed(3)});` : ""}
+  // hold life: loom + one mechanical re-flutter tic - boards do this
+  addTo("#board", { scaleX: 1.022, scaleY: 1.022, duration: ${Math.max(0.4, Math.min(1.0, exit0 - lockEnd - 0.55)).toFixed(2)}, ease: "inOutQuad" }, ${(lockEnd + 0.5).toFixed(3)});
   const T6 = btiles[${flutterIdx}];
   if (T6 && ${(lockEnd + 1.0).toFixed(3)} < ${(exit0 - 0.2).toFixed(3)}) {
     const ft = ${(lockEnd + 0.9).toFixed(3)};
-    tl.set(T6.rl, { visibility: "hidden" }, ft);
-    tl.set(T6.wrongs[0], { display: "block" }, ft);
-    tl.fromTo(T6.flap, { rotationX: -70 }, { rotationX: 0, duration: 0.055, ease: "power1.in" }, ft);
-    tl.set(T6.wrongs[0], { display: "none" }, ft + 0.06);
-    tl.set(T6.rl, { visibility: "visible" }, ft + 0.06);
-    tl.fromTo(T6.flap, { rotationX: -80 }, { rotationX: 0, duration: 0.06, ease: "power2.in" }, ft + 0.06);
+    setAt(T6.rl, { visibility: "hidden" }, ft);
+    setAt(T6.wrongs[0], { display: "block" }, ft);
+    addFromTo(T6.flap, { rotationX: -70 }, { rotationX: 0, duration: 0.055, ease: "inQuad" }, ft);
+    setAt(T6.wrongs[0], { display: "none" }, ft + 0.06);
+    setAt(T6.rl, { visibility: "visible" }, ft + 0.06);
+    addFromTo(T6.flap, { rotationX: -80 }, { rotationX: 0, duration: 0.06, ease: "inCubic" }, ft + 0.06);
   }
   // exit: tiles flip to blank (0→90) cascading, housing flips away
-  tl.to("#glowF", { opacity: 0, duration: 0.3, ease: "power1.in" }, ${(E - 0.49).toFixed(3)});
-  tl.to("#ruleF", { scaleX: 0, opacity: 0, duration: 0.12, ease: "power2.in" }, ${(E - 0.44).toFixed(3)});
-${p.tag ? `  tl.to("#tagwrapF", { width: 0, duration: 0.16, ease: "steps(8)" }, ${(E - 0.44).toFixed(3)});` : ""}
+  addTo("#glowF", { opacity: 0, duration: 0.3, ease: "inQuad" }, ${(E - 0.49).toFixed(3)});
+  addTo("#ruleF", { scaleX: 0, opacity: 0, duration: 0.12, ease: "inCubic" }, ${(E - 0.44).toFixed(3)});
+${p.tag ? `  addTo("#tagwrapF", { width: 0, duration: 0.16, ease: "steps(8)" }, ${(E - 0.44).toFixed(3)});` : ""}
   btiles.forEach((T, i) => {
     if (!T) return;
-    tl.to(T.flap, { rotationX: 90, duration: 0.085, ease: "power2.in" }, ${exit0.toFixed(3)} + i * 0.03);
+    addTo(T.flap, { rotationX: 90, duration: 0.085, ease: "inCubic" }, ${exit0.toFixed(3)} + i * 0.03);
   });
-  tl.to("#board", { rotationX: -45, opacity: 0, duration: 0.13, ease: "power2.in" }, ${(E - 0.04).toFixed(3)});
-  tl.set("#board", { display: "none" }, ${Math.min(E + 0.08, DUR - 0.015).toFixed(3)});`;
+  addTo("#board", { rotationX: -45, opacity: 0, duration: 0.13, ease: "inCubic" }, ${(E - 0.04).toFixed(3)});
+  setAt("#board", { display: "none" }, ${Math.min(E + 0.08, DUR - 0.015).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -5567,63 +5627,63 @@ function setpieceLedwipe() {
   const js = `
   // ---- setpiece: LEDWIPE (panel expands → L→R illumination wipe → PA ding → page-up exit) ----
   const I = ${I.toFixed(3)}, C = ${C.toFixed(3)};
-  gsap.set("#panelL", { transformOrigin: "50% 100%", scaleY: 0 });
-  gsap.set(["#ghostL", "#awordL"], { xPercent: -50, yPercent: -50 });
+  setNow("#panelL", { transformOrigin: "50% 100%", scaleY: 0 });
+  setNow(["#ghostL", "#awordL"], { xPercent: -50, yPercent: -50 });
 
   // ===== scene charge / release =====
-  tl.fromTo("#scrimL", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.30, ease: "power2.in" }, I - 0.31);
-  tl.fromTo("#dimL",   { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.25, ease: "power2.in" }, I - 0.25);
-  tl.fromTo("#spillL", { opacity: 0 }, { opacity: 0.45, duration: 0.40, ease: "power2.out" }, I + 0.05);
-  tl.to("#spillL", { opacity: 0, duration: 0.35, ease: "power1.in" }, ${(E - 0.54).toFixed(3)});
-  tl.to(["#scrimL", "#dimL"], { opacity: 0, duration: 0.40, ease: "power1.in" }, ${(E - 0.44).toFixed(3)});
+  addFromTo("#scrimL", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.30, ease: "inCubic" }, I - 0.31);
+  addFromTo("#dimL",   { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.25, ease: "inCubic" }, I - 0.25);
+  addFromTo("#spillL", { opacity: 0 }, { opacity: 0.45, duration: 0.40, ease: "outCubic" }, I + 0.05);
+  addTo("#spillL", { opacity: 0, duration: 0.35, ease: "inQuad" }, ${(E - 0.54).toFixed(3)});
+  addTo(["#scrimL", "#dimL"], { opacity: 0, duration: 0.40, ease: "inQuad" }, ${(E - 0.44).toFixed(3)});
 
   // ===== board expands UPWARD (stepped paging motif, apex scale) =====
-  tl.set("#apxL", { opacity: 1 }, I - 0.26);
-  tl.to("#panelL", { scaleY: 1, duration: 0.20, ease: "steps(6)" }, I - 0.25);
-  tl.set("#panelL", { borderColor: "${HOT}f2" }, I - 0.05);
-  tl.set("#panelL", { borderColor: "${A}4d" }, I + 0.07);
+  setAt("#apxL", { opacity: 1 }, I - 0.26);
+  addTo("#panelL", { scaleY: 1, duration: 0.20, ease: "steps(6)" }, I - 0.25);
+  setAt("#panelL", { borderColor: "${HOT}f2" }, I - 0.05);
+  setAt("#panelL", { borderColor: "${A}4d" }, I + 0.07);
 
   // power-on boot: unlit LED cells + header tags flicker alive
-  tl.set("#ghostL", { opacity: 0.06 }, I - 0.045);
-  tl.set("#ghostL", { opacity: 0.13 }, I - 0.003);
-  tl.set(["#ptagL", "#gtagL"], { opacity: 0.4 }, I - 0.045);
-  tl.set(["#ptagL", "#gtagL"], { opacity: 0.9 }, I - 0.003);
+  setAt("#ghostL", { opacity: 0.06 }, I - 0.045);
+  setAt("#ghostL", { opacity: 0.13 }, I - 0.003);
+  setAt(["#ptagL", "#gtagL"], { opacity: 0.4 }, I - 0.045);
+  setAt(["#ptagL", "#gtagL"], { opacity: 0.9 }, I - 0.003);
 
-  // ===== APEX: L→R illumination wipe — LEDs light column by column =====
-  tl.set("#awordL", { opacity: 1, color: "${HOT}" }, I);
-  tl.fromTo("#awordL", { clipPath: "inset(0% 100% 0% 0%)" },
+  // ===== APEX: L→R illumination wipe - LEDs light column by column =====
+  setAt("#awordL", { opacity: 1, color: "${HOT}" }, I);
+  addFromTo("#awordL", { clipPath: "inset(0% 100% 0% 0%)" },
             { clipPath: "inset(0% 0% 0% 0%)", duration: ${(p.wipeDur || 0.3).toFixed(2)}, ease: "steps(${wipeSteps})" }, I);
-  tl.set("#awordL", { clipPath: "none" }, C + 0.05);       // free the glow halo
-  tl.to("#awordL", { color: "${A}", duration: 0.60, ease: "power1.in" }, C + 0.05); // hot → amber cool
+  setAt("#awordL", { clipPath: "none" }, C + 0.05);       // free the glow halo
+  addTo("#awordL", { color: "${A}", duration: 0.60, ease: "inQuad" }, C + 0.05); // hot → amber cool
 
-  // contact: squash held 2 frames, elastic settle (board cell flexes)
-  tl.set("#scrollL", { scaleX: 1.06, scaleY: 0.94 }, C);
-  tl.to("#scrollL", { scaleX: 1, scaleY: 1, duration: 0.42, ease: "elastic.out(1, 0.4)" }, C + 0.083);
+  // contact: squash held 2 frames, outElastic settle (board cell flexes)
+  setAt("#scrollL", { scaleX: 1.06, scaleY: 0.94 }, C);
+  addTo("#scrollL", { scaleX: 1, scaleY: 1, duration: 0.42, ease: "outElastic(1, 0.4)" }, C + 0.083);
 
   // PA "ding" = two quick brightness pulses
-  tl.set("#panwinL", { filter: "brightness(1.7)" },  C + 0.02);
-  tl.set("#panwinL", { filter: "brightness(1)" },    C + 0.10);
-  tl.set("#panwinL", { filter: "brightness(1.45)" }, C + 0.18);
-  tl.set("#panwinL", { filter: "brightness(1)" },    C + 0.26);
+  setAt("#panwinL", { filter: "brightness(1.7)" },  C + 0.02);
+  setAt("#panwinL", { filter: "brightness(1)" },    C + 0.10);
+  setAt("#panwinL", { filter: "brightness(1.45)" }, C + 0.18);
+  setAt("#panwinL", { filter: "brightness(1)" },    C + 0.26);
 ${
   C + 0.99 < exScroll
     ? `
   // hold life: glow breathes + LED dropouts
-  tl.to("#awordL", { textShadow: "0 0 30px ${A}d9, 0 0 4px ${HOT}f2",
-                     duration: 0.45, ease: "sine.inOut" }, C + 0.54);
-  tl.to("#awordL", { textShadow: "0 0 18px ${A}8c, 0 0 2px ${HOT}cc",
-                     duration: 0.45, ease: "sine.inOut" }, C + 0.99);
-  tl.set("#awordL", { opacity: 0.82 }, C + 0.61); tl.set("#awordL", { opacity: 1 }, C + 0.652);
-  tl.set("#awordL", { opacity: 0.90 }, C + 1.04); tl.set("#awordL", { opacity: 1 }, C + 1.082);
-  tl.set("#ptagL", { opacity: 0.45 }, C + 0.41); tl.set("#ptagL", { opacity: 0.9 }, C + 0.452);`
+  addTo("#awordL", { textShadow: "0 0 30px ${A}d9, 0 0 4px ${HOT}f2",
+                     duration: 0.45, ease: "inOutSine" }, C + 0.54);
+  addTo("#awordL", { textShadow: "0 0 18px ${A}8c, 0 0 2px ${HOT}cc",
+                     duration: 0.45, ease: "inOutSine" }, C + 0.99);
+  setAt("#awordL", { opacity: 0.82 }, C + 0.61); setAt("#awordL", { opacity: 1 }, C + 0.652);
+  setAt("#awordL", { opacity: 0.90 }, C + 1.04); setAt("#awordL", { opacity: 1 }, C + 1.082);
+  setAt("#ptagL", { opacity: 0.45 }, C + 0.41); setAt("#ptagL", { opacity: 0.9 }, C + 0.452);`
     : ""
 }
 
   // ===== exit: word pages up out of the window, board collapses =====
-  tl.to("#scrollL", { y: ${-(panelH - 62)}, duration: 0.22, ease: "steps(6)" }, ${exScroll.toFixed(3)});
-  tl.set(["#ptagL", "#gtagL"], { opacity: 0 }, ${(exScroll + 0.2).toFixed(3)});
-  tl.to("#panelL", { scaleY: 0, duration: 0.18, ease: "steps(6)" }, ${(exScroll + 0.24).toFixed(3)});
-  tl.set("#apxL", { opacity: 0 }, ${(exScroll + 0.44).toFixed(3)});
+  addTo("#scrollL", { y: ${-(panelH - 62)}, duration: 0.22, ease: "steps(6)" }, ${exScroll.toFixed(3)});
+  setAt(["#ptagL", "#gtagL"], { opacity: 0 }, ${(exScroll + 0.2).toFixed(3)});
+  addTo("#panelL", { scaleY: 0, duration: 0.18, ease: "steps(6)" }, ${(exScroll + 0.24).toFixed(3)});
+  setAt("#apxL", { opacity: 0 }, ${(exScroll + 0.44).toFixed(3)});
 
   // ===== chasing LED marquee border (8-phase set chain) =====
   const panelL = document.getElementById("panelL");
@@ -5639,12 +5699,12 @@ ${
     d.style.opacity = "0"; panelL.appendChild(d);
     groups[i % 8].push(d);
   });
-  groups.forEach((g) => tl.set(g, { opacity: 0.18 }, I - 0.02));
+  groups.forEach((g) => setAt(g, { opacity: 0.18 }, I - 0.02));
   for (let k = 0; k <= ${kMax}; k++) {
     const t = I - 0.01 + k * 0.1;
     for (let q = 0; q < 8; q++) {
       const lit = (((q - k) % 8) + 8) % 8 < 2;
-      tl.set(groups[q], { opacity: lit ? 0.95 : 0.18 }, t);
+      setAt(groups[q], { opacity: lit ? 0.95 : 0.18 }, t);
     }
   }`;
   return { css, html, js };
@@ -5654,8 +5714,8 @@ function setpieceVhsosd() {
   // REC FREEZE: the word slams in as a huge camcorder OSD readout BEHIND the
   // subject. Permanent lens vignette = the camcorder look; a backlight-comp
   // scrim kills the bright sky behind the word. Arrival = tracking-sliced
-  // crush (3 horizontal clip-path bands sheared + blurred, power4.in) that
-  // SNAPS into register on the contact frame, squash → elastic settle; heavy
+  // crush (3 horizontal clip-path bands sheared + blurred, inQuint) that
+  // SNAPS into register on the contact frame, squash → outElastic settle; heavy
   // red/cyan misregistration cools from ±arrival px to ±settled px and keeps
   // BREATHING through the hold; tape-weave y jitter + slow loom; auto-iris
   // pump (white wash up, dark dip, settle). Exit = REWIND streak left with a
@@ -5717,61 +5777,61 @@ function setpieceVhsosd() {
   const js = `
   // ---- setpiece: VHSOSD (tracking-sliced OSD slam → misreg breathe → REWIND exit) ----
   const I = ${I.toFixed(3)}, C = ${C.toFixed(3)}, X = ${X.toFixed(3)};
-  gsap.set(${J(["#mr", "#mc", ...bandIds, "#oe"])}, { xPercent:-50, yPercent:-50 });
-  gsap.set("#weave", { x: 0, y: 0 });
+  setNow(${J(["#mr", "#mc", ...bandIds, "#oe"])}, { xPercent:-50, yPercent:-50 });
+  setNow("#weave", { x: 0, y: 0 });
 
-  // camcorder lens vignette — present the whole clip
-  tl.set("#vig", { opacity: 1 }, 0.02);
+  // camcorder lens vignette - present the whole clip
+  setAt("#vig", { opacity: 1 }, 0.02);
 
   // backlight-compensation scrim behind the word (the sky is bright up there)
-  tl.fromTo("#vscrim", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.20, ease: "power2.in" }, I - 0.04);
-  tl.to("#vscrim", { opacity: ${(dna.plate.charge * 0.69).toFixed(2)}, duration: 0.8, ease: "power2.out" }, C + 0.35);
-  tl.to("#vscrim", { opacity: 0, duration: 0.30, ease: "power1.in" }, X);
+  addFromTo("#vscrim", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.20, ease: "inCubic" }, I - 0.04);
+  addTo("#vscrim", { opacity: ${(dna.plate.charge * 0.69).toFixed(2)}, duration: 0.8, ease: "outCubic" }, C + 0.35);
+  addTo("#vscrim", { opacity: 0, duration: 0.30, ease: "inQuad" }, X);
 
   // ===== ARRIVAL: tracking-sliced crush, opacity 1 instantly =====
-  tl.set("#osdw", { opacity: 1 }, I);
-  tl.fromTo("#osdw", { scale: 2.9 }, { scale: 1, duration: C - I, ease: "power4.in" }, I);
+  setAt("#osdw", { opacity: 1 }, I);
+  addFromTo("#osdw", { scale: 2.9 }, { scale: 1, duration: C - I, ease: "inQuint" }, I);
   const SHEAR = ${J(shear)};
   ${J(bandIds)}.forEach((sel, i) => {
-    tl.fromTo(sel, { x: SHEAR[i], filter: "blur(10px) brightness(2.6)" },
-              { x: Math.round(SHEAR[i] * 0.3), filter: "blur(1px) brightness(1.7)", duration: C - I, ease: "power4.in" }, I);
+    addFromTo(sel, { x: SHEAR[i], filter: "blur(10px) brightness(2.6)" },
+              { x: Math.round(SHEAR[i] * 0.3), filter: "blur(1px) brightness(1.7)", duration: C - I, ease: "inQuint" }, I);
   });
-  tl.set("#mr", { x: -${mi} }, I);
-  tl.set("#mc", { x: ${mi} }, I);
+  setAt("#mr", { x: -${mi} }, I);
+  setAt("#mc", { x: ${mi} }, I);
 
-  // SNAP into register on the contact frame + squash, elastic settle
-  tl.set(${J(bandIds)}, { x: 0, filter: "brightness(1.85)" }, C);
-  tl.set("#mr", { x: -${m} }, C);
-  tl.set("#mc", { x: ${m} }, C);
-  tl.set("#osdw", { scaleX: 1.10, scaleY: 0.90 }, C);
-  tl.to("#osdw", { scaleX: 1, scaleY: 1, duration: 0.50, ease: "elastic.out(1, 0.36)" }, C + 0.083);
-  tl.to(${J(bandIds)}, { filter: "brightness(1)", duration: 0.45, ease: "power2.out" }, C + 0.10);
+  // SNAP into register on the contact frame + squash, outElastic settle
+  setAt(${J(bandIds)}, { x: 0, filter: "brightness(1.85)" }, C);
+  setAt("#mr", { x: -${m} }, C);
+  setAt("#mc", { x: ${m} }, C);
+  setAt("#osdw", { scaleX: 1.10, scaleY: 0.90 }, C);
+  addTo("#osdw", { scaleX: 1, scaleY: 1, duration: 0.50, ease: "outElastic(1, 0.36)" }, C + 0.083);
+  addTo(${J(bandIds)}, { filter: "brightness(1)", duration: 0.45, ease: "outCubic" }, C + 0.10);
 
   // AUTO-IRIS PUMP: wash up, then a dark dip, once
-  tl.to("#iris", { opacity: 0.20, duration: 0.12, ease: "sine.out" }, C + 0.04);
-  tl.to("#iris", { opacity: 0, duration: 0.33, ease: "power1.in" }, C + 0.16);
-  tl.to("#irisd", { opacity: ${dna.plate.dim}, duration: 0.28, ease: "sine.out" }, C + 0.55);
-  tl.to("#irisd", { opacity: 0, duration: 0.40, ease: "sine.in" }, C + 0.85);
+  addTo("#iris", { opacity: 0.20, duration: 0.12, ease: "outSine" }, C + 0.04);
+  addTo("#iris", { opacity: 0, duration: 0.33, ease: "inQuad" }, C + 0.16);
+  addTo("#irisd", { opacity: ${dna.plate.dim}, duration: 0.28, ease: "outSine" }, C + 0.55);
+  addTo("#irisd", { opacity: 0, duration: 0.40, ease: "inSine" }, C + 0.85);
 ${
   brDur > 0.3
     ? `
   // ===== HOLD LIFE: misregistration breathes, tape weave, slow loom =====
-  tl.to("#mr", { keyframes: { x: [-${m}, -${(m * 1.53).toFixed(1)}, -${(m * 1.07).toFixed(1)}, -${(m * 1.67).toFixed(1)}, -${(m * 1.17).toFixed(1)}] }, duration: ${brDur.toFixed(2)}, ease: "none" }, C + 0.21);
-  tl.to("#mc", { keyframes: { x: [${m}, ${(m * 1.53).toFixed(1)}, ${(m * 1.07).toFixed(1)}, ${(m * 1.67).toFixed(1)}, ${(m * 1.17).toFixed(1)}] }, duration: ${brDur.toFixed(2)}, ease: "none" }, C + 0.21);
-  ${J(weaveTs)}.forEach(([t, v]) => tl.set("#weave", { y: v }, t));`
+  addTo("#mr", { keyframes: { x: [-${m}, -${(m * 1.53).toFixed(1)}, -${(m * 1.07).toFixed(1)}, -${(m * 1.67).toFixed(1)}, -${(m * 1.17).toFixed(1)}] }, duration: ${brDur.toFixed(2)}, ease: "linear" }, C + 0.21);
+  addTo("#mc", { keyframes: { x: [${m}, ${(m * 1.53).toFixed(1)}, ${(m * 1.07).toFixed(1)}, ${(m * 1.67).toFixed(1)}, ${(m * 1.17).toFixed(1)}] }, duration: ${brDur.toFixed(2)}, ease: "linear" }, C + 0.21);
+  ${J(weaveTs)}.forEach(([t, v]) => setAt("#weave", { y: v }, t));`
     : ""
 }
 ${
   loomDur > 0.3
-    ? `  tl.to("#osdw", { keyframes: { scale: [1, 1.03, 1.015, 1.028] }, duration: ${loomDur.toFixed(2)}, ease: "none" }, C + 0.64);`
+    ? `  addTo("#osdw", { keyframes: { scale: [1, 1.03, 1.015, 1.028] }, duration: ${loomDur.toFixed(2)}, ease: "linear" }, C + 0.64);`
     : ""
 }
 
-  // ===== EXIT: REWIND — streak left with echo copy =====
-  tl.to("#osdw", { x: -190, scaleX: 1.3, opacity: 0, duration: 0.13, ease: "power2.in" }, X);
-  tl.set("#oecho", { opacity: 1 }, X);
-  tl.fromTo("#oe", { x: 0, opacity: 0.4 }, { x: -95, opacity: 0, duration: 0.18, ease: "power2.in" }, X + 0.01);
-  tl.set(["#osdw","#oecho"], { display: "none" }, X + 0.25);`;
+  // ===== EXIT: REWIND - streak left with echo copy =====
+  addTo("#osdw", { x: -190, scaleX: 1.3, opacity: 0, duration: 0.13, ease: "inCubic" }, X);
+  setAt("#oecho", { opacity: 1 }, X);
+  addFromTo("#oe", { x: 0, opacity: 0.4 }, { x: -95, opacity: 0, duration: 0.18, ease: "inCubic" }, X + 0.01);
+  setAt(["#osdw","#oecho"], { display: "none" }, X + 0.25);`;
   return { css, html, js };
 }
 
@@ -5780,9 +5840,9 @@ function setpieceBossintro() {
   // pulses on the last emphasis before the boss and spills magenta on the
   // strobe + the final word), WARNING blinks 2x above the word rect, then
   // ~COLS×ROWS seeded pixel blocks fall steps(3) into a tight matrix grid
-  // covering the word rect (1-frame white land tick each — the coin-blip motif
+  // covering the word rect (1-frame white land tick each - the coin-blip motif
   // at block scale), and the word flashes ON (instant, oversized, quantized
-  // crush → 2-frame squash → elastic settle) with chromatic ghost layers and a
+  // crush → 2-frame squash → outElastic settle) with chromatic ghost layers and a
   // 3-frame palette strobe. Hold: quantized breathe + CRT glow cycle + baked
   // block shimmer blinks. Exit: per-letter checkerboard dissolve; blocks drop
   // away quantized. FG furniture (rides rail.html via fg parts): letterbox
@@ -5845,35 +5905,35 @@ function setpieceBossintro() {
   const brnd = mulberry32(${p.seed || 13013});
 
   // ===== scene reaction: CRT edge glow lives behind the subject =====
-  tl.set("#edgeC", { opacity: 0.28 }, 0.05);
+  setAt("#edgeC", { opacity: 0.28 }, 0.05);
 ${
   pulseT != null
     ? `  // pulse on the last emphasis before the boss
-  tl.set("#edgeC", { opacity: 0.62 }, ${pulseT.toFixed(3)});
-  tl.set("#edgeC", { opacity: 0.28 }, ${(pulseT + 0.084).toFixed(3)});`
+  setAt("#edgeC", { opacity: 0.62 }, ${pulseT.toFixed(3)});
+  setAt("#edgeC", { opacity: 0.28 }, ${(pulseT + 0.084).toFixed(3)});`
     : ""
 }
   // boss dim: room darkens for the boss intro (helps a bright sky too)
-  tl.to("#bdim", { opacity: ${dna.plate.dim ?? 0.58}, duration: 0.12, ease: "power2.out" }, I - 0.15);
-  tl.set("#edgeC", { opacity: 0.8 }, FLASH);
-  tl.to("#edgeC", { opacity: 0.34, duration: 0.6, ease: "power2.out" }, FLASH + 0.08);
-  tl.set("#edgeM", { opacity: 0.5 }, FLASH + 0.084);            // magenta strobe spill
-  tl.to("#edgeM", { opacity: 0, duration: 0.25, ease: "power1.out" }, FLASH + 0.126);
-  tl.to("#bdim", { opacity: 0, duration: 0.35, ease: "power1.inOut" }, OUT + 0.10);
+  addTo("#bdim", { opacity: ${dna.plate.dim ?? 0.58}, duration: 0.12, ease: "outCubic" }, I - 0.15);
+  setAt("#edgeC", { opacity: 0.8 }, FLASH);
+  addTo("#edgeC", { opacity: 0.34, duration: 0.6, ease: "outCubic" }, FLASH + 0.08);
+  setAt("#edgeM", { opacity: 0.5 }, FLASH + 0.084);            // magenta strobe spill
+  addTo("#edgeM", { opacity: 0, duration: 0.25, ease: "outQuad" }, FLASH + 0.126);
+  addTo("#bdim", { opacity: 0, duration: 0.35, ease: "inOutQuad" }, OUT + 0.10);
 ${
   endPulse != null
     ? `  // magenta answers on the final word
-  tl.set("#edgeM", { opacity: 0.55 }, ${endPulse.toFixed(3)});
-  tl.to("#edgeM", { opacity: 0, duration: 0.3, ease: "power1.out" }, ${(endPulse + 0.084).toFixed(3)});`
+  setAt("#edgeM", { opacity: 0.55 }, ${endPulse.toFixed(3)});
+  addTo("#edgeM", { opacity: 0, duration: 0.3, ease: "outQuad" }, ${(endPulse + 0.084).toFixed(3)});`
     : ""
 }
 
   // ===== WARNING blinks 2x above the word =====
-  tl.set("#warning", { opacity: 1 }, I - 0.135);
-  tl.set("#warning", { opacity: 0 }, I - 0.05);
-  tl.set("#warning", { opacity: 1 }, I + 0.035);
-  tl.set("#warning", { opacity: 0 }, I + 0.12);
-  gsap.set("#warning", { xPercent: -50, yPercent: -50 });
+  setAt("#warning", { opacity: 1 }, I - 0.135);
+  setAt("#warning", { opacity: 0 }, I - 0.05);
+  setAt("#warning", { opacity: 1 }, I + 0.035);
+  setAt("#warning", { opacity: 0 }, I + 0.12);
+  setNow("#warning", { xPercent: -50, yPercent: -50 });
 
   // ===== pixel-block boss assembly: blocks fall steps(3) into a tight grid =====
   const blocksEl = document.getElementById("blocks");
@@ -5886,7 +5946,7 @@ ${
       const jx = Math.round((brnd() - 0.5) * 6), jy = Math.round((brnd() - 0.5) * 6);
       const px = brnd();
       const col = px < 0.4 ? CYc : px < 0.78 ? MGc : px < 0.93 ? YLc : WHc;
-      gsap.set(b, { width: s, height: s,
+      setNow(b, { width: s, height: s,
                     left: X0 + c * CW + (CW - s) / 2 + jx,
                     top:  Y0 + r * CH + (CH - s) / 2 + jy,
                     backgroundColor: col });
@@ -5894,19 +5954,19 @@ ${
       let dur = 0.12 + brnd() * 0.06;
       if (start + dur > FLASH - 0.02) dur = FLASH - 0.02 - start;
       const fall = 240 + brnd() * 260;
-      tl.set(b, { opacity: 0.9, y: -fall }, start);
-      tl.to(b, { y: 0, duration: dur, ease: "steps(3)" }, start);
+      setAt(b, { opacity: 0.9, y: -fall }, start);
+      addTo(b, { y: 0, duration: dur, ease: "steps(3)" }, start);
       // 1-frame white land tick (the coin-blip motif at block scale)
       const land = start + dur;
-      tl.set(b, { backgroundColor: WHc }, land);
-      tl.set(b, { backgroundColor: col, opacity: 0.85 }, land + 0.042);
+      setAt(b, { backgroundColor: WHc }, land);
+      setAt(b, { backgroundColor: col, opacity: 0.85 }, land + 0.042);
       // hold shimmer: baked blink sets (no infinite repeats)
       const t1 = FLASH + 0.11 + brnd() * 0.45, t2 = FLASH + 0.61 + brnd() * 0.4;
-      if (t1 + 0.083 < OUT) { tl.set(b, { opacity: 0.5 },  t1); tl.set(b, { opacity: 0.85 }, t1 + 0.083); }
-      if (t2 + 0.083 < OUT) { tl.set(b, { opacity: 0.55 }, t2); tl.set(b, { opacity: 0.85 }, t2 + 0.083); }
+      if (t1 + 0.083 < OUT) { setAt(b, { opacity: 0.5 },  t1); setAt(b, { opacity: 0.85 }, t1 + 0.083); }
+      if (t2 + 0.083 < OUT) { setAt(b, { opacity: 0.55 }, t2); setAt(b, { opacity: 0.85 }, t2 + 0.083); }
       // exit: blocks drop off, quantized
       const tE = Math.min(OUT + brnd() * 0.15, ${(DUR - 0.32).toFixed(2)});
-      tl.to(b, { y: 220 + brnd() * 140, opacity: 0, duration: 0.2 + brnd() * 0.1,
+      addTo(b, { y: 220 + brnd() * 140, opacity: 0, duration: 0.2 + brnd() * 0.1,
                  ease: "steps(3)" }, tE);
     }
   }
@@ -5919,40 +5979,40 @@ ${
     s.className = "bl"; s.textContent = ch === " " ? "\\u00a0" : ch;
     main.appendChild(s); letters.push(s);
   });
-  gsap.set("#bwC",   { xPercent: -50, yPercent: -50, x: -4 });
-  gsap.set("#bwM",   { xPercent: -50, yPercent: -50, x: 4 });
-  gsap.set("#bwMain",{ xPercent: -50, yPercent: -50 });
-  gsap.set("#bossWord", { transformOrigin: "50% 50%" });
+  setNow("#bwC",   { xPercent: -50, yPercent: -50, x: -4 });
+  setNow("#bwM",   { xPercent: -50, yPercent: -50, x: 4 });
+  setNow("#bwMain",{ xPercent: -50, yPercent: -50 });
+  setNow("#bossWord", { transformOrigin: "50% 50%" });
 
-  // arrival: instant-on at full opacity, quantized crush, 2-frame squash, elastic settle
-  tl.set("#bossWord", { opacity: 1, scale: 1.15 }, FLASH);
-  tl.set(["#bwC", "#bwM"], { opacity: 0.85 }, FLASH);
-  tl.to("#bossWord", { scale: 1, duration: 0.1, ease: "steps(3)" }, FLASH);
-  tl.set("#bossWord", { scaleX: 1.07, scaleY: 0.92 }, FLASH + 0.1);
-  tl.to("#bossWord", { scaleX: 1, scaleY: 1, duration: 0.3,
-                       ease: "elastic.out(1, 0.38)" }, FLASH + 0.142);
+  // arrival: instant-on at full opacity, quantized crush, 2-frame squash, outElastic settle
+  setAt("#bossWord", { opacity: 1, scale: 1.15 }, FLASH);
+  setAt(["#bwC", "#bwM"], { opacity: 0.85 }, FLASH);
+  addTo("#bossWord", { scale: 1, duration: 0.1, ease: "steps(3)" }, FLASH);
+  setAt("#bossWord", { scaleX: 1.07, scaleY: 0.92 }, FLASH + 0.1);
+  addTo("#bossWord", { scaleX: 1, scaleY: 1, duration: 0.3,
+                       ease: "outElastic(1, 0.38)" }, FLASH + 0.142);
   // 3-frame palette strobe (white -> cyan -> magenta -> white)
-  tl.set(main, { color: CYc }, FLASH + 0.042);
-  tl.set(main, { color: MGc }, FLASH + 0.084);
-  tl.set(main, { color: WHc }, FLASH + 0.126);
+  setAt(main, { color: CYc }, FLASH + 0.042);
+  setAt(main, { color: MGc }, FLASH + 0.084);
+  setAt(main, { color: WHc }, FLASH + 0.126);
   // hold life: quantized breathe + CRT glow cycle (emitted only with runway)
   if (FLASH + 0.61 < OUT) {
-    tl.to("#bossWord", { scale: 1.016, duration: 0.4, ease: "sine.inOut",
+    addTo("#bossWord", { scale: 1.016, duration: 0.4, ease: "inOutSine",
                          repeat: 1, yoyo: true }, FLASH + 0.61);
   }
   const HALO = ", 0 6px 0 rgba(0,0,0,0.6), 0 0 16px rgba(0,0,0,0.9), 0 0 5px rgba(0,0,0,0.85)";
   [[0.2, CYc], [0.5, MGc], [0.8, CYc]].forEach(([dt, gc]) => {
-    if (FLASH + dt < OUT) tl.set(main, { textShadow: "0 0 22px " + gc + "d9" + HALO }, FLASH + dt);
+    if (FLASH + dt < OUT) setAt(main, { textShadow: "0 0 22px " + gc + "d9" + HALO }, FLASH + dt);
   });
 
-  // exit: checkerboard dissolve — letters vanish in 2 alternating set passes
+  // exit: checkerboard dissolve - letters vanish in 2 alternating set passes
   letters.forEach((s, i) => {
-    tl.set(s, { opacity: 0 }, i % 2 === 0 ? OUT : OUT + 0.083);
+    setAt(s, { opacity: 0 }, i % 2 === 0 ? OUT : OUT + 0.083);
   });
-  tl.set(["#bwC", "#bwM"], { opacity: 0 }, OUT + 0.042);
-  tl.set("#bossWord", { opacity: 0, display: "none" }, OUT + 0.17);`;
+  setAt(["#bwC", "#bwM"], { opacity: 0 }, OUT + 0.042);
+  setAt("#bossWord", { opacity: 0, display: "none" }, OUT + 0.17);`;
   // fg furniture: letterbox bars + HI-SCORE odometer ride the fg alpha layer
-  // (in FRONT of the subject — the cabinet frames the player)
+  // (in FRONT of the subject - the cabinet frames the player)
   const fgCss = `
   #lbTop { position:absolute; left:0; top:-${lb}px;    width:${W}px; height:${lb}px; background:#000; z-index:14; }
   #lbBot { position:absolute; left:0; bottom:-${lb}px; width:${W}px; height:${lb}px; background:#000; z-index:14; }
@@ -5970,33 +6030,33 @@ ${
     const BI = ${I.toFixed(3)}, BF = ${FLASH.toFixed(3)}, BO = ${EX.toFixed(3)};
     const hrnd = mulberry32(${(p.seed || 13013) + 7});
     // letterbox bars slam in (quantized), 1-frame overshoot, retract after
-    tl.to("#lbTop", { y: ${lb},  duration: 0.12, ease: "steps(3)" }, BI - 0.15);
-    tl.to("#lbBot", { y: -${lb}, duration: 0.12, ease: "steps(3)" }, BI - 0.15);
-    tl.set("#lbTop", { y: ${lb + 4} },  BI - 0.02); tl.set("#lbTop", { y: ${lb} },  BI + 0.022);
-    tl.set("#lbBot", { y: -${lb + 4} }, BI - 0.02); tl.set("#lbBot", { y: -${lb} }, BI + 0.022);
-    tl.to("#lbTop", { y: 0, duration: 0.15, ease: "steps(3)" }, BO + 0.13);
-    tl.to("#lbBot", { y: 0, duration: 0.15, ease: "steps(3)" }, BO + 0.13);
+    addTo("#lbTop", { y: ${lb},  duration: 0.12, ease: "steps(3)" }, BI - 0.15);
+    addTo("#lbBot", { y: -${lb}, duration: 0.12, ease: "steps(3)" }, BI - 0.15);
+    setAt("#lbTop", { y: ${lb + 4} },  BI - 0.02); setAt("#lbTop", { y: ${lb} },  BI + 0.022);
+    setAt("#lbBot", { y: -${lb + 4} }, BI - 0.02); setAt("#lbBot", { y: -${lb} }, BI + 0.022);
+    addTo("#lbTop", { y: 0, duration: 0.15, ease: "steps(3)" }, BO + 0.13);
+    addTo("#lbBot", { y: 0, duration: 0.15, ease: "steps(3)" }, BO + 0.13);
     // HI-SCORE counter odometer-rolls during the hold
     const hsv = document.getElementById("hsv");
-    tl.set("#hi", { opacity: 1 }, BF + 0.03);
-    tl.fromTo("#hi", { scale: 0 }, { scale: 1, duration: 0.1, ease: "steps(2)",
+    setAt("#hi", { opacity: 1 }, BF + 0.03);
+    addFromTo("#hi", { scale: 0 }, { scale: 1, duration: 0.1, ease: "steps(2)",
                                      transformOrigin: "100% 50%" }, BF + 0.03);
     let score = 1370;
     for (let t = BF + 0.09; t < BO - 0.03; t += 0.066) {
       score += 4000 + Math.round(hrnd() * 5500);
-      tl.set(hsv, { textContent: String(score).padStart(7, "0") }, t);
+      setAt(hsv, { textContent: String(score).padStart(7, "0") }, t);
     }
-    tl.set("#hi", { color: "#ffffff" }, BO + 0.08);              // 1-frame white tick out
-    tl.set("#hi", { opacity: 0 }, BO + 0.122);
+    setAt("#hi", { color: "#ffffff" }, BO + 0.08);              // 1-frame white tick out
+    setAt("#hi", { opacity: 0 }, BO + 0.122);
   }`;
   return { css, html, js, fgCss, fgHtml, fgJs };
 }
 
 function setpieceRubberstamp() {
-  // RUBBER STAMP: the footage becomes an archival page at the apex — vignette
+  // RUBBER STAMP: the footage becomes an archival page at the apex - vignette
   // charge (plate.charge) + manila sepia wash + a dim kick (plate.dim) that
-  // cools — then the verdict slams in BEHIND the subject as a bordered rubber
-  // stamp at params.rotation: crush 2.2→1 power4.in, 2-frame contact squash,
+  // cools - then the verdict slams in BEHIND the subject as a bordered rubber
+  // stamp at params.rotation: crush 2.2→1 inQuint, 2-frame contact squash,
   // double-strike ghost print, two thin-ink patches (clip-path circles in
   // paper color), wet-ink saturate/brightness settle, and a paper indent
   // shadow that blooms under the face. Stamps don't move: the hold is DEAD
@@ -6010,7 +6070,7 @@ function setpieceRubberstamp() {
   const X = theme.hero.exitAt ?? Math.min(heroOut - 0.06, C + (p.hold ?? 2.02));
   const ROT = p.rotation ?? -8;
   const RED = dna.palette.accent || "#b3271e";
-  const s = HG.fontPx / 120; // demo face was cut at 120px — chrome scales with it
+  const s = HG.fontPx / 120; // demo face was cut at 120px - chrome scales with it
   const bw = Math.max(3, Math.round(6 * s)),
     rad = Math.round(14 * s);
   const padT = Math.round(20 * s),
@@ -6067,58 +6127,58 @@ function setpieceRubberstamp() {
   const I = ${I.toFixed(3)}, C = ${C.toFixed(3)}, X = ${X.toFixed(3)};
 
   // static geometry
-  gsap.set("#dpaper",  { xPercent:-50, yPercent:-50, rotation: ${p.paperRot ?? 2.4} });
-  gsap.set("#dindent", { xPercent:-50, yPercent:-50, rotation: ${ROT} });
-  gsap.set("#dstamp",  { xPercent:-50, yPercent:-50, rotation: ${ROT}, opacity: 0,
+  setNow("#dpaper",  { xPercent:-50, yPercent:-50, rotation: ${p.paperRot ?? 2.4} });
+  setNow("#dindent", { xPercent:-50, yPercent:-50, rotation: ${ROT} });
+  setNow("#dstamp",  { xPercent:-50, yPercent:-50, rotation: ${ROT}, opacity: 0,
                          transformOrigin: "50% 50%" });
-  gsap.set("#dghost",  { x: ${Math.round(5 * s) || 5}, y: -${Math.round(4 * s) || 4}, rotation: 1.3 });
+  setNow("#dghost",  { x: ${Math.round(5 * s) || 5}, y: -${Math.round(4 * s) || 4}, rotation: 1.3 });
 
   // ===== SCENE REACTION: the footage becomes an archive page =====
-  tl.fromTo("#dvig", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.18, ease: "power2.in" }, C - 0.18);
-  tl.fromTo("#dsep", { opacity: 0 }, { opacity: ${p.sepia ?? 0.14}, duration: 0.28, ease: "power1.out" }, C - 0.12);
-  tl.set("#ddim", { opacity: ${dna.plate.dim} }, C);
-  tl.to("#ddim",  { opacity: ${(dna.plate.dim * 0.385).toFixed(2)}, duration: 0.5, ease: "power2.out" }, C + 0.05);
-  tl.to("#dvig",  { opacity: ${(dna.plate.charge * 0.5).toFixed(2)}, duration: 0.8, ease: "power2.out" }, C + 0.12);
-  tl.to(["#dvig","#dsep","#ddim"], { opacity: 0, duration: 0.4, ease: "power1.in" }, X - 0.25);
+  addFromTo("#dvig", { opacity: 0 }, { opacity: ${dna.plate.charge}, duration: 0.18, ease: "inCubic" }, C - 0.18);
+  addFromTo("#dsep", { opacity: 0 }, { opacity: ${p.sepia ?? 0.14}, duration: 0.28, ease: "outQuad" }, C - 0.12);
+  setAt("#ddim", { opacity: ${dna.plate.dim} }, C);
+  addTo("#ddim",  { opacity: ${(dna.plate.dim * 0.385).toFixed(2)}, duration: 0.5, ease: "outCubic" }, C + 0.05);
+  addTo("#dvig",  { opacity: ${(dna.plate.charge * 0.5).toFixed(2)}, duration: 0.8, ease: "outCubic" }, C + 0.12);
+  addTo(["#dvig","#dsep","#ddim"], { opacity: 0, duration: 0.4, ease: "inQuad" }, X - 0.25);
 
   // the page lights up an instant before contact (what the stamp lands ON)
-  tl.fromTo("#dpaper", { opacity: 0, scale: 0.92 },
-            { opacity: 0.6, scale: 1, duration: 0.10, ease: "expo.out" }, C - 0.05);
-  tl.to("#dpaper", { keyframes: { scale: [1, 1.016, 1.005, 1.018, 1.008, 1.015] },
-                     duration: ${loomDur.toFixed(2)}, ease: "none" }, C + 0.35);
+  addFromTo("#dpaper", { opacity: 0, scale: 0.92 },
+            { opacity: 0.6, scale: 1, duration: 0.10, ease: "outExpo" }, C - 0.05);
+  addTo("#dpaper", { keyframes: { scale: [1, 1.016, 1.005, 1.018, 1.008, 1.015] },
+                     duration: ${loomDur.toFixed(2)}, ease: "linear" }, C + 0.35);
 
   // ===== ARRIVAL: rubber stamp crush → contact squash → dead still =====
-  tl.set("#dstamp", { opacity: 1, scale: 2.2 }, C - 0.115);
-  tl.to("#dstamp",  { scale: 1, duration: 0.115, ease: "power4.in" }, C - 0.115);
-  tl.set("#dstamp", { scaleX: 1.07, scaleY: 0.93 }, C);             // contact squash
-  tl.to("#dstamp",  { scaleX: 1, scaleY: 1, duration: 0.09, ease: "power2.out" }, C + 0.083);
+  setAt("#dstamp", { opacity: 1, scale: 2.2 }, C - 0.115);
+  addTo("#dstamp",  { scale: 1, duration: 0.115, ease: "inQuint" }, C - 0.115);
+  setAt("#dstamp", { scaleX: 1.07, scaleY: 0.93 }, C);             // contact squash
+  addTo("#dstamp",  { scaleX: 1, scaleY: 1, duration: 0.09, ease: "outCubic" }, C + 0.083);
   // double-strike ghost prints on contact
-  tl.set("#dghost", { opacity: 0.35 }, C);
+  setAt("#dghost", { opacity: 0.35 }, C);
   // wet ink settles
-  tl.set("#dmain", { filter: "saturate(1.5) brightness(1.3)" }, C);
-  tl.to("#dmain",  { filter: "saturate(1) brightness(1)", duration: 0.5, ease: "power2.out" }, C + 0.06);
+  setAt("#dmain", { filter: "saturate(1.5) brightness(1.3)" }, C);
+  addTo("#dmain",  { filter: "saturate(1) brightness(1)", duration: 0.5, ease: "outCubic" }, C + 0.06);
 
   // paper indent shadow blooms under the stamp, then breathes (the hold-life;
   // the stamp itself stays DEAD STILL)
-  tl.set("#dindent", { opacity: 0.5, scale: 0.7 }, C);
-  tl.to("#dindent",  { scale: 1, opacity: 0.42, duration: 0.35, ease: "expo.out" }, C + 0.02);
-  tl.to("#dindent",  { keyframes: { opacity: [0.42, 0.30, 0.40, 0.31, 0.38, 0.33] },
-                       duration: ${breDur.toFixed(2)}, ease: "none" }, C + 0.45);
+  setAt("#dindent", { opacity: 0.5, scale: 0.7 }, C);
+  addTo("#dindent",  { scale: 1, opacity: 0.42, duration: 0.35, ease: "outExpo" }, C + 0.02);
+  addTo("#dindent",  { keyframes: { opacity: [0.42, 0.30, 0.40, 0.31, 0.38, 0.33] },
+                       duration: ${breDur.toFixed(2)}, ease: "linear" }, C + 0.45);
 
-  // ===== EXIT: page filed away — mechanical 3-frame yank-down cut =====
-  tl.set("#dapex", { y: 10 }, X);
-  tl.set("#dapex", { y: 28, opacity: 0.5 }, X + F);
-  tl.set("#dapex", { opacity: 0 }, X + 2 * F);`;
+  // ===== EXIT: page filed away - mechanical 3-frame yank-down cut =====
+  setAt("#dapex", { y: 10 }, X);
+  setAt("#dapex", { y: 28, opacity: 0.5 }, X + F);
+  setAt("#dapex", { opacity: 0 }, X + 2 * F);`;
   return { css, html, js };
 }
 
 function setpieceLasercage() {
-  // LASER CAGE: concert blackout — the plate dims and haze cones breathe in
+  // LASER CAGE: concert blackout - the plate dims and haze cones breathe in
   // the top corners; a 6-beam laser array (alternating accent/magenta,
   // emitters along the top edge) snaps on and SWEEPS to converge on the word
   // center, a hot core pops at convergence, and the word IGNITES behind the
   // subject with an additive glow stack (wide blur + magenta fringe + tight
-  // blur + core): crush → contact squash → elastic settle + 2 controlled
+  // blur + core): crush → contact squash → outElastic settle + 2 controlled
   // strobe pops. A criss-cross beam CAGE draws itself around the word rect
   // and flickers; during the hold the array FANS OUT slowly behind the word
   // (the iconic concert fan) while the word looms. Exit: the beams sweep away
@@ -6206,8 +6266,8 @@ function setpieceLasercage() {
   const I = ${I.toFixed(3)}, X0 = ${X0.toFixed(3)};
   const CACC = ${J(A)}, CMAG = ${J(MG)};
   const NSC = "http://www.w3.org/2000/svg";
-  gsap.set("#apexC", { xPercent: -50, yPercent: -50, transformOrigin: "50% 50%" });
-  gsap.set(["#spillC", "#hotC"], { xPercent: -50, yPercent: -50 });
+  setNow("#apexC", { xPercent: -50, yPercent: -50, transformOrigin: "50% 50%" });
+  setNow(["#spillC", "#hotC"], { xPercent: -50, yPercent: -50 });
 
   // apex word as letters (for the carried-away exit)
   const cw = document.getElementById("cword");
@@ -6250,96 +6310,96 @@ function setpieceLasercage() {
   });
 
   // ===== WORLD: concert blackout + haze cones
-  tl.fromTo("#dimC", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.35, ease: "power1.out" }, 0.03);
-  tl.to(["#hazeLc","#hazeRc"], { opacity: 0.08, duration: 0.5, ease: "power1.out" }, 0.15);
+  addFromTo("#dimC", { opacity: 0 }, { opacity: ${dna.plate.dim}, duration: 0.35, ease: "outQuad" }, 0.03);
+  addTo(["#hazeLc","#hazeRc"], { opacity: 0.08, duration: 0.5, ease: "outQuad" }, 0.15);
 
   // ===== CHARGE: room deepens, 6 beams snap on and sweep to center
-  tl.to("#dimC", { opacity: ${dna.plate.charge}, duration: 0.26, ease: "power2.in" }, I - 0.31);
-  tl.to(["#hazeLc","#hazeRc"], { opacity: 0.10, duration: 0.28 }, I - 0.29);
+  addTo("#dimC", { opacity: ${dna.plate.charge}, duration: 0.26, ease: "inCubic" }, I - 0.31);
+  addTo(["#hazeLc","#hazeRc"], { opacity: 0.10, duration: 0.28 }, I - 0.29);
   cbeams.forEach((els, i) => {
     const t0 = I - 0.26 + i * 0.022;
-    tl.set(els[0], { opacity: 0.26 }, t0);
-    tl.set(els[1], { opacity: 0.95 }, t0);
-    tl.to(els, { attr: { x2: ${cx}, y2: ${cy} }, duration: 0.16, ease: "power2.inOut" }, t0);
+    setAt(els[0], { opacity: 0.26 }, t0);
+    setAt(els[1], { opacity: 0.95 }, t0);
+    addTo(els, { attr: { x2: ${cx}, y2: ${cy} }, duration: 0.16, ease: "inOutCubic" }, t0);
   });
-  tl.fromTo("#hotC", { opacity: 0, scale: 0.4 },
-            { opacity: 0.6, scale: 1, duration: 0.1, ease: "power2.in" }, I - 0.11);
-  tl.to("#hotC", { scale: 2.8, opacity: 0, duration: 0.2, ease: "expo.out" }, I);
+  addFromTo("#hotC", { opacity: 0, scale: 0.4 },
+            { opacity: 0.6, scale: 1, duration: 0.1, ease: "inCubic" }, I - 0.11);
+  addTo("#hotC", { scale: 2.8, opacity: 0, duration: 0.2, ease: "outExpo" }, I);
 
-  // ===== IGNITE: crush in → contact squash → elastic settle; additive glow stack
-  tl.set("#apexC", { opacity: 1, scale: 1.16 }, I - 0.02);
-  tl.to("#apexC",  { scale: 1, duration: 0.09, ease: "power4.in" }, I - 0.018);
-  tl.set("#apexC", { scaleX: 1.09, scaleY: 0.92 }, I + 0.08);
-  tl.to("#apexC",  { scaleX: 1, scaleY: 1, duration: 0.5, ease: "elastic.out(1, 0.38)" }, I + 0.165);
-  tl.set("#cglow",  { opacity: 0.95 }, I);
-  tl.set("#cglow2", { opacity: 0.60 }, I);
-  tl.set("#cfringe",{ opacity: 0.30 }, I);
-  tl.set("#cword",  { filter: "brightness(1.9)" }, I);
-  tl.to("#cword",   { filter: "brightness(1)", duration: 0.3, ease: "power2.out" }, I + 0.08);
-  tl.to("#cglow",   { opacity: 0.55, duration: 0.45, ease: "power2.out" }, I + 0.15);
-  tl.to("#cglow2",  { opacity: 0.38, duration: 0.45, ease: "power2.out" }, I + 0.15);
-  tl.set("#dimC", { opacity: ${(dna.plate.charge - 0.06).toFixed(2)} }, I + 0.05);
-  tl.to("#dimC",  { opacity: ${(dna.plate.charge - 0.1).toFixed(2)}, duration: 0.8, ease: "power1.out" }, I + 0.2);
-  tl.set("#spillC", { opacity: 0.22 }, I + 0.02);
-  tl.to("#spillC",  { opacity: 0.12, duration: 0.2, ease: "power2.out" }, I + 0.25);
+  // ===== IGNITE: crush in → contact squash → outElastic settle; additive glow stack
+  setAt("#apexC", { opacity: 1, scale: 1.16 }, I - 0.02);
+  addTo("#apexC",  { scale: 1, duration: 0.09, ease: "inQuint" }, I - 0.018);
+  setAt("#apexC", { scaleX: 1.09, scaleY: 0.92 }, I + 0.08);
+  addTo("#apexC",  { scaleX: 1, scaleY: 1, duration: 0.5, ease: "outElastic(1, 0.38)" }, I + 0.165);
+  setAt("#cglow",  { opacity: 0.95 }, I);
+  setAt("#cglow2", { opacity: 0.60 }, I);
+  setAt("#cfringe",{ opacity: 0.30 }, I);
+  setAt("#cword",  { filter: "brightness(1.9)" }, I);
+  addTo("#cword",   { filter: "brightness(1)", duration: 0.3, ease: "outCubic" }, I + 0.08);
+  addTo("#cglow",   { opacity: 0.55, duration: 0.45, ease: "outCubic" }, I + 0.15);
+  addTo("#cglow2",  { opacity: 0.38, duration: 0.45, ease: "outCubic" }, I + 0.15);
+  setAt("#dimC", { opacity: ${(dna.plate.charge - 0.06).toFixed(2)} }, I + 0.05);
+  addTo("#dimC",  { opacity: ${(dna.plate.charge - 0.1).toFixed(2)}, duration: 0.8, ease: "outQuad" }, I + 0.2);
+  setAt("#spillC", { opacity: 0.22 }, I + 0.02);
+  addTo("#spillC",  { opacity: 0.12, duration: 0.2, ease: "outCubic" }, I + 0.25);
 
   // ===== CAGE draws around the word
   ccage.forEach((c, i) => {
     const t = I + 0.08 + i * 0.03;
-    tl.set(c.el, { opacity: c.op }, t);
-    tl.to(c.el, { attr: { "stroke-dashoffset": 0 }, duration: 0.18, ease: "power2.out" }, t);
+    setAt(c.el, { opacity: c.op }, t);
+    addTo(c.el, { attr: { "stroke-dashoffset": 0 }, duration: 0.18, ease: "outCubic" }, t);
   });
-  tl.to(ccage.map((c) => c.el),
-        { keyframes: { opacity: [0.48, 0.36, 0.44, 0.34, 0.42, 0.38] }, duration: ${flickDur}, ease: "none" },
+  addTo(ccage.map((c) => c.el),
+        { keyframes: { opacity: [0.48, 0.36, 0.44, 0.34, 0.42, 0.38] }, duration: ${flickDur}, ease: "linear" },
         I + 0.6);
 
   // ===== controlled strobe pops (with the ignite flash: events spread > 1s)
   ${J(strobeTs.map((t) => +t.toFixed(3)))}.forEach((t) => {
-    tl.set("#apexC", { filter: "brightness(2.05)" }, t);
-    tl.set("#apexC", { filter: "brightness(1)" }, t + 0.05);
-    tl.set("#spillC", { opacity: 0.27 }, t);
-    tl.to("#spillC",  { opacity: 0.12, duration: 0.3, ease: "power2.out" }, t + 0.05);
+    setAt("#apexC", { filter: "brightness(2.05)" }, t);
+    setAt("#apexC", { filter: "brightness(1)" }, t + 0.05);
+    setAt("#spillC", { opacity: 0.27 }, t);
+    addTo("#spillC",  { opacity: 0.12, duration: 0.3, ease: "outCubic" }, t + 0.05);
   });
 
   // ===== FAN OUT: the iconic fan opens behind the word during the hold
   cbeams.forEach((els, i) => {
     const t = I + 0.62 + i * 0.04;
-    tl.to(els, { attr: { x2: FAN[i][0], y2: FAN[i][1] }, duration: ${fanDur}, ease: "power1.inOut" }, t);
-    tl.to(els[0], { opacity: 0.18, duration: 0.4 }, t);
-    tl.to(els[1], { opacity: 0.50, duration: 0.4 }, t);
+    addTo(els, { attr: { x2: FAN[i][0], y2: FAN[i][1] }, duration: ${fanDur}, ease: "inOutQuad" }, t);
+    addTo(els[0], { opacity: 0.18, duration: 0.4 }, t);
+    addTo(els[1], { opacity: 0.50, duration: 0.4 }, t);
   });
-  tl.to(["#hazeLc","#hazeRc"], { opacity: 0.16, duration: 0.6, ease: "power1.inOut" }, I + 0.35);
+  addTo(["#hazeLc","#hazeRc"], { opacity: 0.16, duration: 0.6, ease: "inOutQuad" }, I + 0.35);
 
   // ===== HOLD LIFE: loom breathe + glow flicker
-  tl.to("#apexC", { scale: 1.03, duration: 0.6, ease: "sine.inOut" }, I + 0.8);
-  tl.to("#apexC", { scale: 1.0,  duration: 0.6, ease: "sine.inOut" }, I + 1.4);
-  tl.to("#cglow", { keyframes: { opacity: [0.55, 0.42, 0.52, 0.40, 0.48, 0.45] },
-                    duration: ${Math.min(1.15, Math.max(0.4, X0 - 0.06 - (I + 0.62))).toFixed(2)}, ease: "none" }, I + 0.62);
+  addTo("#apexC", { scale: 1.03, duration: 0.6, ease: "inOutSine" }, I + 0.8);
+  addTo("#apexC", { scale: 1.0,  duration: 0.6, ease: "inOutSine" }, I + 1.4);
+  addTo("#cglow", { keyframes: { opacity: [0.55, 0.42, 0.52, 0.40, 0.48, 0.45] },
+                    duration: ${Math.min(1.15, Math.max(0.4, X0 - 0.06 - (I + 0.62))).toFixed(2)}, ease: "linear" }, I + 0.62);
 
   // ===== EXIT: beams sweep away L→R carrying the letters
   ccage.forEach((c, i) => {
-    tl.to(c.el, { attr: { "stroke-dashoffset": c.len }, duration: 0.16, ease: "power2.in" }, X0 + i * 0.02);
-    tl.set(c.el, { opacity: 0 }, X0 + i * 0.02 + 0.17);
+    addTo(c.el, { attr: { "stroke-dashoffset": c.len }, duration: 0.16, ease: "inCubic" }, X0 + i * 0.02);
+    setAt(c.el, { opacity: 0 }, X0 + i * 0.02 + 0.17);
   });
   cletters.forEach((l, i) => {
-    tl.to(l, { x: 44, opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power2.in" },
+    addTo(l, { x: 44, opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "inCubic" },
           X0 + 0.02 + i * ${lstag});
   });
-  tl.to(["#cglow","#cglow2","#cfringe"], { x: 60, opacity: 0, duration: 0.22, ease: "power2.in" }, X0 + 0.06);
+  addTo(["#cglow","#cglow2","#cfringe"], { x: 60, opacity: 0, duration: 0.22, ease: "inCubic" }, X0 + 0.06);
   cbeams.forEach((els, i) => {
-    tl.to(els, { attr: { x2: "+=${Math.round(W * 0.742)}" }, duration: 0.28, ease: "power2.in" }, X0 + 0.02 + i * 0.03);
-    tl.to(els, { opacity: 0, duration: 0.22 }, X0 + 0.04 + i * 0.03);
+    addTo(els, { attr: { x2: "+=${Math.round(W * 0.742)}" }, duration: 0.28, ease: "inCubic" }, X0 + 0.02 + i * 0.03);
+    addTo(els, { opacity: 0, duration: 0.22 }, X0 + 0.04 + i * 0.03);
   });
-  tl.to("#spillC", { opacity: 0, duration: 0.25 }, X0 - 0.01);
-  tl.to("#dimC",   { opacity: 0.12, duration: 0.4, ease: "power1.in" }, X0 + 0.06);
-  tl.to(["#hazeLc","#hazeRc"], { opacity: 0.03, duration: 0.4 }, X0 + 0.06);
-  tl.set("#apexC", { display: "none" }, ${(DUR - 0.02).toFixed(3)});`;
+  addTo("#spillC", { opacity: 0, duration: 0.25 }, X0 - 0.01);
+  addTo("#dimC",   { opacity: 0.12, duration: 0.4, ease: "inQuad" }, X0 + 0.06);
+  addTo(["#hazeLc","#hazeRc"], { opacity: 0.03, duration: 0.4 }, X0 + 0.06);
+  setAt("#apexC", { display: "none" }, ${(DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
 function setpieceBoltstrike() {
   // THUNDER apex: the storm is the editor. A slate storm mood sits on the room
-  // from t=0 and the sky "kisses" (1-frame brighten) on every body word —
+  // from t=0 and the sky "kisses" (1-frame brighten) on every body word -
   // double-kiss on emphasis words, re-flashes during the hold. Before the
   // strike the room charge-dims under a radial word scrim; a hand-authored
   // branched bolt (haze/glow/core stack) flashes 2 frames BEFORE the word
@@ -6361,7 +6421,7 @@ function setpieceBoltstrike() {
   const scW = Math.round(2 * halfW + 380),
     scH = Math.round(hpx * 2.28);
   // hand-authored branched bolt (5-seg zigzag + 2 branches) measured off the
-  // demo cut — offsets from the word center in halfW (x) / fontPx (y) units;
+  // demo cut - offsets from the word center in halfW (x) / fontPx (y) units;
   // the leader always enters from above the frame
   const sgn = p.side === "right" ? -1 : 1;
   const kx = ((halfW || 360) / 360) * sgn,
@@ -6453,77 +6513,77 @@ function setpieceBoltstrike() {
   // distant lightning KISS: 1-frame sky brighten on every body word
   const KISS = ${J(kissData)};
   KISS.forEach(([t, em]) => {
-    tl.set("#kiss", { opacity: 0.06 }, t);
-    tl.set("#kiss", { opacity: 0 }, t + F);
+    setAt("#kiss", { opacity: 0.06 }, t);
+    setAt("#kiss", { opacity: 0 }, t + F);
     if (em && t + 0.20 + 3 * F < ${(DUR - 0.04).toFixed(2)}) {
       // emphasis words get the sheet-lightning double kiss (matches the rail double flash)
       const t0 = t + 0.20;
-      tl.set("#kiss", { opacity: 0.07 }, t0);
-      tl.set("#kiss", { opacity: 0 },    t0 + F);
-      tl.set("#kiss", { opacity: 0.06 }, t0 + 2 * F);
-      tl.set("#kiss", { opacity: 0 },    t0 + 3 * F);
+      setAt("#kiss", { opacity: 0.07 }, t0);
+      setAt("#kiss", { opacity: 0 },    t0 + F);
+      setAt("#kiss", { opacity: 0.06 }, t0 + 2 * F);
+      setAt("#kiss", { opacity: 0 },    t0 + 3 * F);
     }
   });
   // sheet re-flashes during the apex hold
   [I + 0.84, I + 1.44].forEach((t) => {
-    if (t < EXB - 0.2) { tl.set("#kiss", { opacity: 0.08 }, t); tl.set("#kiss", { opacity: 0 }, t + F); }
+    if (t < EXB - 0.2) { setAt("#kiss", { opacity: 0.08 }, t); setAt("#kiss", { opacity: 0 }, t + F); }
   });
 
   // CHARGE: the storm gathers before the strike (ends before the bolt frames)
-  tl.fromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.charge || 0.3}, duration: 0.30, ease: "power2.in" }, I - 0.39);
-  tl.fromTo("#wordscrim", { opacity: 0 }, { opacity: 0.42, duration: 0.30, ease: "power2.in" }, I - 0.39);
+  addFromTo("#dimP", { opacity: 0 }, { opacity: ${dna.plate.charge || 0.3}, duration: 0.30, ease: "inCubic" }, I - 0.39);
+  addFromTo("#wordscrim", { opacity: 0 }, { opacity: 0.42, duration: 0.30, ease: "inCubic" }, I - 0.39);
 
   // THE STRIKE: bolt flashes 2 frames before the word, return stroke at contact
-  tl.set("#bolt", { opacity: 1 },    I - 2 * F);
-  tl.set("#bolt", { opacity: 0.35 }, I - F);
-  tl.set("#bolt", { opacity: 1 },    I);
-  tl.to("#bolt",  { opacity: 0, duration: 0.07, ease: "power2.in" }, I + 0.045);
+  setAt("#bolt", { opacity: 1 },    I - 2 * F);
+  setAt("#bolt", { opacity: 0.35 }, I - F);
+  setAt("#bolt", { opacity: 1 },    I);
+  addTo("#bolt",  { opacity: 0, duration: 0.07, ease: "inCubic" }, I + 0.045);
 
-  tl.set("#skyflash", { opacity: 0.26 }, I - 2 * F);
-  tl.set("#skyflash", { opacity: 0.10 }, I - F);
-  tl.set("#skyflash", { opacity: 0.30 }, I + 0.02);
-  tl.to("#skyflash",  { opacity: 0, duration: 0.22, ease: "expo.out" }, I + 0.06);
+  setAt("#skyflash", { opacity: 0.26 }, I - 2 * F);
+  setAt("#skyflash", { opacity: 0.10 }, I - F);
+  setAt("#skyflash", { opacity: 0.30 }, I + 0.02);
+  addTo("#skyflash",  { opacity: 0, duration: 0.22, ease: "outExpo" }, I + 0.06);
 
   // dim released by the flash, settles to a storm hold, lifts at the end
-  tl.set("#dimP", { opacity: 0.08 }, I - 2 * F);
-  tl.to("#dimP",  { opacity: ${dna.plate.dim || 0.22}, duration: 0.25, ease: "power2.out" }, I + 0.10);
-  tl.to("#dimP",  { opacity: 0, duration: 0.40, ease: "power1.in" }, EXB - 0.14);
-  tl.set("#wordscrim", { opacity: 0.32 }, I - 2 * F);
-  tl.to("#wordscrim",  { opacity: 0.36, duration: 0.30 }, I + 0.10);
-  tl.to("#wordscrim",  { opacity: 0, duration: 0.30 }, EXB - 0.04);
+  setAt("#dimP", { opacity: 0.08 }, I - 2 * F);
+  addTo("#dimP",  { opacity: ${dna.plate.dim || 0.22}, duration: 0.25, ease: "outCubic" }, I + 0.10);
+  addTo("#dimP",  { opacity: 0, duration: 0.40, ease: "inQuad" }, EXB - 0.14);
+  setAt("#wordscrim", { opacity: 0.32 }, I - 2 * F);
+  addTo("#wordscrim",  { opacity: 0.36, duration: 0.30 }, I + 0.10);
+  addTo("#wordscrim",  { opacity: 0, duration: 0.30 }, EXB - 0.04);
 
-  // APEX WORD: slam transit → contact squash (2 frames) → elastic settle
-  tl.set("#apex", { opacity: 1 }, I - 2 * F);
-  tl.fromTo("#apex", { scale: 3.1 }, { scale: 1, duration: 0.105, ease: "power4.in" }, I - 2 * F);
-  tl.fromTo("#aword", { filter: "blur(14px) brightness(3.2)" },
-            { filter: "blur(0px) brightness(2.5)", duration: 0.105, ease: "power4.in" }, I - 2 * F);
-  tl.set("#apex", { scaleX: 1.10, scaleY: 0.90 }, I + 0.025);
-  tl.to("#apex",  { scaleX: 1, scaleY: 1, duration: 0.55, ease: "elastic.out(1.05, 0.34)" }, I + 0.025 + 2 * F);
+  // APEX WORD: slam transit → contact squash (2 frames) → outElastic settle
+  setAt("#apex", { opacity: 1 }, I - 2 * F);
+  addFromTo("#apex", { scale: 3.1 }, { scale: 1, duration: 0.105, ease: "inQuint" }, I - 2 * F);
+  addFromTo("#aword", { filter: "blur(14px) brightness(3.2)" },
+            { filter: "blur(0px) brightness(2.5)", duration: 0.105, ease: "inQuint" }, I - 2 * F);
+  setAt("#apex", { scaleX: 1.10, scaleY: 0.90 }, I + 0.025);
+  addTo("#apex",  { scaleX: 1, scaleY: 1, duration: 0.55, ease: "outElastic(1.05, 0.34)" }, I + 0.025 + 2 * F);
   // lit HARD for 2 frames, then cools
-  tl.to("#aword", { filter: "blur(0px) brightness(1)", duration: 0.45, ease: "power2.out" }, I + 0.025 + 2 * F);
+  addTo("#aword", { filter: "blur(0px) brightness(1)", duration: 0.45, ease: "outCubic" }, I + 0.025 + 2 * F);
 
   // SIGNATURE: shadow flips toward the bolt (light from the strike side) for the flash frames
-  tl.set("#aword", { textShadow: "${16 * sgn}px 6px 18px rgba(2,6,14,0.9), ${4 * sgn}px 2px 6px rgba(2,6,14,0.75), 0 0 26px ${A}b3" }, I - 2 * F);
-  tl.set("#aword", { textShadow: "0 8px 26px rgba(3,8,18,0.85), 0 2px 6px rgba(3,8,18,0.7), 0 0 18px ${A}59" }, I + 0.09);
+  setAt("#aword", { textShadow: "${16 * sgn}px 6px 18px rgba(2,6,14,0.9), ${4 * sgn}px 2px 6px rgba(2,6,14,0.75), 0 0 26px ${A}b3" }, I - 2 * F);
+  setAt("#aword", { textShadow: "0 8px 26px rgba(3,8,18,0.85), 0 2px 6px rgba(3,8,18,0.7), 0 0 18px ${A}59" }, I + 0.09);
 
   // ozone under-glow blooms with the hit, breathes during hold
-  tl.set("#ozone", { opacity: 0.85 }, I + 0.02);
-  tl.to("#ozone", { keyframes: { opacity: [0.85, 0.5, 0.65, 0.42, 0.55, 0.38] },
-                    duration: ${breDur.toFixed(2)}, ease: "none" }, I + 0.30);
-  tl.to("#ozone", { opacity: 0.32, duration: 0.18 }, EXB - 0.22);
+  setAt("#ozone", { opacity: 0.85 }, I + 0.02);
+  addTo("#ozone", { keyframes: { opacity: [0.85, 0.5, 0.65, 0.42, 0.55, 0.38] },
+                    duration: ${breDur.toFixed(2)}, ease: "linear" }, I + 0.30);
+  addTo("#ozone", { opacity: 0.32, duration: 0.18 }, EXB - 0.22);
 
   // hold life: loom + 2-frame lit blips on the sheet re-flashes
-  tl.to("#apex", { scale: 1.035, duration: ${loomDur.toFixed(2)}, ease: "power1.inOut" }, I + 0.74);
+  addTo("#apex", { scale: 1.035, duration: ${loomDur.toFixed(2)}, ease: "inOutQuad" }, I + 0.74);
   [[I + 0.84, 1.45], [I + 1.44, 1.35]].forEach(([t, b2]) => {
     if (t < EXB - 0.2) {
-      tl.set("#aword", { filter: "brightness(" + b2 + ")" }, t);
-      tl.set("#aword", { filter: "brightness(1)" }, t + F);
+      setAt("#aword", { filter: "brightness(" + b2 + ")" }, t);
+      setAt("#aword", { filter: "brightness(1)" }, t + F);
     }
   });
 
   // EXIT: washes downward with the rain
-  tl.to("#apex", { y: 38, opacity: 0, filter: "blur(6px)", duration: 0.22, ease: "power2.in" }, EXB);
-  tl.set("#apex", { display: "none" }, ${Math.min(EX + 0.26, DUR - 0.02).toFixed(3)});`;
+  addTo("#apex", { y: 38, opacity: 0, filter: "blur(6px)", duration: 0.22, ease: "inCubic" }, EXB);
+  setAt("#apex", { display: "none" }, ${Math.min(EX + 0.26, DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -6531,14 +6591,14 @@ function setpieceHoloboot() {
   // HOLOGRAM apex: full volumetric boot behind the subject. A desk emitter dot
   // pops, the projection cone SNAPS wide (scaleX expo), a seed beam fires up
   // from the emitter, and the word boots with a RISING clip sweep (opacity is
-  // instant — the reveal is a wipe) into a 7-layer projection stack (dark
+  // instant - the reveal is a wipe) into a 7-layer projection stack (dark
   // backing shadow / wide glow / magenta+cyan chromatic fringes / core /
   // scanline mask / climbing interference bands). Contact = over-bright flash
-  // + squash held 2 frames + elastic settle + 1-frame x interference jumps;
+  // + squash held 2 frames + outElastic settle + 1-frame x interference jumps;
   // fringes blow wide then settle to a constant registration offset. Hold
   // life: bands climb, rotationY oscillates, glow/cone breathe, emitter dot
   // pulses, slow loom; a hand "passes through" the projection (skew + blur +
-  // fringe blowout, pure projection logic). Exit: the projector cut — the
+  // fringe blowout, pure projection logic). Exit: the projector cut - the
   // word collapses to a horizontal line, then to the base dot. A second,
   // smaller emitter cone rises from the desk under the holorail plate all
   // video (the body rail is cast from the SAME projector grammar).
@@ -6646,120 +6706,120 @@ function setpieceHoloboot() {
   const js = `
   // ---- setpiece: HOLOBOOT (emitter pop → cone snap → seed beam → rising-sweep word boot) ----
   const I = ${I.toFixed(3)}, CUT = ${cutT.toFixed(3)};
-  gsap.set("#apx", { xPercent: -50, yPercent: -50, transformPerspective: 900, transformOrigin: "50% 50%" });
-  gsap.set("#apxcone", { transformOrigin: "50% 100%" });
-  gsap.set("#apxbeam", { transformOrigin: "50% 100%" });
-  gsap.set("#bcone",   { transformOrigin: "50% 100%" });
-  gsap.set("#apxclip", { clipPath: "inset(100% 0% 0% 0%)" });
+  setNow("#apx", { xPercent: -50, yPercent: -50, transformPerspective: 900, transformOrigin: "50% 50%" });
+  setNow("#apxcone", { transformOrigin: "50% 100%" });
+  setNow("#apxbeam", { transformOrigin: "50% 100%" });
+  setNow("#bcone",   { transformOrigin: "50% 100%" });
+  setNow("#apxclip", { clipPath: "inset(100% 0% 0% 0%)" });
 
   // ===== body-zone projector boots with the rail (cone behind the subject)
-  tl.set("#bdot", { opacity: 1 }, 0.06);
-  tl.fromTo("#bdot", { scale: 0.2 }, { scale: 1, duration: 0.12, ease: "back.out(2)" }, 0.06);
-  tl.set("#bcone", { opacity: 0.9 }, 0.08);
-  tl.fromTo("#bcone", { scaleY: 0.05 }, { scaleY: 1, duration: 0.14, ease: "expo.out" }, 0.08);
-  tl.set("#bcone", { opacity: 0.5 }, 0.22);
-  tl.set("#bcone", { opacity: 0.9 }, 0.26);
+  setAt("#bdot", { opacity: 1 }, 0.06);
+  addFromTo("#bdot", { scale: 0.2 }, { scale: 1, duration: 0.12, ease: "outBack(2)" }, 0.06);
+  setAt("#bcone", { opacity: 0.9 }, 0.08);
+  addFromTo("#bcone", { scaleY: 0.05 }, { scaleY: 1, duration: 0.14, ease: "outExpo" }, 0.08);
+  setAt("#bcone", { opacity: 0.5 }, 0.22);
+  setAt("#bcone", { opacity: 0.9 }, 0.26);
   ${J(coneFlicks)}.forEach((t, i) => {
-    tl.to("#bcone", { keyframes: { opacity: i % 2 ? [0.86, 0.72, 0.84, 0.7, 0.84] : [0.9, 0.74, 0.86, 0.72, 0.86] },
-                      duration: 2.2, ease: "none" }, t);
+    addTo("#bcone", { keyframes: { opacity: i % 2 ? [0.86, 0.72, 0.84, 0.7, 0.84] : [0.9, 0.74, 0.86, 0.72, 0.86] },
+                      duration: 2.2, ease: "linear" }, t);
   });
   ${J(dotPulses)}.forEach((t) => {
-    tl.to("#bdot", { keyframes: { scale: [1, 1.3, 1, 1.25, 1] }, duration: 2.0, ease: "none" }, t);
+    addTo("#bdot", { keyframes: { scale: [1, 1.3, 1, 1.25, 1] }, duration: 2.0, ease: "linear" }, t);
   });
-  ${dotTail != null ? `tl.to("#bdot", { keyframes: { scale: [1, 1.25, 1] }, duration: 1.0, ease: "none" }, ${dotTail});` : ""}
+  ${dotTail != null ? `addTo("#bdot", { keyframes: { scale: [1, 1.25, 1] }, duration: 1.0, ease: "linear" }, ${dotTail});` : ""}
   // projector cut at the very end
-  tl.to("#bcone", { opacity: 0, duration: 0.18, ease: "power1.in" }, ${(DUR - 0.2).toFixed(3)});
-  tl.set("#bdot", { scale: 1.6 }, ${(DUR - 0.12).toFixed(3)});
-  tl.set("#bdot", { opacity: 0 }, ${(DUR - 0.05).toFixed(3)});
+  addTo("#bcone", { opacity: 0, duration: 0.18, ease: "inQuad" }, ${(DUR - 0.2).toFixed(3)});
+  setAt("#bdot", { scale: 1.6 }, ${(DUR - 0.12).toFixed(3)});
+  setAt("#bdot", { opacity: 0 }, ${(DUR - 0.05).toFixed(3)});
 
   // ===== scene reaction: the room dims while the volumetric apex burns
-  tl.fromTo("#scrimH", { opacity: 0 }, { opacity: ${dna.plate.scrim ?? 0.58}, duration: 0.34, ease: "power2.in" }, I - 0.21);
-  tl.set("#dimH", { opacity: ${dna.plate.charge ?? 0.28} }, I - 0.05);
-  tl.to("#dimH",   { opacity: ${dna.plate.dim ?? 0.18}, duration: ${reactD}, ease: "power2.out" }, I + 0.24);
-  tl.to("#scrimH", { opacity: ${((dna.plate.scrim ?? 0.58) * 0.79).toFixed(2)}, duration: ${reactD}, ease: "power2.out" }, I + 0.24);
-  tl.to(["#dimH","#scrimH"], { opacity: 0, duration: 0.4, ease: "power1.in" }, CUT - 0.12);
+  addFromTo("#scrimH", { opacity: 0 }, { opacity: ${dna.plate.scrim ?? 0.58}, duration: 0.34, ease: "inCubic" }, I - 0.21);
+  setAt("#dimH", { opacity: ${dna.plate.charge ?? 0.28} }, I - 0.05);
+  addTo("#dimH",   { opacity: ${dna.plate.dim ?? 0.18}, duration: ${reactD}, ease: "outCubic" }, I + 0.24);
+  addTo("#scrimH", { opacity: ${((dna.plate.scrim ?? 0.58) * 0.79).toFixed(2)}, duration: ${reactD}, ease: "outCubic" }, I + 0.24);
+  addTo(["#dimH","#scrimH"], { opacity: 0, duration: 0.4, ease: "inQuad" }, CUT - 0.12);
 
   // ===== APEX: full volumetric boot
   // 1. emitter dot pops, cone SNAPS wide
-  tl.set("#apxdot", { opacity: 1 }, I - 0.135);
-  tl.fromTo("#apxdot", { scale: 0.2 }, { scale: 1, duration: 0.12, ease: "back.out(2.4)" }, I - 0.135);
-  tl.set("#apxcone", { opacity: 1 }, I - 0.125);
-  tl.fromTo("#apxcone", { scaleX: 0.07 }, { scaleX: 1, duration: 0.11, ease: "expo.out" }, I - 0.125);
-  tl.set("#apxcone", { opacity: 0.55 }, I - 0.01);
-  tl.set("#apxcone", { opacity: 0.95 }, I + 0.035);
+  setAt("#apxdot", { opacity: 1 }, I - 0.135);
+  addFromTo("#apxdot", { scale: 0.2 }, { scale: 1, duration: 0.12, ease: "outBack(2.4)" }, I - 0.135);
+  setAt("#apxcone", { opacity: 1 }, I - 0.125);
+  addFromTo("#apxcone", { scaleX: 0.07 }, { scaleX: 1, duration: 0.11, ease: "outExpo" }, I - 0.125);
+  setAt("#apxcone", { opacity: 0.55 }, I - 0.01);
+  setAt("#apxcone", { opacity: 0.95 }, I + 0.035);
   // 2. seed beam fires up from the emitter
-  tl.set("#apxbeam", { opacity: 1 }, I - 0.095);
-  tl.fromTo("#apxbeam", { scaleY: 0 }, { scaleY: 1, duration: 0.085, ease: "power3.in" }, I - 0.095);
-  tl.to("#apxbeam", { opacity: 0, duration: 0.3, ease: "power1.in" }, I + 0.11);
+  setAt("#apxbeam", { opacity: 1 }, I - 0.095);
+  addFromTo("#apxbeam", { scaleY: 0 }, { scaleY: 1, duration: 0.085, ease: "inQuart" }, I - 0.095);
+  addTo("#apxbeam", { opacity: 0, duration: 0.3, ease: "inQuad" }, I + 0.11);
   // 3. the word boots with a RISING sweep (opacity instant, reveal is a wipe)
-  tl.set("#apx", { opacity: 1 }, I - 0.055);
-  tl.to("#apxclip", { clipPath: "inset(0% 0% 0% 0%)", duration: 0.125, ease: "power2.in" }, I - 0.055);
-  tl.set("#apxclip", { clipPath: "none" }, I + 0.08); // free the glow bloom after the sweep
-  // 4. contact: over-bright flash + squash held 2 frames + elastic settle
-  tl.set("#apxclip", { filter: "brightness(2.3)" }, ${C.toFixed(3)});
-  tl.to("#apxclip",  { filter: "brightness(1)", duration: 0.36, ease: "power2.out" }, ${(C + 0.05).toFixed(3)});
-  tl.set("#apx", { scaleX: 1.07, scaleY: 0.91 }, ${C.toFixed(3)});
-  tl.to("#apx",  { scaleX: 1, scaleY: 1, duration: 0.5, ease: "elastic.out(1, 0.38)" }, ${(C + 0.084).toFixed(3)});
+  setAt("#apx", { opacity: 1 }, I - 0.055);
+  addTo("#apxclip", { clipPath: "inset(0% 0% 0% 0%)", duration: 0.125, ease: "inCubic" }, I - 0.055);
+  setAt("#apxclip", { clipPath: "none" }, I + 0.08); // free the glow bloom after the sweep
+  // 4. contact: over-bright flash + squash held 2 frames + outElastic settle
+  setAt("#apxclip", { filter: "brightness(2.3)" }, ${C.toFixed(3)});
+  addTo("#apxclip",  { filter: "brightness(1)", duration: 0.36, ease: "outCubic" }, ${(C + 0.05).toFixed(3)});
+  setAt("#apx", { scaleX: 1.07, scaleY: 0.91 }, ${C.toFixed(3)});
+  addTo("#apx",  { scaleX: 1, scaleY: 1, duration: 0.5, ease: "outElastic(1, 0.38)" }, ${(C + 0.084).toFixed(3)});
   // interference glitch on arrival (1-frame x jumps)
-  tl.set("#apxclip", { x: 3 },  ${(C + 0.02).toFixed(3)});
-  tl.set("#apxclip", { x: -3 }, ${(C + 0.062).toFixed(3)});
-  tl.set("#apxclip", { x: 0 },  ${(C + 0.104).toFixed(3)});
+  setAt("#apxclip", { x: 3 },  ${(C + 0.02).toFixed(3)});
+  setAt("#apxclip", { x: -3 }, ${(C + 0.062).toFixed(3)});
+  setAt("#apxclip", { x: 0 },  ${(C + 0.104).toFixed(3)});
   // chromatic fringes blow wide then settle to the constant offset
-  tl.fromTo("#cmag", { x: -8 }, { x: -2, duration: 0.4, ease: "power2.out" }, ${C.toFixed(3)});
-  tl.fromTo("#ccyn", { x: 8 },  { x: 2,  duration: 0.4, ease: "power2.out" }, ${C.toFixed(3)});
+  addFromTo("#cmag", { x: -8 }, { x: -2, duration: 0.4, ease: "outCubic" }, ${C.toFixed(3)});
+  addFromTo("#ccyn", { x: 8 },  { x: 2,  duration: 0.4, ease: "outCubic" }, ${C.toFixed(3)});
 
   // ===== hold life: interference bands climb, rotateY oscillates, glow breathes, loom
-  tl.set("#abands", { opacity: 0.55, backgroundPosition: "0px 0px" }, I + 0.24);
-  tl.to("#abands", { backgroundPosition: "0px -${6 * bandH}px", duration: ${holdD}, ease: "none" }, I + 0.24);
-  tl.to("#apx", { keyframes: { rotationY: [0, 6, -7, 5, 0] }, duration: ${holdD}, ease: "none" }, I + 0.24);
-  tl.to("#aglow", { keyframes: { opacity: [0.55, 0.4, 0.52, 0.38, 0.5] }, duration: ${holdD2}, ease: "none" }, I + 0.29);
-  tl.to("#apxcone", { keyframes: { opacity: [0.95, 0.78, 0.9, 0.76, 0.88] }, duration: ${holdD2}, ease: "none" }, I + 0.29);
-  tl.to("#apxdot", { keyframes: { scale: [1, 1.4, 1, 1.35, 1, 1.3, 1] }, duration: ${holdD2}, ease: "none" }, I + 0.29);
-  ${loomD >= 0.2 ? `tl.to("#apx", { scale: 1.028, duration: ${loomD}, ease: "sine.inOut" }, I + 0.74);` : ""}
+  setAt("#abands", { opacity: 0.55, backgroundPosition: "0px 0px" }, I + 0.24);
+  addTo("#abands", { backgroundPosition: "0px -${6 * bandH}px", duration: ${holdD}, ease: "linear" }, I + 0.24);
+  addTo("#apx", { keyframes: { rotationY: [0, 6, -7, 5, 0] }, duration: ${holdD}, ease: "linear" }, I + 0.24);
+  addTo("#aglow", { keyframes: { opacity: [0.55, 0.4, 0.52, 0.38, 0.5] }, duration: ${holdD2}, ease: "linear" }, I + 0.29);
+  addTo("#apxcone", { keyframes: { opacity: [0.95, 0.78, 0.9, 0.76, 0.88] }, duration: ${holdD2}, ease: "linear" }, I + 0.29);
+  addTo("#apxdot", { keyframes: { scale: [1, 1.4, 1, 1.35, 1, 1.3, 1] }, duration: ${holdD2}, ease: "linear" }, I + 0.29);
+  ${loomD >= 0.2 ? `addTo("#apx", { scale: 1.028, duration: ${loomD}, ease: "inOutSine" }, I + 0.74);` : ""}
 ${
   doPass
     ? `
   // ===== a hand "passes through" the projection: pure projection logic
   const P = ${passT.toFixed(3)};
-  tl.set("#apx", { skewX: 6 }, P);
-  tl.set("#apxclip", { filter: "blur(2.5px) brightness(1.35)" }, P);
-  tl.set("#cmag", { x: -7 }, P);
-  tl.set("#ccyn", { x: 7 },  P);
-  tl.set("#apx", { skewX: -4 }, P + 0.042);
-  tl.set("#apxclip", { filter: "blur(1px)" }, P + 0.083);
-  tl.set("#apx", { skewX: 0 }, P + 0.125);
-  tl.set("#apxclip", { filter: "none" }, P + 0.125);
-  tl.to("#cmag", { x: -2, duration: 0.18, ease: "power2.out" }, P + 0.05);
-  tl.to("#ccyn", { x: 2,  duration: 0.18, ease: "power2.out" }, P + 0.05);
-  tl.set("#apx", { scaleY: 0.97 }, P + 0.13);
-  tl.to("#apx", { scaleY: 1, duration: 0.3, ease: "elastic.out(1, 0.4)" }, P + 0.172);`
+  setAt("#apx", { skewX: 6 }, P);
+  setAt("#apxclip", { filter: "blur(2.5px) brightness(1.35)" }, P);
+  setAt("#cmag", { x: -7 }, P);
+  setAt("#ccyn", { x: 7 },  P);
+  setAt("#apx", { skewX: -4 }, P + 0.042);
+  setAt("#apxclip", { filter: "blur(1px)" }, P + 0.083);
+  setAt("#apx", { skewX: 0 }, P + 0.125);
+  setAt("#apxclip", { filter: "none" }, P + 0.125);
+  addTo("#cmag", { x: -2, duration: 0.18, ease: "outCubic" }, P + 0.05);
+  addTo("#ccyn", { x: 2,  duration: 0.18, ease: "outCubic" }, P + 0.05);
+  setAt("#apx", { scaleY: 0.97 }, P + 0.13);
+  addTo("#apx", { scaleY: 1, duration: 0.3, ease: "outElastic(1, 0.4)" }, P + 0.172);`
     : ""
 }
 
-  // ===== EXIT: projector cut — collapse to a horizontal line, then to the base dot
-  tl.set("#apxclip", { filter: "brightness(2.4)" }, CUT - 0.02);
-  tl.to("#apx", { scaleY: 0.018, duration: 0.09, ease: "power3.in" }, CUT);
-  tl.to("#apx", { scaleX: 0.015, duration: 0.075, ease: "power3.in" }, CUT + 0.10);
-  tl.set("#apx", { opacity: 0 }, CUT + 0.18);
-  tl.to("#apxcone", { opacity: 0, duration: 0.16, ease: "power1.in" }, CUT + 0.02);
-  tl.set("#apxdot", { scale: 2.2 }, CUT + 0.12);
-  tl.to("#apxdot", { opacity: 0, duration: 0.09, ease: "power2.in" }, CUT + 0.18);`;
+  // ===== EXIT: projector cut - collapse to a horizontal line, then to the base dot
+  setAt("#apxclip", { filter: "brightness(2.4)" }, CUT - 0.02);
+  addTo("#apx", { scaleY: 0.018, duration: 0.09, ease: "inQuart" }, CUT);
+  addTo("#apx", { scaleX: 0.015, duration: 0.075, ease: "inQuart" }, CUT + 0.10);
+  setAt("#apx", { opacity: 0 }, CUT + 0.18);
+  addTo("#apxcone", { opacity: 0, duration: 0.16, ease: "inQuad" }, CUT + 0.02);
+  setAt("#apxdot", { scale: 2.2 }, CUT + 0.12);
+  addTo("#apxdot", { opacity: 0, duration: 0.09, ease: "inCubic" }, CUT + 0.18);`;
   return { css, html, js };
 }
 
 function setpieceBiobloom() {
   // BIOLUME apex: a bioluminescent BLOOM behind the subject. The abyss grade
-  // (params.mood) + a breathing vignette sit on the room from t=0 — the world
+  // (params.mood) + a breathing vignette sit on the room from t=0 - the world
   // IS underwater before anything speaks. A creature pre-glow gathers with a
   // double-beat anticipation and crushes to a point; a dark pocket scrim
   // (plate.scrim) opens behind the word zone; the word CONDENSES in (scale
-  // 2.35 crush power4.in 0.11s, blur 15→2, brightness 2.6→1.7) → 2-frame
-  // contact squash → elastic settle while cyan light SPILLS onto the scene;
+  // 2.35 crush inQuint 0.11s, blur 15→2, brightness 2.6→1.7) → 2-frame
+  // contact squash → outElastic settle while cyan light SPILLS onto the scene;
   // 6 luminous tendrils (blurred SVG strokes, cyan/violet alternating) draw
   // outward from the word rect, staggered; through the hold the glow breathes
   // 8–14%, two counter-drifting caustic gradients shimmer over the text zone
   // and the bloom drifts slowly with the current (params.drift). Exit: the
-  // light SINKS — every glowing thing drifts down while dimming. Tendril
+  // light SINKS - every glowing thing drifts down while dimming. Tendril
   // geometry is hand-authored from the demo and baked at compile time as
   // offsets from the word center (halfW/x × fontPx/120 units, frame-clamped).
   const p = dna.hero.params || {},
@@ -6893,13 +6953,13 @@ function setpieceBiobloom() {
   const js = `
   // ---- setpiece: BIOBLOOM (pre-glow gathers → word condenses → tendrils draw → light sinks) ----
   const BI = ${I.toFixed(3)}, BC = ${C.toFixed(3)}, SINK = ${SINK.toFixed(3)};
-  gsap.set(["#aglow", "#aword"], { xPercent: -50, yPercent: -50 });
-  gsap.set("#apex", { transformOrigin: "0px 0px" });
-  gsap.set("#preglow", { scale: 0.6 });
+  setNow(["#aglow", "#aword"], { xPercent: -50, yPercent: -50 });
+  setNow("#apex", { transformOrigin: "0px 0px" });
+  setNow("#preglow", { scale: 0.6 });
 
   // ===== the abyss breathes (whole clip) =====
-  tl.to("#vig", { keyframes: { opacity: [0.8, 0.72, 0.83, 0.74, 0.81, 0.76] },
-                  duration: ${(DUR - 0.09).toFixed(2)}, ease: "sine.inOut" }, 0.03);
+  addTo("#vig", { keyframes: { opacity: [0.8, 0.72, 0.83, 0.74, 0.81, 0.76] },
+                  duration: ${(DUR - 0.09).toFixed(2)}, ease: "inOutSine" }, 0.03);
 
   // ===== light tendrils (SVG, drawn outward from the word rect) =====
   const TND = ${J(TENDRILS)};
@@ -6914,75 +6974,75 @@ function setpieceBiobloom() {
       pp.setAttribute("d", d); pp.setAttribute("stroke", TCOL[i]);
       pp.setAttribute("stroke-width", w); g.appendChild(pp);
       const L = pp.getTotalLength();
-      gsap.set(pp, { strokeDasharray: L, strokeDashoffset: L });
+      setNow(pp, { strokeDasharray: L, strokeDashoffset: L });
       return pp;
     };
     tpaths.push([mk(gGlow, ${Math.max(6, Math.round(9 * ky))}), mk(gCore, ${Math.max(2, Math.round(3 * ky))})]);
   });
 
-  // ===== anticipation: a creature approaches — double-beat pre-glow =====
-  tl.to("#preglow", { keyframes: { opacity: [0.34, 0.14, 0.46, 0.34],
+  // ===== anticipation: a creature approaches - double-beat pre-glow =====
+  addTo("#preglow", { keyframes: { opacity: [0.34, 0.14, 0.46, 0.34],
                                    scale:   [0.9, 0.72, 1.08, 0.95] },
-                      duration: 0.19, ease: "sine.inOut" }, ${Math.max(0.05, I - 0.31).toFixed(3)});
-  tl.to("#preglow", { scale: 0.32, opacity: 0.95, duration: 0.1, ease: "power4.in" }, ${Math.max(0.17, I - 0.115).toFixed(3)});
-  tl.set("#preglow", { opacity: 0 }, BI);
-  tl.to("#pocket", { opacity: ${dna.plate.scrim ?? 0.55}, duration: 0.22, ease: "power2.out" }, BI - 0.03);
+                      duration: 0.19, ease: "inOutSine" }, ${Math.max(0.05, I - 0.31).toFixed(3)});
+  addTo("#preglow", { scale: 0.32, opacity: 0.95, duration: 0.1, ease: "inQuint" }, ${Math.max(0.17, I - 0.115).toFixed(3)});
+  setAt("#preglow", { opacity: 0 }, BI);
+  addTo("#pocket", { opacity: ${dna.plate.scrim ?? 0.55}, duration: 0.22, ease: "outCubic" }, BI - 0.03);
 
-  // ===== bloom arrival: crush -> contact squash (2f) -> elastic settle =====
-  tl.set("#apex", { opacity: 1 }, BI);
-  tl.fromTo("#apex", { scale: 2.35 }, { scale: 1.0, duration: ${(C - I).toFixed(3)}, ease: "power4.in" }, BI);
-  tl.fromTo("#aword", { filter: "blur(15px) brightness(2.6)" },
-            { filter: "blur(2px) brightness(1.7)", duration: ${(C - I).toFixed(3)}, ease: "power4.in" }, BI);
-  tl.set("#apex", { scaleX: 1.09, scaleY: 0.93 }, BC);
-  tl.set("#aword", { filter: "blur(0px) brightness(1.85)" }, BC);
-  tl.set("#aglow", { opacity: 0.9 }, BC);
-  tl.set("#spill", { opacity: 0.55 }, BC);
-  tl.to("#apex", { scaleX: 1, scaleY: 1, duration: 0.5, ease: "elastic.out(1, 0.42)" }, BC + 0.085);
-  tl.to("#aword", { filter: "blur(0px) brightness(1.45)", duration: 0.34, ease: "power2.out" }, BC + 0.1);
-  tl.to("#spill", { opacity: 0.2, duration: 0.12, ease: "expo.out" }, BC + 0.07);
+  // ===== bloom arrival: crush -> contact squash (2f) -> outElastic settle =====
+  setAt("#apex", { opacity: 1 }, BI);
+  addFromTo("#apex", { scale: 2.35 }, { scale: 1.0, duration: ${(C - I).toFixed(3)}, ease: "inQuint" }, BI);
+  addFromTo("#aword", { filter: "blur(15px) brightness(2.6)" },
+            { filter: "blur(2px) brightness(1.7)", duration: ${(C - I).toFixed(3)}, ease: "inQuint" }, BI);
+  setAt("#apex", { scaleX: 1.09, scaleY: 0.93 }, BC);
+  setAt("#aword", { filter: "blur(0px) brightness(1.85)" }, BC);
+  setAt("#aglow", { opacity: 0.9 }, BC);
+  setAt("#spill", { opacity: 0.55 }, BC);
+  addTo("#apex", { scaleX: 1, scaleY: 1, duration: 0.5, ease: "outElastic(1, 0.42)" }, BC + 0.085);
+  addTo("#aword", { filter: "blur(0px) brightness(1.45)", duration: 0.34, ease: "outCubic" }, BC + 0.1);
+  addTo("#spill", { opacity: 0.2, duration: 0.12, ease: "outExpo" }, BC + 0.07);
 
   // ===== tendrils draw outward, staggered =====
   tpaths.forEach(([pg, pc], i) => {
     const t0 = BC + 0.02 + i * ${stag};
-    tl.set(pg, { opacity: 0.5 }, t0);
-    tl.set(pc, { opacity: 0.95 }, t0);
-    tl.to([pg, pc], { strokeDashoffset: 0, duration: 0.42, ease: "power2.out" }, t0);
+    setAt(pg, { opacity: 0.5 }, t0);
+    setAt(pc, { opacity: 0.95 }, t0);
+    addTo([pg, pc], { strokeDashoffset: 0, duration: 0.42, ease: "outCubic" }, t0);
   });
 ${
   flickD >= 0.25
-    ? `  tl.to("#gGlow", { keyframes: { opacity: [0.78, 1, 0.72, 1, 0.82] },
-                    duration: ${flickD}, ease: "sine.inOut" }, BC + 0.34);`
+    ? `  addTo("#gGlow", { keyframes: { opacity: [0.78, 1, 0.72, 1, 0.82] },
+                    duration: ${flickD}, ease: "inOutSine" }, BC + 0.34);`
     : ""
 }
 
   // ===== hold: glow breathes strongly (8-14%), caustics counter-drift =====
-  tl.to("#aglow", { keyframes: { scale: [1.1, 1.04, 1.13, 1.07],
+  addTo("#aglow", { keyframes: { scale: [1.1, 1.04, 1.13, 1.07],
                                  opacity: [0.78, 0.9, 0.7, 0.85] },
-                    duration: ${breatheD}, ease: "sine.inOut" }, BC + 0.12);
+                    duration: ${breatheD}, ease: "inOutSine" }, BC + 0.12);
 ${
   wordFlickT != null
-    ? `  tl.to("#aword", { keyframes: { filter: ["blur(0px) brightness(1.6)", "blur(0px) brightness(1.4)",
+    ? `  addTo("#aword", { keyframes: { filter: ["blur(0px) brightness(1.6)", "blur(0px) brightness(1.4)",
                                           "blur(0px) brightness(1.62)", "blur(0px) brightness(1.5)"] },
-                    duration: 0.32, ease: "sine.inOut" }, ${wordFlickT.toFixed(3)});`
+                    duration: 0.32, ease: "inOutSine" }, ${wordFlickT.toFixed(3)});`
     : ""
 }
-  tl.to("#cauA", { opacity: 0.06, duration: 0.3, ease: "power1.out" }, BC + 0.02);
-  tl.to("#cauB", { opacity: 0.06, duration: 0.3, ease: "power1.out" }, BC + 0.07);
-  tl.fromTo("#cauA", { x: -45 }, { x: 85, duration: ${Math.min(0.95, DUR - 0.06 - (C + 0.02)).toFixed(2)}, ease: "none" }, BC + 0.02);
-  tl.fromTo("#cauB", { x: 55 }, { x: -75, duration: ${Math.min(0.95, DUR - 0.06 - (C + 0.02)).toFixed(2)}, ease: "none" }, BC + 0.02);
-  tl.to("#spill", { keyframes: { opacity: [0.13, 0.19, 0.15] },
-                    duration: ${shimD}, ease: "sine.inOut" }, BC + 0.21);
+  addTo("#cauA", { opacity: 0.06, duration: 0.3, ease: "outQuad" }, BC + 0.02);
+  addTo("#cauB", { opacity: 0.06, duration: 0.3, ease: "outQuad" }, BC + 0.07);
+  addFromTo("#cauA", { x: -45 }, { x: 85, duration: ${Math.min(0.95, DUR - 0.06 - (C + 0.02)).toFixed(2)}, ease: "linear" }, BC + 0.02);
+  addFromTo("#cauB", { x: 55 }, { x: -75, duration: ${Math.min(0.95, DUR - 0.06 - (C + 0.02)).toFixed(2)}, ease: "linear" }, BC + 0.02);
+  addTo("#spill", { keyframes: { opacity: [0.13, 0.19, 0.15] },
+                    duration: ${shimD}, ease: "inOutSine" }, BC + 0.21);
   // deep-sea current: the bloom drifts slowly, revealing letters from behind
   // the subject (x channel otherwise unused on #apex)
-  tl.to("#apex", { x: ${p.drift ?? -30}, duration: ${driftD}, ease: "sine.out" }, BI + 0.21);
+  addTo("#apex", { x: ${p.drift ?? -30}, duration: ${driftD}, ease: "outSine" }, BI + 0.21);
 
   // ===== exit: the light SINKS back into the deep =====
-  tl.to("#tndwrap", { y: 14, opacity: 0, duration: 0.2, ease: "power2.in" }, SINK);
-  tl.to(["#cauA", "#cauB"], { opacity: 0, duration: 0.18, ease: "power1.in" }, SINK + 0.04);
-  tl.to(["#pocket", "#spill"], { opacity: 0, duration: 0.22, ease: "power1.in" }, SINK + 0.04);
-  tl.to("#apex", { y: 26, opacity: 0, duration: 0.2, ease: "power2.in" }, SINK + 0.06);
-  tl.to("#aword", { filter: "blur(6px) brightness(1.2)", duration: 0.2, ease: "power1.in" }, SINK + 0.06);
-  tl.set("#apex", { display: "none" }, ${Math.min(SINK + 0.28, DUR - 0.02).toFixed(3)});`;
+  addTo("#tndwrap", { y: 14, opacity: 0, duration: 0.2, ease: "inCubic" }, SINK);
+  addTo(["#cauA", "#cauB"], { opacity: 0, duration: 0.18, ease: "inQuad" }, SINK + 0.04);
+  addTo(["#pocket", "#spill"], { opacity: 0, duration: 0.22, ease: "inQuad" }, SINK + 0.04);
+  addTo("#apex", { y: 26, opacity: 0, duration: 0.2, ease: "inCubic" }, SINK + 0.06);
+  addTo("#aword", { filter: "blur(6px) brightness(1.2)", duration: 0.2, ease: "inQuad" }, SINK + 0.06);
+  setAt("#apex", { display: "none" }, ${Math.min(SINK + 0.28, DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -6999,12 +7059,12 @@ function setpieceSilkribbon() {
   // f(t) from t=0 (~params.wash) and DEEPEN as the ribbon writes; a top
   // scrim (plate.scrim) charges in at I−0.34 (sky washout guard); a light
   // spill tints the sky once the ribbon completes, flickering gently; the
-  // halo breathes through the hold. Gentle — no shake, no contact squash:
+  // halo breathes through the hold. Gentle - no shake, no contact squash:
   // the apex verb is the writing itself.
   const h = dna.hero,
     p = h.params,
     I = heroIn;
-  // stroke path baked at COMPILE time — any word, zero tuning (drawon pattern)
+  // stroke path baked at COMPILE time - any word, zero tuning (drawon pattern)
   const fontPath = path.join(SKILL, "assets/strokefonts", dna.fonts.strokeFont);
   const gen = path.join(SKILL, "scripts/gen-stroke-path.py");
   const tw = HG.ribbonW || Math.min(p.targetWidth || 880, W - 240);
@@ -7081,18 +7141,18 @@ function setpieceSilkribbon() {
   const D = ${J(D)};
 
   // aurora wash: 2 huge soft blobs drifting f(t) (baked keyframes, ease none)
-  tl.to("#aurA", { opacity: ${p.wash ?? 0.12}, duration: 0.5, ease: "sine.out" }, 0.05);
-  tl.to("#aurB", { opacity: ${p.wash ?? 0.12}, duration: 0.5, ease: "sine.out" }, 0.15);
-  tl.to("#aurA", { keyframes: { x: [0, 34, 58, 44, 16, -8, 0], y: [0, 10, 22, 30, 22, 8, 0] },
-                   duration: ENDT, ease: "none" }, 0);
-  tl.to("#aurB", { keyframes: { x: [0, -28, -52, -60, -38, -12, 0], y: [0, 14, 8, -6, -16, -8, 0] },
-                   duration: ENDT, ease: "none" }, 0);
+  addTo("#aurA", { opacity: ${p.wash ?? 0.12}, duration: 0.5, ease: "outSine" }, 0.05);
+  addTo("#aurB", { opacity: ${p.wash ?? 0.12}, duration: 0.5, ease: "outSine" }, 0.15);
+  addTo("#aurA", { keyframes: { x: [0, 34, 58, 44, 16, -8, 0], y: [0, 10, 22, 30, 22, 8, 0] },
+                   duration: ENDT, ease: "linear" }, 0);
+  addTo("#aurB", { keyframes: { x: [0, -28, -52, -60, -38, -12, 0], y: [0, 14, 8, -6, -16, -8, 0] },
+                   duration: ENDT, ease: "linear" }, 0);
   // sky reaction: the aurora deepens while the ribbon writes
-  tl.to("#aurA", { opacity: ${p.deepen ?? 0.2}, duration: 0.5, ease: "sine.inOut" }, I9 - 0.1);
-  tl.to("#aurB", { opacity: ${p.deepen ?? 0.2}, duration: 0.5, ease: "sine.inOut" }, I9 - 0.05);
+  addTo("#aurA", { opacity: ${p.deepen ?? 0.2}, duration: 0.5, ease: "inOutSine" }, I9 - 0.1);
+  addTo("#aurB", { opacity: ${p.deepen ?? 0.2}, duration: 0.5, ease: "inOutSine" }, I9 - 0.05);
 
   // apex scrim charges in before the ribbon (sky washout guard)
-  tl.to("#apexScrim", { opacity: 1, duration: 0.38, ease: "sine.inOut" }, I9 - 0.34);
+  addTo("#apexScrim", { opacity: 1, duration: 0.38, ease: "inOutSine" }, I9 - 0.34);
 
   // silk ribbon: sequential stroke draw-on, halo + core share the gradient
   const subs = D.split(/(?=M )/).map(s => s.trim()).filter(Boolean);
@@ -7113,47 +7173,47 @@ function setpieceSilkribbon() {
   let t9 = I9;
   strokes.forEach((s) => {
     const d = WIN * s.len / total;
-    gsap.set([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
-    tl.set([s.core, s.halo], { opacity: 1 }, t9);
-    tl.fromTo([s.core, s.halo], { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, t9);
+    setNow([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
+    setAt([s.core, s.halo], { opacity: 1 }, t9);
+    addFromTo([s.core, s.halo], { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, t9);
     // nib (a soft light mote) rides each stroke, hops at pen lifts
     const n = Math.max(4, Math.round(s.len / 14)), xs = [], ys = [];
     for (let k = 0; k <= n; k++) {
       const pt = s.core.getPointAtLength(s.len * k / n);
       xs.push(pt.x); ys.push(pt.y);
     }
-    tl.set(["#nib", "#nibCore"], { x: xs[0], y: ys[0] }, t9);
-    tl.to("#nib", { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, t9);
-    tl.to("#nibCore", { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, t9);
+    setAt(["#nib", "#nibCore"], { x: xs[0], y: ys[0] }, t9);
+    addTo("#nib", { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, t9);
+    addTo("#nibCore", { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, t9);
     t9 += d;
   });
-  gsap.set(["#nib", "#nibCore"], { attr: { cx: 0, cy: 0 } });
-  tl.set("#nib", { opacity: 0.85 }, I9 - 0.01);
-  tl.set("#nibCore", { opacity: 1 }, I9 - 0.01);
-  tl.to("#nib", { scale: 2.4, opacity: 0, duration: 0.22, ease: "sine.in",
+  setNow(["#nib", "#nibCore"], { attr: { cx: 0, cy: 0 } });
+  setAt("#nib", { opacity: 0.85 }, I9 - 0.01);
+  setAt("#nibCore", { opacity: 1 }, I9 - 0.01);
+  addTo("#nib", { scale: 2.4, opacity: 0, duration: 0.22, ease: "inSine",
                   transformOrigin: "50% 50%" }, DRAWN);
-  tl.to("#nibCore", { scale: 2.4, opacity: 0, duration: 0.16, ease: "sine.in",
+  addTo("#nibCore", { scale: 2.4, opacity: 0, duration: 0.16, ease: "inSine",
                       transformOrigin: "50% 50%" }, DRAWN);
 
-  // SIGNATURE: the gradient FLOWS through the drawn ribbon — translate the
+  // SIGNATURE: the gradient FLOWS through the drawn ribbon - translate the
   // userSpaceOnUse gradient (x1/x2 together); reflect spread makes the aurora
   // colors march continuously along the silk during the hold
-  tl.fromTo("#agrad", { attr: { x1: ${gx1}, x2: ${gx1 + span} } },
+  addFromTo("#agrad", { attr: { x1: ${gx1}, x2: ${gx1 + span} } },
             { attr: { x1: ${gx1 - Math.round(1.5 * span)}, x2: ${gx1 + span - Math.round(1.5 * span)} },
-              duration: ENDT - (I9 - 0.07), ease: "none" }, I9 - 0.07);
+              duration: ENDT - (I9 - 0.07), ease: "linear" }, I9 - 0.07);
 
   // light spill tints the sky as the ribbon completes
-  tl.to("#spill", { opacity: ${p.spill ?? 0.3}, duration: 0.7, ease: "sine.out" }, I9 + 0.1);
+  addTo("#spill", { opacity: ${p.spill ?? 0.3}, duration: 0.7, ease: "outSine" }, I9 + 0.1);
   if (ENDT - (I9 + 0.8) > 0.15) {
     const SP = ${p.spill ?? 0.3};
-    tl.to("#spill", { keyframes: { opacity: [SP, SP - 0.05, SP + 0.01, SP - 0.04, SP] },
-                      duration: ENDT - (I9 + 0.8), ease: "none" }, I9 + 0.8);
+    addTo("#spill", { keyframes: { opacity: [SP, SP - 0.05, SP + 0.01, SP - 0.04, SP] },
+                      duration: ENDT - (I9 + 0.8), ease: "linear" }, I9 + 0.8);
   }
   // hold life: the halo breathes gently (aurora shimmer)
   if (ENDT - DRAWN > 0.1)
-    tl.to("#haloG", { keyframes: { opacity: [0.85, 0.7, 0.9, 0.72, 0.86] },
-                      duration: ENDT - DRAWN, ease: "none" }, DRAWN);`;
+    addTo("#haloG", { keyframes: { opacity: [0.85, 0.7, 0.9, 0.72, 0.86] },
+                      duration: ENDT - DRAWN, ease: "linear" }, DRAWN);`;
   return { css, html, js };
 }
 
@@ -7161,7 +7221,7 @@ function setpieceScopetrace() {
   // ---- setpiece: SCOPETRACE (the trace leaps off the scope and WRITES the word) ----
   // A surge column jumps from the scope band up to the pen-start point, then
   // the waveform WRITES the hero word in a thin phosphor stroke (sequential
-  // Hershey stroke reveal — core only, no halo: it is a trace, not a tube).
+  // Hershey stroke reveal - core only, no halo: it is a trace, not a tube).
   // The phosphor FILL flicker-arrives 2 frames + a 5-step blink AFTER the
   // write completes (scope persistence), hums + breathes 1.6% through the
   // hold, then the word COLLAPSES to a flatline (scaleY crush + horizontal
@@ -7243,15 +7303,15 @@ function setpieceScopetrace() {
   const D = ${J(D)};
 
   // scene reaction: phosphor scrim + spill while the trace owns the room
-  tl.fromTo("#scdim", { opacity: 0 }, { opacity: 1, duration: 0.22, ease: "power2.in" }, I - 0.18);
-  tl.to("#scdim", { opacity: 0, duration: 0.30, ease: "power1.in" }, EXIT + 0.05);
-  tl.fromTo("#scspill", { opacity: 0 }, { opacity: ${p.spill ?? 0.55}, duration: WIN, ease: "power1.in" }, I);
-  tl.to("#scspill", { opacity: 0, duration: 0.18, ease: "power2.in" }, EXIT);
+  addFromTo("#scdim", { opacity: 0 }, { opacity: 1, duration: 0.22, ease: "inCubic" }, I - 0.18);
+  addTo("#scdim", { opacity: 0, duration: 0.30, ease: "inQuad" }, EXIT + 0.05);
+  addFromTo("#scspill", { opacity: 0 }, { opacity: ${p.spill ?? 0.55}, duration: WIN, ease: "inQuad" }, I);
+  addTo("#scspill", { opacity: 0, duration: 0.18, ease: "inCubic" }, EXIT);
 
   // surge: the trace leaps up from the scope band to the pen-start point
-  tl.fromTo("#scsurge", { opacity: 0, scaleY: 0, transformOrigin: "50% 100%" },
-            { opacity: 1, scaleY: 1, duration: 0.10, ease: "power3.in" }, I - 0.12);
-  tl.set("#scsurge", { opacity: 0 }, I + 0.04);
+  addFromTo("#scsurge", { opacity: 0, scaleY: 0, transformOrigin: "50% 100%" },
+            { opacity: 1, scaleY: 1, duration: 0.10, ease: "inQuart" }, I - 0.12);
+  setAt("#scsurge", { opacity: 0 }, I + 0.04);
 
   // sequential stroke draw-on (one <path> per pen lift; core writes, halo waits)
   const subs = D.split(/(?=M )/).map(s => s.trim()).filter(Boolean);
@@ -7275,36 +7335,36 @@ function setpieceScopetrace() {
   let t = I;
   strokes.forEach((s) => {
     const d = WIN * s.len / total;
-    gsap.set([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
-    gsap.set(s.halo, { opacity: 0 });           // halo arrives at FLICK, not during write
-    tl.set(s.core, { opacity: 1 }, t);
-    tl.fromTo(s.core, { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, t);
-    tl.fromTo(s.halo, { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, t);
+    setNow([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
+    setNow(s.halo, { opacity: 0 });           // halo arrives at FLICK, not during write
+    setAt(s.core, { opacity: 1 }, t);
+    addFromTo(s.core, { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, t);
+    addFromTo(s.halo, { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, t);
     const n = Math.max(4, Math.round(s.len / 14)), xs = [], ys = [];
     for (let k = 0; k <= n; k++) {
       const pt = s.core.getPointAtLength(s.len * k / n);
       xs.push(pt.x); ys.push(pt.y);
     }
-    tl.set(scpen, { x: xs[0], y: ys[0] }, t);
-    tl.to(scpen, { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, t);
+    setAt(scpen, { x: xs[0], y: ys[0] }, t);
+    addTo(scpen, { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, t);
     t += d;
   });
-  gsap.set(scpen, { attr: { cx: 0, cy: 0 } });
-  tl.set(scpen, { opacity: 1 }, I - 0.01);
-  tl.to(scpen, { scale: 2.4, opacity: 0, duration: 0.12, ease: "power2.in",
+  setNow(scpen, { attr: { cx: 0, cy: 0 } });
+  setAt(scpen, { opacity: 1 }, I - 0.01);
+  addTo(scpen, { scale: 2.4, opacity: 0, duration: 0.12, ease: "inCubic",
                  transformOrigin: "50% 50%" }, DRAWN);
 
   // fill flicker-on (halo = phosphor "fill"; full within 2 frames)
-  tl.set("#schaloG", { opacity: 0 }, 0);
+  setAt("#schaloG", { opacity: 0 }, 0);
   const haloPaths = strokes.map(s => s.halo);
-  tl.set(haloPaths, { opacity: 1 }, FLICK - 2 * F);      // pre-arm strokes
+  setAt(haloPaths, { opacity: 1 }, FLICK - 2 * F);      // pre-arm strokes
   [[1, 0], [0.25, 1], [1, 2], [0.55, 3], [1, 4]].forEach(([o, k]) => {
-    tl.set("#schaloG", { opacity: o }, FLICK + k * F);
+    setAt("#schaloG", { opacity: o }, FLICK + k * F);
   });
-  tl.set("#sccoreG", { opacity: 0.55 }, FLICK + F);
-  tl.set("#sccoreG", { opacity: 1 }, FLICK + 2 * F);
+  setAt("#sccoreG", { opacity: 0.55 }, FLICK + F);
+  setAt("#sccoreG", { opacity: 1 }, FLICK + 2 * F);
 
   // hold life: glow hum + 1.6% breathe (breathe ends exactly at the collapse)
   const humStart = FLICK + 5 * F, humDur = Math.max(0.2, EXIT - humStart);
@@ -7314,22 +7374,22 @@ function setpieceScopetrace() {
     const tt = k / NH * humDur;
     humVals.push(0.80 + 0.10 * Math.sin(2 * Math.PI * 7 * tt) + 0.06 * Math.sin(2 * Math.PI * 11.3 * tt + 0.9));
   }
-  tl.to("#schaloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "none" }, humStart);
-  tl.fromTo("#scblk", { scale: 1, transformOrigin: "${ox}% ${oy}%" },
-            { scale: 1.016, duration: humDur, ease: "sine.inOut" }, humStart);
+  addTo("#schaloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "linear" }, humStart);
+  addFromTo("#scblk", { scale: 1, transformOrigin: "${ox}% ${oy}%" },
+            { scale: 1.016, duration: humDur, ease: "inOutSine" }, humStart);
 
   // exit: trace collapses back to a flatline (the scope takes the word back)
-  tl.to("#scblk", { scaleY: 0.02, duration: 0.14, ease: "power3.in",
+  addTo("#scblk", { scaleY: 0.02, duration: 0.14, ease: "inQuart",
                     transformOrigin: "${ox}% ${oy}%" }, EXIT);
-  tl.set("#scblk", { opacity: 0 }, EXIT + 0.15);
-  tl.set("#scflat", { opacity: 1 }, EXIT + 0.13);
-  tl.to("#scflat", { opacity: 0, scaleX: 0.1, duration: 0.16, ease: "power2.in",
+  setAt("#scblk", { opacity: 0 }, EXIT + 0.15);
+  setAt("#scflat", { opacity: 1 }, EXIT + 0.13);
+  addTo("#scflat", { opacity: 0, scaleX: 0.1, duration: 0.16, ease: "inCubic",
                      transformOrigin: "50% 50%" }, EXIT + 0.15);
 
   // second beat: 1-frame phosphor pulse behind the subject on the death word
-  tl.set("#scpulse", { opacity: 1 }, ${Math.min(LASTWORD.start, DUR - 0.15).toFixed(3)});
-  tl.set("#scpulse", { opacity: 0.4 }, ${Math.min(LASTWORD.start + F, DUR - 0.1).toFixed(3)});
-  tl.set("#scpulse", { opacity: 0 }, ${Math.min(LASTWORD.start + 2 * F, DUR - 0.05).toFixed(3)});`;
+  setAt("#scpulse", { opacity: 1 }, ${Math.min(LASTWORD.start, DUR - 0.15).toFixed(3)});
+  setAt("#scpulse", { opacity: 0.4 }, ${Math.min(LASTWORD.start + F, DUR - 0.1).toFixed(3)});
+  setAt("#scpulse", { opacity: 0 }, ${Math.min(LASTWORD.start + 2 * F, DUR - 0.05).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -7415,22 +7475,22 @@ function setpiecePapermat() {
   document.querySelector("#mat .pap2").style.clipPath = torn(${matW - 14}, ${matH - 14}, 10, 12, 4, prnd);
 
   // ===== MAT: the animator slaps the backdrop down first =====
-  gsap.set("#mat", { transformOrigin: "50% 100%" });
-  tl.fromTo("#mat", { y: ${dropM}, rotation: -5 },
+  setNow("#mat", { transformOrigin: "50% 100%" });
+  addFromTo("#mat", { y: ${dropM}, rotation: -5 },
             { y: 6, rotation: -1.2, duration: 0.14, ease: "steps(2)" }, ${matT});
-  tl.set("#mat", { scaleY: 0.97, scaleX: 1.02 }, ${(matT + 0.14).toFixed(3)});
-  tl.set("#mat", { y: 0, scaleY: 1, scaleX: 1 }, ${(matT + 0.223).toFixed(3)});
-  tl.set("#matshad", { opacity: 0.32 }, ${(matT + 0.14).toFixed(3)});
+  setAt("#mat", { scaleY: 0.97, scaleX: 1.02 }, ${(matT + 0.14).toFixed(3)});
+  setAt("#mat", { y: 0, scaleY: 1, scaleX: 1 }, ${(matT + 0.223).toFixed(3)});
+  setAt("#matshad", { opacity: 0.32 }, ${(matT + 0.14).toFixed(3)});
   for (let t = ${(matT + 0.54).toFixed(3)}; t < ${(scatT - 0.08).toFixed(3)}; t += 0.25)
-    tl.set("#mat", { x: (prnd()-0.5)*1.6, y: (prnd()-0.5)*1.6, rotation: -1.2 + (prnd()-0.5)*0.7 }, t);
+    setAt("#mat", { x: (prnd()-0.5)*1.6, y: (prnd()-0.5)*1.6, rotation: -1.2 + (prnd()-0.5)*0.7 }, t);
   // mat leaves last, swept off down-right
-  tl.to("#mat", { x: 430, y: ${H - 40}, rotation: 13, duration: 0.26, ease: "steps(3)" }, ${(scatT + 0.21).toFixed(3)});
-  tl.set("#matshad", { opacity: 0 }, ${(scatT + 0.25).toFixed(3)});
+  addTo("#mat", { x: 430, y: ${H - 40}, rotation: 13, duration: 0.26, ease: "steps(3)" }, ${(scatT + 0.21).toFixed(3)});
+  setAt("#matshad", { opacity: 0 }, ${(scatT + 0.25).toFixed(3)});
 
   // ===== SCENE REACTION: warm vignette charges with the landing =====
-  tl.fromTo("#vigP", { opacity: 0 }, { opacity: ${VIG}, duration: 0.24, ease: "power2.in" }, ${matT});
-  tl.to("#vigP", { opacity: ${(VIG * 0.4).toFixed(2)}, duration: 0.7, ease: "power2.out" }, ${vigSettleT});
-  tl.to("#vigP", { opacity: 0, duration: 0.35, ease: "power1.in" }, ${(scatT - 0.11).toFixed(3)});
+  addFromTo("#vigP", { opacity: 0 }, { opacity: ${VIG}, duration: 0.24, ease: "inCubic" }, ${matT});
+  addTo("#vigP", { opacity: ${(VIG * 0.4).toFixed(2)}, duration: 0.7, ease: "outCubic" }, ${vigSettleT});
+  addTo("#vigP", { opacity: 0, duration: 0.35, ease: "inQuad" }, ${(scatT - 0.11).toFixed(3)});
 
   // ===== LETTERS: torn chips drop with stepped gravity =====
   const GLYPHS = ${J([...heroText])};
@@ -7458,47 +7518,47 @@ function setpiecePapermat() {
     pap2.style.clipPath = torn(${tileW - 10}, ${tileH - 10}, 6, 6, 7, prnd);
     chip.appendChild(pap); chip.appendChild(pap2); chip.appendChild(gl);
     apx.appendChild(chip);
-    gsap.set(chip, { transformOrigin: "50% 100%" });
+    setNow(chip, { transformOrigin: "50% 100%" });
 
     // anticipation shadow blob appears on the landing spot 3 frames early
-    tl.set(shad, { opacity: 0.16, scaleX: 1.35 }, C - 0.125);
-    // DROP: two airborne poses then contact — steps(3) gravity, 1-frame overshoot
-    tl.fromTo(chip, { y: ${dropL}, rotation: r0 - 8 },
+    setAt(shad, { opacity: 0.16, scaleX: 1.35 }, C - 0.125);
+    // DROP: two airborne poses then contact - steps(3) gravity, 1-frame overshoot
+    addFromTo(chip, { y: ${dropL}, rotation: r0 - 8 },
               { y: 8, rotation: r0, duration: 0.21, ease: "steps(3)" }, C - 0.21);
-    tl.set(chip, { scaleX: 1.07, scaleY: 0.90 }, C);                  // contact squash
-    tl.set(shad, { opacity: 0.50, scaleX: 1 }, C);                    // shadow grows on land
-    tl.set(chip, { y: -4, scaleY: 1.05, scaleX: 0.97 }, C + 0.0833);  // 12fps settle pose 1
-    tl.set(chip, { y: 2,  scaleY: 0.98, scaleX: 1.01 }, C + 0.1667);  // pose 2
-    tl.set(chip, { y: 0,  scaleY: 1,    scaleX: 1    }, C + 0.25);    // rest
-    tl.to(shad, { opacity: 0.34, duration: 0.3, ease: "power1.out" }, C + 0.30);
+    setAt(chip, { scaleX: 1.07, scaleY: 0.90 }, C);                  // contact squash
+    setAt(shad, { opacity: 0.50, scaleX: 1 }, C);                    // shadow grows on land
+    setAt(chip, { y: -4, scaleY: 1.05, scaleX: 0.97 }, C + 0.0833);  // 12fps settle pose 1
+    setAt(chip, { y: 2,  scaleY: 0.98, scaleX: 1.01 }, C + 0.1667);  // pose 2
+    setAt(chip, { y: 0,  scaleY: 1,    scaleX: 1    }, C + 0.25);    // rest
+    addTo(shad, { opacity: 0.34, duration: 0.3, ease: "outQuad" }, C + 0.30);
 
-    // HOLD: 8fps wobble — baked sets every 3 frames (the stop-motion heartbeat)
+    // HOLD: 8fps wobble - baked sets every 3 frames (the stop-motion heartbeat)
     for (let t = C + 0.50; t < SCAT - 0.13; t += 0.125)
-      tl.set(chip, { rotation: r0 + (prnd()-0.5)*1.4, x: (prnd()-0.5)*1.4, y: (prnd()-0.5)*1.4 }, t);
+      setAt(chip, { rotation: r0 + (prnd()-0.5)*1.4, x: (prnd()-0.5)*1.4, y: (prnd()-0.5)*1.4 }, t);
 
-    // SCATTER on the final word — chips slide off-table down-right, steps(4)
+    // SCATTER on the final word - chips slide off-table down-right, steps(4)
     const S = SCAT + i*0.045;
-    tl.to(chip, { x: 250 + prnd()*200, y: ${H - 110} + prnd()*110, rotation: r0 + 28 + prnd()*24,
+    addTo(chip, { x: 250 + prnd()*200, y: ${H - 110} + prnd()*110, rotation: r0 + 28 + prnd()*24,
                   duration: 0.30, ease: "steps(4)" }, S);
-    tl.set(shad, { opacity: 0 }, S + 0.06);
+    setAt(shad, { opacity: 0 }, S + 0.06);
   });
 ${
   D1 >= 0.4
     ? `
   // hold loom: the whole tableau breathes very slowly (camera push feel)
-  tl.to("#apx", { scale: 1.016, duration: ${D1}, ease: "sine.inOut" }, ${T1});
-${D2 >= 0.3 ? `  tl.to("#apx", { scale: 1.004, duration: ${D2}, ease: "sine.inOut" }, ${T2});` : ""}`
+  addTo("#apx", { scale: 1.016, duration: ${D1}, ease: "inOutSine" }, ${T1});
+${D2 >= 0.3 ? `  addTo("#apx", { scale: 1.004, duration: ${D2}, ease: "inOutSine" }, ${T2});` : ""}`
     : ""
 }
   // table bump, 1 frame before the scatter begins
-  tl.set("#apx", { y: 4 }, ${(scatT - 0.041).toFixed(3)});
-  tl.set("#apx", { y: 0 }, ${(scatT + 0.001).toFixed(3)});`;
+  setAt("#apx", { y: 4 }, ${(scatT - 0.041).toFixed(3)});
+  setAt("#apx", { y: 0 }, ${(scatT + 0.001).toFixed(3)});`;
   return { css, html, js };
 }
 
 function setpieceCenterfold() {
   // POP-UP BOOK CENTERFOLD: blue + cream 12-point paper starbursts unfold on a
-  // baseline hinge (scaleY 0.03→1 back.out, staggered), then the hero word
+  // baseline hinge (scaleY 0.03→1 outBack(1.70158), staggered), then the hero word
   // pops up in hinged clip-path segments (rotationX 85→0, the body motif at
   // full amplitude), kraft struts lean in, backdrop + word wobble-settle
   // TOGETHER (one wrapper owns rotationX), breathe through the hold, and the
@@ -7590,77 +7650,77 @@ ${Array.from({ length: segs }, (_, i) => `            <div class="cfseg" id="cfs
   document.getElementById("cfpB").setAttribute("points", starPts(${cx}, ${cy}, 12, ${R1}, ${r1}, -Math.PI/2 + 0.13));
   document.getElementById("cfpC").setAttribute("points", starPts(${cx}, ${cy}, 12, ${R2}, ${r2}, -Math.PI/2));
 
-  gsap.set("#cf", { xPercent: -50, yPercent: -50 });
-  gsap.set("#cfWob", { transformPerspective: 900, transformOrigin: "50% 82%" });
-  gsap.set(".cfburst", { transformOrigin: "50% 90%", scaleY: 0.03 });
-  gsap.set(".cfseg", { transformPerspective: 800, transformOrigin: "50% 100%", rotationX: 85 });
-  gsap.set(".cfstrut", { transformOrigin: "50% 100%", scaleY: 0 });
-  gsap.set("#cfShadow", { scaleX: 0.3 });
+  setNow("#cf", { xPercent: -50, yPercent: -50 });
+  setNow("#cfWob", { transformPerspective: 900, transformOrigin: "50% 82%" });
+  setNow(".cfburst", { transformOrigin: "50% 90%", scaleY: 0.03 });
+  setNow(".cfseg", { transformPerspective: 800, transformOrigin: "50% 100%", rotationX: 85 });
+  setNow(".cfstrut", { transformOrigin: "50% 100%", scaleY: 0 });
+  setNow("#cfShadow", { scaleX: 0.3 });
 
   // scrim charges before the unfold (bright sky insurance)
-  tl.to("#cfscrim", { opacity: ${p.scrim ?? 0.42}, duration: 0.28, ease: "power2.out" }, ${scrimT});
+  addTo("#cfscrim", { opacity: ${p.scrim ?? 0.42}, duration: 0.28, ease: "outCubic" }, ${scrimT});
 
-  // backdrop unfolds FIRST — baseline hinge, paper overshoot
-  tl.set("#cfbBlue", { opacity: 1 }, ${blueT});
-  tl.to("#cfbBlue", { scaleY: 1, duration: 0.26, ease: "back.out(1.6)" }, ${blueT});
-  tl.set("#cfbCream", { opacity: 1 }, ${(+blueT + 0.06).toFixed(3)});
-  tl.to("#cfbCream", { scaleY: 1, duration: 0.26, ease: "back.out(1.6)" }, ${(+blueT + 0.06).toFixed(3)});
-  tl.to("#cfShadow", { opacity: 0.45, scaleX: 1, duration: 0.30, ease: "power2.out" }, ${(+blueT + 0.03).toFixed(3)});
+  // backdrop unfolds FIRST - baseline hinge, paper overshoot
+  setAt("#cfbBlue", { opacity: 1 }, ${blueT});
+  addTo("#cfbBlue", { scaleY: 1, duration: 0.26, ease: "outBack(1.6)" }, ${blueT});
+  setAt("#cfbCream", { opacity: 1 }, ${(+blueT + 0.06).toFixed(3)});
+  addTo("#cfbCream", { scaleY: 1, duration: 0.26, ease: "outBack(1.6)" }, ${(+blueT + 0.06).toFixed(3)});
+  addTo("#cfShadow", { opacity: 0.45, scaleX: 1, duration: 0.30, ease: "outCubic" }, ${(+blueT + 0.03).toFixed(3)});
 
   // the word pops up in hinged segments (left→right), staggered
   for (let i = 0; i < ${segs}; i++) {
     const t0 = I + i * ${stag}, el = "#cfsg" + i;
-    tl.set(el, { opacity: 1 }, t0);                                  // 1 within 2 frames
-    tl.to(el, { rotationX: 0, duration: 0.26, ease: "back.out(1.4)" }, t0);
+    setAt(el, { opacity: 1 }, t0);                                  // 1 within 2 frames
+    addTo(el, { rotationX: 0, duration: 0.26, ease: "outBack(1.4)" }, t0);
   }
 
   // visible paper struts lean in behind the word
-  tl.set(".cfstrut", { opacity: 1 }, ${(I + 0.328).toFixed(3)});
-  tl.to("#cfs1", { scaleY: 1, duration: 0.12, ease: "back.out(2)" }, ${(I + 0.328).toFixed(3)});
-  tl.to("#cfs2", { scaleY: 1, duration: 0.12, ease: "back.out(2)" }, ${(I + 0.378).toFixed(3)});
+  setAt(".cfstrut", { opacity: 1 }, ${(I + 0.328).toFixed(3)});
+  addTo("#cfs1", { scaleY: 1, duration: 0.12, ease: "outBack(2)" }, ${(I + 0.328).toFixed(3)});
+  addTo("#cfs2", { scaleY: 1, duration: 0.12, ease: "outBack(2)" }, ${(I + 0.378).toFixed(3)});
 ${
   wobD >= 0.2
     ? `
   // backdrop + word wobble-settle TOGETHER (one wrapper owns it)
-  tl.to("#cfWob", { keyframes: { rotationX: [0, -3.6, 2.4, -1.3, 0.6, 0] },
-                    duration: ${wobD}, ease: "sine.inOut" }, ${wobT});`
+  addTo("#cfWob", { keyframes: { rotationX: [0, -3.6, 2.4, -1.3, 0.6, 0] },
+                    duration: ${wobD}, ease: "inOutSine" }, ${wobT});`
     : ""
 }
 ${
   brD >= 0.5
     ? `
   // hold life: slow paper breathing through the silence
-  tl.to("#cfWob", { keyframes: { rotationX: [0, 1.5, -1.1, 1.3, 0] },
-                    duration: ${brD}, ease: "sine.inOut" }, ${brT});
-  tl.to("#cfShadow", { keyframes: { scaleX: [1, 1.05, 0.98, 1.04, 1] },
-                       duration: ${brD}, ease: "sine.inOut" }, ${brT});`
+  addTo("#cfWob", { keyframes: { rotationX: [0, 1.5, -1.1, 1.3, 0] },
+                    duration: ${brD}, ease: "inOutSine" }, ${brT});
+  addTo("#cfShadow", { keyframes: { scaleX: [1, 1.05, 0.98, 1.04, 1] },
+                       duration: ${brD}, ease: "inOutSine" }, ${brT});`
     : ""
 }
 
-  // EXIT — the centerfold folds flat (book closing)
+  // EXIT - the centerfold folds flat (book closing)
   for (let i = 0; i < ${segs}; i++) {
     const ft = XO + i * 0.05, el = "#cfsg" + i;
-    tl.to(el, { rotationX: 88, duration: 0.14, ease: "power2.in" }, ft);
-    tl.set(el, { opacity: 0 }, ft + 0.15);
+    addTo(el, { rotationX: 88, duration: 0.14, ease: "inCubic" }, ft);
+    setAt(el, { opacity: 0 }, ft + 0.15);
   }
-  tl.to(".cfstrut", { scaleY: 0, duration: 0.10, ease: "power2.in" }, XO + 0.02);
-  tl.to("#cfbCream", { scaleY: 0.03, duration: 0.13, ease: "power2.in" }, XO + 0.12);
-  tl.set("#cfbCream", { opacity: 0 }, XO + 0.26);
-  tl.to("#cfbBlue", { scaleY: 0.03, duration: 0.12, ease: "power2.in" }, XO + 0.18);
-  tl.set("#cfbBlue", { opacity: 0 }, XO + 0.31);
-  tl.to("#cfShadow", { opacity: 0, scaleX: 0.3, duration: 0.16, ease: "power1.in" }, XO + 0.14);
-  tl.to("#cfscrim", { opacity: 0, duration: 0.28, ease: "power1.in" }, XO + 0.02);`;
+  addTo(".cfstrut", { scaleY: 0, duration: 0.10, ease: "inCubic" }, XO + 0.02);
+  addTo("#cfbCream", { scaleY: 0.03, duration: 0.13, ease: "inCubic" }, XO + 0.12);
+  setAt("#cfbCream", { opacity: 0 }, XO + 0.26);
+  addTo("#cfbBlue", { scaleY: 0.03, duration: 0.12, ease: "inCubic" }, XO + 0.18);
+  setAt("#cfbBlue", { opacity: 0 }, XO + 0.31);
+  addTo("#cfShadow", { opacity: 0, scaleX: 0.3, duration: 0.16, ease: "inQuad" }, XO + 0.14);
+  addTo("#cfscrim", { opacity: 0, duration: 0.28, ease: "inQuad" }, XO + 0.02);`;
   return { css, html, js };
 }
 
 function setpieceChalkwrite() {
   // ---- setpiece: CHALKWRITE (the board grows and a hand WRITES the word) ----
   // The lower chalk band grows into a FULL deep-green board behind the subject
-  // 0.3s before the apex (scaleY power3.out from the bottom edge, the room
-  // dims with it); the hero word is HAND-WRITTEN in chalk — sequential Hershey
+  // 0.3s before the apex (scaleY outQuart from the bottom edge, the room
+  // dims with it); the hero word is HAND-WRITTEN in chalk - sequential Hershey
   // stroke reveal (drawon pattern), dry/rough via seeded ±1px jitter baked
   // onto every pen point, a blurred halo under a tight core, a chalk-stick
-  // nib riding the pen — while dust specks fall from the nib. On completion a
+  // nib riding the pen - while dust specks fall from the nib. On completion a
   // hand-slap CLAP shakes the board 1 frame (the dust burst lives in the
   // rail, in FRONT of the subject: fx.chalkclap), then TWO violent
   // accelerating underlines slash beneath (nib rides them, dust kicks at the
@@ -7755,12 +7815,12 @@ function setpieceChalkwrite() {
   const crnd = mulberry32(${p.seed ?? 7});
 
   // scene reaction: vignette early; the room dims as the board grows
-  tl.fromTo("#cwVig", { opacity: 0 }, { opacity: ${p.vig ?? 0.35}, duration: 0.35, ease: "power1.out" }, 0.10);
-  tl.fromTo("#cwDim", { opacity: 0 }, { opacity: ${p.dim ?? 0.22}, duration: 0.30, ease: "power1.in" }, ${(I - 0.3).toFixed(3)});
+  addFromTo("#cwVig", { opacity: 0 }, { opacity: ${p.vig ?? 0.35}, duration: 0.35, ease: "outQuad" }, 0.10);
+  addFromTo("#cwDim", { opacity: 0 }, { opacity: ${p.dim ?? 0.22}, duration: 0.30, ease: "inQuad" }, ${(I - 0.3).toFixed(3)});
 
   // the board grows taller 0.3s before the writing
-  gsap.set("#cwBoard", { scaleY: 0, transformOrigin: "50% 100%" });
-  tl.to("#cwBoard", { scaleY: 1, duration: 0.30, ease: "power3.out" }, ${(I - 0.3).toFixed(3)});
+  setNow("#cwBoard", { scaleY: 0, transformOrigin: "50% 100%" });
+  addTo("#cwBoard", { scaleY: 1, duration: 0.30, ease: "outQuart" }, ${(I - 0.3).toFixed(3)});
 
   // chalk strokes: dry/rough = baked ±1px y jitter on every pen point
   const jrnd = mulberry32(${p.jitterSeed ?? 21});
@@ -7784,25 +7844,25 @@ function setpieceChalkwrite() {
   let total = 0;
   strokes.forEach((s) => { s.len = s.core.getTotalLength(); total += s.len; });
   const nib = document.getElementById("cwNib");
-  gsap.set(nib, { rotation: -36, transformOrigin: "50% 50%" });
+  setNow(nib, { rotation: -36, transformOrigin: "50% 50%" });
   let acc = 0;
   const cum = [];                                      // cumulative starts per stroke
   strokes.forEach((s) => { cum.push(acc); acc += s.len; });
   strokes.forEach((s, si) => {
     const d = WIN8 * s.len / total, st = I8 + WIN8 * cum[si] / total;
-    gsap.set([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
-    tl.set([s.core, s.halo], { opacity: 1 }, st);
-    tl.fromTo([s.core, s.halo], { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, st);
+    setNow([s.core, s.halo], { strokeDasharray: s.len, strokeDashoffset: s.len });
+    setAt([s.core, s.halo], { opacity: 1 }, st);
+    addFromTo([s.core, s.halo], { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, st);
     const n = Math.max(4, Math.round(s.len / 14)), xs = [], ys = [];
     for (let k = 0; k <= n; k++) {
       const pt = s.core.getPointAtLength(s.len * k / n);
       xs.push(pt.x); ys.push(pt.y);
     }
-    tl.set(nib, { x: xs[0], y: ys[0] }, st);
-    tl.to(nib, { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, st);
+    setAt(nib, { x: xs[0], y: ys[0] }, st);
+    addTo(nib, { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, st);
   });
-  tl.set(nib, { opacity: 1 }, I8 - 0.01);
+  setAt(nib, { opacity: 1 }, I8 - 0.01);
 
   // ${p.dustN ?? 8} dust specks fall from the nib along the path
   function speck(parent, x, y, r, fill) {
@@ -7818,16 +7878,16 @@ function setpieceChalkwrite() {
     const pt = strokes[si].core.getPointAtLength(target - cum[si]);
     const c = speck("cwDustG", pt.x, pt.y + 4, 1.6 + crnd() * 1.4, ${J(DUST)});
     const ts = I8 + f * WIN8;
-    tl.set(c, { opacity: 0.9 }, ts);
-    tl.to(c, { y: 26 + crnd() * 20, x: crnd() * 14 - 7, duration: 0.5, ease: "power1.in" }, ts);
-    tl.to(c, { opacity: 0, duration: 0.42, ease: "power1.in" }, ts + 0.08);
+    setAt(c, { opacity: 0.9 }, ts);
+    addTo(c, { y: 26 + crnd() * 20, x: crnd() * 14 - 7, duration: 0.5, ease: "inQuad" }, ts);
+    addTo(c, { opacity: 0, duration: 0.42, ease: "inQuad" }, ts + 0.08);
   }
 
   // hand-slap CLAP: 1-frame board shake (dust burst lives in the rail, in front)
-  tl.set("#cwUnit", { y: 3  }, DRAWN);
-  tl.set("#cwUnit", { y: -2 }, DRAWN + F);
-  tl.set("#cwUnit", { y: 1  }, DRAWN + 2*F);
-  tl.set("#cwUnit", { y: 0  }, DRAWN + 3*F);
+  setAt("#cwUnit", { y: 3  }, DRAWN);
+  setAt("#cwUnit", { y: -2 }, DRAWN + F);
+  setAt("#cwUnit", { y: 1  }, DRAWN + 2*F);
+  setAt("#cwUnit", { y: 0  }, DRAWN + 3*F);
 
   // two violent underlines (fast accelerating slashes), seeded waviness
   const UL = [
@@ -7842,24 +7902,24 @@ function setpieceChalkwrite() {
     const halo = mk("cwHaloG", ud, "#ffffff", ${p.haloWidth ?? 14});
     const core = mk("cwCoreG", ud, ${J(CHALK)}, ${(p.coreWidth ?? 7) + 1});
     const len = core.getTotalLength();
-    gsap.set([core, halo], { strokeDasharray: len, strokeDashoffset: len });
-    tl.set([core, halo], { opacity: 1 }, u.t);
-    tl.fromTo([core, halo], { strokeDashoffset: len },
-              { strokeDashoffset: 0, duration: u.dur, ease: "power3.in" }, u.t);
+    setNow([core, halo], { strokeDasharray: len, strokeDashoffset: len });
+    setAt([core, halo], { opacity: 1 }, u.t);
+    addFromTo([core, halo], { strokeDashoffset: len },
+              { strokeDashoffset: 0, duration: u.dur, ease: "inQuart" }, u.t);
     // nib rides the slash
     const n = 8, xs = [], ys = [];
     for (let k = 0; k <= n; k++) { const pt = core.getPointAtLength(len * k / n); xs.push(pt.x); ys.push(pt.y); }
-    tl.set(nib, { x: xs[0], y: ys[0] }, u.t);
-    tl.to(nib, { keyframes: { x: xs, y: ys }, duration: u.dur, ease: "none" }, u.t);
+    setAt(nib, { x: xs[0], y: ys[0] }, u.t);
+    addTo(nib, { keyframes: { x: xs, y: ys }, duration: u.dur, ease: "linear" }, u.t);
     // dust kicked up where the slash ends
     for (let k = 0; k < 3; k++) {
       const c = speck("cwDustG", xs[n] - 4 + crnd() * 8, ys[n], 1.4 + crnd(), ${J(DUST)});
-      tl.set(c, { opacity: 0.85 }, u.t + u.dur);
-      tl.to(c, { y: 16 + crnd() * 14, x: crnd() * 18 - 6, opacity: 0, duration: 0.38, ease: "power1.in" }, u.t + u.dur);
+      setAt(c, { opacity: 0.85 }, u.t + u.dur);
+      addTo(c, { y: 16 + crnd() * 14, x: crnd() * 18 - 6, opacity: 0, duration: 0.38, ease: "inQuad" }, u.t + u.dur);
     }
   });
   // chalk flicks away after the second underline
-  tl.to(nib, { x: "+=30", y: "+=22", scale: 2, opacity: 0, duration: 0.14, ease: "power2.in" },
+  addTo(nib, { x: "+=30", y: "+=22", scale: 2, opacity: 0, duration: 0.14, ease: "inCubic" },
         Math.min(DRAWN + 0.35, ENDT - 0.15));
 
   // hold life: halo breathe (baked f(t), deterministic)
@@ -7870,13 +7930,13 @@ function setpieceChalkwrite() {
     const tt = k / N8 * humDur;
     humVals.push(${p.halo ?? 0.18} + 0.05 * Math.sin(2 * Math.PI * 1.6 * tt) + 0.02 * Math.sin(2 * Math.PI * 3.7 * tt + 0.8));
   }
-  tl.to("#cwHaloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "none" }, humStart);
+  addTo("#cwHaloG", { keyframes: { opacity: humVals }, duration: humDur, ease: "linear" }, humStart);
   // two slow motes drifting off the letters during the hold
   [[humStart + 0.10, ${Math.round(inkL + 0.43 * (inkR - inkL))}], [humStart + 0.50, ${Math.round(inkL + 0.71 * (inkR - inkL))}]].forEach(([ts, mx]) => {
     if (ts + 0.5 > ENDT) return;
     const c = speck("cwDustG", mx + crnd() * 30, ${Math.round((inkTop + inkBot) / 2 + 42)}, 1.5 + crnd(), ${J(DUST)});
-    tl.set(c, { opacity: 0.6 }, ts);
-    tl.to(c, { y: 30, x: crnd() * 10 - 5, opacity: 0, duration: 0.5, ease: "power1.in" }, ts);
+    setAt(c, { opacity: 0.6 }, ts);
+    addTo(c, { y: 30, x: crnd() * 10 - 5, opacity: 0, duration: 0.5, ease: "inQuad" }, ts);
   });`;
   return { css, html, js };
 }
@@ -7885,8 +7945,8 @@ function setpieceSpraytag() {
   // ---- setpiece: SPRAYTAG (a writer steps up and TAGS the hero word) ----
   // The dusk wall dims + a radial scrim charges as the writer steps up; the
   // can RATTLES at the start point (seeded set-chain nib jitter), then the
-  // hero word is spray-written stroke by stroke — sequential Hershey dash
-  // reveal (drawon pattern) — as a TRIPLE stack per stroke: fat dark
+  // hero word is spray-written stroke by stroke - sequential Hershey dash
+  // reveal (drawon pattern) - as a TRIPLE stack per stroke: fat dark
   // under-stroke (sky-contrast armor) + blurred overspray halo + wet paint
   // core, the glowing nib riding each stroke. Seeded overspray dots pop near
   // the nib as it passes; the nib throws off at the finish (the magenta splat
@@ -7957,10 +8017,10 @@ function setpieceSpraytag() {
   const grnd = mulberry32(${p.seed ?? 140987});
 
   // scene reaction: the wall darkens as the writer steps up (charge)
-  tl.fromTo("#stDim",   { opacity: 0 }, { opacity: ${p.dim ?? 0.22}, duration: 0.40, ease: "power2.in" }, ${(I - 0.42).toFixed(3)});
-  tl.fromTo("#stScrim", { opacity: 0 }, { opacity: ${p.scrim ?? 0.62}, duration: 0.40, ease: "power2.in" }, ${(I - 0.42).toFixed(3)});
+  addFromTo("#stDim",   { opacity: 0 }, { opacity: ${p.dim ?? 0.22}, duration: 0.40, ease: "inCubic" }, ${(I - 0.42).toFixed(3)});
+  addFromTo("#stScrim", { opacity: 0 }, { opacity: ${p.scrim ?? 0.62}, duration: 0.40, ease: "inCubic" }, ${(I - 0.42).toFixed(3)});
 
-  // per-stroke TRIPLE stack (split at pen lifts) — sequential dash reveal
+  // per-stroke TRIPLE stack (split at pen lifts) - sequential dash reveal
   const subsG = Dg.split(/(?=M )/).map(s => s.trim()).filter(Boolean);
   const SVGNSG = "http://www.w3.org/2000/svg";
   function mkG(parent, d, stroke, w) {
@@ -7973,7 +8033,7 @@ function setpieceSpraytag() {
     return el;
   }
   const strokesG = subsG.map((d) => ({
-    under: mkG("stUnderG", d, ${J(UNDER)}, ${p.underWidth ?? 21}),  // dark edge — sky-contrast armor
+    under: mkG("stUnderG", d, ${J(UNDER)}, ${p.underWidth ?? 21}),  // dark edge - sky-contrast armor
     halo:  mkG("stHaloG",  d, ${J(PAINT)}, ${p.haloWidth ?? 36}),   // fat soft overspray spread
     core:  mkG("stCoreG",  d, ${J(PAINT)}, ${p.coreWidth ?? 13}),   // wet paint core
   }));
@@ -7992,33 +8052,33 @@ function setpieceSpraytag() {
 
   // ANTICIPATION: the can RATTLES at the start point before painting
   const nibG = document.getElementById("stNib");
-  gsap.set(nibG, { attr: { cx: 0, cy: 0 } });
+  setNow(nibG, { attr: { cx: 0, cy: 0 } });
   const p0g = pointAtTotal(0);
-  tl.set(nibG, { opacity: 1, x: p0g.x, y: p0g.y }, Ig - 0.30);
+  setAt(nibG, { opacity: 1, x: p0g.x, y: p0g.y }, Ig - 0.30);
   for (let k = 0; k < 6; k++) {                      // set-chain rattle (sanctioned jitter)
-    tl.set(nibG, { x: p0g.x + (grnd() - 0.5) * 10, y: p0g.y + (grnd() - 0.5) * 7 }, Ig - 0.28 + k * 2 * F);
+    setAt(nibG, { x: p0g.x + (grnd() - 0.5) * 10, y: p0g.y + (grnd() - 0.5) * 7 }, Ig - 0.28 + k * 2 * F);
   }
-  tl.set(nibG, { x: p0g.x, y: p0g.y }, Ig - 0.02);
+  setAt(nibG, { x: p0g.x, y: p0g.y }, Ig - 0.02);
 
   // SEQUENTIAL spray write: constant pen speed, nib rides each stroke
   let tg = Ig;
   strokesG.forEach((s) => {
     const d = WINg * s.len / totalG;
-    gsap.set([s.under, s.halo, s.core], { strokeDasharray: s.len, strokeDashoffset: s.len });
-    tl.set([s.under, s.halo, s.core], { opacity: 1 }, tg);
-    tl.fromTo([s.under, s.halo, s.core], { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, tg);
+    setNow([s.under, s.halo, s.core], { strokeDasharray: s.len, strokeDashoffset: s.len });
+    setAt([s.under, s.halo, s.core], { opacity: 1 }, tg);
+    addFromTo([s.under, s.halo, s.core], { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, tg);
     const n = Math.max(4, Math.round(s.len / 14)), xs = [], ys = [];
     for (let k = 0; k <= n; k++) {
       const pt = s.core.getPointAtLength(s.len * k / n);
       xs.push(pt.x); ys.push(pt.y);
     }
-    tl.set(nibG, { x: xs[0], y: ys[0] }, tg);
-    tl.to(nibG, { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, tg);
+    setAt(nibG, { x: xs[0], y: ys[0] }, tg);
+    addTo(nibG, { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, tg);
     tg += d;
   });
   // nib throw-off at the finish (the splat ring itself lives on the rail layer)
-  tl.to(nibG, { scale: 2.6, opacity: 0, duration: 0.12, ease: "power2.in",
+  addTo(nibG, { scale: 2.6, opacity: 0, duration: 0.12, ease: "inCubic",
                 transformOrigin: "50% 50%" }, DRAWNg);
 
   // OVERSPRAY: seeded dots popping near the nib as it passes
@@ -8032,11 +8092,11 @@ function setpieceSpraytag() {
     const pt = pointAtTotal(totalG * f);
     const ox = (grnd() < 0.5 ? -1 : 1) * (9 + grnd() * 18);
     const oy = (grnd() < 0.5 ? -1 : 1) * (7 + grnd() * 14);
-    tl.set(c, { opacity: 0.85 }, ti);
-    tl.fromTo(c, { attr: { cx: pt.x + ox, cy: pt.y + oy } },
+    setAt(c, { opacity: 0.85 }, ti);
+    addFromTo(c, { attr: { cx: pt.x + ox, cy: pt.y + oy } },
               { attr: { cx: pt.x + ox * 1.9, cy: pt.y + oy * 1.9 },
-                duration: 0.30, ease: "power2.out" }, ti);
-    tl.to(c, { opacity: 0, duration: 0.26, ease: "power1.in" }, ti + 0.05);
+                duration: 0.30, ease: "outCubic" }, ti);
+    addTo(c, { opacity: 0, duration: 0.26, ease: "inQuad" }, ti + 0.05);
   }
 
   // DRIPS (signature): seeded drips grow from painted low points and KEEP
@@ -8065,13 +8125,13 @@ function setpieceSpraytag() {
     const el = document.createElement("div");
     el.className = "stdrip"; stageG.appendChild(el);
     const w = 6 + Math.round(grnd() * 3);
-    gsap.set(el, { left: q.x - w / 2, top: q.y - 4, width: w });
+    setNow(el, { left: q.x - w / 2, top: q.y - 4, width: w });
     const paintT = Ig + WINg * (q.L / totalG);
     const start = Math.min(paintT + 0.22 + grnd() * 0.22, ENDTg - 0.3);
     const dur = Math.min(1.25, ENDTg - start);
     const hh = (36 + grnd() * 36) * Math.max(0.55, dur / 1.25);
-    tl.set(el, { opacity: 1 }, start);
-    tl.to(el, { height: hh, duration: dur, ease: "power1.in" }, start);
+    setAt(el, { opacity: 1 }, start);
+    addTo(el, { height: hh, duration: dur, ease: "inQuad" }, start);
   });
 
   // HOLD LIFE: halo hum (baked f(t), deterministic) + slow loom on the whole tag
@@ -8082,25 +8142,25 @@ function setpieceSpraytag() {
     const tt = k / NG * humDurG;
     humValsG.push(${p.haloOpacity ?? 0.5} + 0.07 * Math.sin(2 * Math.PI * 7 * tt) + 0.05 * Math.sin(2 * Math.PI * 11 * tt + 0.9));
   }
-  tl.to("#stHaloG", { keyframes: { opacity: humValsG }, duration: humDurG, ease: "none" }, humStartG);
-  gsap.set("#stWrap", { transformOrigin: "${HG.x}px ${HG.y}px" });
-  tl.to("#stWrap", { scale: 1.014, duration: 0.5, ease: "power1.inOut" }, DRAWNg + 0.08);`;
+  addTo("#stHaloG", { keyframes: { opacity: humValsG }, duration: humDurG, ease: "linear" }, humStartG);
+  setNow("#stWrap", { transformOrigin: "${HG.x}px ${HG.y}px" });
+  addTo("#stWrap", { scale: 1.014, duration: 0.5, ease: "inOutQuad" }, DRAWNg + 0.08);`;
   return { css, html, js };
 }
 
 function setpieceBrushwrite() {
-  // ---- setpiece: BRUSHWRITE (sumi-e — ONE violent calligraphic gesture) ----
+  // ---- setpiece: BRUSHWRITE (sumi-e - ONE violent calligraphic gesture) ----
   // A warm paper wash charges behind the word; the brush SLAPS down at the
-  // first pen point (start-splat: irregular ink blob + seeded satellites —
+  // first pen point (start-splat: irregular ink blob + seeded satellites -
   // the fg fleck pass rides fx.brushflecks), then the hero word is written in
-  // ONE sequential gesture — Hershey dash reveal at constant pen speed — as a
+  // ONE sequential gesture - Hershey dash reveal at constant pen speed - as a
   // FOUR-layer stack per stroke (blurred bleed under fat/mid/core widths =
   // pressure-tapered wet brush), the round ink nib riding the pen and
   // flicking off at the finish. Spatter droplets eject perpendicular at the
   // sharpest-curvature points of the gesture. Through the hold the ink
   // BLEEDS into the paper (the blurred under-layer swells visible) and the
   // whole work breathes; then the vermilion SEAL chop stamps beside the ink
-  // (power4 crush → 2-frame squash → elastic settle, red flecks kicked) —
+  // (power4 crush → 2-frame squash → outElastic settle, red flecks kicked) -
   // the plate punch lands on the chop contact.
   const h = dna.hero,
     p = h.params,
@@ -8185,10 +8245,10 @@ function setpieceBrushwrite() {
   const wrnd = mulberry32(${p.seed ?? 380611});
 
   // scene reaction: the paper wash charges in just before the gesture
-  tl.fromTo("#bwWash", { opacity: 0 }, { opacity: ${p.wash ?? 0.34}, duration: 0.22, ease: "power2.in" }, ${(I - 0.18).toFixed(3)});
+  addFromTo("#bwWash", { opacity: 0 }, { opacity: ${p.wash ?? 0.34}, duration: 0.22, ease: "inCubic" }, ${(I - 0.18).toFixed(3)});
 ${
   I + 1.3 < ENDT
-    ? `  tl.to("#bwWash", { opacity: ${p.washSettle ?? 0.27}, duration: ${Math.min(1.2, ENDT - I - 1.0).toFixed(2)}, ease: "power1.out" }, ${(I + 1.0).toFixed(3)});`
+    ? `  addTo("#bwWash", { opacity: ${p.washSettle ?? 0.27}, duration: ${Math.min(1.2, ENDT - I - 1.0).toFixed(2)}, ease: "outQuad" }, ${(I + 1.0).toFixed(3)});`
     : ""
 }
 
@@ -8234,9 +8294,9 @@ ${
       g.appendChild(c);
     }
   })();
-  tl.set("#bwSplatG", { opacity: 1 }, Ib);
-  tl.fromTo("#bwSplatG", { scale: 0.35, svgOrigin: "${Math.round(pts[0][0])} ${Math.round(pts[0][1] + dy)}" },
-            { scale: 1, duration: 0.12, ease: "power3.out" }, Ib);
+  setAt("#bwSplatG", { opacity: 1 }, Ib);
+  addFromTo("#bwSplatG", { scale: 0.35, svgOrigin: "${Math.round(pts[0][0])} ${Math.round(pts[0][1] + dy)}" },
+            { scale: 1, duration: 0.12, ease: "outQuart" }, Ib);
 
   // ONE sequential gesture: constant pen speed, the round ink nib riding
   const nibB = document.getElementById("bwNib");
@@ -8245,10 +8305,10 @@ ${
   strokesB.forEach((s) => {
     const d = WINb * s.len / totalB;
     const layers = [s.bleed, s.fat, s.mid, s.core];
-    layers.forEach(pp => gsap.set(pp, { strokeDasharray: s.len, strokeDashoffset: s.len }));
-    tl.set(layers, { opacity: 1 }, tb);
-    tl.fromTo(layers, { strokeDashoffset: s.len },
-              { strokeDashoffset: 0, duration: d, ease: "none" }, tb);
+    layers.forEach(pp => setNow(pp, { strokeDasharray: s.len, strokeDashoffset: s.len }));
+    setAt(layers, { opacity: 1 }, tb);
+    addFromTo(layers, { strokeDashoffset: s.len },
+              { strokeDashoffset: 0, duration: d, ease: "linear" }, tb);
     const n = Math.max(6, Math.round(s.len / 12)), xs = [], ys = [];
     let prevAng = null;
     for (let k = 0; k <= n; k++) {
@@ -8265,15 +8325,15 @@ ${
         prevAng = ang;
       }
     }
-    tl.set(nibB, { x: xs[0], y: ys[0] }, tb);
-    tl.to(nibB, { keyframes: { x: xs, y: ys }, duration: d, ease: "none" }, tb);
+    setAt(nibB, { x: xs[0], y: ys[0] }, tb);
+    addTo(nibB, { keyframes: { x: xs, y: ys }, duration: d, ease: "linear" }, tb);
     tb += d; accB += s.len;
   });
-  gsap.set(nibB, { attr: { cx: 0, cy: 0 } });
-  tl.set(nibB, { opacity: 1 }, Ib - 0.01);
+  setNow(nibB, { attr: { cx: 0, cy: 0 } });
+  setAt(nibB, { opacity: 1 }, Ib - 0.01);
   // the brush lifts off with a flick at the end of the gesture
-  tl.to(nibB, { x: "+=42", y: "-=30", scale: 1.9, opacity: 0, duration: 0.1,
-                ease: "power2.in", transformOrigin: "50% 50%" }, DRAWNb);
+  addTo(nibB, { x: "+=42", y: "-=30", scale: 1.9, opacity: 0, duration: 0.1,
+                ease: "inCubic", transformOrigin: "50% 50%" }, DRAWNb);
 
   // spatter droplets ejected at the sharpest-curvature points of the gesture
   curvB.sort((a, b) => b.dA - a.dA);
@@ -8294,40 +8354,40 @@ ${
     const ea = c.ang + side * Math.PI / 2;
     const dist = 34 + wrnd() * 60;
     const dx = Math.cos(ea) * dist, dyv = Math.sin(ea) * dist - 18;
-    tl.set(el, { opacity: 1 }, c.te);
-    tl.to(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dyv * 0.6, dyv + 22],
+    setAt(el, { opacity: 1 }, c.te);
+    addTo(el, { keyframes: { x: [0, dx * 0.6, dx], y: [0, dyv * 0.6, dyv + 22],
                              opacity: [1, 0.9, 0] },
-                duration: 0.32, ease: "power2.out" }, c.te);
+                duration: 0.32, ease: "outCubic" }, c.te);
   });
 
   // HOLD: the ink BLEEDS into the paper (blurred under-layer swells) + breathe
-  tl.to("#bwBleedG", { opacity: ${p.bleed ?? 0.38}, duration: ${bleedDur}, ease: "sine.inOut" }, ${bleedT});
+  addTo("#bwBleedG", { opacity: ${p.bleed ?? 0.38}, duration: ${bleedDur}, ease: "inOutSine" }, ${bleedT});
   const bNb = ${breN}, bValsB = [];
   for (let k = 0; k <= bNb; k++) {
     const tt = k / bNb * ${breDur};
     bValsB.push(1 + 0.006 * Math.sin(2 * Math.PI * ${p.breatheHz ?? 0.55} * tt));
   }
-  tl.to("#bwInkAll", { keyframes: { scale: bValsB }, duration: ${breDur}, ease: "none",
+  addTo("#bwInkAll", { keyframes: { scale: bValsB }, duration: ${breDur}, ease: "linear",
                        svgOrigin: "${HG.x} ${HG.y}" }, ${breT});
 ${
   SEALC + 0.38 <= ENDT
     ? `
-  // vermilion SEAL chop stamps the work — the plate punch lands on the contact
-  gsap.set("#bwSeal", { xPercent: -50, yPercent: -50, rotation: -6, transformOrigin: "50% 50%" });
-  tl.set("#bwSeal", { opacity: 1, scale: 1.7 }, ${(SEALC - 0.1).toFixed(3)});
-  tl.to("#bwSeal", { scale: 1, duration: 0.09, ease: "power4.in" }, ${(SEALC - 0.095).toFixed(3)});
-  tl.set("#bwSeal", { scaleX: 1.07, scaleY: 0.93 }, ${SEALC});
-  tl.to("#bwSeal", { scaleX: 1, scaleY: 1, duration: 0.28, ease: "elastic.out(1, 0.4)" }, ${(SEALC + 0.08).toFixed(3)});
+  // vermilion SEAL chop stamps the work - the plate punch lands on the contact
+  setNow("#bwSeal", { xPercent: -50, yPercent: -50, rotation: -6, transformOrigin: "50% 50%" });
+  setAt("#bwSeal", { opacity: 1, scale: 1.7 }, ${(SEALC - 0.1).toFixed(3)});
+  addTo("#bwSeal", { scale: 1, duration: 0.09, ease: "inQuint" }, ${(SEALC - 0.095).toFixed(3)});
+  setAt("#bwSeal", { scaleX: 1.07, scaleY: 0.93 }, ${SEALC});
+  addTo("#bwSeal", { scaleX: 1, scaleY: 1, duration: 0.28, ease: "outElastic(1, 0.4)" }, ${(SEALC + 0.08).toFixed(3)});
   { const stg = document.getElementById("stage");
     for (let i = 0; i < 3; i++) {
       const el = document.createElement("div"); el.className = "bwfleck";
       stg.appendChild(el);
       const s = 2 + Math.round(wrnd() * 2);
-      gsap.set(el, { width: s, height: s, left: ${sealX}, top: ${sealY} });
+      setNow(el, { width: s, height: s, left: ${sealX}, top: ${sealY} });
       const a = wrnd() * Math.PI * 2, dist = 32 + wrnd() * 38;
-      tl.set(el, { opacity: 0.9 }, ${(SEALC + 0.01).toFixed(3)});
-      tl.to(el, { x: Math.cos(a) * dist, y: Math.sin(a) * dist + 12, opacity: 0,
-                  duration: 0.3, ease: "power2.out" }, ${(SEALC + 0.01).toFixed(3)});
+      setAt(el, { opacity: 0.9 }, ${(SEALC + 0.01).toFixed(3)});
+      addTo(el, { x: Math.cos(a) * dist, y: Math.sin(a) * dist + 12, opacity: 0,
+                  duration: 0.3, ease: "outCubic" }, ${(SEALC + 0.01).toFixed(3)});
     }
   }`
     : ""
@@ -8337,20 +8397,20 @@ ${
 
 function setpieceInkbloom() {
   // INKWATER apex: a sumi ink drop falls into still water BEHIND the subject.
-  // Scene reaction: paper-white radial washes behind the two text zones — the
+  // Scene reaction: paper-white radial washes behind the two text zones - the
   // body rows get a PERSISTENT paper backing from t≈0.15 (the closing lines
-  // keep their ground) and the apex zone charges just before the drop — plus
+  // keep their ground) and the apex zone charges just before the drop - plus
   // a gentle vignette that STILLS the world while the ink blooms. The drop
-  // appears above the word point, swells, falls (power2.in, scaleY stretch),
+  // appears above the word point, swells, falls (inCubic, scaleY stretch),
   // squashes on contact (2 frames) and merges into the bloom: 3 stacked
   // blurred irregular ellipses scaling at different rates with counter-
   // rotations + 2 thin concentric ripple rings expanding on the water
   // surface; the hero words RESOLVE out of the blob (opacity snaps, blur
-  // 16→0 + scale 1.12→1 carries the bleed) — the first at contact, the
+  // 16→0 + scale 1.12→1 carries the bleed) - the first at contact, the
   // following at their own spoken times; through the hold the glyph edges
   // BREATHE (baked blur keyframes), the whole group looms 1.018 and faint
   // ink wisps curl off the word top; exit: RE-DISSOLVE (blur up + spread +
-  // fade — the ink disperses back into the water), timed to clear before the
+  // fade - the ink disperses back into the water), timed to clear before the
   // next body line needs the reader. Blob / ring / wisp geometry is the
   // demo's, scaled from the measured word rect (kx = halfW/demoHalf,
   // ky = fontPx/132); the rail wash registers on the body row geometry.
@@ -8451,86 +8511,86 @@ function setpieceInkbloom() {
   const js = `
   // ---- setpiece: INKBLOOM (drop falls → ink blooms → words resolve → re-dissolve) ----
   // paper washes (the scene offers paper to the ink); the rail wash PERSISTS
-  tl.fromTo("#ikwashRail", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power1.out" }, 0.15);
-  tl.fromTo("#ikwashApex", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" }, ${Math.max(0.02, D - 0.077).toFixed(3)});
-  tl.to("#ikwashApex", { opacity: 0, duration: 0.5, ease: "power1.in" }, ${XOUT});
+  addFromTo("#ikwashRail", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "outQuad" }, 0.15);
+  addFromTo("#ikwashApex", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "outQuad" }, ${Math.max(0.02, D - 0.077).toFixed(3)});
+  addTo("#ikwashApex", { opacity: 0, duration: 0.5, ease: "inQuad" }, ${XOUT});
 
   // the world stills while the ink blooms
-  tl.to("#ikvig", { opacity: ${p.vig ?? 0.34}, duration: 0.45, ease: "power2.out" }, ${C});
-  tl.to("#ikvig", { opacity: 0, duration: ${vigOutD}, ease: "power1.in" }, ${vigOutT});
+  addTo("#ikvig", { opacity: ${p.vig ?? 0.34}, duration: 0.45, ease: "outCubic" }, ${C});
+  addTo("#ikvig", { opacity: 0, duration: ${vigOutD}, ease: "inQuad" }, ${vigOutT});
 
   // ===== drop: appears, swells, falls, squashes on contact, merges into the blob =====
-  tl.set("#inkG", { opacity: 1 }, ${(D - 0.08).toFixed(3)});
-  tl.set("#ikdrop", { opacity: 1, transformOrigin: "50% 50%" }, ${(D - 0.08).toFixed(3)});
-  tl.fromTo("#ikdrop", { scale: 0.55 }, { scale: 1, duration: 0.08, ease: "power2.out" }, ${(D - 0.08).toFixed(3)});
-  tl.to("#ikdrop", { y: ${SY(219)}, duration: ${(C - D).toFixed(3)}, ease: "power2.in" }, ${D.toFixed(3)});
-  tl.to("#ikdrop", { scaleY: 1.45, scaleX: 0.8, duration: ${(C - D).toFixed(3)}, ease: "power2.in" }, ${D.toFixed(3)});
-  tl.set("#ikdrop", { scaleX: 1.7, scaleY: 0.35 }, ${C});                 // contact squash, 2 frames
-  tl.to("#ikdrop", { opacity: 0, duration: 0.07 }, ${(C + 0.083).toFixed(3)});
+  setAt("#inkG", { opacity: 1 }, ${(D - 0.08).toFixed(3)});
+  setAt("#ikdrop", { opacity: 1, transformOrigin: "50% 50%" }, ${(D - 0.08).toFixed(3)});
+  addFromTo("#ikdrop", { scale: 0.55 }, { scale: 1, duration: 0.08, ease: "outCubic" }, ${(D - 0.08).toFixed(3)});
+  addTo("#ikdrop", { y: ${SY(219)}, duration: ${(C - D).toFixed(3)}, ease: "inCubic" }, ${D.toFixed(3)});
+  addTo("#ikdrop", { scaleY: 1.45, scaleX: 0.8, duration: ${(C - D).toFixed(3)}, ease: "inCubic" }, ${D.toFixed(3)});
+  setAt("#ikdrop", { scaleX: 1.7, scaleY: 0.35 }, ${C});                 // contact squash, 2 frames
+  addTo("#ikdrop", { opacity: 0, duration: 0.07 }, ${(C + 0.083).toFixed(3)});
 
   // ===== bloom: 3 stacked blurred ellipses, different rates; opacity snaps then decays =====
   const IKB = [["#ikb1", 0.82, 0.50, 3.0, -4,  5, 0,    1.15, 0.18, 1.05],
                ["#ikb2", 0.62, 0.42, 2.4,  7, -7, 0.04, 1.35, 0.22, 1.15],
                ["#ikb3", 0.50, 0.55, 3.8, -9,  8, 0.08, 1.50, 0.30, 1.20]];
   IKB.forEach(([sel, op, s0, s1, r0, r1, dt, gd, ft, fd]) => {
-    tl.set(sel, { opacity: op, transformOrigin: "50% 50%" }, ${C} + dt);
-    tl.fromTo(sel, { scale: s0, rotation: r0 },
-              { scale: s1, rotation: r1, duration: gd, ease: "expo.out" }, ${C} + dt);
-    tl.to(sel, { opacity: 0, duration: fd, ease: "power1.in" }, ${C} + ft);
+    setAt(sel, { opacity: op, transformOrigin: "50% 50%" }, ${C} + dt);
+    addFromTo(sel, { scale: s0, rotation: r0 },
+              { scale: s1, rotation: r1, duration: gd, ease: "outExpo" }, ${C} + dt);
+    addTo(sel, { opacity: 0, duration: fd, ease: "inQuad" }, ${C} + ft);
   });
 
   // ripple rings on the water surface
-  tl.set("#ikr1", { opacity: 0.7, transformOrigin: "50% 50%" }, ${(C + 0.02).toFixed(3)});
-  tl.fromTo("#ikr1", { scale: 1 }, { scale: 7.2, duration: 1.45, ease: "expo.out" }, ${(C + 0.02).toFixed(3)});
-  tl.to("#ikr1", { opacity: 0, duration: 1.25, ease: "power1.in" }, ${(C + 0.22).toFixed(3)});
-  tl.set("#ikr2", { opacity: 0.5, transformOrigin: "50% 50%" }, ${(C + 0.16).toFixed(3)});
-  tl.fromTo("#ikr2", { scale: 1 }, { scale: 9.6, duration: 1.7, ease: "power2.out" }, ${(C + 0.16).toFixed(3)});
-  tl.to("#ikr2", { opacity: 0, duration: 1.4, ease: "power1.in" }, ${(C + 0.4).toFixed(3)});
+  setAt("#ikr1", { opacity: 0.7, transformOrigin: "50% 50%" }, ${(C + 0.02).toFixed(3)});
+  addFromTo("#ikr1", { scale: 1 }, { scale: 7.2, duration: 1.45, ease: "outExpo" }, ${(C + 0.02).toFixed(3)});
+  addTo("#ikr1", { opacity: 0, duration: 1.25, ease: "inQuad" }, ${(C + 0.22).toFixed(3)});
+  setAt("#ikr2", { opacity: 0.5, transformOrigin: "50% 50%" }, ${(C + 0.16).toFixed(3)});
+  addFromTo("#ikr2", { scale: 1 }, { scale: 9.6, duration: 1.7, ease: "outCubic" }, ${(C + 0.16).toFixed(3)});
+  addTo("#ikr2", { opacity: 0, duration: 1.4, ease: "inQuad" }, ${(C + 0.4).toFixed(3)});
 
   // ===== the words resolve out of the blob (opacity snaps, BLUR carries the bleed) =====
   const IKRES = ${J(RES)};
   IKRES.forEach((rt, k) => {
     const el = document.getElementById("ikw" + k);
     const rd = Math.min(0.8, Math.max(0.3, ${XOUT} - rt - 0.25));
-    tl.set(el, { opacity: 1, transformOrigin: "50% 60%" }, rt);
-    tl.fromTo(el, { scale: 1.12, filter: "blur(16px)" },
-              { scale: 1, filter: "blur(0px)", duration: rd, ease: "power2.out" }, rt);
+    setAt(el, { opacity: 1, transformOrigin: "50% 60%" }, rt);
+    addFromTo(el, { scale: 1.12, filter: "blur(16px)" },
+              { scale: 1, filter: "blur(0px)", duration: rd, ease: "outCubic" }, rt);
     // hold life: glyph edges breathe (blur 0 → ~0.8 → 0, slow)
     const bt = rt + Math.max(0.82, rd + 0.02), bd = k % 2 ? 0.5 : 0.66;
     if (bt + bd <= ${XOUT} + 0.02) {
-      tl.to(el, { keyframes: { filter: ["blur(0px)","blur(0.8px)","blur(0.15px)","blur(0.7px)","blur(0px)"] },
-                  duration: bd, ease: "none" }, bt);
+      addTo(el, { keyframes: { filter: ["blur(0px)","blur(0.8px)","blur(0.15px)","blur(0.7px)","blur(0px)"] },
+                  duration: bd, ease: "linear" }, bt);
     }
   });
 ${
   loomD >= 0.2
     ? `  // gentle loom on the group through the hold
-  tl.to("#inkG", { scale: 1.018, duration: ${loomD}, ease: "power1.inOut", transformOrigin: "50% 50%" }, ${loomT});`
+  addTo("#inkG", { scale: 1.018, duration: ${loomD}, ease: "inOutQuad", transformOrigin: "50% 50%" }, ${loomT});`
     : ""
 }
 
   // faint ink wisps curl off the word top during the hold
 ${
   C + 0.573 + 0.6 <= XOUT
-    ? `  tl.set("#ikwisp1", { opacity: 0.45, transformOrigin: "50% 50%" }, ${(C + 0.573).toFixed(3)});
-  tl.fromTo("#ikwisp1", { y: 0, x: 0, rotation: 14, scaleY: 1 },
-            { y: -44, x: 12, rotation: 96, scaleY: 1.6, duration: 0.95, ease: "power1.out" }, ${(C + 0.573).toFixed(3)});
-  tl.to("#ikwisp1", { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(C + 1.123).toFixed(3)});`
+    ? `  setAt("#ikwisp1", { opacity: 0.45, transformOrigin: "50% 50%" }, ${(C + 0.573).toFixed(3)});
+  addFromTo("#ikwisp1", { y: 0, x: 0, rotation: 14, scaleY: 1 },
+            { y: -44, x: 12, rotation: 96, scaleY: 1.6, duration: 0.95, ease: "outQuad" }, ${(C + 0.573).toFixed(3)});
+  addTo("#ikwisp1", { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(C + 1.123).toFixed(3)});`
     : ""
 }
 ${
   C + 0.753 + 0.6 <= XOUT
-    ? `  tl.set("#ikwisp2", { opacity: 0.4, transformOrigin: "50% 50%" }, ${(C + 0.753).toFixed(3)});
-  tl.fromTo("#ikwisp2", { y: 0, x: 0, rotation: -18, scaleY: 1 },
-            { y: -40, x: -14, rotation: -98, scaleY: 1.5, duration: 0.9, ease: "power1.out" }, ${(C + 0.753).toFixed(3)});
-  tl.to("#ikwisp2", { opacity: 0, duration: 0.38, ease: "power1.in" }, ${(C + 1.273).toFixed(3)});`
+    ? `  setAt("#ikwisp2", { opacity: 0.4, transformOrigin: "50% 50%" }, ${(C + 0.753).toFixed(3)});
+  addFromTo("#ikwisp2", { y: 0, x: 0, rotation: -18, scaleY: 1 },
+            { y: -40, x: -14, rotation: -98, scaleY: 1.5, duration: 0.9, ease: "outQuad" }, ${(C + 0.753).toFixed(3)});
+  addTo("#ikwisp2", { opacity: 0, duration: 0.38, ease: "inQuad" }, ${(C + 1.273).toFixed(3)});`
     : ""
 }
 
-  // exit: re-dissolve — blur up + spread + fade, ink dispersing
-  tl.to("#inkG", { scale: 1.15, filter: "blur(11px)", opacity: 0,
-                   duration: 0.52, ease: "power1.in" }, ${XOUT});
-  tl.set("#inkG", { display: "none" }, ${Math.min(XOUT + 0.6, DUR - 0.02).toFixed(3)});`;
+  // exit: re-dissolve - blur up + spread + fade, ink dispersing
+  addTo("#inkG", { scale: 1.15, filter: "blur(11px)", opacity: 0,
+                   duration: 0.52, ease: "inQuad" }, ${XOUT});
+  setAt("#inkG", { display: "none" }, ${Math.min(XOUT + 0.6, DUR - 0.02).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -8539,10 +8599,10 @@ function setpieceRansomnote() {
   // The hero word slams in BEHIND the subject as a ransom note: one cutout
   // chip per letter (4 recipes cycled, seeded ±13% sizes / alternating-sign
   // rotations / misaligned baselines), each slamming in oversized with a
-  // flight shadow that POPS tight on contact (power3.in crush → 2-frame
-  // squash → elastic settle) at S_i = I + 0.01 + step·i. When the LAST letter
+  // flight shadow that POPS tight on contact (inQuart crush → 2-frame
+  // squash → outElastic settle) at S_i = I + 0.01 + step·i. When the LAST letter
   // lands the whole word takes a collective 1-frame JOLT + a scene pulse
-  // (the plate punch anchors here — punchOffset is recomputed from the real
+  // (the plate punch anchors here - punchOffset is recomputed from the real
   // letter count so the punch always lands on the jolt). Hold = slow loom
   // keyframes (the crooked grid never straightens). Exit = letters RIPPED
   // off one by one, a 1-frame paper-tear flash under each. Scene reaction =
@@ -8593,10 +8653,10 @@ ${ransomChipCss("0.01em")}`;
   const HARDA   = "drop-shadow(0 ${Math.max(4, Math.round(7 * kf))}px 0 rgba(8,6,4,0.55))";
   const FLIGHTA = "drop-shadow(0 ${Math.max(10, Math.round(24 * kf))}px 5px rgba(8,6,4,0.30))";
   const group = document.getElementById("rnote");
-  gsap.set(group, { xPercent: -50, yPercent: -50 });
+  setNow(group, { xPercent: -50, yPercent: -50 });
 
   // scene reacts: collage scrim darkens the bright sky for the apex window
-  tl.to("#rscrim", { opacity: ${p.scrim ?? 0.44}, duration: 0.12, ease: "power2.out" }, ${scrimT});
+  addTo("#rscrim", { opacity: ${p.scrim ?? 0.44}, duration: 0.12, ease: "outCubic" }, ${scrimT});
 
   // ===== letter-by-letter ransom slam: S_k = I + 0.01 + STEP*k, contact = S_k + CRUSH
   const RECSA = ["ca", "cb", "cc", "cd"];
@@ -8623,34 +8683,34 @@ ${ransomChipCss("0.01em")}`;
     const dy = -sgn * (2 + arnd() * 4);
     const rr = sgn * (15 + arnd() * 7);
     const S = I + 0.01 + STEP * k, C = S + CRUSH;
-    tl.set(mv, { opacity: 1, scale: 1.5, rotation: rot * 1.8, y: dy - 20, filter: FLIGHTA }, S);
-    tl.to(mv,  { scale: 1, rotation: rot, y: dy, duration: 0.085, ease: "power3.in" }, S + 0.005);
-    tl.set(mv, { filter: HARDA }, C);                             // shadow pop: snaps tight on contact
-    tl.set(mv, { scaleX: 1.07, scaleY: 0.93 }, C + 0.004);        // contact squash, held 2 frames
-    tl.to(mv,  { scaleX: 1, scaleY: 1, duration: 0.3, ease: "elastic.out(1, 0.4)" }, C + 0.087);
+    setAt(mv, { opacity: 1, scale: 1.5, rotation: rot * 1.8, y: dy - 20, filter: FLIGHTA }, S);
+    addTo(mv,  { scale: 1, rotation: rot, y: dy, duration: 0.085, ease: "inQuart" }, S + 0.005);
+    setAt(mv, { filter: HARDA }, C);                             // shadow pop: snaps tight on contact
+    setAt(mv, { scaleX: 1.07, scaleY: 0.93 }, C + 0.004);        // contact squash, held 2 frames
+    addTo(mv,  { scaleX: 1, scaleY: 1, duration: 0.3, ease: "outElastic(1, 0.4)" }, C + 0.087);
     // ===== exit: RIPPED off one by one, tear flash 1 frame under each
     const R = RIPT + ${RSTAG} * k;
-    tl.set(fl, { opacity: 0.85 }, R);
-    tl.set(fl, { opacity: 0 }, R + 0.045);
-    tl.to(mv, { rotation: rot + rr, y: dy - 34, opacity: 0,
-                duration: 0.16, ease: "power2.in" }, R);
+    setAt(fl, { opacity: 0.85 }, R);
+    setAt(fl, { opacity: 0 }, R + 0.045);
+    addTo(mv, { rotation: rot + rr, y: dy - 34, opacity: 0,
+                duration: 0.16, ease: "inCubic" }, R);
     k++;
   });
 
   // collective 1-frame jolt when the last letter lands + scene pulse
-  tl.set("#rnote", { y: 6 }, ${JOLT});
-  tl.to("#rnote",  { y: 0, duration: 0.14, ease: "power3.out" }, ${(JOLT + 0.042).toFixed(3)});
-  tl.set("#rpulse", { opacity: ${p.pulse ?? 0.2} }, ${JOLT});
-  tl.to("#rpulse",  { opacity: 0, duration: 0.13, ease: "power1.out" }, ${(JOLT + 0.042).toFixed(3)});
+  setAt("#rnote", { y: 6 }, ${JOLT});
+  addTo("#rnote",  { y: 0, duration: 0.14, ease: "outQuart" }, ${(JOLT + 0.042).toFixed(3)});
+  setAt("#rpulse", { opacity: ${p.pulse ?? 0.2} }, ${JOLT});
+  addTo("#rpulse",  { opacity: 0, duration: 0.13, ease: "outQuad" }, ${(JOLT + 0.042).toFixed(3)});
 ${
   loomD >= 0.35
     ? `
   // hold life: the pasted word looms (the crooked grid never straightens)
-  tl.to("#rnote", { keyframes: { scale: [1, 1.02, 1.006, 1.018, 1] },
-                    duration: ${loomD}, ease: "none" }, ${(JOLT + 0.1).toFixed(3)});`
+  addTo("#rnote", { keyframes: { scale: [1, 1.02, 1.006, 1.018, 1] },
+                    duration: ${loomD}, ease: "linear" }, ${(JOLT + 0.1).toFixed(3)});`
     : ""
 }
-  tl.to("#rscrim", { opacity: 0, duration: 0.3, ease: "power1.in" }, ${(ripT + 0.06).toFixed(3)});`;
+  addTo("#rscrim", { opacity: 0, duration: 0.3, ease: "inQuad" }, ${(ripT + 0.06).toFixed(3)});`;
   return { css, html, js };
 }
 
@@ -8707,8 +8767,8 @@ if (poemScrimInBg) {
               rgba(4,8,16,${dna.body.scrim.opacity}) 0%, rgba(4,8,16,${(dna.body.scrim.opacity * 0.6).toFixed(2)}) 38%, rgba(4,8,16,0) 62%); }`;
   bgExtra.html = `      <div id="pscrimBg"></div>`;
   bgExtra.js = `
-  tl.fromTo("#pscrimBg", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 0.15);
-  tl.to("#pscrimBg", { opacity: 0, duration: 0.4, ease: "power1.in" }, ${(LASTWORD.start + 0.15).toFixed(3)});`;
+  addFromTo("#pscrimBg", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "outQuad" }, 0.15);
+  addTo("#pscrimBg", { opacity: 0, duration: 0.4, ease: "inQuad" }, ${(LASTWORD.start + 0.15).toFixed(3)});`;
 }
 
 const bgHtml = bgSkeleton(
@@ -8719,7 +8779,7 @@ const bgHtml = bgSkeleton(
 fs.writeFileSync(path.join(PROJECT, "index.html"), bgHtml);
 
 // fg file (rail.html): body paradigm (when fg) + setpiece fg parts + front fx
-// (a setpiece may emit fgHtml/fgCss/fgJs — e.g. a verbatim caption chip that
+// (a setpiece may emit fgHtml/fgCss/fgJs - e.g. a verbatim caption chip that
 // must ride ABOVE the matte while the setpiece scenery stays embedded behind)
 if (!bodyInBg || fx.html || fx.js || setp.fgHtml) {
   const fgHtml = fgSkeleton(
@@ -8761,7 +8821,7 @@ const rgba = P.rgbashift
 fs.writeFileSync(
   path.join(PROJECT, "_postfx.sh"),
   `#!/usr/bin/env bash
-# generated by make-theme.cjs — plate reaction for theme "${dna.name}"
+# generated by make-theme.cjs - plate reaction for theme "${dna.name}"
 set -euo pipefail
 cd "$(dirname "$0")"
 ffmpeg -y -v error -i final.mp4 -filter_complex "

@@ -1,10 +1,10 @@
-# Motion Vocabulary — named word-entry moves
+# Motion Vocabulary - named word-entry moves
 
 10 motion primitives the skill uses. Each has a specific timing + easing + situational fit. Agent picks by **content tone**, not default to one.
 
-**Easing philosophy:** `cubic-bezier(.2,.7,.2,1)` is the "considered confident" default. `linear` is almost always wrong. Back-easing (elastic) is for playful content only — never documentary.
+**Easing philosophy:** `outCubic` is the "considered confident" default. `linear` is almost always wrong. Back-easing and elastic easing are for playful content only, never documentary.
 
-**Exit rules:** Default exit is the same tween reversed at 60% duration. Never exit with a different motion than entry unless doing a rhetorical pivot. Never fade out during speech — only during the gap between phrases.
+**Exit rules:** Default exit is the same tween reversed at 60% duration. Never exit with a different motion than entry unless doing a rhetorical pivot. Never fade out during speech - only during the gap between phrases.
 
 ---
 
@@ -15,7 +15,6 @@
 Char-by-char reveal, 25–35ms/char, linear easing. Documentary / data-heavy / tense / interrogative.
 
 ```js
-// GSAP
 words.forEach((w, i) => {
   const chars = w.textContent.split("");
   w.textContent = "";
@@ -24,7 +23,7 @@ words.forEach((w, i) => {
     span.textContent = c;
     span.style.opacity = 0;
     w.appendChild(span);
-    tl.to(span, { opacity: 1, duration: 0 }, wordStart + j * 0.028);
+    tl.add(span, { opacity: 1, duration: 0 }, ms(wordStart + j * 0.028));
   });
 });
 ```
@@ -34,12 +33,8 @@ words.forEach((w, i) => {
 Per-word, 80ms stagger, `opacity 0→1 + translateY 8→0`, `cubic-bezier(.2,.7,.2,1)` (ease-out). Default for conversational content.
 
 ```js
-tl.fromTo(
-  word,
-  { opacity: 0, y: 8 },
-  { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" },
-  wordStart,
-);
+tl.add(word, { opacity: 0, y: 8, duration: 0 }, ms(wordStart));
+tl.add(word, { opacity: 1, y: 0, duration: 450, ease: "outCubic" }, ms(wordStart));
 ```
 
 ### 3. word-pop
@@ -75,7 +70,7 @@ Per-word, 200ms total: two 1px lines converge on word center (linear 150ms), the
 
 ### 9. cascade
 
-Each word from alternating direction: L, R, L, R. `translateX: ±40→0`, ease-out 300ms. **Rhythm-break move** — use sparingly, once per 30s max.
+Each word from alternating direction: L, R, L, R. `translateX: ±40→0`, ease-out 300ms. **Rhythm-break move** - use sparingly, once per 30s max.
 
 ### 10. burn-in
 
@@ -95,7 +90,7 @@ Each word from alternating direction: L, R, L, R. `translateX: ±40→0`, ease-o
 | investigative  | 25ms/char                 | 500ms       | typewriter                         |
 | keynote        | 0 per-word (phrase swipe) | 600ms       | swipe-reveal                       |
 
-Agent picks tone → this table → GSAP parameters. Data, not guesswork.
+Agent picks tone → this table → anime.js parameters. Data, not guesswork.
 
 ---
 

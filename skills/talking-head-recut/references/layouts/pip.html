@@ -1,8 +1,9 @@
+<!doctype html>
 <!--
-  Layout: pip — card fills canvas, video rounded PiP in corner
+  Layout: pip - card fills canvas, video rounded PiP in corner
   ─────────────────────────────────────────────────────────────────────
   Implementation: card.zone = "fullscreen" + shrink #video-wrap to a
-  corner pill via GSAP, and add a .pip-pill CSS class for the chrome.
+  corner pill via anime.js, and add a .pip-pill CSS class for the chrome.
 
   Recommended storyboard.json card entry (strict v3):
     {
@@ -14,27 +15,27 @@
       "contentHints": { "kicker": "...", "title": "...", "detail": "..." }
     }
 
-  GSAP target for #video-wrap (corner pill — pick one per source aspect):
+  Anime.js target for #video-wrap (corner pill, pick one per source aspect):
 
     landscape (1920×1080), 16:9 source video:
-      tl.set('#video-wrap', { className: 'video-wrapper pip-pill' }, START_SEC);
-      tl.to('#video-wrap',
+      // Add .pip-pill in markup or before timeline construction.
+      tl.add('#video-wrap',
         { left: 1432, top: 28, width: 460, height: 258,
-          duration: 0.6, ease: 'power2.inOut' }, START_SEC);
+          duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
     landscape, 9:16 source video (vertical phone footage):
-      tl.to('#video-wrap',
-        { left: 1644, top: 28, width: 248, height: 440, ... }, START_SEC);
+      tl.add('#video-wrap',
+        { left: 1644, top: 28, width: 248, height: 440, duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
     portrait (1080×1920), 16:9 source video:
-      tl.to('#video-wrap',
-        { left: 690, top: 28, width: 360, height: 203, ... }, START_SEC);
+      tl.add('#video-wrap',
+        { left: 690, top: 28, width: 360, height: 203, duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
     portrait, 9:16 source video:
-      tl.to('#video-wrap',
-        { left: 738, top: 28, width: 312, height: 555, ... }, START_SEC);
+      tl.add('#video-wrap',
+        { left: 738, top: 28, width: 312, height: 555, duration: 600, ease: 'inOutCubic' }, START_SEC * 1000);
 
-    4:5 (1080×1350) — y values × 0.703, w/h × 0.703:
+    4:5 (1080×1350) - y values × 0.703, w/h × 0.703:
       landscape-source: { left: 690, top: 28, width: 360, height: 203 } → keep, fits
       portrait-source : { left: 738, top: 28, width: 312, height: 390 }
 
@@ -58,7 +59,6 @@
     natural DOM order (video first, card second), use z-index on the
     card-host to push it behind.
 -->
-<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -133,11 +133,17 @@
         border-radius: 3px;
       }
     </style>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div class="stage">
+    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
       <div class="region card-region"><span class="label">CARD · 1920×1080 (full-bleed)</span></div>
       <div class="region video-region"><span class="v-label">VIDEO · 460×258 PIP</span></div>
     </div>
+      <script>
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
+      hyperframesAnime.register("main", tl);
+    </script>
   </body>
 </html>

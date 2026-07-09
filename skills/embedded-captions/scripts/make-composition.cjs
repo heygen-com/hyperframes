@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * make-composition.cjs — compile plan.json → index.html (CINEMATIC MODE).
+ * make-composition.cjs - compile plan.json → index.html (CINEMATIC MODE).
  *
  * DNA path (canonical): plan.dna names a dna/<name>.json → modes/cinematic/engine.html
  * is compiled with scene-resolved tokens (lib-dna.cjs): scene-sampled accent, light-
@@ -9,7 +9,7 @@
  *
  * Legacy path: plan.template naming an archived template dir still compiles 1:1
  * (memory-wall / champion / portrait-header in modes/cinematic/_archive are NOT
- * auto-discovered — restore them to modes/cinematic/ to use).
+ * auto-discovered - restore them to modes/cinematic/ to use).
  *
  *   node make-composition.cjs <project-dir>
  */
@@ -22,7 +22,7 @@ const SKILL_ROOT = path.resolve(__dirname, "..");
 const TEMPLATES = path.join(SKILL_ROOT, "modes", "cinematic");
 
 // Source clip duration (seconds) via ffprobe. The COMPOSITION/background length must
-// follow the SOURCE, not the last caption — see the Bug-1 note in main().
+// follow the SOURCE, not the last caption - see the Bug-1 note in main().
 function sourceDurationSec(project) {
   let cands = ["source.mp4"];
   try {
@@ -181,7 +181,7 @@ function buildPerGroupCss(groups, tokens) {
       if (css) parts.push(css.endsWith(";") ? css : css + ";");
       const isHero = tokens && g.hero === true;
       if (isHero) {
-        // DNA hero treatment (case / tracking / extra css) — authored css still wins (it comes first? no: later rules win; DNA goes first so the author can override)
+        // DNA hero treatment (case / tracking / extra css) - authored css still wins (it comes first? no: later rules win; DNA goes first so the author can override)
         const dnaHero = [];
         if (tokens.heroCase && tokens.heroCase !== "none")
           dnaHero.push(`text-transform: ${tokens.heroCase};`);
@@ -198,7 +198,7 @@ function buildPerGroupCss(groups, tokens) {
       // flex/slot plane can't displace them; glow blur comes from .hero-glow (em-based),
       // echo colors from their own rules (they must NOT inherit a transparent text fill).
       if (isHero && tokens.hero) {
-        // word-level hero treatment (e.g. chrome's gradient clip — background-clip:text
+        // word-level hero treatment (e.g. chrome's gradient clip - background-clip:text
         // can't clip through composited children, so it must live ON the .w span)
         if (tokens.hero.wordCss) rules.push(`      #${g.id} .w { ${tokens.hero.wordCss} }`);
         if (tokens.hero.glow > 0 && parts.length)
@@ -245,12 +245,12 @@ function main() {
   }
   const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
   if (plan.mode === "custom") {
-    console.error("[compile] mode=custom — skip this script and hand-write index.html.");
+    console.error("[compile] mode=custom - skip this script and hand-write index.html.");
     process.exit(1);
   }
   if (plan.mode === "standard") {
     console.error(
-      "[compile] mode=standard — this plan.json is DERIVED by make-standard.cjs; compile Standard projects with make-standard.cjs (from standard.json), not this script.",
+      "[compile] mode=standard - this plan.json is DERIVED by make-standard.cjs; compile Standard projects with make-standard.cjs (from standard.json), not this script.",
     );
     process.exit(1);
   }
@@ -270,7 +270,7 @@ function main() {
   if (dna) {
     tokens = dnaLib.resolveTokens(dna, project, { heroGroups });
     console.log(
-      `[compile] DNA "${dna.name}" (${tokens.register}) — accent ${tokens.accent}` +
+      `[compile] DNA "${dna.name}" (${tokens.register}) - accent ${tokens.accent}` +
         `${tokens.blurPx ? ` · depth-match blur ${tokens.blurPx}px` : ""}` +
         `${tokens.heroes.length ? ` · hero amp ${tokens.heroes.map((h) => h.amp).join("/")} (RMS-coupled)` : ""}`,
     );
@@ -291,10 +291,10 @@ function main() {
   const plane = plan.plane || {},
     header = plan.header || {},
     crown = plan.crown || {};
-  // LOCKED DNA — the plan can NOT override colour / blend / shadow / filter. Picking a
+  // LOCKED DNA - the plan can NOT override colour / blend / shadow / filter. Picking a
   // DNA commits to its visual identity; only layout + per-group typography stay
   // agent-authored. If a scene's luminance fights the look, pick a DIFFERENT DNA
-  // (bright scene → "ink") — never recolour this one. (plan.cap_color / blend_mode /
+  // (bright scene → "ink") - never recolour this one. (plan.cap_color / blend_mode /
   // text_shadow / text_filter are intentionally ignored.)
   const capColor = tokens ? tokens.capColor : "#fff5df";
   const g = (o, k, d) => (o && o[k] != null ? o[k] : d);
@@ -387,8 +387,8 @@ function main() {
     <style>
       html.fg-only body { background: #000 !important; }
       html.fg-only #fg-cover { position: absolute; inset: 0; background: #000; z-index: 1; pointer-events: none; }
-      /* visibility (not display:none): GSAP's transform parser needs a laid-out box at
-         construction time — display:none here crashed timeline build in headless preview */
+      /* visibility (not display:none): timeline setup needs a laid-out box at
+         construction time; display:none here crashed timeline build in headless preview */
       html.fg-only .cap:not([data-layer="fg"]) { visibility: hidden !important; }
     </style>
 `;

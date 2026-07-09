@@ -5,14 +5,14 @@
   The agent composes each caption group's typography per-scene via the
   plan.json `css` field.
 
-  What's LOCKED (DNA — do not override):
+  What's LOCKED (DNA - do not override):
     - font-family: Inter (+ fallback)
     - Motion vocabulary: per-word soft/present reveal curves from the
        validated memory-wall timeline (tone: "soft" | "present")
     - Color palette defaults (cream on dark scenes, deep warm on light)
     - mix-blend-mode defaults, text-shadow / filter auto-picked from
        cap_color luminance (via make-composition.py)
-    - Animation: 0.7s container fade-in (at g.in-0.01 via tl.set), per-word
+    - Animation: 0.7s container fade-in (at g.in-0.01 via tl.add), per-word
        reveal at w.start, group fade-out 0.5s before g.out
 
   What's OPEN per group (agent decides per scene via `css` field):
@@ -23,68 +23,68 @@
     - Tone: soft | present (motion curve)
     - scale: optional shortcut for size multiplication
 
-  LAYOUT — FIRST run the safe-zone precompute, THEN compose into PLANES:
+  LAYOUT - FIRST run the safe-zone precompute, THEN compose into PLANES:
     - Run `node scripts/safe-zones.cjs <project>` and read `safe-zones.json`. From the
        matte it gives subject coverage%, the clearer side, the largest CLEAN rectangles
        (left/right/top), and a verdict:
          · "fg"   → subject fills the frame; NO room to embed behind it. Use
-            `caption_layer:"fg"` (screen-blend on top). Do NOT fight it with bg embeds —
+            `caption_layer:"fg"` (screen-blend on top). Do NOT fight it with bg embeds -
             that's the 9:16 case that costs many failed occlusion rounds.
          · "embed"→ NARRATION planes go INSIDE the reported clean zones (prefer the clearer
-            side / top). The HERO is the EXCEPTION — see the next bullet. Don't guess
-            narration positions — use the zones safe-zones gives you.
+            side / top). The HERO is the EXCEPTION - see the next bullet. Don't guess
+            narration positions - use the zones safe-zones gives you.
     - NARRATION: define 2-4 named planes in plan.json `planes {}`, each inside a clean zone
        from safe-zones.json. Give each narration group a `plane`; groups STACK within it (a
        plane is a flex column → lines accumulate, aligned + coherent). Narration must be CLEAR.
-    - THE HERO (the one promoted peak word) is the OPPOSITE of narration — BIG, and ON the
+    - THE HERO (the one promoted peak word) is the OPPOSITE of narration - BIG, and ON the
        subject. It is the scarce, earned PEAK; it must feel like it BURSTS, not a polite label:
-         · BIG + dominant — **~0.22–0.34 × frame height**. Give it a WIDE plane (≈ centered,
-            spanning the subject), NEVER a narrow margin column. (fit-fonts won't enlarge — if
+         · BIG + dominant - **~0.22–0.34 × frame height**. Give it a WIDE plane (≈ centered,
+            spanning the subject), NEVER a narrow margin column. (fit-fonts won't enlarge - if
             the hero's box is narrow it stays small; widen the box.)
          · CENTERED on the subject (use safe-zones `heroAnchor` = the subject's center),
-            CROSSING it so the head/torso occludes the MIDDLE — **target ~30–55% occlusion**.
+            CROSSING it so the head/torso occludes the MIDDLE - **target ~30–55% occlusion**.
             That occlusion IS the effect. A hero shoved into a clean margin (~10% graze) is
-            WRONG — it reads as a small floating word, not an embed behind the subject.
+            WRONG - it reads as a small floating word, not an embed behind the subject.
          · Exactly ONE hero per clip (scarcity = impact). Mark it `"hero": true` in the plan.
-    - Do NOT hand-position every group with its own scattered absolute `top%` — that
+    - Do NOT hand-position every group with its own scattered absolute `top%` - that
        produces the unbalanced, occluded layouts the gate rejects (many re-tries). Planes
        first; per-group `css` only fine-tunes WITHIN a plane. (Position fields above apply
-       per-group only when a group is NOT in a plane — the exception, not the default.)
+       per-group only when a group is NOT in a plane - the exception, not the default.)
 
-  READING ORDER — on-screen position follows SPOKEN order; a promoted word appears once:
+  READING ORDER - on-screen position follows SPOKEN order; a promoted word appears once:
     - For groups sharing a column/region, vertical (top→bottom) order MUST match spoken
        order. A promoted hero must NOT sit below words that come after it.
        (e.g. "judge us by the [ACTIONS] that we take" → ACTIONS reads BETWEEN "by the" and
        "that we take", NEVER below "that we take".)
-    - The promoted word is lifted OUT of the narration (appears once, as the hero — never
+    - The promoted word is lifted OUT of the narration (appears once, as the hero - never
        also in a narration line). For the words AFTER it, two options, in order:
-         1. PREFERRED — flow them directly BELOW the hero (in reading order) or merge them
+         1. PREFERRED - flow them directly BELOW the hero (in reading order) or merge them
             into the hero's group, IF that area is clean (check safe-zones). One continuous
             read, no clearing.
-         2. FALLBACK — if below/merge would land on the subject (occluded), do the Standard
+         2. FALLBACK - if below/merge would land on the subject (occluded), do the Standard
             hand-off: the pre-hero narration CLEARS, then the post-hero words appear fresh
             (page-flip); the hero may hold across the flip.
-       Prefer promoting a CLAUSE-FINAL word when you can — then nothing follows to place.
+       Prefer promoting a CLAUSE-FINAL word when you can - then nothing follows to place.
 
   Philosophy:
     - Number of groups = content decides (3? 7? 12? whatever the speech
        warrants)
     - Each group's typography = scene decides (italic for soft moments,
-       uppercase for punch, mixed case for narration — per group)
+       uppercase for punch, mixed case for narration - per group)
     - No more "cap-1 must be italic 600" rules. Those were slots.
     - The agent reads the scene + transcript and composes. The template
        only guarantees the DNA feels coherent (Inter family, same motion
        library, warm-cream or deep-warm palette, same shadow logic).
 
   See `references/typographic-moves.md` for RECOMMENDED typography
-  combinations (NOT rules) — italic 600 for openers, uppercase 900 for
+  combinations (NOT rules) - italic 600 for openers, uppercase 900 for
   climaxes, etc. These are suggestions the agent can pick from or deviate.
 -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={{WIDTH}}, height={{HEIGHT}}" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root { --font-scale: {{FONT_SCALE}}; --h: {{HEIGHT}}px; --w: {{WIDTH}}px; }
 
@@ -105,7 +105,7 @@
         z-index: 2;
       }
 
-      /* BASE — everything shared across groups */
+      /* BASE - everything shared across groups */
       .cap {
         display: block;
         position: absolute;
@@ -123,7 +123,7 @@
       }
       .cap .w { display: inline-block; opacity: 0; will-change: opacity, transform; }
 
-      /* Plane mode — when .cap is nested inside .plane, switch to flow
+      /* Plane mode - when .cap is nested inside .plane, switch to flow
          layout so the plane's flex/grid can own the stacking. Agent writes
          typography only per group; positions are delegated to the plane.
          This is the memory-wall / champion architecture: a shared parent
@@ -155,6 +155,7 @@
         src="source.mp4"
         muted
         playsinline
+        data-start="0"
         data-duration="{{DURATION}}"
         data-track-index="0"
         style="z-index: 1"
@@ -173,54 +174,52 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-      const DUR = {{DURATION}};
-      const GROUPS = {{GROUPS_JSON}};
+      const tl = anime.createTimeline({ autoplay: false });
+      const ms = (seconds) => Math.max(0, Math.round((Number(seconds) || 0) * 1000));
+      function parseJsonPlaceholder(value, fallback) {
+        return value.trim().startsWith("{{") ? fallback : JSON.parse(value);
+      }
+      const DUR = Number("{{DURATION}}") || 0;
+      const GROUPS = parseJsonPlaceholder(String.raw`{{GROUPS_JSON}}`, []);
 
-      /* Motion vocabulary — LOCKED.
-         soft:    gentle fade with 8px y-drift, 0.45s power2.out
-         present: snappier pop with 6px y + 1.04 scale, 0.22s power3.out
-         Both target per-WORD spans. Container fade-in via tl.set at g.in-0.01. */
+      /* Motion vocabulary, LOCKED.
+         soft:    gentle fade with 8px y-drift, 450ms outCubic
+         present: snappier pop with 6px y + 1.04 scale, 220ms outQuart
+         Both target per-WORD spans. Container fade-in via tl.add at g.in-0.01. */
       GROUPS.forEach(function (g) {
         var sel = "#" + g.id;
         var isSoft = g.tone === "soft";
 
         // Enter: reveal opacity at g.in-0.01. The cap has been reserving flex
         // space all along (opacity: 0 but display: block from CSS), so no
-        // layout reflow when it fades in — matches memory-wall canonical.
-        tl.set(sel, { opacity: 1 }, Math.max(0, g.in - 0.01));
+        // layout reflow when it fades in - matches memory-wall canonical.
+        tl.add(sel, { opacity: 1, duration: 0 }, ms(Math.max(0, g.in - 0.01)));
 
         g.words.forEach(function (w, i) {
           var wsel = sel + " .w[data-i='" + i + "']";
           if (isSoft) {
-            tl.fromTo(wsel,
-              { opacity: 0, y: 8 },
-              { opacity: 1, y: 0, duration: 0.45, ease: "power2.out", overwrite: "auto" },
-              w.start);
+            tl.add(wsel, { opacity: 0, y: 8, duration: 0 }, ms(w.start));
+            tl.add(wsel, { opacity: 1, y: 0, duration: 450, ease: "outCubic" }, ms(w.start));
           } else {
-            tl.fromTo(wsel,
-              { opacity: 0, y: 6, scale: 1.04 },
-              { opacity: 1, y: 0, scale: 1.0, duration: 0.22,
-                ease: "power3.out", overwrite: "auto", transformOrigin: "50% 50%" },
-              w.start);
+            tl.add(wsel, { opacity: 0, y: 6, scale: 1.04, duration: 0 }, ms(w.start));
+            tl.add(wsel, { opacity: 1, y: 0, scale: 1.0, duration: 220,
+              ease: "outQuart", transformOrigin: "50% 50%" }, ms(w.start));
           }
         });
 
         if (g.out < DUR) {
-          tl.to(sel, { opacity: 0, duration: 0.5, ease: "power2.in", overwrite: "auto" },
-                g.out - 0.5);
+          tl.add(sel, { opacity: 0, duration: 500, ease: "inCubic" }, ms(g.out - 0.5));
         }
         // Exit: display:none releases flex space so the next sentence-block's
         // caps can take the top slot. All caps in ONE block share the same
-        // `out` so this fires synchronously for the block — one clean reflow
+        // `out` so this fires synchronously for the block - one clean reflow
         // at the boundary, no per-cap jitter. Plan must share `out` within a
         // block; staggered per-cap exits are forbidden in plane mode.
-        tl.set(sel, { opacity: 0, display: "none" }, g.out);
+        tl.add(sel, { opacity: 0, display: "none", duration: 0 }, ms(g.out));
       });
 
       tl.seek(0);
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>
