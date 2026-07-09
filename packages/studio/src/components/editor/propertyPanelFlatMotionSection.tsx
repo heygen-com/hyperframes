@@ -1,8 +1,12 @@
+import { useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
 import { formatTimingValue, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { parseTimingValue } from "./propertyPanelTimingSection";
 import { CommitField } from "./propertyPanelPrimitives";
+import { AnimationCard } from "./AnimationCard";
+import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
+import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
 
 function deriveTimingFromAnimations(
   animations: GsapAnimation[],
@@ -75,6 +79,101 @@ export function FlatTimingRow({
         <p className="col-span-3 mt-1 text-[10px] leading-snug text-panel-text-3">
           Inferred from this element's animation — edit to pin an explicit clip range.
         </p>
+      )}
+    </div>
+  );
+}
+
+export function FlatMotionSection({
+  element,
+  animations,
+  showTiming,
+  showEffects,
+  multipleTimelines,
+  unsupportedTimelinePattern,
+  onSetAttribute,
+  onAddAnimation,
+  ...callbacks
+}: {
+  element: DomEditSelection;
+  animations: GsapAnimation[];
+  showTiming: boolean;
+  showEffects: boolean;
+  multipleTimelines?: boolean;
+  unsupportedTimelinePattern?: boolean;
+  onSetAttribute: (attr: string, value: string) => void | Promise<void>;
+  onAddAnimation: (method: "to" | "from" | "set" | "fromTo") => void;
+} & GsapAnimationEditCallbacks) {
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      {showTiming && (
+        <FlatTimingRow element={element} animations={animations} onSetAttribute={onSetAttribute} />
+      )}
+      {showEffects && (
+        <>
+          {multipleTimelines && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+              This file has multiple GSAP timelines. Animation editing is disabled to prevent data
+              loss — consolidate into a single timeline to enable editing.
+            </p>
+          )}
+          {unsupportedTimelinePattern && (
+            <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-400">
+              This timeline uses a computed key the editor can&apos;t resolve statically.
+            </p>
+          )}
+          {!multipleTimelines && !unsupportedTimelinePattern && (
+            <div className="space-y-2">
+              {animations.map((anim, index) => (
+                <AnimationCard
+                  key={anim.id}
+                  animation={anim}
+                  defaultExpanded={index === 0}
+                  flat
+                  {...callbacks}
+                />
+              ))}
+              <div className="relative pt-1">
+                {addMenuOpen ? (
+                  <div className="flex gap-1.5">
+                    {ADD_METHODS.map((method) => (
+                      <button
+                        key={method}
+                        type="button"
+                        title={METHOD_TOOLTIPS[method]}
+                        onClick={() => {
+                          onAddAnimation(method);
+                          setAddMenuOpen(false);
+                        }}
+                        className="rounded-lg border border-panel-border-input bg-panel-input px-2.5 py-1.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:border-panel-text-4 hover:text-panel-text-0"
+                      >
+                        {ADD_METHOD_LABELS[method] ?? method}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setAddMenuOpen(false)}
+                      className="px-1.5 text-[11px] text-panel-text-3 hover:text-panel-text-1"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddMenuOpen(true)}
+                    className="text-[11px] font-medium text-panel-text-3 transition-colors hover:text-panel-text-1"
+                    title="Add a new animation effect to this element"
+                  >
+                    + Add effect
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
