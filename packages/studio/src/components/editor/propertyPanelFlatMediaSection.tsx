@@ -56,6 +56,9 @@ export function FlatMediaSection({
     (el as HTMLMediaElement).duration ||
     0;
   const mediaStartMax = Math.max(30, Math.ceil(sourceDuration || mediaStart + 10));
+  const hasLoop = el.hasAttribute("loop");
+  const hasMuted = el.hasAttribute("muted");
+  const hasAudio = element.dataAttributes["has-audio"] === "true";
 
   const srcAttr = el.getAttribute("src") ?? "";
   const [copied, setCopied] = useState(false);
@@ -218,6 +221,31 @@ export function FlatMediaSection({
             displayValue={formatTimingValue(mediaStart)}
             onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
           />
+          <FlatToggle
+            label="Loop"
+            checked={hasLoop}
+            onChange={(next) => void onSetHtmlAttribute("loop", next ? "true" : null)}
+          />
+          <FlatToggle
+            label="Muted"
+            checked={hasMuted}
+            onChange={(next) => void onSetHtmlAttribute("muted", next ? "true" : null)}
+          />
+          {isVideo && (
+            <FlatToggle
+              label="Has audio track"
+              checked={hasAudio}
+              onChange={(next) => {
+                if (next) {
+                  void onSetAttribute("has-audio", "true");
+                  void onSetHtmlAttribute("muted", null);
+                } else {
+                  void onSetAttribute("has-audio", "");
+                  void onSetHtmlAttribute("muted", "true");
+                }
+              }}
+            />
+          )}
         </>
       )}
     </div>
