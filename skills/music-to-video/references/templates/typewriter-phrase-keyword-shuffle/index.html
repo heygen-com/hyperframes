@@ -15,8 +15,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Typewriter Phrase / Keyword Font-Shuffle — group_2 reference impl</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Typewriter Phrase / Keyword Font-Shuffle - group_2 reference impl</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -120,10 +120,10 @@
             : {},
         );
 
-        // ── 2. FONT PRESET LIBRARY (preset many — the keyword cycles these) ─
+        // ── 2. FONT PRESET LIBRARY (preset many - the keyword cycles these) ─
         // FONTS[0] is the BASE face, shared with the lead words. The keyword flips
         // to FONTS[i] on each SHUFFLE step. Offline-safe generic stacks only (no
-        // remote fonts). Extend this list freely — more beats → more presets to
+        // remote fonts). Extend this list freely - more beats → more presets to
         // cycle through. Each entry: { family, weight, style }.
         var FONTS = [
           {
@@ -144,15 +144,15 @@
           return { fontFamily: f.family, fontWeight: f.weight, fontStyle: f.style };
         }
 
-        // ── 3. BEAT MAP (filled from <group>.audiomap.json — see README) ────
+        // ── 3. BEAT MAP (filled from <group>.audiomap.json - see README) ────
         // group_2.audiomap.json: BPM 129.2, hi-hat onsets drive every move.
         //   one ENTRY onset per lead word (in order), then KEYWORD, then PERIOD.
-        var LEAD_ONSETS = [0.557, 0.906]; // grid.events[].t — one per non-empty lead word
+        var LEAD_ONSETS = [0.557, 0.906]; // grid.events[].t - one per non-empty lead word
         var KEY_ONSET = 1.231; // keyword types in here
         var PERIOD_ONSET = 1.44; // accent char punches in here
         // keyword font-shuffle: each {t,font} flips the keyword on a beat/onset.
         // t  = a grid.beats_sec[] / events[].t after the phrase is set.
-        // font = index into FONTS[]. Add as many rows as the beat has flips — and
+        // font = index into FONTS[]. Add as many rows as the beat has flips - and
         // re-use indices to repeat faces, or walk new ones for a longer shuffle.
         var SHUFFLE = [
           { t: 1.904, font: 1 }, // → upright serif
@@ -196,42 +196,63 @@
         }
         line.appendChild(cword);
 
-        // ── 5. Timeline — one paused GSAP timeline, absolute audio seconds ──
-        window.__timelines = window.__timelines || {};
-        var tl = gsap.timeline({ paused: true });
+        // ── 5. Timeline - one paused anime.js timeline, absolute audio milliseconds ──
+        var tl = anime.createTimeline({ autoplay: false });
 
         var allSpans = leadEls.concat([keyEl]);
         if (periodEl) allSpans.push(periodEl);
-        gsap.set(allSpans, { autoAlpha: 0 });
-        gsap.set(keyEl, fontProps(0)); // keyword starts in the base face
+        tl.add(allSpans, { opacity: 0, visibility: "hidden", duration: 0 }, 0);
+        Object.assign(keyEl.style, fontProps(0)); // keyword starts in the base face
+        tl.add(keyEl, Object.assign({ duration: 0 }, fontProps(0)), 0);
 
-        var POP_IN = { autoAlpha: 0, scale: 0.92, y: 5 };
-        var POP_OUT = { autoAlpha: 1, scale: 1, y: 0, duration: 0.1, ease: "back.out(2)" };
+        var POP_IN = { opacity: 0, visibility: "hidden", scale: 0.92, translateY: 5 };
+        var POP_OUT = {
+          opacity: 1,
+          visibility: "visible",
+          scale: 1,
+          translateY: 0,
+          duration: 100,
+          ease: "outBack(2)",
+        };
+        function popParams() {
+          return {
+            opacity: [POP_IN.opacity, POP_OUT.opacity],
+            visibility: [POP_IN.visibility, POP_OUT.visibility],
+            scale: [POP_IN.scale, POP_OUT.scale],
+            translateY: [POP_IN.translateY, POP_OUT.translateY],
+            duration: POP_OUT.duration,
+            ease: POP_OUT.ease,
+          };
+        }
 
-        // typewriter accumulation — each lead word pops on its onset (words stay)
+        // typewriter accumulation - each lead word pops on its onset (words stay)
         leadEls.forEach(function (el, i) {
           var t = i < LEAD_ONSETS.length ? LEAD_ONSETS[i] : KEY_ONSET;
-          tl.fromTo(el, POP_IN, POP_OUT, t);
+          tl.add(el, popParams(), Math.round(t * 1000));
         });
         // keyword types in (in the base face)
-        tl.fromTo(keyEl, POP_IN, POP_OUT, KEY_ONSET);
+        tl.add(keyEl, popParams(), Math.round(KEY_ONSET * 1000));
         // trailing accent char punches in on its own onset
         if (periodEl) {
-          tl.fromTo(
+          tl.add(
             periodEl,
-            { autoAlpha: 0, scale: 0.3 },
-            { autoAlpha: 1, scale: 1, duration: 0.09, ease: "back.out(3)" },
-            PERIOD_ONSET,
+            {
+              opacity: [0, 1],
+              visibility: ["hidden", "visible"],
+              scale: [0.3, 1],
+              duration: 90,
+              ease: "outBack(3)",
+            },
+            Math.round(PERIOD_ONSET * 1000),
           );
         }
 
-        // keyword font-shuffle — 0ms hard sets on the beat (the percussion IS the swap)
+        // keyword font-shuffle - 0ms hard sets on the beat (the percussion IS the swap)
         SHUFFLE.forEach(function (s) {
-          tl.set(keyEl, fontProps(s.font), s.t);
+          tl.add(keyEl, Object.assign({ duration: 0 }, fontProps(s.font)), Math.round(s.t * 1000));
         });
 
-        tl.seek(0);
-        window.__timelines["group-two-recreate"] = tl;
+        hyperframesAnime.register("group-two-recreate", tl);
       })();
     </script>
   </body>

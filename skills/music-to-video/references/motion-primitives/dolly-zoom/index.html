@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>09 · dolly_zoom</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -112,26 +112,17 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.fromTo(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
         ".bg-far",
-        { scale: 1, filter: "blur(2px)" },
-        { scale: 1.6, filter: "blur(4px)", duration: 1.8, ease: "power2.inOut" },
-        0.1,
+        { scale: [1, 1.6], filter: ["blur(2px)", "blur(4px)"], duration: 1800, ease: "inOutCubic" },
+        100,
       );
-      tl.fromTo(".bg-mid", { scale: 1 }, { scale: 1.4, duration: 1.8, ease: "power2.inOut" }, 0.1);
-      tl.fromTo(".bg-near", { scale: 1 }, { scale: 1.2, duration: 1.8, ease: "power2.inOut" }, 0.1);
-      tl.fromTo(
-        ".subject",
-        { opacity: 0, scale: 1.1 },
-        { opacity: 1, scale: 1, duration: 0.6, ease: "power3.out" },
-        0.15,
-      );
-      tl.to(".layers", { skewY: -0.5, duration: 1.8, ease: "power2.inOut" }, 0.1);
-
-      window.__timelines["main"] = tl;
+      tl.add(".bg-mid", { scale: [1, 1.4], duration: 1800, ease: "inOutCubic" }, 100);
+      tl.add(".bg-near", { scale: [1, 1.2], duration: 1800, ease: "inOutCubic" }, 100);
+      tl.add(".subject", { opacity: [0, 1], scale: [1.1, 1], duration: 600, ease: "outQuart" }, 150);
+      tl.add(".layers", { skewY: -0.5, duration: 1800, ease: "inOutCubic" }, 100);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

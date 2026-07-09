@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>palette_flip</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -97,10 +97,9 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
-      // Four distinct palette regimes — same layout, re-skinned on each flip.
+      // Four distinct palette regimes - same layout, re-skinned on each flip.
       const regimes = [
         { bg: "#0a0a0f", fg: "#f5f5fa", accent: "#7c3aed", kicker: "#a855f7" }, // dark / violet
         { bg: "#f4ead8", fg: "#1a1410", accent: "#ff5a47", kicker: "#c4452f" }, // cream / coral
@@ -108,25 +107,25 @@
         { bg: "#000000", fg: "#ffce3a", accent: "#ffce3a", kicker: "#7a6010" }, // black / amber
       ];
 
-      const beat = 0.6;
+      const beatMs = 600;
       const scene = "#scene";
       const word = "#word";
       const kicker = "#kicker";
       const bars = ".bar";
 
-      // Instant 0ms flips on every beat — cycle through the regimes deterministically.
+      // Instant 0ms flips on every beat - cycle through the regimes deterministically.
       // The motion IS the colour change; layout never moves.
       const flips = 5;
       for (let i = 0; i < flips; i++) {
         const p = regimes[i % regimes.length];
-        const t = i * beat;
-        tl.set(scene, { backgroundColor: p.bg }, t);
-        tl.set(word, { color: p.fg }, t);
-        tl.set(kicker, { color: p.kicker }, t);
-        tl.set(bars, { backgroundColor: p.accent }, t);
+        const t = i * beatMs;
+        tl.add(scene, { backgroundColor: p.bg, duration: 0 }, t);
+        tl.add(word, { color: p.fg, duration: 0 }, t);
+        tl.add(kicker, { color: p.kicker, duration: 0 }, t);
+        tl.add(bars, { backgroundColor: p.accent, duration: 0 }, t);
       }
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

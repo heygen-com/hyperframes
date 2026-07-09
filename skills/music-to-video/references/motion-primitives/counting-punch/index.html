@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>22 · counting_punch</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -88,8 +88,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       const TARGET = 12847;
       const counter = { v: 0 };
@@ -99,13 +98,13 @@
         return Math.floor(n).toLocaleString("en-US");
       }
 
-      tl.to(
+      tl.add(
         counter,
         {
           v: TARGET,
-          duration: 1.15,
-          ease: "expo.out",
-          onUpdate: function () {
+          duration: 1150,
+          ease: "outExpo",
+          onUpdate: () => {
             const el = document.getElementById("counter");
             if (!el) return;
             const cur = Math.floor(counter.v);
@@ -119,36 +118,36 @@
             lastShown = cur;
           },
         },
-        0.15,
+        150,
       );
 
       // Big settle punch at landing
-      tl.to(
+      tl.add(
         "#counter",
         {
           scale: 1.12,
           textShadow: "0 0 80px rgba(168, 85, 247, 0.9)",
-          duration: 0.1,
-          ease: "power4.out",
+          duration: 100,
+          ease: "outQuint",
         },
-        1.3,
+        1300,
       );
-      tl.to(
+      tl.add(
         "#counter",
         {
           scale: 1.0,
           textShadow: "0 0 20px rgba(168, 85, 247, 0.4)",
-          duration: 0.6,
-          ease: "elastic.out(1, 0.55)",
+          duration: 600,
+          ease: "outElastic(1, .55)",
         },
-        1.4,
+        1400,
       );
 
       // Underline draws
-      tl.to("#underline", { width: 420, duration: 0.6, ease: "expo.out" }, 1.35);
-      tl.to("#caption", { opacity: 1, duration: 0.5, ease: "power2.out" }, 1.55);
+      tl.add("#underline", { width: 420, duration: 600, ease: "outExpo" }, 1350);
+      tl.add("#caption", { opacity: 1, duration: 500, ease: "outCubic" }, 1550);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

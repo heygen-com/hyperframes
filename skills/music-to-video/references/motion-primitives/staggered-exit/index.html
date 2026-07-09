@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>staggered_exit</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -88,30 +88,15 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      const cards = gsap.utils.toArray(".card");
-      const hold = 0.4; // fully visible hold before the cascade begins
-      const step = 0.11; // per-element offset
-      const exitDur = 0.45;
-
-      // start fully visible
-      tl.set(cards, { autoAlpha: 1, y: 0 }, 0);
-
-      // ordered exit: each card slides down + fades, one after another
-      for (let i = 0; i < cards.length; i++) {
-        tl.to(
-          cards[i],
-          { y: 80, autoAlpha: 0, duration: exitDur, ease: "power3.in" },
-          hold + i * step,
-        );
-      }
-
-      // snap all back to the visible start state so the next loop begins full
-      tl.set(cards, { autoAlpha: 1, y: 0 }, 1.95);
-
-      window.__timelines["main"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".card", { opacity: 1, visibility: "visible", translateY: 0, duration: 0 }, 0);
+      tl.add(
+        ".card",
+        { translateY: [0, 80], opacity: [1, 0], visibility: ["visible", "hidden"], duration: 450, ease: "inQuart" },
+        400,
+      );
+      tl.add(".card", { opacity: 1, visibility: "visible", translateY: 0, duration: 0 }, 1950);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

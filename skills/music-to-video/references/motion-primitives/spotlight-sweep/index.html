@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>20 · spotlight_sweep</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -105,18 +105,17 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Animate the spotlight x position via mask-image (use a proxy + onUpdate for smoothness)
       const state = { x: -400 };
-      tl.to(
+      tl.add(
         state,
         {
           x: 2300,
-          duration: 1.4,
-          ease: "power2.inOut",
-          onUpdate: function () {
+          duration: 1400,
+          ease: "inOutCubic",
+          onUpdate: () => {
             const m = `radial-gradient(circle 360px at ${state.x}px 50%, #000 0%, rgba(0,0,0,0.6) 60%, transparent 80%)`;
             const g = `radial-gradient(circle 380px at ${state.x}px 50%, rgba(168, 85, 247, 0.18) 0%, transparent 60%)`;
             const bright = document.getElementById("bright");
@@ -128,10 +127,10 @@
             if (glow) glow.style.background = g;
           },
         },
-        0.3,
+        300,
       );
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

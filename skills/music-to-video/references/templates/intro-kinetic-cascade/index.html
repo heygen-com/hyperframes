@@ -2,8 +2,8 @@
 <html
   lang="en"
   data-composition-variables='[
-    {"id":"theme",   "type":"string", "label":"Palette — light | dark | bold",                         "default":"light"},
-    {"id":"icon",    "type":"string", "label":"Climax icon — bell|cursor|sparkle|bolt|play|heart|check|star, an emoji, <svg>, or none", "default":"bell"},
+    {"id":"theme",   "type":"string", "label":"Palette - light | dark | bold",                         "default":"light"},
+    {"id":"icon",    "type":"string", "label":"Climax icon - bell|cursor|sparkle|bolt|play|heart|check|star, an emoji, <svg>, or none", "default":"bell"},
     {"id":"phrases", "type":"string", "label":"Phrases JSON (empty = built-in intro)",                  "default":""},
     {"id":"climax",  "type":"string", "label":"Climax JSON {text,in,iconAt,hold,size} (empty = default)","default":""}
   ]'
@@ -11,8 +11,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Intro Kinetic Cascade · beat-synced kinetic typography — reference impl</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Intro Kinetic Cascade · beat-synced kinetic typography - reference impl</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -163,14 +163,12 @@
           //  each revealed word-by-word on its anchors (VO word-times OR audio onsets),
           //  hard cut-out between them, climaxing on a phrase that SLIDES in with a
           //  swappable, ringing ICON. Asset-free: system type, inline-SVG icon library,
-          //  bundled GSAP. Reversed from the VO intro `act0-intro-bell`.
+          //  anime.js. Reversed from the VO intro `act0-intro-bell`.
           //
-          //  COMPOSE BY DATA — `phrases` (the cascade) + `climax` (the finale) + `icon`
+          //  COMPOSE BY DATA - `phrases` (the cascade) + `climax` (the finale) + `icon`
           //  (which glyph rings) + `theme` (palette). The icon is its own knob so it can
           //  match the scene: bell for timing, cursor for a click, sparkle for AI, …
           // ════════════════════════════════════════════════════════════════════
-
-          window.__timelines = window.__timelines || {};
 
           // ── 1. Variables ──
           var defaults = { theme: "light", icon: "bell", phrases: "", climax: "" };
@@ -236,7 +234,7 @@
               "</svg>"
             );
           }
-          // Insert SVG markup as SANITIZED parsed nodes — never innerHTML, and never
+          // Insert SVG markup as SANITIZED parsed nodes - never innerHTML, and never
           // a raw appendChild. DOMParser builds the tree, then cleanSvg() hard-strips
           // everything that isn't inert drawing: only allow-listed shape elements +
           // presentation attributes survive, so <script>, <image>/<use>/<foreignObject>,
@@ -498,17 +496,21 @@
           stage.appendChild(cEl);
 
           // ── 8. Timeline ──
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
+          function ms(t) {
+            return Math.round((Number(t) || 0) * 1000);
+          }
 
           PHRASES.forEach(function (p) {
-            gsap.set(p._el, { opacity: 0 });
-            gsap.set(p._spans, { opacity: 0 });
+            tl.add(p._el, { opacity: 0, duration: 0 }, 0);
+            tl.add(p._spans, { opacity: 0, duration: 0 }, 0);
           });
-          gsap.set(cEl, { xPercent: -50, yPercent: -50, x: OFFSCREEN_R, opacity: 0 });
+          cEl.style.transform = "translate(-50%, -50%)";
+          tl.add(cEl, { left: 960 + OFFSCREEN_R, top: 540, opacity: 0, duration: 0 }, 0);
           if (iconEl) {
-            gsap.set(iconEl, { opacity: 0 });
-            gsap.set(iconEl.querySelector(".icon-glyph"), { scale: 0.4, rotation: -8, opacity: 0 });
-            gsap.set(rings, { opacity: 0, scale: 0.4 });
+            tl.add(iconEl, { opacity: 0, duration: 0 }, 0);
+            tl.add(iconEl.querySelector(".icon-glyph"), { scale: 0.4, rotate: -8, opacity: 0, duration: 0 }, 0);
+            tl.add(rings, { opacity: 0, scale: 0.4, duration: 0 }, 0);
           }
 
           PHRASES.forEach(function (p, pi) {
@@ -522,87 +524,89 @@
                 return n <= 1 ? start : start + ((end - start) * i) / (n - 1);
               });
             }
-            tl.to(p._el, { opacity: 1, duration: 0.01, overwrite: "auto" }, times[0]);
+            tl.add(p._el, { opacity: 1, duration: 10 }, ms(times[0]));
             p._spans.forEach(function (w, i) {
-              tl.to(
+              tl.add(
                 w,
-                { opacity: 1, duration: WORD_FADE, ease: "power2.out", overwrite: "auto" },
-                times[i],
+                { opacity: 1, duration: ms(WORD_FADE), ease: "outCubic" },
+                ms(times[i]),
               );
             });
             if (p._grad.length) {
-              tl.fromTo(
+              tl.add(
                 p._grad,
-                { backgroundPosition: "0% 50%" },
                 {
-                  backgroundPosition: "-200% 50%",
-                  duration: Math.max(0.6, p.out - times[0]),
-                  ease: "none",
+                  backgroundPosition: ["0% 50%", "-200% 50%"],
+                  duration: ms(Math.max(0.6, p.out - times[0])),
+                  ease: "linear",
                 },
-                times[0],
+                ms(times[0]),
               );
             }
-            tl.to(
+            tl.add(
               p._el,
-              { opacity: 0, duration: CUT, ease: "power2.in", overwrite: "auto" },
-              p.out - CUT,
+              { opacity: 0, duration: ms(CUT), ease: "inCubic" },
+              ms(p.out - CUT),
             );
           });
 
           // climax slide-in
-          tl.to(
+          tl.add(
             cEl,
-            { x: 0, opacity: 1, duration: SLIDE, ease: "power3.out", overwrite: "auto" },
-            C.in,
+            { left: 960, opacity: 1, duration: ms(SLIDE), ease: "outQuart" },
+            ms(C.in),
           );
 
           // icon pop + ring
           if (iconEl) {
             var glyph = iconEl.querySelector(".icon-glyph");
-            tl.to(
+            tl.add(
               iconEl,
-              { opacity: 1, duration: 0.3, ease: "power3.out", overwrite: "auto" },
-              C.iconAt,
+              { opacity: 1, duration: 300, ease: "outQuart" },
+              ms(C.iconAt),
             );
-            tl.fromTo(
+            tl.add(
               glyph,
-              { scale: 0.4, rotation: -8, opacity: 0 },
               {
-                scale: 1,
-                rotation: 0,
-                opacity: 1,
-                duration: 0.35,
-                ease: "back.out(2.4)",
-                overwrite: "auto",
+                scale: [0.4, 1],
+                rotate: [-8, 0],
+                opacity: [0, 1],
+                duration: 350,
+                ease: "outBack(2.4)",
               },
-              C.iconAt + 0.05,
+              ms(C.iconAt + 0.05),
             );
-            tl.to(
+            tl.add(
               glyph,
-              { rotation: 13, duration: 0.1, ease: "power2.out", overwrite: "auto" },
-              C.iconAt + 0.4,
+              { rotate: 13, duration: 100, ease: "outCubic" },
+              ms(C.iconAt + 0.4),
             );
-            tl.to(
+            tl.add(
               glyph,
-              { rotation: 0, duration: 0.85, ease: "elastic.out(1, 0.25)", overwrite: "auto" },
-              C.iconAt + 0.5,
+              { rotate: 0, duration: 850, ease: "outElastic(1, .25)" },
+              ms(C.iconAt + 0.5),
             );
             [0, 0.28].forEach(function (off) {
-              tl.fromTo(
+              tl.add(
                 rings,
-                { scale: 0.4, opacity: 0.55 },
-                { scale: 1.5, opacity: 0, duration: 0.8, ease: "power2.out", stagger: 0.08 },
-                C.iconAt + 0.42 + off,
+                {
+                  scale: [0.4, 1.5],
+                  opacity: [0.55, 0],
+                  duration: 800,
+                  ease: "outCubic",
+                  delay: anime.stagger(80),
+                },
+                ms(C.iconAt + 0.42 + off),
               );
             });
           }
 
           var TOTAL = Math.round((C.iconAt + C.hold) * 100) / 100;
-          tl.to({}, { duration: TOTAL }, 0);
+          var pad = { value: 0 };
+          tl.add(pad, { value: 1, duration: ms(TOTAL), ease: "linear" }, 0);
           root.setAttribute("data-duration", String(TOTAL));
-          tl.seek(0);
 
-          window.__timelines["intro-kinetic-cascade"] = tl;
+          hyperframesAnime.register("intro-kinetic-cascade", tl);
         })();
       </script>
     </div>

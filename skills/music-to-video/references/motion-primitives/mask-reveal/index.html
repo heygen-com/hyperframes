@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>05 · mask_reveal</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -93,17 +93,18 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.set(".mask-clip", { clipPath: "inset(0 100% 0 0)" }, 0);
-      tl.set(".sweep", { x: 0, opacity: 0 }, 0);
-      tl.to(".sweep", { opacity: 1, duration: 0.08, ease: "power2.out" }, 0.1);
-      tl.to(".sweep", { x: 1300, duration: 0.75, ease: "expo.out" }, 0.15);
-      tl.to(".mask-clip", { clipPath: "inset(0 0% 0 0)", duration: 0.75, ease: "expo.out" }, 0.18);
-      tl.to(".sweep", { opacity: 0, duration: 0.3, ease: "power2.in" }, 0.85);
-
-      window.__timelines["main"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".mask-clip", { clipPath: "inset(0 100% 0 0)", duration: 0 }, 0);
+      tl.add(".sweep", { translateX: 0, opacity: 0, duration: 0 }, 0);
+      tl.add(".sweep", { opacity: [0, 1], duration: 80, ease: "outCubic" }, 100);
+      tl.add(".sweep", { translateX: [0, 1300], duration: 750, ease: "outExpo" }, 150);
+      tl.add(
+        ".mask-clip",
+        { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"], duration: 750, ease: "outExpo" },
+        180,
+      );
+      tl.add(".sweep", { opacity: [1, 0], duration: 300, ease: "inCubic" }, 850);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

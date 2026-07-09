@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>hard_cut</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -72,14 +72,13 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Deterministic palette + word list. Variation is derived from index only.
       const BG = ["#7c3aed", "#0a0a0f", "#ff2a4a", "#2afff0", "#a855f7", "#f5f5fa", "#0a0a0f"];
       const FG = ["#f5f5fa", "#a855f7", "#0a0a0f", "#0a0a0f", "#0a0a0f", "#7c3aed", "#f5f5fa"];
       const WORDS = ["CUT", "NOW", "HARD", "SNAP", "STOP", "GO", "CUT"];
-      const STEP = 0.28; // beat interval
+      const STEP_MS = 280; // beat interval
       const N = WORDS.length;
 
       // Build one full-frame panel per cut, all hidden but the first.
@@ -99,19 +98,19 @@
       }
 
       // Sample-accurate 0ms cuts: at each beat, hide current panel, show next.
-      // tl.set has no duration and no ease — brutal instant switching.
+      // Zero-duration tl.add calls make brutal instant switches.
       for (let i = 1; i < N; i++) {
-        const t = i * STEP;
-        tl.set("#p" + (i - 1), { opacity: 0 }, t);
-        tl.set("#p" + i, { opacity: 1 }, t);
+        const t = i * STEP_MS;
+        tl.add("#p" + (i - 1), { opacity: 0, duration: 0 }, t);
+        tl.add("#p" + i, { opacity: 1, duration: 0 }, t);
       }
 
       // Loop gracefully: snap back to the first panel before the clip ends so a
       // re-entry starts clean on the same color/word it began with.
-      tl.set("#p" + (N - 1), { opacity: 0 }, N * STEP);
-      tl.set("#p0", { opacity: 1 }, N * STEP);
+      tl.add("#p" + (N - 1), { opacity: 0, duration: 0 }, N * STEP_MS);
+      tl.add("#p0", { opacity: 1, duration: 0 }, N * STEP_MS);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

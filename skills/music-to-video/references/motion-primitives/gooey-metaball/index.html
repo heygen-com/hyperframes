@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>17 · gooey_metaball</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -131,111 +131,109 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Initial: all balls collapsed at center
       ["#ballA", "#ballB", "#ballC", "#ballD", "#ballE"].forEach((id) => {
-        tl.set(id, { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 }, 0);
+        tl.add(id, { translateX: "-50%", translateY: "-50%", scale: 0, opacity: 0, duration: 0 }, 0);
       });
       // Spawn outward
-      tl.to(
+      tl.add(
         "#ballA",
         {
-          xPercent: -50 - 120,
-          yPercent: -50 + 20,
+          translateX: "-170%",
+          translateY: "-30%",
           scale: 1,
           opacity: 1,
-          duration: 0.5,
-          ease: "back.out(1.6)",
+          duration: 500,
+          ease: "outBack(1.6)",
         },
-        0.15,
+        150,
       );
-      tl.to(
+      tl.add(
         "#ballB",
         {
-          xPercent: -50 + 100,
-          yPercent: -50 + 50,
+          translateX: "50%",
+          translateY: "0%",
           scale: 1,
           opacity: 1,
-          duration: 0.55,
-          ease: "back.out(1.6)",
+          duration: 550,
+          ease: "outBack(1.6)",
         },
-        0.2,
+        200,
       );
-      tl.to(
+      tl.add(
         "#ballC",
         {
-          xPercent: -50 + 30,
-          yPercent: -50 - 80,
+          translateX: "-20%",
+          translateY: "-130%",
           scale: 1,
           opacity: 1,
-          duration: 0.55,
-          ease: "back.out(1.6)",
+          duration: 550,
+          ease: "outBack(1.6)",
         },
-        0.25,
+        250,
       );
-      tl.to(
+      tl.add(
         "#ballD",
         {
-          xPercent: -50 - 50,
-          yPercent: -50 - 30,
+          translateX: "-100%",
+          translateY: "-80%",
           scale: 1,
           opacity: 1,
-          duration: 0.55,
-          ease: "back.out(1.6)",
+          duration: 550,
+          ease: "outBack(1.6)",
         },
-        0.3,
+        300,
       );
-      tl.to(
+      tl.add(
         "#ballE",
         {
-          xPercent: -50 + 80,
-          yPercent: -50 - 40,
+          translateX: "30%",
+          translateY: "-90%",
           scale: 1,
           opacity: 1,
-          duration: 0.55,
-          ease: "back.out(1.6)",
+          duration: 550,
+          ease: "outBack(1.6)",
         },
-        0.18,
+        180,
       );
 
       // Idle drift
-      tl.to(
+      tl.add(
         "#ballA",
-        { xPercent: "+=20", yPercent: "+=12", duration: 1.0, ease: "sine.inOut" },
-        0.7,
+        { translateX: "-150%", translateY: "-18%", duration: 1000, ease: "inOutSine" },
+        700,
       );
-      tl.to(
+      tl.add(
         "#ballB",
-        { xPercent: "-=18", yPercent: "-=10", duration: 1.0, ease: "sine.inOut" },
-        0.7,
+        { translateX: "32%", translateY: "-10%", duration: 1000, ease: "inOutSine" },
+        700,
       );
-      tl.to(
+      tl.add(
         "#ballC",
-        { xPercent: "-=15", yPercent: "+=20", duration: 1.0, ease: "sine.inOut" },
-        0.7,
+        { translateX: "-35%", translateY: "-110%", duration: 1000, ease: "inOutSine" },
+        700,
       );
-      tl.to(
+      tl.add(
         "#ballD",
-        { xPercent: "+=25", yPercent: "+=8", duration: 1.0, ease: "sine.inOut" },
-        0.7,
+        { translateX: "-75%", translateY: "-72%", duration: 1000, ease: "inOutSine" },
+        700,
       );
-      tl.to(
+      tl.add(
         "#ballE",
-        { xPercent: "-=22", yPercent: "+=18", duration: 1.0, ease: "sine.inOut" },
-        0.7,
+        { translateX: "8%", translateY: "-72%", duration: 1000, ease: "inOutSine" },
+        700,
       );
 
       // Reveal text behind
-      tl.fromTo(
+      tl.add(
         ".hero",
-        { opacity: 0, scale: 0.95 },
-        { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" },
-        0.6,
+        { opacity: [0, 1], scale: [0.95, 1], duration: 500, ease: "outQuart" },
+        600,
       );
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

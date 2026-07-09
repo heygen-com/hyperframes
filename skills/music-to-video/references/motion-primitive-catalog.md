@@ -1,4 +1,4 @@
-# Motion-primitive catalog — the free-compose menu
+# Motion-primitive catalog - the free-compose menu
 
 The atomic layer: one anchor → one micro-move. When no template fits a group, free-compose by
 naming primitives from here. Scan **anchor** + **best span** + **what it does**, then pick the
@@ -6,7 +6,7 @@ smallest set that carries the group.
 
 ## Timing & latency (applies to every primitive)
 
-- **Hard hits are 0ms.** Cuts, palette flips, content swaps, freezes are `tl.set(...)` with no duration — the percussion _is_ the motion. Easing a hit kills it.
+- **Hard hits are 0ms.** Cuts, palette flips, content swaps, freezes are `tl.add(..., { ...props, duration: 0 }, positionMs)` - the percussion _is_ the motion. Easing a hit kills it.
 - **Lead the anchor.** A move that must _land_ on a beat (a wipe covering the frame, a count-up locking, two blocks colliding) starts **~40–190ms early** so it completes ON the anchor. Reactive entrances (something appearing _because_ of the hit) fire 0–45ms after.
 - **Eased entrances: 300–500ms** (scale punch, slides, camera pushes). **Macro builds: 800–2000ms** spanning a whole roll / silence.
 - **Per-bar caps:** one accumulating element per hit (not a burst); a camera move at most once per phrase, never per beat; a dense flip/strobe system runs ≤2–3s.
@@ -68,7 +68,7 @@ smallest set that carries the group.
 
 - One dominant system per group; layer at most one texture primitive over one structural primitive.
 - Structure on strong beats (cuts, camera, `system-replace` → downbeat / phrase / section_start); texture on weak / syncopated hits (`content-swap`, typewriter letters, chromatic accents).
-- A roll is an accumulation container — build during it, hard-cut to a clean layout on the downbeat that ends it.
+- A roll is an accumulation container - build during it, hard-cut to a clean layout on the downbeat that ends it.
 - `drop` ≠ `downbeat`: a downbeat is a cut within the regime; a drop is a regime change (`system-replace`, total clear, element-count jump).
 - Let silence remove density (`negative-space-hold`).
 - Background beds are a layer, not a move: one bed at a time, under foreground primitives.

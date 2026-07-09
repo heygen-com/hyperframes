@@ -12,7 +12,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>text_spectral_rays</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -80,8 +80,10 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
+      function registerTimeline() {
+        hyperframesAnime.register("main", tl);
+      }
 
       (function () {
         const W = 1920;
@@ -107,7 +109,7 @@
           preserveDrawingBuffer: true,
         });
 
-        // animated state — GSAP tweens these; mouse (the light cursor) is derived
+        // animated state - anime.js tweens these; mouse (the light cursor) is derived
         const state = { progress: 0, effectMix: 0 };
         const mouse = { x: 0, y: H * 0.5 };
         const speed = Number(vars.sweepSpeed) || 1;
@@ -143,8 +145,8 @@
           const ctx = canvas.getContext("2d");
           ctx.fillStyle = vars.bgColor;
           ctx.fillRect(0, 0, W, H);
-          tl.to(state, { progress: 1, duration: 3.6, ease: "none" }, 0.2);
-          window.__timelines["main"] = tl;
+          tl.add(state, { progress: 1, duration: 3600, ease: "linear" }, 200);
+          registerTimeline();
           return;
         }
 
@@ -158,7 +160,7 @@
         ].join("\n");
 
         // Volumetric spectral light-rays cast by the text mask toward a moving
-        // light cursor — ported from the vfx-text-cursor golden sample, made
+        // light cursor - ported from the vfx-text-cursor golden sample, made
         // generic (reads any text mask/colour). All state from uniforms.
         const FRAG = [
           "precision highp float;",
@@ -296,17 +298,16 @@
         }
         render(); // initial frame (seek-to-0 correctness)
 
-        // All repaint via the timeline's onUpdate — fully seek-safe, no rAF.
-        tl.eventCallback("onUpdate", render);
+        // All repaint via tween onUpdate callbacks - fully seek-safe, no rAF.
 
         // effect punches in, the light cursor sweeps L→R across the wordmark,
         // then fades for a clean loop.
-        tl.set(state, { progress: 0, effectMix: 0 }, 0);
-        tl.to(state, { effectMix: 1, duration: 0.45, ease: "power3.out" }, 0.15);
-        tl.to(state, { progress: 1, duration: 3.4 / speed, ease: "none" }, 0.2);
-        tl.to(state, { effectMix: 0, duration: 0.4, ease: "power2.in" }, 3.6);
+        tl.add(state, { progress: 0, effectMix: 0, duration: 0 }, 0);
+        tl.add(state, { effectMix: 1, duration: 450, ease: "outQuart", onUpdate: render }, 150);
+        tl.add(state, { progress: 1, duration: 3400 / speed, ease: "linear", onUpdate: render }, 200);
+        tl.add(state, { effectMix: 0, duration: 400, ease: "inCubic", onUpdate: render }, 3600);
 
-        window.__timelines["main"] = tl;
+        registerTimeline();
       })();
     </script>
   </body>

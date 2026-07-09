@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>tile_mosaic</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -88,12 +88,11 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       const COLS = 6;
       const ROWS = 4;
-      const STEP = 0.06;
+      const STEP_MS = 60;
       // Deterministic palette; tile colour chosen by index, no randomness.
       const PALETTE = [
         "#7c3aed",
@@ -122,23 +121,33 @@
 
       // Diagonal sweep: reveal order governed by (row + col), explicit per-tile timing.
       for (const t of tiles) {
-        tl.fromTo(
+        tl.add(
           t.el,
-          { autoAlpha: 0, scale: 0.6 },
-          { autoAlpha: 1, scale: 1, duration: 0.4, ease: "back.out(1.7)" },
-          t.diag * STEP,
+          {
+            opacity: [0, 1],
+            visibility: ["hidden", "visible"],
+            scale: [0.6, 1],
+            duration: 400,
+            ease: "outBack(1.7)",
+          },
+          t.diag * STEP_MS,
         );
       }
 
       // Title settles over the finished, dense mosaic.
-      tl.fromTo(
+      tl.add(
         "#title",
-        { autoAlpha: 0, scale: 1.12 },
-        { autoAlpha: 1, scale: 1, duration: 0.45, ease: "power2.out" },
-        1.7,
+        {
+          opacity: [0, 1],
+          visibility: ["hidden", "visible"],
+          scale: [1.12, 1],
+          duration: 450,
+          ease: "outCubic",
+        },
+        1700,
       );
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

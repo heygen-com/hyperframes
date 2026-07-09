@@ -13,8 +13,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Roll-Driven Flipbook (Word Cycle → Optional Lock) — gruop_3 reference impl</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Roll-Driven Flipbook (Word Cycle → Optional Lock) - gruop_3 reference impl</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -44,7 +44,7 @@
         justify-content: center;
         pointer-events: none;
       }
-      /* grid stack — every layer occupies the same centred cell, so scaling a
+      /* grid stack - every layer occupies the same centred cell, so scaling a
          layer transforms around its own centre (no translate(-50%) to clobber). */
       .g3-stack {
         display: grid;
@@ -81,7 +81,7 @@
   <body>
     <!-- data-duration = the scene span. Set this to YOUR scene length; the script
          reads it back so duration is single-sourced (no hard-coded value in JS).
-         Rebased to scene-relative time — content starts at ~0, no dead pre-roll. -->
+         Rebased to scene-relative time - content starts at ~0, no dead pre-roll. -->
     <div
       data-hf-id="hf-g3rt"
       id="root"
@@ -105,18 +105,18 @@
         //  cycling a word list to FILL the roll. Optionally, when a SURGE/phrase
         //  follows, the flicker resolves (scramble-decode) into a locked phrase.
         //  Background is pure black. Every move is a 0ms autoAlpha set on a pre-built
-        //  node (no GSAP textContent-sets, no onUpdate — both fail under seek render).
+        //  node (no textContent sets, no onUpdate - both fail under seek render).
         // ════════════════════════════════════════════════════════════════
 
         var root = document.getElementById("root");
 
-        // ── 1. BEAT MAP — the ONLY block you edit per track ─────────────────
-        // SCENE-RELATIVE time (starts at ~0 — no dead pre-roll). When reusing, map
+        // ── 1. BEAT MAP - the ONLY block you edit per track ─────────────────
+        // SCENE-RELATIVE time (starts at ~0 - no dead pre-roll). When reusing, map
         // your audiomap roll [rollStart,rollEnd] onto [flipStart, flipStart+rollLen],
         // i.e. subtract the roll's start offset. bpm stays your track's tempo.
         var BEAT = {
           bpm: 129.2, // tempo.bpm  →  16th-note flip step = 60/bpm/4
-          flipStart: 0.1, // tiny entrance lead-in — NO dead air before the flicker
+          flipStart: 0.1, // tiny entrance lead-in - NO dead air before the flicker
           flipEnd: 2.19, // flicker length ≈ the source roll (~2.1s); auto-fills with words
           resolveStart: 2.33, // lock phrase enters after a short clear (only if a phrase is set)
           resolveLock: 3.33, // locks ~1s later (place just before a downbeat in your track)
@@ -160,7 +160,7 @@
         var PERIOD =
           vars.periodChar && String(vars.periodChar).trim() !== "" ? vars.periodChar : "";
 
-        // ── 3. Derived timing (auto-fills the roll — adapts to any length / bpm) ─
+        // ── 3. Derived timing (auto-fills the roll - adapts to any length / bpm) ─
         var FLIP_STEP = 60 / BEAT.bpm / 4; // one word per 16th-note
         var N_SWAPS = Math.max(1, Math.round((BEAT.flipEnd - BEAT.flipStart) / FLIP_STEP));
 
@@ -173,7 +173,8 @@
             s.textContent = w;
             stack.appendChild(s);
             flipNodes[w] = s;
-            gsap.set(s, { autoAlpha: 0 });
+            s.style.opacity = "0";
+            s.style.visibility = "hidden";
           }
         });
 
@@ -215,52 +216,56 @@
               node.textContent = decodeAt(RESOLVE, s2 / N_STEPS);
             }
             stack.appendChild(node);
-            gsap.set(node, { autoAlpha: 0 });
+            node.style.opacity = "0";
+            node.style.visibility = "hidden";
             resolveNodes.push({ node: node, t: BEAT.resolveStart + s2 * DECODE_STEP });
           }
         }
 
-        // ── 5. Timeline — one paused GSAP timeline, absolute audio seconds ──
-        window.__timelines = window.__timelines || {};
-        var tl = gsap.timeline({ paused: true });
+        // ── 5. Timeline - one paused anime.js timeline, absolute audio milliseconds ──
+        var tl = anime.createTimeline({ autoplay: false });
 
-        // PHASE A — flipbook word-cycle on the 16th grid, FILLING the roll window
+        // PHASE A - flipbook word-cycle on the 16th grid, FILLING the roll window
         var prev = null;
         for (var i = 0; i < N_SWAPS; i++) {
           var t = BEAT.flipStart + i * FLIP_STEP;
           var node = flipNodes[WORDS[i % WORDS.length]];
-          if (prev && prev !== node) tl.set(prev, { autoAlpha: 0 }, t);
-          tl.set(node, { autoAlpha: 1 }, t);
+          var tMs = Math.round(t * 1000);
+          if (prev && prev !== node) {
+            tl.add(prev, { opacity: 0, visibility: "hidden", duration: 0 }, tMs);
+          }
+          tl.add(node, { opacity: 1, visibility: "visible", duration: 0 }, tMs);
           prev = node;
         }
         // glitchy reveal of the first word as the roll kicks in (scale is safe here)
-        tl.fromTo(
+        tl.add(
           flipNodes[WORDS[0]],
-          { scale: 0.8, filter: "blur(10px)" },
-          { scale: 1, filter: "blur(0px)", duration: 0.12, ease: "power2.out" },
-          BEAT.flipStart,
+          { scale: [0.8, 1], filter: ["blur(10px)", "blur(0px)"], duration: 120, ease: "outCubic" },
+          Math.round(BEAT.flipStart * 1000),
         );
 
-        // PHASE B — resolve (OPTIONAL). With a lock phrase: clear, then scramble-decode
+        // PHASE B - resolve (OPTIONAL). With a lock phrase: clear, then scramble-decode
         // and lock, holding to the end. Without one: the last word just holds (locks).
         if (HAS_RESOLVE) {
-          if (prev) tl.set(prev, { autoAlpha: 0 }, BEAT.flipEnd); // clear the flicker
+          if (prev) {
+            tl.add(prev, { opacity: 0, visibility: "hidden", duration: 0 }, Math.round(BEAT.flipEnd * 1000)); // clear the flicker
+          }
           var prevR = null;
           for (var r = 0; r < resolveNodes.length; r++) {
-            if (prevR) tl.set(prevR, { autoAlpha: 0 }, resolveNodes[r].t);
-            tl.set(resolveNodes[r].node, { autoAlpha: 1 }, resolveNodes[r].t);
+            var rMs = Math.round(resolveNodes[r].t * 1000);
+            if (prevR) tl.add(prevR, { opacity: 0, visibility: "hidden", duration: 0 }, rMs);
+            tl.add(resolveNodes[r].node, { opacity: 1, visibility: "visible", duration: 0 }, rMs);
             prevR = resolveNodes[r].node;
           }
         }
-        // (if no resolve, `prev` — the last flip word — stays visible to the end)
+        // (if no resolve, `prev` - the last flip word - stays visible to the end)
 
         // Extend the timeline to the full duration with a no-op so the held final
         // state renders on every frame to DUR (a set AT the timeline's last instant
         // gets dropped by the seek renderer).
-        tl.set(stack, { opacity: 1 }, DUR);
+        tl.add(stack, { opacity: 1, duration: 0 }, Math.round(DUR * 1000));
 
-        tl.seek(0);
-        window.__timelines["group-three-recreate"] = tl;
+        hyperframesAnime.register("group-three-recreate", tl);
       })();
     </script>
   </body>

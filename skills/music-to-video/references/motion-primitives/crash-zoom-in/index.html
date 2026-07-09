@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>19 · crash_zoom_in</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -95,61 +95,34 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      // Hold black for tension
-      tl.set(".hero", { scale: 0.03, filter: "blur(20px)", opacity: 0 }, 0);
-
-      const CRASH = 0.45;
-
-      // The crash itself
-      tl.to(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".hero", { scale: 0.03, filter: "blur(20px)", opacity: 0, duration: 0 }, 0);
+      tl.add(
         ".hero",
-        { scale: 1.0, filter: "blur(0px)", opacity: 1, duration: 0.32, ease: "expo.in" },
-        CRASH,
+        { scale: [0.03, 1], filter: ["blur(20px)", "blur(0px)"], opacity: [0, 1], duration: 320, ease: "inExpo" },
+        450,
       );
-
-      // Background swoosh in same window
-      tl.fromTo(
-        ".radial-bg",
-        { opacity: 0, scale: 0.4 },
-        { opacity: 1, scale: 1, duration: 0.32, ease: "expo.in" },
-        CRASH,
-      );
-      tl.fromTo(
+      tl.add(".radial-bg", { opacity: [0, 1], scale: [0.4, 1], duration: 320, ease: "inExpo" }, 450);
+      tl.add(
         ".speed-lines",
-        { opacity: 0, scale: 0.2 },
-        { opacity: 1, scale: 1.4, duration: 0.32, ease: "expo.in" },
-        CRASH,
+        { opacity: [0, 1], scale: [0.2, 1.4], duration: 320, ease: "inExpo" },
+        450,
       );
-
-      // Landing settle
-      const LAND = CRASH + 0.32;
-      tl.to(".hero", { scale: 0.96, duration: 0.08, ease: "power3.out" }, LAND);
-      tl.to(".hero", { scale: 1.0, duration: 0.5, ease: "elastic.out(1, 0.55)" }, LAND + 0.08);
-
-      // Quick landing shake
-      const sh = [9, -7, 5, -4, 2, -1];
-      sh.forEach((amp, i) => {
-        tl.to(
-          ".zoom-stage",
-          { x: amp, y: amp * 0.5 * (i % 2 ? -1 : 1), duration: 0.03, ease: "steps(1)" },
-          LAND + i * 0.03,
-        );
-      });
-      tl.to(
+      tl.add(".hero", { scale: [1, 0.96], duration: 80, ease: "outQuart" }, 770);
+      tl.add(".hero", { scale: [0.96, 1], duration: 500, ease: "outElastic(1, .55)" }, 850);
+      tl.add(
         ".zoom-stage",
-        { x: 0, y: 0, duration: 0.1, ease: "power2.out" },
-        LAND + sh.length * 0.03,
+        { translateX: "__raw:amp", translateY: "__raw:amp * 0.5 * (i % 2 ? -1 : 1)", duration: 30, ease: "steps(1)" },
+        0,
       );
-
-      // Speed lines fade
-      tl.to(".speed-lines", { opacity: 0, duration: 0.4, ease: "power2.out" }, LAND + 0.05);
-      // Radial settles
-      tl.to(".radial-bg", { opacity: 0.5, duration: 0.5, ease: "power2.out" }, LAND);
-
-      window.__timelines["main"] = tl;
+      tl.add(
+        ".zoom-stage",
+        { translateX: ["__raw:amp", 0], translateY: ["__raw:amp * 0.5 * (i % 2 ? -1 : 1)", 0], duration: 100, ease: "outCubic" },
+        0,
+      );
+      tl.add(".speed-lines", { opacity: [1, 0], duration: 400, ease: "outCubic" }, 820);
+      tl.add(".radial-bg", { opacity: [1, 0.5], duration: 500, ease: "outCubic" }, 770);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

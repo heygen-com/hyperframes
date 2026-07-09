@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>25 · radial_burst_lines</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -86,8 +86,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Build 20 lines
       const N = 20;
@@ -106,55 +105,53 @@
       }
 
       // Hero punch
-      tl.fromTo(
+      tl.add(
         ".hero",
-        { scale: 0.7, opacity: 0 },
-        { scale: 1.1, opacity: 1, duration: 0.15, ease: "power4.out" },
-        0.3,
+        { scale: [0.7, 1.1], opacity: [0, 1], duration: 150, ease: "outQuint" },
+        300,
       );
-      tl.to(".hero", { scale: 1.0, duration: 0.4, ease: "elastic.out(1, 0.5)" }, 0.45);
+      tl.add(".hero", { scale: 1.0, duration: 400, ease: "outElastic(1, .5)" }, 450);
 
       // Burst lines expand
       lines.forEach((l, i) => {
         const innerRadius = 220 + (i % 3) * 30; // vary radius
         const len = 200 + (i % 4) * 40; // vary length
         const ang = l.angle;
-        tl.set(
+        tl.add(
           l.el,
           {
-            rotation: ang,
-            x: 0,
-            y: 0,
+            rotate: ang,
+            translateX: 0,
+            translateY: 0,
             scaleY: 0,
             opacity: 0,
             transformOrigin: "center bottom",
+            duration: 0,
           },
           0,
         );
-        // GSAP transforms compose, so we set the rotation + translate via separate properties
-        // Use a custom transform string approach
-        tl.to(
-          l.el,
+        const state = { p: 0 };
+        tl.add(
+          state,
           {
-            scaleY: 1,
-            opacity: 1,
-            duration: 0.18,
-            ease: "power4.out",
-            onUpdate: function () {
-              const p = this.progress();
+            p: 1,
+            duration: 180,
+            ease: "outQuint",
+            onUpdate: () => {
+              const p = state.p;
               const t = -innerRadius - len * p * 0.2;
               l.el.style.transform = `rotate(${ang}deg) translateY(${t}px) scaleY(${p})`;
               l.el.style.opacity = (p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1).toString();
             },
           },
-          0.32 + (i % 5) * 0.018,
+          320 + (i % 5) * 18,
         );
       });
 
       // Hold then fade
-      tl.to(".line", { opacity: 0, duration: 0.4, ease: "power2.out" }, 0.9);
+      tl.add(".line", { opacity: 0, duration: 400, ease: "outCubic" }, 900);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>
