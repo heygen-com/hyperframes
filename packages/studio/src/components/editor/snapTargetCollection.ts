@@ -13,18 +13,13 @@ import {
   type SnapEdge,
 } from "./snapEngine";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { resolvePreviewCoordinateSpace } from "../../utils/previewCoordinates";
 
 export interface SnapContext {
   targets: SnapTarget[];
   compositionTarget: SnapTarget | null;
   gridEdges: { x: SnapEdge[]; y: SnapEdge[] } | null;
   snapEnabled: boolean;
-}
-
-function readPositiveDimension(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 const IGNORED_TAGS = new Set(["script", "style", "link", "meta", "base", "template", "br", "wbr"]);
@@ -65,40 +60,25 @@ export function collectSnapContext(input: {
   const prefs = readStudioUiPreferences();
   const snapEnabled = prefs.snapEnabled ?? true;
 
-  const doc = input.iframe.contentDocument;
-  if (!doc) {
+  const space = resolvePreviewCoordinateSpace(input.iframe);
+  if (!space) {
     return { targets: [], compositionTarget: null, gridEdges: null, snapEnabled };
   }
 
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? (doc.documentElement as HTMLElement);
-  const rootRect = root?.getBoundingClientRect();
-  const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
-  const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
-  const rootWidth = declaredWidth ?? rootRect?.width;
-  const rootHeight = declaredHeight ?? rootRect?.height;
-
-  if (!rootWidth || !rootHeight || !rootRect) {
-    return { targets: [], compositionTarget: null, gridEdges: null, snapEnabled };
-  }
-
-  const iframeRect = input.iframe.getBoundingClientRect();
   const overlayRect = input.overlayEl.getBoundingClientRect();
-  const rootScaleX = iframeRect.width / rootWidth;
-  const rootScaleY = iframeRect.height / rootHeight;
 
   const compositionOverlayRect: OverlayRect = {
-    left: iframeRect.left - overlayRect.left,
-    top: iframeRect.top - overlayRect.top,
-    width: iframeRect.width,
-    height: iframeRect.height,
-    editScaleX: rootScaleX,
-    editScaleY: rootScaleY,
+    left: space.iframeRect.left - overlayRect.left,
+    top: space.iframeRect.top - overlayRect.top,
+    width: space.iframeRect.width,
+    height: space.iframeRect.height,
+    editScaleX: space.scaleX,
+    editScaleY: space.scaleY,
   };
   const compositionTarget = buildCompositionSnapTarget(compositionOverlayRect);
 
   const MAX_SNAP_TARGETS = 80;
-  const elements = collectVisibleElements(root, input.excludeElements, MAX_SNAP_TARGETS);
+  const elements = collectVisibleElements(space.root, input.excludeElements, MAX_SNAP_TARGETS);
 
   const entries: Array<{
     rect: { left: number; top: number; width: number; height: number };
@@ -115,7 +95,7 @@ export function collectSnapContext(input: {
   const gridSpacing = prefs.gridSpacing ?? 50;
   const snapToGrid = prefs.snapToGrid ?? false;
   if (snapToGrid && gridSpacing > 0) {
-    gridEdges = buildGridSnapEdges(compositionOverlayRect, gridSpacing, rootScaleX);
+    gridEdges = buildGridSnapEdges(compositionOverlayRect, gridSpacing, space.scaleX, space.scaleY);
   }
 
   return { targets, compositionTarget, gridEdges, snapEnabled };

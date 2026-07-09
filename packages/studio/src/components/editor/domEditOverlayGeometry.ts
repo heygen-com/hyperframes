@@ -1,6 +1,10 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
+import {
+  readPositiveDimension,
+  resolvePreviewCoordinateSpace,
+} from "../../utils/previewCoordinates";
 
 export interface OverlayRect {
   left: number;
@@ -38,12 +42,6 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
 // shapes (rectangular cards, text, full-bleed media) don't have interior holes, so this
 // doesn't bite. If ring/cutout shapes become editable targets, sample more densely or
 // hit-test against the element's actual painted geometry instead of its bounding box.
-function readPositiveDimension(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
 function findSourceBoundary(element: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = element;
   while (current) {
@@ -103,31 +101,16 @@ export function toOverlayRect(
   iframe: HTMLIFrameElement,
   element: HTMLElement,
 ): OverlayRect | null {
-  const iframeRect = iframe.getBoundingClientRect();
+  const space = resolvePreviewCoordinateSpace(iframe);
+  if (!space) return null;
   const overlayRect = overlayEl.getBoundingClientRect();
-  const doc = iframe.contentDocument;
-  const root =
-    doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  // Use the composition's declared dimensions (data-width/data-height) for scale
-  // calculation instead of rootRect.width/height. When GSAP applies transforms
-  // (scale, translate) to the root element, rootRect dimensions change but the
-  // composition's canonical size stays the same. Using rootRect causes overlay
-  // misalignment during animated playback.
-  const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
-  const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
-  const rootWidth = declaredWidth ?? rootRect?.width;
-  const rootHeight = declaredHeight ?? rootRect?.height;
-  if (!rootWidth || !rootHeight || !rootRect) return null;
 
   const elementRect = element.getBoundingClientRect();
-  const rootScaleX = iframeRect.width / rootWidth;
-  const rootScaleY = iframeRect.height / rootHeight;
   const sourceBoundary = findSourceBoundary(element);
   const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
-    rootScaleX,
-    rootScaleY,
+    rootScaleX: space.scaleX,
+    rootScaleY: space.scaleY,
     sourceRectWidth: sourceBoundaryRect?.width,
     sourceRectHeight: sourceBoundaryRect?.height,
     sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
@@ -135,10 +118,10 @@ export function toOverlayRect(
   });
 
   return {
-    left: iframeRect.left - overlayRect.left + elementRect.left * rootScaleX,
-    top: iframeRect.top - overlayRect.top + elementRect.top * rootScaleY,
-    width: elementRect.width * rootScaleX,
-    height: elementRect.height * rootScaleY,
+    left: space.iframeRect.left - overlayRect.left + elementRect.left * space.scaleX,
+    top: space.iframeRect.top - overlayRect.top + elementRect.top * space.scaleY,
+    width: elementRect.width * space.scaleX,
+    height: elementRect.height * space.scaleY,
     editScaleX: editScale.scaleX,
     editScaleY: editScale.scaleY,
   };

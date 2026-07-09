@@ -92,6 +92,12 @@ describe("buildGridSnapEdges", () => {
     expect(x.map((e) => e.position)).toEqual([200, 400]);
   });
 
+  test("uses independent x/y scale for non-uniform preview scaling", () => {
+    const { x, y } = buildGridSnapEdges(rect(0, 0, 600, 600), 100, 2, 3);
+    expect(x.map((e) => e.position)).toEqual([200, 400]);
+    expect(y.map((e) => e.position)).toEqual([300]);
+  });
+
   test("handles offset composition rect", () => {
     const { x } = buildGridSnapEdges(rect(50, 0, 300, 100), 100, 1);
     // Lines at 150, 250 (offset + step, offset + 2*step)

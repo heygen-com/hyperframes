@@ -172,4 +172,38 @@ describe("getPreviewTargetFromPointer", () => {
 
     iframe.remove();
   });
+
+  it("maps host clicks through the declared composition size when the root is transformed", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene" data-width="1600" data-height="900">
+        <button id="cta">Launch</button>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const cta = doc.getElementById("cta");
+    if (!scene || !cta) throw new Error("Expected preview fixture elements");
+
+    stubRect(iframe, domRect(10, 20, 800, 450));
+    // Simulate a GSAP/root transform shrinking the live root rect. Pointer
+    // mapping must still use the authored 1600x900 viewport.
+    stubRect(scene, domRect(0, 0, 800, 450));
+    stubRect(cta, domRect(200, 100, 100, 40));
+
+    let sampledPoint: [number, number] | null = null;
+    doc.elementsFromPoint = (x, y) => {
+      sampledPoint = [x, y];
+      return [cta, scene];
+    };
+
+    expect(getPreviewTargetFromPointer(iframe, 210, 120, "index.html")).toBe(cta);
+    expect(sampledPoint).toEqual([400, 200]);
+
+    iframe.remove();
+  });
 });

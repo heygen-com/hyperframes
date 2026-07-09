@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Player } from "../../player";
 import {
   DEFAULT_PREVIEW_ZOOM,
@@ -15,7 +15,7 @@ import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/s
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
-  onIframeLoad: () => void;
+  onIframeLoad: () => void | Promise<void>;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   directUrl?: string;
@@ -42,6 +42,13 @@ const PREVIEW_STAGE_INSET_PX = 16;
 interface PreviewCompositionSize {
   width: number;
   height: number;
+}
+
+interface PreviewIdentity {
+  key: string;
+  projectId: string;
+  directUrl?: string;
+  portrait?: boolean;
 }
 
 function isPreviewAtFit(state: PreviewZoomState): boolean {
@@ -128,6 +135,14 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
+  const activePreview = useMemo<PreviewIdentity>(
+    () => ({ key: activeKey, projectId, directUrl, portrait }),
+    [activeKey, projectId, directUrl, portrait],
+  );
+  const activeKeyRef = useRef(activeKey);
+  activeKeyRef.current = activeKey;
+  const [committedPreview, setCommittedPreview] = useState<PreviewIdentity>(() => activePreview);
+  const handoffInProgress = committedPreview.key !== activeKey;
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -293,6 +308,16 @@ export const NLEPreview = memo(function NLEPreview({
       writeTransform(zoomRef.current);
     }
   }, [writeTransform]);
+
+  const handleActivePlayerLoad = useCallback(async () => {
+    updateCompositionSizeFromPreview();
+    await onIframeLoad();
+    updateCompositionSizeFromPreview();
+    applyInitialZoom();
+    if (activeKeyRef.current === activePreview.key) {
+      setCommittedPreview(activePreview);
+    }
+  }, [activePreview, applyInitialZoom, onIframeLoad, updateCompositionSizeFromPreview]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -486,24 +511,38 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
+            {handoffInProgress && (
+              <Player
+                key={`active-${committedPreview.key}`}
+                projectId={committedPreview.directUrl ? undefined : committedPreview.projectId}
+                directUrl={committedPreview.directUrl}
+                onLoad={() => {}}
+                portrait={committedPreview.portrait}
+                suppressLoadingOverlay
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                  pointerEvents: "none",
+                }}
+              />
+            )}
             <Player
-              key={activeKey}
+              key={`active-${activeKey}`}
               ref={setPreviewIframeRef}
               projectId={directUrl ? undefined : projectId}
               directUrl={directUrl}
-              onLoad={() => {
-                updateCompositionSizeFromPreview();
-                onIframeLoad();
-                applyInitialZoom();
-              }}
+              onLoad={handleActivePlayerLoad}
               onCompositionLoadingChange={onCompositionLoadingChange}
               portrait={portrait}
               suppressLoadingOverlay={suppressLoadingOverlay}
-              style={
-                directUrl?.includes("/components/")
-                  ? { position: "absolute", inset: 0, zIndex: 1 }
-                  : undefined
-              }
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1,
+                opacity: handoffInProgress ? 0 : 1,
+                pointerEvents: handoffInProgress ? "none" : "auto",
+              }}
             />
           </div>
         </div>

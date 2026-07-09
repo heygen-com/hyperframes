@@ -13,19 +13,20 @@ vi.mock("../../player", async () => {
   return {
     Player: React.forwardRef(function MockPlayer(
       props: {
-        onLoad?: () => void;
+        onLoad?: () => void | Promise<void>;
         style?: React.CSSProperties;
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
+      const { onLoad, style } = props;
       React.useEffect(() => {
-        props.onLoad?.();
-      }, [props]);
+        onLoad?.();
+      }, [onLoad]);
 
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
         "data-testid": "mock-player",
-        style: props.style,
+        style,
       });
     }),
   };
@@ -213,5 +214,67 @@ describe("NLEPreview", () => {
 
     expect(view.stage.style.transform).toContain("translate3d(30px, -24px, 0)");
     view.cleanup();
+  });
+
+  it("keeps the previous preview visible until the incoming iframe is ready", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const iframeRef = createRef<HTMLIFrameElement>();
+    let loadCount = 0;
+    let resolveIncoming: (() => void) | undefined;
+    const incomingReady = new Promise<void>((resolve) => {
+      resolveIncoming = resolve;
+    });
+    const onIframeLoad = vi.fn(() => {
+      loadCount += 1;
+      return loadCount === 1 ? Promise.resolve() : incomingReady;
+    });
+
+    await act(async () => {
+      root.render(
+        React.createElement(NLEPreview, {
+          projectId: "timeline-edit-playground",
+          iframeRef,
+          onIframeLoad,
+        }),
+      );
+    });
+
+    expect(host.querySelectorAll('[data-testid="mock-player"]')).toHaveLength(1);
+
+    await act(async () => {
+      root.render(
+        React.createElement(NLEPreview, {
+          projectId: "timeline-edit-playground",
+          iframeRef,
+          onIframeLoad,
+          directUrl: "/api/projects/timeline-edit-playground/preview/comp/compositions/card.html",
+        }),
+      );
+    });
+
+    const duringHandoff = Array.from(
+      host.querySelectorAll('[data-testid="mock-player"]'),
+    ) as HTMLDivElement[];
+    expect(duringHandoff).toHaveLength(2);
+    expect(duringHandoff[0].style.pointerEvents).toBe("none");
+    expect(duringHandoff[1].style.opacity).toBe("0");
+
+    await act(async () => {
+      resolveIncoming?.();
+      await incomingReady;
+    });
+
+    const afterHandoff = Array.from(
+      host.querySelectorAll('[data-testid="mock-player"]'),
+    ) as HTMLDivElement[];
+    expect(afterHandoff).toHaveLength(1);
+    expect(afterHandoff[0].style.opacity).toBe("1");
+
+    act(() => {
+      root.unmount();
+    });
+    host.remove();
   });
 });

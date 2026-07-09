@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { memo, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import type { SnapGuide, SpacingGuide } from "./snapEngine";
@@ -59,14 +58,18 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
 
         el.style.display = "";
         if (guide.axis === "x") {
+          const from = Number.isFinite(guide.from) ? guide.from : 0;
+          const to = Number.isFinite(guide.to) ? guide.to : h;
           el.style.left = `${guide.position}px`;
-          el.style.top = "0";
+          el.style.top = `${from}px`;
           el.style.width = "1px";
-          el.style.height = `${h}px`;
+          el.style.height = `${Math.max(1, to - from)}px`;
         } else {
-          el.style.left = "0";
+          const from = Number.isFinite(guide.from) ? guide.from : 0;
+          const to = Number.isFinite(guide.to) ? guide.to : w;
+          el.style.left = `${from}px`;
           el.style.top = `${guide.position}px`;
-          el.style.width = `${w}px`;
+          el.style.width = `${Math.max(1, to - from)}px`;
           el.style.height = "1px";
         }
       }

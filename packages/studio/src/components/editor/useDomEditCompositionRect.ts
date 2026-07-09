@@ -1,5 +1,6 @@
 import { useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { resolvePreviewCoordinateSpace } from "../../utils/previewCoordinates";
 
 export interface DomEditCompositionRect {
   left: number;
@@ -46,18 +47,17 @@ export function useDomEditCompositionRect({
       const iframe = iframeRef.current;
       const overlayEl = overlayRef.current;
       if (!iframe || !overlayEl) return;
-      const iRect = iframe.getBoundingClientRect();
+      const space = resolvePreviewCoordinateSpace(iframe);
+      if (!space) return;
       const oRect = overlayEl.getBoundingClientRect();
-      const left = iRect.left - oRect.left;
-      const top = iRect.top - oRect.top;
-      if (iRect.width <= 0 || iRect.height <= 0) return;
-      const doc = iframe.contentDocument;
-      const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
-      const dw = Number.parseFloat(root?.getAttribute("data-width") ?? "");
-      const dh = Number.parseFloat(root?.getAttribute("data-height") ?? "");
-      const scaleX = dw > 0 ? iRect.width / dw : 1;
-      const scaleY = dh > 0 ? iRect.height / dh : 1;
-      const next = { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };
+      const next = {
+        left: space.iframeRect.left - oRect.left,
+        top: space.iframeRect.top - oRect.top,
+        width: space.iframeRect.width,
+        height: space.iframeRect.height,
+        scaleX: space.scaleX,
+        scaleY: space.scaleY,
+      };
       setCompRect((prev) => (sameRect(prev, next) ? prev : next));
     };
     frame = requestAnimationFrame(update);

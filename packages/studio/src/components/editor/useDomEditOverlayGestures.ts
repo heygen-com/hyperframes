@@ -53,6 +53,16 @@ import {
   resolveEquidistanceGuides,
   SNAP_THRESHOLD_PX,
 } from "./snapEngine";
+import type { SnapContext } from "./snapTargetCollection";
+
+function hasSnapCandidates(sc: SnapContext | undefined): sc is SnapContext {
+  return Boolean(
+    sc?.snapEnabled &&
+    (sc.targets.length > 0 ||
+      sc.compositionTarget ||
+      (sc.gridEdges && (sc.gridEdges.x.length > 0 || sc.gridEdges.y.length > 0))),
+  );
+}
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
     opts.setOverlayRect(next);
@@ -110,7 +120,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       let dy = e.clientY - groupG.startY;
 
       const sc = groupG.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
+      if (hasSnapCandidates(sc)) {
         const groupBounds = resolveDomEditGroupOverlayRect(
           groupG.originItems.map((item) => item.rect),
         );
@@ -183,7 +193,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag") {
       const sc = g.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
+      if (hasSnapCandidates(sc)) {
         // Snap the element's VISIBLE (crop-hugged) edges, not the full bounds.
         const movingRect = hugRectForElement(
           {
@@ -247,7 +257,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       if (!box) return;
 
       const sc = g.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
+      if (hasSnapCandidates(sc)) {
         const movingRect = {
           left: g.originLeft,
           top: g.originTop,

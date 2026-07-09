@@ -120,38 +120,40 @@ export function buildCompositionSnapTarget(rect: Rect): SnapTarget {
 
 /**
  * Generate grid-line snap edges.
- * `gridSpacing` is in composition pixels; `scale` converts to overlay pixels.
+ * `gridSpacing` is in composition pixels; scale converts to overlay pixels.
  * X edges are vertical grid lines; Y edges are horizontal grid lines.
  */
 export function buildGridSnapEdges(
   compositionRect: Rect,
   gridSpacing: number,
-  scale: number,
+  scaleX: number,
+  scaleY = scaleX,
 ): { x: SnapEdge[]; y: SnapEdge[] } {
   const xEdges: SnapEdge[] = [];
   const yEdges: SnapEdge[] = [];
 
-  if (gridSpacing <= 0 || scale <= 0) return { x: xEdges, y: yEdges };
+  if (gridSpacing <= 0 || scaleX <= 0 || scaleY <= 0) return { x: xEdges, y: yEdges };
 
-  const step = gridSpacing * scale;
+  const xStep = gridSpacing * scaleX;
+  const yStep = gridSpacing * scaleY;
 
   // Vertical grid lines (x-axis edges)
-  let x = compositionRect.left + step;
+  let x = compositionRect.left + xStep;
   const xMax = compositionRect.left + compositionRect.width;
   let idx = 0;
   while (x < xMax) {
     xEdges.push({ position: x, source: "grid", id: `grid-x-${idx}` });
-    x += step;
+    x += xStep;
     idx++;
   }
 
   // Horizontal grid lines (y-axis edges)
-  let y = compositionRect.top + step;
+  let y = compositionRect.top + yStep;
   const yMax = compositionRect.top + compositionRect.height;
   idx = 0;
   while (y < yMax) {
     yEdges.push({ position: y, source: "grid", id: `grid-y-${idx}` });
-    y += step;
+    y += yStep;
     idx++;
   }
 

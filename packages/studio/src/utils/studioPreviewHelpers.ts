@@ -6,12 +6,12 @@ import {
 } from "../components/editor/domEditingElement";
 import { isHtmlElement } from "../components/editor/domEditingDom";
 import { getEventTargetElement } from "./studioHelpers";
-
-interface PreviewLocalPointer {
-  x: number;
-  y: number;
-  viewport: DomEditViewport;
-}
+import {
+  previewPointFromClient,
+  resolvePreviewCoordinateSpace,
+  type PreviewCoordinateSpace,
+  type PreviewPoint,
+} from "./previewCoordinates";
 
 // An element is "full-bleed" when its box spans nearly the whole composition on
 // BOTH axes. Such elements (scene wrappers, backdrops) are excluded from canvas
@@ -37,27 +37,11 @@ function isFullBleedTarget(el: HTMLElement, viewport: DomEditViewport): boolean 
 }
 
 function resolvePreviewLocalPointer(
-  iframe: HTMLIFrameElement,
-  doc: Document,
-  win: Window,
+  space: PreviewCoordinateSpace,
   clientX: number,
   clientY: number,
-): PreviewLocalPointer | null {
-  const iframeRect = iframe.getBoundingClientRect();
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const rootWidth = rootRect?.width || win.innerWidth;
-  const rootHeight = rootRect?.height || win.innerHeight;
-  if (!rootWidth || !rootHeight) return null;
-
-  const scaleX = iframeRect.width / rootWidth;
-  const scaleY = iframeRect.height / rootHeight;
-  return {
-    x: (clientX - iframeRect.left) / scaleX,
-    y: (clientY - iframeRect.top) / scaleY,
-    viewport: { width: rootWidth, height: rootHeight },
-  };
+): PreviewPoint {
+  return previewPointFromClient(space, clientX, clientY);
 }
 
 const POINTER_EVENTS_OVERRIDE_ID = "__hf_studio_pointer_events_override__";
@@ -199,18 +183,11 @@ export function getPreviewTargetFromPointer(
   clientY: number,
   activeCompositionPath: string | null,
 ): HTMLElement | null {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return null;
-  }
-  if (!doc || !win) return null;
+  const space = resolvePreviewCoordinateSpace(iframe);
+  if (!space) return null;
+  const { doc } = space;
 
-  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-  if (!localPointer) return null;
+  const localPointer = resolvePreviewLocalPointer(space, clientX, clientY);
 
   let overrideStyle = forcePointerEventsAuto(doc);
   try {
@@ -260,18 +237,11 @@ export function getAllPreviewTargetsFromPointer(
   clientY: number,
   activeCompositionPath: string | null,
 ): HTMLElement[] {
-  let doc: Document | null = null;
-  let win: Window | null = null;
-  try {
-    doc = iframe.contentDocument;
-    win = iframe.contentWindow;
-  } catch {
-    return [];
-  }
-  if (!doc || !win) return [];
+  const space = resolvePreviewCoordinateSpace(iframe);
+  if (!space) return [];
+  const { doc } = space;
 
-  const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
-  if (!localPointer) return [];
+  const localPointer = resolvePreviewLocalPointer(space, clientX, clientY);
 
   let overrideStyle = forcePointerEventsAuto(doc);
   try {

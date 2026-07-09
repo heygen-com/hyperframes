@@ -381,7 +381,6 @@ export const NLELayout = memo(function NLELayout({
   const [compositionLoading, setCompositionLoadingRaw] = useState(true);
   const setCompositionLoading = useCallback((loading: boolean) => {
     if (!loading) hasLoadedOnceRef.current = true;
-    if (loading && hasLoadedOnceRef.current) return;
     setCompositionLoadingRaw(loading);
   }, []);
   const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);

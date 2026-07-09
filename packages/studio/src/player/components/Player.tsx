@@ -9,7 +9,7 @@ import { HyperframesLoader } from "../../components/ui";
 interface PlayerProps {
   projectId?: string;
   directUrl?: string;
-  onLoad: () => void;
+  onLoad: () => void | Promise<void>;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
@@ -37,6 +37,16 @@ function getShaderTransitionLoading(event: Event): boolean | null {
 }
 
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
+
+function waitForPreviewPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      resolve();
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
@@ -119,6 +129,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const loadCountRef = useRef(0);
+    const loadSerialRef = useRef(0);
     const assetPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const assetFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [assetsLoading, setAssetsLoading] = useState(false);
@@ -199,18 +210,15 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
 
-        const handleReady = () => {
-          setCompositionLoading(false);
-        };
         const handleError = () => {
           setCompositionLoading(false);
         };
-        player.addEventListener("ready", handleReady);
         player.addEventListener("error", handleError);
 
         // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
           loadCountRef.current++;
+          const loadSerial = ++loadSerialRef.current;
           setShaderTransitionLoading(false);
           setCompositionLoading(true);
           // Reveal animation on reload (hot-reload, composition switch)
@@ -221,7 +229,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             const onEnd = () => container.classList.remove("preview-revealing");
             container.addEventListener("animationend", onEnd, { once: true });
           }
-          onLoad();
+          void Promise.resolve(onLoad())
+            .catch(() => {
+              // Keep the preview usable if timeline synchronization fails; the
+              // player iframe is still loaded, and downstream controls have their
+              // own adapter guards.
+            })
+            .then(() => waitForPreviewPaint())
+            .finally(() => {
+              if (!canceled && loadSerial === loadSerialRef.current) {
+                setCompositionLoading(false);
+              }
+            });
 
           // Show a loading overlay until every `<video>`/`<audio>` and Lottie
           // asset is ready. Without this users can click play before audio has
@@ -264,7 +283,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           iframe.removeEventListener("load", handleLoad);
           player.removeEventListener("click", preventToggle, { capture: true });
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
-          player.removeEventListener("ready", handleReady);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
@@ -328,8 +346,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       assetOverlayVisible && !shaderTransitionLoading && !showCompositionOverlay;
 
     useEffect(() => {
-      onCompositionLoadingChange?.(showCompositionOverlay || showAssetOverlay);
-    }, [onCompositionLoadingChange, showCompositionOverlay, showAssetOverlay]);
+      onCompositionLoadingChange?.(compositionLoading || showAssetOverlay);
+    }, [onCompositionLoadingChange, compositionLoading, showAssetOverlay]);
 
     return (
       <div

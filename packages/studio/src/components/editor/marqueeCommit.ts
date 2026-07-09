@@ -5,6 +5,7 @@ import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingL
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import { resolvePreviewCoordinateSpace } from "../../utils/previewCoordinates";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
 
 interface MarqueeState {
@@ -38,26 +39,17 @@ function collectMarqueeHits(
   overlayEl: HTMLDivElement,
   activeCompositionPath: string,
 ): MarqueeHit[] {
-  const doc = iframe.contentDocument;
-  if (!doc) return [];
+  const space = resolvePreviewCoordinateSpace(iframe);
+  if (!space) return [];
 
-  const root = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.body;
   const isMasterView = !activeCompositionPath || activeCompositionPath === "index.html";
-  const items = collectDomEditLayerItems(root, { activeCompositionPath, isMasterView });
-
-  const rootEl = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement;
-  const declW = Number.parseFloat(rootEl?.getAttribute("data-width") ?? "");
-  const declH = Number.parseFloat(rootEl?.getAttribute("data-height") ?? "");
-  const viewport = {
-    width: declW > 0 ? declW : rootEl.getBoundingClientRect().width || 1,
-    height: declH > 0 ? declH : rootEl.getBoundingClientRect().height || 1,
-  };
+  const items = collectDomEditLayerItems(space.root, { activeCompositionPath, isMasterView });
 
   const hits: MarqueeHit[] = [];
   for (const item of items) {
     const el = item.element;
     if (!isElementComputedVisible(el)) continue;
-    if (coversComposition(el.getBoundingClientRect(), viewport)) continue;
+    if (coversComposition(el.getBoundingClientRect(), space.viewport)) continue;
     const overlayRect = toVisibleOverlayRect(overlayEl, iframe, el);
     if (!overlayRect) continue;
     const r: Rect = {

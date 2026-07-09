@@ -55,6 +55,16 @@ export function useTimelineSyncCallbacks({
   attachIframeShortcutListeners,
   applyPreviewAudioState,
 }: UseTimelineSyncCallbacksParams) {
+  const waitForPreviewPaint = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      if (typeof requestAnimationFrame !== "function") {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }, []);
+
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
     (data: {
@@ -296,44 +306,58 @@ export function useTimelineSyncCallbacks({
     pendingSeekRef,
   ]);
 
-  const onIframeLoad = useCallback(() => {
+  const onIframeLoad = useCallback(async (): Promise<boolean> => {
     applyPreviewAudioState();
     if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
 
     // Fast path: adapter already available (in-place reloads, cached compositions)
-    if (initializeAdapter()) return;
+    if (initializeAdapter()) {
+      await waitForPreviewPaint();
+      return true;
+    }
 
     // The runtime posts "state" or "timeline" messages once ready.
     // Listen for those instead of polling.
     const iframe = iframeRef.current;
     let settled = false;
-
-    const trySettle = () => {
-      if (settled) return;
-      if (initializeAdapter()) {
+    return new Promise<boolean>((resolve) => {
+      const finish = (ready: boolean) => {
+        if (settled) return;
         settled = true;
         window.removeEventListener("message", onMessage);
-        if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
-      }
-    };
+        if (probeIntervalRef.current) clearTimeout(probeIntervalRef.current);
+        probeIntervalRef.current = undefined;
+        if (!ready) {
+          resolve(false);
+          return;
+        }
+        void waitForPreviewPaint().then(() => resolve(true));
+      };
 
-    const onMessage = (e: MessageEvent) => {
-      if (e.source && iframe && e.source !== iframe.contentWindow) return;
-      const data = e.data;
-      if (data?.source === "hf-preview" && (data?.type === "state" || data?.type === "timeline")) {
-        trySettle();
-      }
-    };
-    window.addEventListener("message", onMessage);
+      const trySettle = () => {
+        if (settled) return;
+        if (initializeAdapter()) finish(true);
+      };
 
-    // Safety net: if no message arrives within 5s, try one last time then give up.
-    probeIntervalRef.current = setTimeout(() => {
-      if (!settled) {
-        trySettle();
+      function onMessage(e: MessageEvent) {
+        if (e.source && iframe && e.source !== iframe.contentWindow) return;
+        const data = e.data;
+        if (
+          data?.source === "hf-preview" &&
+          (data?.type === "state" || data?.type === "timeline")
+        ) {
+          trySettle();
+        }
       }
-      window.removeEventListener("message", onMessage);
-    }, 5000) as unknown as ReturnType<typeof setInterval>;
-  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
+      window.addEventListener("message", onMessage);
+
+      // Safety net: if no message arrives within 5s, try one last time then give up.
+      probeIntervalRef.current = setTimeout(() => {
+        trySettle();
+        finish(false);
+      }, 5000) as unknown as ReturnType<typeof setInterval>;
+    });
+  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState, waitForPreviewPaint]);
 
   // Stable refs so mount-effect closures always call the latest version
   const processTimelineMessageRef = { current: processTimelineMessage };
