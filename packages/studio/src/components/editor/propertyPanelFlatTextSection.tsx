@@ -206,6 +206,9 @@ export function FlatTextSection({
   if (!activeField) return null;
 
   if (textFields.length > 1) {
+    // The parent FlatGroup (PropertyPanelFlat) already renders a "Text"
+    // heading around this section — suppress TextSection's own internal
+    // heading so the flat panel doesn't show "Text" twice in a row.
     return (
       <TextSection
         element={element}
@@ -216,6 +219,7 @@ export function FlatTextSection({
         onSetTextFieldStyle={onSetTextFieldStyle}
         onAddTextField={onAddTextField}
         onRemoveTextField={onRemoveTextField}
+        hideOwnHeading
       />
     );
   }

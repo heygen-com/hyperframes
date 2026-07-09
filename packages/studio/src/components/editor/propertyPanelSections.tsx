@@ -382,6 +382,7 @@ export function TextSection({
   onSetTextFieldStyle,
   onAddTextField,
   onRemoveTextField,
+  hideOwnHeading = false,
 }: {
   element: DomEditSelection;
   styles: Record<string, string>;
@@ -391,6 +392,11 @@ export function TextSection({
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
+  /** Skip TextSection's own "Text" Section heading/wrapper — for callers (the
+   *  flat inspector's multi-field fallback) that already render their own
+   *  "Text" heading one level up, to avoid a doubled heading. Defaults to
+   *  false so the legacy (non-flat) call site is unaffected. */
+  hideOwnHeading?: boolean;
 }) {
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
@@ -412,85 +418,93 @@ export function TextSection({
   if (!activeField) return null;
 
   if (textFields.length === 1) {
+    const content = (
+      <TextFieldEditor
+        field={activeField}
+        styles={styles}
+        fontAssets={fontAssets}
+        onImportFonts={onImportFonts}
+        showRemove={false}
+        onSetText={onSetText}
+        onSetTextFieldStyle={onSetTextFieldStyle}
+        onRemoveTextField={onRemoveTextField}
+      />
+    );
+    if (hideOwnHeading) return content;
     return (
       <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
-        <TextFieldEditor
-          field={activeField}
-          styles={styles}
-          fontAssets={fontAssets}
-          onImportFonts={onImportFonts}
-          showRemove={false}
-          onSetText={onSetText}
-          onSetTextFieldStyle={onSetTextFieldStyle}
-          onRemoveTextField={onRemoveTextField}
-        />
+        {content}
       </Section>
     );
   }
 
-  return (
-    <Section title="Text" icon={<Type size={15} />}>
-      <div className="space-y-4">
-        <div className="grid gap-1.5">
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <span className={LABEL}>Text layers</span>
-            <button
-              type="button"
-              onClick={() => {
-                void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
-                  if (nextKey) setActiveTextFieldKey(nextKey);
-                });
-              }}
-              className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
-            >
-              <Plus size={12} className="flex-shrink-0" />
-              <span className="truncate">Add text</span>
-            </button>
-          </div>
-          <div className="grid gap-2">
-            {textFields.map((field, index) => {
-              const active = field.key === activeField.key;
-              return (
-                <button
-                  key={field.key}
-                  type="button"
-                  onClick={() => setActiveTextFieldKey(field.key)}
-                  className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
-                    active
-                      ? "border-studio-accent/50 bg-studio-accent/10"
-                      : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
-                        style={{ backgroundColor: getTextFieldColor(field, styles) }}
-                      />
-                      <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
-                        {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
-                      </span>
-                    </div>
-                    <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-500">
-                      {field.tagName}
+  const content = (
+    <div className="space-y-4">
+      <div className="grid gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+          <span className={LABEL}>Text layers</span>
+          <button
+            type="button"
+            onClick={() => {
+              void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
+                if (nextKey) setActiveTextFieldKey(nextKey);
+              });
+            }}
+            className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+          >
+            <Plus size={12} className="flex-shrink-0" />
+            <span className="truncate">Add text</span>
+          </button>
+        </div>
+        <div className="grid gap-2">
+          {textFields.map((field, index) => {
+            const active = field.key === activeField.key;
+            return (
+              <button
+                key={field.key}
+                type="button"
+                onClick={() => setActiveTextFieldKey(field.key)}
+                className={`min-w-0 w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+                  active
+                    ? "border-studio-accent/50 bg-studio-accent/10"
+                    : "border-neutral-800 bg-neutral-900/80 hover:border-neutral-700 hover:bg-neutral-900"
+                }`}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
+                      style={{ backgroundColor: getTextFieldColor(field, styles) }}
+                    />
+                    <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
+                      {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
                     </span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                  <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-500">
+                    {field.tagName}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
-        <TextFieldEditor
-          field={activeField}
-          styles={styles}
-          fontAssets={fontAssets}
-          onImportFonts={onImportFonts}
-          showRemove={true}
-          onSetText={onSetText}
-          onSetTextFieldStyle={onSetTextFieldStyle}
-          onRemoveTextField={onRemoveTextField}
-        />
       </div>
+      <TextFieldEditor
+        field={activeField}
+        styles={styles}
+        fontAssets={fontAssets}
+        onImportFonts={onImportFonts}
+        showRemove={true}
+        onSetText={onSetText}
+        onSetTextFieldStyle={onSetTextFieldStyle}
+        onRemoveTextField={onRemoveTextField}
+      />
+    </div>
+  );
+  if (hideOwnHeading) return content;
+  return (
+    <Section title="Text" icon={<Type size={15} />}>
+      {content}
     </Section>
   );
 }

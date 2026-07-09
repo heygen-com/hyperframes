@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import type { DomEditSelection } from "./domEditing";
+import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelProps } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
@@ -101,9 +102,14 @@ export function PropertyPanelFlat({
   clipboardCopied: boolean;
   onCopyElementInfo: () => void;
 }) {
+  // Defaulting to "text" is harmless for a non-text element even though the
+  // Text FlatGroup won't render (nothing else reads openGroupId yet) — this
+  // only matters once a second FlatGroup exists (Plan 2+), at which point a
+  // non-text element should default-open that group instead.
   const [openGroupId, setOpenGroupId] = useState<string>("text");
   const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
+  const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
 
   return (
@@ -125,31 +131,33 @@ export function PropertyPanelFlat({
         showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
       />
       <div className="flex-1 overflow-y-auto">
-        <FlatGroup
-          title="Text"
-          isOpen={openGroupId === "text" || pinnedGroupIds.includes("text")}
-          isPinned={pinnedGroupIds.includes("text")}
-          onToggleOpen={() => setOpenGroupId((current) => (current === "text" ? "" : "text"))}
-          onTogglePin={() =>
-            setPinnedGroupIds((current) =>
-              current.includes("text")
-                ? current.filter((id) => id !== "text")
-                : [...current, "text"],
-            )
-          }
-          summary={formatTextFieldPreview(element.textFields[0]?.value ?? "")}
-        >
-          <FlatTextSection
-            element={element}
-            styles={styles}
-            fontAssets={fontAssets}
-            onImportFonts={onImportFonts}
-            onSetText={onSetText}
-            onSetTextFieldStyle={onSetTextFieldStyle}
-            onAddTextField={onAddTextField}
-            onRemoveTextField={onRemoveTextField}
-          />
-        </FlatGroup>
+        {isTextEditable && (
+          <FlatGroup
+            title="Text"
+            isOpen={openGroupId === "text" || pinnedGroupIds.includes("text")}
+            isPinned={pinnedGroupIds.includes("text")}
+            onToggleOpen={() => setOpenGroupId((current) => (current === "text" ? "" : "text"))}
+            onTogglePin={() =>
+              setPinnedGroupIds((current) =>
+                current.includes("text")
+                  ? current.filter((id) => id !== "text")
+                  : [...current, "text"],
+              )
+            }
+            summary={formatTextFieldPreview(element.textFields[0]?.value ?? "")}
+          >
+            <FlatTextSection
+              element={element}
+              styles={styles}
+              fontAssets={fontAssets}
+              onImportFonts={onImportFonts}
+              onSetText={onSetText}
+              onSetTextFieldStyle={onSetTextFieldStyle}
+              onAddTextField={onAddTextField}
+              onRemoveTextField={onRemoveTextField}
+            />
+          </FlatGroup>
+        )}
 
         {sections.timing && (
           <TimingSection
