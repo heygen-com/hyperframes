@@ -291,7 +291,6 @@
         t += 0.5;
 
         /* ── Outro (3s) ── */
-        tl.set("#scene2", { opacity: 0, visibility: "hidden" }, t * MS);
         tl.set("#outro-card", { opacity: 1 }, t * MS);
         tl.add("#outro-card", { opacity: 0, duration: 0.5 * MS, ease: "outQuad" }, (t + 2.5) * MS);
 
