@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SupportedLang } from "./manager.js";
 
 // Regression coverage for the espeak-ng Mandarin language code mismatch:
 // Kokoro's own voice-ID-prefix convention (and our public --lang value) uses
-// "zh", but espeak-ng 1.52.0 only recognizes the ISO 639-3 code "cmn" for
+// "zh", but kokoro-onnx/espeak-ng only accept the ISO 639-3 code "cmn" for
 // Mandarin. synthesize() must translate at the Python/espeak boundary
 // (the argv it hands to execFileSync) without changing the public lang
 // value used anywhere else.
@@ -55,9 +56,22 @@ vi.mock("./manager.js", async (importOriginal) => {
 });
 
 const { synthesize } = await import("./synthesize.js");
+const { SUPPORTED_LANGS } = await import("./manager.js");
 
 // argv passed to execFileSync: [scriptPath, modelPath, voicesPath, text, voice, speed, outputPath, lang]
 const LANG_ARGV_INDEX = 7;
+
+const EXPECTED_ESPEAK_LANGS = {
+  "en-us": "en-us",
+  "en-gb": "en-gb",
+  es: "es",
+  "fr-fr": "fr-fr",
+  hi: "hi",
+  it: "it",
+  "pt-br": "pt-br",
+  ja: "ja",
+  zh: "cmn",
+} satisfies Record<SupportedLang, string>;
 
 describe("synthesize — espeak-ng language code translation", () => {
   beforeEach(() => {
@@ -74,21 +88,36 @@ describe("synthesize — espeak-ng language code translation", () => {
     expect(argv![LANG_ARGV_INDEX]).not.toBe("zh");
   });
 
-  it("leaves other languages unchanged", async () => {
-    await synthesize("Hola mundo", "/tmp/hyperframes-test-es.wav", { voice: "ef_dora" });
-
-    const argv = getCapturedArgv();
-    expect(argv).toBeDefined();
-    expect(argv![LANG_ARGV_INDEX]).toBe("es");
-  });
-
-  it("returns the public zh value in the result even though cmn is sent to Python", async () => {
-    const result = await synthesize("你好世界", "/tmp/hyperframes-test-zh-2.wav", {
-      voice: "zf_xiaobei",
+  it("translates an explicit zh override too", async () => {
+    const progress: string[] = [];
+    await synthesize("你好世界", "/tmp/hyperframes-test-explicit-zh.wav", {
+      voice: "af_heart",
+      lang: "zh",
+      onProgress: (message) => progress.push(message),
     });
 
-    // langApplied comes back from the (mocked) Python side untouched — this
-    // just guards that the public API doesn't leak the espeak override.
-    expect(result.langApplied).toBe(true);
+    expect(getCapturedArgv()?.[LANG_ARGV_INDEX]).toBe("cmn");
+    expect(progress).toContain("Generating speech with voice af_heart (zh)...");
+  });
+
+  it("keeps every non-Mandarin public lang unchanged at the Python boundary", async () => {
+    for (const lang of SUPPORTED_LANGS) {
+      resetCapturedArgv();
+
+      await synthesize("Hello world", `/tmp/hyperframes-test-${lang}.wav`, {
+        voice: "af_heart",
+        lang,
+      });
+
+      expect(getCapturedArgv()?.[LANG_ARGV_INDEX]).toBe(EXPECTED_ESPEAK_LANGS[lang]);
+    }
+  });
+
+  it("leaves voice-inferred Spanish unchanged", async () => {
+    await synthesize("Hola mundo", "/tmp/hyperframes-test-es.wav", {
+      voice: "ef_dora",
+    });
+
+    expect(getCapturedArgv()?.[LANG_ARGV_INDEX]).toBe("es");
   });
 });
