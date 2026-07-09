@@ -40,6 +40,7 @@ import {
   useTimelineTrackVisibilityEditing,
 } from "./timelineTrackVisibility";
 import { sdkTimingPersist } from "../utils/sdkCutover";
+import { useTimelineElementsMove } from "./timelineElementsMove";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
 export function useTimelineEditing({
@@ -186,6 +187,22 @@ export function useTimelineEditing({
       domEditSaveTimestampRef,
     ],
   );
+
+  // Batched, atomic multi-clip move — one read/patch/write/GSAP-shift/reload for
+  // ALL edits (single undo). Used by the drag commit for main-track ripple and
+  // track-insert; single-clip moves keep the SDK-aware handler above.
+  const handleTimelineElementsMove = useTimelineElementsMove({
+    projectIdRef,
+    activeCompPath,
+    previewIframeRef,
+    writeProjectFile,
+    recordEdit,
+    reloadPreview,
+    forceReloadSdkSession,
+    domEditSaveTimestampRef,
+    isRecordingRef,
+    showToast,
+  });
 
   // fallow-ignore-next-line complexity
   const handleTimelineElementResize = useCallback(
@@ -557,6 +574,7 @@ export function useTimelineEditing({
 
   return {
     handleTimelineElementMove,
+    handleTimelineElementsMove,
     handleTimelineElementResize,
     handleToggleTrackHidden,
     handleToggleElementHidden,
