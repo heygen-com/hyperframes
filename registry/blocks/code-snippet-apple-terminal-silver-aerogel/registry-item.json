@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "code-snippet-apple-terminal-silver-aerogel",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Code Snippet - Apple Terminal Silver Aerogel",
   "description": "Apple Terminal Silver Aerogel profile: dark grey background with white text, per-character typing animation of a shell session.",
   "tags": ["code", "developer", "showcase", "terminal", "apple", "apple-terminal"],
