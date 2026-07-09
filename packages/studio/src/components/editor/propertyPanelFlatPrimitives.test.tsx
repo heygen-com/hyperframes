@@ -229,6 +229,96 @@ describe("FlatSlider", () => {
   });
 });
 
+describe("FlatSlider — Grade extensions", () => {
+  it("renders a center tick when centerTick is true, and omits it by default", () => {
+    const { host: withTick, root: rootA } = renderInto(
+      <FlatSlider
+        label="Exposure"
+        value={0}
+        min={-100}
+        max={100}
+        tier="default"
+        displayValue="+0.00"
+        centerTick
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(withTick.querySelector('[data-flat-slider-center-tick="true"]')).not.toBeNull();
+    act(() => rootA.unmount());
+
+    const { host: withoutTick, root: rootB } = renderInto(
+      <FlatSlider
+        label="Layer blur"
+        value={0}
+        min={0}
+        max={100}
+        tier="default"
+        displayValue="0px"
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(withoutTick.querySelector('[data-flat-slider-center-tick="true"]')).toBeNull();
+    act(() => rootB.unmount());
+  });
+
+  it("always reserves a 14px reset slot, showing the icon only when set and onReset is provided", () => {
+    const onReset = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Contrast"
+        value={12}
+        min={-100}
+        max={100}
+        tier="explicitCustom"
+        displayValue="+12%"
+        centerTick
+        onReset={onReset}
+        onCommit={vi.fn()}
+      />,
+    );
+    const slot = host.querySelector('[data-flat-slider-reset-slot="true"]');
+    expect(slot).not.toBeNull();
+    const resetButton = host.querySelector<HTMLButtonElement>('[data-flat-slider-reset="true"]');
+    expect(resetButton).not.toBeNull();
+    act(() => resetButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onReset).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+
+    const { host: unsetHost, root: rootB } = renderInto(
+      <FlatSlider
+        label="Contrast"
+        value={0}
+        min={-100}
+        max={100}
+        tier="default"
+        displayValue="0%"
+        centerTick
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(unsetHost.querySelector('[data-flat-slider-reset-slot="true"]')).not.toBeNull();
+    expect(unsetHost.querySelector('[data-flat-slider-reset="true"]')).toBeNull();
+    act(() => rootB.unmount());
+  });
+
+  it("renders no reset slot at all when centerTick is omitted, matching existing Style/Media callers", () => {
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={100}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="100%"
+        onCommit={vi.fn()}
+      />,
+    );
+    expect(host.querySelector('[data-flat-slider-reset-slot="true"]')).toBeNull();
+    expect(host.querySelector('[data-flat-slider-reset="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+});
+
 describe("FlatSelectRow", () => {
   it("renders the default tier with no reset button", () => {
     const { host, root } = renderInto(
