@@ -44,7 +44,7 @@ export function useGsapSelectionHandlers({
   updateGsapMeta: (
     sel: DomEditSelection,
     animId: string,
-    updates: { duration?: number; ease?: string; position?: number },
+    updates: { duration?: number; ease?: string; easeEach?: string; position?: number },
   ) => void;
   deleteGsapAnimation: (sel: DomEditSelection, animId: string) => void;
   deleteAllForSelector: (sel: DomEditSelection, targetSelector: string) => void;
@@ -131,7 +131,7 @@ export function useGsapSelectionHandlers({
   const handleGsapUpdateMeta = useCallback(
     (
       animId: string,
-      updates: { duration?: number; ease?: string; position?: number },
+      updates: { duration?: number; ease?: string; easeEach?: string; position?: number },
       selectionOverride?: DomEditSelection | null,
     ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;

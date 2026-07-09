@@ -1,6 +1,10 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { SUPPORTED_EASES, SUPPORTED_PROPS } from "@hyperframes/core/gsap-constants";
+import {
+  SUPPORTED_ANIMEJS_EASES,
+  SUPPORTED_ANIMEJS_PROPS,
+} from "@hyperframes/core/animejs-constants";
 import { RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import { MetricField, SelectField } from "./propertyPanelPrimitives";
 import { controlPointsForGsapEase } from "./studioMotion";
@@ -17,6 +21,24 @@ import {
   parseNumericOrString,
   BOOLEAN_PROPS,
 } from "./AnimationCardParts";
+import { isAnimeEditableAnimation } from "../../hooks/animeAnimationAdapter";
+
+const ANIME_EASE_PRESETS = [
+  "linear",
+  "outQuad",
+  "outCubic",
+  "inOutCubic",
+  "outBack",
+  "outExpo",
+] as const;
+
+function isCustomEaseValue(ease: string): boolean {
+  return ease.startsWith("custom(") || ease.startsWith("M0,0 ");
+}
+
+function customEaseForEngine(path: string, anime: boolean): string {
+  return anime ? path : `custom(${path})`;
+}
 
 interface AnimationCardProps extends GsapAnimationEditCallbacks {
   animation: GsapAnimation;
@@ -47,6 +69,7 @@ export const AnimationCard = memo(function AnimationCard({
   const [addingProp, setAddingProp] = useState(false);
   const [addingFromProp, setAddingFromProp] = useState(false);
   const [expandedKfPct, setExpandedKfPct] = useState<number | null>(null);
+  const animeAnimation = isAnimeEditableAnimation(animation);
 
   const usedProps = useMemo(
     () => new Set(Object.keys(animation.properties)),
@@ -54,10 +77,10 @@ export const AnimationCard = memo(function AnimationCard({
   );
   const availableProps = useMemo(
     () =>
-      SUPPORTED_PROPS.filter(
+      (animeAnimation ? SUPPORTED_ANIMEJS_PROPS : SUPPORTED_PROPS).filter(
         (p) => !usedProps.has(p) && (animation.method === "set" || !BOOLEAN_PROPS.has(p)),
       ),
-    [usedProps, animation.method],
+    [animeAnimation, usedProps, animation.method],
   );
 
   const usedFromProps = useMemo(
@@ -117,7 +140,7 @@ export const AnimationCard = memo(function AnimationCard({
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
   const easeName =
     (animation.keyframes ? animation.keyframes.easeEach : undefined) ?? animation.ease ?? "none";
-  const easeLabel = easeName.startsWith("custom(")
+  const easeLabel = isCustomEaseValue(easeName)
     ? "Custom curve"
     : (EASE_LABELS[easeName] ?? easeName);
   const endTime =
@@ -250,8 +273,11 @@ export const AnimationCard = memo(function AnimationCard({
                     expandedPct={expandedKfPct}
                     onToggle={setExpandedKfPct}
                     onEaseCommit={(pct, ease) => onUpdateKeyframeEase(animation.id, pct, ease)}
+                    easeOptions={animeAnimation ? SUPPORTED_ANIMEJS_EASES : undefined}
+                    customEaseKind={animeAnimation ? "animejs" : "gsap"}
+                    presetEases={animeAnimation ? ANIME_EASE_PRESETS : undefined}
                     onApplyAll={
-                      onSetAllKeyframeEases
+                      !animeAnimation && onSetAllKeyframeEases
                         ? (ease) => onSetAllKeyframeEases(animation.id, ease)
                         : undefined
                     }
@@ -260,16 +286,22 @@ export const AnimationCard = memo(function AnimationCard({
                   <>
                     <SelectField
                       label="Speed"
-                      value={easeName.startsWith("custom(") ? "custom" : easeName}
-                      options={[...SUPPORTED_EASES, "custom"]}
+                      value={isCustomEaseValue(easeName) ? "custom" : easeName}
+                      options={[
+                        ...(animeAnimation ? SUPPORTED_ANIMEJS_EASES : SUPPORTED_EASES),
+                        "custom",
+                      ]}
                       onChange={(next) => {
-                        const easeKey = animation.keyframes ? "easeEach" : "ease";
+                        const easeKey =
+                          animeAnimation || !animation.keyframes ? "ease" : "easeEach";
                         if (next === "custom") {
                           const points = controlPointsForGsapEase(
-                            easeName !== "none" ? easeName : "power2.out",
+                            !animeAnimation && easeName !== "none" ? easeName : "power2.out",
                           );
                           const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
-                          onUpdateMeta(animation.id, { [easeKey]: `custom(${path})` });
+                          onUpdateMeta(animation.id, {
+                            [easeKey]: customEaseForEngine(path, animeAnimation),
+                          });
                         } else {
                           onUpdateMeta(animation.id, { [easeKey]: next });
                         }
@@ -278,8 +310,11 @@ export const AnimationCard = memo(function AnimationCard({
                     <EaseCurveSection
                       ease={easeName}
                       duration={animation.duration}
+                      customEaseKind={animeAnimation ? "animejs" : "gsap"}
+                      presetEases={animeAnimation ? ANIME_EASE_PRESETS : undefined}
                       onCustomEaseCommit={(customEase) => {
-                        const easeKey = animation.keyframes ? "easeEach" : "ease";
+                        const easeKey =
+                          animeAnimation || !animation.keyframes ? "ease" : "easeEach";
                         onUpdateMeta(animation.id, { [easeKey]: customEase });
                       }}
                     />

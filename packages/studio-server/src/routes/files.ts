@@ -60,7 +60,10 @@ import {
   addAnimeJsAnimationToScript,
   removeAnimeJsAnimationFromScript,
   retargetAnimeJsAnimationInScript,
+  splitAnimeJsAnimationsInScript,
   updateAnimeJsAnimationInScript,
+  updateAnimeJsAnimationPropertiesInScript,
+  updateAnimeJsAnimationPropertyInScript,
   updateAnimeJsPropertyKeyframeInScript,
 } from "@hyperframes/parsers/animejs-writer-acorn";
 import {
@@ -887,11 +890,18 @@ type AnimeMutationRequest =
       property: string;
       index: number;
       updates: Record<string, AnimePropertyValue>;
+    }
+  | {
+      type: "split-animations";
+      originalId: string;
+      newId: string;
+      splitTime: number;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
 
 type GsapMutationResult = string | { script: string; skippedSelectors: string[] };
+type AnimeMutationResult = string | { script: string; skippedSelectors: string[] };
 
 // Mutations that can change a position tween's first keyframe (value/existence/timing)
 // and therefore require the pre-keyframe hold-`set`s to be re-synced afterwards.
@@ -1604,7 +1614,7 @@ function executeAnimeMutation(
   body: AnimeMutationRequest,
   block: NonNullable<ReturnType<typeof extractAnimeScriptBlock>>,
   respond: (data: unknown, status?: 400 | 404 | 409) => Response,
-): string | Response {
+): AnimeMutationResult | Response {
   function requireAnimation(animationId: string): boolean | Response {
     const parsed = parseAnimeJsScriptAcorn(block.scriptText);
     if (parsed.animations.some((animation) => animation.id === animationId)) return true;
@@ -1620,21 +1630,28 @@ function executeAnimeMutation(
       }
       case "update-property": {
         const updates = animeMetadataUpdateFromProperty(body.property, body.value);
-        if (!updates) {
-          return respond({ error: "anime.js property is not statically editable" }, 400);
-        }
         const found = requireAnimation(body.animationId);
         if (found instanceof Response) return found;
-        return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+        if (updates)
+          return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+        return updateAnimeJsAnimationPropertyInScript(
+          block.scriptText,
+          body.animationId,
+          body.property,
+          body.value,
+        );
       }
       case "update-properties": {
         const updates = animeMetadataUpdateFromProperties(body.properties);
-        if (!updates) {
-          return respond({ error: "anime.js properties are not statically editable" }, 400);
-        }
         const found = requireAnimation(body.animationId);
         if (found instanceof Response) return found;
-        return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+        if (updates)
+          return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+        return updateAnimeJsAnimationPropertiesInScript(
+          block.scriptText,
+          body.animationId,
+          body.properties,
+        );
       }
       case "add": {
         return addAnimeJsAnimationToScript(block.scriptText, {
@@ -1671,6 +1688,22 @@ function executeAnimeMutation(
           body.index,
           body.updates,
         );
+      }
+      case "split-animations": {
+        if (!body.originalId || !body.newId || !Number.isFinite(body.splitTime)) {
+          return respond(
+            {
+              error:
+                "split-animations requires originalId, newId (non-empty strings), and splitTime (finite number)",
+            },
+            400,
+          );
+        }
+        return splitAnimeJsAnimationsInScript(block.scriptText, {
+          originalId: body.originalId,
+          newId: body.newId,
+          splitTime: body.splitTime,
+        });
       }
       default:
         return respond({ error: `unknown mutation type: ${mutationTypeLabel(body)}` }, 400);
@@ -2435,8 +2468,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const result = executeAnimeMutation(body, block, respond);
     if (result instanceof Response) return result;
 
-    const changed = result !== block.scriptText;
-    const newHtml = changed ? block.replaceScript(result) : html;
+    const newScript = typeof result === "string" ? result : result.script;
+    const changed = newScript !== block.scriptText;
+    const newHtml = changed ? block.replaceScript(newScript) : html;
     let backupPath: string | null = null;
     if (changed) {
       const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
@@ -2446,15 +2480,19 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       writeFileSync(res.absPath, newHtml, "utf-8");
     }
 
-    return c.json({
+    const responsePayload: Record<string, unknown> = {
       ok: true,
       changed,
-      parsed: parseAnimeJsScriptAcorn(result),
+      parsed: parseAnimeJsScriptAcorn(newScript),
       before: html,
       after: newHtml,
-      scriptText: result,
+      scriptText: newScript,
       path: res.filePath,
       backupPath,
-    });
+    };
+    if (typeof result !== "string" && result.skippedSelectors.length > 0) {
+      responsePayload.skippedSelectors = result.skippedSelectors;
+    }
+    return c.json(responsePayload);
   });
 }

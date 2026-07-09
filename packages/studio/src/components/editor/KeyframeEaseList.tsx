@@ -47,6 +47,9 @@ export function KeyframeEaseList({
   onToggle,
   onEaseCommit,
   onApplyAll,
+  easeOptions = APPLY_ALL_EASES,
+  customEaseKind = "gsap",
+  presetEases,
 }: {
   keyframes: GsapPercentageKeyframe[];
   globalEase: string;
@@ -55,6 +58,9 @@ export function KeyframeEaseList({
   onEaseCommit: (pct: number, ease: string) => void;
   /** Apply one ease to every segment at once (clears per-segment overrides). */
   onApplyAll?: (ease: string) => void;
+  easeOptions?: readonly string[];
+  customEaseKind?: "gsap" | "animejs";
+  presetEases?: readonly string[];
 }) {
   return (
     <div className="space-y-1">
@@ -76,7 +82,7 @@ export function KeyframeEaseList({
             <option value="" disabled>
               Set all…
             </option>
-            {APPLY_ALL_EASES.map((name) => (
+            {easeOptions.map((name) => (
               <option key={name} value={name}>
                 {EASE_LABELS[name] ?? name}
               </option>
@@ -115,6 +121,8 @@ export function KeyframeEaseList({
               <div className="px-2 pb-2">
                 <EaseCurveSection
                   ease={segEase}
+                  customEaseKind={customEaseKind}
+                  presetEases={presetEases}
                   onCustomEaseCommit={(ease) => onEaseCommit(kf.percentage, ease)}
                 />
               </div>

@@ -9,7 +9,7 @@ export interface GsapAnimationEditCallbacks {
   onUpdateProperty: (animationId: string, property: string, value: number | string) => void;
   onUpdateMeta: (
     animationId: string,
-    updates: { duration?: number; ease?: string; position?: number },
+    updates: { duration?: number; ease?: string; easeEach?: string; position?: number },
   ) => void;
   onDeleteAnimation: (animationId: string) => void;
   onAddProperty: (animationId: string, property: string) => void;

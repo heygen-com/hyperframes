@@ -6,6 +6,7 @@ import {
   addAnimeJsAnimationToScript,
   removeAnimeJsAnimationFromScript,
   retargetAnimeJsAnimationInScript,
+  splitAnimeJsAnimationsInScript,
   updateAnimeJsAnimationInScript,
   updateAnimeJsPropertyKeyframeInScript,
 } from "./animejsWriterAcorn.js";
@@ -104,5 +105,43 @@ tl.add(makeTarget(), buildParams(), 0);
     expect(() => updateAnimeJsAnimationInScript(script, id, { duration: 100 })).toThrow(
       /not statically editable/,
     );
+  });
+
+  it("retargets anime tweens wholly after a razor split", () => {
+    const script = `
+const tl = anime.createTimeline({ autoplay: false });
+tl.add("#hero", { opacity: 1, duration: 400 }, 200);
+tl.add("#hero", { translateX: 120, duration: 500, ease: "outQuad" }, 1300);
+hyperframesAnime.register("main", tl);
+`;
+
+    const result = splitAnimeJsAnimationsInScript(script, {
+      originalId: "hero",
+      newId: "hero-split",
+      splitTime: 1,
+    });
+    const selectors = parseAnimeJsScriptAcorn(result.script).animations.map(
+      (anim) => anim.targetSelector,
+    );
+
+    expect(selectors).toEqual(["#hero", "#hero-split"]);
+    expect(result.skippedSelectors).toEqual([]);
+  });
+
+  it("keeps spanning anime tweens on the original selector and reports them read-only", () => {
+    const script = `
+const tl = anime.createTimeline({ autoplay: false });
+tl.add("#hero", { translateX: 120, duration: 1000 }, 500);
+hyperframesAnime.register("main", tl);
+`;
+
+    const result = splitAnimeJsAnimationsInScript(script, {
+      originalId: "hero",
+      newId: "hero-split",
+      splitTime: 0.75,
+    });
+
+    expect(parseAnimeJsScriptAcorn(result.script).animations[0]!.targetSelector).toBe("#hero");
+    expect(result.skippedSelectors).toEqual(["#hero (anime tween spanning split)"]);
   });
 });

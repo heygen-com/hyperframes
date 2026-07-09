@@ -201,6 +201,25 @@ type SdkGsapTweenOp =
   | { kind: "set"; animationId: string; properties: Partial<GsapTweenSpec> }
   | { kind: "remove"; animationId: string };
 
+// fallow-ignore-next-line unused-type
+export type AnimeTweenSpec = {
+  method: "add" | "set" | "animate";
+  targetSelector: string;
+  position?: number | string;
+  duration?: number | string;
+  ease?: string;
+  properties: Record<string, unknown>;
+};
+
+type SdkAnimeTweenOp =
+  | { kind: "add"; target: string; spec: AnimeTweenSpec }
+  | { kind: "set"; animationId: string; properties: Record<string, unknown> }
+  | { kind: "remove"; animationId: string };
+
+export function animeFileSerializeKey(targetPath: string): string {
+  return `animejs-file:${targetPath}`;
+}
+
 export function sdkGsapTweenPersist(
   targetPath: string,
   op: SdkGsapTweenOp,
@@ -247,6 +266,33 @@ export function sdkGsapTweenPersist(
       }
     });
   });
+}
+
+// fallow-ignore-next-line unused-export
+export function sdkAnimeTweenPersist(
+  targetPath: string,
+  op: SdkAnimeTweenOp,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+): Promise<boolean> {
+  if (op.kind === "add") {
+    const animeSrc = deps.readProjectFile;
+    void recordResolverParity(
+      sdkSession,
+      op.target,
+      "addAnimeTween",
+      animeSrc ? () => animeSrc(targetPath) : undefined,
+    );
+  } else {
+    recordAnimationResolverParity(
+      sdkSession,
+      op.animationId,
+      op.kind === "set" ? "setAnimeTween" : "removeAnimeTween",
+    );
+  }
+  // The SDK model does not dispatch anime.js tweens yet; keep the named path
+  // visible for resolver telemetry and fall through to the server writer.
+  return Promise.resolve(false);
 }
 
 async function dispatchGsapOpAndPersist(
@@ -411,6 +457,22 @@ type KeyframesPayload = {
   ease?: string;
 };
 
+function keyframesPayload(
+  targetSelector: string,
+  position: number,
+  duration: number,
+  keyframes: KeyframeSpec[],
+  ease: string | undefined,
+): KeyframesPayload {
+  return {
+    targetSelector,
+    position,
+    duration,
+    keyframes,
+    ...(ease ? { ease } : {}),
+  };
+}
+
 /** Shared inner dispatch for addWithKeyframes / replaceWithKeyframes ops. */
 function dispatchWithKeyframes(
   s: Composition,
@@ -435,18 +497,13 @@ export function sdkAddWithKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  const payload: KeyframesPayload = {
-    targetSelector,
-    position,
-    duration,
-    keyframes,
-    ...(ease ? { ease } : {}),
-  };
+  const payload = keyframesPayload(targetSelector, position, duration, keyframes, ease);
   return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
     dispatchWithKeyframes(s, payload),
   );
 }
 
+// fallow-ignore-next-line code-duplication
 export function sdkReplaceWithKeyframesPersist(
   targetPath: string,
   animationId: string,
@@ -459,13 +516,7 @@ export function sdkReplaceWithKeyframesPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<boolean> {
-  const payload: KeyframesPayload = {
-    targetSelector,
-    position,
-    duration,
-    keyframes,
-    ...(ease ? { ease } : {}),
-  };
+  const payload = keyframesPayload(targetSelector, position, duration, keyframes, ease);
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,

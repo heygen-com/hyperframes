@@ -158,6 +158,36 @@ export function updateAnimeJsAnimationInScript(
   return ms.toString();
 }
 
+export function updateAnimeJsAnimationPropertyInScript(
+  script: string,
+  animationId: string,
+  property: string,
+  value: AnimeJsPropertyValue,
+): string {
+  const located = locate(script, animationId);
+  if (!located) return script;
+  assertEditable(located.target);
+  const ms = new MagicString(script);
+  upsertProp(ms, located.target.call.paramsArg, property, value);
+  return ms.toString();
+}
+
+export function updateAnimeJsAnimationPropertiesInScript(
+  script: string,
+  animationId: string,
+  properties: Record<string, AnimeJsPropertyValue>,
+): string {
+  if (!Object.keys(properties).length) return script;
+  const located = locate(script, animationId);
+  if (!located) return script;
+  assertEditable(located.target);
+  const ms = new MagicString(script);
+  for (const [property, value] of Object.entries(properties)) {
+    upsertProp(ms, located.target.call.paramsArg, property, value);
+  }
+  return ms.toString();
+}
+
 export function retargetAnimeJsAnimationInScript(
   script: string,
   animationId: string,
@@ -173,6 +203,56 @@ export function retargetAnimeJsAnimationInScript(
   const ms = new MagicString(script);
   ms.overwrite(targetArg.start, targetArg.end, valueToCode(newSelector));
   return ms.toString();
+}
+
+// fallow-ignore-next-line complexity
+export function splitAnimeJsAnimationsInScript(
+  script: string,
+  opts: {
+    originalId: string;
+    newId: string;
+    splitTime: number;
+  },
+): { script: string; skippedSelectors: string[] } {
+  const parsed = parseAnimeJsScriptAcornForWrite(script);
+  if (!parsed) return { script, skippedSelectors: [] };
+
+  const originalSelector = `#${opts.originalId}`;
+  const newSelector = `#${opts.newId}`;
+  const skippedSelectors: string[] = [];
+  const matching = parsed.located.filter((entry) => {
+    const selector = entry.animation.targetSelector;
+    if (selector !== originalSelector && selector.includes(opts.originalId)) {
+      skippedSelectors.push(selector);
+    }
+    return selector === originalSelector;
+  });
+  if (matching.length === 0) return { script, skippedSelectors };
+
+  let result = script;
+  for (let index = matching.length - 1; index >= 0; index--) {
+    const entry = matching[index];
+    if (!entry) continue;
+    const animation = entry.animation;
+    const start =
+      typeof animation.resolvedStart === "number"
+        ? animation.resolvedStart / 1000
+        : typeof animation.position === "number"
+          ? animation.position / 1000
+          : null;
+    if (start === null) {
+      skippedSelectors.push(`${originalSelector} (non-numeric anime position)`);
+      continue;
+    }
+    const duration = typeof animation.duration === "number" ? animation.duration / 1000 : 0;
+    if (start >= opts.splitTime) {
+      result = retargetAnimeJsAnimationInScript(result, animation.id, newSelector);
+    } else if (start + duration > opts.splitTime) {
+      skippedSelectors.push(`${originalSelector} (anime tween spanning split)`);
+    }
+  }
+
+  return { script: result, skippedSelectors };
 }
 
 export function addAnimeJsAnimationToScript(

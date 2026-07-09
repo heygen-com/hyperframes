@@ -15,10 +15,12 @@ import { usePreviewInteraction } from "./usePreviewInteraction";
 import { useDomEditCommits } from "./useDomEditCommits";
 import { useGroupCommits } from "./useGroupCommits";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
+import { useAnimeScriptCommits } from "./useAnimeScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
+import { useKeyframeEaseHandlers } from "./useKeyframeEaseHandlers";
 
 // ── Types ──
 
@@ -112,8 +114,6 @@ export function useDomEditSession({
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
 
-  // ── Selection ──
-
   const {
     domEditSelection,
     domEditGroupSelections,
@@ -148,8 +148,6 @@ export function useDomEditSession({
     rightPanelTab,
   });
 
-  // ── Agent modal ──
-
   const {
     agentModalOpen,
     agentModalAnchorPoint,
@@ -179,11 +177,12 @@ export function useDomEditSession({
     refreshDomEditSelectionFromPreview,
   });
 
-  // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
-
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
-
-  // ── GSAP script commits ──
+  const { version: animeCacheVersion, bump: bumpAnimeCache } = useGsapCacheVersion();
+  const bumpAnimationCaches = useCallback(() => {
+    bumpGsapCache();
+    bumpAnimeCache();
+  }, [bumpAnimeCache, bumpGsapCache]);
 
   const {
     commitMutation: gsapCommitMutation,
@@ -221,7 +220,27 @@ export function useDomEditSession({
     forceReloadSdkSession,
   });
 
-  // ── DOM commit handlers ──
+  const {
+    commitMutation: animeCommitMutation,
+    updateAnimeProperty,
+    updateAnimeMeta,
+    deleteAnimeAnimation,
+    addAnimeAnimation,
+    addAnimeProperty,
+    removeAnimeProperty,
+    updateAnimePropertyKeyframe,
+  } = useAnimeScriptCommits({
+    projectIdRef,
+    activeCompPath,
+    previewIframeRef,
+    editHistory,
+    domEditSaveTimestampRef,
+    reloadPreview,
+    onCacheInvalidate: bumpAnimeCache,
+    onFileContentChanged: updateEditingFileContent,
+    showToast,
+    forceReloadSdkSession,
+  });
 
   const {
     resolveImportedFontAsset,
@@ -306,8 +325,6 @@ export function useDomEditSession({
       : undefined,
   });
 
-  // ── Element groups (wrap selected elements in a data-hf-group div) ──
-
   const { groupSelection, ungroupSelection } = useGroupCommits({
     activeCompPath,
     showToast,
@@ -344,8 +361,6 @@ export function useDomEditSession({
     void ungroupSelection(sel);
   }, [domEditSelectionRef, ungroupSelection, setActiveGroupElement, showToast]);
 
-  // ── Wiring: selection sync, GSAP cache, preview sync, selection handlers ──
-
   const {
     onClickToSource,
     selectedGsapAnimations,
@@ -372,6 +387,7 @@ export function useDomEditSession({
     handleGsapConvertToKeyframes,
     handleGsapRemoveAllKeyframes,
     handleResetSelectedElementKeyframes,
+    handleGsapUpdateKeyframeEase: tryUpdateAnimeKeyframeEase,
   } = useDomEditWiring({
     // fallow-ignore-next-line code-duplication
     projectId,
@@ -384,6 +400,8 @@ export function useDomEditSession({
     refreshKey,
     gsapCacheVersion,
     bumpGsapCache,
+    animeCacheVersion,
+    bumpAnimeCache,
     showToast,
     refreshPreviewDocumentVersion,
     syncPreviewHistoryHotkey,
@@ -410,10 +428,15 @@ export function useDomEditSession({
     resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
+    updateAnimeProperty,
+    updateAnimeMeta,
+    deleteAnimeAnimation,
+    addAnimeAnimation,
+    addAnimeProperty,
+    removeAnimeProperty,
+    updateAnimePropertyKeyframe,
     handleDomManualEditsReset,
   });
-
-  // ── Preview interaction ──
 
   const {
     handlePreviewCanvasMouseDown,
@@ -434,8 +457,6 @@ export function useDomEditSession({
     onClickToSource,
   });
 
-  // ── GSAP-aware geometry intercepts + animated property commit ──
-
   const {
     handleGsapAwarePathOffsetCommit,
     handleGsapAwareGroupPathOffsetCommit,
@@ -451,9 +472,10 @@ export function useDomEditSession({
     domEditSelection,
     selectedGsapAnimations,
     gsapCommitMutation,
+    animeCommitMutation,
     previewIframeRef,
     showToast,
-    bumpGsapCache,
+    bumpGsapCache: bumpAnimationCaches,
     makeFetchFallback,
     trackGsapInteractionFailure,
     handleDomBoxSizeCommit,
@@ -463,43 +485,11 @@ export function useDomEditSession({
     updateArcSegment,
   });
 
-  const handleUpdateKeyframeEase = useCallback(
-    (animationId: string, percentage: number, ease: string) => {
-      const sel = domEditSelectionRef.current;
-      if (!sel) return;
-      gsapCommitMutation(
-        sel,
-        {
-          type: "update-keyframe",
-          animationId,
-          percentage,
-          properties: {},
-          ease,
-        },
-        { label: "Update keyframe ease", softReload: true },
-      );
-    },
-    [gsapCommitMutation, domEditSelectionRef],
-  );
-
-  // Apply one ease to every segment at once (AE select-all + F9): set easeEach
-  // and strip per-keyframe overrides in a single mutation.
-  const handleSetAllKeyframeEases = useCallback(
-    (animationId: string, ease: string) => {
-      const sel = domEditSelectionRef.current;
-      if (!sel) return;
-      gsapCommitMutation(
-        sel,
-        {
-          type: "update-meta",
-          animationId,
-          updates: { easeEach: ease, resetKeyframeEases: true },
-        },
-        { label: "Apply ease to all segments", softReload: true },
-      );
-    },
-    [gsapCommitMutation, domEditSelectionRef],
-  );
+  const { handleUpdateKeyframeEase, handleSetAllKeyframeEases } = useKeyframeEaseHandlers({
+    domEditSelectionRef,
+    commitMutation: gsapCommitMutation,
+    tryUpdateAnimeKeyframeEase,
+  });
 
   return {
     // State
@@ -581,7 +571,7 @@ export function useDomEditSession({
     handleSetArcPath,
     handleUpdateArcSegment,
     handleUnroll,
-    invalidateGsapCache: bumpGsapCache,
+    invalidateGsapCache: bumpAnimationCaches,
     previewIframeRef,
     commitMutation,
   };

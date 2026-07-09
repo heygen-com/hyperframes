@@ -32,7 +32,7 @@ import {
 } from "./manualEditsTypes";
 import { roundRotationAngle } from "./manualEditsParsing";
 import { applyStudioMotionFromDom } from "./studioMotion";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { animationRuntimeAnimatesProperty, gsapAnimatesProperty } from "./gsapAnimatesProperty";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
@@ -219,6 +219,7 @@ function isIdentityAfterTranslateStrip(m: DOMMatrix): boolean {
   return m.is2D && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1;
 }
 
+// fallow-ignore-next-line complexity
 function stripGsapTranslateFromTransform(element: HTMLElement): void {
   if (element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   const transform = element.style.getPropertyValue("transform");
@@ -254,6 +255,7 @@ function stripGsapTranslateFromTransform(element: HTMLElement): void {
 // and push the offset straight into GSAP's x/y via gsap.set; the var() offset is
 // still persisted (buildPathOffsetPatches), and GSAP re-reads it at init on
 // reload. Returns true when handled as GSAP (caller must skip the CSS path).
+// fallow-ignore-next-line complexity
 function applyStudioPathOffsetViaGsap(
   element: HTMLElement,
   offset: { x: number; y: number },
@@ -539,10 +541,10 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
-    const gsapSkip = gsapAnimatesProperty(el, "x", "y");
+    const runtimeSkip = animationRuntimeAnimatesProperty(el, "x", "y");
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
-    if (gsapSkip) continue;
+    if (runtimeSkip) continue;
     if (x || y) {
       applyStudioPathOffset(
         el,
@@ -558,7 +560,7 @@ function reapplyPathOffsets(doc: Document): void {
 
 function reapplyBoxSizes(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_BOX_SIZE_ATTR)) {
-    if (gsapAnimatesProperty(el, "width", "height")) continue;
+    if (animationRuntimeAnimatesProperty(el, "width", "height")) continue;
     const w = Number.parseFloat(el.style.getPropertyValue(STUDIO_WIDTH_PROP));
     const h = Number.parseFloat(el.style.getPropertyValue(STUDIO_HEIGHT_PROP));
     if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {

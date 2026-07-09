@@ -59,6 +59,7 @@ async function splitHtmlElement(
   return (await response.json()) as { ok: boolean; changed?: boolean; content?: string };
 }
 
+// fallow-ignore-next-line complexity
 async function splitGsapAnimations(
   projectId: string,
   targetPath: string,
@@ -89,6 +90,45 @@ async function splitGsapAnimations(
       return { content: null };
     }
     throw new Error(errorBody?.error ?? `GSAP animation split failed (${response.status})`);
+  }
+  const data = (await response.json()) as {
+    ok?: boolean;
+    after?: string;
+    skippedSelectors?: string[];
+  };
+  return {
+    content: data.ok && data.after ? data.after : null,
+    skippedSelectors: data.skippedSelectors,
+  };
+}
+
+// fallow-ignore-next-line complexity
+async function splitAnimeAnimations(
+  projectId: string,
+  targetPath: string,
+  originalId: string,
+  newId: string,
+  splitTime: number,
+): Promise<{ content: string | null; skippedSelectors?: string[] }> {
+  const response = await fetch(
+    `/api/projects/${projectId}/animejs-mutations/${encodeURIComponent(targetPath)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "split-animations",
+        originalId,
+        newId,
+        splitTime,
+      }),
+    },
+  );
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (errorBody?.error === "no anime.js script found in file") {
+      return { content: null };
+    }
+    throw new Error(errorBody?.error ?? `anime.js animation split failed (${response.status})`);
   }
   const data = (await response.json()) as {
     ok?: boolean;
@@ -153,8 +193,19 @@ async function executeSplit(
       );
       if (gsapResult.content) patchedContent = gsapResult.content;
       if (gsapResult.skippedSelectors?.length) skippedSelectors = gsapResult.skippedSelectors;
+      const animeResult = await splitAnimeAnimations(
+        pid,
+        targetPath,
+        element.domId,
+        newId,
+        splitTime,
+      );
+      if (animeResult.content) patchedContent = animeResult.content;
+      if (animeResult.skippedSelectors?.length) {
+        skippedSelectors = [...(skippedSelectors ?? []), ...animeResult.skippedSelectors];
+      }
     } catch (gsapError) {
-      // GSAP mutation failed — the HTML split already wrote to disk.
+      // Animation mutation failed — the HTML split already wrote to disk.
       // Restore the original content to avoid a corrupt half-split state.
       await writeProjectFile(targetPath, originalContent);
       throw gsapError;
@@ -233,8 +284,8 @@ export function useRazorSplit({
     ],
   );
 
-  // fallow-ignore-next-line complexity
   const handleRazorSplitAll = useCallback(
+    // fallow-ignore-next-line complexity
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");

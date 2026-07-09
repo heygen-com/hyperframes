@@ -18,7 +18,6 @@ import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useClipboard } from "./hooks/useClipboard";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "./utils/studioUiPreferences";
 import { selectedKeyframePercentagesForElement } from "./utils/keyframeSelection";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
 import { useRenderClipContent } from "./hooks/useRenderClipContent";
@@ -56,8 +55,11 @@ import {
   normalizeStudioCompositionPath,
   readStudioUrlStateFromWindow,
 } from "./utils/studioUrlState";
-import { trackStudioSessionStart } from "./telemetry/events";
-import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
+import {
+  usePreviewDocumentVersionRefresh,
+  useStudioSessionStartTelemetry,
+  useTimelineVisibilityPreference,
+} from "./hooks/useStudioAppLifecycle";
 
 type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
@@ -65,13 +67,7 @@ export function StudioApp() {
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   const viewModeValue = useViewModeState();
-
-  useEffect(() => {
-    if (resolving || waitingForServer) return;
-    if (hasFiredSessionStart()) return;
-    markSessionStartFired();
-    trackStudioSessionStart({ has_project: projectId != null });
-  }, [projectId, resolving, waitingForServer]);
+  useStudioSessionStartTelemetry(projectId, resolving, waitingForServer);
 
   const [activeCompPath, setActiveCompPath] = useState<string | null>(null);
   const [activeCompPathHydrated, setActiveCompPathHydrated] = useState(
@@ -81,7 +77,8 @@ export function StudioApp() {
   const [previewIframe, setPreviewIframe] = useState<HTMLIFrameElement | null>(null);
   const [compositionLoading, setCompositionLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [previewDocumentVersion, setPreviewDocumentVersion] = useState(0);
+  const { previewDocumentVersion, refreshPreviewDocumentVersion } =
+    usePreviewDocumentVersionRefresh();
   const [blockPreview, setBlockPreview] = useState<BlockPreviewInfo | null>(null);
   const cropModeProps = useCropModeProps();
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -107,34 +104,9 @@ export function StudioApp() {
         : 0;
     return Math.max(timelineDuration, maxEnd);
   }, [timelineDuration, timelineElements]);
-  const refreshTimersRef = useRef<number[]>([]);
-  const refreshPreviewDocumentVersion = useCallback(() => {
-    for (const id of refreshTimersRef.current) clearTimeout(id);
-    refreshTimersRef.current = [];
-    setPreviewDocumentVersion((v) => v + 1);
-    refreshTimersRef.current.push(
-      window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 80),
-      window.setTimeout(() => setPreviewDocumentVersion((v) => v + 1), 300),
-    );
-  }, []);
-  useEffect(
-    () => () => {
-      for (const id of refreshTimersRef.current) clearTimeout(id);
-    },
-    [],
+  const { timelineVisible, toggleTimelineVisibility } = useTimelineVisibilityPreference(
+    initialUrlStateRef.current.timelineVisible ?? undefined,
   );
-  const [timelineVisible, setTimelineVisible] = useState(
-    () =>
-      initialUrlStateRef.current.timelineVisible ??
-      readStudioUiPreferences().timelineVisible ??
-      true,
-  );
-  const toggleTimelineVisibility = useCallback(() => {
-    setTimelineVisible((v) => {
-      writeStudioUiPreferences({ timelineVisible: !v });
-      return !v;
-    });
-  }, []);
   const { toasts, showToast, dismissToast } = useToast();
   const panelLayout = usePanelLayout({
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,

@@ -1,31 +1,4 @@
-// GSAP's CSSPlugin takes ownership of the element's entire transform stack
-// when it tweens ANY of these — it bakes the CSS `translate` longhand into
-// style.transform at init and writes `translate: none` every tick. Position
-// reapply/strip logic must therefore stand down for all of them, not just x/y.
-const GSAP_TRANSFORM_PROPS = [
-  "x",
-  "y",
-  "xPercent",
-  "yPercent",
-  "scale",
-  "scaleX",
-  "scaleY",
-  "rotation",
-  "rotate",
-  "rotationX",
-  "rotationY",
-  "skewX",
-  "skewY",
-  "transform",
-];
-
-/**
- * True when GSAP animates any transform-affecting property on the element,
- * meaning GSAP owns `style.transform` and has neutralized CSS `translate`.
- */
-export function gsapAnimatesTransform(el: HTMLElement): boolean {
-  return gsapAnimatesProperty(el, ...GSAP_TRANSFORM_PROPS);
-}
+import { parseAnimeJsScriptAcorn } from "@hyperframes/core/animejs-parser-acorn";
 
 /**
  * Checks whether GSAP actively animates one or more CSS/GSAP properties on
@@ -79,4 +52,65 @@ export function gsapAnimatesProperty(el: HTMLElement, ...props: string[]): boole
     }
   }
   return false;
+}
+
+function animePropertyCandidates(property: string): string[] {
+  if (property === "x") return ["translateX"];
+  if (property === "y") return ["translateY"];
+  if (property === "z") return ["translateZ"];
+  if (property === "rotation") return ["rotate", "rotateZ"];
+  if (property === "rotationX") return ["rotateX"];
+  if (property === "rotationY") return ["rotateY"];
+  if (property === "rotationZ") return ["rotateZ"];
+  return [property];
+}
+
+function animePropsFor(props: string[]): Set<string> {
+  const result = new Set<string>();
+  for (const prop of props) {
+    for (const candidate of animePropertyCandidates(prop)) result.add(candidate);
+  }
+  return result;
+}
+
+function elementMatchesAnimeSelector(el: HTMLElement, selector: string): boolean {
+  if (selector === `#${el.id}`) return true;
+  try {
+    return el.matches(selector);
+  } catch {
+    return false;
+  }
+}
+
+function animeScriptTexts(doc: Document): string[] {
+  const texts: string[] = [];
+  for (const script of doc.querySelectorAll<HTMLScriptElement>("script:not([src])")) {
+    const text = script.textContent || "";
+    if (text.includes("anime.") || text.includes("hyperframesAnime")) texts.push(text);
+  }
+  return texts;
+}
+
+// fallow-ignore-next-line complexity
+function animeAnimatesProperty(el: HTMLElement, ...props: string[]): boolean {
+  const propSet = animePropsFor(props);
+  for (const text of animeScriptTexts(el.ownerDocument)) {
+    try {
+      const parsed = parseAnimeJsScriptAcorn(text);
+      for (const animation of parsed.animations) {
+        if (!elementMatchesAnimeSelector(el, animation.targetSelector)) continue;
+        for (const prop of propSet) {
+          if (prop in animation.properties) return true;
+          if (animation.propertyKeyframes && prop in animation.propertyKeyframes) return true;
+        }
+      }
+    } catch {
+      /* unparsable/dynamic anime source falls back to the normal DOM path */
+    }
+  }
+  return false;
+}
+
+export function animationRuntimeAnimatesProperty(el: HTMLElement, ...props: string[]): boolean {
+  return gsapAnimatesProperty(el, ...props) || animeAnimatesProperty(el, ...props);
 }

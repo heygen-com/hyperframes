@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import type { GsapAnimation, GsapKeyframesData, ParsedGsap } from "@hyperframes/core/gsap-parser";
-import { isStudioHoldSet } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation, GsapKeyframesData } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
@@ -9,116 +8,20 @@ import {
 } from "./gsapKeyframeCacheHelpers";
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
+import {
+  getAnimationsForElement,
+  resolveTargetElement,
+  resolveSelectorElementIds,
+  type GsapElementTarget,
+} from "./gsapAnimationTargeting";
+import { fetchParsedAnimations } from "./gsapParsedAnimations";
 
-function extractIdFromSelector(selector: string): string | null {
-  const match = selector.match(/^#([\w-]+)/);
-  return match ? match[1] : null;
-}
-
-/**
- * Resolve a tween's target selector to the ids of the element(s) it animates.
- * A bare `#id` resolves directly; anything else (a class like `.dot`, a group
- * `.a, .b`, or a descendant selector) is matched against the live preview DOM so
- * class/selector tweens (e.g. `gsap.from(".dot", {stagger})`) attribute to every
- * element they animate — not just one parsed from the string. Falls back to a
- * leading `#id` when there's no DOM (so the cache still populates pre-iframe).
- */
-// fallow-ignore-next-line complexity
-export function resolveSelectorElementIds(
-  selector: string,
-  doc: Document | null | undefined,
-): string[] {
-  const bareId = selector.match(/^#([\w-]+)$/);
-  if (bareId) return [bareId[1]];
-  if (!doc) {
-    const lead = extractIdFromSelector(selector);
-    return lead ? [lead] : [];
-  }
-  const ids = new Set<string>();
-  for (const part of selector.split(",")) {
-    const sel = part.trim();
-    if (!sel) continue;
-    try {
-      for (const el of Array.from(doc.querySelectorAll(sel))) {
-        if (el.id) ids.add(el.id);
-      }
-    } catch {
-      const lead = extractIdFromSelector(sel);
-      if (lead) ids.add(lead);
-    }
-  }
-  return Array.from(ids);
-}
-
-/** The selected element's identity for matching tweens to it. */
-export interface GsapElementTarget {
-  id?: string | null;
-  selector?: string | null;
-}
-
-/**
- * A tween belongs to the selected element when its target selector addresses
- * that element — by id (`#id`), by the exact CSS selector the element was
- * selected through (`.kicker`), or as one member of a group selector
- * (`.clock-face, .clock-hand`, emitted for array/`toArray` targets). Real
- * compositions target tweens by class via `querySelector`, so id-only matching
- * misses them.
- *
- * When the live DOM `element` is supplied, each comma-part of a tween's selector
- * is also tested with `element.matches(part)` — true CSS semantics — so a
- * class/descendant tween shared across elements (e.g. `gsap.from(".dot", {stagger})`)
- * is attributed to *every* matching element, not just the one whose exact
- * selector string happens to equal the tween's.
- */
-export function getAnimationsForElement(
-  animations: GsapAnimation[],
-  target: GsapElementTarget,
-  element?: Element | null,
-): GsapAnimation[] {
-  const matchers = new Set<string>();
-  if (target.id) matchers.add(`#${target.id}`);
-  if (target.selector) matchers.add(target.selector);
-  if (matchers.size === 0 && !element) return [];
-  return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => {
-      const trimmed = part.trim();
-      if (!trimmed) return false;
-      if (matchers.has(trimmed)) return true;
-      const lastSimple = trimmed.split(/\s+/).pop();
-      if (lastSimple && matchers.has(lastSimple)) return true;
-      if (element) {
-        try {
-          if (element.matches(trimmed)) return true;
-        } catch {
-          /* tween selector isn't a valid CSS selector for matches() — skip */
-        }
-      }
-      return false;
-    }),
-  );
-}
-
-export async function fetchParsedAnimations(
-  projectId: string,
-  sourceFile: string,
-): Promise<ParsedGsap | null> {
-  try {
-    const res = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-animations/${encodeURIComponent(sourceFile)}`,
-      // Always re-read the freshly-parsed source; no per-call timestamp (which
-      // would defeat caching forever and is a deterministic-render no-no).
-      { cache: "no-store" },
-    );
-    if (!res.ok) return null;
-    const parsed = (await res.json()) as ParsedGsap;
-    // Studio-emitted pre-keyframe hold `set`s are an internal runtime detail (they
-    // hold an element's first keyframe before its tween). They must not surface as
-    // user animations — otherwise they pollute the keyframe cache / timeline diamonds.
-    return { ...parsed, animations: parsed.animations.filter((a) => !isStudioHoldSet(a)) };
-  } catch {
-    return null;
-  }
-}
+export {
+  fetchParsedAnimations,
+  getAnimationsForElement,
+  resolveSelectorElementIds,
+  type GsapElementTarget,
+};
 
 /**
  * Clip-relative timing basis for an element. Sub-composition internals (e.g. pills
@@ -236,19 +139,8 @@ export function useGsapAnimationsForElement(
     if (!targetId && !targetSelector) return [];
     // Resolve the live element so class / descendant tweens (e.g.
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
-    // just the one whose exact selector equals the tween's. `version` re-runs
-    // this after composition reloads.
-    let element: Element | null = null;
-    const doc = iframeRef?.current?.contentDocument;
-    if (doc) {
-      try {
-        element =
-          (targetId ? doc.getElementById(targetId) : null) ??
-          (targetSelector ? doc.querySelector(targetSelector) : null);
-      } catch {
-        element = null;
-      }
-    }
+    // just the one whose exact selector equals the tween's.
+    const element = resolveTargetElement({ id: targetId, selector: targetSelector }, iframeRef);
     return getAnimationsForElement(
       allAnimations,
       { id: targetId, selector: targetSelector },

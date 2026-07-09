@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { GSAP_TO_ANIME_EASE } from "@hyperframes/core";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
 
@@ -14,6 +15,28 @@ const PRESET_GRID_EASES = [
   "back.inOut",
   "expo.out",
 ] as const;
+
+const ANIME_EASE_CURVES: Record<string, [number, number, number, number]> = {};
+for (const [gsapEase, mapping] of Object.entries(GSAP_TO_ANIME_EASE)) {
+  const curve = EASE_CURVES[gsapEase];
+  if (!curve) continue;
+  ANIME_EASE_CURVES[mapping.animeEase.replace(/\(.+\)$/, "")] = curve;
+  ANIME_EASE_CURVES[mapping.animeEase] = curve;
+}
+
+function curveForEase(ease: string): [number, number, number, number] | undefined {
+  return (
+    EASE_CURVES[ease] ?? ANIME_EASE_CURVES[ease] ?? ANIME_EASE_CURVES[ease.replace(/\(.+\)$/, "")]
+  );
+}
+
+function isCustomEaseValue(ease: string): boolean {
+  return ease.startsWith("custom(") || ease.startsWith("M0,0 ");
+}
+
+function customEaseForKind(path: string, kind: "gsap" | "animejs"): string {
+  return kind === "animejs" ? path : `custom(${path})`;
+}
 
 function MiniCurveSvg({
   curve,
@@ -44,15 +67,17 @@ function MiniCurveSvg({
 
 const EasePresetGrid = function EasePresetGrid({
   currentEase,
+  presetEases,
   onSelect,
 }: {
   currentEase: string;
+  presetEases: readonly string[];
   onSelect: (ease: string) => void;
 }) {
   return (
     <div className="grid grid-cols-4 gap-1 mb-2">
-      {PRESET_GRID_EASES.map((name) => {
-        const curve = EASE_CURVES[name];
+      {presetEases.map((name) => {
+        const curve = curveForEase(name);
         if (!curve) return null;
         const isActive = currentEase === name;
         return (
@@ -115,13 +140,17 @@ export function EaseCurveSection({
   ease,
   duration,
   onCustomEaseCommit,
+  customEaseKind = "gsap",
+  presetEases = PRESET_GRID_EASES,
 }: {
   ease: string;
   duration?: number;
   onCustomEaseCommit: (ease: string) => void;
+  customEaseKind?: "gsap" | "animejs";
+  presetEases?: readonly string[];
 }) {
-  const isCustom = ease.startsWith("custom(");
-  const curveFromPreset = EASE_CURVES[ease];
+  const isCustom = isCustomEaseValue(ease);
+  const curveFromPreset = curveForEase(ease);
   const customPoints = isCustom ? parseCustomEaseFromString(ease) : null;
   const curve: Pts | null =
     isCustom && customPoints
@@ -203,7 +232,7 @@ export function EaseCurveSection({
     if (!draggingRef.current || !draft) return;
     draggingRef.current = null;
     const path = `M0,0 C${draft[0]},${draft[1]} ${draft[2]},${draft[3]} 1,1`;
-    onCustomEaseCommit(`custom(${path})`);
+    onCustomEaseCommit(customEaseForKind(path, customEaseKind));
     setDraft(null);
   };
 
@@ -216,7 +245,7 @@ export function EaseCurveSection({
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
-      <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
+      <EasePresetGrid currentEase={ease} presetEases={presetEases} onSelect={onCustomEaseCommit} />
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
         <button

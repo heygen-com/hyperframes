@@ -15,6 +15,11 @@ import {
   tryGsapResizeIntercept,
   tryGsapRotationIntercept,
 } from "./gsapRuntimeBridge";
+import {
+  tryAnimeDragIntercept,
+  tryAnimeResizeIntercept,
+  tryAnimeRotationIntercept,
+} from "./animeRuntimeBridge";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 import {
   useGsapSaveFailureTelemetry,
@@ -22,11 +27,13 @@ import {
 } from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
+import { isAnimeEditableAnimation } from "./animeAnimationAdapter";
 
 export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
   gsapCommitMutation: CommitMutation | null;
+  animeCommitMutation?: CommitMutation | null;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   bumpGsapCache: () => void;
@@ -78,6 +85,7 @@ export function useGsapAwareEditing({
   domEditSelection,
   selectedGsapAnimations,
   gsapCommitMutation,
+  animeCommitMutation,
   previewIframeRef,
   showToast,
   bumpGsapCache,
@@ -90,6 +98,10 @@ export function useGsapAwareEditing({
   updateArcSegment,
 }: UseGsapAwareEditingParams) {
   // ── GSAP-aware geometry commits ──
+  const selectedAnimeAnimations = selectedGsapAnimations.filter(isAnimeEditableAnimation);
+  const selectedGsapOnlyAnimations = selectedGsapAnimations.filter(
+    (animation) => !isAnimeEditableAnimation(animation),
+  );
 
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (
@@ -97,12 +109,24 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: { altKey?: boolean },
     ) => {
+      if (selectedAnimeAnimations.length > 0) {
+        const handled = await tryAnimeDragIntercept(
+          selection,
+          next,
+          selectedAnimeAnimations,
+          animeCommitMutation ?? null,
+        );
+        if (handled) {
+          bumpGsapCache();
+          return;
+        }
+      }
       if (gsapCommitMutation) {
         try {
           await tryGsapDragIntercept(
             selection,
             next,
-            selectedGsapAnimations,
+            selectedGsapOnlyAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
@@ -115,11 +139,14 @@ export function useGsapAwareEditing({
       }
     },
     [
-      selectedGsapAnimations,
+      selectedAnimeAnimations,
+      selectedGsapOnlyAnimations,
       gsapCommitMutation,
+      animeCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      bumpGsapCache,
     ],
   );
 
@@ -152,12 +179,24 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (selection: DomEditSelection, next: { width: number; height: number }) => {
+      if (selectedAnimeAnimations.length > 0) {
+        const handled = await tryAnimeResizeIntercept(
+          selection,
+          next,
+          selectedAnimeAnimations,
+          animeCommitMutation ?? null,
+        );
+        if (handled) {
+          bumpGsapCache();
+          return;
+        }
+      }
       if (gsapCommitMutation) {
         try {
           const handled = await tryGsapResizeIntercept(
             selection,
             next,
-            selectedGsapAnimations,
+            selectedGsapOnlyAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
@@ -172,16 +211,31 @@ export function useGsapAwareEditing({
     },
     [
       handleDomBoxSizeCommit,
-      selectedGsapAnimations,
+      selectedAnimeAnimations,
+      selectedGsapOnlyAnimations,
+      animeCommitMutation,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      bumpGsapCache,
     ],
   );
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
+      if (selectedAnimeAnimations.length > 0) {
+        const handled = await tryAnimeRotationIntercept(
+          selection,
+          next.angle,
+          selectedAnimeAnimations,
+          animeCommitMutation ?? null,
+        );
+        if (handled) {
+          bumpGsapCache();
+          return;
+        }
+      }
       if (gsapCommitMutation) {
         try {
           // Single source of truth for rotation too: tryGsapRotationIntercept handles
@@ -190,7 +244,7 @@ export function useGsapAwareEditing({
           await tryGsapRotationIntercept(
             selection,
             next.angle,
-            selectedGsapAnimations,
+            selectedGsapOnlyAnimations,
             previewIframeRef.current,
             gsapCommitMutation,
             makeFetchFallback(selection),
@@ -202,18 +256,21 @@ export function useGsapAwareEditing({
       }
     },
     [
-      selectedGsapAnimations,
+      selectedAnimeAnimations,
+      selectedGsapOnlyAnimations,
+      animeCommitMutation,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
+      bumpGsapCache,
     ],
   );
 
   // ── Animated property commit ──
 
   const { commitAnimatedProperty, commitAnimatedProperties } = useAnimatedPropertyCommit({
-    selectedGsapAnimations,
+    selectedGsapAnimations: selectedGsapOnlyAnimations,
     gsapCommitMutation,
     addGsapAnimation: (sel, method, time) => addGsapAnimation(sel, method, time),
     convertToKeyframes: (sel, animId) => convertToKeyframes(sel, animId),

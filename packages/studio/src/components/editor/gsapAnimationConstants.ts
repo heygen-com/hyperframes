@@ -132,9 +132,9 @@ export function parseCustomEaseFromString(ease: string): {
   x2: number;
   y2: number;
 } {
-  const match = ease.match(/^custom\((.+)\)$/);
-  if (!match) return controlPointsForGsapEase("power2.out");
-  const data = match[1];
+  const wrapped = ease.match(/^custom\((.+)\)$/);
+  const data = wrapped?.[1] ?? (ease.startsWith("M0,0 ") ? ease : null);
+  if (!data) return controlPointsForGsapEase("power2.out");
   const nums = data.match(/[\d.]+/g)?.map(Number);
   if (!nums || nums.length < 6) return controlPointsForGsapEase("power2.out");
   return { x1: nums[2], y1: nums[3], x2: nums[4], y2: nums[5] };
