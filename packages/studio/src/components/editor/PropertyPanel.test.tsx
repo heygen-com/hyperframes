@@ -668,6 +668,26 @@ function flatGroupTitles(host: HTMLElement): string[] {
   return [...open, ...collapsed];
 }
 
+describe("PropertyPanel — Grade group (flag on)", () => {
+  it(
+    "renders the Grade group with its accessory for a grade-editable (video) element",
+    async () => {
+      const { host, root } = await renderPanel(true, {
+        ...baseElement(),
+        tagName: "video",
+        textFields: [],
+      });
+      const gradeCollapsedOrOpen =
+        host.querySelector('[data-flat-group-collapsed="true"]') ||
+        host.querySelector('[data-flat-group-open="true"]');
+      expect(host.textContent).toContain("Grade");
+      expect(gradeCollapsedOrOpen).not.toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
 describe("PropertyPanel — Media group (Plan 4)", () => {
   it(
     "renders the flat Media group and not the legacy MediaSection, for a video element",
