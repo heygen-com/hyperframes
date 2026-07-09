@@ -268,6 +268,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     return (
       <PropertyPanelFlat
         {...props}
+        key={element.id ?? element.selector}
         element={element}
         styles={styles}
         sections={sections}

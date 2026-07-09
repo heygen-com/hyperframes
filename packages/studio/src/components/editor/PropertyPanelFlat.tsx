@@ -7,6 +7,7 @@ import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
 import { FlatGroup } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
+import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { TimingSection } from "./propertyPanelTimingSection";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
@@ -102,15 +103,25 @@ export function PropertyPanelFlat({
   clipboardCopied: boolean;
   onCopyElementInfo: () => void;
 }) {
-  // Defaulting to "text" is harmless for a non-text element even though the
-  // Text FlatGroup won't render (nothing else reads openGroupId yet) — this
-  // only matters once a second FlatGroup exists (Plan 2+), at which point a
-  // non-text element should default-open that group instead.
-  const [openGroupId, setOpenGroupId] = useState<string>("text");
+  // Lazy initializer: pick whichever group actually renders for this element
+  // (Text if text-editable, else Style if style-editable, else none open) so a
+  // style-only element doesn't start with everything collapsed. Only runs on
+  // mount — PropertyPanel.tsx keys <PropertyPanelFlat> by element identity so
+  // switching the selection re-mounts this component and re-derives the
+  // default instead of preserving stale state across unrelated elements.
+  const [openGroupId, setOpenGroupId] = useState<string>(() =>
+    isTextEditableSelection(element) ? "text" : showEditableSections ? "style" : "",
+  );
   const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
+  const toggleOpen = (groupId: string) =>
+    setOpenGroupId((current) => (current === groupId ? "" : groupId));
+  const togglePin = (groupId: string) =>
+    setPinnedGroupIds((current) =>
+      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
+    );
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
@@ -136,14 +147,8 @@ export function PropertyPanelFlat({
             title="Text"
             isOpen={openGroupId === "text" || pinnedGroupIds.includes("text")}
             isPinned={pinnedGroupIds.includes("text")}
-            onToggleOpen={() => setOpenGroupId((current) => (current === "text" ? "" : "text"))}
-            onTogglePin={() =>
-              setPinnedGroupIds((current) =>
-                current.includes("text")
-                  ? current.filter((id) => id !== "text")
-                  : [...current, "text"],
-              )
-            }
+            onToggleOpen={() => toggleOpen("text")}
+            onTogglePin={() => togglePin("text")}
             summary={formatTextFieldPreview(element.textFields[0]?.value ?? "")}
           >
             <FlatTextSection
@@ -155,6 +160,27 @@ export function PropertyPanelFlat({
               onSetTextFieldStyle={onSetTextFieldStyle}
               onAddTextField={onAddTextField}
               onRemoveTextField={onRemoveTextField}
+            />
+          </FlatGroup>
+        )}
+
+        {showEditableSections && (
+          <FlatGroup
+            title="Style"
+            isOpen={openGroupId === "style" || pinnedGroupIds.includes("style")}
+            isPinned={pinnedGroupIds.includes("style")}
+            onToggleOpen={() => toggleOpen("style")}
+            onTogglePin={() => togglePin("style")}
+            summary={`fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${Math.round((parseFloat(styles.opacity ?? "1") || 1) * 100)}%`}
+          >
+            <FlatStyleSection
+              projectId={projectId}
+              element={element}
+              styles={styles}
+              assets={assets}
+              onSetStyle={onSetStyle}
+              onImportAssets={onImportAssets}
+              gsapBorderRadius={gsapBorderRadius}
             />
           </FlatGroup>
         )}

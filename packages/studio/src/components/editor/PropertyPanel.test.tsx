@@ -100,6 +100,20 @@ function multiFieldTextElement() {
   };
 }
 
+// Style-only fixture: no text fields (Text group must not render), but
+// canEditStyles stays true (inherited from baseElement()) so the Style group
+// is gated in.
+function styleOnlyElement() {
+  return {
+    ...baseElement(),
+    id: "stat-card",
+    selector: ".stat-card",
+    label: "Stat Card",
+    textFields: [],
+    inlineStyles: { "background-color": "#0D0C09" },
+  };
+}
+
 async function renderPanel(
   flatEnabled: boolean,
   elementOverride: ReturnType<typeof baseElement> = baseElement(),
@@ -185,9 +199,19 @@ describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED on", () => {
   it(
     "renders no Text group at all for a non-text element (bug 1)",
     async () => {
+      // nonTextElement() inherits canEditStyles: true from baseElement(), so
+      // the Style group (Task 10) renders and opens by default here — the
+      // invariant under test is narrower than "no flat group at all": no
+      // group titled "Text" may appear, open or collapsed.
       const { host, root } = await renderPanel(true, nonTextElement());
-      expect(host.querySelector('[data-flat-group-open="true"]')).toBeNull();
-      expect(host.querySelector('[data-flat-group-collapsed="true"]')).toBeNull();
+      const openTitle = host.querySelector(
+        '[data-flat-group-open="true"] .text-panel-text-0',
+      )?.textContent;
+      const collapsedTitles = Array.from(
+        host.querySelectorAll('[data-flat-group-collapsed="true"] .text-panel-text-2'),
+      ).map((el) => el.textContent);
+      expect(openTitle).not.toBe("Text");
+      expect(collapsedTitles).not.toContain("Text");
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,
@@ -204,6 +228,39 @@ describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED on", () => {
       expect(host.querySelector('[data-panel-section="text"]')).toBeNull();
       // Content from the legacy multi-field fallback must still render.
       expect(host.textContent).toContain("Text layers");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+describe("PropertyPanel — Style group (flag on)", () => {
+  it(
+    "renders the Style group for a style-editable, non-text element",
+    async () => {
+      const { host, root } = await renderPanel(true, styleOnlyElement());
+      expect(host.textContent).toContain("Style");
+      expect(host.textContent).toContain("Fill");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "one-open accordion: opening Style closes Text",
+    async () => {
+      // baseElement() is text-editable and has capabilities.canEditStyles:
+      // true, so both the Text and Style groups render for it.
+      const { host, root } = await renderPanel(true);
+      const textGroup = () => host.querySelector('[data-flat-group-open="true"]');
+      expect(textGroup()?.textContent).toContain("Text");
+      const styleCollapsedRow = Array.from(
+        host.querySelectorAll('[data-flat-group-collapsed="true"]'),
+      ).find((el) => el.textContent?.includes("Style"));
+      if (!styleCollapsedRow) throw new Error("expected a collapsed Style row");
+      act(() => styleCollapsedRow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(textGroup()?.textContent).not.toContain("Text");
+      expect(host.querySelector('[data-flat-group-open="true"]')?.textContent).toContain("Style");
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,
