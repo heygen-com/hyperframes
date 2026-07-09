@@ -1,0 +1,35 @@
+<!--
+  Breadcrumb - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<nav class="hf-ui-breadcrumb" aria-label="Breadcrumb">
+  <span>Projects</span><i>/</i><span>Launch</span><i>/</i><strong>Preview</strong>
+</nav>
+
+<style>
+  .hf-ui-breadcrumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: #71717a;
+    font:
+      750 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-breadcrumb i {
+    color: #d4d4d8;
+    font-style: normal;
+  }
+  .hf-ui-breadcrumb strong {
+    color: #18181b;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-breadcrumb > *', { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.22, stagger: 0.045, ease: 'power2.out' }, startTime);
+-->

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "sidebar",
+  "type": "hyperframes:component",
+  "title": "Sidebar",
+  "description": "A sidebar primitive with active rail item, grouped links, and slide-in animation",
+  "tags": ["ui-primitive", "remocn-port", "sidebar", "navigation"],
+  "files": [
+    {
+      "path": "sidebar.html",
+      "target": "compositions/components/sidebar.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sidebar.png"
+  }
+}

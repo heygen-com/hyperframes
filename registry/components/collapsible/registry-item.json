@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "collapsible",
+  "type": "hyperframes:component",
+  "title": "Collapsible",
+  "description": "A collapsible primitive with header, chevron rotation, and height reveal",
+  "tags": ["ui-primitive", "remocn-port", "collapsible", "disclosure"],
+  "files": [
+    {
+      "path": "collapsible.html",
+      "target": "compositions/components/collapsible.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/collapsible.png"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "tabs",
+  "type": "hyperframes:component",
+  "title": "Tabs",
+  "description": "A tab primitive with segmented triggers, animated indicator, and active panel state",
+  "tags": ["ui-primitive", "remocn-port", "tabs", "navigation"],
+  "files": [
+    {
+      "path": "tabs.html",
+      "target": "compositions/components/tabs.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tabs.png"
+  }
+}

@@ -1,0 +1,45 @@
+<!-- Skeleton - animate --hf-skeleton-shimmer from -1 to 1 for a loading sweep. -->
+<div class="hf-ui-skeleton-card">
+  <span class="hf-ui-skeleton avatar"></span>
+  <span class="hf-ui-skeleton line wide"></span>
+  <span class="hf-ui-skeleton line"></span>
+</div>
+<style>
+  .hf-ui-skeleton-card {
+    --hf-skeleton-shimmer: -1;
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 12px;
+    width: min(360px, 100%);
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #fff;
+  }
+  .hf-ui-skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #ececef;
+  }
+  .hf-ui-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.78), transparent);
+    transform: translateX(calc(var(--hf-skeleton-shimmer) * 120%));
+  }
+  .hf-ui-skeleton.avatar {
+    grid-row: span 2;
+    width: 42px;
+    height: 42px;
+  }
+  .hf-ui-skeleton.line {
+    height: 12px;
+    align-self: center;
+    border-radius: 8px;
+  }
+  .hf-ui-skeleton.line.wide {
+    width: 82%;
+  }
+</style>

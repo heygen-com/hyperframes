@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Command Menu - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #09090b;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper — GSAP never touches .demo-frame, so transform is safe */
+        transform: scale(1.22);
+        transform-origin: center center;
+      }
+      .hf-ui-command-menu {
+        width: 520px;
+        padding: 12px;
+        border: 1px solid #3f3f46;
+        border-radius: 22px;
+        background: #111113;
+        color: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.40), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
+      }
+      .hf-ui-command-search {
+        height: 50px;
+        padding: 15px 16px;
+        border-radius: 14px;
+        background: #1f1f23;
+        color: #a1a1aa;
+        font-weight: 750;
+      }
+      .hf-ui-command-group {
+        padding: 18px 12px 8px;
+        color: #71717a;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .hf-ui-command-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 48px;
+        padding: 0 14px;
+        border-radius: 13px;
+        font-size: 16px;
+        font-weight: 750;
+      }
+      .hf-ui-command-item.is-active {
+        background: #fafafa;
+        color: #111113;
+      }
+      .hf-ui-command-item kbd {
+        color: inherit;
+        opacity: 0.58;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="command-menu-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-command-menu">
+          <div class="hf-ui-command-search">Search commands...</div>
+          <div class="hf-ui-command-group">Create</div>
+          <div class="hf-ui-command-item is-active"><span>New composition</span><kbd>N</kbd></div>
+          <div class="hf-ui-command-item"><span>Add text layer</span><kbd>T</kbd></div>
+          <div class="hf-ui-command-item"><span>Render preview</span><kbd>R</kbd></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-command-menu",
+          { opacity: 0, y: 30, scale: 0.96 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: "back.out(1.2)" },
+          0.35,
+        );
+        tl.fromTo(
+          ".hf-ui-command-item",
+          { x: -16, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.3, stagger: 0.07, ease: "power2.out" },
+          0.72,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["command-menu-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!--
+  Blur In - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-blur-in" aria-label="Design systems for video">
+  <span>Design</span>
+  <span>systems</span>
+  <span>for</span>
+  <span>video</span>
+</div>
+
+<style>
+  .hf-ui-blur-in {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.28em;
+    color: #111827;
+    font:
+      850 56px/1 Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: -0.02em;
+  }
+  .hf-ui-blur-in span {
+    display: inline-block;
+    filter: blur(0px);
+    opacity: 1;
+    will-change: opacity, transform, filter;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-blur-in span', { opacity: 0, y: 28, filter: 'blur(18px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.58, stagger: 0.08, ease: 'power3.out' }, 0.45);
+-->

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "command-menu-item",
+  "type": "hyperframes:component",
+  "title": "Command Menu Item",
+  "description": "A focused command-row primitive with shortcut and selection states.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "command-menu-item.html",
+      "target": "compositions/components/command-menu-item.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/command-menu-item.png"
+  }
+}

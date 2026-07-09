@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Dynamic Grid - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #07131d, #13312d);
+        color: white;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-dynamic-grid {
+        --hf-grid-size: 72px;
+        --hf-grid-color: rgba(255, 255, 255, 0.16);
+        --hf-grid-x: 0px;
+        --hf-grid-y: 0px;
+        --hf-grid-opacity: 1;
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: var(--hf-grid-opacity);
+        background-image:
+          linear-gradient(var(--hf-grid-color) 1px, transparent 1px),
+          linear-gradient(90deg, var(--hf-grid-color) 1px, transparent 1px);
+        background-size: var(--hf-grid-size) var(--hf-grid-size);
+        background-position: var(--hf-grid-x) var(--hf-grid-y);
+      }
+      .content {
+        position: absolute;
+        left: 180px;
+        bottom: 170px;
+        width: 1020px;
+      }
+      .title {
+        font-size: 118px;
+        line-height: 0.96;
+        font-weight: 900;
+        letter-spacing: -0.035em;
+      }
+      .copy {
+        margin-top: 34px;
+        width: 760px;
+        font-size: 38px;
+        line-height: 1.2;
+        color: rgba(255, 255, 255, 0.65);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="dynamic-grid-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div class="hf-dynamic-grid" aria-hidden="true"></div>
+      <div class="content">
+        <div class="title">Dynamic grid motion</div>
+        <div class="copy">
+          A web-native background primitive for product demos, explainers, and data scenes.
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.from(".content", { opacity: 0, y: 32, duration: 0.7, ease: "power3.out" }, 0.25);
+        tl.to(
+          ".hf-dynamic-grid",
+          { "--hf-grid-x": "72px", "--hf-grid-y": "-72px", duration: 6, ease: "none" },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["dynamic-grid-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

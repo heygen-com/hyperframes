@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Caret - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+      }
+      .hf-ui-caret-line {
+        display: inline-flex;
+        align-items: center;
+        min-height: 80px;
+        padding: 0 32px;
+        border: 1px solid #d4d4d8;
+        border-radius: 20px;
+        background: #ffffff;
+        color: #18181b;
+        font:
+          750 48px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+      }
+      .hf-ui-caret-value {
+        display: inline-block;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .hf-ui-caret {
+        display: inline-block;
+        width: 4px;
+        height: 54px;
+        margin-left: 6px;
+        border-radius: 999px;
+        background: #18181b;
+        opacity: 1;
+      }
+      .demo-frame { transform: scale(2.5); } /* qa-scale */
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="caret-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-caret-line">
+          <span class="hf-ui-caret-value">Generate captions</span><span class="hf-ui-caret"></span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-caret-value",
+          { width: 0 },
+          { width: 418, duration: 1.1, ease: "steps(17)" },
+          0.35,
+        );
+        tl.to(
+          ".hf-ui-caret",
+          { opacity: 0.12, duration: 0.16, repeat: 9, yoyo: true, ease: "none" },
+          0.35,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["caret-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

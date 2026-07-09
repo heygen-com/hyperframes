@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Navigation Menu - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+      }
+      .hf-ui-navigation-menu {
+        position: relative;
+        display: inline-flex;
+        gap: 4px;
+        padding: 6px;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        background: #fff;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 2px 8px rgba(24, 24, 27, 0.06);
+      }
+      .hf-ui-navigation-menu a {
+        padding: 10px 18px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 15px;
+        color: #18181b;
+        text-decoration: none;
+        letter-spacing: -0.01em;
+      }
+      .hf-ui-navigation-menu [aria-current="page"] {
+        background: #f4f4f5;
+        color: #18181b;
+      }
+      .hf-ui-navigation-menu div {
+        position: absolute;
+        top: 58px;
+        left: 0;
+        width: 340px;
+        padding: 16px;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(24, 24, 27, 0.10);
+      }
+      .menu-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        margin-bottom: 2px;
+      }
+      .menu-item:hover {
+        background: #f4f4f5;
+      }
+      .menu-item-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #18181b;
+        letter-spacing: -0.01em;
+      }
+      .menu-item-desc {
+        font-size: 12px;
+        font-weight: 400;
+        color: #71717a;
+        line-height: 1.4;
+      }
+      .menu-divider {
+        height: 1px;
+        background: #f4f4f5;
+        margin: 8px 0;
+      }
+      .demo-frame { transform: scale(3.5); } /* ponytail: qa-scale, was 2.2 — bumped to fill ~65% of frame */
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="navigation-menu-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <nav class="hf-ui-navigation-menu">
+          <a>Product</a><a aria-current="page">Templates</a><a>Docs</a>
+          <div>
+            <div class="menu-item">
+              <span class="menu-item-title">Launch Video Kit</span>
+              <span class="menu-item-desc">Product launch videos in minutes</span>
+            </div>
+            <div class="menu-item">
+              <span class="menu-item-title">Social Clips</span>
+              <span class="menu-item-desc">Vertical &amp; square formats, ready to post</span>
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item">
+              <span class="menu-item-title">Explainer Scenes</span>
+              <span class="menu-item-desc">Faceless motion graphics &amp; diagrams</span>
+            </div>
+          </div>
+        </nav>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-navigation-menu div",
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.26, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["navigation-menu-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

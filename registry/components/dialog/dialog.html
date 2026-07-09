@@ -1,0 +1,115 @@
+<!--
+  Dialog - centered modal primitive.
+
+  Paste the markup once. Animate --hf-dialog-overlay, --hf-dialog-scale,
+  --hf-dialog-y, and --hf-dialog-opacity from a paused GSAP timeline.
+-->
+
+<div class="hf-ui-dialog" role="dialog" aria-modal="true" aria-labelledby="hf-ui-dialog-title">
+  <div class="hf-ui-dialog-overlay" aria-hidden="true"></div>
+  <div class="hf-ui-dialog-panel">
+    <button class="hf-ui-dialog-close" type="button" aria-label="Close">x</button>
+    <h2 id="hf-ui-dialog-title">Edit profile</h2>
+    <p>Make changes to your profile here. Click save when you are done.</p>
+    <div class="hf-ui-dialog-actions">
+      <button class="hf-ui-dialog-cancel" type="button">Cancel</button>
+      <button class="hf-ui-dialog-action" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hf-ui-dialog {
+    --hf-dialog-overlay: 0;
+    --hf-dialog-opacity: 0;
+    --hf-dialog-scale: 0.96;
+    --hf-dialog-y: 12px;
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-family: Inter, system-ui, sans-serif;
+    pointer-events: none;
+  }
+  .hf-ui-dialog-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.5));
+  }
+  .hf-ui-dialog-panel {
+    position: relative;
+    width: min(440px, calc(100% - 48px));
+    padding: 26px;
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #ffffff;
+    color: #18181b;
+    opacity: var(--hf-dialog-opacity);
+    transform: translateY(var(--hf-dialog-y)) scale(var(--hf-dialog-scale));
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+    will-change: transform, opacity;
+  }
+  .hf-ui-dialog h2 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.2;
+  }
+  .hf-ui-dialog p {
+    margin: 10px 0 0;
+    color: #71717a;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .hf-ui-dialog-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #71717a;
+  }
+  .hf-ui-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+  }
+  .hf-ui-dialog button {
+    font:
+      700 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-dialog-cancel,
+  .hf-ui-dialog-action {
+    height: 40px;
+    padding: 0 18px;
+    border-radius: 10px;
+  }
+  .hf-ui-dialog-cancel {
+    border: 1px solid #e4e4e7;
+    background: #ffffff;
+    color: #18181b;
+  }
+  .hf-ui-dialog-action {
+    border: 0;
+    background: #18181b;
+    color: white;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-dialog", {
+    "--hf-dialog-overlay": 1,
+    "--hf-dialog-opacity": 1,
+    "--hf-dialog-scale": 1,
+    "--hf-dialog-y": "0px",
+    duration: 0.32,
+    ease: "power3.out",
+  }, startTime);
+-->

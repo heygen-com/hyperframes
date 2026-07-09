@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "carousel",
+  "type": "hyperframes:component",
+  "title": "Carousel",
+  "description": "A carousel primitive with stacked cards, active slide, and progress dots",
+  "tags": ["ui-primitive", "remocn-port", "carousel", "media"],
+  "files": [
+    {
+      "path": "carousel.html",
+      "target": "compositions/components/carousel.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/carousel.png"
+  }
+}

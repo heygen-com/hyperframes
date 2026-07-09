@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "github-stars",
+  "type": "hyperframes:component",
+  "title": "GitHub Stars",
+  "description": "A repo star-count card with avatars, velocity line, and odometer.",
+  "tags": ["social-overlay", "remocn-port"],
+  "files": [
+    {
+      "path": "github-stars.html",
+      "target": "compositions/components/github-stars.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/github-stars.png"
+  }
+}

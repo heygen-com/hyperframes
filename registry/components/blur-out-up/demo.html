@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Blur Out Up - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 900px;
+        min-height: 500px;
+        padding: 64px;
+        /* ponytail: scale wrapper — GSAP targets spans inside, not this element */
+        transform: scale(2.6);
+      }
+      .hf-remocn-blur-out-up {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-blur-out-up {
+        display: inline-flex;
+        gap: 12px;
+        font-size: 56px;
+        line-height: 1;
+      }
+      .hf-remocn-blur-out-up span {
+        display: inline-block;
+        transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+          scale(var(--hf-word-scale, 1));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="blur-out-up-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-blur-out-up"><span>BLUR</span><span>OUT</span><span>UP</span></div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-blur-out-up span",
+          { opacity: 0, "--hf-word-y": "22px", "--hf-word-scale": 0.92, "--hf-word-blur": "5px" },
+          {
+            opacity: 1,
+            "--hf-word-y": "0px",
+            "--hf-word-scale": 1,
+            "--hf-word-blur": "0px",
+            duration: 0.3,
+            stagger: 0.055,
+            ease: "power3.out",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["blur-out-up-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

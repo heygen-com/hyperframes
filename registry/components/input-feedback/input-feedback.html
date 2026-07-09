@@ -1,0 +1,82 @@
+<!--
+  Input Feedback - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-input-feedback" data-state="valid">
+  <label>Email</label>
+  <div class="hf-transition-input-shell">
+    <span class="hf-transition-input-value">mia@example.com</span>
+    <button class="hf-transition-input-clear" type="button">x</button>
+    <span class="hf-transition-input-check">OK</span>
+  </div>
+  <p class="hf-transition-input-hint">Looks good.</p>
+</div>
+
+<style>
+  .hf-transition-input-feedback {
+    display: grid;
+    gap: 10px;
+    width: 430px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-input-feedback label {
+    color: #52525b;
+    font-size: 15px;
+    font-weight: 850;
+  }
+  .hf-transition-input-shell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 62px;
+    padding: 0 16px;
+    border: 1px solid #d4d4d8;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  }
+  .hf-transition-input-value {
+    flex: 1;
+    font-size: 20px;
+    font-weight: 760;
+  }
+  .hf-transition-input-clear,
+  .hf-transition-input-check {
+    display: grid;
+    place-items: center;
+    height: 28px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .hf-transition-input-clear {
+    width: 28px;
+    border: 0;
+    background: #f4f4f5;
+    color: #71717a;
+  }
+  .hf-transition-input-check {
+    min-width: 38px;
+    padding: 0 8px;
+    background: #dcfce7;
+    color: #166534;
+  }
+  .hf-transition-input-hint {
+    margin: 0;
+    color: #16a34a;
+    font-size: 14px;
+    font-weight: 800;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-input-feedback', { y: 22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: 'power2.out' }, 0.3);
+  tl.to('.hf-transition-input-shell', { x: -12, duration: 0.06, repeat: 5, yoyo: true, ease: 'none' }, 0.72);
+  tl.fromTo('.hf-transition-input-check', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: 'back.out(2)' }, 1.18);
+  tl.fromTo('.hf-transition-input-hint', { opacity: 0, y: -6 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }, 1.28);
+-->

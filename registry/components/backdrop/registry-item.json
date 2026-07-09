@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "backdrop",
+  "type": "hyperframes:component",
+  "title": "Backdrop",
+  "description": "A composable glass backdrop layer for dialog, drawer, and modal scenes.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "backdrop.html",
+      "target": "compositions/components/backdrop.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/backdrop.png"
+  }
+}

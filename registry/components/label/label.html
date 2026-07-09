@@ -1,0 +1,34 @@
+<!--
+  Label - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<label class="hf-ui-label">Workspace name <span>Required</span></label>
+
+<style>
+  .hf-ui-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #18181b;
+    font:
+      800 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-label span {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #f4f4f5;
+    color: #71717a;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-label', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.24, ease: 'power2.out' }, startTime);
+-->

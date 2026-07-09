@@ -1,0 +1,47 @@
+<!--
+  Field - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-field">
+  <label>Email</label>
+  <div class="hf-ui-field-control">maya@example.com</div>
+  <p>Used for render notifications.</p>
+</div>
+
+<style>
+  .hf-ui-field {
+    display: grid;
+    gap: 8px;
+    width: 340px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-field label {
+    font-size: 14px;
+    font-weight: 850;
+  }
+  .hf-ui-field-control {
+    height: 42px;
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #fff;
+    font-weight: 700;
+  }
+  .hf-ui-field p {
+    margin: 0;
+    color: #71717a;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-field > *', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.2, stagger: 0.05, ease: 'power2.out' }, startTime);
+-->

@@ -1,0 +1,66 @@
+<!--
+  Shader Displacement Panel - advanced HyperFrames primitive.
+
+  This is intentionally seekable: drive it from a paused GSAP timeline.
+  MotionPath examples require GSAP MotionPathPlugin. Three.js examples expose
+  a render(progress) adapter instead of a free-running requestAnimationFrame loop.
+-->
+
+<div class="hf-advanced-shader-displacement-panel">
+  <div class="panel">
+    <div>
+      <h3>Shader Displacement Panel</h3>
+      <p>
+        A CSS/WebGL-inspired displacement panel for premium scene reveals without a custom shader
+        dependency.
+      </p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hf-advanced-shader-displacement-panel {
+    color: #111827;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-advanced-shader-displacement-panel {
+    position: relative;
+    width: 760px;
+    height: 430px;
+    perspective: 900px;
+    border-radius: 30px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #0f172a, #312e81);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-advanced-shader-displacement-panel .panel {
+    position: absolute;
+    inset: 56px 90px;
+    border-radius: 30px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.52));
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(18px);
+    transform: rotateY(var(--hf-rotate-y, -16deg)) rotateX(var(--hf-rotate-x, 9deg))
+      translateZ(var(--hf-z, 0px));
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.22);
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+  .hf-advanced-shader-displacement-panel h3 {
+    margin: 0;
+    color: #111827;
+    font-size: 42px;
+    letter-spacing: -0.05em;
+  }
+  .hf-advanced-shader-displacement-panel p {
+    margin: 8px 0 0;
+    color: #475569;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  const startTime = 0;
+  tl.fromTo('.hf-advanced-shader-displacement-panel .panel', { '--hf-rotate-y': '-20deg', '--hf-rotate-x': '12deg', '--hf-z': '-80px', opacity: 0 }, { '--hf-rotate-y': '10deg', '--hf-rotate-x': '-4deg', '--hf-z': '80px', opacity: 1, duration: 1.2, ease: 'power3.out' }, startTime);
+-->

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Checkbox - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .stack {
+        display: grid;
+        gap: 22px;
+        padding: 48px;
+        border: 1px solid #e4e4e7;
+        border-radius: 24px;
+        background: white;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        /* ponytail: scale wrapper (not a GSAP target) to fill frame */
+        transform: scale(3.2);
+        transform-origin: center center;
+      }
+      .hf-ui-checkbox {
+        --hf-checkbox-progress: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 18px;
+        color: #18181b;
+      }
+      .hf-ui-checkbox-box {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border: 2px solid
+          color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #d4d4d8);
+        border-radius: 12px;
+        background: color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #ffffff);
+        transform: scale(calc(0.9 + var(--hf-checkbox-progress) * 0.1));
+      }
+      .hf-ui-checkbox svg {
+        width: 28px;
+        height: 28px;
+        fill: none;
+        stroke: #fff;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: var(--hf-checkbox-progress);
+        stroke-dasharray: 24;
+        stroke-dashoffset: calc((1 - var(--hf-checkbox-progress)) * 24);
+      }
+      .hf-ui-checkbox-label {
+        font-size: 30px;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="checkbox-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="stack">
+        <div class="hf-ui-checkbox">
+          <span class="hf-ui-checkbox-box"
+            ><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7" /></svg
+          ></span>
+          <span class="hf-ui-checkbox-label">Include captions</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-checkbox",
+          { "--hf-checkbox-progress": 1, duration: 0.32, ease: "back.out(2)" },
+          0.75,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["checkbox-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

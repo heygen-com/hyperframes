@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-accordion",
+  "type": "hyperframes:component",
+  "title": "Code Accordion",
+  "description": "Stacked code sections expand one at a time with line highlights.",
+  "tags": ["code-animation", "remocn-port"],
+  "files": [
+    {
+      "path": "code-accordion.html",
+      "target": "compositions/components/code-accordion.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/code-accordion.png"
+  }
+}

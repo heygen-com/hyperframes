@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Combobox - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of 1920px frame */
+        transform: scale(2.6);
+      }
+      .hf-ui-combobox {
+        width: 360px;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-combobox-trigger,
+      .hf-ui-combobox-menu {
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #ffffff;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+      }
+      .hf-ui-combobox-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        height: 58px;
+        padding: 0 18px;
+      }
+      .hf-ui-combobox-trigger span {
+        color: #71717a;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .hf-ui-combobox-trigger strong {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .hf-ui-combobox-menu {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 10px;
+        transform-origin: top center;
+        will-change: opacity, transform;
+      }
+      .hf-ui-combobox-search,
+      .hf-ui-combobox-option {
+        border-radius: 11px;
+        padding: 11px 14px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .hf-ui-combobox-search {
+        color: #a1a1aa;
+        background: #f4f4f5;
+      }
+      .hf-ui-combobox-option.is-active {
+        background: #18181b;
+        color: #ffffff;
+      }
+      .hf-ui-combobox-option.is-muted {
+        color: #71717a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="combobox-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-combobox" data-state="open">
+          <button class="hf-ui-combobox-trigger" type="button">
+            <span>Framework</span><strong>HyperFrames</strong>
+          </button>
+          <div class="hf-ui-combobox-menu">
+            <div class="hf-ui-combobox-search">Search frameworks...</div>
+            <div class="hf-ui-combobox-option is-muted">Remotion</div>
+            <div class="hf-ui-combobox-option is-active">HyperFrames</div>
+            <div class="hf-ui-combobox-option">Motion Canvas</div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-combobox-trigger",
+          { y: 18, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.34, ease: "power2.out" },
+          0.3,
+        );
+        tl.fromTo(
+          ".hf-ui-combobox-menu",
+          { opacity: 0, y: -8, scale: 0.96 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "power3.out" },
+          0.62,
+        );
+        tl.fromTo(
+          ".hf-ui-combobox-option",
+          { x: -12, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.24, stagger: 0.06, ease: "power2.out" },
+          0.82,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["combobox-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

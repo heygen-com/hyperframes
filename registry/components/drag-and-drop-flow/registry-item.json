@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "drag-and-drop-flow",
+  "type": "hyperframes:component",
+  "title": "Drag and Drop Flow",
+  "description": "Cards drag from backlog to timeline with snap feedback.",
+  "tags": ["showcase", "remocn-port"],
+  "files": [
+    {
+      "path": "drag-and-drop-flow.html",
+      "target": "compositions/components/drag-and-drop-flow.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drag-and-drop-flow.png"
+  }
+}

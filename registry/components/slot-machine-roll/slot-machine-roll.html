@@ -1,0 +1,51 @@
+<!--
+  Slot Machine Roll - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-slot-machine-roll">
+  <span
+    ><i>0<br />A</i></span
+  ><span
+    ><i>0<br />7</i></span
+  ><span
+    ><i>0<br />K</i></span
+  >
+</div>
+
+<style>
+  .hf-remocn-slot-machine-roll {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-slot-machine-roll {
+    display: inline-flex;
+    gap: 6px;
+    height: 74px;
+    overflow: hidden;
+    font:
+      900 74px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+  }
+  .hf-remocn-slot-machine-roll span {
+    display: block;
+    height: 74px;
+    overflow: hidden;
+  }
+  .hf-remocn-slot-machine-roll i {
+    display: block;
+    font-style: normal;
+    transform: translateY(var(--hf-slot-y, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-slot-machine-roll i', { '--hf-slot-y': '0px' }, { '--hf-slot-y': '-74px', duration: 0.52, stagger: 0.06, ease: 'power3.inOut' }, startTime);
+-->

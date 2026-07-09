@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "label",
+  "type": "hyperframes:component",
+  "title": "Label",
+  "description": "A label primitive for clear form and control annotations in video UI scenes",
+  "tags": ["ui-primitive", "remocn-port", "label", "form"],
+  "files": [
+    {
+      "path": "label.html",
+      "target": "compositions/components/label.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/label.png"
+  }
+}

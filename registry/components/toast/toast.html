@@ -1,0 +1,52 @@
+<!-- Toast - animate --hf-toast-progress from 0 to 1 for entry and rail fill. -->
+<div class="hf-ui-toast" role="status">
+  <span class="hf-ui-toast-dot"></span>
+  <div><strong>Render complete</strong><span>Your video is ready to share.</span></div>
+  <span class="hf-ui-toast-rail"></span>
+</div>
+<style>
+  .hf-ui-toast {
+    --hf-toast-progress: 0;
+    position: relative;
+    display: grid;
+    grid-template-columns: 10px 1fr;
+    gap: 12px;
+    width: min(360px, 100%);
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    opacity: var(--hf-toast-progress);
+    transform: translateY(calc((1 - var(--hf-toast-progress)) * 18px));
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+  }
+  .hf-ui-toast-dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 5px;
+    border-radius: 999px;
+    background: #16a34a;
+    box-shadow: 0 0 0 calc(var(--hf-toast-progress) * 8px) rgba(22, 163, 74, 0.12);
+  }
+  .hf-ui-toast strong {
+    display: block;
+    font-size: 15px;
+  }
+  .hf-ui-toast span {
+    color: #71717a;
+    font-size: 13px;
+  }
+  .hf-ui-toast-rail {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 9px;
+    height: 3px;
+    border-radius: 999px;
+    background: #18181b;
+    transform: scaleX(var(--hf-toast-progress));
+    transform-origin: left;
+  }
+</style>

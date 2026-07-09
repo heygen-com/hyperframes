@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "orbital-feature-path",
+  "type": "hyperframes:component",
+  "title": "Orbital Feature Path",
+  "description": "Feature chips orbit a product core on timed SVG motion paths.",
+  "tags": ["motionpath", "gsap-plugin", "hyperframes-native"],
+  "files": [
+    {
+      "path": "orbital-feature-path.html",
+      "target": "compositions/components/orbital-feature-path.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/orbital-feature-path.png"
+  }
+}

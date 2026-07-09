@@ -1,0 +1,38 @@
+<!--
+  Rolling Number - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-rolling-number">
+  <span>3</span><span>0</span><span>,</span><span>6</span><span>5</span><span>8</span>
+</div>
+
+<style>
+  .hf-remocn-rolling-number {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-rolling-number {
+    display: inline-flex;
+    gap: 2px;
+    font:
+      900 74px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+  }
+  .hf-remocn-rolling-number span {
+    display: inline-block;
+    transform: translateY(var(--hf-number-y, 0px));
+    filter: blur(var(--hf-number-blur, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-rolling-number span', { opacity: 0, '--hf-number-y': '26px', '--hf-number-blur': '8px' }, { opacity: 1, '--hf-number-y': '0px', '--hf-number-blur': '0px', duration: 0.3, stagger: 0.045, ease: 'back.out(1.6)' }, startTime);
+-->

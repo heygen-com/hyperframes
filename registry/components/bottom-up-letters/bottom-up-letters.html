@@ -1,0 +1,47 @@
+<!--
+  Bottom Up Letters - deterministic text splitter.
+
+  Add class="hf-bottom-up-letters" to a plain text element. This script wraps
+  each character in a span so your paused GSAP timeline can stagger the reveal.
+-->
+
+<style>
+  .hf-bottom-up-letters {
+    display: inline-block;
+  }
+  .hf-bottom-up-letters-char {
+    display: inline-block;
+    opacity: 0;
+    transform: translate3d(0, 0.85em, 0);
+    will-change: transform, opacity;
+  }
+</style>
+
+<script>
+  (function () {
+    document.querySelectorAll(".hf-bottom-up-letters").forEach((el) => {
+      if (el.dataset.hfLettersReady === "1") return;
+      const text = el.textContent || "";
+      el.textContent = "";
+      for (const char of text) {
+        const span = document.createElement("span");
+        span.className = "hf-bottom-up-letters-char";
+        span.textContent = char === " " ? "\u00a0" : char;
+        el.appendChild(span);
+      }
+      el.dataset.hfLettersReady = "1";
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-bottom-up-letters-char", {
+    opacity: 1,
+    y: 0,
+    duration: 0.48,
+    ease: "back.out(1.7)",
+    stagger: 0.025,
+  }, startTime);
+-->

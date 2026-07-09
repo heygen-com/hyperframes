@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Separator - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0;
+        width: 380px;
+      }
+      .demo-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 20px 0;
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      .demo-section-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #18181b;
+        letter-spacing: -0.01em;
+      }
+      .demo-section-desc {
+        font-size: 13px;
+        font-weight: 400;
+        color: #71717a;
+        line-height: 1.5;
+      }
+      .hf-ui-separator {
+        --hf-separator-progress: 1;
+        width: 380px;
+        height: 1px;
+        background: #e4e4e7;
+        overflow: hidden;
+      }
+      .hf-ui-separator span {
+        display: block;
+        width: calc(var(--hf-separator-progress) * 100%);
+        height: 100%;
+        background: #18181b;
+        transform-origin: left center;
+      }
+      .hf-ui-separator[data-orientation="vertical"] {
+        width: 1px;
+        height: 180px;
+      }
+      /* ponytail: zoom instead of transform so GSAP can still animate .hf-ui-separator freely */
+      .demo-frame { zoom: 2.2; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="separator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-section demo-section-top">
+          <div class="demo-section-title">Radix UI</div>
+          <div class="demo-section-desc">An open-source UI component library.</div>
+        </div>
+        <div class="hf-ui-separator" role="separator"><span></span></div>
+        <div class="demo-section demo-section-bottom">
+          <div class="demo-section-title">Blog</div>
+          <div class="demo-section-desc">Thoughts on building interfaces.</div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+
+        // content fades in before the separator draws
+        gsap.set(".demo-section-top", { y: 8 });
+        gsap.set(".demo-section-bottom", { y: 8 });
+        tl.to(".demo-section-top", { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 0.1);
+        tl.to(".demo-section-bottom", { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 0.2);
+
+        tl.fromTo(
+          ".hf-ui-separator",
+          { "--hf-separator-progress": 0 },
+          { "--hf-separator-progress": 1, duration: 0.42, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["separator-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

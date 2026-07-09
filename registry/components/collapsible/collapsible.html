@@ -1,0 +1,51 @@
+<!--
+  Collapsible - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<section class="hf-ui-collapsible" data-state="open">
+  <header><strong>Advanced settings</strong><span>v</span></header>
+  <div><p>Enable motion blur, grain, and high quality interpolation.</p></div>
+</section>
+
+<style>
+  .hf-ui-collapsible {
+    --hf-collapse-open: 1;
+    width: 380px;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    overflow: hidden;
+  }
+  .hf-ui-collapsible header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    font-weight: 850;
+  }
+  .hf-ui-collapsible header span {
+    transform: rotate(calc(var(--hf-collapse-open) * 180deg));
+  }
+  .hf-ui-collapsible div {
+    max-height: calc(var(--hf-collapse-open) * 120px);
+    overflow: hidden;
+    border-top: 1px solid #f1f1f4;
+  }
+  .hf-ui-collapsible p {
+    margin: 0;
+    padding: 14px 16px;
+    color: #71717a;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-collapsible', { '--hf-collapse-open': 0 }, { '--hf-collapse-open': 1, duration: 0.38, ease: 'power2.inOut' }, startTime);
+-->

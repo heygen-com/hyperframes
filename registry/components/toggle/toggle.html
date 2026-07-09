@@ -1,0 +1,35 @@
+<!--
+  Toggle - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<button class="hf-ui-toggle" type="button" aria-pressed="true">Bold</button>
+
+<style>
+  .hf-ui-toggle {
+    --hf-toggle-scale: 1;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #fff;
+    color: #18181b;
+    font:
+      850 14px/1 Inter,
+      system-ui,
+      sans-serif;
+    transform: scale(var(--hf-toggle-scale));
+  }
+  .hf-ui-toggle[aria-pressed="true"] {
+    background: #18181b;
+    color: #fff;
+    border-color: #18181b;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-toggle', { '--hf-toggle-scale': 0.9 }, { '--hf-toggle-scale': 1, duration: 0.24, ease: 'back.out(1.8)' }, startTime);
+-->

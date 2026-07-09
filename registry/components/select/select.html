@@ -1,0 +1,65 @@
+<!-- Select - animate --hf-select-open from 0 to 1. -->
+<div class="hf-ui-select">
+  <button class="hf-ui-select-trigger" type="button">1080p <span>⌄</span></button>
+  <div class="hf-ui-select-menu">
+    <div class="hf-ui-select-option is-active">1080p</div>
+    <div class="hf-ui-select-option">4K</div>
+    <div class="hf-ui-select-option">Square</div>
+  </div>
+</div>
+<style>
+  .hf-ui-select {
+    --hf-select-open: 0;
+    position: relative;
+    display: inline-block;
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 160px;
+    height: 42px;
+    padding: 0 14px;
+    border: 1px solid #e4e4e7;
+    border-radius: 11px;
+    background: #fff;
+    color: inherit;
+    font:
+      750 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-select-trigger span {
+    transform: rotate(calc(var(--hf-select-open) * 180deg));
+  }
+  .hf-ui-select-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    background: #fff;
+    opacity: var(--hf-select-open);
+    transform: translateY(calc((1 - var(--hf-select-open)) * -8px))
+      scale(calc(0.97 + var(--hf-select-open) * 0.03));
+    box-shadow: 0 22px 64px rgba(0, 0, 0, 0.16);
+  }
+  .hf-ui-select-option {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    color: #52525b;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .hf-ui-select-option.is-active {
+    background: #f4f4f5;
+    color: #18181b;
+  }
+</style>

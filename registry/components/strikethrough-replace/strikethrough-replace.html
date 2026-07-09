@@ -1,0 +1,43 @@
+<!--
+  Strikethrough Replace - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-strikethrough-replace"><span>Slow</span><i></i><strong>Fast</strong></div>
+
+<style>
+  .hf-remocn-strikethrough-replace {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-strikethrough-replace {
+    position: relative;
+    display: inline-grid;
+    grid-auto-flow: column;
+    gap: 18px;
+    align-items: center;
+    font-size: 58px;
+  }
+  .hf-remocn-strikethrough-replace i {
+    position: absolute;
+    left: 0;
+    width: 48%;
+    height: 6px;
+    border-radius: 999px;
+    background: #ef4444;
+    transform: scaleX(var(--hf-strike-progress, 1));
+    transform-origin: left center;
+  }
+  .hf-remocn-strikethrough-replace strong {
+    opacity: var(--hf-replace-opacity, 1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-strikethrough-replace i', { '--hf-strike-progress': 0 }, { '--hf-strike-progress': 1, duration: 0.28, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-strikethrough-replace strong', { '--hf-replace-opacity': 0, y: 14 }, { '--hf-replace-opacity': 1, y: 0, duration: 0.3, ease: 'power2.out' }, startTime + 0.24);
+-->

@@ -1,0 +1,87 @@
+<!--
+  X Follow Card - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-x-follow-card">
+  <header>
+    <div class="avatar"></div>
+    <div>
+      <h3>X Follow Card</h3>
+      <p>A social follow card with avatar, handle, and follower motion.</p>
+    </div>
+  </header>
+  <div class="stat">30.6K</div>
+  <div class="avatars">
+    <span style="--c: #38bdf8"></span><span style="--c: #f472b6"></span
+    ><span style="--c: #34d399"></span><span style="--c: #f59e0b"></span
+    ><span style="--c: #a78bfa"></span><span style="--c: #fb7185"></span>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-x-follow-card {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-x-follow-card {
+    width: 700px;
+    border-radius: 30px;
+    padding: 34px;
+    background: #0f172a;
+    color: #fff;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-x-follow-card header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hf-remocn-x-follow-card .avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, #38bdf8, #8b5cf6);
+  }
+  .hf-remocn-x-follow-card h3 {
+    margin: 0;
+    font-size: 36px;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-x-follow-card p {
+    color: #94a3b8;
+    margin: 4px 0 0;
+  }
+  .hf-remocn-x-follow-card .stat {
+    margin-top: 30px;
+    font-size: 82px;
+    font-weight: 900;
+    letter-spacing: -0.08em;
+    transform: translateY(var(--hf-stat-y, 0px));
+  }
+  .hf-remocn-x-follow-card .avatars {
+    display: flex;
+    margin-top: 18px;
+  }
+  .hf-remocn-x-follow-card .avatars span {
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    border: 3px solid #0f172a;
+    margin-left: -10px;
+    background: var(--c);
+    opacity: var(--hf-avatar-opacity, 1);
+    transform: translateY(var(--hf-avatar-y, 0px));
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-x-follow-card .stat', { '--hf-stat-y': '28px', opacity: 0 }, { '--hf-stat-y': '0px', opacity: 1, duration: 0.46, ease: 'back.out(1.6)' }, startTime); tl.fromTo('.hf-remocn-x-follow-card .avatars span', { '--hf-avatar-y': '18px', '--hf-avatar-opacity': 0 }, { '--hf-avatar-y': '0px', '--hf-avatar-opacity': 1, duration: 0.28, stagger: 0.05, ease: 'power2.out' }, startTime + 0.22);
+-->

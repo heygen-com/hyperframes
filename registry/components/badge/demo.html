@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Badge - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 48px 64px;
+        background: #ffffff;
+        border-radius: 16px;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        min-width: 340px;
+      }
+      .badge-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .hf-ui-badge {
+        --hf-badge-scale: 1;
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: #dcfce7;
+        color: #166534;
+        font:
+          700 13px/1 Inter,
+          system-ui,
+          sans-serif;
+        letter-spacing: 0.01em;
+        transform: scale(var(--hf-badge-scale));
+        transform-origin: center;
+      }
+      .hf-ui-badge[data-tone="neutral"] {
+        background: #f4f4f5;
+        color: #3f3f46;
+      }
+      .hf-ui-badge[data-tone="warning"] {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      /* ponytail: scale on non-GSAP wrapper; GSAP targets .hf-ui-badge only */
+      .demo-frame { transform: scale(2.1); }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="badge-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="badge-row">
+          <span class="hf-ui-badge" data-tone="success">Published</span>
+          <span class="hf-ui-badge" data-tone="neutral">Draft</span>
+          <span class="hf-ui-badge" data-tone="warning">Pending</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-badge",
+          { opacity: 0, "--hf-badge-scale": 0.72 },
+          { opacity: 1, "--hf-badge-scale": 1, duration: 0.3, ease: "back.out(2)" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["badge-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

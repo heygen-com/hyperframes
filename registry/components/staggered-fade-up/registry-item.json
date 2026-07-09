@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "staggered-fade-up",
+  "type": "hyperframes:component",
+  "title": "Staggered Fade Up",
+  "description": "Words fade in and slide up one after another with configurable delay.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "staggered-fade-up.html",
+      "target": "compositions/components/staggered-fade-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/staggered-fade-up.png"
+  }
+}

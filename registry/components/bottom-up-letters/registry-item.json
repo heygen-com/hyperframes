@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "bottom-up-letters",
+  "type": "hyperframes:component",
+  "title": "Bottom Up Letters",
+  "description": "Splits text into letters and reveals each glyph from below with deterministic staggered timing",
+  "tags": ["motion-primitive", "text", "letters", "reveal"],
+  "files": [
+    {
+      "path": "bottom-up-letters.html",
+      "target": "compositions/components/bottom-up-letters.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bottom-up-letters.png"
+  }
+}

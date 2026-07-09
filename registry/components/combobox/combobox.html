@@ -1,0 +1,82 @@
+<!--
+  Combobox - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-combobox" data-state="open">
+  <button class="hf-ui-combobox-trigger" type="button">
+    <span>Framework</span><strong>HyperFrames</strong>
+  </button>
+  <div class="hf-ui-combobox-menu">
+    <div class="hf-ui-combobox-search">Search frameworks...</div>
+    <div class="hf-ui-combobox-option is-muted">Remotion</div>
+    <div class="hf-ui-combobox-option is-active">HyperFrames</div>
+    <div class="hf-ui-combobox-option">Motion Canvas</div>
+  </div>
+</div>
+
+<style>
+  .hf-ui-combobox {
+    width: 360px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-combobox-trigger,
+  .hf-ui-combobox-menu {
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  }
+  .hf-ui-combobox-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 58px;
+    padding: 0 18px;
+  }
+  .hf-ui-combobox-trigger span {
+    color: #71717a;
+    font-size: 14px;
+    font-weight: 750;
+  }
+  .hf-ui-combobox-trigger strong {
+    font-size: 18px;
+  }
+  .hf-ui-combobox-menu {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 10px;
+    transform-origin: top center;
+    will-change: opacity, transform;
+  }
+  .hf-ui-combobox-search,
+  .hf-ui-combobox-option {
+    border-radius: 11px;
+    padding: 10px 12px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .hf-ui-combobox-search {
+    color: #a1a1aa;
+    background: #f4f4f5;
+  }
+  .hf-ui-combobox-option.is-active {
+    background: #18181b;
+    color: #ffffff;
+  }
+  .hf-ui-combobox-option.is-muted {
+    color: #71717a;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-combobox-trigger', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: 'power2.out' }, 0.3);
+  tl.fromTo('.hf-ui-combobox-menu', { opacity: 0, y: -8, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: 'power3.out' }, 0.62);
+  tl.fromTo('.hf-ui-combobox-option', { x: -12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.24, stagger: 0.06, ease: 'power2.out' }, 0.82);
+-->

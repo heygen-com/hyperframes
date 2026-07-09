@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Resizable - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper — GSAP targets .hf-ui-resizable, not this element */
+        transform: scale(2.1);
+      }
+      .hf-ui-resizable {
+        --hf-resizable-left: 58%;
+        display: grid;
+        grid-template-columns: var(--hf-resizable-left) 10px 1fr;
+        width: 620px;
+        height: 280px;
+        padding: 10px;
+        border: 1px solid #e4e4e7;
+        border-radius: 24px;
+        background: #ffffff;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+      }
+      .hf-ui-resizable-pane {
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .hf-ui-resizable-pane.primary {
+        background: #18181b;
+        color: #ffffff;
+      }
+      .hf-ui-resizable-pane.secondary {
+        background: #f4f4f5;
+        color: #52525b;
+      }
+      .hf-ui-resizable-handle {
+        align-self: stretch;
+        justify-self: center;
+        width: 4px;
+        margin: 18px 0;
+        border-radius: 999px;
+        background: #d4d4d8;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="resizable-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-resizable">
+          <div class="hf-ui-resizable-pane primary">Preview</div>
+          <div class="hf-ui-resizable-handle"></div>
+          <div class="hf-ui-resizable-pane secondary">Inspector</div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-resizable",
+          { opacity: 0, y: 24 },
+          { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" },
+          0.3,
+        );
+        tl.to(
+          ".hf-ui-resizable",
+          { "--hf-resizable-left": "68%", duration: 0.72, ease: "power3.inOut" },
+          0.85,
+        );
+        tl.to(
+          ".hf-ui-resizable-handle",
+          { scaleY: 1.22, duration: 0.16, yoyo: true, repeat: 1, ease: "power1.inOut" },
+          0.85,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["resizable-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

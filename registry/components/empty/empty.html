@@ -1,0 +1,62 @@
+<!--
+  Empty - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<section class="hf-ui-empty">
+  <div class="hf-ui-empty-icon">+</div>
+  <h3>No clips yet</h3>
+  <p>Add media to start building the timeline.</p>
+  <button type="button">Upload media</button>
+</section>
+
+<style>
+  .hf-ui-empty {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    width: 420px;
+    padding: 36px;
+    border: 1px dashed #d4d4d8;
+    border-radius: 16px;
+    background: #fff;
+    color: #18181b;
+    text-align: center;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    background: #f4f4f5;
+    font-size: 28px;
+    font-weight: 500;
+  }
+  .hf-ui-empty h3 {
+    margin: 0;
+    font-size: 22px;
+  }
+  .hf-ui-empty p {
+    margin: 0;
+    color: #71717a;
+    font-size: 15px;
+  }
+  .hf-ui-empty button {
+    height: 38px;
+    padding: 0 15px;
+    border: 0;
+    border-radius: 9px;
+    background: #18181b;
+    color: #fff;
+    font-weight: 800;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-empty > *', { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.24, stagger: 0.06, ease: 'power2.out' }, startTime);
+-->

@@ -1,0 +1,52 @@
+<!--
+  Tabs Slide Indicator - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-tabs-slide-indicator">
+  <span class="indicator"></span><button>Plan</button><button>Debug</button><button>Ask</button>
+</div>
+
+<style>
+  .hf-transition-tabs-slide-indicator {
+    --hf-tab-x: 0px;
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: repeat(3, 86px);
+    padding: 4px;
+    border: 1px solid #e4e4e7;
+    border-radius: 999px;
+    background: #f4f4f5;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-tabs-slide-indicator .indicator {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: 86px;
+    height: 36px;
+    border-radius: 999px;
+    background: #18181b;
+    transform: translateX(var(--hf-tab-x));
+    box-shadow: 0 12px 26px rgba(24, 24, 27, 0.18);
+  }
+  .hf-transition-tabs-slide-indicator button {
+    position: relative;
+    z-index: 1;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: #71717a;
+    font-weight: 850;
+  }
+  .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
+    color: #fff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-tabs-slide-indicator .indicator', { '--hf-tab-x': '0px' }, { '--hf-tab-x': '86px', duration: 0.42, ease: 'power3.inOut' }, startTime);
+-->

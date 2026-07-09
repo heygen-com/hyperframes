@@ -1,0 +1,46 @@
+<!--
+  Sidebar - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<aside class="hf-ui-sidebar">
+  <strong>HyperFrames</strong><a aria-current="page">Projects</a><a>Assets</a><a>Renders</a>
+</aside>
+
+<style>
+  .hf-ui-sidebar {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    width: 230px;
+    min-height: 300px;
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 24px 70px rgba(24, 24, 27, 0.1);
+  }
+  .hf-ui-sidebar strong {
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+  .hf-ui-sidebar a {
+    padding: 11px 12px;
+    border-radius: 10px;
+    color: #52525b;
+    font-weight: 850;
+  }
+  .hf-ui-sidebar [aria-current="page"] {
+    background: #18181b;
+    color: #fff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-sidebar', { opacity: 0, x: -32 }, { opacity: 1, x: 0, duration: 0.38, ease: 'power3.out' }, startTime);
+-->

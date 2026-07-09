@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "button-group",
+  "type": "hyperframes:component",
+  "title": "Button Group",
+  "description": "A segmented button group primitive for mode switches and toolbars",
+  "tags": ["ui-primitive", "remocn-port", "button-group", "control"],
+  "files": [
+    {
+      "path": "button-group.html",
+      "target": "compositions/components/button-group.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button-group.png"
+  }
+}

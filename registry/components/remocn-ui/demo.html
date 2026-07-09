@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Remocn UI - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale-up only — demo-frame is never a GSAP target */
+        transform: scale(0.97);
+      }
+      .hf-remocn-remocn-ui {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-remocn-ui {
+        width: 560px;
+        border-radius: 22px;
+        background: #fff;
+        padding: 22px;
+        box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+        display: grid;
+        gap: 12px;
+      }
+      .hf-remocn-remocn-ui .row {
+        height: 52px;
+        border-radius: 14px;
+        background: #f4f4f5;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        transform: translateX(var(--hf-row-x, 0px));
+        opacity: var(--hf-row-opacity, 1);
+      }
+      .hf-remocn-remocn-ui .label {
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .hf-remocn-remocn-ui .hint {
+        color: #71717a;
+        font-size: 13px;
+        background: #e4e4e7;
+        border-radius: 6px;
+        padding: 2px 8px;
+      }
+      /* Selected row gets accent highlight to read as "active" */
+      .hf-remocn-remocn-ui .row:nth-child(2) {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+      }
+      .hf-remocn-remocn-ui .row:nth-child(2) .label {
+        color: #1d4ed8;
+      }
+      .hf-remocn-remocn-ui .row:nth-child(2) .hint {
+        background: #dbeafe;
+        color: #1d4ed8;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="remocn-ui-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-remocn-ui">
+          <div class="row">
+            <span class="label">Remocn UI</span><span class="hint">Ctrl K</span>
+          </div>
+          <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
+          <div class="row">
+            <span class="label">Disabled</span><span class="hint">pending</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-remocn-ui .row",
+          { "--hf-row-x": "-16px", "--hf-row-opacity": 0 },
+          {
+            "--hf-row-x": "0px",
+            "--hf-row-opacity": 1,
+            duration: 0.22,
+            stagger: 0.07,
+            ease: "power2.out",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["remocn-ui-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

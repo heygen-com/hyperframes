@@ -1,0 +1,70 @@
+<!--
+  Sheet - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-sheet-scene">
+  <div class="hf-ui-sheet-overlay"></div>
+  <aside class="hf-ui-sheet">
+    <h3>Layer settings</h3>
+    <p>Adjust timing, opacity, and easing for this composition element.</p>
+    <div class="hf-ui-sheet-field"><span>Opacity</span><strong>82%</strong></div>
+    <div class="hf-ui-sheet-field"><span>Duration</span><strong>4.0s</strong></div>
+  </aside>
+</div>
+
+<style>
+  .hf-ui-sheet-scene {
+    position: relative;
+    width: 620px;
+    height: 380px;
+    overflow: hidden;
+    border-radius: 28px;
+    background: #e5e7eb;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-sheet-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(24, 24, 27, 0.42);
+  }
+  .hf-ui-sheet {
+    position: absolute;
+    right: 0;
+    top: 0;
+    display: grid;
+    align-content: start;
+    gap: 16px;
+    width: 320px;
+    height: 100%;
+    padding: 32px;
+    background: #ffffff;
+    color: #18181b;
+    box-shadow: -20px 0 70px rgba(0, 0, 0, 0.18);
+  }
+  .hf-ui-sheet h3 {
+    margin: 0;
+    font-size: 26px;
+  }
+  .hf-ui-sheet p {
+    margin: 0 0 12px;
+    color: #71717a;
+    line-height: 1.45;
+  }
+  .hf-ui-sheet-field {
+    display: flex;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-top: 1px solid #e4e4e7;
+    font-weight: 800;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-sheet-overlay', { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' }, 0.25);
+  tl.fromTo('.hf-ui-sheet', { x: 340 }, { x: 0, duration: 0.48, ease: 'power3.out' }, 0.38);
+  tl.fromTo('.hf-ui-sheet-field', { x: 20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.24, stagger: 0.08, ease: 'power2.out' }, 0.78);
+-->

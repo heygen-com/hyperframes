@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tabs - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-tabs {
+        --hf-tabs-index: 0;
+        display: grid;
+        gap: 28px;
+        width: 680px;
+        color: #18181b;
+        /* ponytail: scale up to ~65% of frame; GSAP only tweens --hf-tabs-index, so transform is safe */
+        transform: scale(2.1);
+        transform-origin: center center;
+      }
+      .hf-ui-tabs-list {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        padding: 8px;
+        border-radius: 22px;
+        background: #e9eaee;
+      }
+      .hf-ui-tabs-indicator {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: calc((100% - 16px) / 2);
+        height: calc(100% - 16px);
+        border-radius: 16px;
+        background: white;
+        transform: translateX(calc(var(--hf-tabs-index) * 100%));
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+      }
+      .hf-ui-tabs-trigger {
+        position: relative;
+        z-index: 1;
+        height: 74px;
+        border: 0;
+        background: transparent;
+        color: #52525b;
+        font:
+          850 26px/1 Inter,
+          system-ui,
+          sans-serif;
+      }
+      .hf-ui-tabs-panel {
+        display: grid;
+        gap: 10px;
+        padding: 36px;
+        border: 1px solid #e4e4e7;
+        border-radius: 26px;
+        background: white;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.1);
+      }
+      .hf-ui-tabs-kicker {
+        color: #71717a;
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .hf-ui-tabs-panel strong {
+        font-size: 38px;
+        line-height: 1.1;
+      }
+      .hf-ui-tabs-chips {
+        display: flex;
+        gap: 10px;
+        margin-top: 6px;
+      }
+      .hf-ui-tabs-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: #f4f4f5;
+        border: 1px solid #e4e4e7;
+        font-size: 17px;
+        font-weight: 600;
+        color: #52525b;
+      }
+      .hf-ui-tabs-chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tabs-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-tabs">
+        <div class="hf-ui-tabs-list">
+          <span class="hf-ui-tabs-indicator"></span>
+          <button class="hf-ui-tabs-trigger" type="button">Preview</button>
+          <button class="hf-ui-tabs-trigger" type="button">Exports</button>
+        </div>
+        <div class="hf-ui-tabs-panel">
+          <span class="hf-ui-tabs-kicker">Preview ready</span>
+          <strong>12 scenes assembled</strong>
+          <div class="hf-ui-tabs-chips">
+            <span class="hf-ui-tabs-chip"><span class="hf-ui-tabs-chip-dot"></span>Live</span>
+            <span class="hf-ui-tabs-chip">1080p · 30fps</span>
+            <span class="hf-ui-tabs-chip">2 min 14 s</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(".hf-ui-tabs", { "--hf-tabs-index": 1, duration: 0.42, ease: "power3.out" }, 0.85);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tabs-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Stepper - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 0;
+      }
+      .hf-ui-stepper {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 56px;
+        width: 760px;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-stepper-line {
+        position: absolute;
+        left: 62px;
+        right: 62px;
+        top: 31px;
+        height: 5px;
+        border-radius: 999px;
+        background: #e4e4e7;
+        overflow: hidden;
+      }
+      .hf-ui-stepper-fill {
+        width: 55%;
+        height: 100%;
+        border-radius: inherit;
+        background: #18181b;
+        transform-origin: left center;
+      }
+      .hf-ui-step {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 16px;
+        font-weight: 700;
+      }
+      .hf-ui-step span {
+        display: grid;
+        place-items: center;
+        width: 64px;
+        height: 64px;
+        border: 2px solid #e4e4e7;
+        border-radius: 999px;
+        background: #ffffff;
+        color: #71717a;
+        font-size: 20px;
+        font-weight: 600;
+      }
+      .hf-ui-step.is-done span,
+      .hf-ui-step.is-active span {
+        border-color: #18181b;
+        background: #18181b;
+        color: #ffffff;
+      }
+      .hf-ui-step strong {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      /* ponytail: scale(2.0) keeps 760px stepper fully inside 1920px frame with clear margins */
+      .demo-frame { transform: scale(2.0); }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="stepper-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-stepper">
+          <div class="hf-ui-stepper-line"><div class="hf-ui-stepper-fill"></div></div>
+          <div class="hf-ui-step is-done"><span>1</span><strong>Prompt</strong></div>
+          <div class="hf-ui-step is-active"><span>2</span><strong>Preview</strong></div>
+          <div class="hf-ui-step"><span>3</span><strong>Render</strong></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-stepper-fill",
+          { scaleX: 0 },
+          { scaleX: 1, duration: 0.72, ease: "power3.out" },
+          0.35,
+        );
+        tl.fromTo(
+          ".hf-ui-step",
+          { y: 18, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.34, stagger: 0.12, ease: "back.out(1.3)" },
+          0.35,
+        );
+        tl.to(
+          ".hf-ui-step.is-active span",
+          { scale: 1.14, duration: 0.18, yoyo: true, repeat: 1, ease: "power1.inOut" },
+          1.05,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["stepper-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

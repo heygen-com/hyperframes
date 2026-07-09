@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Shared Axis Y - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: zoom on .demo-frame (non-GSAP wrapper) keeps GSAP inline transforms on the child untouched */
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0;
+        zoom: 2.2;
+      }
+      .demo-card {
+        background: #fafafa;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        padding: 48px 56px 52px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 32px;
+        min-width: 480px;
+      }
+      .demo-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .demo-tabs {
+        display: flex;
+        gap: 4px;
+        background: #f4f4f5;
+        border-radius: 10px;
+        padding: 4px;
+      }
+      .demo-tab {
+        font-size: 13px;
+        font-weight: 500;
+        color: #71717a;
+        padding: 6px 16px;
+        border-radius: 7px;
+        cursor: default;
+      }
+      .demo-tab.active {
+        background: #fff;
+        color: #18181b;
+        font-weight: 600;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      }
+      .demo-divider {
+        width: 100%;
+        height: 1px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-shared-axis-y {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        display: inline-flex;
+        gap: 10px;
+        font-size: 48px;
+        line-height: 1;
+      }
+      .hf-remocn-shared-axis-y span {
+        display: inline-block;
+        transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+          scale(var(--hf-word-scale, 1));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="shared-axis-y-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-card">
+          <span class="demo-label">Mode</span>
+          <div class="demo-tabs">
+            <div class="demo-tab active">Plan</div>
+            <div class="demo-tab">Debug</div>
+            <div class="demo-tab">Ask</div>
+          </div>
+          <div class="demo-divider"></div>
+          <div class="hf-remocn-shared-axis-y">
+            <span>Plan</span><span>Debug</span><span>Ask</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-shared-axis-y span",
+          { opacity: 0, "--hf-word-y": "32px" },
+          { opacity: 1, "--hf-word-y": "0px", duration: 0.22, stagger: 0.075, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["shared-axis-y-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

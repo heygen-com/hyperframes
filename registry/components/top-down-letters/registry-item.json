@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "top-down-letters",
+  "type": "hyperframes:component",
+  "title": "Top-Down Letters",
+  "description": "Letters descend from above in a pronounced staircase with zero blur.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "top-down-letters.html",
+      "target": "compositions/components/top-down-letters.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/top-down-letters.png"
+  }
+}

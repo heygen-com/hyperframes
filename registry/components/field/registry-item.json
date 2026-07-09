@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "field",
+  "type": "hyperframes:component",
+  "title": "Field",
+  "description": "A field wrapper primitive with label, control slot, description, and error slot",
+  "tags": ["ui-primitive", "remocn-port", "field", "form"],
+  "files": [
+    {
+      "path": "field.html",
+      "target": "compositions/components/field.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/field.png"
+  }
+}

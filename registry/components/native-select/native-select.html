@@ -1,0 +1,47 @@
+<!--
+  Native Select - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<label class="hf-ui-native-select"
+  ><span>Quality</span
+  ><select>
+    <option>1080p</option>
+    <option>4K</option>
+  </select></label
+>
+
+<style>
+  .hf-ui-native-select {
+    display: grid;
+    gap: 8px;
+    width: 240px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-native-select span {
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .hf-ui-native-select select {
+    height: 42px;
+    padding: 0 38px 0 13px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #fff;
+    color: #18181b;
+    font:
+      750 15px/1 Inter,
+      system-ui,
+      sans-serif;
+    appearance: none;
+    box-shadow: 0 0 0 var(--hf-select-ring, 0px) rgba(24, 24, 27, 0.1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-native-select select', { '--hf-select-ring': '0px' }, { '--hf-select-ring': '5px', duration: 0.24, ease: 'power2.out' }, startTime);
+-->

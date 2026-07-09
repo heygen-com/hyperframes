@@ -1,0 +1,88 @@
+<!--
+  Settings Toggle Flow - Remocn-inspired composed UI flow for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-settings-flow">
+  <div class="hf-ui-settings-row">
+    <div><strong>Auto captions</strong><span>Generate timed captions</span></div>
+    <i class="on"></i>
+  </div>
+  <div class="hf-ui-settings-row">
+    <div><strong>Brand kit</strong><span>Apply saved colors</span></div>
+    <i class="on"></i>
+  </div>
+  <div class="hf-ui-settings-row">
+    <div><strong>Sound effects</strong><span>Layer subtle UI sounds</span></div>
+    <i></i>
+  </div>
+</div>
+
+<style>
+  .hf-ui-settings-flow {
+    display: grid;
+    gap: 12px;
+    width: 520px;
+    padding: 18px;
+    border: 1px solid #e4e4e7;
+    border-radius: 28px;
+    background: #ffffff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.1);
+  }
+  .hf-ui-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 72px;
+    padding: 0 16px;
+    border-radius: 18px;
+    background: #f8fafc;
+  }
+  .hf-ui-settings-row div {
+    display: grid;
+    gap: 4px;
+  }
+  .hf-ui-settings-row strong {
+    font-size: 18px;
+  }
+  .hf-ui-settings-row span {
+    color: #71717a;
+    font-size: 13px;
+    font-weight: 760;
+  }
+  .hf-ui-settings-row i {
+    position: relative;
+    width: 50px;
+    height: 28px;
+    border-radius: 999px;
+    background: #d4d4d8;
+  }
+  .hf-ui-settings-row i::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  }
+  .hf-ui-settings-row i.on {
+    background: #18181b;
+  }
+  .hf-ui-settings-row i.on::after {
+    transform: translateX(22px);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-settings-flow', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.34, ease: 'power2.out' }, 0.28);
+  tl.fromTo('.hf-ui-settings-row', { x: -18, opacity: 0 }, { x: 0, opacity: 1, duration: 0.28, stagger: 0.08, ease: 'power2.out' }, 0.55);
+  tl.fromTo('.hf-ui-settings-row i.on', { scale: 0.92 }, { scale: 1, duration: 0.28, stagger: 0.08, ease: 'back.out(1.8)' }, 0.88);
+-->

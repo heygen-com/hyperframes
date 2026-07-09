@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Button - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .panel {
+        display: grid;
+        gap: 56px;
+        justify-items: center;
+        /* ponytail: scale non-GSAP wrapper; GSAP targets .hf-ui-button directly */
+        transform: scale(3);
+      }
+      .caption {
+        color: #71717a;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .hf-ui-button {
+        --hf-button-bg: #18181b;
+        --hf-button-fg: #fff;
+        --hf-button-scale: 1;
+        --hf-button-y: 0px;
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 160px;
+        height: 44px;
+        padding: 0 24px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--hf-button-bg);
+        color: var(--hf-button-fg);
+        font:
+          600 15px/1 Inter,
+          system-ui,
+          sans-serif;
+        transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
+        cursor: pointer;
+      }
+      .hf-ui-button-spinner,
+      .hf-ui-button-check {
+        position: absolute;
+        opacity: 0;
+      }
+      .hf-ui-button-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 999px;
+      }
+      .hf-ui-button-check {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: white;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .hf-ui-button[data-state="loading"] .hf-ui-button-label,
+      .hf-ui-button[data-state="success"] .hf-ui-button-label {
+        opacity: 0;
+      }
+      .hf-ui-button[data-state="loading"] .hf-ui-button-spinner,
+      .hf-ui-button[data-state="success"] .hf-ui-button-check {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="button-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="panel">
+        <div class="caption">Button</div>
+        <button class="hf-ui-button" data-state="idle" type="button">
+          <span class="hf-ui-button-label">Generate</span>
+          <span class="hf-ui-button-spinner" aria-hidden="true"></span>
+          <svg class="hf-ui-button-check" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7" />
+          </svg>
+        </button>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-button",
+          { "--hf-button-y": "-2px", duration: 0.25, ease: "power2.out" },
+          0.4,
+        );
+        tl.set(".hf-ui-button", { attr: { "data-state": "loading" } }, 1.0);
+        tl.to(".hf-ui-button-spinner", { rotate: 720, duration: 1.2, ease: "none" }, 1.0);
+        tl.set(".hf-ui-button", { attr: { "data-state": "success" } }, 2.25);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["button-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

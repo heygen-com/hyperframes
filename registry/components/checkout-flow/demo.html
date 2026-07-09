@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Checkout Flow - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f5f5f4;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 520px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~55% of frame */
+        transform: scale(1.12);
+        transform-origin: center center;
+      }
+      .hf-ui-checkout-flow {
+        display: grid;
+        gap: 16px;
+        width: 440px;
+        padding: 26px;
+        border: 1px solid #e4e4e7;
+        border-radius: 28px;
+        background: #ffffff;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 28px 84px rgba(0, 0, 0, 0.12);
+      }
+      .hf-ui-checkout-plan,
+      .hf-ui-checkout-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .hf-ui-checkout-plan {
+        padding: 18px;
+        border-radius: 18px;
+        background: #18181b;
+        color: #ffffff;
+      }
+      .hf-ui-checkout-plan span,
+      .hf-ui-checkout-total span {
+        color: inherit;
+        opacity: 0.72;
+        font-size: 14px;
+        font-weight: 850;
+      }
+      .hf-ui-checkout-plan strong,
+      .hf-ui-checkout-total strong {
+        font-size: 22px;
+      }
+      .hf-ui-checkout-fields {
+        display: grid;
+        gap: 10px;
+      }
+      .hf-ui-checkout-fields div {
+        display: grid;
+        gap: 5px;
+        padding: 14px 16px;
+        border: 1px solid #e4e4e7;
+        border-radius: 15px;
+        color: #71717a;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .hf-ui-checkout-fields strong {
+        color: #18181b;
+        font-size: 16px;
+      }
+      .hf-ui-checkout-flow button {
+        width: 100%;
+        height: 50px;
+        border: 0;
+        border-radius: 15px;
+        background: #2563eb;
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="checkout-flow-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-checkout-flow">
+          <div class="hf-ui-checkout-plan"><span>Pro plan</span><strong>$29/mo</strong></div>
+          <div class="hf-ui-checkout-fields">
+            <div>Card number <strong>4242 4242 4242 4242</strong></div>
+            <div>Expiry <strong>12/30</strong></div>
+          </div>
+          <div class="hf-ui-checkout-total"><span>Total today</span><strong>$29.00</strong></div>
+          <button type="button">Complete purchase</button>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-checkout-flow",
+          { opacity: 0, y: 28 },
+          { opacity: 1, y: 0, duration: 0.36, ease: "power2.out" },
+          0.25,
+        );
+        tl.fromTo(
+          ".hf-ui-checkout-fields div",
+          { x: -16, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.26, stagger: 0.08, ease: "power2.out" },
+          0.62,
+        );
+        tl.fromTo(
+          ".hf-ui-checkout-total",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.24, ease: "power2.out" },
+          0.92,
+        );
+        tl.to(
+          ".hf-ui-checkout-flow button",
+          { scale: 0.96, duration: 0.12, yoyo: true, repeat: 1, ease: "power1.inOut" },
+          1.18,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["checkout-flow-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

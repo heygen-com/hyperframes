@@ -1,0 +1,102 @@
+<!--
+  Button - shadcn-style UI primitive for HyperFrames.
+
+  States:
+    idle | hover | press | loading | success
+
+  Add data-state and data-variant to the .hf-ui-button element, or animate the
+  CSS variables from a paused GSAP timeline.
+-->
+
+<button class="hf-ui-button" data-variant="default" data-state="idle" type="button">
+  <span class="hf-ui-button-label">Continue</span>
+  <span class="hf-ui-button-spinner" aria-hidden="true"></span>
+  <svg class="hf-ui-button-check" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M5 12.5l4.5 4.5L19 7" />
+  </svg>
+</button>
+
+<style>
+  .hf-ui-button {
+    --hf-button-bg: #171717;
+    --hf-button-fg: #ffffff;
+    --hf-button-border: transparent;
+    --hf-button-scale: 1;
+    --hf-button-y: 0px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 148px;
+    height: 44px;
+    padding: 0 22px;
+    border: 1px solid var(--hf-button-border);
+    border-radius: 10px;
+    background: var(--hf-button-bg);
+    color: var(--hf-button-fg);
+    font:
+      700 15px/1 Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: 0;
+    transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+    will-change: transform, background, color;
+  }
+  .hf-ui-button[data-variant="secondary"] {
+    --hf-button-bg: #f3f4f6;
+    --hf-button-fg: #171717;
+  }
+  .hf-ui-button[data-variant="outline"] {
+    --hf-button-bg: #ffffff;
+    --hf-button-fg: #171717;
+    --hf-button-border: #d4d4d8;
+    box-shadow: none;
+  }
+  .hf-ui-button[data-state="hover"] {
+    --hf-button-y: -1px;
+  }
+  .hf-ui-button[data-state="press"] {
+    --hf-button-y: 1px;
+    --hf-button-scale: 0.97;
+  }
+  .hf-ui-button-spinner,
+  .hf-ui-button-check {
+    position: absolute;
+    opacity: 0;
+  }
+  .hf-ui-button-spinner {
+    width: 17px;
+    height: 17px;
+    border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
+    border-radius: 999px;
+  }
+  .hf-ui-button-check {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hf-ui-button[data-state="loading"] .hf-ui-button-label,
+  .hf-ui-button[data-state="success"] .hf-ui-button-label {
+    opacity: 0;
+  }
+  .hf-ui-button[data-state="loading"] .hf-ui-button-spinner,
+  .hf-ui-button[data-state="success"] .hf-ui-button-check {
+    opacity: 1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-button", { "--hf-button-y": "-1px", duration: 0.18, ease: "power2.out" }, startTime);
+  tl.set(".hf-ui-button", { attr: { "data-state": "loading" } }, startTime + 0.2);
+  tl.to(".hf-ui-button-spinner", { rotate: 360, duration: 0.8, ease: "none" }, startTime + 0.2);
+  tl.set(".hf-ui-button", { attr: { "data-state": "success" } }, startTime + 1.1);
+-->

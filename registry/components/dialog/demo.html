@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Dialog - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: zoom on the static wrapper — GSAP animates .hf-ui-dialog, not .demo-frame */
+      .demo-frame {
+        zoom: 0.86;
+        position: relative;
+        width: 760px;
+        height: 420px;
+      }
+      .page-card {
+        width: 760px;
+        height: 420px;
+        border: 1px solid #e4e4e7;
+        border-radius: 24px;
+        background: white;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+      }
+      .hf-ui-dialog {
+        --hf-dialog-overlay: 0;
+        --hf-dialog-opacity: 0;
+        --hf-dialog-scale: 0.96;
+        --hf-dialog-y: 12px;
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+      }
+      .hf-ui-dialog-overlay {
+        position: absolute;
+        inset: 0;
+        border-radius: 24px;
+        background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.45));
+      }
+      .hf-ui-dialog-panel {
+        position: relative;
+        width: 520px;
+        padding: 32px 36px;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: white;
+        color: #18181b;
+        opacity: var(--hf-dialog-opacity);
+        transform: translateY(var(--hf-dialog-y)) scale(var(--hf-dialog-scale));
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.14);
+      }
+      .hf-ui-dialog h2 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #18181b;
+      }
+      .hf-ui-dialog p {
+        margin: 10px 0 0;
+        color: #71717a;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .hf-ui-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 28px;
+      }
+      .hf-ui-dialog-actions button {
+        height: 40px;
+        padding: 0 18px;
+        border-radius: 10px;
+        font:
+          500 14px/1 Inter,
+          system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      .cancel {
+        border: 1px solid #e4e4e7;
+        background: white;
+        color: #18181b;
+      }
+      .action {
+        border: 0;
+        background: #18181b;
+        color: white;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="dialog-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="page-card"></div>
+        <div class="hf-ui-dialog" role="dialog" aria-modal="true">
+          <div class="hf-ui-dialog-overlay"></div>
+          <div class="hf-ui-dialog-panel">
+            <h2>Edit profile</h2>
+            <p>Make changes to your profile here. Click save when you are done.</p>
+            <div class="hf-ui-dialog-actions">
+              <button class="cancel">Cancel</button><button class="action">Save changes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-dialog",
+          {
+            "--hf-dialog-overlay": 1,
+            "--hf-dialog-opacity": 1,
+            "--hf-dialog-scale": 1,
+            "--hf-dialog-y": "0px",
+            duration: 0.34,
+            ease: "power3.out",
+          },
+          0.65,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["dialog-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

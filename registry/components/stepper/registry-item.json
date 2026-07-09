@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "stepper",
+  "type": "hyperframes:component",
+  "title": "Stepper",
+  "description": "A stepper primitive with numbered milestones, connector progress, and active-step emphasis",
+  "tags": ["ui-primitive", "remocn-port", "stepper", "progress"],
+  "files": [
+    {
+      "path": "stepper.html",
+      "target": "compositions/components/stepper.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/stepper.png"
+  }
+}

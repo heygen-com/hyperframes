@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "sheet",
+  "type": "hyperframes:component",
+  "title": "Sheet",
+  "description": "A side sheet primitive with overlay, title stack, and right-edge slide transition",
+  "tags": ["ui-primitive", "remocn-port", "sheet", "overlay"],
+  "files": [
+    {
+      "path": "sheet.html",
+      "target": "compositions/components/sheet.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/sheet.png"
+  }
+}

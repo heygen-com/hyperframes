@@ -80,6 +80,206 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "accordion",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "alert-dialog",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "button",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caret",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "checkbox",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "combobox",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "command-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "context-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dialog",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "drawer",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "popover",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "progress",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "radio",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "resizable",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "sheet",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "skeleton",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slider",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spinner",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stepper",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "switch",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tabs",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toast",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toggle-group",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tooltip",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ai-prompt-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "checkout-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "onboarding-stepper-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "settings-toggle-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "signup-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "badge-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "card-resize",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-feedback",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "menu-morph",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "micro-transitions",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "page-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-stagger",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tilt-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "soft-blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tracking-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bottom-up-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "inline-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-wheel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "simulated-cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "fade-through",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dynamic-grid",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "grid-pixelate-wipe",
       "type": "hyperframes:component"
     },
@@ -569,6 +769,482 @@
     },
     {
       "name": "parallax-unzoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "alert",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "badge",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "avatar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "breadcrumb",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "button-group",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "textarea",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "table",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "separator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "label",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kbd",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "empty",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pagination",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scroll-area",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hover-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "collapsible",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "native-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-group",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-otp",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toggle",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "aspect-ratio",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "field",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "menubar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "navigation-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "calendar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "carousel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chart",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "sidebar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-pop-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "icon-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "success-check",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "avatar-group-hover",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-state-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "panel-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "skeleton-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tabs-slide-indicator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-out-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "focus-blur-resolve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kinetic-center-build",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "line-by-line-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "marker-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mask-reveal-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "masked-slide-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "matrix-decode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-character-rise",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-word-crossfade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "perspective-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rgb-glitch-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rolling-number",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scale-down-fade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-y",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-z",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "short-slide-down",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "short-slide-right",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slot-machine-roll",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spring-scale-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "staggered-fade-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "strikethrough-replace",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "top-down-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typewriter",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ai-generation-canvas",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "animated-bar-chart",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "animated-line-chart",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "backdrop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "browser-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chat-gpt",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chat-to-preview-layout",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "chromatic-aberration-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "claude-chat",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "claude-code",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "code-accordion",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "code-diff-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "command-menu-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "confetti",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dashboard-populate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "data-flow-pipes",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "device-mockup-zoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "directional-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "drag-and-drop-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dropdown-menu-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ecosystem-constellation",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "frosted-glass-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "github-stars",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "glass-code-block",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hero-device-assemble",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "image-expand-to-fullscreen",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "infinite-bento-pan",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "infinite-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "landing-code-showcase",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "live-code-compilation",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mesh-gradient-bg",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "micro-scale-fade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "opencode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pricing-tier-focus",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "progress-steps",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "registry",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "remocn-ui",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "select-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "skeleton-block",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spatial-push",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spotlight-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "terminal-simulator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "terminal-to-browser-deploy",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tool-menu-slide-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "v0",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "x-follow-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "x-followers-overview",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "zoom-through-transition",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "arc-motion-path",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bezier-callout-route",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "svg-line-draw-loader",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stagger-lattice",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "keyframe-scrub-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "three-orbiting-cards",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "three-particle-ribbon",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shader-displacement-panel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-rig-depth-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "orbital-feature-path",
       "type": "hyperframes:component"
     }
   ]

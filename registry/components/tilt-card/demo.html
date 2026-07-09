@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tilt Card - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #eef2ff;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        transform: scale(2.5); /* ponytail: card was ~16% of frame; 2.5× brings it to ~60% */
+      }
+      .hf-transition-tilt-card {
+        position: relative;
+        width: 420px;
+        height: 260px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 30px;
+        background: linear-gradient(135deg, #18181b, #312e81);
+        color: #ffffff;
+        font-family: Inter, system-ui, sans-serif;
+        transform-style: preserve-3d;
+        box-shadow: 0 32px 90px rgba(49, 46, 129, 0.34);
+      }
+      .hf-transition-tilt-glow {
+        position: absolute;
+        inset: -30%;
+        background: radial-gradient(circle at 30% 20%, rgba(125, 211, 252, 0.5), transparent 36%);
+      }
+      .hf-transition-tilt-content {
+        position: relative;
+        display: grid;
+        align-content: end;
+        gap: 10px;
+        height: 100%;
+        padding: 34px;
+        transform: translateZ(38px);
+      }
+      .hf-transition-tilt-content span {
+        color: #a5b4fc;
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .hf-transition-tilt-content strong {
+        max-width: 280px;
+        font-size: 34px;
+        line-height: 0.96;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tilt-card-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-tilt-card">
+          <div class="hf-transition-tilt-glow"></div>
+          <div class="hf-transition-tilt-content">
+            <span>Primitive</span>
+            <strong>Agent-ready motion</strong>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-transition-tilt-card",
+          { opacity: 0, y: 30, rotateX: 0, rotateY: 0 },
+          { opacity: 1, y: 0, duration: 0.38, ease: "power2.out" },
+          0.3,
+        );
+        tl.to(
+          ".hf-transition-tilt-card",
+          { rotateX: -7, rotateY: 10, duration: 0.72, ease: "power3.inOut" },
+          0.75,
+        );
+        tl.to(
+          ".hf-transition-tilt-glow",
+          { xPercent: 12, yPercent: 10, duration: 0.72, ease: "power3.inOut" },
+          0.75,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tilt-card-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

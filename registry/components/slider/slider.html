@@ -1,0 +1,49 @@
+<!-- Slider - animate --hf-slider-value from 0 to 1. -->
+<div class="hf-ui-slider" style="--hf-slider-value: 0.35">
+  <span class="hf-ui-slider-track"
+    ><span class="hf-ui-slider-fill"></span><span class="hf-ui-slider-thumb"></span
+  ></span>
+  <span class="hf-ui-slider-value">35%</span>
+</div>
+<style>
+  .hf-ui-slider {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    width: min(420px, 100%);
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-slider-track {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background: #e4e4e7;
+  }
+  .hf-ui-slider-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: calc(var(--hf-slider-value) * 100%);
+    border-radius: inherit;
+    background: #18181b;
+  }
+  .hf-ui-slider-thumb {
+    position: absolute;
+    top: 50%;
+    left: calc(var(--hf-slider-value) * 100%);
+    width: 22px;
+    height: 22px;
+    border: 3px solid #fff;
+    border-radius: 999px;
+    background: #18181b;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+  }
+  .hf-ui-slider-value {
+    min-width: 44px;
+    text-align: right;
+    color: #71717a;
+    font-weight: 750;
+  }
+</style>

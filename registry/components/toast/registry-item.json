@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "toast",
+  "type": "hyperframes:component",
+  "title": "Toast",
+  "description": "A toast notification primitive with slide-in, status dot, progress rail, and exit variables",
+  "tags": ["ui-primitive", "remocn-port", "toast", "notification"],
+  "files": [
+    {
+      "path": "toast.html",
+      "target": "compositions/components/toast.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/toast.png"
+  }
+}

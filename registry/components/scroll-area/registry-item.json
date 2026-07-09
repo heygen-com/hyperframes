@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "scroll-area",
+  "type": "hyperframes:component",
+  "title": "Scroll Area",
+  "description": "A scroll-area primitive with visible viewport, list content, and animated scrollbar thumb",
+  "tags": ["ui-primitive", "remocn-port", "scroll-area", "layout"],
+  "files": [
+    {
+      "path": "scroll-area.html",
+      "target": "compositions/components/scroll-area.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scroll-area.png"
+  }
+}

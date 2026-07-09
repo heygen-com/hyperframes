@@ -1,0 +1,61 @@
+<!--
+  Progress - shadcn-style progress primitive for HyperFrames.
+
+  Animate --hf-progress-value from 0 to 1. Use data-value for semantic state if
+  the composition needs to expose the same number to captions or labels.
+-->
+
+<div
+  class="hf-ui-progress"
+  role="progressbar"
+  aria-valuemin="0"
+  aria-valuemax="100"
+  aria-valuenow="64"
+>
+  <div class="hf-ui-progress-header">
+    <span>Rendering</span>
+    <span>64%</span>
+  </div>
+  <div class="hf-ui-progress-track">
+    <div class="hf-ui-progress-bar"></div>
+  </div>
+</div>
+
+<style>
+  .hf-ui-progress {
+    --hf-progress-value: 0.64;
+    display: grid;
+    gap: 10px;
+    width: min(360px, 100%);
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-progress-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .hf-ui-progress-track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: #e4e4e7;
+    overflow: hidden;
+  }
+  .hf-ui-progress-bar {
+    width: calc(var(--hf-progress-value) * 100%);
+    height: 100%;
+    border-radius: inherit;
+    background: #18181b;
+    will-change: width;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.fromTo(".hf-ui-progress", { "--hf-progress-value": 0 }, { "--hf-progress-value": 0.64, duration: 0.9, ease: "power2.out" }, startTime);
+-->

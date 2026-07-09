@@ -1,0 +1,45 @@
+<!--
+  Textarea - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<label class="hf-ui-textarea-field">
+  <span>Scene notes</span>
+  <textarea readonly>Open with the hero card, then reveal the dashboard metrics.</textarea>
+</label>
+
+<style>
+  .hf-ui-textarea-field {
+    display: grid;
+    gap: 8px;
+    width: 420px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-textarea-field span {
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .hf-ui-textarea-field textarea {
+    width: 100%;
+    min-height: 118px;
+    padding: 14px;
+    border: 1px solid #d4d4d8;
+    border-radius: 12px;
+    background: #fff;
+    color: #18181b;
+    font:
+      600 15px/1.45 Inter,
+      system-ui,
+      sans-serif;
+    resize: none;
+    box-shadow: 0 0 0 var(--hf-textarea-ring, 0px) rgba(24, 24, 27, 0.1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-textarea-field textarea', { '--hf-textarea-ring': '0px', opacity: 0, y: 12 }, { '--hf-textarea-ring': '5px', opacity: 1, y: 0, duration: 0.36, ease: 'power2.out' }, startTime);
+-->

@@ -1,0 +1,38 @@
+<!--
+  Dynamic Grid - animated background primitive.
+
+  Paste the grid as the first child of a scene. Animate --hf-grid-x,
+  --hf-grid-y, and --hf-grid-opacity from your paused GSAP timeline.
+-->
+
+<div class="hf-dynamic-grid" aria-hidden="true"></div>
+
+<style>
+  .hf-dynamic-grid {
+    --hf-grid-size: 72px;
+    --hf-grid-color: rgba(255, 255, 255, 0.16);
+    --hf-grid-x: 0px;
+    --hf-grid-y: 0px;
+    --hf-grid-opacity: 1;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--hf-grid-opacity);
+    background-image:
+      linear-gradient(var(--hf-grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--hf-grid-color) 1px, transparent 1px);
+    background-size: var(--hf-grid-size) var(--hf-grid-size);
+    background-position: var(--hf-grid-x) var(--hf-grid-y);
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-dynamic-grid", {
+    "--hf-grid-x": "72px",
+    "--hf-grid-y": "-72px",
+    duration: 6,
+    ease: "none",
+  }, 0);
+-->

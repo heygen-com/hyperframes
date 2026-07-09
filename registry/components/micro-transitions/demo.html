@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Micro Transitions - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .frame {
+        transform: scale(1.12); /* ponytail: was 2.2; reduced so content fits ~65% of frame */
+      }
+      .hf-micro-transitions {
+        --hf-micro-progress: 0;
+        --hf-micro-tab: 0;
+        position: relative;
+        width: min(640px, 100%);
+        height: 360px;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+      }
+      .hf-micro-bell,
+      .hf-micro-dropdown,
+      .hf-micro-modal,
+      .hf-micro-tabs,
+      .hf-micro-tooltip,
+      .hf-micro-check {
+        position: absolute;
+        will-change: transform, opacity;
+      }
+      .hf-micro-bell {
+        top: 18px;
+        left: 28px;
+        width: 54px;
+        height: 54px;
+        border-radius: 18px;
+        background: #18181b;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.18);
+      }
+      .hf-micro-bell::before {
+        content: "";
+        position: absolute;
+        inset: 15px 17px 13px;
+        border: 2px solid #fff;
+        border-radius: 12px 12px 9px 9px;
+      }
+      .hf-micro-bell span {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        min-width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border: 3px solid #fff;
+        border-radius: 999px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 850;
+        opacity: var(--hf-micro-progress);
+        transform: translate(
+            calc((1 - var(--hf-micro-progress)) * -7px),
+            calc((1 - var(--hf-micro-progress)) * 10px)
+          )
+          scale(calc(0.25 + var(--hf-micro-progress) * 0.75));
+      }
+      .hf-micro-dropdown {
+        top: 92px;
+        left: 28px;
+        width: 210px;
+        padding: 18px;
+        border: 1px solid #e4e4e7;
+        border-radius: 18px;
+        background: #fff;
+        opacity: var(--hf-micro-progress);
+        transform: translateY(calc((1 - var(--hf-micro-progress)) * -12px))
+          scale(calc(0.95 + var(--hf-micro-progress) * 0.05));
+        transform-origin: top left;
+        box-shadow: 0 24px 65px rgba(0, 0, 0, 0.16);
+      }
+      .hf-micro-dropdown strong,
+      .hf-micro-modal strong {
+        display: block;
+        font-size: 16px;
+      }
+      .hf-micro-dropdown p,
+      .hf-micro-modal span {
+        display: block;
+        margin: 8px 0 0;
+        color: #71717a;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .hf-micro-modal {
+        top: 48px;
+        right: 34px;
+        width: 260px;
+        padding: 22px;
+        border: 1px solid #e4e4e7;
+        border-radius: 22px;
+        background: #fff;
+        opacity: var(--hf-micro-progress);
+        transform: translateY(calc((1 - var(--hf-micro-progress)) * 18px))
+          scale(calc(0.96 + var(--hf-micro-progress) * 0.04));
+        box-shadow: 0 32px 80px rgba(0, 0, 0, 0.2);
+      }
+      .hf-micro-tabs {
+        left: 260px;
+        bottom: 46px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px;
+        width: 210px;
+        padding: 4px;
+        border-radius: 14px;
+        background: #f4f4f5;
+        opacity: var(--hf-micro-progress);
+        transform: translateY(calc((1 - var(--hf-micro-progress)) * 14px));
+      }
+      .hf-micro-tabs i {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: calc((100% - 8px) / 2);
+        height: calc(100% - 8px);
+        border-radius: 11px;
+        background: #fff;
+        transform: translateX(calc(var(--hf-micro-tab) * 100%));
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+      }
+      .hf-micro-tabs b {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        height: 38px;
+        color: #52525b;
+        font-size: 13px;
+      }
+      .hf-micro-tooltip {
+        right: 54px;
+        bottom: 48px;
+        padding: 8px 11px;
+        border-radius: 10px;
+        background: #18181b;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 750;
+        opacity: var(--hf-micro-progress);
+        transform: translateY(calc((1 - var(--hf-micro-progress)) * 6px))
+          scale(calc(0.96 + var(--hf-micro-progress) * 0.04));
+      }
+      .hf-micro-check {
+        right: 116px;
+        bottom: 92px;
+        width: 48px;
+        height: 48px;
+        fill: none;
+        stroke: #16a34a;
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: var(--hf-micro-progress);
+      }
+      .hf-micro-check path {
+        stroke-dasharray: 42;
+        stroke-dashoffset: calc((1 - var(--hf-micro-progress)) * 42);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="micro-transitions-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="frame">
+        <div class="hf-micro-transitions" style="--hf-micro-progress: 0; --hf-micro-tab: 0">
+          <div class="hf-micro-bell"><span>3</span></div>
+          <div class="hf-micro-dropdown">
+            <strong>Actions</strong>
+            <p>Export, duplicate, archive</p>
+          </div>
+          <div class="hf-micro-modal">
+            <strong>Ready to publish?</strong><span>All checks passed.</span>
+          </div>
+          <div class="hf-micro-tabs"><i></i><b>Draft</b><b>Live</b></div>
+          <div class="hf-micro-tooltip">Copied</div>
+          <svg class="hf-micro-check" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M12 25l8 8 17-19" />
+          </svg>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-micro-transitions",
+          { "--hf-micro-progress": 1, duration: 0.52, ease: "power3.out" },
+          0.55,
+        );
+        tl.to(
+          ".hf-micro-transitions",
+          { "--hf-micro-tab": 1, duration: 0.36, ease: "power3.out" },
+          1.15,
+        );
+        tl.to(
+          ".hf-micro-transitions",
+          { "--hf-micro-progress": 0, duration: 0.34, ease: "power2.in" },
+          3.4,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["micro-transitions-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

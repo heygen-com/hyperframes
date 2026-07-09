@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Empty - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of frame */
+        transform: scale(2.6);
+      }
+      .hf-ui-empty {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+        width: 420px;
+        padding: 36px;
+        border: 1px dashed #d4d4d8;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        color: #18181b;
+        text-align: center;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-empty-icon {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 999px;
+        background: #f4f4f5;
+        font-size: 28px;
+        font-weight: 500;
+      }
+      .hf-ui-empty h3 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .hf-ui-empty p {
+        margin: 0;
+        color: #71717a;
+        font-size: 15px;
+      }
+      .hf-ui-empty button {
+        height: 38px;
+        padding: 0 15px;
+        border: 0;
+        border-radius: 9px;
+        background: #18181b;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="empty-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <section class="hf-ui-empty">
+          <div class="hf-ui-empty-icon">+</div>
+          <h3>No clips yet</h3>
+          <p>Add media to start building the timeline.</p>
+          <button type="button">Upload media</button>
+        </section>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-empty > *",
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.24, stagger: 0.06, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["empty-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

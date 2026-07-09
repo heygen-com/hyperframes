@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "calendar",
+  "type": "hyperframes:component",
+  "title": "Calendar",
+  "description": "A compact calendar primitive with selected date and animated week rows",
+  "tags": ["ui-primitive", "remocn-port", "calendar", "date"],
+  "files": [
+    {
+      "path": "calendar.html",
+      "target": "compositions/components/calendar.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/calendar.png"
+  }
+}

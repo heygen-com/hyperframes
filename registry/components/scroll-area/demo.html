@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Scroll Area - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+      }
+      .hf-ui-scroll-area {
+        position: relative;
+        width: 340px;
+        height: 220px;
+        padding: 16px 30px 16px 16px;
+        overflow: hidden;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-scroll-content {
+        display: grid;
+        gap: 10px;
+        transform: translateY(var(--hf-scroll-y, 0px));
+      }
+      .hf-ui-scroll-content p {
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 10px;
+        background: #f4f4f5;
+        color: #18181b;
+        font-weight: 600;
+        font-size: 15px;
+        line-height: 1.4;
+      }
+      .hf-ui-scroll-thumb {
+        position: absolute;
+        right: 9px;
+        top: 16px;
+        width: 5px;
+        height: 56px;
+        border-radius: 999px;
+        background: #a1a1aa;
+        transform: translateY(var(--hf-scroll-thumb-y, 0px));
+      }
+      .demo-frame { transform: scale(3.4); } /* qa-scale */
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="scroll-area-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-scroll-area">
+          <div class="hf-ui-scroll-content">
+            <p>Intro scene</p>
+            <p>Feature sweep</p>
+            <p>Pricing card</p>
+            <p>Call to action</p>
+          </div>
+          <span class="hf-ui-scroll-thumb"></span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.to(
+          ".hf-ui-scroll-content",
+          { "--hf-scroll-y": "-76px", duration: 0.8, ease: "power2.inOut" },
+          startTime,
+        );
+        tl.to(
+          ".hf-ui-scroll-thumb",
+          { "--hf-scroll-thumb-y": "62px", duration: 0.8, ease: "power2.inOut" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["scroll-area-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

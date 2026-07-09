@@ -1,0 +1,35 @@
+<!-- Radio Group - animate --hf-radio-selected between 0 and 1 on each option. -->
+<div class="hf-ui-radio-group" role="radiogroup">
+  <label class="hf-ui-radio" style="--hf-radio-selected: 1"><span></span>Fast</label>
+  <label class="hf-ui-radio" style="--hf-radio-selected: 0"><span></span>Cinematic</label>
+</div>
+<style>
+  .hf-ui-radio-group {
+    display: grid;
+    gap: 12px;
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: color-mix(in srgb, #18181b calc(55% + var(--hf-radio-selected) * 45%), #71717a);
+    font:
+      700 15px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-radio span {
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid color-mix(in srgb, #18181b calc(var(--hf-radio-selected) * 100%), #d4d4d8);
+    border-radius: 999px;
+    background: radial-gradient(
+      circle,
+      #18181b calc(var(--hf-radio-selected) * 36%),
+      transparent calc(var(--hf-radio-selected) * 38%)
+    );
+    transform: scale(calc(0.94 + var(--hf-radio-selected) * 0.06));
+  }
+</style>

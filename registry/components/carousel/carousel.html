@@ -1,0 +1,60 @@
+<!--
+  Carousel - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-carousel">
+  <section>Scene 01</section>
+  <section>Scene 02</section>
+  <nav><span></span><span class="active"></span><span></span></nav>
+</div>
+
+<style>
+  .hf-ui-carousel {
+    position: relative;
+    width: 420px;
+    height: 240px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-carousel section {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #111827, #2563eb);
+    color: #fff;
+    font-size: 28px;
+    font-weight: 900;
+    box-shadow: 0 24px 70px rgba(37, 99, 235, 0.2);
+  }
+  .hf-ui-carousel section:first-child {
+    transform: translateX(-34px) scale(0.88);
+    opacity: 0.45;
+  }
+  .hf-ui-carousel nav {
+    position: absolute;
+    left: 50%;
+    bottom: -24px;
+    display: flex;
+    gap: 6px;
+    transform: translateX(-50%);
+  }
+  .hf-ui-carousel nav span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #d4d4d8;
+  }
+  .hf-ui-carousel nav .active {
+    width: 22px;
+    background: #18181b;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-carousel section:last-of-type', { x: 46, opacity: 0, scale: 0.9 }, { x: 0, opacity: 1, scale: 1, duration: 0.46, ease: 'power3.out' }, startTime);
+-->

@@ -1,0 +1,71 @@
+<!--
+  Tooltip - shadcn-style tooltip primitive for HyperFrames.
+
+  Animate --hf-tooltip-open from 0 to 1 to reveal the floating label.
+-->
+
+<div class="hf-ui-tooltip">
+  <button class="hf-ui-tooltip-trigger" type="button">?</button>
+  <div class="hf-ui-tooltip-content" role="tooltip">
+    Match the brand voice before exporting.
+    <span class="hf-ui-tooltip-arrow" aria-hidden="true"></span>
+  </div>
+</div>
+
+<style>
+  .hf-ui-tooltip {
+    --hf-tooltip-open: 0;
+    position: relative;
+    display: inline-flex;
+    justify-content: center;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-tooltip-trigger {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #d4d4d8;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #18181b;
+    font:
+      800 16px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-tooltip-content {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    width: max-content;
+    max-width: 260px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #18181b;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 1.35;
+    opacity: var(--hf-tooltip-open);
+    transform: translateX(-50%) translateY(calc((1 - var(--hf-tooltip-open)) * 6px))
+      scale(calc(0.96 + var(--hf-tooltip-open) * 0.04));
+    transform-origin: 50% 100%;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+  }
+  .hf-ui-tooltip-arrow {
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    width: 10px;
+    height: 10px;
+    background: #18181b;
+    transform: translateX(-50%) rotate(45deg);
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-tooltip", { "--hf-tooltip-open": 1, duration: 0.22, ease: "power2.out" }, startTime);
+-->

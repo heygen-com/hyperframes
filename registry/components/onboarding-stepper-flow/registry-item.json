@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "onboarding-stepper-flow",
+  "type": "hyperframes:component",
+  "title": "Onboarding Stepper Flow",
+  "description": "A composed onboarding flow with milestone rail, active step card, and next-action button",
+  "tags": ["ui-flow", "remocn-port", "onboarding", "stepper"],
+  "files": [
+    {
+      "path": "onboarding-stepper-flow.html",
+      "target": "compositions/components/onboarding-stepper-flow.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/onboarding-stepper-flow.png"
+  }
+}

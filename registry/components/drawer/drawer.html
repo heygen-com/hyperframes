@@ -1,0 +1,56 @@
+<!--
+  Drawer - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-drawer">
+  <div class="hf-ui-drawer-handle"></div>
+  <h3>Export options</h3>
+  <div class="hf-ui-drawer-row"><span>MP4 1080p</span><strong>Ready</strong></div>
+  <div class="hf-ui-drawer-row"><span>Transparent WebM</span><strong>Beta</strong></div>
+</div>
+
+<style>
+  .hf-ui-drawer {
+    width: 520px;
+    padding: 16px 24px 24px;
+    border: 1px solid #e4e4e7;
+    border-radius: 28px 28px 18px 18px;
+    background: #ffffff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 -10px 70px rgba(0, 0, 0, 0.14);
+  }
+  .hf-ui-drawer-handle {
+    width: 56px;
+    height: 5px;
+    margin: 0 auto 22px;
+    border-radius: 999px;
+    background: #d4d4d8;
+  }
+  .hf-ui-drawer h3 {
+    margin: 0 0 18px;
+    font-size: 24px;
+  }
+  .hf-ui-drawer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 54px;
+    border-top: 1px solid #f4f4f5;
+    font-weight: 760;
+  }
+  .hf-ui-drawer-row strong {
+    color: #71717a;
+    font-size: 13px;
+    text-transform: uppercase;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-drawer', { y: 180, opacity: 0 }, { y: 0, opacity: 1, duration: 0.58, ease: 'back.out(1.15)' }, 0.35);
+  tl.fromTo('.hf-ui-drawer-row', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, stagger: 0.08, ease: 'power2.out' }, 0.78);
+-->

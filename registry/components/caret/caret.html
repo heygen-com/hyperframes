@@ -1,0 +1,48 @@
+<!--
+  Caret - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-caret-line">
+  <span class="hf-ui-caret-value">Generate captions</span><span class="hf-ui-caret"></span>
+</div>
+
+<style>
+  .hf-ui-caret-line {
+    display: inline-flex;
+    align-items: center;
+    min-height: 58px;
+    padding: 0 18px;
+    border: 1px solid #d4d4d8;
+    border-radius: 14px;
+    background: #ffffff;
+    color: #18181b;
+    font:
+      750 28px/1 Inter,
+      system-ui,
+      sans-serif;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  }
+  .hf-ui-caret-value {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hf-ui-caret {
+    display: inline-block;
+    width: 3px;
+    height: 32px;
+    margin-left: 4px;
+    border-radius: 999px;
+    background: #18181b;
+    opacity: 1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-caret-value', { width: 0 }, { width: 244, duration: 1.1, ease: 'steps(17)' }, 0.35);
+  tl.to('.hf-ui-caret', { opacity: 0.12, duration: 0.16, repeat: 9, yoyo: true, ease: 'none' }, 0.35);
+-->

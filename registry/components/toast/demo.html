@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Toast - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-toast {
+        --hf-toast-progress: 0;
+        position: relative;
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        gap: 32px;
+        width: 520px;
+        padding: 40px 44px 48px;
+        border: 1px solid #e4e4e7;
+        border-radius: 28px;
+        background: #fff;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        opacity: var(--hf-toast-progress);
+        transform: translateY(calc((1 - var(--hf-toast-progress)) * 30px));
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        /* ponytail: zoom avoids clobbering GSAP's translateY transform */
+        zoom: 2.4;
+      }
+      .hf-ui-toast-dot {
+        width: 36px;
+        height: 36px;
+        margin-top: 4px;
+        border-radius: 999px;
+        background: #16a34a;
+        box-shadow: 0 0 0 calc(var(--hf-toast-progress) * 14px) rgba(22, 163, 74, 0.12);
+      }
+      .hf-ui-toast strong {
+        display: block;
+        font-size: 30px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .hf-ui-toast span {
+        color: #71717a;
+        font-size: 22px;
+      }
+      .hf-ui-toast-rail {
+        position: absolute;
+        left: 44px;
+        right: 44px;
+        bottom: 18px;
+        height: 5px;
+        border-radius: 999px;
+        background: #18181b;
+        transform: scaleX(var(--hf-toast-progress));
+        transform-origin: left;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="toast-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-toast">
+        <span class="hf-ui-toast-dot"></span>
+        <div><strong>Render complete</strong><span>Your video is ready to share.</span></div>
+        <span class="hf-ui-toast-rail"></span>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-toast",
+          { "--hf-toast-progress": 1, duration: 0.42, ease: "power3.out" },
+          0.65,
+        );
+        tl.to(".hf-ui-toast", { "--hf-toast-progress": 0, duration: 0.32, ease: "power2.in" }, 3.4);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["toast-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

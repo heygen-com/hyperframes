@@ -1,0 +1,92 @@
+<!--
+  Claude Code - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-claude-code">
+  <div class="chrome"><span class="dot"></span><span>Claude Code</span></div>
+  <div class="body">
+    <div class="files">index.html<br />style.css<br />timeline.js</div>
+    <div class="editor">
+      <span class="line" style="width: 92%"></span><span class="line" style="width: 72%"></span
+      ><span class="line" style="width: 84%"></span><span class="line" style="width: 58%"></span
+      ><span class="line" style="width: 78%"></span>
+    </div>
+  </div>
+  <div class="terminal">$ hyperframes render --skill=claude-code</div>
+</div>
+
+<style>
+  .hf-remocn-claude-code {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-claude-code {
+    width: 760px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #0f172a;
+    color: #dbeafe;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .hf-remocn-claude-code .chrome {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 18px;
+    background: #111827;
+    color: #94a3b8;
+  }
+  .hf-remocn-claude-code .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: #ef4444;
+    box-shadow:
+      18px 0 #f59e0b,
+      36px 0 #22c55e;
+  }
+  .hf-remocn-claude-code .body {
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    min-height: 340px;
+  }
+  .hf-remocn-claude-code .files {
+    padding: 22px;
+    border-right: 1px solid rgba(148, 163, 184, 0.18);
+    color: #94a3b8;
+  }
+  .hf-remocn-claude-code .editor {
+    padding: 22px;
+    display: grid;
+    gap: 12px;
+  }
+  .hf-remocn-claude-code .line {
+    display: block;
+    height: 16px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #38bdf8, #a78bfa);
+    transform: scaleX(var(--hf-line, 1));
+    transform-origin: left center;
+    opacity: var(--hf-line-opacity, 1);
+  }
+  .hf-remocn-claude-code .terminal {
+    padding: 18px 22px 24px;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    color: #86efac;
+    min-height: 78px;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-claude-code .line', { '--hf-line': 0, '--hf-line-opacity': 0 }, { '--hf-line': 1, '--hf-line-opacity': 1, duration: 0.24, stagger: 0.08, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-claude-code .terminal', { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.34, ease: 'power2.out' }, startTime + 0.48);
+-->

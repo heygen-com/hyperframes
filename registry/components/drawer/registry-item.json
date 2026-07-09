@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "drawer",
+  "type": "hyperframes:component",
+  "title": "Drawer",
+  "description": "A bottom drawer primitive with handle, stacked rows, and spring-like slide-in motion",
+  "tags": ["ui-primitive", "remocn-port", "drawer", "overlay"],
+  "files": [
+    {
+      "path": "drawer.html",
+      "target": "compositions/components/drawer.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/drawer.png"
+  }
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tracking In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      body {
+        font-family: Inter, system-ui, sans-serif;
+        background: #fafafa;
+      }
+      #demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #fafafa, #f4f4f5);
+        color: #18181b;
+      }
+      .panel {
+        text-align: center;
+        width: 1260px;
+      }
+      .label {
+        font-size: 28px;
+        font-weight: 600;
+        color: #71717a;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+      }
+      .headline {
+        margin-top: 28px;
+        font-size: 118px;
+        line-height: 1;
+        font-weight: 900;
+      }
+      .hf-tracking-in {
+        opacity: 0;
+        letter-spacing: var(--hf-tracking-value, 0.28em);
+        transform: translateY(8px);
+        will-change: opacity, letter-spacing, transform;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tracking-in-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <div class="panel">
+        <div class="label hf-tracking-in">Editorial motion</div>
+        <div class="headline hf-tracking-in">TRACKING IN</div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-tracking-in",
+          {
+            opacity: 1,
+            "--hf-tracking-value": "0.02em",
+            y: 0,
+            duration: 0.9,
+            ease: "power3.out",
+            stagger: 0.16,
+          },
+          0.45,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tracking-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

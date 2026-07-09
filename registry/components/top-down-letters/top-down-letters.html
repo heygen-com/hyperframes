@@ -1,0 +1,36 @@
+<!--
+  Top-Down Letters - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-top-down-letters">
+  <span>C</span><span>A</span><span>S</span><span>C</span><span>A</span><span>D</span><span>E</span>
+</div>
+
+<style>
+  .hf-remocn-top-down-letters {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-top-down-letters {
+    display: inline-flex;
+    gap: 1px;
+    font-size: 74px;
+    line-height: 0.9;
+    overflow: hidden;
+  }
+  .hf-remocn-top-down-letters span {
+    display: inline-block;
+    transform: translateY(var(--hf-char-y, 0px));
+    will-change: transform, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-top-down-letters span', { opacity: 0, '--hf-char-y': '-42px' }, { opacity: 1, '--hf-char-y': '0px', duration: 0.22, stagger: 0.035, ease: 'power3.out' }, startTime);
+-->

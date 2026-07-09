@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "input",
+  "type": "hyperframes:component",
+  "title": "Input",
+  "description": "A video-safe text field primitive with label, helper text, focus ring, and typed value reveal",
+  "tags": ["ui-primitive", "remocn-port", "input", "field"],
+  "files": [
+    {
+      "path": "input.html",
+      "target": "compositions/components/input.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input.png"
+  }
+}

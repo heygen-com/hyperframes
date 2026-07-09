@@ -1,0 +1,41 @@
+<!--
+  Pagination - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<nav class="hf-ui-pagination" aria-label="Pagination">
+  <button type="button">Prev</button><a>1</a><a aria-current="page">2</a><a>3</a
+  ><button type="button">Next</button>
+</nav>
+
+<style>
+  .hf-ui-pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-pagination :is(a, button) {
+    display: grid;
+    place-items: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 11px;
+    border: 1px solid #e4e4e7;
+    border-radius: 9px;
+    background: #fff;
+    color: #18181b;
+    font-weight: 800;
+  }
+  .hf-ui-pagination [aria-current="page"] {
+    background: #18181b;
+    color: #fff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-pagination > *', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.2, stagger: 0.035, ease: 'power2.out' }, startTime);
+-->

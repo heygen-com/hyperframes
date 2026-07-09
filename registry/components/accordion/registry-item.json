@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "accordion",
+  "type": "hyperframes:component",
+  "title": "Accordion",
+  "description": "An accordion primitive with animated content reveal, chevron rotation, and stacked trigger rows",
+  "tags": ["ui-primitive", "remocn-port", "accordion", "disclosure"],
+  "files": [
+    {
+      "path": "accordion.html",
+      "target": "compositions/components/accordion.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/accordion.png"
+  }
+}

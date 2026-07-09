@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Arc Motion Path - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-advanced-arc-motion-path {
+        color: #111827;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-advanced-arc-motion-path {
+        position: relative;
+        width: 760px;
+        height: 430px;
+        border-radius: 30px;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 20%, #dbeafe, #f8fafc 54%, #e0e7ff);
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        transform: scale(0.84);
+      }
+      .hf-advanced-arc-motion-path svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
+      .hf-advanced-arc-motion-path .path {
+        fill: none;
+        stroke: rgba(37, 99, 235, 0.28);
+        stroke-width: 3;
+        stroke-dasharray: 10 12;
+      }
+      .hf-advanced-arc-motion-path .core {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 176px;
+        height: 176px;
+        margin: -88px 0 0 -88px;
+        border-radius: 42px;
+        background: #111827;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+        box-shadow: 0 22px 54px rgba(15, 23, 42, 0.25);
+      }
+      .hf-advanced-arc-motion-path .chip {
+        position: absolute;
+        left: 0;
+        top: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 42px;
+        padding: 0 16px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
+        font-size: 13px;
+        font-weight: 800;
+        transform-origin: 50% 50%;
+      }
+      .hf-advanced-arc-motion-path .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="arc-motion-path-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-advanced-arc-motion-path">
+        <svg viewBox="0 0 760 430" aria-hidden="true">
+          <path
+            id="arc-motion-path-path-a"
+            class="path"
+            d="M104 310 C178 110, 334 74, 442 178 S592 306, 668 120"
+          />
+          <path id="arc-motion-path-path-b" class="path" d="M118 142 C224 300, 410 330, 642 206" />
+        </svg>
+        <div class="core">Arc Motion Path</div>
+        <div class="chip chip-a"><span class="dot"></span>Plan</div>
+        <div class="chip chip-b"><span class="dot"></span>Render</div>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      const startTime = 0.5;
+      if (window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
+      tl.to(
+        ".hf-advanced-arc-motion-path .chip-a",
+        {
+          motionPath: {
+            path: "#arc-motion-path-path-a",
+            align: "#arc-motion-path-path-a",
+            alignOrigin: [0.5, 0.5],
+            autoRotate: true,
+          },
+          duration: 2.4,
+          ease: "power1.inOut",
+        },
+        startTime,
+      );
+      tl.to(
+        ".hf-advanced-arc-motion-path .chip-b",
+        {
+          motionPath: {
+            path: "#arc-motion-path-path-b",
+            align: "#arc-motion-path-path-b",
+            alignOrigin: [0.5, 0.5],
+            autoRotate: true,
+            start: 0.1,
+            end: 0.92,
+          },
+          duration: 2.1,
+          ease: "sine.inOut",
+        },
+        startTime + 0.25,
+      );
+      tl.set({}, {}, 5);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["arc-motion-path-demo"] = tl;
+    </script>
+  </body>
+</html>

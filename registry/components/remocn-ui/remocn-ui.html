@@ -1,0 +1,55 @@
+<!--
+  Remocn UI - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-remocn-ui">
+  <div class="row"><span class="label">Remocn UI</span><span class="hint">Ctrl K</span></div>
+  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
+  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+</div>
+
+<style>
+  .hf-remocn-remocn-ui {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-remocn-ui {
+    width: 560px;
+    border-radius: 22px;
+    background: #fff;
+    padding: 22px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    display: grid;
+    gap: 12px;
+  }
+  .hf-remocn-remocn-ui .row {
+    height: 52px;
+    border-radius: 14px;
+    background: #f4f4f5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    transform: translateX(var(--hf-row-x, 0px));
+    opacity: var(--hf-row-opacity, 1);
+  }
+  .hf-remocn-remocn-ui .label {
+    font-weight: 800;
+  }
+  .hf-remocn-remocn-ui .hint {
+    color: #71717a;
+    font-size: 13px;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-remocn-ui .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+-->

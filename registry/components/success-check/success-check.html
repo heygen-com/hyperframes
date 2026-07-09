@@ -1,0 +1,48 @@
+<!--
+  Success Check - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-success-check" aria-label="Success">
+  <svg viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="27" />
+    <path d="M20 33.5l8 8L45 23" />
+  </svg>
+</div>
+
+<style>
+  .hf-transition-success-check {
+    display: grid;
+    place-items: center;
+    width: 82px;
+    height: 82px;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #16a34a;
+  }
+  .hf-transition-success-check svg {
+    width: 64px;
+    height: 64px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: blur(var(--hf-check-blur, 0px));
+    transform: rotate(var(--hf-check-rotate, 0deg)) scale(var(--hf-check-scale, 1));
+  }
+  .hf-transition-success-check circle {
+    opacity: 0.28;
+  }
+  .hf-transition-success-check path {
+    stroke-dasharray: 36;
+    stroke-dashoffset: var(--hf-check-dash, 0);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-success-check svg', { opacity: 0, '--hf-check-scale': 0.72, '--hf-check-rotate': '-18deg', '--hf-check-blur': '7px' }, { opacity: 1, '--hf-check-scale': 1, '--hf-check-rotate': '0deg', '--hf-check-blur': '0px', duration: 0.34, ease: 'back.out(1.8)' }, startTime); tl.fromTo('.hf-transition-success-check path', { '--hf-check-dash': 36 }, { '--hf-check-dash': 0, duration: 0.42, ease: 'power2.out' }, startTime + 0.12);
+-->

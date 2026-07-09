@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "alert",
+  "type": "hyperframes:component",
+  "title": "Alert",
+  "description": "A status alert primitive with icon, title, message, and entrance emphasis",
+  "tags": ["ui-primitive", "remocn-port", "alert", "status"],
+  "files": [
+    {
+      "path": "alert.html",
+      "target": "compositions/components/alert.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/alert.png"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "select",
+  "type": "hyperframes:component",
+  "title": "Select",
+  "description": "A select primitive with trigger, animated menu, option rows, and active option highlight",
+  "tags": ["ui-primitive", "remocn-port", "select", "control"],
+  "files": [
+    {
+      "path": "select.html",
+      "target": "compositions/components/select.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/select.png"
+  }
+}

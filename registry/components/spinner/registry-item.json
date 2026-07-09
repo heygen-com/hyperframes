@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spinner",
+  "type": "hyperframes:component",
+  "title": "Spinner",
+  "description": "A deterministic loading spinner primitive with ring, sweep, and optional status label",
+  "tags": ["ui-primitive", "remocn-port", "spinner", "loading"],
+  "files": [
+    {
+      "path": "spinner.html",
+      "target": "compositions/components/spinner.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spinner.png"
+  }
+}

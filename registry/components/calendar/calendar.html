@@ -1,0 +1,53 @@
+<!--
+  Calendar - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-calendar">
+  <header>June 2026</header>
+  <div class="hf-ui-calendar-grid">
+    <span>22</span><span>23</span><strong>24</strong><span>25</span><span>26</span><span>27</span
+    ><span>28</span>
+  </div>
+</div>
+
+<style>
+  .hf-ui-calendar {
+    display: grid;
+    gap: 14px;
+    width: 300px;
+    padding: 18px;
+    border: 1px solid #e4e4e7;
+    border-radius: 14px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-calendar header {
+    font-size: 18px;
+    font-weight: 900;
+  }
+  .hf-ui-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .hf-ui-calendar-grid :is(span, strong) {
+    display: grid;
+    place-items: center;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 13px;
+  }
+  .hf-ui-calendar-grid strong {
+    background: #18181b;
+    color: #fff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-calendar-grid > *', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.18, stagger: 0.03, ease: 'back.out(1.6)' }, startTime);
+-->

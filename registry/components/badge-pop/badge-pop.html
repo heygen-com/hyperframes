@@ -1,0 +1,69 @@
+<!--
+  Badge Pop - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-badge-pop">
+  <button class="hf-transition-badge-button" type="button" aria-label="Notifications">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+      <path d="M10 20a2 2 0 004 0" />
+    </svg>
+  </button>
+  <span class="hf-transition-badge-count">3</span>
+</div>
+
+<style>
+  .hf-transition-badge-pop {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-badge-button {
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    border: 1px solid #e4e4e7;
+    border-radius: 22px;
+    background: #ffffff;
+    color: #18181b;
+    box-shadow: 0 20px 58px rgba(0, 0, 0, 0.12);
+  }
+  .hf-transition-badge-button svg {
+    width: 30px;
+    height: 30px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hf-transition-badge-count {
+    position: absolute;
+    right: -8px;
+    top: -8px;
+    display: grid;
+    place-items: center;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 8px;
+    border: 3px solid #ffffff;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 900;
+    transform-origin: center;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-badge-button', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: 'power2.out' }, 0.35);
+  tl.fromTo('.hf-transition-badge-count', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.42, ease: 'back.out(2.4)' }, 0.7);
+  tl.to('.hf-transition-badge-count', { scale: 1.18, duration: 0.12, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.15);
+-->

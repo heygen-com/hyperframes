@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Avatar - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: zoom scales the whole frame without touching GSAP-animated elements */
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        zoom: 3.2;
+      }
+      .avatar-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        padding: 40px 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        min-width: 220px;
+      }
+      .avatar-name {
+        font: 600 15px/1.2 Inter, system-ui, sans-serif;
+        color: #18181b;
+        text-align: center;
+      }
+      .avatar-role {
+        font: 400 12px/1.4 Inter, system-ui, sans-serif;
+        color: #71717a;
+        text-align: center;
+      }
+      .avatar-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font: 400 11px/1 Inter, system-ui, sans-serif;
+        color: #22c55e;
+      }
+      .hf-ui-avatar {
+        --hf-avatar-size: 72px;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: var(--hf-avatar-size);
+        height: var(--hf-avatar-size);
+        border: 3px solid #fff;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #111827, #0ea5e9);
+        color: white;
+        font:
+          700 20px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 12px 32px rgba(2, 132, 199, 0.26);
+      }
+      .hf-ui-avatar i {
+        position: absolute;
+        right: 2px;
+        bottom: 2px;
+        width: 16px;
+        height: 16px;
+        border: 2.5px solid #fff;
+        border-radius: 999px;
+        background: #22c55e;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="avatar-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="avatar-card">
+          <div class="hf-ui-avatar" aria-label="Maya Chen">
+            <span>MC</span>
+            <i aria-hidden="true"></i>
+          </div>
+          <div class="avatar-name">Maya Chen</div>
+          <div class="avatar-role">Product Designer</div>
+          <div class="avatar-status">
+            <i aria-hidden="true" style="display:inline-block;width:7px;height:7px;border-radius:999px;background:#22c55e;flex-shrink:0;"></i>
+            Online
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-avatar",
+          { opacity: 0, scale: 0.75, y: 12 },
+          { opacity: 1, scale: 1, y: 0, duration: 0.38, ease: "back.out(1.8)" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["avatar-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

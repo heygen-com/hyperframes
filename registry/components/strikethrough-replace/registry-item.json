@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "strikethrough-replace",
+  "type": "hyperframes:component",
+  "title": "Strikethrough Replace",
+  "description": "Draw a strike line across old text, then reveal the replacement.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "strikethrough-replace.html",
+      "target": "compositions/components/strikethrough-replace.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/strikethrough-replace.png"
+  }
+}

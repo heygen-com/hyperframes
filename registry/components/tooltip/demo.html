@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tooltip - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-tooltip {
+        --hf-tooltip-open: 0;
+        position: relative;
+        display: inline-flex;
+        justify-content: center;
+      }
+      .hf-ui-tooltip-trigger {
+        display: grid;
+        place-items: center;
+        width: 96px;
+        height: 96px;
+        border: 2px solid #d4d4d8;
+        border-radius: 999px;
+        background: white;
+        color: #18181b;
+        font:
+          900 44px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 18px 46px rgba(0, 0, 0, 0.1);
+      }
+      .hf-ui-tooltip-content {
+        position: absolute;
+        bottom: calc(100% + 18px);
+        left: 50%;
+        width: 340px;
+        padding: 18px 22px;
+        border-radius: 16px;
+        background: #18181b;
+        color: white;
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.4;
+        text-align: center;
+        opacity: var(--hf-tooltip-open);
+        transform: translateX(-50%) translateY(calc((1 - var(--hf-tooltip-open)) * 12px))
+          scale(calc(0.94 + var(--hf-tooltip-open) * 0.06));
+        transform-origin: 50% 100%;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+      }
+      .hf-ui-tooltip-arrow {
+        position: absolute;
+        left: 50%;
+        bottom: -7px;
+        width: 14px;
+        height: 14px;
+        background: #18181b;
+        transform: translateX(-50%) rotate(45deg);
+      }
+      /* ponytail: zoom on .hf-ui-tooltip is safe — GSAP only animates --hf-tooltip-open (CSS var), not spatial props */
+      .hf-ui-tooltip { zoom: 2.2; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tooltip-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-tooltip">
+        <button class="hf-ui-tooltip-trigger" type="button">?</button>
+        <div class="hf-ui-tooltip-content">
+          Match the brand voice before exporting.<span class="hf-ui-tooltip-arrow"></span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-tooltip",
+          { "--hf-tooltip-open": 1, duration: 0.25, ease: "power2.out" },
+          0.75,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tooltip-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

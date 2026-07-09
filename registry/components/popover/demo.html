@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Popover - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 280px;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-popover {
+        --hf-popover-open: 0;
+        position: relative;
+        display: inline-block;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+      }
+      .hf-ui-popover-anchor {
+        height: 70px;
+        padding: 0 34px;
+        border: 1px solid #e4e4e7;
+        border-radius: 18px;
+        background: #fff;
+        color: inherit;
+        font:
+          850 26px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+      }
+      .hf-ui-popover-panel {
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 20px);
+        width: 360px;
+        display: grid;
+        gap: 12px;
+        padding: 28px;
+        border: 1px solid #e4e4e7;
+        border-radius: 24px;
+        background: #fff;
+        opacity: var(--hf-popover-open);
+        transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * 14px))
+          scale(calc(0.96 + var(--hf-popover-open) * 0.04));
+        transform-origin: bottom center;
+        box-shadow: 0 34px 90px rgba(0, 0, 0, 0.2);
+      }
+      .hf-ui-popover-panel strong {
+        font-size: 26px;
+      }
+      .hf-ui-popover-panel span {
+        color: #71717a;
+        font-size: 20px;
+        line-height: 1.45;
+      }
+      .hf-ui-popover { zoom: 1.56; } /* qa-zoom */
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="popover-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-popover">
+        <button class="hf-ui-popover-anchor">Format</button>
+        <div class="hf-ui-popover-panel">
+          <strong>Text style</strong><span>Choose how captions appear in this scene.</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-popover",
+          { "--hf-popover-open": 1, duration: 0.34, ease: "power3.out" },
+          0.7,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["popover-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

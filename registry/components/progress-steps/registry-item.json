@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "progress-steps",
+  "type": "hyperframes:component",
+  "title": "Progress Steps",
+  "description": "A multi-step progress indicator with active, pending, and done states.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "progress-steps.html",
+      "target": "compositions/components/progress-steps.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/progress-steps.png"
+  }
+}

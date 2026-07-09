@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Toggle Group - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-toggle-group {
+        --hf-toggle-count: 3;
+        --hf-toggle-index: 0;
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        width: 680px;
+        padding: 8px;
+        border-radius: 24px;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+        /* ponytail: zoom scales the component without touching GSAP's transform path */
+        zoom: 2.1;
+      }
+      .hf-ui-toggle-indicator {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: calc((100% - 16px) / var(--hf-toggle-count));
+        height: calc(100% - 16px);
+        border-radius: 18px;
+        background: #fff;
+        transform: translateX(calc(var(--hf-toggle-index) * 100%));
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+      }
+      .hf-ui-toggle-group button {
+        position: relative;
+        z-index: 1;
+        height: 74px;
+        border: 0;
+        background: transparent;
+        color: #52525b;
+        font:
+          850 25px/1 Inter,
+          system-ui,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="toggle-group-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-toggle-group">
+        <span class="hf-ui-toggle-indicator"></span><button>Draft</button><button>Preview</button
+        ><button>Export</button>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-toggle-group",
+          { "--hf-toggle-index": 1, duration: 0.38, ease: "power3.out" },
+          0.75,
+        );
+        tl.to(
+          ".hf-ui-toggle-group",
+          { "--hf-toggle-index": 2, duration: 0.38, ease: "power3.out" },
+          1.65,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["toggle-group-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

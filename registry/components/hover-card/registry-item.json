@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "hover-card",
+  "type": "hyperframes:component",
+  "title": "Hover Card",
+  "description": "A hover-card primitive with trigger chip, profile preview, and reveal transition",
+  "tags": ["ui-primitive", "remocn-port", "hover-card", "overlay"],
+  "files": [
+    {
+      "path": "hover-card.html",
+      "target": "compositions/components/hover-card.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/hover-card.png"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "landing-code-showcase",
+  "type": "hyperframes:component",
+  "title": "Landing Code Showcase",
+  "description": "A product hero where code output becomes a live preview card.",
+  "tags": ["showcase", "remocn-port"],
+  "files": [
+    {
+      "path": "landing-code-showcase.html",
+      "target": "compositions/components/landing-code-showcase.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/landing-code-showcase.png"
+  }
+}

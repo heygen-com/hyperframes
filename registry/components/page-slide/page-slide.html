@@ -1,0 +1,52 @@
+<!--
+  Page Slide - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-page-slide">
+  <section class="hf-transition-page old"><span>Dashboard</span></section>
+  <section class="hf-transition-page new"><span>Analytics</span></section>
+</div>
+
+<style>
+  .hf-transition-page-slide {
+    position: relative;
+    width: 560px;
+    height: 320px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #111827;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.22);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-page {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+  .hf-transition-page span {
+    padding: 14px 20px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    font-size: 28px;
+    font-weight: 900;
+  }
+  .hf-transition-page.old {
+    background: linear-gradient(135deg, #0f172a, #334155);
+  }
+  .hf-transition-page.new {
+    background: linear-gradient(135deg, #155e75, #10b981);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-page-slide', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.3, ease: 'power2.out' }, 0.25);
+  tl.fromTo('.hf-transition-page.new', { xPercent: 100 }, { xPercent: 0, duration: 0.74, ease: 'power3.inOut' }, 0.78);
+  tl.to('.hf-transition-page.old', { xPercent: -28, scale: 0.94, duration: 0.74, ease: 'power3.inOut' }, 0.78);
+  tl.fromTo('.hf-transition-page.new span', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, ease: 'power2.out' }, 1.24);
+-->

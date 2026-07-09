@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "three-orbiting-cards",
+  "type": "hyperframes:component",
+  "title": "Three Orbiting Cards",
+  "description": "A Three.js-powered orbit scene driven by a paused GSAP timeline for deterministic renders.",
+  "tags": ["three-js", "webgl", "hyperframes-native"],
+  "files": [
+    {
+      "path": "three-orbiting-cards.html",
+      "target": "compositions/components/three-orbiting-cards.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-orbiting-cards.png"
+  }
+}

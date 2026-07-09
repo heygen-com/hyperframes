@@ -1,0 +1,39 @@
+<!--
+  Input OTP - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-input-otp" aria-label="One time code">
+  <span>4</span><span>2</span><span>8</span><span class="active"></span>
+</div>
+
+<style>
+  .hf-ui-input-otp {
+    display: inline-flex;
+    gap: 8px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-input-otp span {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 52px;
+    border: 1px solid #d4d4d8;
+    border-radius: 10px;
+    background: #fff;
+    color: #18181b;
+    font-size: 20px;
+    font-weight: 850;
+  }
+  .hf-ui-input-otp .active {
+    border-color: #18181b;
+    box-shadow: 0 0 0 5px rgba(24, 24, 27, 0.1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-input-otp span', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.18, stagger: 0.07, ease: 'power2.out' }, startTime);
+-->

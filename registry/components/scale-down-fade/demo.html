@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Scale Down Fade - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 900px;
+        min-height: 500px;
+        padding: 64px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill 55-75% of frame */
+        transform: scale(3);
+      }
+      .hf-remocn-scale-down-fade {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-scale-down-fade {
+        display: inline-flex;
+        gap: 12px;
+        font-size: 56px;
+        line-height: 1;
+      }
+      .hf-remocn-scale-down-fade span {
+        display: inline-block;
+        transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+          scale(var(--hf-word-scale, 1));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="scale-down-fade-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-scale-down-fade"><span>Quiet</span><span>confidence</span></div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-scale-down-fade span",
+          { opacity: 0, "--hf-word-scale": 1.08, "--hf-word-blur": "16px" },
+          {
+            opacity: 1,
+            "--hf-word-scale": 1,
+            "--hf-word-blur": "0px",
+            duration: 0.52,
+            stagger: 0.05,
+            ease: "power3.out",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["scale-down-fade-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

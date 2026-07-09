@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "masked-slide-reveal",
+  "type": "hyperframes:component",
+  "title": "Masked Slide Reveal",
+  "description": "Words slide up out of an invisible horizontal mask one after another.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "masked-slide-reveal.html",
+      "target": "compositions/components/masked-slide-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/masked-slide-reveal.png"
+  }
+}

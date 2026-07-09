@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Card Resize - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not GSAP target) to fill ~60% of 1920px frame */
+        transform: scale(2.0);
+        transform-origin: center center;
+      }
+      .hf-transition-card-resize {
+        --hf-card-w: 330px;
+        --hf-card-h: 132px;
+        display: grid;
+        grid-template-columns: 92px 1fr;
+        gap: 18px;
+        width: var(--hf-card-w);
+        height: var(--hf-card-h);
+        padding: 18px;
+        overflow: hidden;
+        border: 1px solid #e4e4e7;
+        border-radius: 26px;
+        background: #ffffff;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 26px 80px rgba(0, 0, 0, 0.12);
+        will-change: width, height, transform;
+      }
+      .hf-transition-card-media {
+        width: 92px;
+        height: 92px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #0ea5e9, #a855f7);
+      }
+      .hf-transition-card-copy {
+        display: grid;
+        align-content: center;
+        gap: 7px;
+        min-width: 0;
+      }
+      .hf-transition-card-copy span {
+        color: #71717a;
+        font-size: 13px;
+        font-weight: 850;
+        text-transform: uppercase;
+      }
+      .hf-transition-card-copy strong {
+        white-space: nowrap;
+        font-size: 22px;
+        letter-spacing: -0.01em;
+      }
+      .hf-transition-card-copy p {
+        margin: 0;
+        color: #71717a;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="card-resize-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-card-resize">
+          <div class="hf-transition-card-media"></div>
+          <div class="hf-transition-card-copy">
+            <span>Project status</span>
+            <strong>Ready to render</strong>
+            <p>All scenes validated and queued for export.</p>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-transition-card-resize",
+          { "--hf-card-w": "330px", "--hf-card-h": "132px", opacity: 0, y: 24 },
+          {
+            "--hf-card-w": "560px",
+            "--hf-card-h": "210px",
+            opacity: 1,
+            y: 0,
+            duration: 0.68,
+            ease: "power3.inOut",
+          },
+          0.35,
+        );
+        tl.fromTo(
+          ".hf-transition-card-copy p",
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.28, ease: "power2.out" },
+          0.82,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["card-resize-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

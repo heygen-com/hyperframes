@@ -1,0 +1,71 @@
+<!--
+  Menu Morph - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-menu-morph">
+  <button class="hf-transition-menu-button" type="button" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="hf-transition-menu-actions">
+    <div>Text</div>
+    <div>Image</div>
+    <div>Audio</div>
+  </div>
+</div>
+
+<style>
+  .hf-transition-menu-morph {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 360px;
+    height: 220px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-transition-menu-button {
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    gap: 5px;
+    width: 68px;
+    height: 68px;
+    border: 0;
+    border-radius: 999px;
+    background: #18181b;
+    box-shadow: 0 22px 58px rgba(0, 0, 0, 0.22);
+  }
+  .hf-transition-menu-button span {
+    width: 24px;
+    height: 3px;
+    border-radius: 999px;
+    background: #ffffff;
+    transform-origin: center;
+  }
+  .hf-transition-menu-actions {
+    position: absolute;
+    display: flex;
+    gap: 10px;
+    bottom: 20px;
+  }
+  .hf-transition-menu-actions div {
+    padding: 9px 13px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #18181b;
+    font-size: 13px;
+    font-weight: 850;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-menu-button', { scale: 0.72, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.34, ease: 'back.out(1.8)' }, 0.3);
+  tl.to('.hf-transition-menu-button span:nth-child(1)', { y: 8, rotation: 45, duration: 0.24, ease: 'power2.inOut' }, 0.78);
+  tl.to('.hf-transition-menu-button span:nth-child(2)', { opacity: 0, duration: 0.18, ease: 'power1.out' }, 0.78);
+  tl.to('.hf-transition-menu-button span:nth-child(3)', { y: -8, rotation: -45, duration: 0.24, ease: 'power2.inOut' }, 0.78);
+  tl.fromTo('.hf-transition-menu-actions div', { y: 28, opacity: 0, scale: 0.86 }, { y: 0, opacity: 1, scale: 1, duration: 0.26, stagger: 0.06, ease: 'back.out(1.6)' }, 0.96);
+-->

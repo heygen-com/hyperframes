@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Input Group - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) so the component fills ~60% of frame */
+        transform: scale(1.51);
+      }
+      .hf-ui-input-group {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        width: 460px;
+        height: 52px;
+        overflow: hidden;
+        border: 1px solid #d4d4d8;
+        border-radius: 12px;
+        background: #fff;
+        font-family: Inter, system-ui, sans-serif;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.05);
+      }
+      .hf-ui-input-group span {
+        padding: 0 14px;
+        color: #71717a;
+        font-size: 15px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .hf-ui-input-group input {
+        min-width: 0;
+        height: 100%;
+        border: 0;
+        color: #18181b;
+        font:
+          600 15px/1 Inter,
+          system-ui,
+          sans-serif;
+        background: transparent;
+        outline: none;
+      }
+      .hf-ui-input-group button {
+        align-self: stretch;
+        border: 0;
+        border-left: 1px solid #e4e4e7;
+        background: #fafafa;
+        padding: 0 16px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #18181b;
+        white-space: nowrap;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="input-group-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-input-group">
+          <span>https://</span><input value="hyperframes.dev" readonly /><button type="button">
+            Copy
+          </button>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-input-group",
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.28, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["input-group-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

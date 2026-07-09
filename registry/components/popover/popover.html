@@ -1,0 +1,61 @@
+<!--
+  Popover - anchored panel primitive.
+
+  Animate --hf-popover-open from 0 to 1 on .hf-ui-popover.
+-->
+
+<div class="hf-ui-popover">
+  <button class="hf-ui-popover-anchor" type="button">Format</button>
+  <div class="hf-ui-popover-panel" role="dialog">
+    <strong>Text style</strong>
+    <span>Choose how the caption should appear in this scene.</span>
+  </div>
+</div>
+
+<style>
+  .hf-ui-popover {
+    --hf-popover-open: 0;
+    position: relative;
+    display: inline-block;
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-popover-anchor {
+    height: 40px;
+    padding: 0 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 10px;
+    background: #ffffff;
+    color: inherit;
+    font:
+      750 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-popover-panel {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 12px);
+    width: 240px;
+    display: grid;
+    gap: 7px;
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 16px;
+    background: #ffffff;
+    opacity: var(--hf-popover-open);
+    transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * -8px))
+      scale(calc(0.96 + var(--hf-popover-open) * 0.04));
+    transform-origin: top center;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+    will-change: transform, opacity;
+  }
+  .hf-ui-popover-panel strong {
+    font-size: 15px;
+  }
+  .hf-ui-popover-panel span {
+    color: #71717a;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+</style>

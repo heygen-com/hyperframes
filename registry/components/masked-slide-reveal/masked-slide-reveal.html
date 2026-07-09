@@ -1,0 +1,37 @@
+<!--
+  Masked Slide Reveal - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-masked-slide-reveal">
+  <span>Agents</span><span>compose</span><span>scenes</span>
+</div>
+
+<style>
+  .hf-remocn-masked-slide-reveal {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-masked-slide-reveal {
+    display: inline-flex;
+    gap: 12px;
+    font-size: 56px;
+    line-height: 1;
+  }
+  .hf-remocn-masked-slide-reveal span {
+    display: inline-block;
+    transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+      scale(var(--hf-word-scale, 1));
+    filter: blur(var(--hf-word-blur, 0px));
+    will-change: transform, filter, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-masked-slide-reveal span', { opacity: 0, '--hf-word-y': '22px', '--hf-word-scale': 0.92, '--hf-word-blur': '5px' }, { opacity: 1, '--hf-word-y': '0px', '--hf-word-scale': 1, '--hf-word-blur': '0px', duration: 0.3, stagger: 0.055, ease: 'power3.out' }, startTime);
+-->

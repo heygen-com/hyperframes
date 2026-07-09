@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "opencode",
+  "type": "hyperframes:component",
+  "title": "OpenCode",
+  "description": "A terminal-first coding agent surface with streaming task output.",
+  "tags": ["code-animation", "remocn-port"],
+  "files": [
+    {
+      "path": "opencode.html",
+      "target": "compositions/components/opencode.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/opencode.png"
+  }
+}

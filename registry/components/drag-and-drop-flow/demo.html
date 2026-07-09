@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Drag and Drop Flow - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: scale wrapper (not a GSAP target) — zoom avoided since no inline transform conflict */
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        transform: scale(1.72);
+        transform-origin: center center;
+      }
+      .hf-remocn-drag-and-drop-flow {
+        --hf-accent: #2563eb;
+        --hf-ink: #18181b;
+        --hf-muted: #71717a;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-drag-and-drop-flow {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 28px;
+        padding: 28px;
+        background: #ffffff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        border: 1px solid #e4e4e7;
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .hf-remocn-drag-and-drop-flow .panel {
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #fafafa;
+        padding: 20px;
+      }
+      .hf-remocn-drag-and-drop-flow .prompt {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+      .hf-remocn-drag-and-drop-flow .pill {
+        height: 40px;
+        border-radius: 999px;
+        background: #18181b;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        font-size: 13px;
+        font-weight: 600;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-drag-and-drop-flow .preview {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-drag-and-drop-flow .preview-header {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #71717a;
+        margin-bottom: 4px;
+      }
+      .hf-remocn-drag-and-drop-flow .card {
+        min-height: 72px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+      }
+      .hf-remocn-drag-and-drop-flow .card-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #18181b;
+      }
+      .hf-remocn-drag-and-drop-flow .card-meta {
+        font-size: 11px;
+        color: #71717a;
+      }
+      .hf-remocn-drag-and-drop-flow .card-tag {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        border-radius: 4px;
+        padding: 0 7px;
+        font-size: 10px;
+        font-weight: 600;
+        background: #f0fdf4;
+        color: #16a34a;
+        width: fit-content;
+      }
+      .hf-remocn-drag-and-drop-flow h3 {
+        margin: 0 0 6px;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
+      }
+      .hf-remocn-drag-and-drop-flow p {
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #71717a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="drag-and-drop-flow-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-drag-and-drop-flow">
+          <div class="panel prompt">
+            <h3>Drag and Drop Flow</h3>
+            <p>Cards drag from backlog to timeline with snap feedback.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="preview-header">Timeline</div>
+            <div class="card">
+              <div class="card-label">Intro sequence</div>
+              <div class="card-meta">0s – 2.4s</div>
+              <div class="card-tag">Done</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Motion blur pass</div>
+              <div class="card-meta">2.4s – 4.1s</div>
+              <div class="card-tag">Done</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Export render</div>
+              <div class="card-meta">4.1s – 5.0s</div>
+              <div class="card-tag">Done</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-drag-and-drop-flow .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-drag-and-drop-flow .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["drag-and-drop-flow-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

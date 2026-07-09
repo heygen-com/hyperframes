@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>ChatGPT - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale up — .demo-frame is not a GSAP target */
+        transform: scale(1.72);
+      }
+      .hf-remocn-chat-gpt {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-chat-gpt {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 34px;
+        padding: 28px;
+        background: linear-gradient(135deg, #f4f4f5, #e4e4e7);
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 22px;
+        overflow: hidden;
+      }
+      .hf-remocn-chat-gpt .panel {
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.76);
+        padding: 22px;
+        backdrop-filter: blur(12px);
+      }
+      .hf-remocn-chat-gpt .prompt {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-chat-gpt .pill {
+        height: 42px;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        font-weight: 800;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-chat-gpt .preview {
+        display: grid;
+        gap: 14px;
+      }
+      .hf-remocn-chat-gpt .card {
+        min-height: 78px;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .hf-remocn-chat-gpt .card-line {
+        height: 10px;
+        border-radius: 6px;
+        background: #e4e4e7;
+      }
+      .hf-remocn-chat-gpt .card-line.short {
+        width: 55%;
+      }
+      .hf-remocn-chat-gpt h3 {
+        margin: 0 0 14px;
+        font-size: 32px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-chat-gpt p {
+        margin: 0;
+        color: #475569;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="chat-gpt-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-chat-gpt">
+          <div class="panel prompt">
+            <h3>ChatGPT</h3>
+            <p>A chat composer types a prompt and morphs the voice button into send.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <div class="card-line"></div>
+              <div class="card-line"></div>
+              <div class="card-line short"></div>
+            </div>
+            <div class="card">
+              <div class="card-line"></div>
+              <div class="card-line short"></div>
+            </div>
+            <div class="card">
+              <div class="card-line"></div>
+              <div class="card-line"></div>
+              <div class="card-line short"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-chat-gpt .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-chat-gpt .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["chat-gpt-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Typewriter - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 900px;
+        min-height: 500px;
+        padding: 64px;
+        /* ponytail: scale-up only; GSAP targets .hf-remocn-typewriter with CSS vars, not transforms */
+        transform: scale(2.8);
+      }
+      .hf-remocn-typewriter {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-typewriter {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font:
+          800 52px/1 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .hf-remocn-typewriter span {
+        display: inline-block;
+        max-width: calc(var(--hf-type-progress, 1) * 100%);
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .hf-remocn-typewriter i {
+        width: 3px;
+        height: 52px;
+        border-radius: 999px;
+        background: #18181b;
+        opacity: var(--hf-caret-opacity, 1);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="typewriter-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-typewriter"><span>hyperframes add typewriter</span><i></i></div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-typewriter",
+          { "--hf-type-progress": 0 },
+          { "--hf-type-progress": 1, duration: 1.2, ease: "steps(28)" },
+          startTime,
+        );
+        tl.to(
+          ".hf-remocn-typewriter i",
+          { "--hf-caret-opacity": 0.2, duration: 0.24, repeat: 7, yoyo: true, ease: "none" },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["typewriter-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

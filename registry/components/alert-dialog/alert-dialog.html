@@ -1,0 +1,105 @@
+<!--
+  Alert Dialog - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-alert-dialog" data-state="open">
+  <div class="hf-ui-alert-dialog-overlay"></div>
+  <div class="hf-ui-alert-dialog-panel">
+    <div class="hf-ui-alert-dialog-icon">!</div>
+    <div class="hf-ui-alert-dialog-copy">
+      <h3>Delete render?</h3>
+      <p>This action cannot be undone. The project file stays intact.</p>
+    </div>
+    <div class="hf-ui-alert-dialog-actions">
+      <button type="button" class="hf-ui-alert-dialog-cancel">Cancel</button>
+      <button type="button" class="hf-ui-alert-dialog-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hf-ui-alert-dialog {
+    --hf-alert-open: 1;
+    --hf-alert-y: 0px;
+    --hf-alert-scale: 1;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: min(560px, 100%);
+    min-height: 360px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-alert-dialog-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: 28px;
+    background: rgba(24, 24, 27, 0.42);
+    opacity: var(--hf-alert-open);
+  }
+  .hf-ui-alert-dialog-panel {
+    position: relative;
+    display: grid;
+    gap: 18px;
+    width: 420px;
+    padding: 28px;
+    border: 1px solid #fee2e2;
+    border-radius: 22px;
+    background: #ffffff;
+    color: #18181b;
+    opacity: var(--hf-alert-open);
+    transform: translateY(var(--hf-alert-y)) scale(var(--hf-alert-scale));
+    box-shadow: 0 28px 80px rgba(127, 29, 29, 0.2);
+    will-change: opacity, transform;
+  }
+  .hf-ui-alert-dialog-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    background: #fee2e2;
+    color: #dc2626;
+    font-weight: 900;
+  }
+  .hf-ui-alert-dialog-copy h3 {
+    margin: 0 0 8px;
+    font-size: 22px;
+  }
+  .hf-ui-alert-dialog-copy p {
+    margin: 0;
+    color: #71717a;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .hf-ui-alert-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .hf-ui-alert-dialog-actions button {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 10px;
+    font-weight: 800;
+  }
+  .hf-ui-alert-dialog-cancel {
+    border: 1px solid #e4e4e7;
+    background: #ffffff;
+    color: #18181b;
+  }
+  .hf-ui-alert-dialog-confirm {
+    border: 0;
+    background: #dc2626;
+    color: #ffffff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-alert-dialog-overlay', { opacity: 0 }, { opacity: 1, duration: 0.26, ease: 'power2.out' }, 0.3);
+  tl.fromTo('.hf-ui-alert-dialog-panel', { opacity: 0, y: 34, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: 'back.out(1.3)' }, 0.42);
+  tl.fromTo('.hf-ui-alert-dialog-actions button', { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, stagger: 0.06, ease: 'power2.out' }, 0.8);
+-->

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>GitHub Stars - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale-up only — demo-frame is not a GSAP target */
+        transform: scale(1.8);
+      }
+      .hf-remocn-github-stars {
+        --hf-accent: #2563eb;
+        --hf-ink: #111827;
+        --hf-muted: #6b7280;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-github-stars {
+        width: 700px;
+        border-radius: 30px;
+        padding: 34px;
+        background: #0f172a;
+        color: #fff;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+      }
+      .hf-remocn-github-stars header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .hf-remocn-github-stars .avatar {
+        width: 70px;
+        height: 70px;
+        border-radius: 22px;
+        background: linear-gradient(135deg, #38bdf8, #8b5cf6);
+      }
+      .hf-remocn-github-stars h3 {
+        margin: 0;
+        font-size: 36px;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-github-stars p {
+        color: #94a3b8;
+        margin: 4px 0 0;
+        font-size: 16px;
+      }
+      .hf-remocn-github-stars .stat {
+        margin-top: 30px;
+        font-size: 82px;
+        font-weight: 900;
+        letter-spacing: -0.08em;
+        transform: translateY(var(--hf-stat-y, 0px));
+      }
+      .hf-remocn-github-stars .avatars {
+        display: flex;
+        margin-top: 18px;
+      }
+      .hf-remocn-github-stars .avatars span {
+        width: 46px;
+        height: 46px;
+        border-radius: 999px;
+        border: 3px solid #0f172a;
+        margin-left: -10px;
+        background: var(--c);
+        opacity: var(--hf-avatar-opacity, 1);
+        transform: translateY(var(--hf-avatar-y, 0px));
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="github-stars-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-github-stars">
+          <header>
+            <div class="avatar"></div>
+            <div>
+              <h3>GitHub Stars</h3>
+              <p>A repo star-count card with avatars, velocity line, and odometer.</p>
+            </div>
+          </header>
+          <div class="stat">30.6K</div>
+          <div class="avatars">
+            <span style="--c: #38bdf8"></span><span style="--c: #f472b6"></span
+            ><span style="--c: #34d399"></span><span style="--c: #f59e0b"></span
+            ><span style="--c: #a78bfa"></span><span style="--c: #fb7185"></span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-github-stars .stat",
+          { "--hf-stat-y": "28px", opacity: 0 },
+          { "--hf-stat-y": "0px", opacity: 1, duration: 0.46, ease: "back.out(1.6)" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-github-stars .avatars span",
+          { "--hf-avatar-y": "18px", "--hf-avatar-opacity": 0 },
+          {
+            "--hf-avatar-y": "0px",
+            "--hf-avatar-opacity": 1,
+            duration: 0.28,
+            stagger: 0.05,
+            ease: "power2.out",
+          },
+          startTime + 0.22,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["github-stars-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

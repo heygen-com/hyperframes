@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Radio Group - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .panel {
+        padding: 46px 56px;
+        border: 1px solid #e4e4e7;
+        border-radius: 26px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.11);
+        /* ponytail: scale up non-GSAP wrapper so card fills ~60% of frame */
+        transform: scale(2.8);
+      }
+      .hf-ui-radio-group {
+        display: grid;
+        gap: 28px;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+      }
+      .hf-ui-radio {
+        --hf-radio-selected: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 22px;
+        color: color-mix(in srgb, #18181b calc(55% + var(--hf-radio-selected) * 45%), #71717a);
+        font:
+          850 34px/1 Inter,
+          system-ui,
+          sans-serif;
+      }
+      .hf-ui-radio span {
+        width: 40px;
+        height: 40px;
+        border: 2px solid color-mix(in srgb, #18181b calc(var(--hf-radio-selected) * 100%), #d4d4d8);
+        border-radius: 999px;
+        background: radial-gradient(
+          circle,
+          #18181b calc(var(--hf-radio-selected) * 36%),
+          transparent calc(var(--hf-radio-selected) * 38%)
+        );
+        transform: scale(calc(0.94 + var(--hf-radio-selected) * 0.06));
+      }
+      .first {
+        --hf-radio-selected: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="radio-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="panel">
+        <div class="hf-ui-radio-group">
+          <label class="hf-ui-radio first"><span></span>Fast</label
+          ><label class="hf-ui-radio second"><span></span>Cinematic</label>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(".first", { "--hf-radio-selected": 0, duration: 0.22, ease: "power2.out" }, 0.85);
+        tl.to(".second", { "--hf-radio-selected": 1, duration: 0.28, ease: "back.out(1.8)" }, 0.85);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["radio-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

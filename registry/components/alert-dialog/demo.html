@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Alert Dialog - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        /* neutral stone — reads as a real app canvas behind the backdrop */
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to hit 55–75% frame fill */
+        transform: scale(1.28);
+        transform-origin: center center;
+      }
+      .hf-ui-alert-dialog {
+        --hf-alert-open: 1;
+        --hf-alert-y: 0px;
+        --hf-alert-scale: 1;
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: min(560px, 100%);
+        min-height: 360px;
+        font-family: Inter, system-ui, sans-serif;
+        z-index: 1;
+      }
+      .hf-ui-alert-dialog-overlay {
+        /* ponytail: extend beyond container so it reads as a full-viewport backdrop */
+        position: fixed;
+        inset: 0;
+        border-radius: 0;
+        background: rgba(24, 24, 27, 0.48);
+        opacity: var(--hf-alert-open);
+        z-index: 0;
+      }
+      .hf-ui-alert-dialog-panel {
+        position: relative;
+        display: grid;
+        gap: 18px;
+        width: 420px;
+        padding: 28px;
+        border: 1px solid #fee2e2;
+        border-radius: 16px;
+        background: #ffffff;
+        color: #18181b;
+        opacity: var(--hf-alert-open);
+        transform: translateY(var(--hf-alert-y)) scale(var(--hf-alert-scale));
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(127, 29, 29, 0.08);
+        will-change: opacity, transform;
+        z-index: 1;
+      }
+      .hf-ui-alert-dialog-icon {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        background: #fee2e2;
+        color: #dc2626;
+        font-weight: 900;
+      }
+      .hf-ui-alert-dialog-copy h3 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      .hf-ui-alert-dialog-copy p {
+        margin: 0;
+        color: #71717a;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .hf-ui-alert-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .hf-ui-alert-dialog-actions button {
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 10px;
+        font-weight: 800;
+      }
+      .hf-ui-alert-dialog-cancel {
+        border: 1px solid #e4e4e7;
+        background: #ffffff;
+        color: #18181b;
+      }
+      .hf-ui-alert-dialog-confirm {
+        border: 0;
+        background: #dc2626;
+        color: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="alert-dialog-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-alert-dialog" data-state="open">
+          <div class="hf-ui-alert-dialog-overlay"></div>
+          <div class="hf-ui-alert-dialog-panel">
+            <div class="hf-ui-alert-dialog-icon">!</div>
+            <div class="hf-ui-alert-dialog-copy">
+              <h3>Delete render?</h3>
+              <p>This action cannot be undone. The project file stays intact.</p>
+            </div>
+            <div class="hf-ui-alert-dialog-actions">
+              <button type="button" class="hf-ui-alert-dialog-cancel">Cancel</button>
+              <button type="button" class="hf-ui-alert-dialog-confirm">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-alert-dialog-overlay",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.26, ease: "power2.out" },
+          0.3,
+        );
+        tl.fromTo(
+          ".hf-ui-alert-dialog-panel",
+          { opacity: 0, y: 34, scale: 0.94 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: "back.out(1.3)" },
+          0.42,
+        );
+        tl.fromTo(
+          ".hf-ui-alert-dialog-actions button",
+          { y: 12, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.28, stagger: 0.06, ease: "power2.out" },
+          0.8,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["alert-dialog-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

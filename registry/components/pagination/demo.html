@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Pagination - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) to fill ~60% of frame */
+        transform: scale(1.88);
+      }
+      .hf-ui-pagination {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 15px;
+      }
+      .hf-ui-pagination :is(a, button) {
+        display: grid;
+        place-items: center;
+        min-width: 42px;
+        height: 42px;
+        padding: 0 14px;
+        border: 1px solid #e4e4e7;
+        border-radius: 10px;
+        background: #fff;
+        color: #18181b;
+        font-weight: 500;
+        font-size: 15px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        cursor: default;
+        user-select: none;
+      }
+      .hf-ui-pagination [aria-current="page"] {
+        background: #18181b;
+        color: #fff;
+        font-weight: 600;
+        border-color: #18181b;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="pagination-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <nav class="hf-ui-pagination" aria-label="Pagination">
+          <button type="button">Prev</button><a>1</a><a aria-current="page">2</a><a>3</a
+          ><button type="button">Next</button>
+        </nav>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-pagination > *",
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.2, stagger: 0.035, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["pagination-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

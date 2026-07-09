@@ -1,0 +1,41 @@
+<!--
+  Badge - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<span class="hf-ui-badge" data-tone="success">Published</span>
+
+<style>
+  .hf-ui-badge {
+    --hf-badge-scale: 1;
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font:
+      800 12px/1 Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: 0.01em;
+    transform: scale(var(--hf-badge-scale));
+    transform-origin: center;
+  }
+  .hf-ui-badge[data-tone="neutral"] {
+    background: #f4f4f5;
+    color: #3f3f46;
+  }
+  .hf-ui-badge[data-tone="warning"] {
+    background: #fef3c7;
+    color: #92400e;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-badge', { opacity: 0, '--hf-badge-scale': 0.72 }, { opacity: 1, '--hf-badge-scale': 1, duration: 0.3, ease: 'back.out(2)' }, startTime);
+-->

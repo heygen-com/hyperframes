@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Bottom Up Letters - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #16120e;
+        color: #f7ead6;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-bottom-up-letters {
+        display: inline-block;
+        font-size: 180px; /* ponytail: scaled up from 126px — fills ~65% of 1920px frame width */
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+      }
+      .hf-bottom-up-letters-char {
+        display: inline-block;
+        opacity: 0;
+        transform: translate3d(0, 0.85em, 0);
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="bottom-up-letters-demo"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4"
+    >
+      <div class="hf-bottom-up-letters">Build with motion</div>
+      <script>
+        document.querySelectorAll(".hf-bottom-up-letters").forEach((el) => {
+          const text = el.textContent || "";
+          el.textContent = "";
+          for (const char of text) {
+            const span = document.createElement("span");
+            span.className = "hf-bottom-up-letters-char";
+            span.textContent = char === " " ? "\u00a0" : char;
+            el.appendChild(span);
+          }
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-bottom-up-letters-char",
+          { opacity: 1, y: 0, duration: 0.48, ease: "back.out(1.7)", stagger: 0.025 },
+          0.45,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["bottom-up-letters-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

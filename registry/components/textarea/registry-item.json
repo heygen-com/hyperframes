@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "textarea",
+  "type": "hyperframes:component",
+  "title": "Textarea",
+  "description": "A multiline text field primitive with typed copy and helper text",
+  "tags": ["ui-primitive", "remocn-port", "textarea", "field"],
+  "files": [
+    {
+      "path": "textarea.html",
+      "target": "compositions/components/textarea.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/textarea.png"
+  }
+}

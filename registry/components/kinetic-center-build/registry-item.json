@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "kinetic-center-build",
+  "type": "hyperframes:component",
+  "title": "Kinetic Center Build",
+  "description": "A centered phrase builder where words push into place until the line locks.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "kinetic-center-build.html",
+      "target": "compositions/components/kinetic-center-build.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-center-build.png"
+  }
+}

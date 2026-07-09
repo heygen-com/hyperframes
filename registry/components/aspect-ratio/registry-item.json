@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "aspect-ratio",
+  "type": "hyperframes:component",
+  "title": "Aspect Ratio",
+  "description": "An aspect-ratio frame primitive for media, previews, and card thumbnails",
+  "tags": ["ui-primitive", "remocn-port", "aspect-ratio", "layout"],
+  "files": [
+    {
+      "path": "aspect-ratio.html",
+      "target": "compositions/components/aspect-ratio.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/aspect-ratio.png"
+  }
+}

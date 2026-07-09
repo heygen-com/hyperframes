@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Pricing Tier Focus - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f5f5f4;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 52px;
+        /* ponytail: scale on wrapper — GSAP targets are children, no conflict */
+        transform: scale(1.9);
+        transform-origin: center center;
+      }
+      .hf-remocn-pricing-tier-focus {
+        --hf-accent: #2563eb;
+        --hf-ink: #18181b;
+        --hf-muted: #71717a;
+        --hf-surface: #ffffff;
+        color: var(--hf-ink);
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-remocn-pricing-tier-focus {
+        width: 820px;
+        min-height: 460px;
+        border-radius: 24px;
+        padding: 28px;
+        background: #fafafa;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        border: 1px solid #e4e4e7;
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 20px;
+        overflow: hidden;
+      }
+      .hf-remocn-pricing-tier-focus .panel {
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #ffffff;
+        padding: 20px;
+      }
+      .hf-remocn-pricing-tier-focus .prompt {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+      }
+      .hf-remocn-pricing-tier-focus .pill {
+        height: 40px;
+        border-radius: 999px;
+        background: #18181b;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        font-size: 13px;
+        font-weight: 600;
+        transform: translateX(var(--hf-pill-x, 0px));
+      }
+      .hf-remocn-pricing-tier-focus .preview {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .hf-remocn-pricing-tier-focus .card {
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        padding: 16px 18px;
+        transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+          scale(var(--hf-card-scale, 1));
+        opacity: var(--hf-card-opacity, 1);
+      }
+      .hf-remocn-pricing-tier-focus .card.card--featured {
+        border-color: #2563eb;
+        box-shadow: 0 8px 28px rgba(37, 99, 235, 0.18);
+      }
+      .hf-remocn-pricing-tier-focus .card-tier {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #71717a;
+        margin: 0 0 6px;
+      }
+      .hf-remocn-pricing-tier-focus .card--featured .card-tier {
+        color: #2563eb;
+      }
+      .hf-remocn-pricing-tier-focus .card-price {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        color: #18181b;
+        margin: 0 0 4px;
+      }
+      .hf-remocn-pricing-tier-focus .card-desc {
+        font-size: 11px;
+        color: #71717a;
+        margin: 0;
+      }
+      .hf-remocn-pricing-tier-focus h3 {
+        margin: 0 0 10px;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: #18181b;
+      }
+      .hf-remocn-pricing-tier-focus p {
+        margin: 0 0 14px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #71717a;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="pricing-tier-focus-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-pricing-tier-focus">
+          <div class="panel prompt">
+            <h3>Pricing Tier Focus</h3>
+            <p>Pricing cards shift focus from free to pro with spotlight emphasis.</p>
+            <div class="pill">Generate scene</div>
+            <div class="pill">Refine motion</div>
+            <div class="pill">Export</div>
+          </div>
+          <div class="panel preview">
+            <div class="card">
+              <p class="card-tier">Free</p>
+              <p class="card-price">$0<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Up to 3 projects · 5 exports/month</p>
+            </div>
+            <div class="card card--featured">
+              <p class="card-tier">Pro</p>
+              <p class="card-price">$29<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Unlimited projects · HD exports · Priority</p>
+            </div>
+            <div class="card">
+              <p class="card-tier">Enterprise</p>
+              <p class="card-price">$99<span style="font-size:13px;font-weight:500;color:#71717a">/mo</span></p>
+              <p class="card-desc">Custom seats · SSO · SLA support</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-pricing-tier-focus .pill",
+          { "--hf-pill-x": "-18px", opacity: 0 },
+          { "--hf-pill-x": "0px", opacity: 1, duration: 0.25, stagger: 0.08, ease: "power2.out" },
+          startTime,
+        );
+        tl.fromTo(
+          ".hf-remocn-pricing-tier-focus .card",
+          { "--hf-card-y": "28px", "--hf-card-scale": 0.96, "--hf-card-opacity": 0 },
+          {
+            "--hf-card-y": "0px",
+            "--hf-card-scale": 1,
+            "--hf-card-opacity": 1,
+            duration: 0.42,
+            stagger: 0.12,
+            ease: "power3.out",
+          },
+          startTime + 0.2,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["pricing-tier-focus-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

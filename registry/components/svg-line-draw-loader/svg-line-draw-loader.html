@@ -1,0 +1,75 @@
+<!--
+  SVG Line Draw Loader - advanced HyperFrames primitive.
+
+  This is intentionally seekable: drive it from a paused GSAP timeline.
+  MotionPath examples require GSAP MotionPathPlugin. Three.js examples expose
+  a render(progress) adapter instead of a free-running requestAnimationFrame loop.
+-->
+
+<div class="hf-advanced-svg-line-draw-loader">
+  <svg viewBox="0 0 520 220"><path d="M24 160 C90 28, 188 40, 228 128 S356 234, 494 68" /></svg>
+</div>
+
+<style>
+  .hf-advanced-svg-line-draw-loader {
+    color: #111827;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-advanced-svg-line-draw-loader {
+    width: 720px;
+    min-height: 420px;
+    border-radius: 30px;
+    padding: 36px;
+    background: #fff;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+    display: grid;
+    place-items: center;
+  }
+  .hf-advanced-svg-line-draw-loader .grid {
+    display: grid;
+    grid-template-columns: repeat(8, 46px);
+    gap: 10px;
+  }
+  .hf-advanced-svg-line-draw-loader .cell {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #60a5fa, #7c3aed);
+    transform: translateY(var(--hf-cell-y, 0px)) scale(var(--hf-cell-scale, 1));
+    opacity: var(--hf-cell-opacity, 1);
+  }
+  .hf-advanced-svg-line-draw-loader svg {
+    width: 520px;
+    height: 220px;
+    overflow: visible;
+  }
+  .hf-advanced-svg-line-draw-loader path {
+    fill: none;
+    stroke: #2563eb;
+    stroke-width: 14;
+    stroke-linecap: round;
+    stroke-dasharray: 900;
+    stroke-dashoffset: var(--hf-dash, 0);
+  }
+  .hf-advanced-svg-line-draw-loader .stack {
+    position: relative;
+    width: 520px;
+    height: 260px;
+  }
+  .hf-advanced-svg-line-draw-loader .card {
+    position: absolute;
+    inset: 0;
+    border-radius: 26px;
+    background: linear-gradient(135deg, #f8fafc, #dbeafe);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 20px 54px rgba(15, 23, 42, 0.14);
+    transform: translateY(var(--hf-card-y, 0px)) scale(var(--hf-card-scale, 1));
+    opacity: var(--hf-card-opacity, 1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  const startTime = 0;
+  tl.fromTo('.hf-advanced-svg-line-draw-loader path', { '--hf-dash': 900 }, { '--hf-dash': 0, duration: 1.35, ease: 'power3.inOut' }, startTime);
+-->

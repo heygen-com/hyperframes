@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tabs Slide Indicator - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper only — GSAP targets .indicator inside, not this element */
+        transform: scale(3.5);
+      }
+      .hf-transition-tabs-slide-indicator {
+        --hf-tab-x: 0px;
+        position: relative;
+        display: inline-grid;
+        grid-template-columns: repeat(3, 86px);
+        padding: 4px;
+        border: 1px solid #e4e4e7;
+        border-radius: 999px;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-transition-tabs-slide-indicator .indicator {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        width: 86px;
+        height: 36px;
+        border-radius: 999px;
+        background: #18181b;
+        transform: translateX(var(--hf-tab-x));
+        box-shadow: 0 12px 26px rgba(24, 24, 27, 0.18);
+      }
+      .hf-transition-tabs-slide-indicator button {
+        position: relative;
+        z-index: 1;
+        height: 36px;
+        border: 0;
+        background: transparent;
+        color: #71717a;
+        font-weight: 600;
+      }
+      .hf-transition-tabs-slide-indicator button:nth-of-type(2) {
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="tabs-slide-indicator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-tabs-slide-indicator">
+          <span class="indicator"></span><button>Plan</button><button>Debug</button
+          ><button>Ask</button>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-transition-tabs-slide-indicator .indicator",
+          { "--hf-tab-x": "0px" },
+          { "--hf-tab-x": "86px", duration: 0.42, ease: "power3.inOut" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["tabs-slide-indicator-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

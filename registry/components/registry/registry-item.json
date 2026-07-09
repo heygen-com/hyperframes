@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "registry",
+  "type": "hyperframes:component",
+  "title": "Registry",
+  "description": "A catalog registry card for showing installable component metadata.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "registry.html",
+      "target": "compositions/components/registry.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/registry.png"
+  }
+}

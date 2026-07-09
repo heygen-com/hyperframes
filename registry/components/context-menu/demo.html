@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Context Menu - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f5f5f4;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper (not a GSAP target) — avoids clobbering inline transforms on animated children */
+        transform: scale(1.41);
+        transform-origin: center center;
+      }
+      .hf-ui-context-scene {
+        position: relative;
+        width: 360px;
+        height: 280px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* Right-click target surface — gives the menu a contextual anchor */
+      .hf-ui-context-surface {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 220px;
+        height: 140px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hf-ui-context-surface-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: #a1a1aa;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      .hf-ui-context-cursor {
+        position: absolute;
+        left: 54px;
+        top: 38px;
+        width: 28px;
+        height: 28px;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.28));
+      }
+      .hf-ui-context-menu {
+        position: absolute;
+        left: 94px;
+        top: 62px;
+        width: 230px;
+        padding: 8px;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        background: #ffffff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.14);
+        transform-origin: top left;
+      }
+      .hf-ui-context-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 38px;
+        padding: 0 10px;
+        border-radius: 10px;
+        color: #18181b;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .hf-ui-context-item.is-active {
+        background: #18181b;
+        color: #ffffff;
+      }
+      .hf-ui-context-item.danger {
+        color: #dc2626;
+      }
+      .hf-ui-context-separator {
+        height: 1px;
+        margin: 6px;
+        background: #e4e4e7;
+      }
+      .hf-ui-context-item kbd {
+        color: inherit;
+        opacity: 0.52;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="context-menu-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-context-scene">
+          <div class="hf-ui-context-surface">
+            <span class="hf-ui-context-surface-label">Canvas</span>
+          </div>
+          <div class="hf-ui-context-cursor">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M5.5 3.2 L5.5 19.6 L9.7 15.7 L12.5 21.9 L15.0 20.7 L12.3 14.6 L17.9 14.2 Z"
+                fill="#18181b"
+                stroke="#ffffff"
+                stroke-width="1.5"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <div class="hf-ui-context-menu">
+            <div class="hf-ui-context-item is-active"><span>Duplicate</span><kbd>D</kbd></div>
+            <div class="hf-ui-context-item"><span>Rename</span><kbd>R</kbd></div>
+            <div class="hf-ui-context-separator"></div>
+            <div class="hf-ui-context-item danger"><span>Delete</span><kbd>Del</kbd></div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-context-cursor",
+          { x: -36, y: -18, opacity: 0 },
+          { x: 0, y: 0, opacity: 1, duration: 0.36, ease: "power2.out" },
+          0.25,
+        );
+        tl.fromTo(
+          ".hf-ui-context-menu",
+          { opacity: 0, scale: 0.88 },
+          { opacity: 1, scale: 1, duration: 0.26, ease: "back.out(1.8)" },
+          0.62,
+        );
+        tl.fromTo(
+          ".hf-ui-context-item",
+          { x: -10, opacity: 0 },
+          { x: 0, opacity: 1, duration: 0.2, stagger: 0.05, ease: "power2.out" },
+          0.75,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["context-menu-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

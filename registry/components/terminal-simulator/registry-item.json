@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "terminal-simulator",
+  "type": "hyperframes:component",
+  "title": "Terminal Simulator",
+  "description": "A terminal window types commands and streams log output.",
+  "tags": ["code-animation", "remocn-port"],
+  "files": [
+    {
+      "path": "terminal-simulator.html",
+      "target": "compositions/components/terminal-simulator.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/terminal-simulator.png"
+  }
+}

@@ -1,0 +1,73 @@
+<!--
+  Number Wheel - rolling digit counter.
+
+  Markup:
+    <span class="hf-number-wheel" data-value="30222"></span>
+
+  Paste this snippet once. It builds one column per digit. Animate the generated
+  .hf-number-wheel-strip elements with the data-target-y custom property.
+-->
+
+<style>
+  .hf-number-wheel {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-number-wheel-digit {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+  }
+  .hf-number-wheel-strip {
+    display: grid;
+    transform: translateY(0em);
+    will-change: transform;
+  }
+  .hf-number-wheel-strip span {
+    height: 1em;
+    line-height: 1em;
+  }
+</style>
+
+<script>
+  (function () {
+    document.querySelectorAll(".hf-number-wheel").forEach((el) => {
+      if (el.dataset.hfNumberWheelReady === "1") return;
+      const value = el.dataset.value || "0";
+      el.textContent = "";
+      for (const char of value) {
+        if (!/\d/.test(char)) {
+          el.append(document.createTextNode(char));
+          continue;
+        }
+        const digit = Number(char);
+        const frame = document.createElement("span");
+        frame.className = "hf-number-wheel-digit";
+        const strip = document.createElement("span");
+        strip.className = "hf-number-wheel-strip";
+        strip.style.setProperty("--hf-number-target-y", `${-digit}em`);
+        for (let i = 0; i <= digit; i++) {
+          const step = document.createElement("span");
+          step.textContent = String(i);
+          strip.appendChild(step);
+        }
+        frame.appendChild(strip);
+        el.appendChild(frame);
+      }
+      el.dataset.hfNumberWheelReady = "1";
+    });
+  })();
+</script>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-number-wheel-strip", {
+    y: (_, strip) => strip.style.getPropertyValue("--hf-number-target-y"),
+    duration: 1.1,
+    ease: "power3.out",
+    stagger: 0.05,
+  }, startTime);
+-->

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "combobox",
+  "type": "hyperframes:component",
+  "title": "Combobox",
+  "description": "A combobox primitive with search trigger, filtered option list, and selected-row highlight",
+  "tags": ["ui-primitive", "remocn-port", "combobox", "control"],
+  "files": [
+    {
+      "path": "combobox.html",
+      "target": "compositions/components/combobox.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/combobox.png"
+  }
+}

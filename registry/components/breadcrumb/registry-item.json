@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "breadcrumb",
+  "type": "hyperframes:component",
+  "title": "Breadcrumb",
+  "description": "A breadcrumb primitive for compact path and hierarchy reveals",
+  "tags": ["ui-primitive", "remocn-port", "breadcrumb", "navigation"],
+  "files": [
+    {
+      "path": "breadcrumb.html",
+      "target": "compositions/components/breadcrumb.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/breadcrumb.png"
+  }
+}

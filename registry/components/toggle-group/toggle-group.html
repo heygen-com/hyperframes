@@ -1,0 +1,43 @@
+<!-- Toggle Group - animate --hf-toggle-index between segment indices. -->
+<div class="hf-ui-toggle-group" style="--hf-toggle-index: 0">
+  <span class="hf-ui-toggle-indicator"></span>
+  <button type="button">Draft</button><button type="button">Preview</button
+  ><button type="button">Export</button>
+</div>
+<style>
+  .hf-ui-toggle-group {
+    --hf-toggle-count: 3;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: min(420px, 100%);
+    padding: 4px;
+    border-radius: 14px;
+    background: #f4f4f5;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-toggle-indicator {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc((100% - 8px) / var(--hf-toggle-count));
+    height: calc(100% - 8px);
+    border-radius: 11px;
+    background: #fff;
+    transform: translateX(calc(var(--hf-toggle-index) * 100%));
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  }
+  .hf-ui-toggle-group button {
+    position: relative;
+    z-index: 1;
+    height: 38px;
+    border: 0;
+    background: transparent;
+    color: #52525b;
+    font:
+      750 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+</style>

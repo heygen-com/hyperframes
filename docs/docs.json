@@ -122,14 +122,20 @@
             "group": "Code Animations",
             "pages": [
               "catalog/blocks/code-3d-extrude",
-              "catalog/blocks/code-shader-dissolve",
-              "catalog/blocks/code-particle-assemble",
-              "catalog/blocks/code-morph",
-              "catalog/blocks/code-snippet-flight",
-              "catalog/blocks/code-typing",
               "catalog/blocks/code-diff",
               "catalog/blocks/code-highlight",
-              "catalog/blocks/code-scroll"
+              "catalog/blocks/code-morph",
+              "catalog/blocks/code-particle-assemble",
+              "catalog/blocks/code-scroll",
+              "catalog/blocks/code-shader-dissolve",
+              "catalog/blocks/code-snippet-flight",
+              "catalog/blocks/code-typing",
+              "catalog/components/claude-code",
+              "catalog/components/code-accordion",
+              "catalog/components/glass-code-block",
+              "catalog/components/live-code-compilation",
+              "catalog/components/opencode",
+              "catalog/components/terminal-simulator"
             ]
           },
           {
@@ -179,7 +185,10 @@
               "catalog/blocks/spotify-card",
               "catalog/blocks/tiktok-follow",
               "catalog/blocks/x-post",
-              "catalog/blocks/yt-lower-third"
+              "catalog/blocks/yt-lower-third",
+              "catalog/components/github-stars",
+              "catalog/components/x-follow-card",
+              "catalog/components/x-followers-overview"
             ]
           },
           {
@@ -245,7 +254,23 @@
               "catalog/blocks/north-korea-locked-down",
               "catalog/blocks/nyc-paris-flight",
               "catalog/blocks/ui-3d-reveal",
-              "catalog/blocks/vpn-youtube-spot"
+              "catalog/blocks/vpn-youtube-spot",
+              "catalog/components/ai-generation-canvas",
+              "catalog/components/browser-flow",
+              "catalog/components/chat-gpt",
+              "catalog/components/chat-to-preview-layout",
+              "catalog/components/claude-chat",
+              "catalog/components/data-flow-pipes",
+              "catalog/components/device-mockup-zoom",
+              "catalog/components/drag-and-drop-flow",
+              "catalog/components/ecosystem-constellation",
+              "catalog/components/hero-device-assemble",
+              "catalog/components/infinite-bento-pan",
+              "catalog/components/infinite-marquee",
+              "catalog/components/landing-code-showcase",
+              "catalog/components/pricing-tier-focus",
+              "catalog/components/terminal-to-browser-deploy",
+              "catalog/components/v0"
             ]
           },
           {
@@ -257,17 +282,171 @@
               "catalog/blocks/us-map-bubble",
               "catalog/blocks/us-map-flow",
               "catalog/blocks/us-map-hex",
-              "catalog/blocks/world-map"
+              "catalog/blocks/world-map",
+              "catalog/components/animated-bar-chart",
+              "catalog/components/animated-line-chart",
+              "catalog/components/dashboard-populate"
+            ]
+          },
+          {
+            "group": "UI Primitives",
+            "pages": [
+              "catalog/components/accordion",
+              "catalog/components/alert",
+              "catalog/components/alert-dialog",
+              "catalog/components/aspect-ratio",
+              "catalog/components/avatar",
+              "catalog/components/backdrop",
+              "catalog/components/badge",
+              "catalog/components/blur-in",
+              "catalog/components/breadcrumb",
+              "catalog/components/button",
+              "catalog/components/button-group",
+              "catalog/components/calendar",
+              "catalog/components/card",
+              "catalog/components/caret",
+              "catalog/components/carousel",
+              "catalog/components/chart",
+              "catalog/components/checkbox",
+              "catalog/components/collapsible",
+              "catalog/components/combobox",
+              "catalog/components/command-menu",
+              "catalog/components/command-menu-item",
+              "catalog/components/context-menu",
+              "catalog/components/cursor",
+              "catalog/components/dialog",
+              "catalog/components/drawer",
+              "catalog/components/dropdown-menu",
+              "catalog/components/dropdown-menu-item",
+              "catalog/components/empty",
+              "catalog/components/field",
+              "catalog/components/hover-card",
+              "catalog/components/input",
+              "catalog/components/input-group",
+              "catalog/components/input-otp",
+              "catalog/components/item",
+              "catalog/components/kbd",
+              "catalog/components/label",
+              "catalog/components/menubar",
+              "catalog/components/native-select",
+              "catalog/components/navigation-menu",
+              "catalog/components/pagination",
+              "catalog/components/popover",
+              "catalog/components/progress",
+              "catalog/components/progress-steps",
+              "catalog/components/radio",
+              "catalog/components/registry",
+              "catalog/components/remocn-ui",
+              "catalog/components/resizable",
+              "catalog/components/scroll-area",
+              "catalog/components/select",
+              "catalog/components/select-item",
+              "catalog/components/separator",
+              "catalog/components/sheet",
+              "catalog/components/sidebar",
+              "catalog/components/skeleton",
+              "catalog/components/skeleton-block",
+              "catalog/components/slider",
+              "catalog/components/spinner",
+              "catalog/components/stepper",
+              "catalog/components/switch",
+              "catalog/components/table",
+              "catalog/components/tabs",
+              "catalog/components/textarea",
+              "catalog/components/toast",
+              "catalog/components/toggle",
+              "catalog/components/toggle-group",
+              "catalog/components/tooltip"
+            ]
+          },
+          {
+            "group": "UI Flows",
+            "pages": [
+              "catalog/components/ai-prompt-flow",
+              "catalog/components/checkout-flow",
+              "catalog/components/onboarding-stepper-flow",
+              "catalog/components/settings-toggle-flow",
+              "catalog/components/signup-flow"
+            ]
+          },
+          {
+            "group": "Transition Primitives",
+            "pages": [
+              "catalog/components/avatar-group-hover",
+              "catalog/components/badge-pop",
+              "catalog/components/card-resize",
+              "catalog/components/chromatic-aberration-wipe",
+              "catalog/components/code-diff-wipe",
+              "catalog/components/directional-wipe",
+              "catalog/components/frosted-glass-wipe",
+              "catalog/components/icon-swap",
+              "catalog/components/image-expand-to-fullscreen",
+              "catalog/components/input-feedback",
+              "catalog/components/menu-morph",
+              "catalog/components/micro-scale-fade",
+              "catalog/components/micro-transitions",
+              "catalog/components/number-pop-in",
+              "catalog/components/page-slide",
+              "catalog/components/panel-reveal",
+              "catalog/components/skeleton-reveal",
+              "catalog/components/spatial-push",
+              "catalog/components/success-check",
+              "catalog/components/tabs-slide-indicator",
+              "catalog/components/text-stagger",
+              "catalog/components/text-state-swap",
+              "catalog/components/tilt-card",
+              "catalog/components/tool-menu-slide-in",
+              "catalog/components/zoom-through-transition"
+            ]
+          },
+          {
+            "group": "Motion Primitives",
+            "pages": [
+              "catalog/components/blur-out-up",
+              "catalog/components/bottom-up-letters",
+              "catalog/components/dynamic-grid",
+              "catalog/components/fade-through",
+              "catalog/components/focus-blur-resolve",
+              "catalog/components/inline-highlight",
+              "catalog/components/kinetic-center-build",
+              "catalog/components/line-by-line-slide",
+              "catalog/components/marker-highlight",
+              "catalog/components/mask-reveal-up",
+              "catalog/components/masked-slide-reveal",
+              "catalog/components/matrix-decode",
+              "catalog/components/number-wheel",
+              "catalog/components/per-character-rise",
+              "catalog/components/per-word-crossfade",
+              "catalog/components/perspective-marquee",
+              "catalog/components/rgb-glitch-text",
+              "catalog/components/rolling-number",
+              "catalog/components/scale-down-fade",
+              "catalog/components/shared-axis-y",
+              "catalog/components/shared-axis-z",
+              "catalog/components/short-slide-down",
+              "catalog/components/short-slide-right",
+              "catalog/components/simulated-cursor",
+              "catalog/components/slot-machine-roll",
+              "catalog/components/soft-blur-in",
+              "catalog/components/spring-scale-in",
+              "catalog/components/staggered-fade-up",
+              "catalog/components/strikethrough-replace",
+              "catalog/components/top-down-letters",
+              "catalog/components/tracking-in",
+              "catalog/components/typewriter"
             ]
           },
           {
             "group": "Effects",
             "pages": [
+              "catalog/components/confetti",
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
+              "catalog/components/mesh-gradient-bg",
               "catalog/components/parallax-unzoom",
               "catalog/components/parallax-zoom",
               "catalog/components/shimmer-sweep",
+              "catalog/components/spotlight-card",
               "catalog/components/vignette"
             ]
           },
@@ -314,6 +493,31 @@
               "catalog/blocks/code-snippet-solarized-light",
               "catalog/blocks/code-snippet-visual-studio-dark",
               "catalog/blocks/code-snippet-visual-studio-light"
+            ]
+          },
+          {
+            "group": "MotionPath Primitives",
+            "pages": [
+              "catalog/components/arc-motion-path",
+              "catalog/components/bezier-callout-route",
+              "catalog/components/orbital-feature-path"
+            ]
+          },
+          {
+            "group": "Advanced Motion",
+            "pages": [
+              "catalog/components/camera-rig-depth-stack",
+              "catalog/components/keyframe-scrub-stack",
+              "catalog/components/shader-displacement-panel",
+              "catalog/components/stagger-lattice",
+              "catalog/components/svg-line-draw-loader"
+            ]
+          },
+          {
+            "group": "3D Primitives",
+            "pages": [
+              "catalog/components/three-orbiting-cards",
+              "catalog/components/three-particle-ribbon"
             ]
           }
         ]

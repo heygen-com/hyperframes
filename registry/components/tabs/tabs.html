@@ -1,0 +1,89 @@
+<!--
+  Tabs - shadcn-style tab primitive for HyperFrames.
+
+  Animate --hf-tabs-index between 0 and 1 for two tabs. Add more triggers by
+  changing the indicator width and index math.
+-->
+
+<div class="hf-ui-tabs">
+  <div class="hf-ui-tabs-list" role="tablist">
+    <span class="hf-ui-tabs-indicator" aria-hidden="true"></span>
+    <button class="hf-ui-tabs-trigger" type="button" role="tab" aria-selected="true">
+      Preview
+    </button>
+    <button class="hf-ui-tabs-trigger" type="button" role="tab" aria-selected="false">
+      Exports
+    </button>
+  </div>
+  <div class="hf-ui-tabs-panel" role="tabpanel">
+    <span class="hf-ui-tabs-kicker">Preview ready</span>
+    <strong>12 scenes assembled</strong>
+  </div>
+</div>
+
+<style>
+  .hf-ui-tabs {
+    --hf-tabs-index: 0;
+    display: grid;
+    gap: 14px;
+    width: min(420px, 100%);
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-tabs-list {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: #f4f4f5;
+  }
+  .hf-ui-tabs-indicator {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc((100% - 8px) / 2);
+    height: calc(100% - 8px);
+    border-radius: 9px;
+    background: #ffffff;
+    transform: translateX(calc(var(--hf-tabs-index) * 100%));
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12);
+    will-change: transform;
+  }
+  .hf-ui-tabs-trigger {
+    position: relative;
+    z-index: 1;
+    height: 38px;
+    border: 0;
+    background: transparent;
+    color: #52525b;
+    font:
+      750 14px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-tabs-panel {
+    display: grid;
+    gap: 6px;
+    padding: 18px;
+    border: 1px solid #e4e4e7;
+    border-radius: 14px;
+    background: #ffffff;
+  }
+  .hf-ui-tabs-kicker {
+    color: #71717a;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .hf-ui-tabs-panel strong {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-tabs", { "--hf-tabs-index": 1, duration: 0.34, ease: "power3.out" }, startTime);
+-->

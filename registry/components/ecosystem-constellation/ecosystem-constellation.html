@@ -1,0 +1,94 @@
+<!--
+  Ecosystem Constellation - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-ecosystem-constellation">
+  <div class="panel prompt">
+    <h3>Ecosystem Constellation</h3>
+    <p>Orbiting product nodes connect into a constellation graph.</p>
+    <div class="pill">Generate scene</div>
+    <div class="pill">Refine motion</div>
+    <div class="pill">Export</div>
+  </div>
+  <div class="panel preview">
+    <div class="card"></div>
+    <div class="card"></div>
+    <div class="card"></div>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-ecosystem-constellation {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-ecosystem-constellation {
+    width: 820px;
+    min-height: 460px;
+    border-radius: 34px;
+    padding: 28px;
+    background: linear-gradient(135deg, #f8fafc, #e0f2fe);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 22px;
+    overflow: hidden;
+  }
+  .hf-remocn-ecosystem-constellation .panel {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.76);
+    padding: 22px;
+    backdrop-filter: blur(12px);
+  }
+  .hf-remocn-ecosystem-constellation .prompt {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+  .hf-remocn-ecosystem-constellation .pill {
+    height: 42px;
+    border-radius: 999px;
+    background: #111827;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    font-weight: 800;
+    transform: translateX(var(--hf-pill-x, 0px));
+  }
+  .hf-remocn-ecosystem-constellation .preview {
+    display: grid;
+    gap: 14px;
+  }
+  .hf-remocn-ecosystem-constellation .card {
+    min-height: 78px;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+    transform: translate(var(--hf-card-x, 0px), var(--hf-card-y, 0px))
+      scale(var(--hf-card-scale, 1));
+    opacity: var(--hf-card-opacity, 1);
+  }
+  .hf-remocn-ecosystem-constellation h3 {
+    margin: 0 0 14px;
+    font-size: 32px;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-ecosystem-constellation p {
+    margin: 0;
+    color: #475569;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-ecosystem-constellation .pill', { '--hf-pill-x': '-18px', opacity: 0 }, { '--hf-pill-x': '0px', opacity: 1, duration: 0.25, stagger: 0.08, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-ecosystem-constellation .card', { '--hf-card-y': '28px', '--hf-card-scale': 0.96, '--hf-card-opacity': 0 }, { '--hf-card-y': '0px', '--hf-card-scale': 1, '--hf-card-opacity': 1, duration: 0.42, stagger: 0.12, ease: 'power3.out' }, startTime + 0.2);
+-->

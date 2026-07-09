@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Progress - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .card {
+        width: 720px;
+        padding: 54px;
+        border: 1px solid #e4e4e7;
+        border-radius: 28px;
+        background: white;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.1);
+        /* ponytail: scale card up so it fills ~65% of frame; .card is not a GSAP target so CSS transform is safe */
+        transform: scale(1.20);
+        transform-origin: center center;
+      }
+      .hf-ui-progress {
+        --hf-progress-value: 0;
+        display: grid;
+        gap: 24px;
+        color: #18181b;
+      }
+      .hf-ui-progress-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 32px;
+        font-weight: 850;
+      }
+      .hf-ui-progress-track {
+        height: 24px;
+        border-radius: 999px;
+        background: #e4e4e7;
+        overflow: hidden;
+      }
+      .hf-ui-progress-bar {
+        width: calc(var(--hf-progress-value) * 100%);
+        height: 100%;
+        border-radius: inherit;
+        background: #18181b;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="progress-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="card">
+        <div class="hf-ui-progress">
+          <div class="hf-ui-progress-header"><span>Rendering</span><span>64%</span></div>
+          <div class="hf-ui-progress-track"><div class="hf-ui-progress-bar"></div></div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-progress",
+          { "--hf-progress-value": 0.64, duration: 1.1, ease: "power2.out" },
+          0.55,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["progress-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

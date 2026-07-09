@@ -1,0 +1,67 @@
+<!--
+  Command Menu - shadcn-style UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-command-menu">
+  <div class="hf-ui-command-search">Search commands...</div>
+  <div class="hf-ui-command-group">Create</div>
+  <div class="hf-ui-command-item is-active"><span>New composition</span><kbd>N</kbd></div>
+  <div class="hf-ui-command-item"><span>Add text layer</span><kbd>T</kbd></div>
+  <div class="hf-ui-command-item"><span>Render preview</span><kbd>R</kbd></div>
+</div>
+
+<style>
+  .hf-ui-command-menu {
+    width: 520px;
+    padding: 12px;
+    border: 1px solid #27272a;
+    border-radius: 22px;
+    background: #111113;
+    color: #fafafa;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+  }
+  .hf-ui-command-search {
+    height: 50px;
+    padding: 15px 16px;
+    border-radius: 14px;
+    background: #1f1f23;
+    color: #a1a1aa;
+    font-weight: 750;
+  }
+  .hf-ui-command-group {
+    padding: 18px 12px 8px;
+    color: #71717a;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hf-ui-command-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 13px;
+    font-size: 16px;
+    font-weight: 750;
+  }
+  .hf-ui-command-item.is-active {
+    background: #fafafa;
+    color: #111113;
+  }
+  .hf-ui-command-item kbd {
+    color: inherit;
+    opacity: 0.58;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-command-menu', { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: 'back.out(1.2)' }, 0.35);
+  tl.fromTo('.hf-ui-command-item', { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3, stagger: 0.07, ease: 'power2.out' }, 0.72);
+-->

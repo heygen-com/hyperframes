@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Blur In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        padding: 56px;
+      }
+      .hf-ui-blur-in {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.28em;
+        color: #18181b;
+        font:
+          800 96px/1.05 Inter,
+          system-ui,
+          sans-serif;
+        letter-spacing: -0.03em;
+      }
+      /* ponytail: subtitle reuses the same class so GSAP's span selector picks it up for free */
+      .hf-ui-blur-in.subtitle {
+        font-size: 36px;
+        font-weight: 500;
+        color: #71717a;
+        letter-spacing: -0.01em;
+      }
+      .hf-ui-blur-in span {
+        display: inline-block;
+        filter: blur(0px);
+        opacity: 1;
+        will-change: opacity, transform, filter;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="blur-in-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-blur-in" aria-label="Design systems for video">
+          <span>Design</span>
+          <span>systems</span>
+          <span>for</span>
+          <span>video</span>
+        </div>
+        <div class="hf-ui-blur-in subtitle" aria-label="Every word, blurred in.">
+          <span>Every</span>
+          <span>word,</span>
+          <span>blurred</span>
+          <span>in.</span>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".hf-ui-blur-in span",
+          { opacity: 0, y: 28, filter: "blur(18px)" },
+          {
+            opacity: 1,
+            y: 0,
+            filter: "blur(0px)",
+            duration: 0.58,
+            stagger: 0.08,
+            ease: "power3.out",
+          },
+          0.45,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["blur-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "skeleton-block",
+  "type": "hyperframes:component",
+  "title": "Skeleton Block",
+  "description": "A skeleton loading block that resolves into real content.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "skeleton-block.html",
+      "target": "compositions/components/skeleton-block.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/skeleton-block.png"
+  }
+}

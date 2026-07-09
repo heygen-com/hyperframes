@@ -1,0 +1,71 @@
+<!--
+  Card Resize - transitions.dev-inspired primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-transition-card-resize">
+  <div class="hf-transition-card-media"></div>
+  <div class="hf-transition-card-copy">
+    <span>Project status</span>
+    <strong>Ready to render</strong>
+    <p>All scenes validated and queued for export.</p>
+  </div>
+</div>
+
+<style>
+  .hf-transition-card-resize {
+    --hf-card-w: 330px;
+    --hf-card-h: 132px;
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 18px;
+    width: var(--hf-card-w);
+    height: var(--hf-card-h);
+    padding: 18px;
+    overflow: hidden;
+    border: 1px solid #e4e4e7;
+    border-radius: 26px;
+    background: #ffffff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.12);
+    will-change: width, height, transform;
+  }
+  .hf-transition-card-media {
+    width: 92px;
+    height: 92px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #0ea5e9, #a855f7);
+  }
+  .hf-transition-card-copy {
+    display: grid;
+    align-content: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .hf-transition-card-copy span {
+    color: #71717a;
+    font-size: 13px;
+    font-weight: 850;
+    text-transform: uppercase;
+  }
+  .hf-transition-card-copy strong {
+    white-space: nowrap;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+  }
+  .hf-transition-card-copy p {
+    margin: 0;
+    color: #71717a;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-transition-card-resize', { '--hf-card-w': '330px', '--hf-card-h': '132px', opacity: 0, y: 24 }, { '--hf-card-w': '560px', '--hf-card-h': '210px', opacity: 1, y: 0, duration: 0.68, ease: 'power3.inOut' }, 0.35);
+  tl.fromTo('.hf-transition-card-copy p', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, 0.82);
+-->

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "input-otp",
+  "type": "hyperframes:component",
+  "title": "Input OTP",
+  "description": "An OTP input primitive with slot reveal and active focus ring",
+  "tags": ["ui-primitive", "remocn-port", "input-otp", "field"],
+  "files": [
+    {
+      "path": "input-otp.html",
+      "target": "compositions/components/input-otp.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/input-otp.png"
+  }
+}

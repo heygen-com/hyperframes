@@ -1,0 +1,40 @@
+<!--
+  Marker Highlight - remocn typography primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-marker-highlight"><mark></mark><span>Launch ready</span></div>
+
+<style>
+  .hf-remocn-marker-highlight {
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+    font-weight: 900;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-marker-highlight {
+    position: relative;
+    display: inline-grid;
+    padding: 8px 12px;
+    font-size: 64px;
+  }
+  .hf-remocn-marker-highlight mark {
+    position: absolute;
+    inset: auto 0 9px;
+    height: 24px;
+    border-radius: 4px;
+    background: #fde047;
+    transform: scaleX(var(--hf-marker-progress, 1));
+    transform-origin: left center;
+  }
+  .hf-remocn-marker-highlight span {
+    position: relative;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-marker-highlight mark', { '--hf-marker-progress': 0 }, { '--hf-marker-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime); tl.fromTo('.hf-remocn-marker-highlight span', { color: '#71717a' }, { color: '#18181b', duration: 0.28 }, startTime + 0.16);
+-->

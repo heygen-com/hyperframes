@@ -1,0 +1,53 @@
+<!--
+  Input Group - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-input-group">
+  <span>https://</span><input value="hyperframes.dev" readonly /><button type="button">Copy</button>
+</div>
+
+<style>
+  .hf-ui-input-group {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    width: 460px;
+    height: 46px;
+    overflow: hidden;
+    border: 1px solid #d4d4d8;
+    border-radius: 11px;
+    background: #fff;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-input-group span {
+    padding: 0 13px;
+    color: #71717a;
+    font-weight: 800;
+  }
+  .hf-ui-input-group input {
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    color: #18181b;
+    font:
+      750 15px/1 Inter,
+      system-ui,
+      sans-serif;
+  }
+  .hf-ui-input-group button {
+    align-self: stretch;
+    border: 0;
+    border-left: 1px solid #e4e4e7;
+    background: #fafafa;
+    padding: 0 14px;
+    font-weight: 850;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-input-group', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, startTime);
+-->

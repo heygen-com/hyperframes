@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "dropdown-menu",
+  "type": "hyperframes:component",
+  "title": "Dropdown Menu",
+  "description": "A dropdown menu primitive with trigger press, menu scale, item stagger, and keyboard-focus styling",
+  "tags": ["ui-primitive", "remocn-port", "dropdown-menu", "menu"],
+  "files": [
+    {
+      "path": "dropdown-menu.html",
+      "target": "compositions/components/dropdown-menu.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu.png"
+  }
+}

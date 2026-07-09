@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Spring Scale In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        /* ponytail: scale wrapper — not a GSAP target, safe to use CSS transform */
+        transform: scale(2.0);
+        transform-origin: center center;
+      }
+      .demo-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 14px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10), 0 4px 16px rgba(0, 0, 0, 0.06);
+        padding: 48px 56px 44px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        min-width: 380px;
+      }
+      .demo-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+        margin-bottom: 4px;
+      }
+      .hf-remocn-spring-scale-in {
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        display: inline-flex;
+        gap: 10px;
+        font-size: 42px;
+        line-height: 1;
+      }
+      .hf-remocn-spring-scale-in span {
+        display: inline-block;
+        transform: translate(var(--hf-word-x, 0px), var(--hf-word-y, 0px))
+          scale(var(--hf-word-scale, 1));
+        filter: blur(var(--hf-word-blur, 0px));
+        will-change: transform, filter, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="spring-scale-in-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-card">
+          <div class="demo-label">Animation primitive</div>
+          <div class="hf-remocn-spring-scale-in">
+            <span>Spring</span><span>scale</span><span>in</span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-remocn-spring-scale-in span",
+          { opacity: 0, "--hf-word-y": "22px", "--hf-word-scale": 0.92, "--hf-word-blur": "5px" },
+          {
+            opacity: 1,
+            "--hf-word-y": "0px",
+            "--hf-word-scale": 1,
+            "--hf-word-blur": "0px",
+            duration: 0.3,
+            stagger: 0.055,
+            ease: "power3.out",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["spring-scale-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

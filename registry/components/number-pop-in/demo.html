@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Number Pop In - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale non-GSAP wrapper so the stat fills ~65% of the frame */
+        transform: scale(1.37);
+      }
+      .hf-transition-number-pop-in {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 2px;
+        color: #18181b;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-transition-number-pop-in span {
+        font-size: 96px;
+        line-height: 0.9;
+        filter: blur(var(--hf-number-blur, 0px));
+        transform: translateY(var(--hf-number-y, 0px)) scale(var(--hf-number-scale, 1));
+        will-change: transform, filter, opacity;
+      }
+      .hf-transition-number-pop-in small {
+        margin-left: 4px;
+        color: #71717a;
+        font-size: 42px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="number-pop-in-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-transition-number-pop-in">
+          <span>5</span><span>.</span><span>7</span><small>k</small>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.fromTo(
+          ".hf-transition-number-pop-in span, .hf-transition-number-pop-in small",
+          {
+            opacity: 0,
+            "--hf-number-y": "24px",
+            "--hf-number-scale": 0.82,
+            "--hf-number-blur": "8px",
+          },
+          {
+            opacity: 1,
+            "--hf-number-y": "0px",
+            "--hf-number-scale": 1,
+            "--hf-number-blur": "0px",
+            duration: 0.34,
+            stagger: 0.055,
+            ease: "back.out(1.8)",
+          },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["number-pop-in-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

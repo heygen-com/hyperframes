@@ -1,0 +1,46 @@
+<!--
+  Avatar - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-avatar" aria-label="Maya Chen">
+  <span>MC</span>
+  <i aria-hidden="true"></i>
+</div>
+
+<style>
+  .hf-ui-avatar {
+    --hf-avatar-size: 54px;
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--hf-avatar-size);
+    height: var(--hf-avatar-size);
+    border: 3px solid #fff;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #111827, #0ea5e9);
+    color: white;
+    font:
+      850 15px/1 Inter,
+      system-ui,
+      sans-serif;
+    box-shadow: 0 12px 32px rgba(2, 132, 199, 0.26);
+  }
+  .hf-ui-avatar i {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 13px;
+    height: 13px;
+    border: 2px solid #fff;
+    border-radius: 999px;
+    background: #22c55e;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-avatar', { opacity: 0, scale: 0.75, y: 12 }, { opacity: 1, scale: 1, y: 0, duration: 0.38, ease: 'back.out(1.8)' }, startTime);
+-->

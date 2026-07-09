@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "marker-highlight",
+  "type": "hyperframes:component",
+  "title": "Marker Highlight",
+  "description": "A marker block draws behind a phrase as the text color shifts.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "marker-highlight.html",
+      "target": "compositions/components/marker-highlight.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-highlight.png"
+  }
+}

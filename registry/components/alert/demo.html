@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Alert - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        min-width: 760px;
+        min-height: 480px;
+        padding: 56px;
+        /* ponytail: scale wrapper — GSAP does not touch .demo-frame */
+        transform: scale(1.95);
+        transform-origin: center center;
+      }
+      .hf-ui-alert {
+        --hf-alert-y: 0px;
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        gap: 16px;
+        width: 420px;
+        padding: 20px 22px;
+        border: 1px solid #bfdbfe;
+        border-radius: 14px;
+        background: #eff6ff;
+        color: #172554;
+        font-family: Inter, system-ui, sans-serif;
+        transform: translateY(var(--hf-alert-y));
+        box-shadow: 0 24px 70px rgba(37, 99, 235, 0.14);
+      }
+      .hf-ui-alert-icon {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        background: #2563eb;
+        color: #fff;
+        font-weight: 900;
+        font-style: italic;
+        font-size: 17px;
+      }
+      .hf-ui-alert strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .hf-ui-alert p {
+        margin: 0;
+        color: #1e3a8a;
+        font-size: 15px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="alert-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-ui-alert" data-tone="info" role="status">
+          <span class="hf-ui-alert-icon">i</span>
+          <div>
+            <strong>Render queued</strong>
+            <p>Your composition is waiting for an available worker.</p>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-alert",
+          { opacity: 0, "--hf-alert-y": "18px" },
+          { opacity: 1, "--hf-alert-y": "0px", duration: 0.34, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["alert-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

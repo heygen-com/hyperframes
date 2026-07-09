@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Accordion - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      /* ponytail: zoom on .card — GSAP targets .hf-ui-accordion-item, not .card */
+      .card {
+        width: 680px;
+        padding: 48px;
+        border: 1px solid #e4e4e7;
+        border-radius: 28px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        zoom: 1.9;
+      }
+      .hf-ui-accordion {
+        width: 100%;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+      }
+      .hf-ui-accordion-item {
+        --hf-accordion-open: 0;
+        border-bottom: 1px solid #e4e4e7;
+      }
+      .hf-ui-accordion-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        height: 82px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font:
+          850 30px/1 Inter,
+          system-ui,
+          sans-serif;
+        text-align: left;
+      }
+      .hf-ui-accordion-trigger svg {
+        width: 34px;
+        height: 34px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transform: rotate(calc(var(--hf-accordion-open) * 180deg));
+      }
+      .hf-ui-accordion-content {
+        max-height: calc(var(--hf-accordion-open) * 170px);
+        overflow: hidden;
+        opacity: calc(0.35 + var(--hf-accordion-open) * 0.65);
+      }
+      .hf-ui-accordion-inner {
+        padding: 0 52px calc(var(--hf-accordion-open) * 28px) 0;
+        color: #71717a;
+        font-size: 24px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="accordion-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="card">
+        <div class="hf-ui-accordion">
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--active">
+            <button class="hf-ui-accordion-trigger">
+              <span>What changed?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="hf-ui-accordion-content">
+              <div class="hf-ui-accordion-inner">
+                Agents can install motion-ready UI primitives and customize them with CSS variables.
+              </div>
+            </div>
+          </div>
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--static" style="--hf-accordion-open:0">
+            <button class="hf-ui-accordion-trigger">
+              <span>How do I install it?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="hf-ui-accordion-content">
+              <div class="hf-ui-accordion-inner"></div>
+            </div>
+          </div>
+          <div class="hf-ui-accordion-item hf-ui-accordion-item--static" style="--hf-accordion-open:0;border-bottom:none">
+            <button class="hf-ui-accordion-trigger">
+              <span>Is it customizable?</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <div class="hf-ui-accordion-content">
+              <div class="hf-ui-accordion-inner"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-accordion-item--active",
+          { "--hf-accordion-open": 1, duration: 0.42, ease: "power3.out" },
+          0.7,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["accordion-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "dropdown-menu-item",
+  "type": "hyperframes:component",
+  "title": "Dropdown Menu Item",
+  "description": "A menu-row primitive with icon, label, hint, and active state.",
+  "tags": ["ui-primitive", "remocn-port"],
+  "files": [
+    {
+      "path": "dropdown-menu-item.html",
+      "target": "compositions/components/dropdown-menu-item.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dropdown-menu-item.png"
+  }
+}

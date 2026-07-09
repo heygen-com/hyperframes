@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "context-menu",
+  "type": "hyperframes:component",
+  "title": "Context Menu",
+  "description": "A context menu primitive with pointer anchor, item stagger, shortcut hints, and selected state",
+  "tags": ["ui-primitive", "remocn-port", "context-menu", "menu"],
+  "files": [
+    {
+      "path": "context-menu.html",
+      "target": "compositions/components/context-menu.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/context-menu.png"
+  }
+}

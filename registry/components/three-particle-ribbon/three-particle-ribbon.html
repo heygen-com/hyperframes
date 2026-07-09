@@ -1,0 +1,118 @@
+<!--
+  Three Particle Ribbon - advanced HyperFrames primitive.
+
+  This is intentionally seekable: drive it from a paused GSAP timeline.
+  MotionPath examples require GSAP MotionPathPlugin. Three.js examples expose
+  a render(progress) adapter instead of a free-running requestAnimationFrame loop.
+-->
+
+<div class="hf-advanced-three-particle-ribbon">
+  <canvas></canvas>
+  <div class="label">
+    <h3>Three Particle Ribbon</h3>
+    <p>
+      A lightweight Three.js point ribbon with timeline-controlled camera and shader-like color
+      drift.
+    </p>
+  </div>
+</div>
+
+<style>
+  .hf-advanced-three-particle-ribbon {
+    color: #111827;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-advanced-three-particle-ribbon {
+    position: relative;
+    width: 760px;
+    height: 430px;
+    border-radius: 30px;
+    overflow: hidden;
+    background: #050816;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-advanced-three-particle-ribbon canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .hf-advanced-three-particle-ribbon .label {
+    position: absolute;
+    left: 28px;
+    bottom: 26px;
+    color: #fff;
+  }
+  .hf-advanced-three-particle-ribbon h3 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: -0.05em;
+  }
+  .hf-advanced-three-particle-ribbon p {
+    margin: 6px 0 0;
+    color: rgba(255, 255, 255, 0.62);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  const startTime = 0;
+  if (window.__hfThreeRender_three_particle_ribbon) { tl.to(window.__hfThreeRender_three_particle_ribbon.state, { progress: 1, duration: 4, ease: 'none', onUpdate: window.__hfThreeRender_three_particle_ribbon.render }, startTime); }
+-->
+
+<!-- Optional Three.js adapter for demos. In production, copy this once and dispose renderer resources when the host composition is removed. -->
+<script type="module">
+  import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js";
+
+  const host = document.querySelector(".hf-advanced-three-particle-ribbon");
+  const canvas = host.querySelector("canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(760, 430, false);
+  renderer.setClearColor(0x050816, 1);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(36, 760 / 430, 0.1, 100);
+  camera.position.set(0, 0, 7);
+
+  const group = new THREE.Group();
+  scene.add(group);
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x60a5fa,
+    metalness: 0.18,
+    roughness: 0.38,
+  });
+  const accent = new THREE.MeshStandardMaterial({
+    color: 0xa78bfa,
+    metalness: 0.12,
+    roughness: 0.44,
+  });
+  const geometry = new THREE.BoxGeometry(1.2, 1.2, 0.08);
+  for (let i = 0; i < 9; i++) {
+    const mesh = new THREE.Mesh(geometry, i % 2 ? accent : material);
+    const angle = (i / 9) * Math.PI * 2;
+    const radius = 2.1 + Math.sin(i) * 0.35;
+    mesh.position.set(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius * 0.55,
+      Math.sin(angle) * 0.7,
+    );
+    mesh.rotation.z = angle;
+    group.add(mesh);
+  }
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const light = new THREE.DirectionalLight(0xffffff, 2.2);
+  light.position.set(2, 3, 4);
+  scene.add(light);
+
+  const state = { progress: 0 };
+  function render() {
+    const t = state.progress;
+    group.rotation.y = t * Math.PI * 2;
+    group.rotation.x = Math.sin(t * Math.PI * 2) * 0.22;
+    camera.position.z = 6.4 - Math.sin(t * Math.PI) * 0.55;
+    renderer.render(scene, camera);
+  }
+  render();
+
+  window.__hfThreeRender_three_particle_ribbon = { state, render };
+</script>

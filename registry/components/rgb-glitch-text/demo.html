@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>RGB Glitch Text - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #09090b;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        gap: 32px;
+        padding: 64px;
+        zoom: 0.28;
+      }
+      /* ponytail: scale-up via font-size — GSAP only touches CSS vars, not transform */
+      .hf-remocn-rgb-glitch-text {
+        color: #fafafa;
+        font-family: Inter, system-ui, sans-serif;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+      }
+      .hf-remocn-rgb-glitch-text {
+        position: relative;
+        width: 1120px;
+        height: 200px;
+        font-size: 192px;
+        line-height: 1;
+      }
+      .hf-remocn-rgb-glitch-text span,
+      .hf-remocn-rgb-glitch-text strong {
+        position: absolute;
+        inset: 0;
+      }
+      .hf-remocn-rgb-glitch-text span:first-child {
+        color: #ef4444;
+        mix-blend-mode: screen;
+        transform: translateX(var(--hf-glitch-red, 0px));
+      }
+      .hf-remocn-rgb-glitch-text span:nth-child(2) {
+        color: #22d3ee;
+        mix-blend-mode: screen;
+        transform: translateX(var(--hf-glitch-blue, 0px));
+      }
+      .hf-remocn-rgb-glitch-text strong {
+        color: #fafafa;
+      }
+      .demo-label {
+        font-size: 24px;
+        font-weight: 500;
+        color: #52525b;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="rgb-glitch-text-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="hf-remocn-rgb-glitch-text">
+          <span>GLITCH</span><span>GLITCH</span><strong>GLITCH</strong>
+        </div>
+        <div class="demo-label">RGB Glitch Text</div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.5;
+        tl.to(".hf-remocn-rgb-glitch-text", { opacity: 1, duration: 0.01 }, startTime);
+        tl.to(
+          ".hf-remocn-rgb-glitch-text",
+          {
+            "--hf-glitch-red": "-20px",
+            "--hf-glitch-blue": "20px",
+            duration: 0.06,
+            repeat: 5,
+            yoyo: true,
+            ease: "steps(1)",
+          },
+          startTime + 0.1,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["rgb-glitch-text-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

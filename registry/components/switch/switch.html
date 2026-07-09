@@ -1,0 +1,59 @@
+<!--
+  Switch - shadcn-style toggle primitive for HyperFrames.
+
+  Toggle data-state between off and on, or animate --hf-switch-progress from a
+  paused GSAP timeline.
+-->
+
+<div class="hf-ui-switch-row">
+  <span class="hf-ui-switch" data-state="off" role="switch" aria-checked="false">
+    <span class="hf-ui-switch-thumb"></span>
+  </span>
+  <span class="hf-ui-switch-label">Auto enhance</span>
+</div>
+
+<style>
+  .hf-ui-switch-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-switch {
+    --hf-switch-progress: 0;
+    position: relative;
+    display: inline-block;
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #18181b calc(var(--hf-switch-progress) * 100%), #e4e4e7);
+    box-shadow: inset 0 0 0 1px rgba(24, 24, 27, 0.06);
+  }
+  .hf-ui-switch[data-state="on"] {
+    --hf-switch-progress: 1;
+  }
+  .hf-ui-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: #ffffff;
+    transform: translateX(calc(var(--hf-switch-progress) * 18px));
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.22);
+    will-change: transform;
+  }
+  .hf-ui-switch-label {
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-switch", { "--hf-switch-progress": 1, duration: 0.28, ease: "power3.out" }, startTime);
+-->

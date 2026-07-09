@@ -1,0 +1,35 @@
+<!--
+  Kbd - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<kbd class="hf-ui-kbd">Cmd K</kbd>
+
+<style>
+  .hf-ui-kbd {
+    --hf-kbd-y: 0px;
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 11px;
+    border: 1px solid #d4d4d8;
+    border-bottom-width: 3px;
+    border-radius: 8px;
+    background: #fafafa;
+    color: #18181b;
+    font:
+      850 13px/1 ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      monospace;
+    transform: translateY(var(--hf-kbd-y));
+    box-shadow: 0 8px 18px rgba(24, 24, 27, 0.1);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-ui-kbd', { '--hf-kbd-y': '2px', duration: 0.08, yoyo: true, repeat: 1, ease: 'power1.inOut' }, startTime);
+-->

@@ -1,0 +1,39 @@
+<!--
+  Inline Highlight - animated marker underline/fill.
+
+  Wrap target text with class="hf-inline-highlight". Animate
+  --hf-highlight-scale from 0 to 1 on the element.
+-->
+
+<style>
+  .hf-inline-highlight {
+    --hf-highlight-scale: 0;
+    --hf-highlight-color: #fff06a;
+    position: relative;
+    display: inline;
+    z-index: 0;
+  }
+  .hf-inline-highlight::after {
+    content: "";
+    position: absolute;
+    left: -0.08em;
+    right: -0.08em;
+    bottom: 0.05em;
+    height: 0.38em;
+    background: var(--hf-highlight-color);
+    transform: scaleX(var(--hf-highlight-scale));
+    transform-origin: left center;
+    z-index: -1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-inline-highlight", {
+    "--hf-highlight-scale": 1,
+    duration: 0.55,
+    ease: "power2.out",
+    stagger: 0.12,
+  }, startTime);
+-->

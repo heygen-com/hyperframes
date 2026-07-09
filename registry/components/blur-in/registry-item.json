@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "blur-in",
+  "type": "hyperframes:component",
+  "title": "Blur In",
+  "description": "A blur-in text primitive with word-level focus resolve for product reveal moments",
+  "tags": ["ui-primitive", "remocn-port", "blur-in", "text-effect"],
+  "files": [
+    {
+      "path": "blur-in.html",
+      "target": "compositions/components/blur-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-in.png"
+  }
+}

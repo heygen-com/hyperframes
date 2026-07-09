@@ -1,0 +1,74 @@
+<!--
+  Input - shadcn-style text field primitive for HyperFrames.
+
+  Animate --hf-input-focus and --hf-input-value-progress from a paused GSAP
+  timeline to move from empty to focused to typed states.
+-->
+
+<label class="hf-ui-input-field">
+  <span class="hf-ui-input-label">Project name</span>
+  <span class="hf-ui-input-shell">
+    <span class="hf-ui-input-value">Launch recap</span>
+    <span class="hf-ui-input-caret" aria-hidden="true"></span>
+  </span>
+  <span class="hf-ui-input-helper">Visible in the workspace and exported renders.</span>
+</label>
+
+<style>
+  .hf-ui-input-field {
+    --hf-input-focus: 0;
+    --hf-input-value-progress: 1;
+    display: grid;
+    gap: 8px;
+    width: min(360px, 100%);
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-input-label {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .hf-ui-input-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 44px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, #18181b calc(var(--hf-input-focus) * 60%), #d4d4d8);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 0 0 calc(var(--hf-input-focus) * 4px) rgba(24, 24, 27, 0.1);
+    overflow: hidden;
+  }
+  .hf-ui-input-value {
+    display: inline-block;
+    max-width: calc(var(--hf-input-value-progress) * 100%);
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .hf-ui-input-caret {
+    width: 2px;
+    height: 18px;
+    margin-left: 2px;
+    border-radius: 999px;
+    background: #18181b;
+    opacity: var(--hf-input-focus);
+  }
+  .hf-ui-input-helper {
+    color: #71717a;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.set(".hf-ui-input-field", { "--hf-input-value-progress": 0 });
+  tl.to(".hf-ui-input-field", { "--hf-input-focus": 1, duration: 0.18 }, startTime);
+  tl.to(".hf-ui-input-field", { "--hf-input-value-progress": 1, duration: 0.8, ease: "steps(12)" }, startTime + 0.2);
+-->

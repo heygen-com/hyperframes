@@ -1,0 +1,59 @@
+<!--
+  Alert - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div class="hf-ui-alert" data-tone="info" role="status">
+  <span class="hf-ui-alert-icon">i</span>
+  <div>
+    <strong>Render queued</strong>
+    <p>Your composition is waiting for an available worker.</p>
+  </div>
+</div>
+
+<style>
+  .hf-ui-alert {
+    --hf-alert-y: 0px;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    width: 410px;
+    padding: 16px;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    background: #eff6ff;
+    color: #172554;
+    font-family: Inter, system-ui, sans-serif;
+    transform: translateY(var(--hf-alert-y));
+    box-shadow: 0 16px 46px rgba(37, 99, 235, 0.16);
+  }
+  .hf-ui-alert-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 900;
+    font-style: italic;
+  }
+  .hf-ui-alert strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 15px;
+  }
+  .hf-ui-alert p {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-alert', { opacity: 0, '--hf-alert-y': '18px' }, { opacity: 1, '--hf-alert-y': '0px', duration: 0.34, ease: 'power2.out' }, startTime);
+-->

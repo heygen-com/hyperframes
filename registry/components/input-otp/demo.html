@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Input OTP - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f7f7f8;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        /* ponytail: scale the non-GSAP wrapper; GSAP targets spans inside .hf-ui-input-otp */
+        transform: scale(3.2);
+        transform-origin: center center;
+      }
+      .demo-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 16px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
+        padding: 48px 56px 44px;
+      }
+      .demo-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        color: #71717a;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+      .hf-ui-input-otp {
+        display: inline-flex;
+        gap: 10px;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-input-otp span {
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 64px;
+        border: 1px solid #d4d4d8;
+        border-radius: 12px;
+        background: #fff;
+        color: #18181b;
+        font-size: 26px;
+        font-weight: 700;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      }
+      .hf-ui-input-otp .active {
+        border-color: #18181b;
+        box-shadow: 0 0 0 4px rgba(24, 24, 27, 0.10);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="input-otp-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-frame">
+        <div class="demo-card">
+          <span class="demo-label">One-time password</span>
+          <div class="hf-ui-input-otp" aria-label="One time code">
+            <span>4</span><span>2</span><span>8</span><span class="active"></span>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        const startTime = 0.45;
+        tl.fromTo(
+          ".hf-ui-input-otp span",
+          { opacity: 0, y: 10 },
+          { opacity: 1, y: 0, duration: 0.18, stagger: 0.07, ease: "power2.out" },
+          startTime,
+        );
+        tl.set({}, {}, 5);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["input-otp-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

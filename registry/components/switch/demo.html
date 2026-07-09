@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Switch - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f4f4f5;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .panel {
+        display: inline-flex;
+        align-items: center;
+        gap: 30px;
+        padding: 48px 58px;
+        border: 1px solid #e4e4e7;
+        border-radius: 28px;
+        background: white;
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.1);
+      }
+      .hf-ui-switch {
+        --hf-switch-progress: 0;
+        position: relative;
+        display: inline-block;
+        width: 102px;
+        height: 58px;
+        border-radius: 999px;
+        background: color-mix(in srgb, #18181b calc(var(--hf-switch-progress) * 100%), #e4e4e7);
+      }
+      .hf-ui-switch-thumb {
+        position: absolute;
+        top: 7px;
+        left: 7px;
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        background: white;
+        transform: translateX(calc(var(--hf-switch-progress) * 44px));
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+      }
+      .label {
+        font-size: 34px;
+        font-weight: 700;
+        color: #18181b;
+        letter-spacing: -0.5px;
+      }
+      /* ponytail: zoom panel (not a GSAP target) to fill ~65% of frame */
+      .panel { zoom: 2.4; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="switch-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="panel">
+        <span class="hf-ui-switch"><span class="hf-ui-switch-thumb"></span></span>
+        <span class="label">Auto enhance</span>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-switch",
+          { "--hf-switch-progress": 1, duration: 0.34, ease: "power3.out" },
+          0.75,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["switch-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+<!--
+  Accordion - shadcn-style disclosure primitive for HyperFrames.
+
+  Animate --hf-accordion-open from 0 to 1 on .hf-ui-accordion-item.
+  The content uses CSS grid rows, so it can reveal without JS measuring.
+-->
+
+<div class="hf-ui-accordion">
+  <div class="hf-ui-accordion-item" data-state="closed">
+    <button class="hf-ui-accordion-trigger" type="button">
+      <span>What changed?</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+    </button>
+    <div class="hf-ui-accordion-content">
+      <div class="hf-ui-accordion-inner">
+        HyperFrames now ships web-native primitives that agents can paste directly into video
+        scenes.
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hf-ui-accordion {
+    width: min(520px, 100%);
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-accordion-item {
+    --hf-accordion-open: 0;
+    border-bottom: 1px solid #e4e4e7;
+  }
+  .hf-ui-accordion-item[data-state="open"] {
+    --hf-accordion-open: 1;
+  }
+  .hf-ui-accordion-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 54px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font:
+      750 16px/1.2 Inter,
+      system-ui,
+      sans-serif;
+    text-align: left;
+  }
+  .hf-ui-accordion-trigger svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform: rotate(calc(var(--hf-accordion-open) * 180deg));
+    will-change: transform;
+  }
+  .hf-ui-accordion-content {
+    max-height: calc(var(--hf-accordion-open) * 120px);
+    overflow: hidden;
+    opacity: calc(0.45 + var(--hf-accordion-open) * 0.55);
+  }
+  .hf-ui-accordion-inner {
+    padding: 0 28px calc(var(--hf-accordion-open) * 18px) 0;
+    color: #71717a;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-ui-accordion-item', { '--hf-accordion-open': 1, duration: 0.34, ease: 'power3.out' }, startTime);
+-->

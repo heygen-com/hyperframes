@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spring-scale-in",
+  "type": "hyperframes:component",
+  "title": "Spring Scale In",
+  "description": "Words pop in with soft overshoot scale like a physical spring settling.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "spring-scale-in.html",
+      "target": "compositions/components/spring-scale-in.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-scale-in.png"
+  }
+}

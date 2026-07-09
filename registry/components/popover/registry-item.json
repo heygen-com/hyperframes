@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "popover",
+  "type": "hyperframes:component",
+  "title": "Popover",
+  "description": "A small anchored popover primitive with origin-aware scale and content fade for inline controls",
+  "tags": ["ui-primitive", "remocn-port", "popover", "overlay"],
+  "files": [
+    {
+      "path": "popover.html",
+      "target": "compositions/components/popover.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/popover.png"
+  }
+}

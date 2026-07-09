@@ -1,0 +1,30 @@
+<!--
+  Soft Blur In - web-native motion primitive.
+
+  Usage:
+  1. Add class="hf-soft-blur-in" to the element you want to reveal.
+  2. Paste this style block once.
+  3. Add the timeline snippet to your paused GSAP timeline.
+-->
+
+<style>
+  .hf-soft-blur-in {
+    opacity: 0;
+    transform: translate3d(0, var(--hf-soft-blur-y, 28px), 0);
+    filter: blur(var(--hf-soft-blur-radius, 18px));
+    will-change: transform, opacity, filter;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-soft-blur-in", {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    duration: 0.8,
+    ease: "power3.out",
+    stagger: 0.08,
+  }, startTime);
+-->

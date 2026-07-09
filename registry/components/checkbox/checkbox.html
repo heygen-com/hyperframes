@@ -1,0 +1,63 @@
+<!--
+  Checkbox - shadcn-style checkbox primitive for HyperFrames.
+
+  Toggle data-state between unchecked and checked, or animate
+  --hf-checkbox-progress from a paused GSAP timeline.
+-->
+
+<div class="hf-ui-checkbox" data-state="unchecked">
+  <span class="hf-ui-checkbox-box" aria-hidden="true">
+    <svg viewBox="0 0 24 24">
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  </span>
+  <span class="hf-ui-checkbox-label">Include captions</span>
+</div>
+
+<style>
+  .hf-ui-checkbox {
+    --hf-checkbox-progress: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-family: Inter, system-ui, sans-serif;
+    color: #18181b;
+  }
+  .hf-ui-checkbox[data-state="checked"] {
+    --hf-checkbox-progress: 1;
+  }
+  .hf-ui-checkbox-box {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid
+      color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #d4d4d8);
+    border-radius: 6px;
+    background: color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #ffffff);
+    transform: scale(calc(0.95 + var(--hf-checkbox-progress) * 0.05));
+  }
+  .hf-ui-checkbox svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: var(--hf-checkbox-progress);
+    stroke-dasharray: 24;
+    stroke-dashoffset: calc((1 - var(--hf-checkbox-progress)) * 24);
+  }
+  .hf-ui-checkbox-label {
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-checkbox", { "--hf-checkbox-progress": 1, duration: 0.22, ease: "back.out(2)" }, startTime);
+-->

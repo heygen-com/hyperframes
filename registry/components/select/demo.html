@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Select - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-select {
+        --hf-select-open: 0;
+        position: relative;
+        display: inline-block;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+      }
+      .hf-ui-select-trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        min-width: 260px;
+        height: 72px;
+        padding: 0 26px;
+        border: 1px solid #e4e4e7;
+        border-radius: 20px;
+        background: #fff;
+        color: inherit;
+        font:
+          850 26px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+      }
+      .hf-ui-select-trigger span {
+        transform: rotate(calc(var(--hf-select-open) * 180deg));
+      }
+      .hf-ui-select-menu {
+        position: absolute;
+        top: calc(100% + 14px);
+        left: 0;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #e4e4e7;
+        border-radius: 20px;
+        background: #fff;
+        opacity: var(--hf-select-open);
+        transform: translateY(calc((1 - var(--hf-select-open)) * -12px))
+          scale(calc(0.97 + var(--hf-select-open) * 0.03));
+        box-shadow: 0 30px 86px rgba(0, 0, 0, 0.18);
+      }
+      .hf-ui-select-option {
+        height: 54px;
+        padding: 0 18px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        color: #52525b;
+        font-size: 21px;
+        font-weight: 760;
+      }
+      .hf-ui-select-option.is-active {
+        background: #f4f4f5;
+        color: #18181b;
+      }
+      /* ponytail: wrapper scales the whole select without clobbering GSAP's inline transform on .hf-ui-select */
+      .demo-scale {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+        zoom: 3.2;
+      }
+      .demo-label {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .hf-ui-select-trigger {
+        min-width: 320px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="select-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="demo-scale">
+        <span class="demo-label">Video Quality</span>
+        <div class="hf-ui-select">
+          <button class="hf-ui-select-trigger">1080p <span>⌄</span></button>
+          <div class="hf-ui-select-menu">
+            <div class="hf-ui-select-option is-active">1080p</div>
+            <div class="hf-ui-select-option">4K</div>
+            <div class="hf-ui-select-option">Square</div>
+          </div>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(".hf-ui-select", { "--hf-select-open": 1, duration: 0.32, ease: "power3.out" }, 0.75);
+        window.__timelines = window.__timelines || {};
+        window.__timelines["select-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

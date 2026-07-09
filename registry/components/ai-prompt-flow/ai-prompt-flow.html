@@ -1,0 +1,103 @@
+<!--
+  AI Prompt Flow - Remocn-inspired composed UI flow for HyperFrames.
+
+  Paste the markup and CSS into a composition. Use the timeline integration
+  note at the bottom as the starting point for deterministic GSAP animation.
+-->
+
+<div class="hf-ui-ai-prompt-flow">
+  <div class="hf-ui-ai-prompt-panel">
+    <span class="hf-ui-ai-prompt-label">Prompt</span>
+    <div class="hf-ui-ai-prompt-field">Create a launch video for our new feature</div>
+    <div class="hf-ui-ai-prompt-chips">
+      <span>fast cuts</span><span>captions</span><span>product UI</span>
+    </div>
+    <button type="button">Generate</button>
+  </div>
+  <div class="hf-ui-ai-prompt-result">
+    <strong>Preview ready</strong><span>18 scenes matched</span>
+  </div>
+</div>
+
+<style>
+  .hf-ui-ai-prompt-flow {
+    display: grid;
+    gap: 18px;
+    width: 620px;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-ai-prompt-panel,
+  .hf-ui-ai-prompt-result {
+    border: 1px solid #e4e4e7;
+    border-radius: 26px;
+    background: #ffffff;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.1);
+  }
+  .hf-ui-ai-prompt-panel {
+    display: grid;
+    gap: 16px;
+    padding: 28px;
+  }
+  .hf-ui-ai-prompt-label {
+    color: #71717a;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .hf-ui-ai-prompt-field {
+    min-height: 92px;
+    padding: 18px;
+    border-radius: 18px;
+    background: #f4f4f5;
+    font-size: 22px;
+    font-weight: 760;
+    line-height: 1.25;
+  }
+  .hf-ui-ai-prompt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hf-ui-ai-prompt-chips span {
+    padding: 8px 11px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 13px;
+    font-weight: 850;
+  }
+  .hf-ui-ai-prompt-panel button {
+    justify-self: start;
+    height: 46px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 13px;
+    background: #18181b;
+    color: #ffffff;
+    font-weight: 900;
+  }
+  .hf-ui-ai-prompt-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 22px;
+  }
+  .hf-ui-ai-prompt-result strong {
+    font-size: 18px;
+  }
+  .hf-ui-ai-prompt-result span {
+    color: #16a34a;
+    font-size: 14px;
+    font-weight: 850;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-ai-prompt-panel', { opacity: 0, y: 26 }, { opacity: 1, y: 0, duration: 0.38, ease: 'power2.out' }, 0.25);
+  tl.fromTo('.hf-ui-ai-prompt-chips span', { y: 14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.24, stagger: 0.06, ease: 'power2.out' }, 0.62);
+  tl.to('.hf-ui-ai-prompt-panel button', { scale: 0.96, duration: 0.12, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.0);
+  tl.fromTo('.hf-ui-ai-prompt-result', { opacity: 0, y: 22, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.36, ease: 'back.out(1.3)' }, 1.24);
+-->

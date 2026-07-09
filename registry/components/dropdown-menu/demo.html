@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Dropdown Menu - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #f6f7fb;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .hf-ui-dropdown {
+        --hf-dropdown-open: 0;
+        position: relative;
+        display: inline-block;
+        font-family: Inter, system-ui, sans-serif;
+        color: #18181b;
+        /* ponytail: scale-up only — GSAP animates --hf-dropdown-open (CSS var), not transform */
+        transform: scale(3);
+      }
+      .hf-ui-dropdown-trigger {
+        height: 70px;
+        padding: 0 34px;
+        border: 1px solid #e4e4e7;
+        border-radius: 18px;
+        background: #fff;
+        color: inherit;
+        font:
+          850 26px/1 Inter,
+          system-ui,
+          sans-serif;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+        transform: translateY(calc(var(--hf-dropdown-open) * 1px));
+      }
+      .hf-ui-dropdown-menu {
+        position: absolute;
+        top: calc(100% + 18px);
+        right: 0;
+        width: 270px;
+        padding: 10px;
+        border: 1px solid #e4e4e7;
+        border-radius: 22px;
+        background: #fff;
+        opacity: var(--hf-dropdown-open);
+        transform: translateY(calc((1 - var(--hf-dropdown-open)) * -12px))
+          scale(calc(0.96 + var(--hf-dropdown-open) * 0.04));
+        transform-origin: top right;
+        box-shadow: 0 34px 90px rgba(0, 0, 0, 0.2);
+      }
+      .hf-ui-dropdown-item {
+        display: block;
+        width: 100%;
+        height: 54px;
+        padding: 0 18px;
+        border: 0;
+        border-radius: 14px;
+        background: transparent;
+        color: #27272a;
+        font:
+          760 20px/1 Inter,
+          system-ui,
+          sans-serif;
+        text-align: left;
+        opacity: var(--hf-dropdown-open);
+        transform: translateY(
+          calc((1 - var(--hf-dropdown-open)) * (8px + var(--hf-dropdown-item-stagger) * 3px))
+        );
+      }
+      .hf-ui-dropdown-item:first-child {
+        background: #f4f4f5;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="dropdown-menu-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="5"
+    >
+      <div class="hf-ui-dropdown">
+        <button class="hf-ui-dropdown-trigger">Actions</button>
+        <div class="hf-ui-dropdown-menu">
+          <button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 0">
+            Duplicate</button
+          ><button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 1">
+            Export MP4</button
+          ><button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 2">
+            Archive
+          </button>
+        </div>
+      </div>
+      <script>
+        const tl = gsap.timeline({ paused: true });
+        tl.to(
+          ".hf-ui-dropdown",
+          { "--hf-dropdown-open": 1, duration: 0.32, ease: "power3.out" },
+          0.8,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["dropdown-menu-demo"] = tl;
+      </script>
+    </div>
+  </body>
+</html>

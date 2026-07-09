@@ -1,0 +1,101 @@
+<!--
+  Mesh Gradient Background - remocn component ported to HyperFrames authoring format.
+
+  Paste the markup and CSS into a composition. Drive the timeline integration
+  from a paused GSAP timeline so renders remain deterministic.
+-->
+
+<div class="hf-remocn-mesh-gradient-bg">
+  <div class="mesh"></div>
+  <div class="card">
+    <div class="spot"></div>
+    <div>
+      <h3>Mesh Gradient Background</h3>
+      <p>A render-safe mesh gradient using animated radial layers.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hf-remocn-mesh-gradient-bg {
+    --hf-accent: #2563eb;
+    --hf-ink: #111827;
+    --hf-muted: #6b7280;
+    --hf-surface: #ffffff;
+    color: var(--hf-ink);
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-remocn-mesh-gradient-bg {
+    position: relative;
+    width: 760px;
+    height: 428px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: #080b12;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+  }
+  .hf-remocn-mesh-gradient-bg .mesh {
+    position: absolute;
+    inset: -22%;
+    filter: blur(44px);
+    opacity: 0.88;
+    background:
+      radial-gradient(
+        circle at var(--hf-x1, 20%) var(--hf-y1, 30%),
+        #60a5fa 0 18%,
+        transparent 32%
+      ),
+      radial-gradient(
+        circle at var(--hf-x2, 76%) var(--hf-y2, 52%),
+        #f472b6 0 16%,
+        transparent 34%
+      ),
+      radial-gradient(circle at var(--hf-x3, 46%) var(--hf-y3, 78%), #34d399 0 18%, transparent 34%);
+  }
+  .hf-remocn-mesh-gradient-bg .card {
+    position: absolute;
+    inset: 74px 92px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 26px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    overflow: hidden;
+  }
+  .hf-remocn-mesh-gradient-bg .spot {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 65%);
+    transform: translate(var(--hf-spot-x, 0px), var(--hf-spot-y, 0px));
+    mix-blend-mode: screen;
+  }
+  .hf-remocn-mesh-gradient-bg .particle {
+    position: absolute;
+    left: 50%;
+    top: 54%;
+    width: 12px;
+    height: 20px;
+    border-radius: 3px;
+    background: var(--c);
+    transform: translate(var(--hf-px, 0px), var(--hf-py, 0px)) rotate(var(--hf-pr, 0deg));
+    opacity: var(--hf-po, 0);
+  }
+  .hf-remocn-mesh-gradient-bg h3 {
+    margin: 0;
+    font-size: 44px;
+    letter-spacing: -0.04em;
+  }
+  .hf-remocn-mesh-gradient-bg p {
+    margin: 8px 0 0;
+    color: rgba(255, 255, 255, 0.7);
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-remocn-mesh-gradient-bg .mesh', { '--hf-x1': '18%', '--hf-y1': '28%', '--hf-x2': '78%', '--hf-y2': '46%', '--hf-x3': '44%', '--hf-y3': '80%' }, { '--hf-x1': '34%', '--hf-y1': '42%', '--hf-x2': '62%', '--hf-y2': '60%', '--hf-x3': '58%', '--hf-y3': '64%', duration: 4, ease: 'sine.inOut' }, startTime); tl.fromTo('.hf-remocn-mesh-gradient-bg .spot', { '--hf-spot-x': '-120px', '--hf-spot-y': '-70px' }, { '--hf-spot-x': '190px', '--hf-spot-y': '90px', duration: 3, ease: 'sine.inOut' }, startTime); const particles_mesh_gradient_bg = gsap.utils.toArray('.hf-remocn-mesh-gradient-bg .particle'); if (particles_mesh_gradient_bg.length) { tl.fromTo(particles_mesh_gradient_bg, { '--hf-po': 0, '--hf-px': '0px', '--hf-py': '0px', '--hf-pr': '0deg' }, { '--hf-po': 1, '--hf-px': (i) => (Math.cos(i * 0.83) * 250) + 'px', '--hf-py': (i) => (-120 - Math.sin(i * 0.61) * 120) + 'px', '--hf-pr': (i) => (180 + i * 37) + 'deg', duration: 0.8, stagger: 0.015, ease: 'power2.out' }, startTime + 0.2); }
+-->

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "button",
+  "type": "hyperframes:component",
+  "title": "Button",
+  "description": "A video-safe shadcn-style button primitive with hover, press, loading, and success states",
+  "tags": ["ui-primitive", "remocn-port", "button", "control"],
+  "files": [
+    {
+      "path": "button.html",
+      "target": "compositions/components/button.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/button.png"
+  }
+}

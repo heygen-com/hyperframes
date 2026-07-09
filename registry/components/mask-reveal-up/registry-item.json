@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mask-reveal-up",
+  "type": "hyperframes:component",
+  "title": "Mask Reveal Up",
+  "description": "Lines reveal upward through a tight mask with compact stagger.",
+  "tags": ["motion-primitive", "remocn-port", "typography"],
+  "files": [
+    {
+      "path": "mask-reveal-up.html",
+      "target": "compositions/components/mask-reveal-up.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mask-reveal-up.png"
+  }
+}

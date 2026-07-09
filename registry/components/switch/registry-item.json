@@ -1,0 +1,18 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "switch",
+  "type": "hyperframes:component",
+  "title": "Switch",
+  "description": "A toggle switch primitive with track, thumb, and on/off state animation",
+  "tags": ["ui-primitive", "remocn-port", "switch", "toggle"],
+  "files": [
+    {
+      "path": "switch.html",
+      "target": "compositions/components/switch.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "preview": {
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/switch.png"
+  }
+}
