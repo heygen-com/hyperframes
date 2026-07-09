@@ -41,6 +41,31 @@ interface UseTimelineSyncCallbacksParams {
   applyPreviewAudioState: () => void;
 }
 
+/**
+ * Where should the player seek when the preview (re)loads?
+ * Priority: explicit pending seek (saved by refreshPlayer right before a
+ * reload) → store-level seek request (deep-link `?t=` hydration) → the store's
+ * last known playhead. The last fallback makes the playhead RELOAD-INVARIANT:
+ * edits persist + reload the preview, sometimes more than once (App's
+ * refreshPreviewDocumentVersion staggers extra bumps at 80/300ms), and the
+ * consume-once pendingSeekRef meant any reload after the first found the slot
+ * empty and reset the playhead to 0 — the "dropped a file and the playhead
+ * jumped to 0" bug. Falling back to the store's playhead means every reload
+ * restores position; a fresh project load still starts at 0 because the store
+ * resets currentTime on project switch. Invariant: an edit NEVER moves the
+ * playhead (the clamp below is the one sanctioned move — content shrank past it).
+ */
+export function resolveReloadSeekTime(input: {
+  pendingSeek: number | null;
+  requestedSeek: number | null;
+  storeCurrentTime: number;
+  duration: number;
+}): number {
+  const target = input.pendingSeek ?? input.requestedSeek ?? input.storeCurrentTime;
+  if (!Number.isFinite(target) || target <= 0) return 0;
+  return Math.min(target, input.duration);
+}
+
 export function useTimelineSyncCallbacks({
   iframeRef,
   probeIntervalRef,
@@ -218,10 +243,14 @@ export function useTimelineSyncCallbacks({
     // never reaches pendingSeekRef). Reconciling with the store here is what makes a
     // deep-linked `?t=` land instead of starting at 0.
     const storeSeek = usePlayerStore.getState().requestedSeekTime;
-    const seekTo = pendingSeekRef.current ?? storeSeek;
+    const startTime = resolveReloadSeekTime({
+      pendingSeek: pendingSeekRef.current,
+      requestedSeek: storeSeek,
+      storeCurrentTime: usePlayerStore.getState().currentTime,
+      duration: adapter.getDuration(),
+    });
     pendingSeekRef.current = null;
     if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-    const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
     adapter.seek(startTime);
     // Keep non-React listeners such as the capture link and time display in sync
