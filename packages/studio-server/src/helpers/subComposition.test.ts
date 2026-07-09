@@ -101,6 +101,32 @@ describe("buildSubCompositionHtml", () => {
     expect(html).toContain("<p>Hello</p>");
   });
 
+  it("preserves anime-only sub-compositions without injecting the GSAP fallback", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body></body></html>`,
+      "compositions/anime-card.html": `<template data-composition-id="anime-card">
+  <div id="card" data-composition-id="anime-card" data-width="400" data-height="300"></div>
+  <script>
+    const tl = anime.createTimeline({ autoplay: false });
+    tl.add("#card", { x: 100, duration: 1000 }, 0);
+    hyperframesAnime.register("anime-card", tl);
+  </script>
+</template>`,
+    });
+
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/anime-card.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+
+    expect(html).not.toBeNull();
+    expect(html).toContain("animejs");
+    expect(html).not.toContain("gsap@3/dist/gsap.min.js");
+    expect(html).toContain('hyperframesAnime.register("anime-card", tl)');
+  });
+
   it("rewrites sub-composition asset paths against the project root preview base", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

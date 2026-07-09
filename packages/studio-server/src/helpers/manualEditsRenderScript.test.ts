@@ -561,4 +561,64 @@ describe("createStudioPositionSeekReapplyScript", () => {
     const transform = card.style.getPropertyValue("transform");
     expect(!transform || transform === "none" || transform === "").toBe(true);
   });
+
+  it("registers attribute-backed Studio motion with anime when GSAP is unavailable", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-motion='{"start":0.25,"duration":0.5,"ease":"outQuad","from":{"x":0},"to":{"x":120,"opacity":1}}'>
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+    const addCalls: Array<{
+      target: HTMLElement;
+      params: Record<string, unknown>;
+      at: number;
+    }> = [];
+    const seekCalls: number[] = [];
+    let registered: { id: string; instance: unknown } | null = null;
+    const timeline = {
+      add(target: HTMLElement, params: Record<string, unknown>, at: number) {
+        addCalls.push({ target, params, at });
+        return timeline;
+      },
+      seek(timeMs: number) {
+        seekCalls.push(timeMs);
+        return timeline;
+      },
+      pause() {
+        return timeline;
+      },
+      revert() {
+        return timeline;
+      },
+    };
+
+    Reflect.set(window, "anime", { createTimeline: () => timeline });
+    Reflect.set(window, "hyperframesAnime", {
+      register(id: string, instance: unknown) {
+        registered = { id, instance };
+        return registered;
+      },
+      unregister() {
+        registered = null;
+      },
+      get(id: string) {
+        return registered?.id === id ? registered : null;
+      },
+    });
+    (window as unknown as { __hf: Record<string, unknown> }).__hf = { seek: () => {} };
+
+    runPositionScript(window);
+    const wrappedSeek = (window as unknown as { __hf: { seek: (t: number) => void } }).__hf.seek;
+    wrappedSeek(0.75);
+
+    expect(addCalls[0]).toEqual({
+      target: card,
+      params: { x: 120, opacity: 1, duration: 500, ease: "outQuad" },
+      at: 250,
+    });
+    expect(registered?.id).toBe("studio-motion");
+    expect(seekCalls[seekCalls.length - 1]).toBe(750);
+  });
 });

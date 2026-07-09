@@ -97,6 +97,7 @@ function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: stri
   );
 }
 
+// fallow-ignore-next-line complexity
 function scopeSelector(
   selector: string,
   scope: string,

@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { injectScriptsIntoHtml, stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
+import { classifyAnimationRuntime, type AnimationRuntimeEngine } from "@hyperframes/parsers";
 import type { StudioApiAdapter } from "../types.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
@@ -55,19 +56,39 @@ function readStudioMotionManifestContent(projectDir: string): string {
   }
 }
 
-function parseStudioMotionManifestContent(content: string): {
+interface StudioMotionManifestSummary {
   hasMotion: boolean;
+  hasGsapMotion: boolean;
+  hasAnimeMotion: boolean;
   hasCustomEase: boolean;
-} {
+}
+
+function parseStudioMotionManifestContent(content: string): StudioMotionManifestSummary {
+  const empty = {
+    hasMotion: false,
+    hasGsapMotion: false,
+    hasAnimeMotion: false,
+    hasCustomEase: false,
+  };
   try {
-    const parsed = JSON.parse(content) as { motions?: Array<{ customEase?: unknown }> };
-    const motions = Array.isArray(parsed.motions) ? parsed.motions : [];
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object") return empty;
+    const rawMotions = Reflect.get(parsed, "motions");
+    const motions = Array.isArray(rawMotions) ? rawMotions : [];
+    const isMotionKind = (motion: unknown, kind: string): boolean =>
+      Boolean(motion && typeof motion === "object" && Reflect.get(motion, "kind") === kind);
+    const motionHasCustomEase = (motion: unknown): boolean =>
+      Boolean(motion && typeof motion === "object" && Reflect.get(motion, "customEase"));
+    const hasGsapMotion = motions.some((motion) => isMotionKind(motion, "gsap-motion"));
+    const hasAnimeMotion = motions.some((motion) => isMotionKind(motion, "anime-motion"));
     return {
       hasMotion: motions.length > 0,
-      hasCustomEase: motions.some((motion) => Boolean(motion?.customEase)),
+      hasGsapMotion,
+      hasAnimeMotion,
+      hasCustomEase: hasGsapMotion && motions.some(motionHasCustomEase),
     };
   } catch {
-    return { hasMotion: false, hasCustomEase: false };
+    return empty;
   }
 }
 
@@ -76,42 +97,39 @@ function injectScriptTagIntoHead(html: string, scriptTag: string): string {
   return `${scriptTag}\n${html}`;
 }
 
-function htmlHasGsap(html: string): boolean {
-  // Only match GSAP references outside <template> elements — scripts inside
-  // templates are inert when cloned and don't make GSAP globally available.
-  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
+function htmlOutsideTemplates(html: string): string {
+  return html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
+}
+
+function classificationIncludesEngine(html: string, engine: AnimationRuntimeEngine): boolean {
+  const verdict = classifyAnimationRuntime(html).verdict;
+  return verdict === engine || verdict === "mixed";
+}
+
+function htmlHasRuntimeScript(html: string, runtime: "gsap" | "anime"): boolean {
+  const outsideTemplates = htmlOutsideTemplates(html);
   return (
-    /<script\b[^>]*src=["'][^"']*gsap/i.test(outsideTemplates) ||
-    /\/\*\s*inlined:.*gsap/i.test(outsideTemplates) ||
+    new RegExp(`<script\\b[^>]*src=["'][^"']*${runtime}`, "i").test(outsideTemplates) ||
+    new RegExp(`/\\*\\s*inlined:.*${runtime}`, "i").test(outsideTemplates)
+  );
+}
+
+function htmlHasGsapRuntime(html: string): boolean {
+  const outsideTemplates = htmlOutsideTemplates(html);
+  return (
+    htmlHasRuntimeScript(html, "gsap") ||
+    classificationIncludesEngine(html, "gsap") ||
     /\b(GreenSock|_gsScope)\b/.test(outsideTemplates) ||
     /\bgsap\.(config|defaults|registerPlugin|version)\b/.test(outsideTemplates)
   );
 }
 
-// fallow-ignore-next-line code-duplication
-function htmlHasAnime(html: string): boolean {
-  // Only match anime references outside <template> elements — scripts inside
-  // templates are inert when cloned and don't make anime globally available.
-  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
-  return (
-    /<script\b[^>]*src=["'][^"']*anime/i.test(outsideTemplates) ||
-    /\/\*\s*inlined:.*anime/i.test(outsideTemplates) ||
-    /\banime\.(createTimeline|animate)\s*\(/.test(outsideTemplates) ||
-    /\bhyperframesAnime\.register\s*\(/.test(outsideTemplates) ||
-    /\bwindow\.__hfAnime\b/.test(outsideTemplates)
-  );
-}
-
-function htmlHasAnimeScript(html: string): boolean {
-  const outsideTemplates = html.replace(/<template\b[^>]*>[\s\S]*?<\/template>/gi, "");
-  return (
-    /<script\b[^>]*src=["'][^"']*anime/i.test(outsideTemplates) ||
-    /\/\*\s*inlined:.*anime/i.test(outsideTemplates)
-  );
+function htmlHasAnimeRuntime(html: string): boolean {
+  return htmlHasRuntimeScript(html, "anime") || classificationIncludesEngine(html, "animejs");
 }
 
 async function injectAnimeCdnIfNeeded(html: string): Promise<string> {
-  if (!htmlHasAnime(html) || htmlHasAnimeScript(html)) return html;
+  if (!htmlHasAnimeRuntime(html) || htmlHasRuntimeScript(html, "anime")) return html;
   return injectScriptTagIntoHead(html, await loadAnimeCdnScript());
 }
 
@@ -159,29 +177,38 @@ function injectMotionPathPluginIfNeeded(html: string): string {
   return injectScriptTagIntoHead(html, GSAP_MOTION_PATH_CDN_SCRIPT);
 }
 
-function injectStudioMotionDependencies(html: string, manifestContent: string): string {
-  const manifest = parseStudioMotionManifestContent(manifestContent);
+async function injectStudioMotionDependencies(
+  html: string,
+  manifestContent: string,
+  manifest = parseStudioMotionManifestContent(manifestContent),
+): Promise<string> {
   if (!manifest.hasMotion) return html;
   let next = html;
-  if (!htmlHasGsap(next)) next = injectScriptTagIntoHead(next, GSAP_CDN_SCRIPT);
+  if (manifest.hasGsapMotion && !htmlHasGsapRuntime(next)) {
+    next = injectScriptTagIntoHead(next, GSAP_CDN_SCRIPT);
+  }
   if (manifest.hasCustomEase && !htmlHasCustomEase(next)) {
     next = injectScriptTagIntoHead(next, GSAP_CUSTOM_EASE_CDN_SCRIPT);
+  }
+  if (manifest.hasAnimeMotion && !htmlHasAnimeRuntime(next)) {
+    next = injectScriptTagIntoHead(next, await loadAnimeCdnScript());
   }
   return next;
 }
 
-function injectStudioMotionScript(
+async function injectStudioMotionScript(
   html: string,
   projectDir: string,
   activeCompositionPath: string,
-): string {
-  const manifestContent = readStudioMotionManifestContent(projectDir);
+  manifestContent = readStudioMotionManifestContent(projectDir),
+  manifest = parseStudioMotionManifestContent(manifestContent),
+): Promise<string> {
   const script = createStudioMotionRenderBodyScript(manifestContent, {
     activeCompositionPath,
   });
   if (!script) return html;
   return injectScriptsIntoHtml(
-    injectStudioMotionDependencies(html, manifestContent),
+    await injectStudioMotionDependencies(html, manifestContent, manifest),
     [],
     [script],
     false,
@@ -221,16 +248,22 @@ async function injectStudioPreviewAugmentations(
   projectDir: string,
   activeCompositionPath: string,
 ): Promise<string> {
-  const withGsapAugmentations = injectStudioMotionScript(
-    injectMotionPathPluginIfNeeded(
-      injectGsapCdnFallback(
-        injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
-      ),
-    ),
+  const manifestContent = readStudioMotionManifestContent(projectDir);
+  const manifest = parseStudioMotionManifestContent(manifestContent);
+  const withSignature = injectProjectSignature(html, resolveProjectSignature(adapter, projectDir));
+  const needsGsapRuntime = htmlHasGsapRuntime(withSignature) || manifest.hasGsapMotion;
+  const withGsapFallback = needsGsapRuntime ? injectGsapCdnFallback(withSignature) : withSignature;
+  const withMotionPath = needsGsapRuntime
+    ? injectMotionPathPluginIfNeeded(withGsapFallback)
+    : withGsapFallback;
+  const withStudioMotion = await injectStudioMotionScript(
+    withMotionPath,
     projectDir,
     activeCompositionPath,
+    manifestContent,
+    manifest,
   );
-  return injectAnimeCdnIfNeeded(withGsapAugmentations);
+  return injectAnimeCdnIfNeeded(withStudioMotion);
 }
 
 async function transformPreviewHtml(

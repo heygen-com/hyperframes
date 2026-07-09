@@ -279,8 +279,8 @@ export function splitElementInHtml(
   const timing = resolveElementTiming(el);
   const { usesDataEnd } = timing;
   let { start, duration } = timing;
-  // GSAP-animated elements carry their timing in the script, not in data-* attrs,
-  // so the source has no authored duration. Fall back to the store's (GSAP-derived)
+  // Timeline-animated elements carry their timing in the script, not in data-* attrs,
+  // so the source has no authored duration. Fall back to the store's runtime-derived
   // range — the runtime windows visibility off data-start/data-duration regardless
   // of class, so stamping both halves below makes each half show only in its window.
   if (duration <= 0 && fallbackTiming && fallbackTiming.duration > 0) {

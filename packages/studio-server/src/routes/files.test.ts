@@ -186,6 +186,29 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
 </script>
 </body></html>`;
 
+  const ANIME_COMP = `<!DOCTYPE html><html><body data-duration="3">
+<div id="box" data-start="0" data-duration="3"></div>
+<script>
+const tl = anime.createTimeline({ autoplay: false, defaults: { duration: 1000, ease: "linear" } });
+tl.add("#box", { x: 120, y: 20, opacity: 1, duration: 800, ease: "outQuad" }, 0);
+hyperframesAnime.register("main", tl);
+</script>
+</body></html>`;
+
+  const MIXED_COMP = `<!DOCTYPE html><html><body data-duration="3">
+<div id="box"></div>
+<script>
+const tl = gsap.timeline();
+tl.to("#box", { x: 100, duration: 1 }, 0);
+window.__timelines = { main: tl };
+</script>
+<script>
+const animeTl = anime.createTimeline({ autoplay: false });
+animeTl.add("#box", { x: 200, duration: 1000 }, 0);
+hyperframesAnime.register("main-anime", animeTl);
+</script>
+</body></html>`;
+
   function writeHtml(projectDir: string, name: string, html: string): void {
     writeFileSync(join(projectDir, name), html);
   }
@@ -255,6 +278,16 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
       postamble: payload.postamble,
       animations: animationRecords(payload).map((animation) => summarizeAnimation(animation)),
     };
+  }
+
+  function animeAnimationRecords(payload: Record<string, unknown>): Record<string, unknown>[] {
+    return animationRecords(payload);
+  }
+
+  async function parseAnimeAnimations(app: Hono, file: string): Promise<Record<string, unknown>> {
+    const response = await app.request(`http://localhost/projects/demo/animejs-animations/${file}`);
+    expect(response.status).toBe(200);
+    return readJsonRecord(response);
   }
 
   function findAnimation(
@@ -857,6 +890,114 @@ tl.to("#box", { opacity: 1, duration: 1 }, 0);
     expect(result.after).toContain("(function () {");
     // The variable target was not flattened to a string-literal selector
     expect(result.after).toContain("tl.to(kicker,");
+  });
+
+  it("parses anime.js animations through the anime route with the U12 model shape", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "anime.html", ANIME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const payload = await parseAnimeAnimations(app, "anime.html");
+    const animations = animeAnimationRecords(payload);
+
+    expect(payload.engine).toBe("animejs");
+    expect(payload.timelineVar).toBe("tl");
+    expect(payload.registered).toBe(true);
+    expect(payload.registrationIds).toEqual(["main"]);
+    expect(animations).toHaveLength(1);
+    expect(animations[0].engine).toBe("animejs");
+    expect(animations[0].targetSelector).toBe("#box");
+    expect(animations[0].method).toBe("add");
+    expect(animations[0].properties).toMatchObject({ x: 120, y: 20, opacity: 1 });
+    expect(animations[0].duration).toBe(800);
+    expect(animations[0].ease).toBe("outQuad");
+  });
+
+  it("mutates an anime.js animation, writes it, and reparses the updated model", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "anime.html", ANIME_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const initial = await parseAnimeAnimations(app, "anime.html");
+    const animation = animeAnimationRecords(initial)[0];
+    const animationId = expectString(animation.id);
+
+    const response = await app.request(
+      "http://localhost/projects/demo/animejs-mutations/anime.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "update-meta",
+          animationId,
+          updates: { duration: 1200, ease: "inOutQuad" },
+        }),
+      },
+    );
+    const payload = await readJsonRecord(response);
+    const reparsed = parsedAnimationRecords(payload);
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.changed).toBe(true);
+    expect(expectString(payload.after)).toContain("duration: 1200");
+    expect(expectString(payload.after)).toContain('ease: "inOutQuad"');
+    expect(readFileSync(join(projectDir, "anime.html"), "utf-8")).toBe(payload.after);
+    expect(reparsed[0].duration).toBe(1200);
+    expect(reparsed[0].ease).toBe("inOutQuad");
+  });
+
+  it("rejects mixed-file mutation requests when the animation belongs to the other runtime", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "mixed.html", MIXED_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const animePayload = await parseAnimeAnimations(app, "mixed.html");
+    const animeId = expectString(animeAnimationRecords(animePayload)[0].id);
+    const gsapParse = await app.request(
+      "http://localhost/projects/demo/gsap-animations/mixed.html",
+    );
+    const gsapPayload = await readJsonRecord(gsapParse);
+    const gsapId = expectString(animationRecords(gsapPayload)[0].id);
+
+    const gsapAgainstAnime = await app.request(
+      "http://localhost/projects/demo/gsap-mutations/mixed.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "update-property",
+          animationId: animeId,
+          property: "x",
+          value: 300,
+        }),
+      },
+    );
+    const animeAgainstGsap = await app.request(
+      "http://localhost/projects/demo/animejs-mutations/mixed.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "update-property",
+          animationId: gsapId,
+          property: "x",
+          value: 300,
+        }),
+      },
+    );
+
+    expect(gsapAgainstAnime.status).toBe(409);
+    expect(animeAgainstGsap.status).toBe(409);
+    expect(await gsapAgainstAnime.json()).toEqual({
+      error: "animation belongs to animejs runtime",
+    });
+    expect(await animeAgainstGsap.json()).toEqual({
+      error: "animation belongs to gsap runtime",
+    });
   });
 
   it("characterizes parse-edit-write output for a GSAP timeline with labels and motionPath", async () => {

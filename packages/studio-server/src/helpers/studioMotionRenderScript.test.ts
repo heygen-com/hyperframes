@@ -84,6 +84,57 @@ function installFakeGsap(window: Window): {
   return state;
 }
 
+function installFakeAnime(window: Window): {
+  addCalls: Array<{
+    target: HTMLElement;
+    params: Record<string, unknown>;
+    at: number;
+  }>;
+  seekCalls: number[];
+  registrations: Array<{ id: string; instance: unknown }>;
+} {
+  const state: {
+    addCalls: Array<{
+      target: HTMLElement;
+      params: Record<string, unknown>;
+      at: number;
+    }>;
+    seekCalls: number[];
+    registrations: Array<{ id: string; instance: unknown }>;
+  } = {
+    addCalls: [],
+    seekCalls: [],
+    registrations: [],
+  };
+  const timeline = {
+    add(target: HTMLElement, params: Record<string, unknown>, at: number) {
+      state.addCalls.push({ target, params, at });
+      return timeline;
+    },
+    seek(timeMs: number) {
+      state.seekCalls.push(timeMs);
+      return timeline;
+    },
+    pause() {
+      return timeline;
+    },
+    revert() {
+      return timeline;
+    },
+  };
+  Reflect.set(window, "anime", {
+    createTimeline: () => timeline,
+  });
+  Reflect.set(window, "hyperframesAnime", {
+    register(id: string, instance: unknown) {
+      state.registrations.push({ id, instance });
+      return { id, instance };
+    },
+    unregister() {},
+  });
+  return state;
+}
+
 describe("createStudioMotionRenderBodyScript", () => {
   it("returns null for an empty manifest", () => {
     expect(createStudioMotionRenderBodyScript("")).toBeNull();
@@ -201,5 +252,45 @@ describe("createStudioMotionRenderBodyScript", () => {
       { id: "studio-card-bounce", data: "M0,0 C0.18,0.9 0.32,1 1,1" },
     ]);
     expect(gsapState.calls[0]?.to.ease).toBe("studio-card-bounce");
+  });
+
+  it("registers Studio-authored anime motion through hyperframesAnime", () => {
+    const window = new Window();
+    window.document.body.innerHTML = '<div id="card"></div>';
+    const card = window.document.getElementById("card");
+    if (!(card instanceof window.HTMLElement)) throw new Error("card fixture missing");
+    const animeState = installFakeAnime(window);
+    Reflect.set(window, "__player", { getTime: () => 0.75 });
+
+    const script = createStudioMotionRenderBodyScript(
+      JSON.stringify({
+        version: 1,
+        motions: [
+          {
+            kind: "anime-motion",
+            target: { sourceFile: "index.html", id: "card" },
+            start: 0.25,
+            duration: 0.5,
+            ease: "outQuad",
+            from: { x: 0 },
+            to: { x: 120, opacity: 1 },
+          },
+        ],
+      }),
+    );
+    if (!script) throw new Error("script fixture missing");
+
+    runScript(window, script);
+
+    expect(animeState.addCalls).toEqual([
+      {
+        target: card,
+        params: { x: 120, opacity: 1, duration: 500, ease: "outQuad" },
+        at: 250,
+      },
+    ]);
+    expect(animeState.seekCalls).toEqual([750]);
+    expect(animeState.registrations).toHaveLength(1);
+    expect(animeState.registrations[0].id).toBe("studio-motion");
   });
 });

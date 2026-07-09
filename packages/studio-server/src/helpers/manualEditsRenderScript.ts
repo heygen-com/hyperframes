@@ -114,15 +114,103 @@ function studioPositionSeekReapplyRuntime(): void {
       };
       CustomEase?: { create?: (id: string, data: string) => void };
       __timelines?: Record<string, Record<string, unknown>>;
+      anime?: {
+        createTimeline?: (opts: Record<string, unknown>) => {
+          add?: (el: HTMLElement, vars: Record<string, unknown>, at: number) => unknown;
+          seek?: (timeMs: number) => unknown;
+          pause?: () => unknown;
+          revert?: () => unknown;
+        };
+      };
+      hyperframesAnime?: {
+        register?: (id: string, instance: unknown) => unknown;
+        unregister?: (id: string) => unknown;
+        get?: (id: string) => { instance?: unknown } | null;
+      };
     };
-    const gsap = win.gsap;
-    if (!gsap || typeof gsap.timeline !== "function") return;
-    win.__timelines = win.__timelines || {};
 
     // Cache the timeline keyed by the concatenated motion JSON strings.
     // On each seek, if the key hasn't changed, just seek the existing timeline
     // instead of rebuilding it (avoids kill+recreate on every frame).
     const motionKey = computeMotionKey(motionEls);
+
+    const applyAnimeMotionTimeline = (): void => {
+      const anime = win.anime;
+      const registry = win.hyperframesAnime;
+      if (!anime?.createTimeline || !registry?.register) return;
+
+      const callRegisteredMethod = (method: "revert" | "seek", arg?: number): boolean => {
+        const instance = registry.get?.(MOTION_TL_KEY)?.instance;
+        if (!instance || typeof instance !== "object") return false;
+        const fn = Reflect.get(instance, method);
+        if (typeof fn !== "function") return false;
+        if (arg == null) fn.call(instance);
+        else fn.call(instance, arg);
+        return true;
+      };
+
+      if (
+        motionKey &&
+        motionKey === cachedMotionKey &&
+        callRegisteredMethod("seek", lastSeekTime * 1000)
+      ) {
+        return;
+      }
+
+      callRegisteredMethod("revert");
+      registry.unregister?.(MOTION_TL_KEY);
+      const timeline = anime.createTimeline({ autoplay: false });
+      if (typeof timeline.add !== "function") return;
+
+      const copyRecord = (value: unknown): Record<string, unknown> => {
+        const result: Record<string, unknown> = {};
+        if (!value || typeof value !== "object") return result;
+        for (const key of Object.keys(value)) {
+          result[key] = Reflect.get(value, key);
+        }
+        return result;
+      };
+
+      let applied = 0;
+      for (let i = 0; i < motionEls.length; i++) {
+        const candidate = motionEls[i];
+        if (!(candidate instanceof HTMLElement)) continue;
+        const json = candidate.getAttribute(MOTION_ATTR);
+        if (!json) continue;
+        try {
+          const parsed: unknown = JSON.parse(json);
+          if (!parsed || typeof parsed !== "object") continue;
+          const start = finiteNum(Reflect.get(parsed, "start"));
+          const duration = finiteNum(Reflect.get(parsed, "duration"));
+          if (start == null || duration == null || duration <= 0) continue;
+          const easeValue = Reflect.get(parsed, "ease");
+          const ease = typeof easeValue === "string" && easeValue ? easeValue : "linear";
+          const to = copyRecord(Reflect.get(parsed, "to"));
+          if (Object.keys(to).length === 0) continue;
+          timeline.add(candidate, { ...to, duration: duration * 1000, ease }, start * 1000);
+          applied += 1;
+        } catch {
+          /* malformed JSON — skip */
+        }
+      }
+
+      if (applied === 0) {
+        cachedMotionKey = "";
+        timeline.revert?.();
+        return;
+      }
+      cachedMotionKey = motionKey;
+      registry.register(MOTION_TL_KEY, timeline);
+      timeline.pause?.();
+      timeline.seek?.(lastSeekTime * 1000);
+    };
+
+    const gsap = win.gsap;
+    if (!gsap || typeof gsap.timeline !== "function") {
+      applyAnimeMotionTimeline();
+      return;
+    }
+    win.__timelines = win.__timelines || {};
     const existing = win.__timelines[MOTION_TL_KEY];
     if (
       motionKey &&

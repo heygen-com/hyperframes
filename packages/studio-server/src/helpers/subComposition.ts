@@ -2,11 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import {
+  ANIME_CDN,
   rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "@hyperframes/core";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
+import { classifyAnimationRuntime } from "@hyperframes/parsers";
 
 /**
  * Detect whether `html` is a full document (has `<html>`, `<head>`, or
@@ -227,6 +229,22 @@ function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
   );
 }
 
+function headHasRuntime(headContent: string, runtime: "gsap" | "anime"): boolean {
+  return new RegExp(`<script\\b[^>]*src=["'][^"']*${runtime}`, "i").test(headContent);
+}
+
+function shouldIncludeGsapFallback(rawComp: string, headContent: string): boolean {
+  if (headHasRuntime(headContent, "gsap")) return false;
+  const verdict = classifyAnimationRuntime(rawComp).verdict;
+  return verdict !== "animejs";
+}
+
+function shouldIncludeAnimeFallback(rawComp: string, headContent: string): boolean {
+  if (headHasRuntime(headContent, "anime")) return false;
+  const verdict = classifyAnimationRuntime(rawComp).verdict;
+  return verdict === "animejs" || verdict === "mixed";
+}
+
 /**
  * Build a standalone HTML page for a sub-composition.
  *
@@ -338,9 +356,13 @@ export function buildSubCompositionHtml(
     headContent += `\n<script data-hyperframes-preview-runtime="1" src="${runtimeUrl}"></script>`;
   }
 
-  // Fallback: if no index.html head was found, add minimal deps
-  if (!headContent.includes("gsap")) {
+  // Fallback: if no index.html head was found, add minimal deps for the active
+  // animation runtime. Legacy/no-runtime comps keep the historical GSAP fallback.
+  if (shouldIncludeGsapFallback(rewrittenContent, headContent)) {
     headContent += `\n<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>`;
+  }
+  if (shouldIncludeAnimeFallback(rewrittenContent, headContent)) {
+    headContent += `\n<script src="${ANIME_CDN}"></script>`;
   }
 
   const htmlOpen = htmlAttrs ? `<html ${htmlAttrs}>` : "<html>";

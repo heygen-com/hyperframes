@@ -1,3 +1,6 @@
+import { classifyAnimationRuntime } from "@hyperframes/parsers";
+import { applyAnimeSoftReload } from "./animeSoftReload";
+
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
   __player?: { getTime?: () => number; seek?: (t: number) => void };
@@ -171,6 +174,7 @@ export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload
  * caller should perform a full reload to recover. It never fires on the
  * synchronous paths.
  */
+// fallow-ignore-next-line complexity
 export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
@@ -178,6 +182,12 @@ export function applySoftReload(
   currentTimeOverride?: number,
 ): SoftReloadResult {
   if (!iframe || !scriptText) return "cannot-soft-reload";
+
+  const runtime = classifyAnimationRuntime(`<script>${scriptText}</script>`).verdict;
+  if (runtime === "animejs") {
+    return applyAnimeSoftReload(iframe, scriptText, onAsyncFailure, currentTimeOverride);
+  }
+  if (runtime === "mixed") return "cannot-soft-reload";
 
   const win = iframe.contentWindow as IframeWindow | null;
   const doc = iframe.contentDocument;

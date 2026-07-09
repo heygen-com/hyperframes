@@ -27,9 +27,11 @@ import {
   findUnsafeMutationValues,
   type UnsafeMutationValue,
 } from "../helpers/finiteMutation.js";
-import type { GsapAnimation } from "@hyperframes/parsers";
+import type { AnimationRuntimeEngine, GsapAnimation } from "@hyperframes/parsers";
+import { classifyAnimationRuntime } from "@hyperframes/parsers";
 import { classifyPropertyGroup } from "@hyperframes/parsers/gsap-constants";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
+import { parseAnimeJsScriptAcorn } from "@hyperframes/parsers/animejs-parser-acorn";
 import { unrollComputedTimeline } from "@hyperframes/parsers";
 import {
   updateAnimationInScript,
@@ -54,6 +56,13 @@ import {
   scalePositionsInScript,
   dedupePositionWritesInScript,
 } from "@hyperframes/parsers/gsap-writer-acorn";
+import {
+  addAnimeJsAnimationToScript,
+  removeAnimeJsAnimationFromScript,
+  retargetAnimeJsAnimationInScript,
+  updateAnimeJsAnimationInScript,
+  updateAnimeJsPropertyKeyframeInScript,
+} from "@hyperframes/parsers/animejs-writer-acorn";
 import {
   removeElementFromHtml,
   patchElementInHtml,
@@ -278,43 +287,78 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
   return updatedCount;
 }
 
-// ── GSAP script extraction ──────────────────────────────────────────────────
+// ── Animation script extraction ─────────────────────────────────────────────
 
 /**
- * Parse an HTML string with linkedom, locate the inline `<script>` that
- * contains GSAP timeline code, and return both its text content and a
- * function that replaces that script block and serialises back to HTML.
+ * Parse an HTML string with linkedom, locate the inline `<script>` owned by an
+ * animation runtime, and return both its text content and a function that
+ * replaces that script block and serialises back to HTML.
  */
-function extractGsapScriptBlock(html: string): {
+function extractRuntimeScriptBlock(
+  html: string,
+  engine: AnimationRuntimeEngine,
+): {
   scriptText: string;
   document: Document;
   replaceScript: (newText: string) => string;
 } | null {
+  const classification = classifyAnimationRuntime(html);
+  const targetBlock = classification.blocks.find((block) => block.engine === engine);
+  if (!targetBlock) return null;
+
   const { document } = parseHTML(html);
-  const scripts = [
-    ...document.querySelectorAll("script:not([src])"),
-    ...Array.from(document.querySelectorAll("template")).flatMap((tmpl) =>
-      Array.from(tmpl.querySelectorAll("script:not([src])")),
-    ),
-  ];
+  const scripts = collectInlineScriptElements(document);
+  const targetText = html.slice(targetBlock.start, targetBlock.end);
+  const script = findMatchingScriptElement(scripts, targetText);
+  if (!script) return null;
+  const content = script.textContent || "";
+  return {
+    scriptText: content,
+    document,
+    replaceScript(newText: string): string {
+      script.textContent = newText;
+      return document.toString();
+    },
+  };
+}
+
+function collectInlineScriptElements(document: Document): Element[] {
+  const scripts: Element[] = [];
+  const seen = new Set<Element>();
+  const add = (script: Element): void => {
+    if (seen.has(script)) return;
+    seen.add(script);
+    scripts.push(script);
+  };
+  document.querySelectorAll("script:not([src])").forEach(add);
+  document.querySelectorAll("template").forEach((template) => {
+    template.querySelectorAll("script:not([src])").forEach(add);
+  });
+  return scripts;
+}
+
+function findMatchingScriptElement(scripts: Element[], targetText: string): Element | null {
   for (const script of scripts) {
     const content = script.textContent || "";
-    if (
-      content.includes("gsap.timeline") ||
-      content.includes(".set(") ||
-      content.includes(".to(")
-    ) {
-      return {
-        scriptText: content,
-        document,
-        replaceScript(newText: string): string {
-          script.textContent = newText;
-          return document.toString();
-        },
-      };
-    }
+    if (content === targetText) return script;
   }
-  return null;
+  return scripts.find((script) => (script.textContent || "").includes(targetText.trim())) ?? null;
+}
+
+function extractGsapScriptBlock(
+  html: string,
+): NonNullable<ReturnType<typeof extractRuntimeScriptBlock>> | null {
+  return extractRuntimeScriptBlock(html, "gsap");
+}
+
+function extractAnimeScriptBlock(
+  html: string,
+): NonNullable<ReturnType<typeof extractRuntimeScriptBlock>> | null {
+  return extractRuntimeScriptBlock(html, "animejs");
+}
+
+function hasMixedRuntimeScriptBlock(html: string): boolean {
+  return classifyAnimationRuntime(html).blocks.some((block) => block.engine === "mixed");
 }
 
 /**
@@ -332,6 +376,19 @@ function stripGsapAnimationsForSelector(html: string, selector: string): string 
   // Reverse so earlier removals don't shift the spans of later ones.
   for (const anim of [...matching].reverse()) {
     script = removeAnimationFromScript(script, anim.id);
+  }
+  return block.replaceScript(script);
+}
+
+function stripAnimeAnimationsForSelector(html: string, selector: string): string {
+  const block = extractAnimeScriptBlock(html);
+  if (!block) return html;
+  const parsed = parseAnimeJsScriptAcorn(block.scriptText);
+  const matching = parsed.animations.filter((animation) => animation.targetSelector === selector);
+  if (matching.length === 0) return html;
+  let script = block.scriptText;
+  for (const animation of [...matching].reverse()) {
+    script = removeAnimeJsAnimationFromScript(script, animation.id);
   }
   return block.replaceScript(script);
 }
@@ -780,6 +837,56 @@ type GsapMutationRequest =
       oldDuration: number;
       newStart: number;
       newDuration: number;
+    };
+
+type AnimePrimitive = number | string | boolean;
+type AnimePropertyValue = AnimePrimitive | AnimePrimitive[] | `__raw:${string}`;
+
+type AnimeMutationRequest =
+  | {
+      type: "update-property";
+      animationId: string;
+      property: string;
+      value: AnimePropertyValue;
+    }
+  | {
+      type: "update-properties";
+      animationId: string;
+      properties: Record<string, AnimePropertyValue>;
+    }
+  | {
+      type: "update-meta";
+      animationId: string;
+      updates: {
+        targetSelector?: string;
+        duration?: number | string;
+        ease?: string;
+        delay?: number | string;
+        position?: number | string;
+      };
+    }
+  | {
+      type: "add";
+      targetSelector: string;
+      method: "add" | "set" | "animate";
+      position?: number | string;
+      duration?: number | string;
+      ease?: string;
+      delay?: number | string;
+      properties: Record<string, AnimePropertyValue>;
+    }
+  | { type: "delete"; animationId: string }
+  | {
+      type: "retarget";
+      animationId: string;
+      targetSelector: string;
+    }
+  | {
+      type: "update-property-keyframe";
+      animationId: string;
+      property: string;
+      index: number;
+      updates: Record<string, AnimePropertyValue>;
     };
 
 // ── GSAP mutation executor ──────────────────────────────────────────────────
@@ -1491,6 +1598,156 @@ async function executeGsapMutationRecast(
   }
 }
 
+// ── Anime mutation executor ─────────────────────────────────────────────────
+
+function executeAnimeMutation(
+  body: AnimeMutationRequest,
+  block: NonNullable<ReturnType<typeof extractAnimeScriptBlock>>,
+  respond: (data: unknown, status?: 400 | 404 | 409) => Response,
+): string | Response {
+  function requireAnimation(animationId: string): boolean | Response {
+    const parsed = parseAnimeJsScriptAcorn(block.scriptText);
+    if (parsed.animations.some((animation) => animation.id === animationId)) return true;
+    return respond({ error: "animation not found" }, 404);
+  }
+
+  try {
+    switch (body.type) {
+      case "update-meta": {
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, body.updates);
+      }
+      case "update-property": {
+        const updates = animeMetadataUpdateFromProperty(body.property, body.value);
+        if (!updates) {
+          return respond({ error: "anime.js property is not statically editable" }, 400);
+        }
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+      }
+      case "update-properties": {
+        const updates = animeMetadataUpdateFromProperties(body.properties);
+        if (!updates) {
+          return respond({ error: "anime.js properties are not statically editable" }, 400);
+        }
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return updateAnimeJsAnimationInScript(block.scriptText, body.animationId, updates);
+      }
+      case "add": {
+        return addAnimeJsAnimationToScript(block.scriptText, {
+          targetSelector: body.targetSelector,
+          method: body.method,
+          position: body.position,
+          properties: body.properties,
+          duration: body.duration,
+          ease: body.ease,
+          delay: body.delay,
+        });
+      }
+      case "delete": {
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return removeAnimeJsAnimationFromScript(block.scriptText, body.animationId);
+      }
+      case "retarget": {
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return retargetAnimeJsAnimationInScript(
+          block.scriptText,
+          body.animationId,
+          body.targetSelector,
+        );
+      }
+      case "update-property-keyframe": {
+        const found = requireAnimation(body.animationId);
+        if (found instanceof Response) return found;
+        return updateAnimeJsPropertyKeyframeInScript(
+          block.scriptText,
+          body.animationId,
+          body.property,
+          body.index,
+          body.updates,
+        );
+      }
+      default:
+        return respond({ error: `unknown mutation type: ${mutationTypeLabel(body)}` }, 400);
+    }
+  } catch (err) {
+    return respond({ error: err instanceof Error ? err.message : "anime.js mutation failed" }, 400);
+  }
+}
+
+function animeMetadataUpdateFromProperty(
+  property: string,
+  value: AnimePropertyValue,
+): Parameters<typeof updateAnimeJsAnimationInScript>[2] | null {
+  if (property === "targetSelector" && typeof value === "string") return { targetSelector: value };
+  if (property === "duration" && (typeof value === "number" || typeof value === "string")) {
+    return { duration: value };
+  }
+  if (property === "ease" && typeof value === "string") return { ease: value };
+  if (property === "delay" && (typeof value === "number" || typeof value === "string")) {
+    return { delay: value };
+  }
+  if (property === "position" && (typeof value === "number" || typeof value === "string")) {
+    return { position: value };
+  }
+  return null;
+}
+
+function animeMetadataUpdateFromProperties(
+  properties: Record<string, AnimePropertyValue>,
+): Parameters<typeof updateAnimeJsAnimationInScript>[2] | null {
+  let result: Parameters<typeof updateAnimeJsAnimationInScript>[2] = {};
+  for (const [property, value] of Object.entries(properties)) {
+    const update = animeMetadataUpdateFromProperty(property, value);
+    if (!update) return null;
+    result = { ...result, ...update };
+  }
+  return result;
+}
+
+function mutationAnimationId(body: unknown): string | null {
+  if (!isUnknownRecord(body)) return null;
+  const record = body;
+  if (typeof record.animationId === "string") return record.animationId;
+  if (typeof record.originalId === "string") return record.originalId;
+  return null;
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mutationTypeLabel(body: unknown): string {
+  if (!isUnknownRecord(body)) return "unknown";
+  return typeof body.type === "string" ? body.type : "unknown";
+}
+
+function animeScriptHasAnimation(html: string, animationId: string): boolean {
+  const block = extractAnimeScriptBlock(html);
+  if (!block) return false;
+  return parseAnimeJsScriptAcorn(block.scriptText).animations.some(
+    (animation) => animation.id === animationId,
+  );
+}
+
+function gsapScriptHasAnimation(html: string, animationId: string): boolean {
+  const block = extractGsapScriptBlock(html);
+  if (!block) return false;
+  return parseGsapScriptAcorn(block.scriptText).animations.some(
+    (animation) => animation.id === animationId,
+  );
+}
+
+function isAnimeMutationRequest(value: unknown): value is AnimeMutationRequest {
+  if (!isUnknownRecord(value) || typeof value.type !== "string") return false;
+  return true;
+}
+
 // ── Upload file processing ──────────────────────────────────────────────────
 
 async function processUploadedFiles(
@@ -1877,6 +2134,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     if (result.unwrappedGroupId) {
       cleaned = stripGsapAnimationsForSelector(cleaned, `#${result.unwrappedGroupId}`);
+      cleaned = stripAnimeAnimationsForSelector(cleaned, `#${result.unwrappedGroupId}`);
     }
     return writeIfChanged(c, ctx.project.dir, ctx.filePath, ctx.absPath, originalContent, cleaned);
   });
@@ -2008,6 +2266,26 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     return c.json(parsed);
   });
 
+  // ── Anime Animations (parse) ──
+
+  api.get("/projects/:id/animejs-animations/*", async (c) => {
+    const res = await resolveProjectPath(
+      c,
+      adapter,
+      (id) => `/projects/${id}/animejs-animations/`,
+      {
+        mustExist: true,
+      },
+    );
+    if ("error" in res) return res.error;
+
+    const html = readFileSync(res.absPath, "utf-8");
+    const block = extractAnimeScriptBlock(html);
+    if (!block) return c.json(parseAnimeJsScriptAcorn(""));
+
+    return c.json(parseAnimeJsScriptAcorn(block.scriptText));
+  });
+
   // ── GSAP Mutations ──
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
@@ -2026,6 +2304,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     let html = readFileSync(res.absPath, "utf-8");
+    if (hasMixedRuntimeScriptBlock(html)) {
+      return c.json({ error: "mixed runtime script blocks are read-only" }, 409);
+    }
+    const requestedAnimationId = mutationAnimationId(body);
+    if (requestedAnimationId && animeScriptHasAnimation(html, requestedAnimationId)) {
+      return c.json({ error: "animation belongs to animejs runtime" }, 409);
+    }
     let block = extractGsapScriptBlock(html);
     if (!block && (body.type === "add" || body.type === "add-with-keyframes")) {
       const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
@@ -2092,5 +2377,84 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       responsePayload.skippedSelectors = result.skippedSelectors;
     }
     return c.json(responsePayload);
+  });
+
+  // ── Anime Mutations ──
+
+  api.post("/projects/:id/animejs-mutations/*", async (c) => {
+    const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/animejs-mutations/`, {
+      mustExist: true,
+    });
+    if ("error" in res) return res.error;
+
+    const rawBody: unknown = await c.req.json().catch(() => null);
+    if (!isAnimeMutationRequest(rawBody)) {
+      return c.json({ error: "mutation type required" }, 400);
+    }
+    const body = rawBody;
+    const unsafeFields = findUnsafeMutationValues(body);
+    if (unsafeFields.length > 0) {
+      return rejectUnsafeMutationValues(c, unsafeFields);
+    }
+
+    let html = readFileSync(res.absPath, "utf-8");
+    if (hasMixedRuntimeScriptBlock(html)) {
+      return c.json({ error: "mixed runtime script blocks are read-only" }, 409);
+    }
+    const requestedAnimationId = mutationAnimationId(body);
+    if (requestedAnimationId && gsapScriptHasAnimation(html, requestedAnimationId)) {
+      return c.json({ error: "animation belongs to gsap runtime" }, 409);
+    }
+
+    let block = extractAnimeScriptBlock(html);
+    if (!block && body.type === "add") {
+      const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
+      const { ANIME_CDN } = await import("@hyperframes/core");
+      const animeCdn = `<script src="${ANIME_CDN}"></script>`;
+      const bootstrap = [
+        animeCdn,
+        "<script>",
+        "const tl = anime.createTimeline({ autoplay: false });",
+        `hyperframesAnime.register("${compId}", tl);`,
+        "</script>",
+      ].join("\n");
+      if (html.includes("</body>")) {
+        html = html.replace("</body>", `${bootstrap}\n</body>`);
+      } else {
+        html += `\n${bootstrap}`;
+      }
+      block = extractAnimeScriptBlock(html);
+    }
+    if (!block) {
+      return c.json({ error: "no anime.js script found in file" }, 400);
+    }
+
+    const respond = (data: unknown, status?: 400 | 404 | 409) =>
+      status ? c.json(data, status) : c.json(data);
+
+    const result = executeAnimeMutation(body, block, respond);
+    if (result instanceof Response) return result;
+
+    const changed = result !== block.scriptText;
+    const newHtml = changed ? block.replaceScript(result) : html;
+    let backupPath: string | null = null;
+    if (changed) {
+      const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+      if (backup.error)
+        console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+      backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
+      writeFileSync(res.absPath, newHtml, "utf-8");
+    }
+
+    return c.json({
+      ok: true,
+      changed,
+      parsed: parseAnimeJsScriptAcorn(result),
+      before: html,
+      after: newHtml,
+      scriptText: result,
+      path: res.filePath,
+      backupPath,
+    });
   });
 }

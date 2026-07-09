@@ -67,6 +67,19 @@ function studioMotionRenderRuntime(
         }
       | undefined
     >;
+    anime?: {
+      createTimeline?: (vars?: Record<string, unknown>) => {
+        add?: (target: HTMLElement, vars: Record<string, unknown>, at: number) => unknown;
+        seek?: (timeMs: number) => unknown;
+        pause?: () => unknown;
+        revert?: () => unknown;
+      };
+    };
+    hyperframesAnime?: {
+      register?: (id: string, instance: unknown) => unknown;
+      unregister?: (id: string) => unknown;
+      get?: (id: string) => { instance?: { revert?: () => unknown; pause?: () => unknown } } | null;
+    };
     __hfStudioMotionApply?: () => number;
   };
 
@@ -205,11 +218,21 @@ function studioMotionRenderRuntime(
     }
   };
 
-  const applyManifest = (): number => {
+  const clearRegisteredMotion = (): void => {
     runtimeWindow.__timelines = runtimeWindow.__timelines ?? {};
     runtimeWindow.__timelines[STUDIO_MOTION_TIMELINE_ID]?.kill?.();
     delete runtimeWindow.__timelines[STUDIO_MOTION_TIMELINE_ID];
+    try {
+      runtimeWindow.hyperframesAnime?.get?.(STUDIO_MOTION_TIMELINE_ID)?.instance?.revert?.();
+      runtimeWindow.hyperframesAnime?.unregister?.(STUDIO_MOTION_TIMELINE_ID);
+    } catch {
+      // Ignore stale anime registrations.
+    }
     restoreStudioMotionElements();
+  };
+
+  const applyGsapManifest = (): number => {
+    runtimeWindow.__timelines = runtimeWindow.__timelines ?? {};
     const gsap = runtimeWindow.gsap;
     if (!gsap?.timeline || manifestMotions.length === 0) return 0;
 
@@ -253,6 +276,46 @@ function studioMotionRenderRuntime(
     if (typeof timeline.totalTime === "function") timeline.totalTime(currentTime, false);
     else timeline.time?.(currentTime);
     return applied;
+  };
+
+  const applyAnimeManifest = (): number => {
+    const anime = runtimeWindow.anime;
+    const registry = runtimeWindow.hyperframesAnime;
+    if (!anime?.createTimeline || !registry?.register || manifestMotions.length === 0) return 0;
+
+    const timeline = anime.createTimeline({ autoplay: false });
+    let applied = 0;
+    for (const motionValue of manifestMotions) {
+      const motion = objectRecord(motionValue);
+      if (!motion || motion.kind !== "anime-motion") continue;
+      const targetRecord = objectRecord(motion.target);
+      if (!targetRecord) continue;
+      const target = resolveTarget(targetRecord);
+      if (!target || typeof timeline.add !== "function") continue;
+      const start = finiteNumber(motion.start);
+      const duration = finiteNumber(motion.duration);
+      if (start == null || duration == null || start < 0 || duration <= 0) continue;
+      const to = parseMotionValues(motion.to);
+      if (!to) continue;
+      const ease =
+        typeof motion.ease === "string" && motion.ease.trim() ? motion.ease.trim() : "linear";
+      timeline.add(target, { ...to, duration: duration * 1000, ease }, start * 1000);
+      applied += 1;
+    }
+
+    if (applied === 0) {
+      timeline.revert?.();
+      return 0;
+    }
+    registry.register(STUDIO_MOTION_TIMELINE_ID, timeline);
+    timeline.pause?.();
+    timeline.seek?.(readCurrentTime() * 1000);
+    return applied;
+  };
+
+  const applyManifest = (): number => {
+    clearRegisteredMotion();
+    return applyGsapManifest() + applyAnimeManifest();
   };
 
   runtimeWindow.__hfStudioMotionApply = applyManifest;

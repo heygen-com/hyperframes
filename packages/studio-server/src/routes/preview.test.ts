@@ -137,6 +137,31 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("gsap@3.15.0/dist/gsap.min.js");
   });
 
+  it("injects anime dependencies for Studio anime motion without GSAP fallback", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<!doctype html><html><head></head><body><div id='card'></div></body></html>",
+    );
+    const manifestDir = join(projectDir, ".hyperframes");
+    mkdirSync(manifestDir, { recursive: true });
+    writeFileSync(
+      join(manifestDir, "studio-motion.json"),
+      `{"version":1,"motions":[{"kind":"anime-motion","target":{"sourceFile":"index.html","id":"card"},"start":0,"duration":1,"ease":"outQuad","from":{"y":32},"to":{"y":0}}]}`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain("__hfStudioMotionApply");
+    expect(html).toContain(ANIME_CDN);
+    expect(html).not.toContain("data-hf-gsap-fallback");
+    expect(html).not.toContain("gsap@3.15.0/dist/gsap.min.js");
+  });
+
   it("injects the GSAP CustomEase plugin when Studio motion uses a custom ease", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -271,6 +296,29 @@ describe("registerPreviewRoutes", () => {
           const tl = gsap.timeline({ paused: true });
           window.__timelines = { main: tl };
         </script>
+      </body></html>`,
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/preview");
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).not.toContain(ANIME_CDN);
+  });
+
+  it("does not inject anime for inert template-only anime scripts in root preview", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body>
+        <template>
+          <script>
+            const tl = anime.createTimeline({ autoplay: false });
+            hyperframesAnime.register("template-only", tl);
+          </script>
+        </template>
       </body></html>`,
     );
     const app = new Hono();
