@@ -7,6 +7,7 @@ import {
   FlatGroup,
   FlatRow,
   FlatSegmentedRow,
+  FlatSlider,
   PinnedZoneDivider,
 } from "./propertyPanelFlatPrimitives";
 
@@ -154,6 +155,74 @@ describe("PinnedZoneDivider", () => {
   it("renders the 'one open below' label", () => {
     const { host, root } = renderInto(<PinnedZoneDivider />);
     expect(host.textContent).toContain("one open below");
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatSlider", () => {
+  it("renders the default tier with a dim knob at the correct position", () => {
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Layer blur"
+        value={0}
+        min={0}
+        max={40}
+        tier="default"
+        displayValue="0px"
+        onCommit={vi.fn()}
+      />,
+    );
+    const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
+    expect(knob).not.toBeNull();
+    expect(knob?.className).toContain("bg-panel-text-4");
+    expect(knob?.style.left).toBe("0%");
+    const value = host.querySelector('[data-flat-slider-value="true"]');
+    expect(value?.className).toContain("text-panel-text-3");
+    expect(value?.textContent).toBe("0px");
+    act(() => root.unmount());
+  });
+
+  it("renders the explicitCustom tier with a filled track and bright knob", () => {
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={100}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="100%"
+        onCommit={vi.fn()}
+      />,
+    );
+    const fill = host.querySelector<HTMLElement>('[data-flat-slider-fill="true"]');
+    expect(fill?.style.width).toBe("100%");
+    const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
+    expect(knob?.className).toContain("bg-white");
+    act(() => root.unmount());
+  });
+
+  it("commits a value on track click, proportional to click position", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={50}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="50%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 2, right: 200, bottom: 2 }),
+    });
+    act(() => {
+      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+    });
+    expect(onCommit).toHaveBeenCalledWith(50);
     act(() => root.unmount());
   });
 });
