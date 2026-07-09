@@ -247,6 +247,8 @@ export function FlatSlider({
   tier,
   displayValue,
   disabled,
+  centerTick,
+  onReset,
   onCommit,
 }: {
   label: string;
@@ -257,6 +259,8 @@ export function FlatSlider({
   tier: "default" | "explicitCustom";
   displayValue: string;
   disabled?: boolean;
+  centerTick?: boolean;
+  onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
   const clampedPct = Math.max(0, Math.min(100, ((value - min) / Math.max(max - min, 1e-6)) * 100));
@@ -285,6 +289,12 @@ export function FlatSlider({
           commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
         }}
       >
+        {centerTick && (
+          <div
+            data-flat-slider-center-tick="true"
+            className="absolute left-1/2 top-[-1px] h-1 w-px -translate-x-1/2 bg-panel-text-5"
+          />
+        )}
         {tier === "explicitCustom" && (
           <div
             data-flat-slider-fill="true"
@@ -308,6 +318,21 @@ export function FlatSlider({
       >
         {displayValue}
       </span>
+      {centerTick && (
+        <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
+          {tier === "explicitCustom" && onReset && (
+            <button
+              type="button"
+              data-flat-slider-reset="true"
+              title="Remove — fall back to default"
+              onClick={onReset}
+              className="text-panel-text-3 hover:text-panel-text-1"
+            >
+              <RotateCcw size={11} />
+            </button>
+          )}
+        </span>
+      )}
     </div>
   );
 }
