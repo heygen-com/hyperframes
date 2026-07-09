@@ -1,17 +1,21 @@
 // Pure background-resolution logic for the WCAG contrast audit.
 //
-// The browser-side audit (contrast-audit.browser.js) samples a pixel ring just
-// OUTSIDE an element's bounding box to estimate the background the text sits on.
-// That is wrong for any element that paints its OWN opaque background (a caption
-// pill, a CTA button, a solid card): the text is composited over that solid
-// color, not over whatever surrounds the box. Sampling the ring there measures
-// the text against the scene behind the element (often a dark photo) and reports
-// a false ~1:1 ratio, flagging perfectly readable CTAs.
+// HISTORICAL NOTE: contrast-audit.browser.js used to sample a 4px pixel ring
+// just OUTSIDE an element's bounding box to estimate its background, with
+// pickOpaqueBackground() below as a pre-check: prefer an element's own opaque
+// background-color over the ring for solid CTA/pill/card cases. The audit has
+// since moved to sampling the ACTUAL composited pixels directly inside each
+// element's own bbox (hiding the glyphs first) — see contrast-sample.ts — which
+// gets pill/card backgrounds right AND fixes the ring's blind spots (rounded
+// corners, backdrop-filter blur, cross-component bleed, partially-overlapping
+// translucent decoration). pickOpaqueBackground()/parseColorRGBA() are no
+// longer called by the live audit but are kept here — still correct, still
+// unit-tested, and contrast-fg.ts imports parseColorRGBA from this module.
 //
-// This module hosts the pure decision so it can be unit-tested without a browser.
-// The same logic is inlined into contrast-audit.browser.js (which is injected as
-// a raw string and cannot import) — keep the two in sync, mirroring the existing
-// "WCAG math is duplicated" note at the top of that file.
+// This module hosts pure decisions so they can be unit-tested without a
+// browser. Historically the same logic was inlined into
+// contrast-audit.browser.js (which is injected as a raw string and cannot
+// import) — see contrast-sample.ts for what's actually mirrored today.
 
 export type Rgb = [number, number, number];
 export type Rgba = [number, number, number, number];

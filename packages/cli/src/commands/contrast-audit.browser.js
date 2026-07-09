@@ -2,26 +2,59 @@
 // Loaded as a raw string and injected via page.addScriptTag to avoid
 // esbuild mangling (page.evaluate serializes functions; __name helpers break).
 //
-// NOTE: WCAG math (relLum, wcagRatio, parseColor, median) plus the DOM-walk /
-// foreground-color-read logic is duplicated in
+// Two-phase API — see packages/cli/src/commands/validate.ts's
+// runContrastAudit() for the calling contract:
+//
+//   1. window.__contrastAuditPrepare() walks the DOM for text-bearing
+//      elements, computes each one's foreground paint (CSS `color`, or SVG
+//      `fill` for SVG text — fill and color are independent CSS properties
+//      in SVG), and HIDES that element's own text paint (color/fill set to
+//      transparent). Hiding is layout-neutral — it doesn't reflow anything —
+//      so the caller can screenshot the frame right after with the glyphs
+//      invisible but everything else unchanged. Returns the candidate list
+//      (selector, text, fg, bbox, font metrics).
+//   2. Caller takes ONE screenshot (page.screenshot()) — same number of
+//      screenshots as before, just moved to after prepare() instead of
+//      before it.
+//   3. window.__contrastAuditFinish(imgBase64, time, candidates) restores
+//      the original paint FIRST (so a slow/failed decode can't leave the
+//      page's text stuck invisible), then decodes the screenshot and, for
+//      each candidate, samples the real composited pixels directly INSIDE
+//      its own bounding box for the true background.
+//
+// Why sample inside the box instead of the 4px ring just outside it (the
+// previous approach): the ring is a proximity heuristic that's wrong
+// whenever what's immediately outside the text differs from what's actually
+// behind it — a neighboring panel/component just past the text's edge, a
+// rounded pill/button whose corner falls inside the ring, a
+// backdrop-filter-blurred glass panel sized only a couple pixels larger
+// than the text, or a translucent decoration that only partially overlaps
+// the ring (or sits entirely inside the bbox, never touching the ring at
+// all). Hiding the glyphs and sampling their own box side-steps all of
+// that: it reads the exact pixels that were behind them.
+//
+// window.__contrastAuditRestoreIfPending() is a safety net: if the caller's
+// screenshot or finish() call throws between prepare() and finish(), calling
+// this restores any still-hidden paint so the next sample in the loop
+// doesn't audit a page with stale invisible text. It's a no-op after a
+// normal finish() call.
+//
+// NOTE: this logic (DOM-walk, foreground/paint-hide, background sampling)
+// plus the pure WCAG math (relLum, wcagRatio, median) is duplicated in
 // skills/hyperframes-creative/scripts/contrast-report.mjs — keep in sync.
+// The pure "which rect to sample" decision is also mirrored in
+// contrast-sample.ts (unit-tested there since this file can't import).
 
 /* eslint-disable */
-window.__contrastAudit = async function (imgBase64, time) {
-  function relLum(r, g, b) {
-    function ch(v) {
-      var s = v / 255;
-      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-    }
-    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
-  }
-
-  function wcagRatio(r1, g1, b1, r2, g2, b2) {
-    var l1 = relLum(r1, g1, b1),
-      l2 = relLum(r2, g2, b2);
-    var hi = l1 > l2 ? l1 : l2,
-      lo = l1 > l2 ? l2 : l1;
-    return (hi + 0.05) / (lo + 0.05);
+window.__contrastAuditPrepare = function () {
+  // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
+  // property, not `color` — the two are independent CSS properties in SVG.
+  // A page can set `fill` (inline style, `fill` attribute, or a CSS rule)
+  // without ever touching `color`, in which case getComputedStyle(el).color
+  // resolves to the inherited/initial value (often black) and does not
+  // reflect what's actually rendered on screen.
+  function isSvgTextElement(el) {
+    return !!el.ownerSVGElement;
   }
 
   function parseColor(c) {
@@ -53,27 +86,10 @@ window.__contrastAudit = async function (imgBase64, time) {
     return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
   }
 
-  // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
-  // property, not `color` — the two are independent CSS properties in SVG.
-  // A page can set `fill` (inline style, `fill` attribute, or a CSS rule)
-  // without ever touching `color`, in which case getComputedStyle(el).color
-  // resolves to the inherited/initial value (often black) and does not
-  // reflect what's actually rendered on screen.
-  function isSvgTextElement(el) {
-    return !!el.ownerSVGElement;
-  }
-
   function selectorOf(el) {
     if (el.id) return "#" + el.id;
     var cls = Array.from(el.classList).slice(0, 2).join(".");
     return cls ? el.tagName.toLowerCase() + "." + cls : el.tagName.toLowerCase();
-  }
-
-  function median(arr) {
-    var s = arr.slice().sort(function (a, b) {
-      return a - b;
-    });
-    return s[Math.floor(s.length / 2)];
   }
 
   function hasClipPath(el) {
@@ -115,28 +131,8 @@ window.__contrastAudit = async function (imgBase64, time) {
     return !paintsAnyProbePoint(el, rect);
   }
 
-  // Decode screenshot into canvas pixel data
-  var img = new Image();
-  await new Promise(function (resolve) {
-    img.onload = resolve;
-    img.onerror = function () {
-      resolve();
-    };
-    img.src = "data:image/png;base64," + imgBase64;
-  });
-  if (!img.naturalWidth) return [];
-  var canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth || 1920;
-  canvas.height = img.naturalHeight || 1080;
-  var ctx = canvas.getContext("2d");
-  if (!ctx) return [];
-  ctx.drawImage(img, 0, 0);
-  var px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  var w = canvas.width;
-  var h = canvas.height;
-
-  // Walk DOM for text elements
   var out = [];
+  var restores = [];
   var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
   var node;
   while ((node = walker.nextNode())) {
@@ -179,7 +175,7 @@ window.__contrastAudit = async function (imgBase64, time) {
     if (ancHidden) continue;
     var rect = el.getBoundingClientRect();
     if (rect.width < 8 || rect.height < 8) continue;
-    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= w || rect.top >= h) continue;
+    if (rect.right <= 0 || rect.bottom <= 0) continue;
     if (isClippedAway(el, rect)) continue;
 
     // For SVG text, `fill` is the paint that's actually rendered; `color` is
@@ -188,84 +184,175 @@ window.__contrastAudit = async function (imgBase64, time) {
     // "context-fill", and gradient/pattern refs (url(#...)) fall back to
     // `color` rather than crashing parseColor or reporting a fabricated
     // black.
-    var fg = isSvgTextElement(el)
-      ? tryParseSolidColor(cs.fill) || parseColor(cs.color)
-      : parseColor(cs.color);
+    var isSvgText = isSvgTextElement(el);
+    var fg = isSvgText ? tryParseSolidColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
 
-    // Prefer an opaque own/ancestor background-color over the pixel ring. A
-    // caption/CTA that paints its OWN solid background (a pill, a button, a
-    // card) composites its text over THAT color, not over whatever surrounds
-    // the box. Sampling the ring there measured the text against the scene
-    // behind the element (often a dark photo) and reported false ~1:1 warnings
-    // for perfectly readable CTAs. Walk up until a fully-opaque background-color
-    // is found; stop and defer to the ring on the first background-image (text
-    // over real pixels). Keep this in sync with commands/contrast-bg.ts.
-    var ownBg = null;
-    for (var bn = el; bn && bn !== document.body; bn = bn.parentElement) {
-      var bcs = getComputedStyle(bn);
-      if (bcs.backgroundImage && bcs.backgroundImage !== "none") break;
-      var bc = parseColor(bcs.backgroundColor);
-      if (bc[3] >= 0.999) {
-        ownBg = [bc[0], bc[1], bc[2]];
-        break;
-      }
-    }
+    var fontSize = parseFloat(cs.fontSize);
+    var fontWeight = Number(cs.fontWeight) || 400;
+    var large = fontSize >= 24 || (fontSize >= 19 && fontWeight >= 700);
 
-    var bgR, bgG, bgB;
-    if (ownBg) {
-      bgR = ownBg[0];
-      bgG = ownBg[1];
-      bgB = ownBg[2];
-    } else {
-      // Sample 4px ring outside bbox for background color
-      var rr = [],
-        gg = [],
-        bb = [];
-      var x0 = Math.max(0, Math.floor(rect.x) - 4);
-      var x1 = Math.min(w - 1, Math.ceil(rect.x + rect.width) + 4);
-      var y0 = Math.max(0, Math.floor(rect.y) - 4);
-      var y1 = Math.min(h - 1, Math.ceil(rect.y + rect.height) + 4);
-      var sample = function (sx, sy) {
-        if (sx < 0 || sx >= w || sy < 0 || sy >= h) return;
-        var idx = (sy * w + sx) * 4;
+    // Hide this element's OWN text paint so the caller's next screenshot
+    // reveals the true pixels behind the glyphs. Layout-neutral: color/fill
+    // never affect box geometry. `!important` beats any non-!important rule
+    // that might otherwise win on specificity; we restore the exact prior
+    // inline value (or remove the property entirely) afterward.
+    var origColor = el.style.getPropertyValue("color");
+    var origColorPriority = el.style.getPropertyPriority("color");
+    el.style.setProperty("color", "transparent", "important");
+    var origFill = null,
+      origFillPriority = null;
+    if (isSvgText) {
+      origFill = el.style.getPropertyValue("fill");
+      origFillPriority = el.style.getPropertyPriority("fill");
+      el.style.setProperty("fill", "transparent", "important");
+    }
+    restores.push({
+      el: el,
+      origColor: origColor,
+      origColorPriority: origColorPriority,
+      origFill: origFill,
+      origFillPriority: origFillPriority,
+      isSvgText: isSvgText,
+    });
+
+    out.push({
+      selector: selectorOf(el),
+      text: (el.textContent || "").trim().slice(0, 50),
+      fg: fg,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      large: large,
+      bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+    });
+  }
+
+  window.__contrastAuditRestores = restores;
+  return out;
+};
+
+function __contrastAuditRestoreAll() {
+  var restores = window.__contrastAuditRestores;
+  if (!restores) return;
+  for (var i = 0; i < restores.length; i++) {
+    var r = restores[i];
+    if (r.origColor) r.el.style.setProperty("color", r.origColor, r.origColorPriority);
+    else r.el.style.removeProperty("color");
+    if (r.isSvgText) {
+      if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
+      else r.el.style.removeProperty("fill");
+    }
+  }
+  window.__contrastAuditRestores = null;
+}
+
+// Safety net for the caller: if the screenshot or finish() call throws
+// between prepare() and finish(), call this to restore any still-hidden
+// paint so the next sample in the loop isn't auditing a page with stale
+// invisible text. No-op if finish() already ran normally.
+window.__contrastAuditRestoreIfPending = function () {
+  __contrastAuditRestoreAll();
+};
+
+window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
+  function relLum(r, g, b) {
+    function ch(v) {
+      var s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    }
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+  }
+
+  function wcagRatio(r1, g1, b1, r2, g2, b2) {
+    var l1 = relLum(r1, g1, b1),
+      l2 = relLum(r2, g2, b2);
+    var hi = l1 > l2 ? l1 : l2,
+      lo = l1 > l2 ? l2 : l1;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  function median(arr) {
+    var s = arr.slice().sort(function (a, b) {
+      return a - b;
+    });
+    return s[Math.floor(s.length / 2)];
+  }
+
+  // Restore original paint first — we already have the screenshot, and we
+  // never want a decode failure below to leave the page's text invisible.
+  __contrastAuditRestoreAll();
+
+  var img = new Image();
+  await new Promise(function (resolve) {
+    img.onload = resolve;
+    img.onerror = function () {
+      resolve();
+    };
+    img.src = "data:image/png;base64," + imgBase64;
+  });
+  if (!img.naturalWidth) return [];
+  var canvas = document.createElement("canvas");
+  canvas.width = img.naturalWidth || 1920;
+  canvas.height = img.naturalHeight || 1080;
+  var ctx = canvas.getContext("2d");
+  if (!ctx) return [];
+  ctx.drawImage(img, 0, 0);
+  var px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  var w = canvas.width;
+  var h = canvas.height;
+
+  var out = [];
+  for (var ci = 0; ci < candidates.length; ci++) {
+    var c = candidates[ci];
+    var bbox = c.bbox;
+
+    // Sample the element's OWN box (glyphs are hidden in this screenshot),
+    // inset 1px on each side to dodge anti-aliased edge pixels, clamped to
+    // the canvas. Mirrors contrast-sample.ts's computeSampleRect.
+    var x0 = Math.max(0, Math.round(bbox.x) + 1);
+    var x1 = Math.min(w - 1, Math.round(bbox.x + bbox.w) - 1);
+    var y0 = Math.max(0, Math.round(bbox.y) + 1);
+    var y1 = Math.min(h - 1, Math.round(bbox.y + bbox.h) - 1);
+    if (x1 <= x0 || y1 <= y0) continue;
+
+    // Bounded grid, not a full scan — dense enough to catch a
+    // partially-overlapping decoration without turning a wide caption bar
+    // into thousands of samples. Mirrors contrast-sample.ts's
+    // sampleGridPoints.
+    var stepX = Math.max(1, Math.floor((x1 - x0) / 12));
+    var stepY = Math.max(1, Math.floor((y1 - y0) / 6));
+    var rr = [],
+      gg = [],
+      bb = [];
+    for (var y = y0; y <= y1; y += stepY) {
+      for (var x = x0; x <= x1; x += stepX) {
+        var idx = (y * w + x) * 4;
         rr.push(px[idx]);
         gg.push(px[idx + 1]);
         bb.push(px[idx + 2]);
-      };
-      for (var x = x0; x <= x1; x++) {
-        sample(x, y0);
-        sample(x, y1);
       }
-      for (var y = y0; y <= y1; y++) {
-        sample(x0, y);
-        sample(x1, y);
-      }
-
-      if (rr.length === 0) continue;
-
-      bgR = median(rr);
-      bgG = median(gg);
-      bgB = median(bb);
     }
+    if (rr.length === 0) continue;
 
-    // Composite foreground alpha over measured background
+    var bgR = median(rr),
+      bgG = median(gg),
+      bgB = median(bb);
+
+    // Composite foreground alpha over the measured background
+    var fg = c.fg;
     var compR = Math.round(fg[0] * fg[3] + bgR * (1 - fg[3]));
     var compG = Math.round(fg[1] * fg[3] + bgG * (1 - fg[3]));
     var compB = Math.round(fg[2] * fg[3] + bgB * (1 - fg[3]));
 
     var ratio = +wcagRatio(compR, compG, compB, bgR, bgG, bgB).toFixed(2);
-    var fontSize = parseFloat(cs.fontSize);
-    var fontWeight = Number(cs.fontWeight) || 400;
-    var large = fontSize >= 24 || (fontSize >= 19 && fontWeight >= 700);
 
     out.push({
       time: time,
-      selector: selectorOf(el),
-      text: (el.textContent || "").trim().slice(0, 50),
+      selector: c.selector,
+      text: c.text,
       ratio: ratio,
-      wcagAA: large ? ratio >= 3 : ratio >= 4.5,
-      large: large,
+      wcagAA: c.large ? ratio >= 3 : ratio >= 4.5,
+      large: c.large,
       fg: "rgb(" + compR + "," + compG + "," + compB + ")",
       bg: "rgb(" + bgR + "," + bgG + "," + bgB + ")",
     });

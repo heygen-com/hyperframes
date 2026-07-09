@@ -202,7 +202,18 @@ describe("contrast-audit.browser clip-path visibility", () => {
     vi.unstubAllGlobals();
     document.body.innerHTML = "";
     delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
-    delete (window as unknown as { __contrastAudit?: unknown }).__contrastAudit;
+    delete (
+      window as unknown as {
+        __contrastAuditPrepare?: unknown;
+        __contrastAuditFinish?: unknown;
+        __contrastAuditRestoreIfPending?: unknown;
+        __contrastAuditRestores?: unknown;
+      }
+    ).__contrastAuditPrepare;
+    delete (window as unknown as { __contrastAuditFinish?: unknown }).__contrastAuditFinish;
+    delete (window as unknown as { __contrastAuditRestoreIfPending?: unknown })
+      .__contrastAuditRestoreIfPending;
+    delete (window as unknown as { __contrastAuditRestores?: unknown }).__contrastAuditRestores;
   });
 
   it("excludes text clipped to nothing by clip-path from contrast reports", async () => {
@@ -472,11 +483,16 @@ function installContrastScript(): void {
 }
 
 async function runContrastAudit(): Promise<Array<Record<string, unknown>>> {
-  return (
-    window as unknown as {
-      __contrastAudit: (imgBase64: string, time: number) => Promise<Array<Record<string, unknown>>>;
-    }
-  ).__contrastAudit("stub", 0);
+  const w = window as unknown as {
+    __contrastAuditPrepare: () => Array<Record<string, unknown>>;
+    __contrastAuditFinish: (
+      imgBase64: string,
+      time: number,
+      candidates: Array<Record<string, unknown>>,
+    ) => Promise<Array<Record<string, unknown>>>;
+  };
+  const candidates = w.__contrastAuditPrepare();
+  return w.__contrastAuditFinish("stub", 0, candidates);
 }
 
 function runAudit(): Array<{

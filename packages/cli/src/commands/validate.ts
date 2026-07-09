@@ -281,6 +281,16 @@ async function auditClipDurations(
   return warnings;
 }
 
+interface ContrastCandidate {
+  selector: string;
+  text: string;
+  fg: [number, number, number, number];
+  fontSize: number;
+  fontWeight: number;
+  large: boolean;
+  bbox: { x: number; y: number; w: number; h: number };
+}
+
 async function runContrastAudit(page: import("puppeteer-core").Page): Promise<ContrastEntry[]> {
   const duration = await getCompositionDuration(page);
   if (duration <= 0) return [];
@@ -292,16 +302,45 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
     const t = +(((i + 0.5) / CONTRAST_SAMPLES) * duration).toFixed(3);
     await seekTo(page, t);
 
-    const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
-    const entries = await page.evaluate(
-      (b64: string, time: number) =>
-        typeof (window as unknown as Record<string, unknown>).__contrastAudit === "function"
-          ? ((window as unknown as Record<string, unknown>).__contrastAudit as Function)(b64, time)
-          : [],
-      screenshot,
-      t,
-    );
-    results.push(...(entries as ContrastEntry[]));
+    // __contrastAuditPrepare() hides each candidate text element's own paint
+    // (color/fill → transparent, layout-neutral) so this screenshot captures
+    // the real pixels behind the glyphs — that's what __contrastAuditFinish
+    // samples directly instead of a proximity-based ring outside the text's
+    // bbox. See contrast-audit.browser.js for why: it's robust to rounded
+    // pills, cross-component panel edges, backdrop-filter blur, and
+    // partially-overlapping translucent decoration in ways a ring isn't.
+    const candidates = (await page.evaluate(() =>
+      typeof (window as unknown as Record<string, unknown>).__contrastAuditPrepare === "function"
+        ? ((window as unknown as Record<string, unknown>).__contrastAuditPrepare as () => unknown)()
+        : [],
+    )) as ContrastCandidate[];
+
+    try {
+      const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
+      const entries = await page.evaluate(
+        (b64: string, time: number, cands: ContrastCandidate[]) =>
+          typeof (window as unknown as Record<string, unknown>).__contrastAuditFinish === "function"
+            ? ((window as unknown as Record<string, unknown>).__contrastAuditFinish as Function)(
+                b64,
+                time,
+                cands,
+              )
+            : [],
+        screenshot,
+        t,
+        candidates,
+      );
+      results.push(...(entries as ContrastEntry[]));
+    } finally {
+      // If the screenshot or finish() call above throws, this restores any
+      // still-hidden text paint so the NEXT sample in the loop doesn't audit
+      // a page with stale invisible elements. No-op after a normal finish().
+      await page.evaluate(() => {
+        const restore = (window as unknown as Record<string, unknown>)
+          .__contrastAuditRestoreIfPending;
+        if (typeof restore === "function") (restore as () => void)();
+      });
+    }
   }
 
   return results;
