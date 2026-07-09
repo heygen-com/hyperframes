@@ -93,7 +93,9 @@ export function TimelinePane({
   // Batched move (ripple / insert): rebase each expanded sub-comp child to its
   // local coords, exactly as handleMoveElement does for a single clip.
   const handleMoveElements = useCallback(
-    (edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>) =>
+    (
+      edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    ) =>
       onMoveElements?.(
         edits.map(({ element, updates }) => {
           const basis = element.expandedParentStart;
@@ -153,14 +155,15 @@ export function TimelinePane({
         disabled={timelineDisabled}
       />
 
-      {/* Timeline section */}
+      {/* Timeline section — inner padding (not margin) keeps the divider's
+          height math exact while giving the panel a gap from the shell edges. */}
       <div
-        className="relative flex flex-col flex-shrink-0"
+        className="relative flex flex-col flex-shrink-0 px-1.5 pb-1.5"
         style={{ height: timelineH }}
         aria-disabled={timelineDisabled || undefined}
       >
         <div
-          className="flex flex-col flex-1 min-h-0 overflow-hidden bg-neutral-950"
+          className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-800/50 bg-neutral-950"
           onDoubleClick={(e) => {
             if ((e.target as HTMLElement).closest("[data-clip]")) return;
             if (timelineDisabled) return;

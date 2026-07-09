@@ -82,43 +82,57 @@ export const TimelineRuler = memo(function TimelineRuler({
           })}
       </svg>
 
-      {/* Ruler. The bar fills the full panel width (canvas is min 100% wide);
-          calc(100% - GUTTER) equals trackContentWidth when zoomed in and extends
-          past the content when zoomed out. Ticks stay at composition coordinates. */}
+      {/* Ruler — sticky so the timestamps stay visible while the tracks scroll
+          vertically. Opaque background (plus the gutter corner block) so clips
+          scrolling underneath don't bleed through; z-index sits above the track
+          rows and drag overlays but below the playhead (z 100). */}
       <div
-        className="relative overflow-hidden"
-        style={{
-          height: RULER_H,
-          marginLeft: GUTTER,
-          width: `calc(100% - ${GUTTER}px)`,
-          background: theme.gutterBackground,
-          borderBottom: `1px solid ${theme.rulerBorder}`,
-        }}
+        className="sticky top-0 flex"
+        style={{ height: RULER_H, width: GUTTER + trackContentWidth, zIndex: 70 }}
       >
-        {minor.map((t) => (
-          <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
-            <div className="w-px h-2" style={{ background: theme.tickMinor }} />
-          </div>
-        ))}
+        <div
+          className="sticky left-0 z-[12] flex-shrink-0"
+          style={{
+            width: GUTTER,
+            background: theme.gutterBackground,
+            borderBottom: `1px solid ${theme.rulerBorder}`,
+            borderRight: `1px solid ${theme.gutterBorder}`,
+          }}
+        />
+        <div
+          className="relative overflow-hidden"
+          style={{
+            height: RULER_H,
+            width: trackContentWidth,
+            background: theme.gutterBackground,
+            borderBottom: `1px solid ${theme.rulerBorder}`,
+          }}
+        >
+          {minor.map((t) => (
+            <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
+              <div className="w-px h-2" style={{ background: theme.tickMinor }} />
+            </div>
+          ))}
 
-        {major.map((t) => (
-          <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
-            <span
-              className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
-              style={{
-                color: theme.tickText,
-                left: 5,
-                top: 5,
-                fontSize: 10,
-              }}
-            >
-              {timeDisplayMode === "frame"
-                ? secondsToFrame(t)
-                : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
-            </span>
-            <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
-          </div>
-        ))}
+          {major.map((t) => (
+            <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
+              <span
+                className="absolute font-mono tabular-nums leading-none whitespace-nowrap"
+                style={{
+                  color: theme.tickText,
+                  left: 5,
+                  top: 5,
+                  fontSize: 10,
+                }}
+              >
+                {timeDisplayMode === "frame"
+                  ? secondsToFrame(t)
+                  : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
+              </span>
+              <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
+            </div>
+          ))}
+        </div>
       </div>
     </>
   );

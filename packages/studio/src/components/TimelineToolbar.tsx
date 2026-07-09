@@ -118,7 +118,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
 
   return (
     <div className="border-b border-neutral-800/40 bg-neutral-950/96">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-3 py-0.5">
         <div className="flex items-center gap-3">
           <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
             Timeline
@@ -194,7 +194,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     ? "Remove keyframe at playhead"
                     : "Add keyframe at playhead"
                 }
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
+                className={`flex h-6 w-6 items-center justify-center rounded transition-colors active:scale-[0.98] ${
                   keyframeState === "active"
                     ? "text-studio-accent"
                     : keyframeState === "inactive"
@@ -202,7 +202,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                       : "text-neutral-600 hover:text-neutral-400"
                 }`}
               >
-                <svg width="18" height="18" viewBox="0 0 10 10" fill="currentColor">
+                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
                   {keyframeState === "active" ? (
                     <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
                   ) : (
@@ -230,13 +230,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                 onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
                 aria-label="Auto-record manual edits as keyframes"
                 aria-pressed={autoKeyframeEnabled}
-                className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
+                className={`flex h-6 w-6 items-center justify-center rounded transition-colors active:scale-[0.98] ${
                   autoKeyframeEnabled
                     ? "text-red-400 hover:text-red-300"
                     : "text-neutral-600 hover:text-neutral-400"
                 }`}
               >
-                <svg width="18" height="18" viewBox="0 0 10 10" fill="none">
+                <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
                   {/* Same diamond outline as the Add-keyframe icon, with a
                       record-style dot inside: filled = auto-recording,
                       hollow = manual edits won't be keyframed. */}
@@ -281,13 +281,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
-                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
                       canSplit
                         ? "text-neutral-500 hover:text-neutral-200 active:scale-[0.98]"
                         : "text-neutral-700 cursor-not-allowed"
                     }`}
                   >
-                    <Scissors size={15} />
+                    <Scissors size={13} />
                   </button>
                 </Tooltip>
               );
@@ -306,13 +306,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                     onClick={() => {
                       if (canAdd) addBeatAtCompositionTime(currentTime);
                     }}
-                    className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+                    className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
                       canAdd
                         ? "text-neutral-500 hover:text-[#22c55e] active:scale-[0.98]"
                         : "text-neutral-700 cursor-not-allowed"
                     }`}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                       <path
                         d="M21 10C21 12.2091 16.9706 14 12 14M21 10C21 7.79086 16.9706 6 12 6C7.02944 6 3 7.79086 3 10M21 10V16C21 18.2091 16.9706 20 12 20M12 14C7.02944 14 3 12.2091 3 10M12 14V20M3 10V16C3 18.2091 7.02944 20 12 20M7 19.3264V13.3264M17 19.3264V13.3264M12 10L20 4"
                         stroke="currentColor"
@@ -331,7 +331,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
-              className={`h-7 px-2.5 rounded-md border text-[11px] font-medium transition-colors ${
+              className={`h-6 px-2 rounded-md border text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
                   ? "border-studio-accent/30 bg-studio-accent/10 text-studio-accent"
                   : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"

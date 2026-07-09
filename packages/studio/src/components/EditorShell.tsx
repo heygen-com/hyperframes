@@ -204,12 +204,13 @@ function EditorShellBody({
   return (
     <div
       ref={containerRef}
-      className="flex flex-col flex-1 min-h-0 bg-neutral-950"
+      className="flex flex-col flex-1 min-h-0 bg-[#050506]"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
-      {/* Top row: [left | preview | right] */}
-      <div className="flex flex-row flex-1 min-h-0">
+      {/* Top row: [left | preview | right] — outer padding + the 8px resize
+          seams give the panels CapCut-style separation on the dark canvas. */}
+      <div className="flex flex-row flex-1 min-h-0 px-1.5 pt-1.5">
         {left}
         <div className="flex-1 min-w-0 flex flex-col relative">
           <PreviewPane
