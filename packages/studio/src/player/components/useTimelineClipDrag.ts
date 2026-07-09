@@ -19,12 +19,7 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import {
-  resolveInsertRow,
-  resolvePlacement,
-  clampTrackToZone,
-  isInsertAllowedForZone,
-} from "./timelineCollision";
+import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 
 const EMPTY_BEAT_TIMES: number[] = [];
@@ -217,57 +212,28 @@ export function useTimelineClipDrag({
         ppsRef.current,
         durationRef.current,
       );
-      // rowFloat = the pointer's position in track-heights from the top lane.
+      // rowFloat = the pointer's position in track-heights from the top lane; a
+      // near-boundary hover requests a deliberate new-track insert.
       const rowFloat = scroll
         ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
         : 0;
       const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
-      // Kind-zone rows: audio lanes sit below the visual lanes. audioRow = the
-      // display-row of the first audio lane (or -1 when there is no audio yet).
-      const order = trackOrderRef.current;
-      const isAudioLane = (t: number) =>
-        elementsRef.current.some((e) => e.track === t && isAudioTimelineElement(e));
-      const audioRow = order.findIndex(isAudioLane);
-      const draggedIsAudio = isAudioTimelineElement(drag.element);
-      const dragKey = drag.element.key ?? drag.element.id;
-
-      // A DELIBERATE new-track insert: pointer near a lane boundary, gated to the
-      // clip's own zone (visual inserts stay out of audio; audio clips can create
-      // new audio tracks).
-      const deliberateInsert =
-        rawInsertRow !== null && isInsertAllowedForZone(rawInsertRow, audioRow, draggedIsAudio)
-          ? rawInsertRow
-          : null;
-
-      let previewTrack: number;
-      let insertRow: number | null;
-      if (deliberateInsert !== null) {
-        previewTrack = nextMove.track;
-        insertRow = deliberateInsert;
-      } else {
-        // Land on a lane with NO time-overlap on a track: clamp to the clip's zone,
-        // take the desired lane if free, else the nearest free lane in the zone
-        // (prefer up); if EVERY lane in the zone is occupied at this time, create a
-        // new track right below the aimed lane (parallel to the drop).
-        const desired = clampTrackToZone(nextMove.track, order, audioRow, draggedIsAudio);
-        const zoneTracks = order.filter((t) => isAudioLane(t) === draggedIsAudio);
-        const placement = resolvePlacement({
-          elements: elementsRef.current,
-          desiredTrack: desired,
-          start: snap.start,
-          duration: drag.element.duration,
-          trackOrder: zoneTracks,
-          excludeKey: dragKey,
-        });
-        if (placement.needsInsert) {
-          const desiredRow = order.indexOf(desired);
-          insertRow = desiredRow >= 0 ? desiredRow + 1 : order.length;
-          previewTrack = desired;
-        } else {
-          previewTrack = placement.track;
-          insertRow = null;
-        }
-      }
+      const audioTracks = new Set(
+        elementsRef.current.filter(isAudioTimelineElement).map((e) => e.track),
+      );
+      // The whole drop decision (no same-track overlap, zone-respecting, relocate
+      // or create) — one tested pure function, so what runs here is what's verified.
+      const { track: previewTrack, insertRow } = resolveZoneDropPlacement({
+        order: trackOrderRef.current,
+        audioTracks,
+        elements: elementsRef.current,
+        desiredTrack: nextMove.track,
+        deliberateInsertRow: rawInsertRow,
+        start: snap.start,
+        duration: drag.element.duration,
+        dragKey: drag.element.key ?? drag.element.id,
+        isAudio: isAudioTimelineElement(drag.element),
+      });
       return {
         ...drag,
         started: true,

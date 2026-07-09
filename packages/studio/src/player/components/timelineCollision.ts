@@ -37,6 +37,58 @@ export function isInsertAllowedForZone(
 }
 
 /**
+ * The full drop-placement decision for a dragged clip — one pure, testable unit.
+ * Enforces: NO time-overlap on a single track; a clip stays in its kind-zone;
+ * a new track is created only when needed. Order of resolution:
+ *   1. Deliberate boundary insert (pointer near a lane edge), if it's in the
+ *      clip's own zone → create a new track there.
+ *   2. Otherwise land on a lane: clamp the aimed track to the clip's zone, take it
+ *      if free at [start, start+duration), else the nearest FREE lane in the zone
+ *      (prefer up), else auto-create a new track right below the aimed lane.
+ * `audioTracks` = the set of track indices that currently hold audio (so the fn
+ * needs no element-kind import). Returns the landing `track` and, when a new track
+ * should be created, the `insertRow` boundary (else null).
+ */
+export function resolveZoneDropPlacement(input: {
+  order: number[];
+  audioTracks: ReadonlySet<number>;
+  elements: TimelineElement[];
+  desiredTrack: number;
+  deliberateInsertRow: number | null;
+  start: number;
+  duration: number;
+  dragKey: string;
+  isAudio: boolean;
+}): { track: number; insertRow: number | null } {
+  const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
+  const { start, duration, dragKey, isAudio } = input;
+  const audioRow = order.findIndex((t) => audioTracks.has(t));
+
+  if (
+    deliberateInsertRow !== null &&
+    isInsertAllowedForZone(deliberateInsertRow, audioRow, isAudio)
+  ) {
+    return { track: desiredTrack, insertRow: deliberateInsertRow };
+  }
+
+  const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
+  const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
+  const placement = resolvePlacement({
+    elements,
+    desiredTrack: desired,
+    start,
+    duration,
+    trackOrder: zoneTracks,
+    excludeKey: dragKey,
+  });
+  if (placement.needsInsert) {
+    const desiredRow = order.indexOf(desired);
+    return { track: desired, insertRow: desiredRow >= 0 ? desiredRow + 1 : order.length };
+  }
+  return { track: placement.track, insertRow: null };
+}
+
+/**
  * Fraction of a track height near a lane boundary that switches a vertical drag
  * from "target this lane" into "insert a new track at this boundary". Tuned by
  * feel — bigger = easier to hit boundaries (harder to land on a lane).

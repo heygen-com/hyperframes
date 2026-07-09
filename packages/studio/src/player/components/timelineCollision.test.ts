@@ -7,6 +7,7 @@ import {
   isLaneFree,
   resolveInsertRow,
   resolvePlacement,
+  resolveZoneDropPlacement,
   snapClearOfClips,
   timeRangesOverlap,
 } from "./timelineCollision";
@@ -253,5 +254,100 @@ describe("isInsertAllowedForZone", () => {
     expect(isInsertAllowedForZone(2, 2, true)).toBe(true);
     expect(isInsertAllowedForZone(4, 2, true)).toBe(true); // below the bottom
     expect(isInsertAllowedForZone(1, 2, true)).toBe(false); // inside the visual zone
+  });
+});
+
+describe("resolveZoneDropPlacement (the whole drop decision, no same-track overlap)", () => {
+  // order [0,1,2] visual + [3] audio. audioRow = 3.
+  const order = [0, 1, 2, 3];
+  const audioTracks = new Set([3]);
+  const base = {
+    order,
+    audioTracks,
+    deliberateInsertRow: null as number | null,
+    start: 2,
+    duration: 2,
+    dragKey: "x",
+    isAudio: false,
+  };
+
+  it("lands on the aimed track when it is free at that time", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [el("a", 1, 10, 3)], desiredTrack: 1 }),
+    ).toEqual({ track: 1, insertRow: null });
+  });
+
+  it("relocates UP to the nearest free track when the aimed spot overlaps a clip", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [el("a", 1, 0, 5)], desiredTrack: 1 }),
+    ).toEqual({ track: 0, insertRow: null });
+  });
+
+  it("relocates DOWN when the tracks above are also occupied", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("a", 0, 0, 5), el("b", 1, 0, 5)],
+        desiredTrack: 1,
+      }),
+    ).toEqual({ track: 2, insertRow: null });
+  });
+
+  it("auto-creates a new track when EVERY lane in the zone is occupied at that time", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)],
+        desiredTrack: 1,
+      }),
+    ).toEqual({ track: 1, insertRow: 2 });
+  });
+
+  it("shares a track for sequential (non-overlapping) clips", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [el("a", 1, 0, 2)],
+        desiredTrack: 1,
+        start: 2,
+      }),
+    ).toEqual({ track: 1, insertRow: null });
+  });
+
+  it("clamps a visual clip OUT of the audio zone before placing", () => {
+    expect(resolveZoneDropPlacement({ ...base, elements: [], desiredTrack: 3 })).toEqual({
+      track: 2,
+      insertRow: null,
+    });
+  });
+
+  it("clamps an audio clip INTO the audio zone before placing", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [], desiredTrack: 0, isAudio: true }),
+    ).toEqual({ track: 3, insertRow: null });
+  });
+
+  it("honors a deliberate boundary insert in the clip's own zone", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [], desiredTrack: 1, deliberateInsertRow: 1 }),
+    ).toEqual({ track: 1, insertRow: 1 });
+  });
+
+  it("ignores a deliberate insert that lands in the WRONG zone (visual into audio)", () => {
+    expect(
+      resolveZoneDropPlacement({ ...base, elements: [], desiredTrack: 1, deliberateInsertRow: 4 }),
+    ).toEqual({ track: 1, insertRow: null });
+  });
+
+  it("lets an AUDIO clip create a new audio track via a boundary insert", () => {
+    expect(
+      resolveZoneDropPlacement({
+        ...base,
+        elements: [],
+        desiredTrack: 3,
+        isAudio: true,
+        deliberateInsertRow: 4,
+      }),
+    ).toEqual({ track: 3, insertRow: 4 });
   });
 });
