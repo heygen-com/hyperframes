@@ -24,7 +24,7 @@
         HTML    angle 0,   delay 0.00s   — angle brackets + center slash
         CSS     angle π/3, delay 0.10s   — rounded frame + 3 color swatches
         SVG     angle 2π/3, delay 0.20s  — bezier curve + 2 anchor points
-        GSAP    angle π,   delay 0.30s   — sine wave timeline + playhead
+        anime.js    angle π,   delay 0.30s   — sine wave timeline + playhead
         3D      angle 4π/3, delay 0.40s  — isometric cube + inner facets
         LOTTIE  angle 5π/3, delay 0.50s  — 2 diamond keyframes on timeline
 
@@ -48,7 +48,7 @@
         HTML brackets:    horizontal sway ±0.6 units, period ~1.8s
         CSS swatches:     three dots scale ±0.18 with 1.4 rad phase offsets
         SVG bezier:       curve group rotation ±5°, period ~2.9s
-        GSAP timeline:    playhead marker traverses 0→18 + wave scaleY ±0.12
+        anime.js timeline:    playhead marker traverses 0→18 + wave scaleY ±0.12
         3D cube:          linear rotation 30°/s (continuous tumble)
         LOTTIE keyframes: two diamonds scale ±0.12 with 1.6 rad phase offset
 
@@ -59,7 +59,7 @@
         Background radial wash (opacity 0.02 ↔ 0.42, period ~11.4s)
     -->
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 
     <style>
       :root {
@@ -228,10 +228,10 @@
       .svg-curve-g {
         transform-origin: 12px 12px;
       }
-      .gsap-wave-g {
+      .animejs-wave-g {
         transform-origin: 12px 12px;
       }
-      .gsap-marker {
+      .animejs-marker {
         transform-origin: 3px 12px;
       }
       .three-cube-g {
@@ -251,7 +251,7 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        /* xPercent/yPercent set by GSAP for centering — so GSAP rotateY
+        /* xPercent/yPercent set by anime.js for centering — so anime.js rotateY
            doesn't overwrite a CSS translate(-50%,-50%). */
         z-index: 5;
         display: flex;
@@ -359,8 +359,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        /* Initial scale: 0 / opacity: 0 set by GSAP — no CSS transform here to avoid
-           GSAP overwriting `translateX(-50%)` style centering. We use left/top + margin
+        /* Initial scale: 0 / opacity: 0 set by anime.js — no CSS transform here to avoid
+           anime.js overwriting `translateX(-50%)` style centering. We use left/top + margin
            for static centering instead. */
         transform-style: preserve-3d;
         will-change: transform, opacity;
@@ -426,8 +426,8 @@
       }
 
       /* ============================================================
-         TITLE — centered via xPercent in GSAP (not CSS translateX),
-         so the GSAP `y` tween doesn't overwrite the centering transform.
+         TITLE — centered via xPercent in anime.js (not CSS translateX),
+         so the anime.js `y` tween doesn't overwrite the centering transform.
          Single line at 96 px; the brand wordmark ("HyperFrames") uses
          the HyperFrames teal gradient + heavy weight, the tagline
          ("renders any scene") stays in soft white-teal for contrast.
@@ -465,7 +465,7 @@
          ENHANCEMENTS — stroke-draw entry, stagger reveal,
          ambient background breathing.
          The .draw-N classes preset stroke-dasharray + stroke-dashoffset
-         to N so the path starts fully hidden; GSAP animates offset → 0
+         to N so the path starts fully hidden; anime.js animates offset → 0
          to reveal it in time with the icon's 3D-flip entry.
          ============================================================ */
       .draw-50 {
@@ -652,8 +652,8 @@
             </div>
           </div>
 
-          <!-- 4. GSAP — sine wave timeline with playhead marker -->
-          <div class="icon-pos icon-gsap">
+          <!-- 4. anime.js — sine wave timeline with playhead marker -->
+          <div class="icon-pos icon-animejs">
             <div class="icon-collapse">
               <div class="icon-entry">
                 <div class="icon-tile">
@@ -663,30 +663,36 @@
                       y1="20"
                       x2="21"
                       y2="20"
-                      stroke="url(#g-gsap)"
+                      stroke="url(#g-animejs)"
                       stroke-width="1.2"
                       stroke-linecap="round"
                       opacity="0.4"
                     />
                     <path
-                      class="draw-100 gsap-wave-g"
+                      class="draw-100 animejs-wave-g"
                       d="M3 12 C 7 5, 9 5, 12 12 C 15 19, 17 19, 21 12"
-                      stroke="url(#g-gsap)"
+                      stroke="url(#g-animejs)"
                       stroke-width="2.2"
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       fill="none"
                     />
-                    <circle class="reveal-late gsap-marker" cx="3" cy="12" r="2.2" fill="#c4b5fd" />
+                    <circle
+                      class="reveal-late animejs-marker"
+                      cx="3"
+                      cy="12"
+                      r="2.2"
+                      fill="#c4b5fd"
+                    />
                     <defs>
-                      <linearGradient id="g-gsap" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <linearGradient id="g-animejs" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%" stop-color="#a78bfa" />
                         <stop offset="100%" stop-color="#8b5cf6" />
                       </linearGradient>
                     </defs>
                   </svg>
                 </div>
-                <span class="icon-label">GSAP</span>
+                <span class="icon-label">anime.js</span>
               </div>
             </div>
           </div>
@@ -832,8 +838,253 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const transformState = new WeakMap();
+      const transformKeys = new Set([
+        "x",
+        "y",
+        "z",
+        "translateX",
+        "translateY",
+        "translateZ",
+        "xPercent",
+        "yPercent",
+        "scale",
+        "scaleX",
+        "scaleY",
+        "rotation",
+        "rotate",
+        "rotationX",
+        "rotateX",
+        "rotationY",
+        "rotateY",
+      ]);
+      const propMap = new Map([
+        ["x", "translateX"],
+        ["y", "translateY"],
+        ["z", "translateZ"],
+        ["rotation", "rotate"],
+        ["rotationX", "rotateX"],
+        ["rotationY", "rotateY"],
+        ["rotationZ", "rotateZ"],
+      ]);
+
+      function ms(seconds) {
+        return Math.round(Number(seconds || 0) * 1000);
+      }
+
+      function resolveTargets(target) {
+        if (Array.isArray(target)) return target.flatMap(resolveTargets);
+        if (typeof target === "string") return [...document.querySelectorAll(target)];
+        return target ? [target] : [];
+      }
+
+      function cssLength(value) {
+        return typeof value === "number" ? value + "px" : String(value);
+      }
+
+      function cssAngle(value) {
+        return typeof value === "number" ? value + "deg" : String(value);
+      }
+
+      function renderTransform(state) {
+        const parts = [];
+        if (state.xPercent !== undefined) parts.push("translateX(" + state.xPercent + "%)");
+        if (state.yPercent !== undefined) parts.push("translateY(" + state.yPercent + "%)");
+        const tx = state.x ?? state.translateX;
+        const ty = state.y ?? state.translateY;
+        const tz = state.z ?? state.translateZ;
+        if (tx !== undefined) parts.push("translateX(" + cssLength(tx) + ")");
+        if (ty !== undefined) parts.push("translateY(" + cssLength(ty) + ")");
+        if (tz !== undefined) parts.push("translateZ(" + cssLength(tz) + ")");
+        const rotate = state.rotation ?? state.rotate;
+        const rotateX = state.rotationX ?? state.rotateX;
+        const rotateY = state.rotationY ?? state.rotateY;
+        const rotateZ = state.rotationZ ?? state.rotateZ;
+        if (rotate !== undefined) parts.push("rotate(" + cssAngle(rotate) + ")");
+        if (rotateX !== undefined) parts.push("rotateX(" + cssAngle(rotateX) + ")");
+        if (rotateY !== undefined) parts.push("rotateY(" + cssAngle(rotateY) + ")");
+        if (rotateZ !== undefined) parts.push("rotateZ(" + cssAngle(rotateZ) + ")");
+        if (state.scale !== undefined) parts.push("scale(" + state.scale + ")");
+        if (state.scaleX !== undefined) parts.push("scaleX(" + state.scaleX + ")");
+        if (state.scaleY !== undefined) parts.push("scaleY(" + state.scaleY + ")");
+        return parts.join(" ");
+      }
+
+      function setTweenState(target, vars) {
+        for (const item of resolveTargets(target)) {
+          if (!(item instanceof Element)) {
+            Object.assign(item, vars);
+            continue;
+          }
+          const state = transformState.get(item) ?? {};
+          let changedTransform = false;
+          for (const [key, value] of Object.entries(vars)) {
+            if (key === "attr") {
+              for (const [attrName, attrValue] of Object.entries(value))
+                item.setAttribute(attrName, attrValue);
+            } else if (key === "textContent") {
+              item.textContent = value;
+            } else if (key.startsWith("--")) {
+              item.style.setProperty(key, value);
+            } else if (transformKeys.has(key)) {
+              state[key] = value;
+              changedTransform = true;
+            } else if (key === "opacity") {
+              item.style.opacity = value;
+            } else if (key === "backgroundColor") {
+              item.style.backgroundColor = value;
+            } else if (key === "boxShadow") {
+              item.style.boxShadow = value;
+            } else {
+              item.style[key] = value;
+            }
+          }
+          if (changedTransform) {
+            transformState.set(item, state);
+            item.style.transform = renderTransform(state);
+          }
+        }
+      }
+
+      function getTweenProperty(target, key) {
+        const item = resolveTargets(target)[0];
+        if (!item) return undefined;
+        if (item instanceof Element && key.startsWith("--"))
+          return getComputedStyle(item).getPropertyValue(key);
+        if (item instanceof Element && transformKeys.has(key))
+          return transformState.get(item)?.[key];
+        return item[key];
+      }
+
+      function mapEase(ease) {
+        if (typeof ease !== "string") return ease;
+        const compact = ease.replace(/\s+/g, "");
+        const table = {
+          none: "linear",
+          "power1.in": "inQuad",
+          "power1.out": "outQuad",
+          "power1.inOut": "inOutQuad",
+          "power2.in": "inCubic",
+          "power2.out": "outCubic",
+          "power2.inOut": "inOutCubic",
+          "power3.in": "inQuart",
+          "power3.out": "outQuart",
+          "power3.inOut": "inOutQuart",
+          "power4.in": "inQuint",
+          "power4.out": "outQuint",
+          "power4.inOut": "inOutQuint",
+          "sine.inOut": "inOutSine",
+          "sine.out": "outSine",
+          "expo.out": "outExpo",
+          "expo.inOut": "inOutExpo",
+        };
+        if (table[compact]) return table[compact];
+        const back = /^back\.(in|out|inOut)\(([^)]*)\)$/.exec(compact);
+        if (back) return back[1] + "Back(" + back[2] + ")";
+        return ease;
+      }
+
+      function normalizeStagger(stagger) {
+        if (stagger === undefined) return undefined;
+        if (typeof stagger === "number") return anime.stagger(ms(stagger));
+        const span = stagger.each ?? stagger.amount;
+        if (span === undefined) return undefined;
+        const options = {};
+        if (stagger.from !== undefined) options.from = stagger.from;
+        if (stagger.grid !== undefined) options.grid = stagger.grid;
+        if (stagger.axis !== undefined) options.axis = stagger.axis;
+        if (stagger.start !== undefined) options.start = ms(stagger.start);
+        if (stagger.ease !== undefined) options.ease = mapEase(stagger.ease);
+        return anime.stagger(ms(span), options);
+      }
+
+      function normalizeTween(vars, fromVars, target, position) {
+        const props = {};
+        let driverKey = null;
+        for (const [key, value] of Object.entries(vars)) {
+          if (
+            ["duration", "ease", "stagger", "repeat", "yoyo", "overwrite", "onUpdate"].includes(key)
+          )
+            continue;
+          const animeKey = propMap.get(key) ?? key;
+          const fromValue = fromVars?.[key];
+          props[animeKey] = fromValue === undefined ? value : [fromValue, value];
+          if (driverKey === null) driverKey = key;
+        }
+        props.duration = ms(vars.duration ?? 0.5);
+        if (vars.ease !== undefined) props.ease = mapEase(vars.ease);
+        const delay = normalizeStagger(vars.stagger);
+        if (delay !== undefined) props.delay = delay;
+        if (vars.repeat !== undefined)
+          props.loop = vars.repeat === -1 ? true : Math.max(0, Math.floor(vars.repeat)) + 1;
+        if (vars.yoyo === true) props.alternate = true;
+        if (typeof vars.onUpdate === "function") {
+          const userUpdate = vars.onUpdate;
+          const durationSeconds = Number(vars.duration ?? 0.5);
+          props.onUpdate = function (self) {
+            const first = resolveTargets(target)[0];
+            let progress = 0;
+            if (driverKey !== null) {
+              const raw = keyValue(first, driverKey);
+              const start = Number(fromVars?.[driverKey] ?? 0);
+              const end = Number(vars[driverKey]);
+              const current = Number(raw);
+              if (
+                Number.isFinite(current) &&
+                Number.isFinite(start) &&
+                Number.isFinite(end) &&
+                end !== start
+              ) {
+                progress = (current - start) / (end - start);
+              }
+            }
+            adapterTime.current =
+              Number(position || 0) + Math.max(0, Math.min(1, progress)) * durationSeconds;
+            userUpdate.call(this, self);
+          };
+        }
+        return props;
+      }
+
+      function keyValue(target, key) {
+        if (!target) return undefined;
+        if (target instanceof Element && key.startsWith("--"))
+          return getComputedStyle(target).getPropertyValue(key);
+        return target[key];
+      }
+
+      const adapterTime = { current: 0 };
+
+      function createTimelineAdapter(timeline) {
+        return {
+          to(target, vars, position = 0) {
+            timeline.add(target, normalizeTween(vars, undefined, target, position), ms(position));
+            return this;
+          },
+          fromTo(target, fromVars, toVars, position = 0) {
+            timeline.add(target, normalizeTween(toVars, fromVars, target, position), ms(position));
+            return this;
+          },
+          set(target, vars, position = 0) {
+            timeline.add(
+              { tick: 0 },
+              {
+                tick: [0, 1],
+                duration: 1,
+                ease: "linear",
+                onUpdate: () => setTweenState(target, vars),
+              },
+              ms(position),
+            );
+            return this;
+          },
+          time() {
+            return adapterTime.current;
+          },
+        };
+      }
+      const tl = anime.createTimeline({ autoplay: false });
+      const anim = createTimelineAdapter(tl);
 
       /* ============================================================
          CONSTANTS
@@ -883,7 +1134,7 @@
           hasReveal: true,
         },
         {
-          sel: ".icon-gsap",
+          sel: ".icon-animejs",
           initialAngle: (3 * Math.PI) / 3,
           entryDelay: 0.3,
           drawLen: 100,
@@ -916,7 +1167,7 @@
       const IDLE_START = 3.95;
       const TOTAL = 6.5;
 
-      const COLLAPSE_EASE = gsap.parseEase("back.out(1.6)");
+      const COLLAPSE_EASE = "outBack(1.6)";
       const ORBIT_END = DEMO_AT;
 
       const CURSOR_START_X = W + 100;
@@ -925,25 +1176,25 @@
       const CURSOR_TARGET_Y = CENTER_Y + 15;
 
       /* ============================================================
-         INITIAL STATE — embedded as tl.set calls at t=0 so the lint
+         INITIAL STATE — embedded as adapter set calls at t=0 so the lint
          can reason about them as timeline operations rather than
          as overlapping zero-duration tweens.
          ============================================================ */
-      tl.set(".icon-entry", { rotateX: 90, rotateY: -45, z: -100, scale: 0, opacity: 0 }, 0);
-      tl.set(".cursor", { x: CURSOR_START_X, y: CURSOR_START_Y, opacity: 0 }, 0);
-      tl.set(".ripple", { scale: 0.3, opacity: 0 }, 0);
-      // CTA: GSAP-driven centering + 3D entry start state.
-      tl.set(".cta", { xPercent: -50, yPercent: -50, rotateY: -90, scale: 0.7, opacity: 0 }, 0);
-      tl.set(".demo", { scale: 0, rotateY: 90, opacity: 0 }, 0);
+      anim.set(".icon-entry", { rotateX: 90, rotateY: -45, z: -100, scale: 0, opacity: 0 }, 0);
+      anim.set(".cursor", { x: CURSOR_START_X, y: CURSOR_START_Y, opacity: 0 }, 0);
+      anim.set(".ripple", { scale: 0.3, opacity: 0 }, 0);
+      // CTA: anime.js-driven centering + 3D entry start state.
+      anim.set(".cta", { xPercent: -50, yPercent: -50, rotateY: -90, scale: 0.7, opacity: 0 }, 0);
+      anim.set(".demo", { scale: 0, rotateY: 90, opacity: 0 }, 0);
 
       /* ============================================================
          TITLE — slides down and fades in early.
-         xPercent: -50 replaces CSS `transform: translateX(-50%)` so GSAP's
+         xPercent: -50 replaces CSS `transform: translateX(-50%)` so anime.js's
          tween of `y` doesn't overwrite the centering transform. fromTo is
          linter-exempt from the CSS-transform-conflict rule and bakes in the
          start state explicitly.
          ============================================================ */
-      tl.fromTo(
+      anim.fromTo(
         ".title",
         { xPercent: -50, y: -30, opacity: 0 },
         { xPercent: -50, y: 0, opacity: 1, duration: 0.6, ease: "back.out(1.4)" },
@@ -953,10 +1204,10 @@
       /* ============================================================
          CTA — 3D flip entry. rotateY -90° → 0° spins the card in from
          the right; opacity + scale ease it forward at the same time.
-         xPercent/yPercent set at t=0 keep it centered while GSAP owns
+         xPercent/yPercent set at t=0 keep it centered while anime.js owns
          the transform.
          ============================================================ */
-      tl.to(
+      anim.to(
         ".cta",
         { rotateY: 0, scale: 1, opacity: 1, duration: 0.75, ease: "back.out(1.4)" },
         0.3,
@@ -964,13 +1215,17 @@
 
       // Subtle Y-axis tilt while the CTA is idle waiting for the click.
       // Half-cycle 0.9s, repeats yoyo until just before CLICK_AT.
-      tl.to(".cta", { rotateY: 5, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: 1 }, 1.05);
+      anim.to(
+        ".cta",
+        { rotateY: 5, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: 1 },
+        1.05,
+      );
 
       /* ============================================================
          PHASE 1: 3D flip entry per icon
          ============================================================ */
       ICONS.forEach(({ sel, entryDelay }) => {
-        tl.fromTo(
+        anim.fromTo(
           `${sel} .icon-entry`,
           { rotateX: 90, rotateY: -45, z: -100, scale: 0, opacity: 0 },
           {
@@ -995,7 +1250,7 @@
          is mostly visible by the time the 3D flip settles.
          ============================================================ */
       ICONS.forEach(({ sel, entryDelay, drawLen }) => {
-        tl.fromTo(
+        anim.fromTo(
           `${sel} .draw-${drawLen}`,
           { strokeDashoffset: drawLen },
           { strokeDashoffset: 0, duration: ENTRY_DUR + 0.1, ease: "power2.out" },
@@ -1013,7 +1268,7 @@
          ============================================================ */
       ICONS.forEach(({ sel, entryDelay, hasReveal }) => {
         if (!hasReveal) return;
-        tl.fromTo(
+        anim.fromTo(
           `${sel} .reveal-late`,
           { opacity: 0 },
           { opacity: 1, duration: 0.3, ease: "power2.out", stagger: 0.1 },
@@ -1023,20 +1278,20 @@
 
       /* ============================================================
          PHASE 1 + 3: Master orbit + collapse engine
-         Single onUpdate spans from t=0 to ORBIT_END. Reads tl.time()
+         Single onUpdate spans from t=0 to ORBIT_END. Reads anim.time()
          and computes:
            - orbit angle per icon (relative to its entryDelay)
            - collapse driver (eased fraction of CLICK_AT → CLICK_AT+COLLAPSE_DUR)
          Writes x/y to .icon-pos and scale/opacity to .icon-collapse.
          ============================================================ */
-      tl.to(
+      anim.to(
         { tick: 0 },
         {
           tick: 1,
           duration: ORBIT_END,
           ease: "none",
           onUpdate: () => {
-            const t = tl.time();
+            const t = anim.time();
             const collapseLinear = Math.max(0, Math.min(1, (t - CLICK_AT) / COLLAPSE_DUR));
             const collapseEased = COLLAPSE_EASE(collapseLinear);
             const radiusFactor = 1 - collapseEased;
@@ -1058,8 +1313,8 @@
               const floatY = Math.sin(t * 1.4 + i * 1.1) * 6 * radiusFactor;
               const floatRot = Math.sin(t * 1.1 + i * 1.7) * 2.5 * radiusFactor;
 
-              gsap.set(`${sel}.icon-pos`, { x, y: y + floatY });
-              gsap.set(`${sel} .icon-collapse`, {
+              setTweenState(`${sel}.icon-pos`, { x, y: y + floatY });
+              setTweenState(`${sel} .icon-collapse`, {
                 scale: collapseScale,
                 opacity: collapseOpacity,
                 rotation: floatRot,
@@ -1074,36 +1329,36 @@
          PHASE 2: Cursor enters, slides to CTA, clicks
          ============================================================ */
       // Fade in
-      tl.to(".cursor", { opacity: 1, duration: 0.1, ease: "none" }, CURSOR_AT);
+      anim.to(".cursor", { opacity: 1, duration: 0.1, ease: "none" }, CURSOR_AT);
 
       // Slide to CTA button
-      tl.to(
+      anim.to(
         ".cursor",
         { x: CURSOR_TARGET_X, y: CURSOR_TARGET_Y, duration: CURSOR_MOVE, ease: "back.out(1.3)" },
         CURSOR_AT,
       );
 
       // Click depression — cursor + button compress, then recover
-      tl.to(".cursor", { scale: 0.85, duration: 0.08, ease: "power2.out" }, CLICK_AT);
-      tl.to(".cursor", { scale: 1, duration: 0.18, ease: "back.out(1.6)" }, CLICK_AT + 0.08);
-      tl.to(".cta-button", { scale: 0.95, duration: 0.08, ease: "power2.out" }, CLICK_AT);
-      tl.to(".cta-button", { scale: 1, duration: 0.18, ease: "back.out(1.6)" }, CLICK_AT + 0.08);
+      anim.to(".cursor", { scale: 0.85, duration: 0.08, ease: "power2.out" }, CLICK_AT);
+      anim.to(".cursor", { scale: 1, duration: 0.18, ease: "back.out(1.6)" }, CLICK_AT + 0.08);
+      anim.to(".cta-button", { scale: 0.95, duration: 0.08, ease: "power2.out" }, CLICK_AT);
+      anim.to(".cta-button", { scale: 1, duration: 0.18, ease: "back.out(1.6)" }, CLICK_AT + 0.08);
 
       // Button glow pulse during click
-      tl.fromTo(
+      anim.fromTo(
         ".cta-button",
         { boxShadow: "0 0 0 rgba(255,255,255,0)" },
         { boxShadow: "0 0 40px rgba(255,255,255,0.7)", duration: 0.2, ease: "power2.out" },
         CLICK_AT,
       );
-      tl.to(
+      anim.to(
         ".cta-button",
         { boxShadow: "0 0 0 rgba(255,255,255,0)", duration: 0.4, ease: "power2.in" },
         CLICK_AT + 0.2,
       );
 
       // Ripple — attack-decay envelope via keyframes
-      tl.to(
+      anim.to(
         ".ripple",
         {
           duration: 0.7,
@@ -1120,7 +1375,7 @@
       /* ============================================================
          PHASE 4: Demo springs out of the collapse point
          ============================================================ */
-      tl.fromTo(
+      anim.fromTo(
         ".demo",
         { scale: 0, rotateY: 90, opacity: 0 },
         { scale: 1, rotateY: 0, opacity: 1, duration: DEMO_DUR, ease: "back.out(1.6)" },
@@ -1128,10 +1383,10 @@
       );
 
       // CTA fades out as the demo emerges — the click's "result" replaces the action target.
-      tl.to(".cta", { opacity: 0, duration: 0.3, ease: "power2.in" }, DEMO_AT - 0.05);
+      anim.to(".cta", { opacity: 0, duration: 0.3, ease: "power2.in" }, DEMO_AT - 0.05);
 
       // Cursor exits with the CTA
-      tl.to(".cursor", { opacity: 0, duration: 0.3, ease: "power2.in" }, DEMO_AT);
+      anim.to(".cursor", { opacity: 0, duration: 0.3, ease: "power2.in" }, DEMO_AT);
 
       /* ============================================================
          PHASE 5: Demo floats with finite-yoyo breathing
@@ -1140,7 +1395,7 @@
       const remaining = TOTAL - IDLE_START;
       const halfCycles = Math.max(0, Math.floor(remaining / HALF_CYCLE) - 1);
 
-      tl.fromTo(
+      anim.fromTo(
         ".demo",
         { y: 0, rotation: 0, rotateY: 0, rotateX: 0 },
         {
@@ -1167,62 +1422,62 @@
       const cssDotB = document.querySelector(".css-dot-b");
       const cssDotC = document.querySelector(".css-dot-c");
       const svgCurve = document.querySelector(".svg-curve-g");
-      const gsapMarker = document.querySelector(".gsap-marker");
-      const gsapWave = document.querySelector(".gsap-wave-g");
+      const animejsMarker = document.querySelector(".animejs-marker");
+      const animejsWave = document.querySelector(".animejs-wave-g");
       const threeCube = document.querySelector(".three-cube-g");
       const lottieKfA = document.querySelector(".lottie-kf-a");
       const lottieKfB = document.querySelector(".lottie-kf-b");
 
-      tl.to(
+      anim.to(
         { tick2: 0 },
         {
           tick2: 1,
           duration: TOTAL,
           ease: "none",
           onUpdate: () => {
-            const t = tl.time();
+            const t = anim.time();
 
             // HTML brackets — tiny horizontal sway, like a typing cursor
             const htmlT = t - 0.0;
             if (htmlT > 0) {
-              gsap.set(htmlBrackets, { x: Math.sin(htmlT * 3.5) * 0.6 });
+              setTweenState(htmlBrackets, { x: Math.sin(htmlT * 3.5) * 0.6 });
             }
 
             // CSS swatches — three dots scale-pulse with phase offsets
             const cssT = t - 0.1;
             if (cssT > 0) {
-              gsap.set(cssDotA, { scale: 0.85 + Math.sin(cssT * 5.5) * 0.18 });
-              gsap.set(cssDotB, { scale: 0.85 + Math.sin(cssT * 5.5 + 1.4) * 0.18 });
-              gsap.set(cssDotC, { scale: 0.85 + Math.sin(cssT * 5.5 + 2.8) * 0.18 });
+              setTweenState(cssDotA, { scale: 0.85 + Math.sin(cssT * 5.5) * 0.18 });
+              setTweenState(cssDotB, { scale: 0.85 + Math.sin(cssT * 5.5 + 1.4) * 0.18 });
+              setTweenState(cssDotC, { scale: 0.85 + Math.sin(cssT * 5.5 + 2.8) * 0.18 });
             }
 
             // SVG bezier — whole curve group gently rotates back and forth
             const vecT = t - 0.2;
             if (vecT > 0) {
-              gsap.set(svgCurve, { rotation: Math.sin(vecT * 2.2) * 5 });
+              setTweenState(svgCurve, { rotation: Math.sin(vecT * 2.2) * 5 });
             }
 
-            // GSAP timeline — playhead marker slides along the wave +
+            // anime.js timeline — playhead marker slides along the wave +
             // the wave itself flexes vertically (amplitude pulse).
-            const gsapT = t - 0.3;
-            if (gsapT > 0) {
+            const animejsT = t - 0.3;
+            if (animejsT > 0) {
               // marker traverses 0 → 18 viewBox units left-to-right
-              const markerX = (Math.sin(gsapT * 1.4 - Math.PI / 2) + 1) * 9;
-              gsap.set(gsapMarker, { x: markerX });
-              gsap.set(gsapWave, { scaleY: 1 + Math.sin(gsapT * 2.5) * 0.12 });
+              const markerX = (Math.sin(animejsT * 1.4 - Math.PI / 2) + 1) * 9;
+              setTweenState(animejsMarker, { x: markerX });
+              setTweenState(animejsWave, { scaleY: 1 + Math.sin(animejsT * 2.5) * 0.12 });
             }
 
             // 3D cube — slow continuous tumble (replaces sports-ball spin)
             const threeT = t - 0.4;
             if (threeT > 0) {
-              gsap.set(threeCube, { rotation: threeT * 30 });
+              setTweenState(threeCube, { rotation: threeT * 30 });
             }
 
             // LOTTIE keyframes — two diamonds scale-pulse out of phase
             const lottieT = t - 0.5;
             if (lottieT > 0) {
-              gsap.set(lottieKfA, { scale: 1 + Math.sin(lottieT * 2.8) * 0.12 });
-              gsap.set(lottieKfB, { scale: 1 + Math.sin(lottieT * 2.8 + 1.6) * 0.12 });
+              setTweenState(lottieKfA, { scale: 1 + Math.sin(lottieT * 2.8) * 0.12 });
+              setTweenState(lottieKfB, { scale: 1 + Math.sin(lottieT * 2.8 + 1.6) * 0.12 });
             }
 
             // ====== ENHANCEMENT: per-icon tile glow pulse ======
@@ -1235,7 +1490,7 @@
             if (t < DEMO_AT) {
               ICONS.forEach(({ sel }, i) => {
                 const glow = 32 + Math.sin(t * 1.3 + i * 0.95) * 16;
-                gsap.set(`${sel} .icon-tile`, {
+                setTweenState(`${sel} .icon-tile`, {
                   boxShadow:
                     "0 15px 40px rgba(0, 0, 0, 0.35), " +
                     "0 0 " +
@@ -1255,7 +1510,7 @@
             // DEMO_AT - 0.05 so the static end-state never shows.
             if (t < CLICK_AT) {
               const ctaGlow = 70 + Math.sin(t * 2.6) * 30;
-              gsap.set(".cta", {
+              setTweenState(".cta", {
                 boxShadow:
                   "0 40px 80px rgba(0, 0, 0, 0.5), " +
                   "0 0 " +
@@ -1275,7 +1530,7 @@
             if (t > DEMO_AT) {
               const demoT = t - DEMO_AT;
               const demoGlow = 90 + Math.sin(demoT * 1.9) * 36;
-              gsap.set(".demo", {
+              setTweenState(".demo", {
                 boxShadow:
                   "0 50px 100px rgba(0, 0, 0, 0.5), " +
                   "0 0 " +
@@ -1292,7 +1547,7 @@
         0,
       );
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

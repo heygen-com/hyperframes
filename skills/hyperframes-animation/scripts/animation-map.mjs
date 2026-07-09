@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // animation-map.mjs — HyperFrames animation map for agents
 //
-// Reads every GSAP timeline registered in window.__timelines, enumerates
-// tweens, samples bboxes at N points per tween, computes flags and
-// human-readable summaries. Outputs a single animation-map.json.
+// Reads GSAP timelines from window.__timelines and anime.js timelines from
+// hyperframesAnime/window.__hfAnime, enumerates what can be inspected, samples
+// bboxes at N points per tween, computes flags and human-readable summaries.
+// Outputs a single animation-map.json.
 //
 // Usage:
 //   node skills/hyperframes-animation/scripts/animation-map.mjs <composition-dir> \
@@ -88,10 +89,12 @@ try {
       (p) => !["parent", "overwrite", "immediateRender", "startAt", "runBackwards"].includes(p),
     );
     const flags = computeFlags(tw, bboxes, { width: WIDTH, height: HEIGHT });
-    const summary = describeTween(tw, animProps, bboxes, flags);
+    const summary = tw.summary ?? describeTween(tw, animProps, bboxes, flags);
 
     report.tweens.push({
       index: i + 1,
+      runtime: tw.runtime,
+      registrationId: tw.registrationId,
       selector: tw.selectorHint,
       targets: tw.targetCount,
       props: animProps,
@@ -99,6 +102,8 @@ try {
       end: +tw.end.toFixed(3),
       duration: +(tw.end - tw.start).toFixed(3),
       ease: tw.ease,
+      labels: tw.labels,
+      introspection: tw.introspection,
       bboxes,
       flags,
       summary,
@@ -142,6 +147,16 @@ async function seekTo(session, t) {
       for (const tl of Object.values(tls)) {
         if (typeof tl.seek === "function") tl.seek(time);
       }
+    }
+    const animeEntries =
+      window.hyperframesAnime && typeof window.hyperframesAnime.entries === "function"
+        ? window.hyperframesAnime.entries()
+        : Object.entries(window.__hfAnime || {}).map(([id, value]) =>
+            value && value.instance ? value : { id, instance: value, labels: {} },
+          );
+    for (const entry of animeEntries) {
+      const instance = entry && entry.instance;
+      if (instance && typeof instance.seek === "function") instance.seek(Math.max(0, time * 1000));
     }
   }, t);
   await new Promise((r) => setTimeout(r, 100));
@@ -190,6 +205,7 @@ async function enumerateTweens(session) {
       const start = parentOffset + (node.startTime?.() ?? 0);
       const end = start + (node.duration?.() ?? 0);
       results.push({
+        runtime: "gsap",
         selectorHint: selectorOf(targets[0]) ?? "(unknown)",
         targetCount: targets.length,
         props,
@@ -200,8 +216,77 @@ async function enumerateTweens(session) {
     };
 
     for (const tl of Object.values(registry)) walk(tl, 0);
+    results.push(...enumerateAnimeRegistrations());
     results.sort((a, b) => a.start - b.start);
     return results;
+
+    function enumerateAnimeRegistrations() {
+      const entries = animeEntries();
+      const tweens = [];
+      for (const entry of entries) {
+        const durationMs = readDurationMs(entry.instance);
+        if (!durationMs || durationMs <= 0) continue;
+        const labels = entry.labels && typeof entry.labels === "object" ? entry.labels : {};
+        const labelText = Object.keys(labels).length
+          ? Object.entries(labels)
+              .map(([name, seconds]) => `${name}@${Number(seconds).toFixed(2)}s`)
+              .join(", ")
+          : "none";
+
+        // anime.js v4 does not document a stable public child/tween
+        // introspection API comparable to GSAP's getChildren()/targets()/vars.
+        // Until the Studio units define a supported metadata surface, report a
+        // reduced-fidelity per-registration span instead of returning an empty
+        // tween list. Upgrade path: replace this summary with authored tween
+        // metadata from the future anime parser/runtime registry.
+        tweens.push({
+          runtime: "animejs",
+          registrationId: entry.id,
+          selectorHint: "body",
+          targetCount: 0,
+          props: ["timeline-summary"],
+          start: 0,
+          end: durationMs / 1000,
+          ease: "anime.js",
+          labels,
+          introspection: "summary-only",
+          summary: `anime.js timeline "${entry.id}" spans ${(durationMs / 1000).toFixed(
+            2,
+          )}s; labels: ${labelText}. Child tween details are not available from a stable anime.js v4 public API.`,
+        });
+      }
+      return tweens;
+    }
+
+    function animeEntries() {
+      if (window.hyperframesAnime && typeof window.hyperframesAnime.entries === "function") {
+        return window.hyperframesAnime.entries();
+      }
+      const registry = window.__hfAnime || {};
+      return Object.entries(registry)
+        .map(([id, value]) => {
+          if (!value) return null;
+          if (value.instance)
+            return { id: value.id || id, instance: value.instance, labels: value.labels || {} };
+          return { id, instance: value, labels: {} };
+        })
+        .filter(Boolean);
+    }
+
+    function readDurationMs(instance) {
+      if (!instance) return null;
+      for (const key of ["totalDuration", "duration"]) {
+        const value = instance[key];
+        try {
+          const raw = typeof value === "function" ? value.call(instance) : value;
+          const numberValue = Number(raw);
+          if (Number.isFinite(numberValue) && numberValue > 0) return numberValue;
+        } catch {
+          // Ignore private/throwing duration accessors and try the next field.
+        }
+      }
+      return null;
+    }
   });
 }
 

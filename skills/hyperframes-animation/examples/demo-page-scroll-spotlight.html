@@ -25,7 +25,7 @@
         - Tilt is static CSS, never tweened
     -->
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 
     <style>
       :root {
@@ -89,7 +89,7 @@
         border-radius: 20px;
         overflow: hidden;
         transform-style: preserve-3d;
-        /* tilt + initial scale set by gsap.set() below so subsequent tweens preserve them */
+        /* tilt + initial scale set by the adapter setter below so subsequent tweens preserve them */
         box-shadow:
           -30px 30px 60px rgba(0, 0, 0, 0.4),
           -15px 15px 30px rgba(0, 0, 0, 0.3),
@@ -112,7 +112,7 @@
         align-items: center;
         justify-content: space-between;
         z-index: 100;
-        opacity: 0; /* GSAP fades in */
+        opacity: 0; /* anime.js fades in */
         background: linear-gradient(to bottom, rgba(10, 10, 15, 0.95), rgba(10, 10, 15, 0.6));
       }
       .nav-left {
@@ -178,7 +178,7 @@
       }
 
       /* ============================================================
-         SCROLL CONTENT — GSAP tweens its y
+         SCROLL CONTENT — anime.js tweens its y
          ============================================================ */
       .scroll-content {
         padding-top: 140px;
@@ -196,7 +196,7 @@
         text-align: center;
         max-width: 1200px;
         width: 90%;
-        opacity: 0; /* GSAP fades in */
+        opacity: 0; /* anime.js fades in */
       }
       .hero-eyebrow {
         font-size: 14px;
@@ -273,7 +273,7 @@
         justify-content: center;
         gap: 16px;
         margin-top: 36px;
-        opacity: 0; /* GSAP fades in */
+        opacity: 0; /* anime.js fades in */
       }
       .cta-input {
         display: flex;
@@ -318,8 +318,8 @@
          VIDEO CAROUSEL (Phase 2 entry, Phase 4 pop-out)
          ============================================================ */
       .carousel-wrap {
-        opacity: 0; /* GSAP fades in */
-        transform: scale(0.9); /* GSAP scales to 1 */
+        opacity: 0; /* anime.js fades in */
+        transform: scale(0.9); /* anime.js scales to 1 */
         transform-origin: center top;
         margin-top: 48px;
         display: flex;
@@ -442,7 +442,7 @@
           rgba(0, 0, 0, 0.65) 100%
         );
         pointer-events: none;
-        opacity: 0; /* GSAP fades in during Phase 4 */
+        opacity: 0; /* anime.js fades in during Phase 4 */
         z-index: 150;
       }
 
@@ -589,10 +589,10 @@
 
     <script>
       /* ================================================================
-         TIMING — all in local seconds (scene starts at 0).
-         ASR timestamps are direct from the source, with SCENE_START = 16
-         subtracted to get local time.
-         ================================================================ */
+      TIMING — all in local seconds (scene starts at 0).
+      ASR timestamps are direct from the source, with SCENE_START = 16
+      subtracted to get local time.
+      ================================================================ */
       const ASR = {
         // Phase 2 title keywords
         one: { start: 0.119, end: 0.279 },
@@ -634,126 +634,107 @@
       const KEYWORD_SUSTAIN = 0.5; // seconds after ASR end before decay completes
 
       /* ================================================================
-         TIMELINE
-         ================================================================ */
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-      window.__timelines["main"] = tl;
+      TIMELINE
+      ================================================================ */
 
-      // Set the static 3D tilt + initial scale via GSAP so subsequent
-      // scale tweens preserve the rotation aliases. (If we left
-      // `transform: rotateY(...) rotateX(...) scale(0.95)` in CSS, a GSAP
-      // tween touching only `scale` could overwrite the full matrix and
-      // lose the rotation. Owning the transform state in GSAP avoids the
-      // problem entirely.)
-      gsap.set(".page-card", {
-        rotationY: -8,
-        rotationX: 3,
-        scale: 0.95,
-      });
+      const tl = anime.createTimeline({ autoplay: false });
 
-      /* ----------------------------------------------------------------
-         PHASE 1: Page card entry + navbar/title/CTA fade-in
-         ---------------------------------------------------------------- */
-      tl.to(
+      function ms(seconds) {
+        return Math.round(Number(seconds || 0) * 1000);
+      }
+
+      tl.add(".page-card", { rotateY: -8, rotateX: 3, scale: 0.95, duration: 0 }, 0);
+      tl.add(
         ".page-card",
-        { scale: 1.0, duration: TIMING.cardEntryDur, ease: "power2.out" },
-        TIMING.cardEntryStart,
+        { scale: [0.95, 1], duration: ms(TIMING.cardEntryDur), ease: "outCubic" },
+        ms(TIMING.cardEntryStart),
       );
-
-      tl.fromTo(
+      tl.add(
         "#navbar",
-        { opacity: 0 },
-        { opacity: 1, duration: TIMING.navbarFadeDur, ease: "power2.out" },
-        TIMING.navbarFadeAt,
+        { opacity: [0, 1], duration: ms(TIMING.navbarFadeDur), ease: "outCubic" },
+        ms(TIMING.navbarFadeAt),
       );
-
-      tl.fromTo(
+      tl.add(
         "#hero",
-        { opacity: 0 },
-        { opacity: 1, duration: TIMING.titleFadeDur, ease: "power2.out" },
-        TIMING.titleFadeAt,
+        { opacity: [0, 1], duration: ms(TIMING.titleFadeDur), ease: "outCubic" },
+        ms(TIMING.titleFadeAt),
       );
-
-      tl.fromTo(
+      tl.add(
         "#cta-row",
-        { opacity: 0 },
-        { opacity: 1, duration: TIMING.ctaFadeDur, ease: "power2.out" },
-        TIMING.ctaFadeAt,
+        { opacity: [0, 1], duration: ms(TIMING.ctaFadeDur), ease: "outCubic" },
+        ms(TIMING.ctaFadeAt),
       );
 
-      /* ----------------------------------------------------------------
-         PHASE 2: Keyword glows — two tweens per word.
-         Attack (0 → 1) + decay (1 → REST_LEVEL). GSAP holds REST forever.
-         ---------------------------------------------------------------- */
       document.querySelectorAll(".kw").forEach((kw) => {
         const start = Number(kw.dataset.glowStart);
         const end = Number(kw.dataset.glowEnd);
         const peak = start + (end - start) / 2;
         const restAt = end + KEYWORD_SUSTAIN;
 
-        tl.fromTo(
+        tl.add(
           kw,
-          { "--glow": 0 },
-          { "--glow": 1.18, duration: peak - start, ease: "power2.out" },
-          start,
+          { "--glow": [0, 1.18], duration: ms(peak - start), ease: "outCubic" },
+          ms(start),
         );
-
-        tl.to(
+        tl.add(
           kw,
-          { "--glow": KEYWORD_REST_LEVEL, duration: restAt - peak, ease: "power2.out" },
-          peak,
+          {
+            "--glow": [1.18, KEYWORD_REST_LEVEL],
+            duration: ms(restAt - peak),
+            ease: "outCubic",
+          },
+          ms(peak),
         );
       });
 
-      /* ----------------------------------------------------------------
-         PHASE 3: Scroll + carousel entry
-         ---------------------------------------------------------------- */
-      tl.fromTo(
+      tl.add(
         "#scroll-content",
-        { y: 0 },
-        { y: -TIMING.scrollDistance, duration: TIMING.scrollDur, ease: "power2.inOut" },
-        TIMING.phase2StartAt,
+        {
+          translateY: [0, -TIMING.scrollDistance],
+          duration: ms(TIMING.scrollDur),
+          ease: "inOutCubic",
+        },
+        ms(TIMING.phase2StartAt),
       );
-
-      tl.fromTo(
+      tl.add(
         "#carousel",
-        { opacity: 0, scale: 0.9 },
-        { opacity: 1, scale: 1.0, duration: TIMING.carouselFadeDur, ease: "power2.out" },
-        TIMING.phase2StartAt,
+        {
+          opacity: [0, 1],
+          scale: [0.9, 1],
+          duration: ms(TIMING.carouselFadeDur),
+          ease: "outCubic",
+        },
+        ms(TIMING.phase2StartAt),
       );
-
-      /* ----------------------------------------------------------------
-         PHASE 4: Pop-out (driven by --glow on .carousel-main) + spotlight
-         ---------------------------------------------------------------- */
-      // Attack the pop-out glow.
-      tl.fromTo(
+      tl.add(
         "#pop-target",
-        { "--glow": 0 },
-        { "--glow": 1, duration: TIMING.popAttackDur, ease: "power2.out" },
-        TIMING.popStart,
+        { "--glow": [0, 1], duration: ms(TIMING.popAttackDur), ease: "outCubic" },
+        ms(TIMING.popStart),
       );
-
-      // Decay at the end of the scene (mirrors original phase2End-10 / phase2End ramp).
-      tl.to(
+      tl.add(
         "#pop-target",
-        { "--glow": TIMING.popRestLevel, duration: TIMING.popDecayDur, ease: "power2.out" },
-        TIMING.popEnd - TIMING.popDecayDur,
+        {
+          "--glow": [1, TIMING.popRestLevel],
+          duration: ms(TIMING.popDecayDur),
+          ease: "outCubic",
+        },
+        ms(TIMING.popEnd - TIMING.popDecayDur),
       );
-
-      // Spotlight fades in alongside the pop attack, decays with the pop.
-      tl.fromTo(
+      tl.add(
         "#spotlight",
-        { opacity: 0 },
-        { opacity: 1, duration: 0.5, ease: "power2.out" },
-        TIMING.popStart,
+        { opacity: [0, 1], duration: ms(0.5), ease: "outCubic" },
+        ms(TIMING.popStart),
       );
-
-      tl.to(
+      tl.add(
         "#spotlight",
-        { opacity: TIMING.popRestLevel, duration: TIMING.popDecayDur, ease: "power2.out" },
-        TIMING.popEnd - TIMING.popDecayDur,
+        {
+          opacity: [1, TIMING.popRestLevel],
+          duration: ms(TIMING.popDecayDur),
+          ease: "outCubic",
+        },
+        ms(TIMING.popEnd - TIMING.popDecayDur),
       );
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>
