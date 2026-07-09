@@ -47,6 +47,7 @@ export function StyleSections({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
+  hideFlex = false,
 }: {
   projectId: string;
   element: DomEditSelection;
@@ -55,6 +56,10 @@ export function StyleSections({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
+  // When true, the Flex `Section` is suppressed. The flat inspector renders
+  // its own Flex controls inside the Layout group (LayoutFlexBlock), so the
+  // flat path passes this to avoid a double-render. Non-flat callers omit it.
+  hideFlex?: boolean;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
@@ -145,7 +150,7 @@ export function StyleSections({
 
   return (
     <>
-      {isFlex && (
+      {isFlex && !hideFlex && (
         <Section title="Flex" icon={<Layers size={15} />} defaultCollapsed>
           <div className="space-y-4">
             <SegmentedControl
