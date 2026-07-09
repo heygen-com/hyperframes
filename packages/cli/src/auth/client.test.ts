@@ -29,6 +29,27 @@ function makeClient(fetchImpl: typeof fetch): AuthClient {
   return new AuthClient({ baseUrl: "https://api.test.example", fetchImpl });
 }
 
+// getCurrentUser is expected to reject with a specific auth-error code.
+async function expectAuthCode(promise: Promise<unknown>, code: string): Promise<void> {
+  await expect(promise).rejects.toSatisfy(
+    (err) => isAuthError(err) && (err as { code: string }).code === code,
+  );
+}
+
+// getCurrentUser is expected to reject; assertMessage inspects the scrubbed message.
+async function expectRejectionMessage(
+  client: AuthClient,
+  assertMessage: (msg: string) => void,
+): Promise<void> {
+  try {
+    await client.getCurrentUser(apiKeyCred());
+  } catch (err) {
+    assertMessage((err as Error).message);
+    return;
+  }
+  throw new Error("expected rejection");
+}
+
 describe("auth/client", () => {
   const original = process.env["HEYGEN_API_URL"];
 
@@ -105,16 +126,12 @@ describe("auth/client", () => {
 
   it("getCurrentUser throws ErrUnauthenticated on 401", async () => {
     const client = makeClient(textFetch("invalid token", 401));
-    await expect(client.getCurrentUser(apiKeyCred())).rejects.toSatisfy((err) => {
-      return isAuthError(err) && (err as { code: string }).code === "UNAUTHENTICATED";
-    });
+    await expectAuthCode(client.getCurrentUser(apiKeyCred()), "UNAUTHENTICATED");
   });
 
   it("getCurrentUser throws ErrApi on 5xx", async () => {
     const client = makeClient(textFetch("upstream", 503));
-    await expect(client.getCurrentUser(apiKeyCred())).rejects.toSatisfy((err) => {
-      return isAuthError(err) && (err as { code: string }).code === "API_ERROR";
-    });
+    await expectAuthCode(client.getCurrentUser(apiKeyCred()), "API_ERROR");
   });
 
   it("getCurrentUser throws ErrApi when 2xx body is not valid JSON", async () => {
@@ -124,9 +141,7 @@ describe("auth/client", () => {
         headers: { "content-type": "text/html" },
       })) as unknown as typeof fetch;
     const client = makeClient(fetchImpl);
-    await expect(client.getCurrentUser(apiKeyCred())).rejects.toSatisfy((err) => {
-      return isAuthError(err) && (err as { code: string }).code === "API_ERROR";
-    });
+    await expectAuthCode(client.getCurrentUser(apiKeyCred()), "API_ERROR");
   });
 
   it("getCurrentUser returns empty UserInfo when payload.data is an array", async () => {
@@ -141,15 +156,10 @@ describe("auth/client", () => {
       401,
     );
     const client = makeClient(fetchImpl);
-    try {
-      await client.getCurrentUser(apiKeyCred());
-    } catch (err) {
-      const msg = (err as Error).message;
+    await expectRejectionMessage(client, (msg) => {
       expect(msg).not.toContain("hg_supersecret_abc123");
       expect(msg).toContain("<redacted>");
-      return;
-    }
-    throw new Error("expected rejection");
+    });
   });
 
   it("getCurrentUser redacts the full Authorization: Bearer value (not just the scheme)", async () => {
@@ -158,16 +168,11 @@ describe("auth/client", () => {
       401,
     );
     const client = makeClient(fetchImpl);
-    try {
-      await client.getCurrentUser(apiKeyCred());
-    } catch (err) {
-      const msg = (err as Error).message;
+    await expectRejectionMessage(client, (msg) => {
       expect(msg).not.toContain("at_opaque_secret_999");
       expect(msg).not.toContain("Bearer at_opaque_secret_999");
       expect(msg).toContain("<redacted>");
-      return;
-    }
-    throw new Error("expected rejection");
+    });
   });
 
   it("getCurrentUser retries once on 401 when refresh hook is configured for OAuth", async () => {
