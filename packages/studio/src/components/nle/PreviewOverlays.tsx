@@ -57,6 +57,8 @@ export function PreviewOverlays({
     handleDomRotationCommit,
     handleDomStyleCommit,
     applyMarqueeSelection,
+    handleDomEditElementDelete,
+    handleDomZIndexReorderCommit,
   } = useDomEditActionsContext();
 
   // fallow-ignore-next-line complexity
@@ -123,6 +125,19 @@ export function PreviewOverlays({
         onBoxSizeCommit={handleDomBoxSizeCommit}
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
+        onDeleteSelection={handleDomEditElementDelete}
+        onApplyZIndex={(sel, zIndex) =>
+          handleDomZIndexReorderCommit([
+            {
+              element: sel.element,
+              zIndex,
+              id: sel.id ?? undefined,
+              selector: sel.selector,
+              selectorIndex: sel.selectorIndex,
+              sourceFile: sel.sourceFile,
+            },
+          ])
+        }
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}

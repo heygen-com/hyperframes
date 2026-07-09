@@ -30,7 +30,6 @@ export function DomEditRotateHandle({
         width: 22,
         height: 22,
         transform: "translateX(-50%)",
-        cursor: "grab",
         touchAction: "none",
       }}
       title="Rotate"
