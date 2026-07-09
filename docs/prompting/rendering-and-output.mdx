@@ -41,6 +41,10 @@ Transparency also only *means something* on a design that has empty space to see
 - ❌ `render my full-screen product promo as a transparent WebM`
 - ✅ `render the promo as MP4; export just the lower-third overlay as transparent WebM` — transparency belongs to the layer meant to sit *over* other footage, not the finished full-frame film
 
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/overlay-spotify-preview.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*A transparent VP9 WebM overlay previewed over a checkerboard. To verify alpha from the CLI: VP9 stores it out-of-band, so look for ALPHA_MODE=1 in ffprobe (a pix_fmt-only check false-negatives) or extract it with ffmpeg alphaextract.*
+
+
 <Note>
   A transparent render also depends on the composition leaving `html` / `body` backgrounds unset — the transparency comes through only where nothing is painted. The workflow skills handle this; see the [Rendering guide](/guides/rendering#transparent-video) if you're hand-authoring an overlay.
 </Note>

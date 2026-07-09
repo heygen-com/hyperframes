@@ -23,9 +23,12 @@ Verified, from the [examples](/prompting/examples) page — a 30-second feature 
 
 <AccordionGroup>
   <Accordion title="Changelog roundup">
-    > /pr-to-video Make a ~40-second 1920x1080 changelog video from [PR URL]. Changelog angle: open with the release line, then one beat per notable change — a short label and a one-line "what it does" each. Show at most two `code-diff` hunks across the whole video. End on version + repo URL. Calm male TTS narration.
+    > /pr-to-video Make a ~40-second 1920x1080 changelog video from [PR URL]. Changelog angle: open with the release line, then one beat per notable change — a short label and a one-line "what it does" each. Show at most two `code-diff` hunks across the whole video. End on version + repo URL. Calm male TTS narration, no captions.
+    
+    <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/variant-pr-changelog.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+    *Rendered from this prompt with [PR URL] = heygen-com/hyperframes#2092, unedited.*
 
-    A changelog trades depth for breadth — many small changes, each a beat, rather than one change explored deeply. Keep code beats sparse so the pace stays fast.
+    A changelog trades depth for breadth — many small changes, each a beat, rather than one change explored deeply. Keep code beats sparse so the pace stays fast. A PR doesn't carry its shipping version — the agent finds it from the release tag or the package manifest on main.
   </Accordion>
   <Accordion title="Fix explainer">
     > /pr-to-video Make a ~40-second 1920x1080 fix-explainer from [PR URL], for developers. Fix angle: state the bug's symptom first, then the root cause, then the one-line fix on the `code-diff` block. End on version + repo URL. No narration, kinetic captions.

@@ -11,3 +11,15 @@ Static frames can be perfect and the video still feels cheap if the motion is de
 4. **Overshoot and follow-through.** Every pop scales past its target and settles back; letters can tumble in individually with rotation.
 5. **Depth planes.** One or two large, heavily-blurred foreground elements drifting near the lens sell depth instantly.
 6. **Match pacing to genre.** Showreel-style cuts run 1.5-4 seconds per idea; a stretched 8-second version of a 2-second idea feels slow no matter how it's animated.
+
+## The grammar, measured
+
+The same composition built twice — identical content, identical layout; the only variable is the motion treatment. The first build commits the anti-patterns above: simultaneous identical entrances, no camera, a frozen final 2.4 seconds. The second applies the six rules.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/motion-before.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Every anti-pattern: tiles enter together, nothing overlaps, the last seconds are a freeze-frame.*
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/motion-after.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The six rules: staggered overshoot entrances, a continuous 5% push, ambient idle, a blurred foreground plane, sparkline draw-ins as secondary motion.*
+
+The difference is measurable, not just visible: in the final second the frozen build has bit-identical consecutive frames, while the motion-grammar build changes every single frame — corroborated by the encoder (211KB vs 2.5MB for the same content). A frozen final second is the cheap-motion tell you can test for.

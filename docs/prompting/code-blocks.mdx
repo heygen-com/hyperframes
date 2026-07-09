@@ -58,12 +58,20 @@ The first four are the workhorses of a code *walkthrough* — they keep the code
 
 For "here's what changed," hand `code-diff` the before and after and let it color the delta. For "look at *this* line," give `code-highlight` the full context and name the target line.
 
-> /motion-graphics 6-second 1920x1080 video. Show this edit as a colored diff — the removed line collapses in red, the added line expands in green:
+> /motion-graphics 6-second 1920x1080 video. Show this edit to `api.ts` as a colored diff — the removed line collapses in red, the added line expands in green:
 > removed: `const res = await fetch(url)`
 > added: `const res = await fetch(url, { signal })`
 > Use the `code-diff` registry block. No audio.
 
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-code-diff.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
 > /motion-graphics 5-second 1920x1080 video. Show a 12-line config file; a highlight band sweeps to line 7 (`timeout: 30_000`) while the surrounding lines dim. Hold with line 7 lit. Use the `code-highlight` registry block. No audio.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-code-highlight.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited — the agent authors plausible surrounding config lines; paste all 12 if the exact file matters.*
+
 
 **Name the target line unambiguously.** The block dims context around one line — tell it which.
 - ❌ `highlight the important line`

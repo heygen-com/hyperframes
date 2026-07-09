@@ -37,9 +37,13 @@ Read the [anatomy](/prompting/anatomy) of that skeleton — route, spec, structu
     A teaser trades feature coverage for pace — fewer beats, one idea each. Keep the destination (Shorts / TikTok → 9:16) and let the workflow scale the story to the shorter runtime.
   </Accordion>
   <Accordion title="Pasted script, no capture">
-    > /product-launch-video Make a ~30-second 1920x1080 launch video from this script — use it verbatim: "Your CRM is three hours of busywork a day. AutoCRM logs every call, email, and meeting for you. 200 teams already switched. Try it free at autocrmhq.com." No site to capture — invent clean product-y visuals from the script. Male TTS voice, calm and confident; subtle BGM under -18dB.
+    > /product-launch-video Make a ~20-second 1920x1080 launch video from this script — use it verbatim: "Your CRM is three hours of busywork a day. AutoCRM logs every call, email, and meeting for you. 200 teams already switched. Try it free at autocrmhq.com." No site to capture — invent clean product-y visuals from the script. Male TTS voice, calm and confident; subtle BGM under -18dB.
 
-    With no URL the workflow takes the no-capture path: no screenshots, no site palette to borrow, so name your brand colors and fonts if you have them. The workflow will ask once whether to keep your wording verbatim or restructure it.
+    With no URL the workflow takes the no-capture path: no screenshots, no site palette to borrow, so name your brand colors and fonts if you have them (or the agent invents a palette). Verbatim scripts set the duration — figure roughly 130 spoken words per minute, so a 30-second video wants a 65–70 word script. Saying "use it verbatim" pre-answers the workflow's keep-or-restructure question.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/variant-launch-script.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from this prompt shape with a different, longer script (78 words, fictional dev-tool "Relay"), unedited — it ran 35.5s because the words set the length.*
+
   </Accordion>
   <Accordion title="Brand name only (agent finds the URL)">
     > /product-launch-video Make a ~45-second 1920x1080 launch video for Linear. Find the official site, capture it, and use its own palette and screenshots. Angle: speed as the whole pitch. End card with logo + "Try it free". Confident female TTS voice, subtle electronic BGM under -18dB.

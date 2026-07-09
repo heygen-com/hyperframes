@@ -14,7 +14,7 @@ description: "Two music- and slide-driven outputs that look alike in a brief but
 
 `/music-to-video` turns a **music track** — an audio file, a video to pull audio from, or a track generated from a mood brief — into a beat-synced video. The music drives all pacing; any photos or clips you supply are cut onto the same beat grid, and a complete video needs zero assets (typography carries it otherwise). There is no narration and no website capture.
 
-`/slideshow` authors a HyperFrames deck — discrete slides with fragment reveals, hotspot branching, and a built-in presenter mode with speaker notes. Its output is the **running deck**, served with `hyperframes present`. Do not point `render` at a deck: it resolves only the first scene and emits a silently truncated MP4. If the user didn't explicitly ask for a slideshow, the skill confirms the deck route before authoring — that's a routing decision, not a style preference.
+`/slideshow` authors a HyperFrames deck — discrete slides with fragment reveals, hotspot branching, and a built-in presenter mode with speaker notes. Its output is the **running deck**, served with `hyperframes present`. Do not point `render` at a deck: it resolves only the first scene and emits a silently truncated MP4. If the user didn't explicitly ask for a slideshow, the skill confirms the deck route before authoring — that's a routing decision, not a style preference. One authoring detail worth knowing: fragment reveal times are absolute positions on the deck's master timeline, not per-slide offsets.
 
 ## Base prompt — beat-synced slideshow
 

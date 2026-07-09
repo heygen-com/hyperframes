@@ -14,9 +14,17 @@ This is the one pin to state every time. For anything with genuine **depth, ligh
 - ❌ `isometric cards floating in CSS 3D with perspective`
 - ✅ `build the isometric scene in Three.js via the adapter, with real depth and lighting`
 
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-3d-cards.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The Three.js version of the isometric-cards prompt — real shadows and lighting, one-shot.*
+
+
 The engine rationale: CSS `perspective` transforms skew flat planes — they read flat the moment lighting or parallax matters, because there is no light source and no camera, only projected rectangles. Three.js is a first-party seek-safe runtime (`hf-seek` events plus `window.__hfThreeTime`), so a real 3D scene renders frame-accurately like everything else. This is a validated default, not a preference — treat "real 3D" as "Three.js" unless you specifically want a flat, stylized fake-3D look.
 
 Camera moves are part of the same rule. A "drone orbit", dolly, or push-in only exists where there's an actual camera:
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-orbit.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*A seek-driven Three.js drone orbit — the camera sweeps a continuous arc; impossible with CSS transforms.*
+
 
 - ❌ `a drone-orbit camera move around the logo` (with no runtime named — CSS has no camera to orbit)
 - ✅ `orbit the camera around the logo — Three.js via the adapter`

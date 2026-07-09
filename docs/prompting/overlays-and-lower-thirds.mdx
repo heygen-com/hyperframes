@@ -57,11 +57,19 @@ Quote the exact copy — unquoted names and titles get paraphrased (see [anatomy
   Give a lower third at least the block's own timeline length (most run ~5 seconds including their designed exit) — a shorter window hard-cuts the block before its settle-out animation plays.
 </Note>
 
-> Podcast clip. Bring in [`lt-bold-block`](/catalog/blocks/lt-bold-block) when the guest starts talking — name "MARCUS LEE", tag "GUEST" — brand accent #FF5A1F.
+> Podcast clip. Bring in [`lt-bold-block`](/catalog/blocks/lt-bold-block) when the guest starts talking, holding 5 seconds — name "MARCUS LEE", tag "GUEST" — brand accent #FF5A1F.
 
 > During the intro, show an [`x-post`](/catalog/blocks/x-post) card with the quote "we shipped it in a weekend" and 12.4K likes, then slide it out before the demo.
 
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/overlay-xpost.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above over stand-in scenes, unedited — the card's built-in like-tap ticks 12.4K → 12.5K.*
+
+
 > /motion-graphics Transparent overlay only — a [`spotify-card`](/catalog/blocks/spotify-card) now-playing widget animating in, bottom-left. Export as transparent WebM so I can drop it over footage in my editor.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/overlay-spotify-preview.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*MP4 preview of the transparent WebM over a checkerboard — the delivered file carries real VP9 alpha (verified via ALPHA_MODE + alphaextract).*
+
 
 ## Knobs
 

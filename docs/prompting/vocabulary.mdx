@@ -20,6 +20,14 @@ Describe how motion should *feel* and the agent picks the matching GSAP ease:
 
 **Timing shorthand:** fast (0.2s) = energy, medium (0.4s) = professional, slow (0.6s) = luxury, very slow (1–2s) = cinematic.
 
+Each word, rendered — the same move, only the ease changes:
+
+<table><tbody>
+<tr><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-power2-out.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>smooth · power2.out</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-power4-out.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>snappy · power4.out</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-back-out.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>bouncy · back.out</div></td></tr>
+<tr><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-elastic-out.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>springy · elastic.out</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-expo-out.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>dramatic · expo.out</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/ease-sine-inout.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>dreamy · sine.inOut</div></td></tr>
+</tbody></table>
+
+
 ### Camera language
 
 Compositions have no physical camera, but camera words translate directly into scene transforms (or real camera moves in Three.js scenes):
@@ -33,6 +41,14 @@ Compositions have no physical camera, but camera words translate directly into s
 | crane down/up       | vertical camera drift combined with a look-at shift        |
 | whip to             | fast blurred slide into the next framing                   |
 | parallax            | layers translating at different rates for depth            |
+
+The same scene under each camera word:
+
+<table><tbody>
+<tr><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-push-in.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>slow push-in</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-pull-back.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>pull back</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-pan.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>pan across</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-crane.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>crane down</div></td></tr>
+<tr><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-whip.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>whip to</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-parallax.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>parallax</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-orbit.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>drone orbit (Three.js)</div></td></tr>
+</tbody></table>
+
 
 ### Depth language
 
@@ -136,6 +152,12 @@ Hand-drawn emphasis effects for text:
 "Circle this keyword with hand-drawn effect"
 "Add burst lines around 'AMAZING'"
 ```
+
+The five modes on the same sentence:
+
+<table><tbody>
+<tr><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/marker-highlight.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>highlight</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/marker-circle.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>circle</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/marker-burst.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>burst</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/marker-scribble.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>scribble</div></td><td style={{ padding: "6px", border: "none" }}><video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/marker-sketchout.mp4" style={{ width: "100%", borderRadius: "0.4rem" }}></video><div style={{ fontSize: "0.8em", textAlign: "center", opacity: 0.7 }}>sketchout</div></td></tr>
+</tbody></table>
 
 ### Text-to-speech voices
 
