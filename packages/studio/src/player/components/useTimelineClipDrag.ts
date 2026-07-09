@@ -19,7 +19,12 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import { resolveInsertRow, clampTrackToZone, isInsertAllowedForZone } from "./timelineCollision";
+import {
+  resolveInsertRow,
+  resolvePlacement,
+  clampTrackToZone,
+  isInsertAllowedForZone,
+} from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 
 const EMPTY_BEAT_TIMES: number[] = [];
@@ -212,39 +217,57 @@ export function useTimelineClipDrag({
         ppsRef.current,
         durationRef.current,
       );
-      // Insert mode: near a lane boundary (or past an edge) the drop inserts a new
-      // track instead of landing on a lane. rowFloat is the pointer's position in
-      // track-heights from the top of the first lane.
+      // rowFloat = the pointer's position in track-heights from the top lane.
       const rowFloat = scroll
         ? (clientY - scroll.getBoundingClientRect().top + scroll.scrollTop - RULER_H) / TRACK_H
         : 0;
       const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
-      // Inserting a new track only makes sense in the visual zone. Suppress the
-      // insertion affordance at/below the first audio lane so it never appears
-      // under the bottom. Compare in ROW-INDEX space (position in trackOrder), not
-      // raw track values — track indices can shift, but the display row is stable.
       // Kind-zone rows: audio lanes sit below the visual lanes. audioRow = the
       // display-row of the first audio lane (or -1 when there is no audio yet).
       const order = trackOrderRef.current;
-      const audioRow = order.findIndex((t) =>
-        elementsRef.current.some((e) => e.track === t && isAudioTimelineElement(e)),
-      );
+      const isAudioLane = (t: number) =>
+        elementsRef.current.some((e) => e.track === t && isAudioTimelineElement(e));
+      const audioRow = order.findIndex(isAudioLane);
       const draggedIsAudio = isAudioTimelineElement(drag.element);
-      // Kind-aware new-track insert: only allow a new lane in the clip's OWN zone —
-      // visual inserts stay out of the audio zone; audio clips can create new audio
-      // tracks. Otherwise suppress the insertion affordance (land on a lane instead).
-      const insertRow =
+      const dragKey = drag.element.key ?? drag.element.id;
+
+      // A DELIBERATE new-track insert: pointer near a lane boundary, gated to the
+      // clip's own zone (visual inserts stay out of audio; audio clips can create
+      // new audio tracks).
+      const deliberateInsert =
         rawInsertRow !== null && isInsertAllowedForZone(rawInsertRow, audioRow, draggedIsAudio)
           ? rawInsertRow
           : null;
-      // Free placement, zone-respecting: land on the hovered lane at the (snapped)
-      // time (overlaps allowed — layered content is real), but clamp to the clip's
-      // kind-zone so a visual clip never lands among audio lanes (or vice-versa) and
-      // then snaps back on re-zone. Snapping still aligns edges when the magnet is on.
-      const previewTrack =
-        insertRow === null
-          ? clampTrackToZone(nextMove.track, order, audioRow, draggedIsAudio)
-          : nextMove.track;
+
+      let previewTrack: number;
+      let insertRow: number | null;
+      if (deliberateInsert !== null) {
+        previewTrack = nextMove.track;
+        insertRow = deliberateInsert;
+      } else {
+        // Land on a lane with NO time-overlap on a track: clamp to the clip's zone,
+        // take the desired lane if free, else the nearest free lane in the zone
+        // (prefer up); if EVERY lane in the zone is occupied at this time, create a
+        // new track right below the aimed lane (parallel to the drop).
+        const desired = clampTrackToZone(nextMove.track, order, audioRow, draggedIsAudio);
+        const zoneTracks = order.filter((t) => isAudioLane(t) === draggedIsAudio);
+        const placement = resolvePlacement({
+          elements: elementsRef.current,
+          desiredTrack: desired,
+          start: snap.start,
+          duration: drag.element.duration,
+          trackOrder: zoneTracks,
+          excludeKey: dragKey,
+        });
+        if (placement.needsInsert) {
+          const desiredRow = order.indexOf(desired);
+          insertRow = desiredRow >= 0 ? desiredRow + 1 : order.length;
+          previewTrack = desired;
+        } else {
+          previewTrack = placement.track;
+          insertRow = null;
+        }
+      }
       return {
         ...drag,
         started: true,
