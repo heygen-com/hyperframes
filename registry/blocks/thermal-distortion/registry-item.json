@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "thermal-distortion",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Thermal Distortion",
   "description": "Shader transition with heat haze thermal distortion",
   "tags": ["transition", "shader"],

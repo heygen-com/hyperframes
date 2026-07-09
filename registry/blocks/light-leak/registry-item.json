@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "light-leak",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Light Leak",
   "description": "Shader transition with cinematic light leak overlay",
   "tags": ["transition", "shader"],

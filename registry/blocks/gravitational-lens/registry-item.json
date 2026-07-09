@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "gravitational-lens",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Gravitational Lens",
   "description": "Shader transition with gravitational lensing distortion",
   "tags": ["transition", "shader"],

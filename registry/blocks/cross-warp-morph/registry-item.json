@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "cross-warp-morph",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Cross Warp Morph",
   "description": "Shader transition with cross-warped morphing",
   "tags": ["transition", "shader"],

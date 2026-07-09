@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "sdf-iris",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "SDF Iris",
   "description": "Shader transition with signed distance field iris reveal",
   "tags": ["transition", "shader"],

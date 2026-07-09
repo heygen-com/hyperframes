@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -215,23 +216,31 @@
     <script>
       (function () {
         var tl = gsap.timeline({ paused: true });
+        var animeTl = anime.createTimeline({ autoplay: false });
+        var MS = 1000;
         var t = 0;
 
         // === TITLE CARD (3s) ===
-        tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
+        animeTl.add(
+          "#title-label",
+          { opacity: 1, y: 0, duration: 0.4 * MS, ease: "outCubic" },
+          (t + 0.3) * MS,
+        );
+        animeTl.add(
           "#title-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+          { opacity: [0, 1], y: [20, 0], duration: 0.5 * MS, ease: "outCubic" },
+          (t + 0.6) * MS,
         );
-        tl.fromTo(
+        animeTl.add(
           "#title-count",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.4, ease: "power2.out" },
-          t + 1.0,
+          { opacity: [0, 1], duration: 0.4 * MS, ease: "outCubic" },
+          (t + 1.0) * MS,
         );
-        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        animeTl.add(
+          "#title-card",
+          { opacity: 0, duration: 0.4 * MS, ease: "inOutCubic" },
+          (t + 2.4) * MS,
+        );
         t += 3;
 
         // === TRANSITION 1: Page Burn (8s total: 2s build, 3s burn, 3s settle) ===
@@ -239,6 +248,7 @@
           "#scene1",
           {
             opacity: 1,
+            visibility: "visible",
             x: 0,
             y: 0,
             scale: 1,
@@ -253,6 +263,7 @@
           "#scene2",
           {
             opacity: 0,
+            visibility: "hidden",
             x: 0,
             y: 0,
             scale: 1,
@@ -370,7 +381,7 @@
         );
 
         // Scene 2 fades in from behind as burn progresses
-        tl.set("#scene2", { opacity: 1 }, T + 0.5);
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, T + 0.5);
         tl.fromTo(
           "#s2",
           { opacity: 0 },
@@ -379,7 +390,7 @@
         );
 
         // Clean up after burn completes
-        tl.set("#scene1", { opacity: 0, clipPath: "none" }, T + 3.0);
+        tl.set("#scene1", { opacity: 0, visibility: "hidden", clipPath: "none" }, T + 3.0);
         tl.call(
           function () {
             burnCtx.clearRect(0, 0, 1920, 1080);
@@ -394,20 +405,33 @@
         t += 0.5;
 
         // === OUTRO (3s) ===
-        tl.set("#scene1", { opacity: 0 }, t);
-        tl.set("#scene2", { opacity: 0 }, t);
-        tl.to("#outro-card", { opacity: 1, duration: 0.4, ease: "power2.inOut" }, t);
-        tl.to("#outro-label", { opacity: 1, duration: 0.4, ease: "power2.out" }, t + 0.3);
-        tl.fromTo(
-          "#outro-main",
-          { opacity: 0, y: 20 },
-          { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-          t + 0.6,
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, t);
+        tl.set("#scene2", { opacity: 0, visibility: "hidden" }, t);
+        animeTl.add("#outro-card", { opacity: 1, duration: 0.4 * MS, ease: "inOutCubic" }, t * MS);
+        animeTl.add(
+          "#outro-label",
+          { opacity: 1, duration: 0.4 * MS, ease: "outCubic" },
+          (t + 0.3) * MS,
         );
-        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.inOut" }, t + 2.4);
+        animeTl.add(
+          "#outro-main",
+          { opacity: [0, 1], y: [20, 0], duration: 0.5 * MS, ease: "outCubic" },
+          (t + 0.6) * MS,
+        );
+        animeTl.add(
+          "#outro-card",
+          { opacity: 0, duration: 0.4 * MS, ease: "inOutCubic" },
+          (t + 2.4) * MS,
+        );
 
         window.__timelines = window.__timelines || {};
         window.__timelines["main"] = tl;
+        hyperframesAnime.register("main", animeTl, {
+          labels: {
+            title: 0,
+            outro: t,
+          },
+        });
       })();
     </script>
   </body>

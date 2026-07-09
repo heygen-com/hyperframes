@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920" />
     <title>3D Transitions</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -193,46 +193,48 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
       (function () {
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        var MS = 1000;
         var t = 0;
 
         function resetScenes() {
+          var position = t * MS;
           tl.set(
             "#scene1",
             {
               opacity: 1,
+              visibility: "visible",
               x: 0,
               y: 0,
               scale: 1,
               scaleX: 1,
-              rotation: 0,
-              rotationY: 0,
+              rotate: 0,
+              rotateY: 0,
               filter: "none",
               clipPath: "none",
               zIndex: 1,
               skewX: 0,
             },
-            t,
+            position,
           );
           tl.set(
             "#scene2",
             {
               opacity: 0,
+              visibility: "hidden",
               x: 0,
               y: 0,
               scale: 1,
               scaleX: 1,
-              rotation: 0,
-              rotationY: 0,
+              rotate: 0,
+              rotateY: 0,
               filter: "none",
               clipPath: "none",
               zIndex: 2,
               skewX: 0,
             },
-            t,
+            position,
           );
           tl.set(
             "#s1",
@@ -241,13 +243,13 @@
               x: 0,
               y: 0,
               scale: 1,
-              rotation: 0,
-              rotationY: 0,
+              rotate: 0,
+              rotateY: 0,
               filter: "none",
               skewX: 0,
               clipPath: "none",
             },
-            t,
+            position,
           );
           tl.set(
             "#s2",
@@ -256,41 +258,50 @@
               x: 0,
               y: 0,
               scale: 1,
-              rotation: 0,
-              rotationY: 0,
+              rotate: 0,
+              rotateY: 0,
               filter: "none",
               skewX: 0,
               clipPath: "none",
             },
-            t,
+            position,
           );
         }
 
         /* ── Title card (3s) ── */
         tl.set("#title-card", { opacity: 1 }, 0);
-        tl.to("#title-card", { opacity: 0, duration: 0.5 }, 2.5);
+        tl.add("#title-card", { opacity: 0, duration: 0.5 * MS, ease: "outQuad" }, 2.5 * MS);
         t = 3;
 
         /* ── Demo 1: 3D Card Flip ── */
         resetScenes();
-        tl.set("#info-text", { textContent: "3D Card Flip" }, t);
-        tl.to("#info-bar", { opacity: 1, duration: 0.3 }, t);
+        tl.call(function () {
+          document.getElementById("info-text").textContent = "3D Card Flip";
+        }, t * MS);
+        tl.add("#info-bar", { opacity: 1, duration: 0.3 * MS, ease: "outQuad" }, t * MS);
         t += 1.5;
         var T = t;
-        tl.set("#scene2", { opacity: 1 }, T);
-        tl.set("#s2", { rotationY: -180 }, T);
-        tl.to("#s1", { rotationY: 180, duration: 0.6, ease: "power2.inOut" }, T);
-        tl.to("#s2", { rotationY: 0, duration: 0.6, ease: "power2.inOut" }, T);
-        tl.set("#scene1", { opacity: 0 }, T + 0.65);
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, T * MS);
+        tl.set("#s2", { rotateY: -180 }, T * MS);
+        tl.add("#s1", { rotateY: 180, duration: 0.6 * MS, ease: "inOutCubic" }, T * MS);
+        tl.add("#s2", { rotateY: 0, duration: 0.6 * MS, ease: "inOutCubic" }, T * MS);
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, (T + 0.65) * MS);
         t = T + 1.5;
-        tl.to("#info-bar", { opacity: 0, duration: 0.3 }, t);
+        tl.add("#info-bar", { opacity: 0, duration: 0.3 * MS, ease: "outQuad" }, t * MS);
         t += 0.5;
 
         /* ── Outro (3s) ── */
-        tl.set("#outro-card", { opacity: 1 }, t);
-        tl.to("#outro-card", { opacity: 0, duration: 0.5 }, t + 2.5);
+        tl.set("#scene2", { opacity: 0, visibility: "hidden" }, t * MS);
+        tl.set("#outro-card", { opacity: 1 }, t * MS);
+        tl.add("#outro-card", { opacity: 0, duration: 0.5 * MS, ease: "outQuad" }, (t + 2.5) * MS);
 
-        window.__timelines["main"] = tl;
+        hyperframesAnime.register("main", tl, {
+          labels: {
+            title: 0,
+            flip: 3,
+            outro: t,
+          },
+        });
       })();
     </script>
   </body>
