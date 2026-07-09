@@ -350,7 +350,13 @@ export function useTimelineClipDrag({
         const normalizedTag = resize.element.tag.toLowerCase();
         const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
         const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
-        const maxEnd = Math.min(durationRef.current, resize.element.start + sourceRemaining);
+        // Trim limit = available source media only — NOT the composition length.
+        // Duration is content-driven (the comp grows/shrinks to fit on commit), so
+        // capping a trim at the current comp end both blocked extending the last
+        // clip rightward and, after a far move, collapsed a clip to the sliver
+        // between its start and the comp end (the 8s→0.95s audio incident).
+        // Images/text/shapes have no source, so they extend freely.
+        const maxEnd = resize.element.start + sourceRemaining;
         let nextResize = resolveTimelineResize(
           {
             start: resize.element.start,

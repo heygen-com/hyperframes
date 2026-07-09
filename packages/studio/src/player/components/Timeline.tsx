@@ -24,6 +24,7 @@ import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import { ClipContextMenu } from "./ClipContextMenu";
 import { TimelineShortcutHint } from "./TimelineShortcutHint";
 import {
+  DRAG_EXTEND_MARGIN_PX,
   GUTTER,
   generateTicks,
   getTimelineCanvasHeight,
@@ -275,11 +276,25 @@ export const Timeline = memo(function Timeline({
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
+  // Drag-to-extend: while a clip is dragged, keep the rendered extent a margin
+  // past the ghost's end. Holding the pointer in the right edge zone then keeps
+  // auto-scroll stepping (scrollWidth grows with the ghost), so the timeline
+  // extends at auto-scroll pace — placing a clip farther than the timeline
+  // currently shows. Growth is bounded per frame by AUTO_SCROLL_MAX_SPEED (no
+  // fling); leaving the edge zone stops it; the extra width collapses when the
+  // drag ends (the composition itself only grows on commit, content-driven).
+  const dragGhostEndPx = draggedClip?.started
+    ? (draggedClip.previewStart + draggedClip.element.duration) * pps + DRAG_EXTEND_MARGIN_PX
+    : 0;
   // The timeline canvas always fills at least the viewport width: when the content
   // is shorter than the visible area (e.g. zoomed out), the ruler + empty track
   // lanes keep going into the space instead of leaving dead black — CapCut-style.
   // Only the RENDERED extent grows; clip positions/durations are untouched.
-  const displayContentWidth = Math.max(trackContentWidth, viewportWidth - GUTTER - 2);
+  const displayContentWidth = Math.max(
+    trackContentWidth,
+    viewportWidth - GUTTER - 2,
+    dragGhostEndPx,
+  );
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const clipStateVersion = useMemo(
     () =>

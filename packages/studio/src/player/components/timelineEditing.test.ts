@@ -533,6 +533,26 @@ describe("buildTimelineElementAgentPrompt", () => {
   });
 });
 describe("resolveTimelineResize", () => {
+  it("extends past the composition end when maxEnd is the source limit only (Infinity)", () => {
+    // Content-driven duration: trimming the LAST clip rightward must be able to
+    // grow past the current composition end — the comp grows to fit on commit.
+    // The caller passes maxEnd = start + sourceRemaining (Infinity for images).
+    expect(
+      resolveTimelineResize(
+        {
+          start: 1,
+          duration: 3,
+          originClientX: 100,
+          pixelsPerSecond: 100,
+          minStart: 0,
+          maxEnd: Number.POSITIVE_INFINITY,
+        },
+        "end",
+        700, // +6s drag → duration 9, ends at 10 — far past any prior comp end
+      ),
+    ).toEqual({ start: 1, duration: 9, playbackStart: undefined });
+  });
+
   it("shrinks clip duration from the right edge", () => {
     expect(
       resolveTimelineResize(

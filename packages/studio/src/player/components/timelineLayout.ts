@@ -7,6 +7,13 @@ export const TRACK_H = 48;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
+/**
+ * While a clip drag is live, the rendered timeline extends this far past the
+ * ghost's end so the right-edge auto-scroll zone always has room to keep
+ * stepping — that's what lets a drag extend the timeline past its current
+ * rendered width (see Timeline.tsx displayContentWidth).
+ */
+export const DRAG_EXTEND_MARGIN_PX = 160;
 const TIMELINE_SCROLL_BUFFER = 20;
 
 /* ── Timeline duration ─────────────────────────────────────────────── */
