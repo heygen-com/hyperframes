@@ -477,6 +477,35 @@ function FlatOverflowMaskRows({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Flat Opacity slider                                                */
+/* ------------------------------------------------------------------ */
+
+function FlatOpacitySlider({
+  styles,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const opacityValue = Math.round((parseNumericValue(styles.opacity) ?? 1) * 100);
+
+  return (
+    <FlatSlider
+      label="Opacity"
+      value={opacityValue}
+      min={0}
+      max={100}
+      tier="explicitCustom"
+      displayValue={`${opacityValue}%`}
+      disabled={disabled}
+      onCommit={(next) => void onSetStyle("opacity", formatNumericValue(next / 100))}
+    />
+  );
+}
+
 export function FlatStyleSection({
   projectId,
   element,
@@ -523,6 +552,7 @@ export function FlatStyleSection({
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
       />
+      <FlatOpacitySlider styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
     </div>
   );
 }
