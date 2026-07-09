@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Devices Canvas — HTML-in-Canvas API Showcase</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/DRACOLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -618,8 +618,8 @@
           requestAnimationFrame(function () {
             paintReady = true;
             captureScreens();
-            window.__timelines = window.__timelines || {};
-            window.__timelines["devices-canvas"] = tl;
+            tl.seek(tl.currentTime || 0);
+            render();
           });
         });
       }
@@ -718,7 +718,7 @@
         lapGrp.rotation.set(S.lpRX, S.lpRY, S.lpRZ);
         turntable.rotation.y = S.turn;
         // Single morphing glass — orbits around device edges, never overlaps screen
-        var t = tl.time();
+        var t = tl.currentTime / 1000;
         var geoIdx = Math.floor(d * 0.8) % glassGeos.length;
         if (glassLens.geometry !== glassGeos[geoIdx]) glassLens.geometry = glassGeos[geoIdx];
         glassLens.rotation.set(d * 0.7, d * 0.9, d * 0.4);
@@ -756,64 +756,99 @@
         renderer.render(scene, camera);
       }
 
-      // ── GSAP Timeline — Product Review Edit ────────────────────────────
-      // __timelines created in onReady() after GLTF models load
-      var tl = gsap.timeline({ paused: true });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
-      tl.to(S, { p: 1, drift: 15, duration: 15, ease: "none", onUpdate: render }, 0);
+      function addTo(target, vars, position) {
+        var out = {};
+        Object.keys(vars).forEach(function (key) {
+          if (key === "duration" || key === "delay") out[key] = toMs(vars[key]);
+          else if (key === "ease" && vars[key] === "none") out.ease = "linear";
+          else out[key] = vars[key];
+        });
+        tl.add(target, out, toMs(position || 0));
+      }
+
+      function segmentEase(ease, endProgress) {
+        var endValue = ease(endProgress);
+        return function (t) {
+          return endValue === 0 ? 0 : ease(t * endProgress) / endValue;
+        };
+      }
+
+      // ── Anime Timeline — Product Review Edit ───────────────────────────
+      var tl = anime.createTimeline({
+        autoplay: false,
+        onUpdate: render,
+      });
+
+      addTo(S, { p: 1, drift: 15, duration: 15, ease: "none" }, 0);
 
       // ── Act 1 (0–3.5s): iPhone FRONT — hero close-up showing hyperframes.dev
-      tl.to(S, { phRY: PI + 0.06, phRX: 0.015, duration: 1.5, ease: breatheEase }, 0.3);
-      tl.to(S, { phRY: PI - 0.04, phRX: -0.01, duration: 1.5, ease: breatheEase }, 1.8);
+      addTo(S, { phRY: PI + 0.06, phRX: 0.015, duration: 1.5, ease: breatheEase }, 0.3);
+      addTo(S, { phRY: PI - 0.04, phRX: -0.01, duration: 1.5, ease: breatheEase }, 1.8);
 
       // ── Act 2 (3.5–7s): iPhone spins 180° to show BACK (camera, titanium, Apple logo)
-      tl.to(S, { phRY: PI * 2, duration: 2.2, ease: spinEase }, 3.5);
-      tl.to(S, { cZ: 4.8, cY: 0.25, duration: 2, ease: driftEase }, 3.5);
+      var phRYSpinProgress = 2 / 2.2;
+      var phRYSpinBoundary = PI - 0.04 + (PI * 2 - (PI - 0.04)) * spinEase(phRYSpinProgress);
+      addTo(
+        S,
+        { phRY: phRYSpinBoundary, duration: 2, ease: segmentEase(spinEase, phRYSpinProgress) },
+        3.5,
+      );
+      addTo(S, { cZ: 4.8, cY: 0.25, duration: 2, ease: driftEase }, 3.5);
       // Hold back view — slight orbit to appreciate hardware
-      tl.to(
+      addTo(
         S,
         { phRY: PI * 2 + 0.15, phRX: 0.04, cX: 0.15, duration: 1.5, ease: breatheEase },
         5.5,
       );
 
       // ── Act 3 (7–9s): iPhone spins back to front, then exits LEFT off screen
-      tl.to(S, { phRY: PI * 3, duration: 1.8, ease: snapEase }, 7);
-      tl.to(S, { cZ: 3.5, cY: 0.2, duration: 1.5, ease: driftEase }, 7);
-      tl.to(S, { phX: -6, phZ: 0.3, duration: 2, ease: spinEase }, 8);
+      addTo(S, { phRY: PI * 3, duration: 1.8, ease: snapEase }, 7);
+      addTo(S, { cZ: 3.5, cY: 0.2, duration: 1.5, ease: driftEase }, 7);
+      addTo(S, { phX: -6, phZ: 0.3, duration: 2, ease: spinEase }, 8);
 
       // ── Act 4 (9–11s): MacBook enters from right, hero close-up
-      tl.to(S, { lpX: 0, duration: 2, ease: enterEase }, 9);
-      tl.to(S, { cX: 0, clX: 0, cZ: 5, cY: 0.3, clY: -0.1, duration: 2, ease: driftEase }, 9);
-      tl.to(S, { lpRY: 0.06, duration: 1.5, ease: breatheEase }, 10);
+      addTo(S, { lpX: 0, duration: 2, ease: enterEase }, 9);
+      addTo(S, { cX: 0, clX: 0, cZ: 5, cY: 0.3, clY: -0.1, duration: 2, ease: driftEase }, 9);
+      var lpRYEntryProgress = 1 / 1.5;
+      var lpRYEntryBoundary = 0.06 * breatheEase(lpRYEntryProgress);
+      addTo(
+        S,
+        { lpRY: lpRYEntryBoundary, duration: 1, ease: segmentEase(breatheEase, lpRYEntryProgress) },
+        10,
+      );
 
       // ── Act 5 (11–12.5s): iPhone returns, both settle for turntable
-      tl.to(S, { phX: -2.0, duration: 1.5, ease: enterEase }, 11);
-      tl.to(S, { lpX: 2.2, duration: 1.5, ease: breatheEase }, 11);
-      tl.to(
+      addTo(S, { phX: -2.0, duration: 1.5, ease: enterEase }, 11);
+      addTo(S, { lpX: 2.2, duration: 1.5, ease: breatheEase }, 11);
+      addTo(
         S,
         { cX: 0.1, clX: 0.1, cZ: 7.5, cY: 0.5, clY: -0.1, duration: 1.5, ease: driftEase },
         11,
       );
-      tl.to(S, { phRY: PI * 3, lpRY: 0, duration: 1, ease: breatheEase }, 11);
+      addTo(S, { phRY: PI * 3, lpRY: 0, duration: 1, ease: breatheEase }, 11);
 
       // ── Act 6 (12.5–15s): 360° turntable — both devices rotate together
-      tl.to(S, { turn: PI * 2, duration: 2.5, ease: spinEase }, 12.5);
+      addTo(S, { turn: PI * 2, duration: 2.5, ease: spinEase }, 12.5);
 
       // ── Live HTML Animations (captured to 3D textures every frame) ──
       // Title fade in
-      tl.to(S, { titleFade: 1, duration: 0.8, ease: breatheEase }, 0.3);
+      addTo(S, { titleFade: 1, duration: 0.8, ease: breatheEase }, 0.3);
       // Counter animates up
-      tl.to(S, { counter: 43, duration: 2, ease: driftEase }, 0.5);
+      addTo(S, { counter: 43, duration: 2, ease: driftEase }, 0.5);
       // Cards stagger in (0→1 reveals all cards sequentially)
-      tl.to(S, { cardReveal: 1, duration: 3, ease: breatheEase }, 0.8);
+      addTo(S, { cardReveal: 1, duration: 3, ease: breatheEase }, 0.8);
       // Scroll during hero shots
-      tl.to(S, { scroll: 0.6, duration: 3, ease: breatheEase }, 1.5);
-      tl.to(S, { scroll: 0, duration: 1.5, ease: driftEase }, 7);
+      addTo(S, { scroll: 0.6, duration: 3, ease: breatheEase }, 1.5);
+      addTo(S, { scroll: 0, duration: 1.5, ease: driftEase }, 7);
       // Scroll on MacBook reveal
-      tl.to(S, { scroll: 0.8, duration: 3, ease: breatheEase }, 9.5);
-      tl.to(S, { scroll: 0.3, duration: 2, ease: driftEase }, 13);
+      addTo(S, { scroll: 0.8, duration: 3, ease: breatheEase }, 9.5);
+      addTo(S, { scroll: 0.3, duration: 2, ease: driftEase }, 13);
 
-      // __timelines registered in onReady() after GLTF models load
+      hyperframesAnime.register("devices-canvas", tl, { labels: {} });
     </script>
   </body>
 </html>

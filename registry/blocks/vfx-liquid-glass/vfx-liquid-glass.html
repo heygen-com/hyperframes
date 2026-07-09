@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/shaders/CopyShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
@@ -633,7 +633,7 @@
       var grainPass = new THREE.ShaderPass(GrainShader);
       composer.addPass(grainPass);
 
-      // ── Pointer State (GSAP-animated, replaces mouse) ──────────────────
+      // ── Pointer State (timeline-animated, replaces mouse) ──────────────
       var ptr = { x: 0.16, y: 0.04 };
       var REVEAL_R = 2.18;
       var PTR_WORLD = new THREE.Vector2();
@@ -720,27 +720,59 @@
         composer.render();
       }
 
-      // ── GSAP Timeline ──────────────────────────────────────────────────
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
 
-      tl.to({ _: 0 }, { _: 1, duration: DURATION, ease: "none" }, 0);
+      function mapEase(ease) {
+        if (!ease || ease === "none") return "linear";
+        var compact = String(ease).replace(/\s+/g, "");
+        var family = compact.match(/^(power[1-4]|sine)\.(in|out|inOut)$/);
+        if (family) {
+          var names = {
+            power1: "Quad",
+            power2: "Cubic",
+            power3: "Quart",
+            power4: "Quint",
+            sine: "Sine",
+          };
+          var dirs = { in: "in", out: "out", inOut: "inOut" };
+          return dirs[family[2]] + names[family[1]];
+        }
+        return ease;
+      }
 
-      // Pointer choreography — smooth wandering reveal
-      tl.set(ptr, { x: 0.16, y: 0.04 }, 0);
-      tl.to(ptr, { x: 0.45, y: -0.15, duration: 3.5, ease: "sine.inOut" }, 0.5);
-      tl.to(ptr, { x: -0.35, y: 0.25, duration: 3.5, ease: "sine.inOut" }, 4);
-      tl.to(ptr, { x: 0.15, y: -0.35, duration: 3, ease: "sine.inOut" }, 7.5);
-      tl.to(ptr, { x: -0.45, y: 0.05, duration: 3, ease: "sine.inOut" }, 10.5);
-      tl.to(ptr, { x: 0.3, y: 0.2, duration: 3, ease: "sine.inOut" }, 13.5);
-      tl.to(ptr, { x: -0.1, y: -0.1, duration: 2.5, ease: "sine.inOut" }, 16.5);
-      tl.to(ptr, { x: 0.16, y: 0.04, duration: 1, ease: "power2.inOut" }, 19);
+      function addTo(target, vars, position) {
+        var out = {};
+        Object.keys(vars).forEach(function (key) {
+          if (key === "duration" || key === "delay") out[key] = toMs(vars[key]);
+          else if (key === "ease") out.ease = mapEase(vars[key]);
+          else out[key] = vars[key];
+        });
+        tl.add(target, out, toMs(position || 0));
+      }
 
-      tl.eventCallback("onUpdate", function () {
-        renderScene(tl.time());
+      // ── Anime Timeline ─────────────────────────────────────────────────
+      var tl = anime.createTimeline({
+        autoplay: false,
+        onUpdate: function () {
+          renderScene(tl.currentTime / 1000);
+        },
       });
 
-      window.__timelines["liquid-glass"] = tl;
+      addTo({ _: 0 }, { _: 1, duration: DURATION, ease: "none" }, 0);
+
+      // Pointer choreography: smooth wandering reveal.
+      addTo(ptr, { x: 0.16, y: 0.04, duration: 0.5, ease: "none" }, 0);
+      addTo(ptr, { x: 0.45, y: -0.15, duration: 3.5, ease: "sine.inOut" }, 0.5);
+      addTo(ptr, { x: -0.35, y: 0.25, duration: 3.5, ease: "sine.inOut" }, 4);
+      addTo(ptr, { x: 0.15, y: -0.35, duration: 3, ease: "sine.inOut" }, 7.5);
+      addTo(ptr, { x: -0.45, y: 0.05, duration: 3, ease: "sine.inOut" }, 10.5);
+      addTo(ptr, { x: 0.3, y: 0.2, duration: 3, ease: "sine.inOut" }, 13.5);
+      addTo(ptr, { x: -0.1, y: -0.1, duration: 2.5, ease: "sine.inOut" }, 16.5);
+      addTo(ptr, { x: 0.16, y: 0.04, duration: 1, ease: "power2.inOut" }, 19);
+
+      hyperframesAnime.register("liquid-glass", tl, { labels: {} });
 
       setTimeout(function () {
         captureBackdrop();

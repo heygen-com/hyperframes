@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Code 3D Extrude</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <style>
       * {
@@ -338,10 +338,10 @@
       // Bridges the baked Shiki tokens (window.__TOKENS) into Three.js: the tokens are drawn once
       // to an offscreen 2D canvas (a CanvasTexture), which then drives a lit 3D slab, a dissolve
       // shader, or a GPU particle system. Determinism per the project contract:
-      //   - render only via tl.eventCallback("onUpdate", …) + one initial render() — never rAF
+      //   - render only via anime timeline onUpdate + one initial render() — never rAF
       //   - all randomness from a seeded mulberry32 — never Math.random / Date.now
       //   - canvas drawn once after document.fonts.ready (final glyph metrics)
-      //   - paused GSAP timeline registered on window.__timelines[id]; HF seeks it per frame
+      //   - paused anime.js timeline registered by composition id; HF seeks it per frame
       //
       // Each block sets window.__BLOCK = { id, effect, seq, duration, seed } and includes this engine.
       (function () {
@@ -357,6 +357,35 @@
             t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
           };
+        }
+
+        function toMs(seconds) {
+          return typeof seconds === "number" ? Math.round(seconds * 1000) : seconds;
+        }
+
+        function mapEase(ease) {
+          if (typeof ease !== "string") return ease;
+          var compact = ease.replace(/\s+/g, "");
+          if (compact === "none") return "linear";
+          var power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+          if (power) {
+            return power[2] + ["", "Quad", "Cubic", "Quart", "Quint"][Number(power[1])];
+          }
+          var family = compact.match(/^(sine|circ|expo|bounce)\.(in|out|inOut)$/);
+          if (family) {
+            return family[2] + family[1][0].toUpperCase() + family[1].slice(1);
+          }
+          return compact;
+        }
+
+        function addTo(tl, targets, vars, position) {
+          var params = {};
+          Object.keys(vars).forEach(function (key) {
+            if (key === "duration") params.duration = toMs(vars.duration);
+            else if (key === "ease") params.ease = mapEase(vars.ease);
+            else params[key] = vars[key];
+          });
+          tl.add(targets, params, toMs(position || 0));
         }
 
         // ---- split a token state into lines of {content,color} --------------------
@@ -517,9 +546,15 @@
           st.rotY = -1.0;
           st.rotX = 0.4;
           st.camZ = fitZ + 6;
-          tl.to(st, { rotY: 0, rotX: 0, camZ: fitZ, duration: dur * 0.6, ease: "power3.out" }, 0);
+          addTo(
+            tl,
+            st,
+            { rotY: 0, rotX: 0, camZ: fitZ, duration: dur * 0.6, ease: "power3.out" },
+            0,
+          );
           // gentle breathing drift at rest (subtle — stays readable)
-          tl.to(
+          addTo(
+            tl,
             st,
             { rotY: 0.06, rotX: -0.02, duration: dur * 0.4, ease: "sine.inOut" },
             dur * 0.6,
@@ -572,9 +607,6 @@
           var glcanvas = document.getElementById("gl");
           var W = 1920;
           var H = 1080;
-          window.__timelines = window.__timelines || {};
-          var tl = gsap.timeline({ paused: true });
-          window.__timelines[spec.id] = tl; // register synchronously
 
           var THREE = window.THREE;
           var renderer = new THREE.WebGLRenderer({
@@ -588,16 +620,24 @@
           var scene = new THREE.Scene();
           var camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 200);
           var st = {};
+          var render = function () {};
+          var tl = anime.createTimeline({
+            autoplay: false,
+            onUpdate: function () {
+              render();
+            },
+          });
+          hyperframesAnime.register(spec.id, tl, { labels: {} });
 
           document.fonts.ready.then(function () {
             var renderFn = buildEffect(THREE, scene, camera, renderer, spec, st, tl);
-            function render() {
+            render = function () {
               renderFn();
               renderer.render(scene, camera);
-            }
-            tl.eventCallback("onUpdate", render);
-            var dur = parseFloat(root.dataset.duration) || tl.duration();
-            tl.to({}, { duration: dur }, 0); // pad to full composition length
+            };
+            var dur = parseFloat(root.dataset.duration) || spec.duration;
+            var pad = { value: 0 };
+            addTo(tl, pad, { value: 1, duration: dur, ease: "none" }, 0);
             render(); // paint frame 0
             window.addEventListener("beforeunload", function () {
               disposeGL(renderer, scene);

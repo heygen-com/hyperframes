@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -2480,7 +2480,117 @@
       <script>
         (function () {
           var S = '[data-composition-id="ui-3d-reveal"]';
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
+
+          function toMs(seconds) {
+            return seconds * 1000;
+          }
+
+          function mapEase(ease) {
+            if (!ease || ease === "none") return "linear";
+            if (typeof ease === "function") return ease;
+            var compact = String(ease).replace(/\s+/g, "");
+            var power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+            if (power) {
+              var names = { 1: "Quad", 2: "Cubic", 3: "Quart", 4: "Quint" };
+              var dirs = { in: "in", out: "out", inOut: "inOut" };
+              return dirs[power[2]] + names[power[1]];
+            }
+            var family = compact.match(/^(sine|expo|back)\.(in|out|inOut)(\(.*\))?$/);
+            if (family) {
+              var familyNames = { sine: "Sine", expo: "Expo", back: "Back" };
+              var familyDirs = { in: "in", out: "out", inOut: "inOut" };
+              return familyDirs[family[2]] + familyNames[family[1]] + (family[3] || "");
+            }
+            return ease;
+          }
+
+          function inOutSine(t) {
+            return -(Math.cos(Math.PI * t) - 1) / 2;
+          }
+
+          function segmentEase(ease, endProgress) {
+            var endValue = ease(endProgress);
+            return function (t) {
+              return endValue === 0 ? 0 : ease(t * endProgress) / endValue;
+            };
+          }
+
+          function resolveTarget(target) {
+            if (!Array.isArray(target)) return target;
+            return target.reduce(function (items, item) {
+              if (typeof item === "string") {
+                return items.concat(Array.from(document.querySelectorAll(item)));
+              }
+              items.push(item);
+              return items;
+            }, []);
+          }
+
+          function isCssTarget(target) {
+            return (
+              typeof target === "string" ||
+              target instanceof Element ||
+              target instanceof NodeList ||
+              Array.isArray(target)
+            );
+          }
+
+          function propName(target, key) {
+            if (!isCssTarget(target)) return key;
+            var props = {
+              x: "translateX",
+              y: "translateY",
+              z: "translateZ",
+              rotationY: "rotateY",
+              scale: "scale",
+            };
+            return props[key] || key;
+          }
+
+          function staggerDelay(value) {
+            if (typeof value === "number") return anime.stagger(toMs(value));
+            if (value && typeof value === "object") {
+              var options = {};
+              Object.keys(value).forEach(function (key) {
+                options[key] = key === "each" || key === "amount" ? toMs(value[key]) : value[key];
+                if (key === "ease") options[key] = mapEase(value[key]);
+              });
+              return anime.stagger(options.each || 0, options);
+            }
+            return value;
+          }
+
+          function normalize(target, vars) {
+            var out = {};
+            Object.keys(vars).forEach(function (key) {
+              if (key === "duration" || key === "delay") out[key] = toMs(vars[key]);
+              else if (key === "ease") out.ease = mapEase(vars[key]);
+              else if (key === "stagger") out.delay = staggerDelay(vars[key]);
+              else if (key !== "yoyo" && key !== "repeat" && key !== "overwrite")
+                out[propName(target, key)] = vars[key];
+            });
+            return out;
+          }
+
+          function addSet(target, vars, position) {
+            var resolved = resolveTarget(target);
+            tl.add(
+              resolved,
+              Object.assign(normalize(target, vars), { duration: 0 }),
+              toMs(position || 0),
+            );
+          }
+
+          function addTo(target, vars, position) {
+            var resolved = resolveTarget(target);
+            tl.add(resolved, normalize(target, vars), toMs(position || 0));
+          }
+
+          function addFromTo(target, fromVars, toVars, position) {
+            addSet(target, fromVars, position);
+            addTo(target, toVars, position);
+          }
 
           var wrapper = document.querySelector(S + " .card-wrapper");
           var scene = document.querySelector(S + " .scene");
@@ -2509,8 +2619,8 @@
           // ─────────────────────────────────────────────────────
           // INITIAL STATE
           // ─────────────────────────────────────────────────────
-          gsap.set(wrapper, { opacity: 0, scale: 0.74, rotationY: 0, y: 24 });
-          gsap.set(
+          addSet(wrapper, { opacity: 0, scale: 0.74, rotationY: 0, y: 24 });
+          addSet(
             [
               S + " .fig-toolbar",
               S + " .fig-layers",
@@ -2521,53 +2631,53 @@
             ],
             { opacity: 0 },
           );
-          gsap.set(S + " .fig-toolbar", { y: -10 });
-          gsap.set(S + " .fig-layers", { x: -16 });
-          gsap.set(S + " .fig-props", { x: 16 });
-          gsap.set(S + " .layer-item", { x: -8 });
-          gsap.set(S + " .artboard", { scale: 0.94, opacity: 0 });
+          addSet(S + " .fig-toolbar", { y: -10 });
+          addSet(S + " .fig-layers", { x: -16 });
+          addSet(S + " .fig-props", { x: 16 });
+          addSet(S + " .layer-item", { x: -8 });
+          addSet(S + " .artboard", { scale: 0.94, opacity: 0 });
 
           // ═════════════════════════════════════════════════════
           // PHASE 0 — LOGO INTRO  (0 – 1.35s)
           // Stroke draw cascade → color fill flash → scale to 0
           // ═════════════════════════════════════════════════════
 
-          tl.to(
+          addTo(
             S + " .il-stroke-1",
             { strokeDashoffset: 0, duration: 0.4, ease: "power1.inOut" },
             0.0,
           );
-          tl.to(
+          addTo(
             S + " .il-stroke-2",
             { strokeDashoffset: 0, duration: 0.4, ease: "power1.inOut" },
             0.06,
           );
-          tl.to(
+          addTo(
             S + " .il-stroke-3",
             { strokeDashoffset: 0, duration: 0.4, ease: "power1.inOut" },
             0.12,
           );
-          tl.to(
+          addTo(
             S + " .il-stroke-4",
             { strokeDashoffset: 0, duration: 0.4, ease: "power1.inOut" },
             0.18,
           );
-          tl.to(
+          addTo(
             S + " .il-stroke-5",
             { strokeDashoffset: 0, duration: 0.4, ease: "power1.inOut" },
             0.24,
           );
 
-          tl.to(S + " .il-fill-1", { opacity: 1, duration: 0.08 }, 0.5);
-          tl.to(S + " .il-fill-2", { opacity: 1, duration: 0.08 }, 0.54);
-          tl.to(S + " .il-fill-3", { opacity: 1, duration: 0.08 }, 0.58);
-          tl.to(S + " .il-fill-4", { opacity: 1, duration: 0.08 }, 0.62);
-          tl.to(S + " .il-fill-5", { opacity: 1, duration: 0.08 }, 0.66);
-          tl.to(S + " .il-stroke", { opacity: 0.3, duration: 0.15 }, 0.6);
+          addTo(S + " .il-fill-1", { opacity: 1, duration: 0.08 }, 0.5);
+          addTo(S + " .il-fill-2", { opacity: 1, duration: 0.08 }, 0.54);
+          addTo(S + " .il-fill-3", { opacity: 1, duration: 0.08 }, 0.58);
+          addTo(S + " .il-fill-4", { opacity: 1, duration: 0.08 }, 0.62);
+          addTo(S + " .il-fill-5", { opacity: 1, duration: 0.08 }, 0.66);
+          addTo(S + " .il-stroke", { opacity: 0.3, duration: 0.15 }, 0.6);
 
           // Scale the logo down to nothing
-          tl.to(S + " .il-stroke", { opacity: 0, duration: 0.2 }, 1.0);
-          tl.to(
+          addTo(S + " .il-stroke", { opacity: 0, duration: 0.2 }, 1.0);
+          addTo(
             S + " .intro-logo",
             {
               scale: 0,
@@ -2583,7 +2693,7 @@
           // ═════════════════════════════════════════════════════
           var T = 1.5;
 
-          tl.to(
+          addTo(
             wrapper,
             {
               opacity: 1,
@@ -2595,7 +2705,7 @@
             T + 0.0,
           );
 
-          tl.to(
+          addTo(
             cardGlow,
             {
               opacity: 0.5,
@@ -2605,7 +2715,7 @@
             T + 0.05,
           );
 
-          tl.to(
+          addTo(
             S + " .fig-toolbar",
             {
               opacity: 1,
@@ -2616,7 +2726,7 @@
             T + 0.23,
           );
 
-          tl.to(
+          addTo(
             S + " .fig-layers",
             {
               opacity: 1,
@@ -2627,7 +2737,7 @@
             T + 0.35,
           );
 
-          tl.to(
+          addTo(
             S + " .fig-props",
             {
               opacity: 1,
@@ -2638,7 +2748,7 @@
             T + 0.37,
           );
 
-          tl.to(
+          addTo(
             S + " .fig-canvas",
             {
               opacity: 1,
@@ -2648,7 +2758,7 @@
             T + 0.45,
           );
 
-          tl.to(
+          addTo(
             S + " .artboard",
             {
               opacity: 1,
@@ -2659,7 +2769,7 @@
             T + 0.5,
           );
 
-          tl.to(
+          addTo(
             S + " .layer-item",
             {
               opacity: 1,
@@ -2671,7 +2781,7 @@
             T + 0.57,
           );
 
-          tl.to(
+          addTo(
             S + " .selection-ring",
             {
               opacity: 1,
@@ -2686,7 +2796,7 @@
           // Bigger zoom: 0.79 → 1.15 so the UI fills the frame
           // ═════════════════════════════════════════════════════
 
-          tl.to(
+          addTo(
             wrapper,
             {
               scale: 1.15,
@@ -2696,7 +2806,7 @@
             3.5,
           );
 
-          tl.to(
+          addTo(
             cardGlow,
             {
               opacity: 0.85,
@@ -2712,7 +2822,7 @@
           // Steeper angle (-34°) for more dramatic depth reveal
           // ═════════════════════════════════════════════════════
 
-          tl.to(
+          addTo(
             wrapper,
             {
               rotationY: -34,
@@ -2722,7 +2832,7 @@
             4.2,
           );
 
-          tl.to(
+          addTo(
             wrapper,
             {
               y: -16,
@@ -2736,7 +2846,7 @@
           // PHASE 4 — 3D HOLD  (5.55 – 7.3s)
           // ═════════════════════════════════════════════════════
 
-          tl.to(
+          addTo(
             wrapper,
             {
               y: -8,
@@ -2747,7 +2857,7 @@
             5.55,
           );
 
-          tl.to(
+          addTo(
             wrapper,
             {
               y: -20,
@@ -2758,16 +2868,17 @@
             6.45,
           );
 
-          tl.to(
+          addTo(cardGlow, { opacity: 0.7, duration: 0.9, ease: "sine.inOut" }, 5.55);
+          var glowReturnProgress = (7.3 - 6.45) / 0.9;
+          var glowOpacityAtExit = 0.7 + (0.85 - 0.7) * inOutSine(glowReturnProgress);
+          addTo(
             cardGlow,
             {
-              opacity: 0.7,
-              duration: 0.9,
-              ease: "sine.inOut",
-              yoyo: true,
-              repeat: 1,
+              opacity: glowOpacityAtExit,
+              duration: 0.85,
+              ease: segmentEase(inOutSine, glowReturnProgress),
             },
-            5.55,
+            6.45,
           );
 
           // ═════════════════════════════════════════════════════
@@ -2777,7 +2888,7 @@
           // dramatic 3D exit — card turns away and vanishes.
           // ═════════════════════════════════════════════════════
 
-          tl.to(
+          addTo(
             scene,
             {
               x: -2200,
@@ -2787,7 +2898,7 @@
             7.3,
           );
 
-          tl.to(
+          addTo(
             wrapper,
             {
               z: -7500,
@@ -2798,7 +2909,7 @@
             7.3,
           );
 
-          tl.to(
+          addTo(
             cardGlow,
             {
               opacity: 0,
@@ -2813,51 +2924,51 @@
           // ═════════════════════════════════════════════════════
           var O = 7.9;
 
-          tl.set(S + " .outro-layer", { opacity: 1 }, O);
+          addSet(S + " .outro-layer", { opacity: 1 }, O);
 
           // Stroke draw cascade
-          tl.to(
+          addTo(
             S + " .ol-stroke-1",
             { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" },
             O + 0.0,
           );
-          tl.to(
+          addTo(
             S + " .ol-stroke-2",
             { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" },
             O + 0.15,
           );
-          tl.to(
+          addTo(
             S + " .ol-stroke-3",
             { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" },
             O + 0.3,
           );
-          tl.to(
+          addTo(
             S + " .ol-stroke-4",
             { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" },
             O + 0.45,
           );
-          tl.to(
+          addTo(
             S + " .ol-stroke-5",
             { strokeDashoffset: 0, duration: 0.8, ease: "power1.inOut" },
             O + 0.6,
           );
 
           // Color fill cascade
-          tl.to(S + " .ol-fill-1", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.4);
-          tl.to(S + " .ol-fill-2", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.55);
-          tl.to(S + " .ol-fill-3", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.7);
-          tl.to(S + " .ol-fill-4", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.85);
-          tl.to(S + " .ol-fill-5", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 2.0);
-          tl.to(S + " .ol-stroke", { opacity: 0.3, duration: 0.4, ease: "none" }, O + 1.8);
+          addTo(S + " .ol-fill-1", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.4);
+          addTo(S + " .ol-fill-2", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.55);
+          addTo(S + " .ol-fill-3", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.7);
+          addTo(S + " .ol-fill-4", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 1.85);
+          addTo(S + " .ol-fill-5", { opacity: 1, duration: 0.15, ease: "power1.out" }, O + 2.0);
+          addTo(S + " .ol-stroke", { opacity: 0.3, duration: 0.4, ease: "none" }, O + 1.8);
 
           // Subtle scale settle
-          tl.fromTo(
+          addFromTo(
             S + " .outro-logo",
             { scale: 1, transformOrigin: "80px 120px" },
             { scale: 1.04, duration: 0.2, ease: "power2.out" },
             O + 2.3,
           );
-          tl.to(
+          addTo(
             S + " .outro-logo",
             {
               scale: 1,
@@ -2871,7 +2982,7 @@
           // Tagline letter stagger
           var letters = document.querySelectorAll(S + " .otl");
           for (var k = 0; k < letters.length; k++) {
-            tl.fromTo(
+            addFromTo(
               letters[k],
               { opacity: 0, y: 8 },
               { opacity: 1, y: 0, duration: 0.12, ease: "power2.out" },
@@ -2880,7 +2991,7 @@
           }
 
           // URL pill: stroke draw → fill → text
-          tl.to(
+          addTo(
             S + " .url-border",
             {
               strokeDashoffset: 0,
@@ -2889,11 +3000,11 @@
             },
             O + 3.8,
           );
-          tl.to(S + " .url-bg", { opacity: 1, duration: 0.15 }, O + 4.15);
-          tl.to(S + " .url-text", { opacity: 1, duration: 0.2 }, O + 4.2);
+          addTo(S + " .url-bg", { opacity: 1, duration: 0.15 }, O + 4.15);
+          addTo(S + " .url-text", { opacity: 1, duration: 0.2 }, O + 4.2);
 
           // Fade to black
-          tl.to(
+          addTo(
             S + " .outro-fade",
             {
               opacity: 1,
@@ -2903,8 +3014,7 @@
             O + 4.8,
           );
 
-          window.__timelines = window.__timelines || {};
-          window.__timelines["ui-3d-reveal"] = tl;
+          hyperframesAnime.register("ui-3d-reveal", tl, { labels: {} });
         })();
       </script>
     </div>

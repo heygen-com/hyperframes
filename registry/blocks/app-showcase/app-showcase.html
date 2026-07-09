@@ -767,49 +767,129 @@
         }
       </style>
 
-      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
       <script>
         (function () {
           var S = '[data-composition-id="app-showcase"] ';
-          window.__timelines = window.__timelines || {};
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
+
+          function toMs(seconds) {
+            return typeof seconds === "number" ? Math.round(seconds * 1000) : seconds;
+          }
+
+          function mapEase(ease) {
+            if (typeof ease !== "string") return ease;
+            var compact = ease.replace(/\s+/g, "");
+            if (compact === "none") return "linear";
+            var power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+            if (power) {
+              return power[2] + ["", "Quad", "Cubic", "Quart", "Quint"][Number(power[1])];
+            }
+            var family = compact.match(/^(sine|circ|expo|bounce)\.(in|out|inOut)$/);
+            if (family) {
+              return family[2] + family[1][0].toUpperCase() + family[1].slice(1);
+            }
+            var parameterized = compact.match(/^(back|elastic)\.(in|out|inOut)(?:\((.*)\))?$/);
+            if (parameterized) {
+              return (
+                parameterized[2] +
+                parameterized[1][0].toUpperCase() +
+                parameterized[1].slice(1) +
+                (parameterized[3] ? "(" + parameterized[3] + ")" : "")
+              );
+            }
+            return compact;
+          }
+
+          function isCssTarget(targets) {
+            if (typeof targets === "string") return true;
+            if (targets && targets.nodeType === 1) return true;
+            if (Array.isArray(targets)) return targets.some(isCssTarget);
+            return (
+              targets &&
+              typeof targets.length === "number" &&
+              targets[0] &&
+              targets[0].nodeType === 1
+            );
+          }
+
+          function propName(name, cssTarget) {
+            if (!cssTarget) return name;
+            return (
+              {
+                x: "translateX",
+                y: "translateY",
+                z: "translateZ",
+                rotation: "rotate",
+              }[name] || name
+            );
+          }
+
+          function normalize(vars, cssTarget) {
+            var out = {};
+            Object.keys(vars).forEach(function (key) {
+              if (key === "duration") out.duration = toMs(vars.duration);
+              else if (key === "ease") out.ease = mapEase(vars.ease);
+              else if (key === "stagger") {
+                var stagger = vars.stagger;
+                if (typeof stagger === "number") out.delay = anime.stagger(toMs(stagger));
+                else if (stagger && typeof stagger.each === "number") {
+                  out.delay = anime.stagger(toMs(stagger.each), { ease: mapEase(stagger.ease) });
+                }
+              } else {
+                out[propName(key, cssTarget)] = vars[key];
+              }
+            });
+            return out;
+          }
+
+          function addSet(targets, vars, position) {
+            var params = normalize(vars, isCssTarget(targets));
+            params.duration = 0;
+            params.ease = "linear";
+            tl.add(targets, params, toMs(position || 0));
+          }
+
+          function addTo(targets, vars, position) {
+            tl.add(targets, normalize(vars, isCssTarget(targets)), toMs(position || 0));
+          }
 
           // ── SVG setup ──
           var graphLine = document.querySelector(S + "#s3GraphLine");
           var graphLen = graphLine.getTotalLength();
-          gsap.set(graphLine, { strokeDasharray: graphLen, strokeDashoffset: graphLen });
+          addSet(graphLine, { strokeDasharray: graphLen, strokeDashoffset: graphLen });
 
           var graphArea = document.querySelector(S + "#s3GraphArea");
-          gsap.set(graphArea, { opacity: 0 });
+          addSet(graphArea, { opacity: 0 });
 
           var graphDots = document.querySelectorAll(S + ".graph-dot");
-          gsap.set(graphDots, { opacity: 0, scale: 0 });
+          addSet(graphDots, { opacity: 0, scale: 0 });
 
           var CIRC = 2 * 3.14159265 * 52;
-          gsap.set(S + "#s3Ring", { strokeDasharray: CIRC, strokeDashoffset: CIRC });
+          addSet(S + "#s3Ring", { strokeDasharray: CIRC, strokeDashoffset: CIRC });
 
           // ── Initial states ──
-          gsap.set(S + ".s3-bg", { opacity: 0 });
-          gsap.set(S + ".s3-bg-glow", { opacity: 0 });
+          addSet(S + ".s3-bg", { opacity: 0 });
+          addSet(S + ".s3-bg-glow", { opacity: 0 });
           // Center phone: starts scaled down + hidden
-          gsap.set(S + "#s3PhoneCenter", { opacity: 0, scale: 0.85 });
+          addSet(S + "#s3PhoneCenter", { opacity: 0, scale: 0.85 });
           // Side phones: start stacked behind center (same position), hidden
-          gsap.set(S + "#s3PhoneLeft", { opacity: 0, x: 0, rotation: 0 });
-          gsap.set(S + "#s3PhoneRight", { opacity: 0, x: 0, rotation: 0 });
-          gsap.set(S + ".bar-value", { width: "0%" });
-          gsap.set(S + "#s3Tagline", { opacity: 0, y: 20 });
-          gsap.set(S + ".left-cta", { opacity: 0, y: 12 });
+          addSet(S + "#s3PhoneLeft", { opacity: 0, x: 0, rotation: 0 });
+          addSet(S + "#s3PhoneRight", { opacity: 0, x: 0, rotation: 0 });
+          addSet(S + ".bar-value", { width: "0%" });
+          addSet(S + "#s3Tagline", { opacity: 0, y: 20 });
+          addSet(S + ".left-cta", { opacity: 0, y: 12 });
 
           // ════════════════════════════════════
           // BUILD PHASE (0–2s)
           // ════════════════════════════════════
 
           // Background
-          tl.to(S + ".s3-bg", { opacity: 1, duration: 0.8, ease: "power1.out" }, 0);
-          tl.to(S + ".s3-bg-glow", { opacity: 1, duration: 1.2, ease: "power1.out" }, 0.2);
+          addTo(S + ".s3-bg", { opacity: 1, duration: 0.8, ease: "power1.out" }, 0);
+          addTo(S + ".s3-bg-glow", { opacity: 1, duration: 1.2, ease: "power1.out" }, 0.2);
 
           // Center phone — scales up first
-          tl.to(
+          addTo(
             S + "#s3PhoneCenter",
             {
               scale: 1,
@@ -821,8 +901,8 @@
           );
 
           // Side phones: opacity matches center (0.7s, back.out), fan starts at 0.1
-          tl.to(S + "#s3PhoneLeft", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.3);
-          tl.to(
+          addTo(S + "#s3PhoneLeft", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.3);
+          addTo(
             S + "#s3PhoneLeft",
             {
               x: -340,
@@ -833,8 +913,8 @@
             0.3,
           );
 
-          tl.to(S + "#s3PhoneRight", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.4);
-          tl.to(
+          addTo(S + "#s3PhoneRight", { opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.4);
+          addTo(
             S + "#s3PhoneRight",
             {
               x: 340,
@@ -850,7 +930,7 @@
           // ════════════════════════════════════
 
           // Progress ring fills to 2/3
-          tl.to(
+          addTo(
             S + "#s3Ring",
             {
               strokeDashoffset: CIRC * (1 - 2 / 3),
@@ -861,12 +941,12 @@
           );
 
           // Activity bars stagger in
-          tl.to(S + "#s3Bar1", { width: "75%", duration: 0.8, ease: "power3.out" }, 2.1);
-          tl.to(S + "#s3Bar2", { width: "50%", duration: 0.8, ease: "power3.out" }, 2.3);
-          tl.to(S + "#s3Bar3", { width: "90%", duration: 0.8, ease: "power3.out" }, 2.5);
+          addTo(S + "#s3Bar1", { width: "75%", duration: 0.8, ease: "power3.out" }, 2.1);
+          addTo(S + "#s3Bar2", { width: "50%", duration: 0.8, ease: "power3.out" }, 2.3);
+          addTo(S + "#s3Bar3", { width: "90%", duration: 0.8, ease: "power3.out" }, 2.5);
 
           // Graph line draws on
-          tl.to(
+          addTo(
             graphLine,
             {
               strokeDashoffset: 0,
@@ -877,10 +957,10 @@
           );
 
           // Graph area fades in
-          tl.to(graphArea, { opacity: 0.15, duration: 0.8, ease: "power1.out" }, 2.6);
+          addTo(graphArea, { opacity: 0.15, duration: 0.8, ease: "power1.out" }, 2.6);
 
           // Graph dots pop in
-          tl.to(
+          addTo(
             graphDots,
             {
               opacity: 1,
@@ -893,7 +973,7 @@
           );
 
           // Tagline and CTA on left phone
-          tl.to(
+          addTo(
             S + "#s3Tagline",
             {
               opacity: 1,
@@ -903,7 +983,7 @@
             },
             2.2,
           );
-          tl.to(
+          addTo(
             S + ".left-cta",
             {
               opacity: 1,
@@ -915,7 +995,7 @@
           );
 
           // Ambient slow scale push
-          tl.to(
+          addTo(
             S + "#s3Stage",
             {
               scale: 1.02,
@@ -930,16 +1010,16 @@
           // ════════════════════════════════════
 
           // Subtle glow pulse on lime accent elements
-          tl.to(S + ".ring-fill", { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.0);
-          tl.to(S + ".ring-fill", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.6);
+          addTo(S + ".ring-fill", { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.0);
+          addTo(S + ".ring-fill", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.6);
 
-          tl.to(S + ".bar-value", { opacity: 0.7, duration: 0.6, ease: "sine.inOut" }, 4.1);
-          tl.to(S + ".bar-value", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.7);
+          addTo(S + ".bar-value", { opacity: 0.7, duration: 0.6, ease: "sine.inOut" }, 4.1);
+          addTo(S + ".bar-value", { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.7);
 
-          tl.to(graphLine, { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.05);
-          tl.to(graphLine, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.65);
+          addTo(graphLine, { opacity: 0.65, duration: 0.6, ease: "sine.inOut" }, 4.05);
+          addTo(graphLine, { opacity: 1, duration: 0.6, ease: "sine.inOut" }, 4.65);
 
-          window.__timelines["app-showcase"] = tl;
+          hyperframesAnime.register("app-showcase", tl, { labels: {} });
         })();
       </script>
     </div>

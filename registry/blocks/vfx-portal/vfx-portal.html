@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <style>
       *,
@@ -660,13 +660,73 @@
         time: 0.0,
       };
 
-      // ── GSAP Timeline ──────────────────────────────────────────────────
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      function toMs(seconds) {
+        return seconds * 1000;
+      }
+
+      function mapEase(ease) {
+        if (!ease || ease === "none") return "linear";
+        var compact = String(ease).replace(/\s+/g, "");
+        var family = compact.match(/^(power[1-4]|sine)\.(in|out|inOut)$/);
+        if (family) {
+          var names = {
+            power1: "Quad",
+            power2: "Cubic",
+            power3: "Quart",
+            power4: "Quint",
+            sine: "Sine",
+          };
+          var dirs = { in: "in", out: "out", inOut: "inOut" };
+          return dirs[family[2]] + names[family[1]];
+        }
+        return ease;
+      }
+
+      function addTo(target, vars, position) {
+        var out = {};
+        Object.keys(vars).forEach(function (key) {
+          if (key === "duration" || key === "delay") out[key] = toMs(vars[key]);
+          else if (key === "ease") out.ease = mapEase(vars[key]);
+          else out[key] = vars[key];
+        });
+        tl.add(target, out, toMs(position || 0));
+      }
+
+      function renderPortal(t) {
+        animState.time = t;
+
+        // Update portal shader uniforms
+        portalUniforms.portalRadius.value = animState.portalRadius;
+        portalUniforms.edgeWidth.value = animState.edgeWidth;
+        portalUniforms.chromaticStrength.value = animState.chromaticStrength;
+        portalUniforms.distortionStrength.value = animState.distortionStrength;
+        portalUniforms.time.value = t;
+        portalUniforms.energyIntensity.value = animState.energyIntensity;
+
+        // Update camera Z for push-through effect
+        camera.position.z = animState.cameraZ;
+
+        // Recalculate quad scale to always fill the view at current camera Z
+        var currentVFov = (camera.fov * Math.PI) / 180;
+        var currentH = 2 * Math.tan(currentVFov / 2) * camera.position.z;
+        var currentW = currentH * (W / H);
+        frontQuad.scale.set(currentW / quadW, currentH / quadH, 1);
+        darkQuad.scale.set(currentW / quadW, currentH / quadH, 1);
+
+        renderer.render(scene, camera);
+      }
+
+      // ── Anime Timeline ─────────────────────────────────────────────────
+      var tl = anime.createTimeline({
+        autoplay: false,
+        onUpdate: function () {
+          renderPortal(tl.currentTime / 1000);
+        },
+      });
 
       // Phase 1: Hold on light mode (0 - 1.5s)
       // Subtle energy buildup at center before portal opens
-      tl.to(
+      addTo(
         animState,
         {
           energyIntensity: 0.3,
@@ -677,7 +737,7 @@
       );
 
       // Phase 2: Portal tears open (1.5 - 5.0s)
-      tl.to(
+      addTo(
         animState,
         {
           portalRadius: 0.85,
@@ -687,7 +747,7 @@
         1.5,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           energyIntensity: 1.0,
@@ -697,7 +757,7 @@
         1.5,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           chromaticStrength: 0.035,
@@ -707,7 +767,7 @@
         1.5,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           distortionStrength: 0.06,
@@ -717,7 +777,7 @@
         1.5,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           edgeWidth: 0.08,
@@ -728,7 +788,7 @@
       );
 
       // Phase 3: Camera pushes through portal (3.5 - 6.5s)
-      tl.to(
+      addTo(
         animState,
         {
           cameraZ: 1.4,
@@ -739,7 +799,7 @@
       );
 
       // Phase 4: Portal overshoots to cover full screen (5.0 - 7.0s)
-      tl.to(
+      addTo(
         animState,
         {
           portalRadius: 1.8,
@@ -750,7 +810,7 @@
       );
 
       // Energy peaks then fades as we emerge
-      tl.to(
+      addTo(
         animState,
         {
           energyIntensity: 1.5,
@@ -760,7 +820,7 @@
         5.0,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           energyIntensity: 0.0,
@@ -771,7 +831,7 @@
       );
 
       // Chromatic aberration peaks during push-through
-      tl.to(
+      addTo(
         animState,
         {
           chromaticStrength: 0.06,
@@ -781,7 +841,7 @@
         5.5,
       );
 
-      tl.to(
+      addTo(
         animState,
         {
           chromaticStrength: 0.0,
@@ -792,7 +852,7 @@
       );
 
       // Distortion fades
-      tl.to(
+      addTo(
         animState,
         {
           distortionStrength: 0.0,
@@ -804,7 +864,7 @@
 
       // Phase 5: Settle in dark mode (7.0 - 10s)
       // Camera eases to final position
-      tl.to(
+      addTo(
         animState,
         {
           cameraZ: 2.8,
@@ -814,42 +874,9 @@
         7.0,
       );
 
-      // ── Render Loop via Timeline ───────────────────────────────────────
-      tl.to(
-        { v: 0 },
-        {
-          v: 1,
-          duration: 10,
-          ease: "none",
-          onUpdate: function () {
-            var t = tl.time();
-            animState.time = t;
+      addTo({ v: 0 }, { v: 1, duration: 10, ease: "none" }, 0);
 
-            // Update portal shader uniforms
-            portalUniforms.portalRadius.value = animState.portalRadius;
-            portalUniforms.edgeWidth.value = animState.edgeWidth;
-            portalUniforms.chromaticStrength.value = animState.chromaticStrength;
-            portalUniforms.distortionStrength.value = animState.distortionStrength;
-            portalUniforms.time.value = t;
-            portalUniforms.energyIntensity.value = animState.energyIntensity;
-
-            // Update camera Z for push-through effect
-            camera.position.z = animState.cameraZ;
-
-            // Recalculate quad scale to always fill the view at current camera Z
-            var currentVFov = (camera.fov * Math.PI) / 180;
-            var currentH = 2 * Math.tan(currentVFov / 2) * camera.position.z;
-            var currentW = currentH * (W / H);
-            frontQuad.scale.set(currentW / quadW, currentH / quadH, 1);
-            darkQuad.scale.set(currentW / quadW, currentH / quadH, 1);
-
-            renderer.render(scene, camera);
-          },
-        },
-        0,
-      );
-
-      window.__timelines["portal-transition"] = tl;
+      hyperframesAnime.register("portal-transition", tl, { labels: {} });
 
       // ── Deferred Init ──────────────────────────────────────────────────
       setTimeout(function () {

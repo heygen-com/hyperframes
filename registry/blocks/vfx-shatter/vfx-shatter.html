@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <style>
       *,
@@ -1123,26 +1123,18 @@
         renderer.render(scene, camera);
       }
 
-      // ── GSAP Timeline ──────────────────────────────────────────────────
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
-
-      // Driver tween: spans full duration, renders each frame via onUpdate
-      var timeProxy = { t: 0 };
-      tl.to(
-        timeProxy,
-        {
-          t: DURATION,
-          duration: DURATION,
-          ease: "none",
-          onUpdate: function () {
-            renderFrame(timeProxy.t);
-          },
+      // ── Anime Timeline ─────────────────────────────────────────────────
+      var tl = anime.createTimeline({
+        autoplay: false,
+        onUpdate: function () {
+          renderFrame(tl.currentTime / 1000);
         },
-        0,
-      );
+      });
 
-      window.__timelines["glass-shatter"] = tl;
+      // Driver tween: spans full duration; render time comes from the timeline.
+      tl.add({ t: 0 }, { t: DURATION, duration: DURATION * 1000, ease: "linear" }, 0);
+
+      hyperframesAnime.register("glass-shatter", tl, { labels: {} });
 
       // ── Deferred Init ──────────────────────────────────────────────────
       setTimeout(function () {

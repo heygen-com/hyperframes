@@ -3,7 +3,7 @@
   "name": "code-morph",
   "type": "hyperframes:block",
   "title": "Code Morph",
-  "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
+  "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused anime.js timeline.",
   "dimensions": {
     "width": 1920,
     "height": 1080

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Code Morph</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -990,11 +990,11 @@
       // hf-code-anim.js — self-contained code-animation engine for HyperFrames registry blocks.
       //
       // Reuses Shiki Magic Move's baked output (window.__TOKENS, baked at author time) and
-      // drives the animation as a PAUSED GSAP timeline the HyperFrames engine seeks per frame —
-      // NOT CSS transitions (those break under non-sequential frame seeking). FLIP measurement
-      // runs once inside document.fonts.ready (glyph metrics must be final). Each block sets
+      // builds one seekable anime.js timeline the HyperFrames engine seeks per frame — NOT CSS
+      // transitions (those break under non-sequential frame seeking). FLIP measurement runs once
+      // after the DOM is built. Each block sets
       // window.__BLOCK = { id, effect, seq, line?, duration } and includes this engine; the
-      // engine builds one scene that fills the composition and registers window.__timelines[id].
+      // engine builds one scene that fills the composition and registers the timeline.
       (function () {
         "use strict";
         var T = window.__TOKENS || {};
@@ -1116,6 +1116,85 @@
         // ---- single-scene effect builders (fade in, play, hold to end) -------------
         var FADE = 0.45;
 
+        function toMs(seconds) {
+          return typeof seconds === "number" ? Math.round(seconds * 1000) : seconds;
+        }
+
+        function mapEase(ease) {
+          if (typeof ease !== "string") return ease;
+          var compact = ease.replace(/\s+/g, "");
+          if (compact === "none") return "linear";
+          var power = compact.match(/^power([1-4])\.(in|out|inOut)$/);
+          if (power) {
+            return power[2] + ["", "Quad", "Cubic", "Quart", "Quint"][Number(power[1])];
+          }
+          return compact;
+        }
+
+        function isCssTarget(targets) {
+          if (typeof targets === "string") return true;
+          if (targets && targets.nodeType === 1) return true;
+          if (Array.isArray(targets)) return targets.some(isCssTarget);
+          return (
+            targets && typeof targets.length === "number" && targets[0] && targets[0].nodeType === 1
+          );
+        }
+
+        function propName(name, cssTarget) {
+          if (!cssTarget) return name;
+          return { x: "translateX", y: "translateY", rotation: "rotate" }[name] || name;
+        }
+
+        function normalize(vars, cssTarget) {
+          var out = {};
+          Object.keys(vars).forEach(function (key) {
+            if (key === "duration") out.duration = toMs(vars.duration);
+            else if (key === "ease") out.ease = mapEase(vars.ease);
+            else out[propName(key, cssTarget)] = vars[key];
+          });
+          return out;
+        }
+
+        function finalValue(key) {
+          if (key === "opacity") return 1;
+          if (key === "scale" || key === "scaleX" || key === "scaleY") return 1;
+          if (key === "x" || key === "y" || key === "rotation") return 0;
+          return undefined;
+        }
+
+        function addSet(tl, targets, vars, position) {
+          var params = normalize(vars, isCssTarget(targets));
+          params.duration = 0;
+          params.ease = "linear";
+          tl.add(targets, params, toMs(position || 0));
+        }
+
+        function addTo(tl, targets, vars, position) {
+          tl.add(targets, normalize(vars, isCssTarget(targets)), toMs(position || 0));
+        }
+
+        function addFrom(tl, targets, vars, position) {
+          var cssTarget = isCssTarget(targets);
+          var params = normalize(vars, cssTarget);
+          Object.keys(vars).forEach(function (key) {
+            if (key === "duration" || key === "ease") return;
+            var end = finalValue(key);
+            if (end !== undefined) params[propName(key, cssTarget)] = [vars[key], end];
+          });
+          tl.add(targets, params, toMs(position || 0));
+        }
+
+        function addFromTo(tl, targets, fromVars, toVars, position) {
+          var cssTarget = isCssTarget(targets);
+          var params = normalize(toVars, cssTarget);
+          Object.keys(fromVars).forEach(function (key) {
+            if (key === "duration" || key === "ease") return;
+            var mapped = propName(key, cssTarget);
+            params[mapped] = [fromVars[key], toVars[key]];
+          });
+          tl.add(targets, params, toMs(position || 0));
+        }
+
         function morph(tl, surface, states, start) {
           var STEP = 1.2;
           var HOLD = 1.0;
@@ -1128,25 +1207,27 @@
             var toEls = renderState(code, states[s + 1]);
             var toR = rectsOf(toEls);
             var base = code.getBoundingClientRect();
-            var seg = gsap.timeline();
             var ENTER_AT = STEP * 0.45;
             var FD = STEP * 0.5;
+            var segStart = t + FADE;
             toEls.forEach(function (el, k) {
               var fr = fromR.get(k);
               var tr = toR.get(k);
               if (fr) {
-                seg.fromTo(
+                addFromTo(
+                  tl,
                   el,
                   { x: fr.left - tr.left, y: fr.top - tr.top },
                   { x: 0, y: 0, duration: STEP, ease: "power2.inOut" },
-                  0,
+                  segStart,
                 );
               } else {
-                seg.fromTo(
+                addFromTo(
+                  tl,
                   el,
                   { opacity: 0 },
                   { opacity: 1, duration: FD, ease: "power1.out" },
-                  ENTER_AT,
+                  segStart + ENTER_AT,
                 );
               }
             });
@@ -1164,16 +1245,25 @@
               span.style.top = r.top - base.top + "px";
               span.style.color = tok.color;
               code.appendChild(span);
-              seg.fromTo(span, { opacity: 1 }, { opacity: 0, duration: FD, ease: "power1.in" }, 0);
+              addFromTo(
+                tl,
+                span,
+                { opacity: 1 },
+                { opacity: 0, duration: FD, ease: "power1.in" },
+                segStart,
+              );
             }
-            var segStart = t + FADE;
             var segEnd = segStart + STEP + HOLD;
             var isLast = s === states.length - 2;
-            tl.set(parts.scene, { opacity: 0 }, 0);
-            tl.to(parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, t);
+            addSet(tl, parts.scene, { opacity: 0 }, 0);
+            addTo(tl, parts.scene, { opacity: 1, duration: FADE, ease: "power1.out" }, t);
             if (!isLast)
-              tl.to(parts.scene, { opacity: 0, duration: FADE, ease: "power1.in" }, segEnd - FADE);
-            tl.add(seg, segStart);
+              addTo(
+                tl,
+                parts.scene,
+                { opacity: 0, duration: FADE, ease: "power1.in" },
+                segEnd - FADE,
+              );
             t = segEnd - FADE;
           }
         }
@@ -1188,24 +1278,18 @@
           var spec = window.__BLOCK;
           var surface = document.getElementById("surface");
           var root = document.getElementById("root");
-          window.__timelines = window.__timelines || {};
-          var tl = gsap.timeline({ paused: true });
-          // Build inside fonts.ready (glyph metrics must be final), then register.
-          // Register ONLY after the timeline is fully built: the runtime's
-          // sub-composition readiness gate treats "key present" as "ready" and
-          // nests the child once. An empty timeline registered before this build
-          // would be nested empty and never re-nested → blank render when used as
-          // a sub-composition. See the contract in engine frameCapture.ts.
-          document.fonts.ready.then(function () {
-            tl.from("#editor", { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" }, 0);
-            buildEffect(tl, surface, spec);
-            var dur = parseFloat(root.dataset.duration) || tl.duration();
-            tl.to({}, { duration: dur }, 0); // pad to full composition length
-            window.__timelines["code-morph"] = tl; // register AFTER setup completes
-            if (typeof window.__hfForceTimelineRebind === "function") {
-              window.__hfForceTimelineRebind(); // re-nest now that we are populated
-            }
-          });
+          var tl = anime.createTimeline({ autoplay: false });
+          addFrom(
+            tl,
+            "#editor",
+            { opacity: 0, scale: 0.985, duration: 0.5, ease: "power2.out" },
+            0,
+          );
+          buildEffect(tl, surface, spec);
+          var dur = parseFloat(root.dataset.duration) || 7;
+          var pad = { value: 0 };
+          addTo(tl, pad, { value: 1, duration: dur, ease: "none" }, 0);
+          hyperframesAnime.register("code-morph", tl, { labels: {} });
         }
 
         if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
