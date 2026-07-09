@@ -1,0 +1,113 @@
+---
+title: Rendering and output
+description: "What to say to get the right file out — quality tier, format, resolution, framerate, and cloud rendering — without over-speccing a render that slows to no benefit."
+---
+
+## Rendering and output
+
+Everything before this point shapes the composition. This page is about the *export*: the words that pick a quality tier, a container format, a resolution, and where the render runs. The defaults — MP4, 1920×1080, 30fps, `standard` quality — are deliberately good, so most of the skill here is knowing when *not* to ask for more. The mechanics live in the [Rendering guide](/guides/rendering); this page owns what to say.
+
+## Quality tier
+
+Say the tier by name and the agent selects the matching encode preset — you don't specify CRF or encoder speed:
+
+| Say this | Tier | Best for |
+| --- | --- | --- |
+| "draft" / "quick render" | `draft` | Fast iteration while you're still judging the cut |
+| nothing, or "review render" | `standard` (default) | General use — visually lossless at 1080p |
+| "final" / "high quality" | `high` | Delivery masters |
+
+The tiers trade encode time for fidelity. `standard` (the default) is already visually lossless at 1080p — most people can't tell it from source — so reserve `high` for the master you'll actually hand off, and use `draft` freely while iterating.
+
+- ❌ `render everything at high quality`
+- ✅ `draft renders while we iterate, then one high-quality final` — you spend the slow encode once, on the cut you've already approved
+
+## Format
+
+MP4 is the default and the right answer for almost everything — it plays everywhere. Ask for a different container only when the delivery target needs one:
+
+> Render this as a transparent WebM overlay.
+
+> Export a MOV I can drop into Premiere with the background knocked out.
+
+Transparency has a container hierarchy, and the tradeoffs are real:
+
+| Ask for | You get | Watch out for |
+| --- | --- | --- |
+| "transparent MOV" | ProRes 4444 with alpha | The editor-grade choice (Premiere, Final Cut, Resolve, After Effects). Files are large — expected for an editing intermediate. |
+| "transparent WebM" | VP9 with alpha | Small, but **only browsers decode the alpha** — every video editor renders the transparent areas black. Browser playback only. |
+| "PNG sequence" | Lossless RGBA frames | For compositing in After Effects / Nuke / Fusion. Largest of all. |
+
+Transparency also only *means something* on a design that has empty space to see through. A lower third, a subscribe card, or a logo sting is mostly empty canvas — transparency lets it composite over other footage. A full-frame scene (edge-to-edge background, full-bleed video, a title card with its own backdrop) has nothing to be transparent; the request produces a file that looks identical to the opaque one but is larger and plays in fewer places.
+
+- ❌ `render my full-screen product promo as a transparent WebM`
+- ✅ `render the promo as MP4; export just the lower-third overlay as transparent WebM` — transparency belongs to the layer meant to sit *over* other footage, not the finished full-frame film
+
+<Note>
+  A transparent render also depends on the composition leaving `html` / `body` backgrounds unset — the transparency comes through only where nothing is painted. The workflow skills handle this; see the [Rendering guide](/guides/rendering#transparent-video) if you're hand-authoring an overlay.
+</Note>
+
+## Resolution and framerate
+
+1920×1080 at 30fps is the default. Both cost real time when you raise them, and both are frequently asked for out of habit rather than need.
+
+**4K** is a render-time flag — the composition stays at its authored size and Chrome supersamples it to 3840×2160. That buys crisp text, SVG, and CSS at any scale, but it does *nothing* for content already locked to a pixel grid: a 1080p `<video>`, a fixed-size `<canvas>`, or a sub-4K image gain no detail from it. And it isn't free — a 4K render is roughly **4× slower per frame** and produces a **3–5× larger file**. Ask for it when the delivery surface genuinely needs it (a 4K display, a client spec), not reflexively.
+
+> Render this at 4K for the trade-show display.
+
+**Framerate** follows the same logic: 60fps doubles the frames the engine captures and encodes. It's worth it for fast motion graphics destined for a high-refresh screen; it's wasted on a talking-head clip or a slow title sequence.
+
+- ❌ `render in 4K 60fps` for a clip headed to Instagram — the platform will transcode it down anyway, and you paid the slow render for nothing
+- ✅ say nothing for social; name `4K` (or `60fps`) only when the target actually resolves it
+
+<Warning>
+  A few 4K constraints will stop a render before it starts (all grounded in the [4K guide](/guides/4k-rendering#constraints)): the target orientation must match the composition's aspect ratio, the scale must be a whole number (1080p → 4K is exactly 2×), and **4K cannot be combined with HDR** in one pass. If you need both, render HDR at composition resolution and upscale separately.
+</Warning>
+
+## HDR
+
+HDR output is **HDR10 MP4** (H.265 10-bit, BT.2020) and it is *source-driven* — the render only goes HDR when your composition actually references HDR media (video tagged BT.2020 with PQ or HLG transfer, or a 16-bit PNG). Text, gradients, and GSAP animation are not HDR sources; a composition made entirely of them has nothing to render in HDR.
+
+> This composition has an HDR drone clip — render it as HDR10.
+
+By default HDR is auto-detected, so with a real HDR source in the project you often need to say nothing. Force it explicitly only to override the probe:
+
+- "force HDR" → forces the HDR path even without a detected HDR source
+- "force SDR" → forces standard range even when HDR sources are present
+
+HDR is **MP4 only** (a transparent MOV/WebM request falls back to SDR) and it is **not available on Lambda** (distributed rendering is SDR-only). See the [HDR guide](/guides/hdr) for source requirements and verification.
+
+## Where the render runs
+
+Local rendering is the default and the right choice for the whole iteration loop. Reach for cloud rendering only when a single machine is the bottleneck:
+
+> Render this on Lambda.
+
+That routes to HyperFrames' AWS Lambda path, which fans the render across many parallel workers. It's the right call for renders that are **too long or too large for one host** — multi-minute videos, 4K masters, or large parallel batches — and it needs AWS credentials configured first. For dev-loop iteration, stay on local `render`; the round-trip is faster than any cloud dispatch. Lambda is SDR-only (no HDR) and bills by compute time; the [AWS Lambda guide](/deploy/aws-lambda) covers setup, cost shape, and the conservative concurrency default.
+
+- ❌ `set up Lambda so I can preview edits faster` — cloud dispatch adds latency to a fast local loop
+- ✅ `render the final 3-minute 4K cut on Lambda` — the workload that actually justifies fanning out
+
+## Preview before you commit the slow render
+
+The cheapest way to avoid a wasted `high`/4K/HDR render is to judge the frame first. The habit the workflow skills follow:
+
+1. Keep `preview` running and scrub the timeline — same runtime as the render, so what you see is what you get.
+2. Iterate with `draft` renders when you need a real file to check.
+3. Only when the cut is locked, ask for the final tier / resolution / format.
+
+- ❌ `render the final 4K HDR master` on a cut you haven't watched end to end
+- ✅ `draft render so I can check timing` → approve → `now the 4K final`
+
+<Tip>
+  Rendering is user-gated by design — the agent pauses at preview and renders only when you approve. Use that pause to lock the cut before you pay for the expensive export.
+</Tip>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Iterating" href="/prompting/iterating">Small targeted edits between renders, not re-specification</Card>
+  <Card title="Rules and anti-patterns" href="/prompting/rules-and-anti-patterns">Why over-speccing resolution and framerate backfires</Card>
+  <Card title="Rendering guide" href="/guides/rendering">Formats, quality presets, workers — the mechanics</Card>
+  <Card title="AWS Lambda" href="/deploy/aws-lambda">Cloud rendering setup and cost</Card>
+</CardGroup>

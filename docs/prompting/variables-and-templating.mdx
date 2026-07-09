@@ -1,0 +1,78 @@
+---
+title: Variables and templating
+description: "Ask for the parts that should change to become named slots, then re-render the same composition with different values - one output per record."
+---
+
+## Variables and templating
+
+Most videos have a few things that vary and a lot that doesn't. When you know a composition will be reused — a card per customer, a stat per quarter, a name per recipient — say so in the prompt, and name the parts that change. The agent turns them into declared [variables](/concepts/variables): typed, labeled slots filled at render time instead of hardcoded into the HTML.
+
+The trigger phrase is simple — call out the slots:
+
+> Build a 6-second title card. Make the **name**, the **logo**, and the **accent color** variables; everything else stays fixed.
+
+The agent declares `data-composition-variables` on the composition root with the right type for each slot — `string` for the name, `color` for the accent, and a `string` URL for the logo (the escape hatch for any media asset — image, video, audio, or logo). One composition, many fills.
+
+## Say what type each slot is
+
+The five variable types (`string`, `number`, `color`, `boolean`, `enum`) each render a different input in [Studio](/packages/studio) and validate differently at render time. You don't write the JSON — but naming the type in the prompt removes a guess:
+
+> Variables: `plan` (enum: Free / Pro / Enterprise), `price` (number, shown as `$`), `featured` (boolean — toggles the ribbon), `headline` (text).
+
+- ❌ `make the plan and price editable`
+- ✅ `plan is an enum (Free / Pro / Enterprise); price is a number in dollars`
+
+The engine rationale: an `enum` with declared options gets validated against that list at render time (`enum-out-of-range` is caught), and a `number` with a `unit` renders `$` formatting the odometer needs. A vague "editable" leaves the agent to pick a type, and a mistyped value only surfaces later.
+
+## Template, then render one per record
+
+Once the varying parts are variables, the same source renders once per data row. This is a real batch mode, not a copy-paste-per-video loop — the composition is authored once and fed a list of value sets:
+
+> Build this as a template with `name` and `title` variables, then render one video per row of my data — output to `renders/{name}.mp4`.
+
+The agent authors the composition, then runs a [batch render](/concepts/variables#batch-renders): a JSON array where each row is one set of variable values, one output file per row, with `{key}` placeholders in the output path drawn from each row. If your source is a CSV, say so — the agent converts it to the row array the batch expects. Add "fail on any undeclared or mistyped value" and it renders with `--strict-variables`, so a typo in a column name stops the run instead of silently rendering the default.
+
+Everything shares one composition, so a design fix propagates to every output on the next render — you're not editing a hundred near-duplicate files.
+
+## Personalization asks
+
+Personalized-at-scale videos are the same pattern with the value set coming from your data:
+
+> A 10-second welcome clip that greets each new signup by first name and shows their company logo. I'll supply a list of `{ firstName, logoUrl }` records.
+
+The `firstName` is a `string`; the `logoUrl` is a `string` variable your composition assigns to an `<img src>`. Pass assets as **URL references, not inlined data** — URL-shaped values travel cleanly through both the local renderer and distributed [Lambda renders](/deploy/templates-on-lambda). If you're wiring this behind your own product UI or an agent rather than the CLI, the [`@hyperframes/sdk`](/packages/sdk) opens a base template and layers a sparse override set per instance, so the host stores only each record's delta.
+
+## Declare up front — don't bake values in
+
+The most common miss is describing the finished video with the values already fixed, then asking to "make it reusable" afterward:
+
+- ❌ `Make a card that says "Acme — Pro plan — $49". Later I'll want other companies too.`
+- ✅ `Make a plan card. Variables: company (text), plan (enum), price (number, $). Show "Acme / Pro / 49" as the default.`
+
+The engine rationale: variables are runtime values a script applies to the live DOM, resolved from declared defaults, per-instance overrides, or the CLI in that precedence order. Declaring them up front means the reusable structure exists from the first render and the default is just one more value set. Baking `"Acme — Pro — $49"` into the markup produces a composition with no slots — reuse then means an edit pass over hardcoded text for every variant, which is exactly what variables exist to avoid.
+
+## What can't be a variable
+
+A few inputs are read once at compile time and no variable can move them: composition **dimensions** (`data-width` / `data-height`), the **root composition's total duration**, **frame rate**, and **output format / codec**. So this doesn't do what it reads like:
+
+- ❌ `make the video length a variable so each render can be a different duration`
+- ✅ `author one composition per target length` — or vary a *clip's* duration (that one is re-read from the live DOM)
+
+If total length must differ per output, that's a different root `data-duration` per render, not a variable. See [what can't be a variable](/concepts/variables#what-cant-be-a-variable) for the full list and the compile-time-vs-live-DOM rule behind it.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Variables (concept)" icon="sliders" href="/concepts/variables">
+    The mechanics: declaring types, per-instance overrides, batch renders, precedence.
+  </Card>
+  <Card title="@hyperframes/sdk" icon="code" href="/packages/sdk">
+    Template + sparse-override editing behind your own product UI or agent.
+  </Card>
+  <Card title="The specification dial" icon="gauge" href="/prompting/specification-dial">
+    How much to specify — and why naming the type is cheap precision.
+  </Card>
+  <Card title="Design systems and brand" icon="palette" href="/prompting/design-systems">
+    Brand tokens as variables that re-skin every reuse from one value.
+  </Card>
+</CardGroup>

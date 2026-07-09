@@ -1,0 +1,87 @@
+---
+title: Overlays and lower thirds
+description: "Prompt named lower-third and social-post overlay blocks with timing, copy, and brand tone."
+---
+
+## What overlays do and when they trigger
+
+Overlays are timed blocks that sit on top of your footage or scene — a lower third that names a speaker, a broadcast ticker, or a replica social-media card. Because each is a timed clip, prompts trigger this layer when you ask to *add* something *at* a moment: "add a lower third at 0:03 with the name and title," "show an animated tweet during the intro," "put a Spotify now-playing card in the corner." Give the timestamp, the copy, and the tone; the agent places the block on a track above the footage.
+
+Two groups:
+
+- **[Lower thirds](/catalog/blocks/lt-clean-bar)** — name/title identifiers for speakers, interviews, podcasts, and news.
+- **[Social overlays](/catalog/blocks/x-post)** — animated replicas of platform UI (posts, cards, notifications, follow prompts).
+
+## Brand tone → lower third
+
+Lower thirds split into **cards** (a filled shape behind the text) and **cardless** (text with a rule or sweep, designed to overlay live footage without boxing it in).
+
+| Tone | Blocks |
+| ---- | ------ |
+| **Minimal / clean / corporate** | [`lt-clean-bar`](/catalog/blocks/lt-clean-bar), [`lt-soft-pill`](/catalog/blocks/lt-soft-pill) |
+| **High-energy / podcast / bold** | [`lt-bold-block`](/catalog/blocks/lt-bold-block), [`lt-color-block`](/catalog/blocks/lt-color-block) |
+| **Cardless over footage** (interview, talking head) | [`lt-accent-underline`](/catalog/blocks/lt-accent-underline), [`lt-kicker-name`](/catalog/blocks/lt-kicker-name), [`lt-mask-reveal`](/catalog/blocks/lt-mask-reveal), [`lt-side-rule`](/catalog/blocks/lt-side-rule) |
+| **Card over bright footage** | [`lt-dark-card`](/catalog/blocks/lt-dark-card) |
+| **Broadcast / news** | [`lower-third-bild`](/catalog/blocks/lower-third-bild), [`news-ticker`](/catalog/blocks/news-ticker) |
+| **Two-part wipe (name + role)** | [`lt-stack-bars`](/catalog/blocks/lt-stack-bars) |
+
+<Tip>
+  Over live footage, prefer a **cardless** lower third — they're text-shadowed for legibility without a box that fights the shot. Use a **card** ([`lt-dark-card`](/catalog/blocks/lt-dark-card) charcoal for bright scenes) when the background is too busy for cardless text to read.
+</Tip>
+
+## Use → social overlay
+
+Each social overlay is a self-contained animated card with editable placeholder content.
+
+| You want | Block |
+| -------- | ----- |
+| An animated tweet / X post with engagement metrics | [`x-post`](/catalog/blocks/x-post) |
+| A Reddit post card with upvotes and comments | [`reddit-post`](/catalog/blocks/reddit-post) |
+| A Spotify now-playing card with album art and progress | [`spotify-card`](/catalog/blocks/spotify-card) |
+| A macOS notification banner | [`macos-notification`](/catalog/blocks/macos-notification) |
+| An Instagram follow prompt | [`instagram-follow`](/catalog/blocks/instagram-follow) |
+| A TikTok follow prompt | [`tiktok-follow`](/catalog/blocks/tiktok-follow) |
+| A YouTube subscribe lower third | [`yt-lower-third`](/catalog/blocks/yt-lower-third) |
+
+## Example prompts
+
+Quote the exact copy — unquoted names and titles get paraphrased (see [anatomy](/prompting/anatomy)).
+
+> Add a lower third at 0:03 for 4 seconds with [`lt-clean-bar`](/catalog/blocks/lt-clean-bar). Name: "Dana Ríos". Title: "Head of Design".
+
+> Podcast clip. Bring in [`lt-bold-block`](/catalog/blocks/lt-bold-block) when the guest starts talking — name "MARCUS LEE", tag "GUEST" — brand accent #FF5A1F.
+
+> During the intro, show an [`x-post`](/catalog/blocks/x-post) card with the quote "we shipped it in a weekend" and 12.4K likes, then slide it out before the demo.
+
+> /motion-graphics Transparent overlay only — a [`spotify-card`](/catalog/blocks/spotify-card) now-playing widget animating in, bottom-left. Export as transparent WebM so I can drop it over footage in my editor.
+
+## Knobs
+
+- **Timing.** "at 0:03," "for 4 seconds," "slide it out before the demo" set the block's start and duration — an overlay is a timed clip, so it needs both.
+- **Copy.** Quote every editable field: name, title, handle, headline, metrics, ticker text. The blocks ship with placeholder content you replace.
+- **Track placement.** Overlays go on a track *above* the footage so they composite on top; say "over the footage" if you're layering onto an existing clip.
+- **Brand accent.** Give a hex or brand color — most lower thirds carry an accent bar, tab, or block that takes it.
+- **Card vs cardless.** State it when it matters, or let the tone table decide.
+- **Transparent output.** For use in an external NLE, render the overlay on its own as a transparent WebM — see [rendering and output](/prompting/rendering-and-output).
+
+## Failure modes
+
+**Don't leave the copy unquoted.** Unquoted names and titles get paraphrased; quoted text renders verbatim.
+- ❌ `add a lower third with the speaker's name and role`
+- ✅ `lt-clean-bar — name: "Dana Ríos", title: "Head of Design"`
+
+**Don't omit the timestamp.** An overlay is a timed clip; without a start (and ideally a duration) the agent has to guess when it appears and how long it holds.
+- ❌ `put a lower third somewhere in the intro`
+- ✅ `lower third at 0:03, holding 4 seconds`
+
+**Don't let the overlay render behind the footage.** It has to sit on a track above the clip, or the video covers it.
+- ❌ `add the tweet card to the video` (ambiguous layering)
+- ✅ `x-post card on a track above the footage, top-right`
+
+**Don't over-spec real account data.** These are stylized replicas with editable placeholders — provide the copy you want shown, not a live URL to scrape.
+- ❌ `pull my actual Spotify page`
+- ✅ `spotify-card: track "Midnight City", artist "M83"`
+
+**Don't invent overlay names.** Only the blocks in the [Social Overlays](/catalog/blocks/x-post) and [Lower Thirds](/catalog/blocks/lt-clean-bar) groups exist.
+- ❌ `add a linkedin-post overlay`
+- ✅ pick a real block, or describe the card and let the agent build a custom one in a freeform composition

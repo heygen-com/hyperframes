@@ -1,0 +1,71 @@
+---
+title: Motion graphics
+description: "Short, design-led pieces where motion is the message - kinetic type, a stat hit, a logo sting - and the knobs that decide MP4 versus transparent overlay."
+---
+
+## What a motion graphic is
+
+A motion graphic is a short, design-led piece where **motion is the message** — kinetic typography, a stat count-up, a chart hit, a logo sting, a lower-third or social overlay, an animated map, tweet, or headline. It's usually under 10 seconds (up to ~30s), has no narration and no live-action subject, and renders to an MP4 or a transparent overlay.
+
+Route with `/motion-graphics`. The workflow is autonomous by design — at most one clarifying question, then straight through to render. Reach for a different workflow when the piece grows past what "motion is the message" covers:
+
+| If the piece is… | Route instead |
+| --- | --- |
+| Longer, multi-scene, or narrated | `/general-video` |
+| A narrated video of a website | `/website-to-video` |
+| A topic explainer with a voice-over | `/faceless-explainer` |
+| A product promo / launch | `/product-launch-video` |
+| Captions on existing footage | `/embedded-captions` |
+
+## Base prompt
+
+The canonical shape: routed, spec'd, beat-timestamped, copy quoted, technique pinned, gaps closed.
+
+> /motion-graphics Make an 8-second 1920x1080 video. Beat 1 (0-4s): dark macOS terminal types "npx skills add heygen-com/hyperframes" character by character, then hold on the blinking cursor. Beat 2 (4-5s): the terminal shatters into fragments. Beat 3 (5-8s): bold white kinetic text on black slams in word by word, snappy: "YOU JUST MADE THIS / WITH HYPERFRAMES." Use the `code-typing` and `vfx-shatter` registry blocks. No narration, no image or media files.
+
+## Variants
+
+Each reuses a registry block, so the agent composes rather than hand-building from scratch.
+
+<AccordionGroup>
+  <Accordion title="Stat count-up">
+    > /motion-graphics 6-second 1920x1080 video, dark navy background. Beat 1 (0-1s): label "ARR" fades up small, top-center. Beat 2 (1-4s): a giant number counts up to $4.2M with an odometer roll, easing out as it lands. Beat 3 (4-6s): "+312% YoY" stamps in below in green, then everything settles into a gentle ambient idle (subtle breathing scale, slow particle drift). Use the `apple-money-count` registry block as base. No narration.
+  </Accordion>
+  <Accordion title="Logo sting">
+    > /motion-graphics 5-second 1920x1080 logo sting. Beat 1 (0-2s): the word "ACME" assembles from scattered particles. Beat 2 (2-3s): full-frame `swirl-vortex` shader transition. Beat 3 (3-5s): logo lockup + tagline "Ship faster." settles on white, holds. Use `code-particle-assemble` for the assembly.
+  </Accordion>
+  <Accordion title="Animated tweet">
+    > /motion-graphics 7-second 1080x1350 vertical video. A real tweet card (handle @hyperframes, text "we render video from HTML now. no timeline UI. just code.") slides up over a soft animated gradient, likes counter ticks 0→1.2K, then the card tilts in 3D and a highlight sweeps the second sentence. Hold on the card at the end. Use the `x-post` and `vfx-liquid-background` registry blocks. No narration, no image or media files.
+  </Accordion>
+  <Accordion title="Map route">
+    > /motion-graphics 8-second 1920x1080 video. Dark world map, a glowing arc animates from San Francisco to Tokyo over 3s, destination pin drops with a pulse, then camera zooms into Tokyo and the label "LATENCY: 89ms" types on. Use the `nyc-paris-flight` registry block as the base pattern, restyle to teal on charcoal. No narration.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+**Duration.** Keep it short — motion graphics live under 10 seconds, up to ~30. A 2-second idea stretched to 8 feels slow no matter how it's animated; if the piece genuinely needs multiple scenes or a longer runtime, it's a `/general-video`, not a motion graphic.
+
+**MP4 vs transparent overlay.** The default output is an MP4. Ask for a transparent overlay — a lower-third, a callout, a bug meant to composite over other footage — and the render targets `webm` or `mov` with alpha. Transparency only makes sense when part of the frame is *meant* to be empty. A full-frame design (its own background, edge-to-edge composition) has nothing to be transparent, so asking for a transparent WebM there produces either an opaque file or a broken-looking one. Say "transparent overlay, alpha channel" only for pieces designed to sit on top of something else.
+
+**Registry blocks vs freeform.** Naming a block (`apple-money-count`, `x-post`, `data-chart`, `code-typing`, `us-map` / `world-map`) makes the agent compose reuse-first: install the block, customize in place, hand-author only the gaps. Omit the block and it hand-builds from your description — fine for one-off looks, more drift on the details you didn't pin. Name blocks exactly as they appear in the [catalog](/catalog/blocks/data-chart).
+
+**Easing and motion feel.** The words you use for *how* motion feels — "snappy", "bouncy", "settles with overshoot" — map to specific eases. Spend them; they're cheap precision. See [Vocabulary](/prompting/vocabulary) for the adjective-to-ease table and [Premium motion](/prompting/motion) for the grammar that keeps a piece from reading cheap (nothing fully stops, action overlaps, the camera acts).
+
+## Failure modes
+
+**Transparent output on a full-frame design.** Alpha is for overlay elements, not for pieces that fill the frame. A design with its own background has no transparent region to export.
+- ❌ `an 8s full-screen stat count-up on dark navy — export as a transparent WebM`
+- ✅ `an 8s stat count-up on dark navy, MP4` — or, for a bug to composite over footage: `just the count-up chip, no background, transparent overlay (webm)`
+
+**Narration on a motion-is-the-message piece.** Motion graphics are unnarrated by definition — the visual carries it. A voice-over means a different workflow.
+- ❌ `/motion-graphics a 10s logo sting with a voice-over reading the tagline`
+- ✅ `/motion-graphics a 10s logo sting, no narration` — for a spoken track, use `/faceless-explainer` or `/general-video`.
+
+**Stretching a short idea long.** Runtime is a knob, and past ~30s a single motion beat runs out of things to do.
+- ❌ `a 45-second kinetic-type piece of one headline`
+- ✅ `an 8-second kinetic-type piece of one headline` — or promote it to a multi-scene `/general-video`.
+
+<Tip>
+  For the six-part skeleton and the per-beat content formula these prompts share, see [Prompt anatomy](/prompting/anatomy); for the full set of run-verified examples, [Verified examples](/prompting/examples). Unsure whether your ask is a motion graphic at all? Start at the router in `/hyperframes`.
+</Tip>

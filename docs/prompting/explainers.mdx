@@ -1,0 +1,72 @@
+---
+title: Explainers
+description: "What to say to turn an article, notes, or a topic into a faceless explainer - where every visual is invented, not captured."
+---
+
+## What this makes
+
+A faceless explainer: arbitrary text — an article, notes, a topic, a brief — becomes a narrated video where every visual is invented per scene (typography, abstract graphics, diagrams, data-viz). The [`/faceless-explainer`](/prompting/overview) workflow picks a design system, reshapes your text into a teaching story, generates its own TTS narration, and builds it frame by frame.
+
+**Faceless means there's nothing to capture.** No site, no footage, no asset inventory — the visuals are designed downstream. If you have a product to sell use [`/product-launch-video`](/prompting/product-launch); if you have a real site to show use `/website-to-video`; a GitHub PR goes to [`/pr-to-video`](/prompting/code-and-prs). Unsure → start at `/hyperframes`.
+
+## Base prompt
+
+Verified, from the [examples](/prompting/examples) page — a ~60-second vertical explainer from pasted text:
+
+> /faceless-explainer Turn this into a ~60-second 1080x1920 vertical explainer: [paste your text]. One idea per scene, big typography, diagrams over stock footage, brand color #FF5533 on off-black. Male TTS voice, calm. Embedded captions, keywords highlighted in the brand color.
+
+Note the `~` — with a supplied script the runtime follows the spoken words, so ask for *about* a minute, not exactly one. See the [anatomy](/prompting/anatomy) for the rest of the skeleton.
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="30-second landscape topic explainer (16:9)">
+    > /faceless-explainer Make a ~30-second 1920x1080 explainer on how HTTPS keeps a request private, for a non-technical audience. Concept angle: one idea per scene, big geometric type, a simple lock/key diagram as the centerpiece. Deep blue on off-white. Female TTS voice, warm and clear. Embedded captions, key terms highlighted in the accent color.
+
+    Shorter runtime, landscape for YouTube / embed. Fewer scenes means the topic has to compress — name the single takeaway so the workflow knows what to keep.
+  </Accordion>
+  <Accordion title="Listicle">
+    > /faceless-explainer Make a ~45-second 1080x1920 listicle: "5 habits of fast-shipping teams". Listicle angle — one habit per scene, each with a big number and a one-line label, escalating energy toward #1. Off-black with a lime accent. Male TTS voice, upbeat. Embedded captions, the habit label highlighted each scene.
+
+    The listicle angle gives each item its own scene with a consistent number-and-label shape, so the structure reads as a countdown rather than a wall of points.
+  </Accordion>
+  <Accordion title="How-to with diagrams">
+    > /faceless-explainer Make a ~60-second 1920x1080 how-to on setting up a CI pipeline, for developers. How-to angle: one step per scene, each built around a simple node-and-arrow diagram that draws on as the narration explains it. Charcoal with a teal accent. Calm male TTS voice. Embedded captions, the step name highlighted.
+
+    A how-to leans on diagrams as the load-bearing visual. Describe the diagram *shape* per step ("node-and-arrow", "a pipeline that fills left to right") and let the workflow invent the specifics.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Verbatim vs summarized** | "use my wording verbatim" or "restructure it freely" | The workflow asks once. Verbatim keeps your voice but locks the word count; summarized lets it cut and reorder for pace |
+| **Duration** | "~60 seconds", never "60 seconds" | With a script the narration sets the real length; a hard number forces the agent to trim or pad the words |
+| **Scene density** | "one idea per scene" | A faceless scene has one invented focal to animate; two ideas in a scene leave nothing to build the motion around, and it reads as a text dump |
+| **Angle** | "concept" / "how-to" / "listicle" / "narrative" | The angle decides the story shape — the workflow reshapes your text into it rather than reading paragraphs in order |
+| **Caption style** | "embedded captions, keywords highlighted in the accent color" | Captions are burned in; naming the highlight color ties them to the palette instead of a default pill |
+| **Palette** | "brand color #FF5533 on off-black" | With no site to borrow from, the preset supplies a full palette; a named accent + ground personalizes it |
+| **Voice** | "male TTS voice, calm" / "warm female voice" | Gender and tone are prompt words; the provider is a workflow decision |
+
+<Tip>
+  The single biggest quality lever here is scene density. "One idea per scene" turns a dense paragraph into a paced sequence — the workflow reorders and compresses your text to hit it, which is exactly what makes an explainer teach instead of recite.
+</Tip>
+
+## Common failure modes
+
+**"60 seconds" instead of "~60 seconds".** A supplied script's spoken duration is not knowable until the TTS renders; a hard target makes the agent mangle the words to hit the clock.
+- ❌ `a 60-second explainer from this text: ...`
+- ✅ `a ~60-second explainer from this text: ...`
+
+**Cramming ideas into a scene.** Every faceless visual is invented around a single focal; overload the scene and there's no clear thing to animate.
+- ❌ `explain all five caching layers in one scene`
+- ✅ `one idea per scene — one caching layer at a time`
+
+**Asking it to capture or pull real imagery.** There is no capture step; a faceless explainer invents its visuals.
+- ❌ `pull screenshots from the site and explain the feature`
+- ✅ that's a site or product video — use `/website-to-video` or [`/product-launch-video`](/prompting/product-launch)
+
+**Leaving the look unspecified when you care.** With no brand to read, the preset picks the palette; if you have colors, name them.
+- ❌ `make it look on-brand`
+- ✅ `brand color #FF5533 on off-black`

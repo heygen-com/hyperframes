@@ -1,0 +1,84 @@
+---
+title: Captions and talking-head footage
+description: "Two ways to dress an existing talking-head clip - readable captions or designed graphic overlays - both leaving the footage itself untouched."
+---
+
+## Two things you can add to a talking head
+
+Both workflows take an existing talking-head / interview / podcast clip and add a layer on top. Neither edits the footage — no trims, no recolor, no reframe, no reorder. The clip plays untouched underneath; you're choosing what rides on top of it.
+
+| You want | Route | What it adds |
+| --- | --- | --- |
+| The spoken words as readable text | `/embedded-captions` | Captions / subtitles — a rail, with earned climax embeds |
+| Designed on-screen graphics synced to the talk | `/talking-head-recut` | Overlay cards — titles, lower-thirds, data callouts, quotes, PiP |
+
+If the words themselves need to read, you want captions. If you want a produced look — kinetic titles, a stat callout, a pull-quote card, the speaker shrunk into a corner while a chart fills the frame — you want overlay cards. When it's genuinely both, caption first, then package; they're siblings, not substitutes.
+
+`/embedded-captions` runs locally end to end — it transcribes and mattes the subject itself, no API key — and needs a **single-subject clip**. Multi-speaker clips or hard cuts get split per shot or refused, because the matte is one person.
+
+## Base prompt — captions
+
+Captions route by **identity**, not by mode. You pick one look from the catalog; the engine behind it is a lookup detail you never have to name. The default is a clean verbatim rail — `anchor` — with the occasional peak word composited behind the subject.
+
+> /embedded-captions Add captions to ./interview.mp4. Use the `anchor` identity — clean verbatim rail carrying the spoken words, readable lower-third. Promote just the two hardest-hitting lines to an embed behind the speaker; highlight the key word in each rail line. 9:16. Footage stays untouched.
+
+The rail carries most of the text; an **embed** is the scarce, earned peak — one big word matted behind the subject at the climax, never every line. Embedding the whole transcript is the most common mistake this skill guards against.
+
+## Base prompt — overlay cards
+
+> /talking-head-recut Package ./founder-clip.mp4 with designed graphic overlay cards synced to the transcript. 9:16 portrait, warm-paper style. Open with a fullscreen kicker + title hook, drop a lower-third when she names the company, a data callout card counting up the "200+ teams / $1.2M ARR" stat, and a pull-quote card for the strongest line. Speaker stays full-bleed under the cards; shrink her into a corner PiP while the data card holds. The clip plays untouched underneath.
+
+You describe the *cards* — their content, timing, and how the speaker shares the canvas with them (full-bleed, split, PiP, or glass overlay). The skill designs and writes each card; there's no fixed archetype list, so the overlays follow what the transcript actually says.
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="Cinematic caption embed (mood over verbatim)">
+    > /embedded-captions Cinematic captions on ./poem.mp4 — no rail, hero typography composited behind the speaker, words accumulating as a column. Use the `editorial` identity (lowercase-italic hero). One apex word per thought, air between them. 4:5. Never grade the footage.
+
+    Column-flow identities drop the rail and make everything embed-style — reach for them on poetic / social / "cinematic" asks where mood beats strict readability, never on an explainer where the words must read.
+  </Accordion>
+  <Accordion title="Bright-scene captions">
+    > /embedded-captions Add verbatim captions to ./outdoor-vlog.mp4. It's a bright daylight scene, so use the `ink` identity — near-black type printed onto the surface — not a light-on-bright look that washes out. Keep it a readable rail. 16:9.
+
+    Screen-blend cream looks wash out over bright backdrops (luminance > ~180); `ink` is built for bright surfaces. Match the identity to the scene rather than asking the engine to recolor a look.
+  </Accordion>
+  <Accordion title="VFX-grade themed captions">
+    > /embedded-captions Bring the energy on ./hype-clip.mp4 — I want the captions to hit hard. Use the `stomp` identity: heavy themed constitution, punch reactions on the climax. Rail carries the verbatim; the payoff line is the setpiece. 9:16.
+
+    Themed identities (`ordnance`, `terminal`, `stomp`, `neonsign`, `stardust`, …) are the answer to "make it explode / 特效 / like AE did it". Theme mode is the one place a register-gated reaction beat may touch the frame — applied after the matte composite so subject, text, and plate move as one — but the a-roll is still never graded.
+  </Accordion>
+  <Accordion title="Landscape data recut">
+    > /talking-head-recut Recut ./analyst-interview.mp4 as a 16:9 explainer with a clinical style. Split layout: speaker on the right, data cards on the left. Cards for each claim — a count-up for the headline number, a swiss-grid comparison for the two options, a terminal-style callout for the technical bit. Auto-pace the card count for a 5-minute clip. Footage untouched.
+
+    Layout (split / stack / pip / overlay) sets how speaker and cards share the canvas; card count auto-infers from duration and information density, with a floor of five so even a short clip has rhythm.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+**Identity and tone (captions).** One identity picks the entire look — surface, palette, motion, climax behavior. Route by content: explainer / interview / must-read words → a rail-carrying identity like `anchor`, `keynote`, or `documentary`; poetic / social / cinematic → a column-flow identity by register (`editorial`, `cream`, `loud`, `neon`); "炸 / 特效 / VFX" → a themed identity (`ordnance`, `terminal`, `stomp`). Unsure → `anchor`: the words read and the scene stays safe. Don't ask for "Standard vs Cinematic vs Theme" — those are engine names; name the identity.
+
+**Verbatim rail vs climax embed.** The rail is the default and carries most of the text. An embed is a promotion — one peak word matted behind the subject, scarce and spaced (roughly one per beat, never two co-visible, at most one apex). Tell the skill *which* lines earn the embed; leave the rest on the rail.
+
+**Style, layout, and canvas (recut).** Pick a style group (warm-paper / clinical / experimental), a layout (split / stack / pip / overlay), and a canvas ratio; the video frame follows from layout × style. The recommended ratio matches the source, but you choose — 16:9 for desktop / YouTube, 9:16 for Reels / Shorts, 4:5 for feed.
+
+**Keyword highlighting.** On the caption rail, a punch word can carry an inline `emphasis` — an accent-color or active-word pop — without leaving the rail. Ask for "highlight the key word in each line" and it stays readable.
+
+## Failure modes
+
+**Asking for footage edits.** Both skills add a layer and leave the a-roll exactly as shot. Trimming, speeding up, recoloring, reframing, or reordering is NLE editing and out of scope — captions and cards are the only additions.
+- ❌ `add captions and trim the dead air at the start, and warm up the color to match my brand`
+- ✅ `add captions; leave the footage untouched` — do the trim / grade in an editor first, then bring the finished clip here.
+
+**Embedding every word.** On a talking head the rail is the verbatim default; matting every caption behind the subject buries the words and spends the climax on nothing.
+- ❌ `composite every caption behind the speaker for a cinematic look` (on an explainer)
+- ✅ `verbatim rail; promote only the two payoff lines to an embed`
+
+**Multi-subject clips.** The caption matte is one person; two speakers or hard cuts flicker or get refused.
+- ❌ `caption this two-person podcast in one pass`
+- ✅ `split the clip per shot / per speaker first, then caption each` — or use a single-subject cut.
+
+<Tip>
+  For the beat-timestamped skeleton these prompts share, see [Prompt anatomy](/prompting/anatomy); for adjectives that map to motion and emphasis settings, [Vocabulary](/prompting/vocabulary). To build a video from scratch instead of dressing existing footage, start at the router in `/hyperframes`.
+</Tip>

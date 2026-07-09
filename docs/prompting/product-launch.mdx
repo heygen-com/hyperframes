@@ -1,0 +1,85 @@
+---
+title: Product launch videos
+description: "What to say to turn a product URL, a script, or a brief into a launch or promo video - and when to reach for a site tour instead."
+---
+
+## What this makes
+
+A launch or promo that *sells*: SaaS promos, feature reveals, product demos, app and company launches. The [`/product-launch-video`](/prompting/overview) workflow captures the product's site (or takes a pasted script), reads its brand, writes a story, and builds it frame by frame.
+
+**Route it right — the distinction is intent, not input:**
+
+| You want… | Route |
+| --- | --- |
+| To market, launch, promote, or reveal a product (the default for any commercial URL) | `/product-launch-video` |
+| A video *of* a general site — a portfolio / blog / docs / landing-page tour or showcase, not a sales pitch | `/website-to-video` (see the [guide](/guides/website-to-video)) |
+
+"Promo for our site" is a launch, even though it names a site — use `/product-launch-video`. A neutral walkthrough of a docs site is a tour — use `/website-to-video`. Unsure → start at `/hyperframes` and let it route.
+
+## Base prompt
+
+Verified, from the [examples](/prompting/examples) page — a 45-second launch from a live URL:
+
+> /product-launch-video Make a 45-second 1920x1080 launch video for https://linear.app. Energetic but minimal, use the site's own palette and screenshots. Structure: hook stating the problem, 3 feature beats with UI captures and one-line captions, end card with logo + "Try it free". Female TTS voice, confident tone, subtle electronic BGM under -18dB.
+
+Read the [anatomy](/prompting/anatomy) of that skeleton — route, spec, structure, copy, voice, level — then swap in your own product.
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="20-second vertical teaser (9:16)">
+    > /product-launch-video Make a ~20-second 1080x1920 teaser for https://linear.app. Super minimal, just the hook. Beat 1 (0-4s): the problem in one line, big type. Beat 2 (4-16s): two feature beats, one UI capture each with a three-word caption. Beat 3 (16-20s): logo + "Try it free" end card, then settle into a gentle idle. Use the site's own palette. Female TTS voice, confident; no BGM.
+
+    A teaser trades feature coverage for pace — fewer beats, one idea each. Keep the destination (Shorts / TikTok → 9:16) and let the workflow scale the story to the shorter runtime.
+  </Accordion>
+  <Accordion title="Pasted script, no capture">
+    > /product-launch-video Make a ~30-second 1920x1080 launch video from this script — use it verbatim: "Your CRM is three hours of busywork a day. AutoCRM logs every call, email, and meeting for you. 200 teams already switched. Try it free at autocrmhq.com." No site to capture — invent clean product-y visuals from the script. Male TTS voice, calm and confident; subtle BGM under -18dB.
+
+    With no URL the workflow takes the no-capture path: no screenshots, no site palette to borrow, so name your brand colors and fonts if you have them. The workflow will ask once whether to keep your wording verbatim or restructure it.
+  </Accordion>
+  <Accordion title="Brand name only (agent finds the URL)">
+    > /product-launch-video Make a ~45-second 1920x1080 launch video for Linear. Find the official site, capture it, and use its own palette and screenshots. Angle: speed as the whole pitch. End card with logo + "Try it free". Confident female TTS voice, subtle electronic BGM under -18dB.
+
+    Given a name instead of a link, the workflow searches for the official URL, confirms it in one line, then captures — you get the site-grounded result without pasting the link yourself.
+  </Accordion>
+  <Accordion title="Site tour instead (website-to-video)">
+    > /website-to-video Make a 30-second 1920x1080 tour of https://example.com built from its own screenshots. Calm, editorial pace — show the homepage, two inner pages, and the footer. Full narration, warm male voice. This is a showcase, not a sales pitch.
+
+    Reach for this when the goal is to *show the site*, not sell a product. It builds from captured screenshots and the site's brand assets. A launch or promo — even from the same URL — belongs to `/product-launch-video`.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+Decisions specific to a launch. Set the ones you care about; leave the rest to the workflow's taste.
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Capture vs no-capture** | Give a URL to capture the real site; give a script or brief for the no-capture path; give just a brand name to have the agent find the URL | Capture borrows the real palette and screenshots; no-capture invents visuals, so it needs your brand colors named |
+| **Palette source** | "use the site's own palette" | The workflow remixes the captured brand tokens onto its frame preset — you get the product's real colors, not a generic theme |
+| **Structure** | "hook stating the problem, N feature beats with captions, end card with CTA" | The workflow leads value-before-evidence; naming the beats keeps the hook and CTA from getting dropped |
+| **Voice & tone** | "female TTS voice, confident" / "calm male voice" | Voice gender and tone are prompt words; the provider itself is a workflow decision — see the [skill](/prompting/overview) for provider mechanics |
+| **BGM level** | "subtle electronic BGM under -18dB" (or "no BGM") | A stated ceiling keeps music under the voice; leave it off entirely for a teaser |
+| **Length & destination** | "~45 seconds", "9:16 for TikTok" | Sweet spot is 30-90s; destination sets the aspect (16:9 embed · 1:1 feed · 9:16 Shorts) |
+
+<Tip>
+  Duration and destination are the two cheapest, highest-leverage things to state. Everything else the workflow will choose well if you stay quiet — see [the specification dial](/prompting/specification-dial) for how much to delegate.
+</Tip>
+
+## Common failure modes
+
+**Hard-timing a verbatim script.** With supplied narration, the real TTS duration sets the length — a hard number forces the agent to cut or pad your words.
+- ❌ `a 45-second launch video from this exact script: ...`
+- ✅ `a ~45-second launch video from this script: ...`
+
+**Overriding the designed structure.** The workflow builds hook → value → evidence → CTA for a reason; drop the hook and the promo never answers "why should I care?"
+- ❌ `skip the intro, just list all six features back to back`
+- ✅ `hook stating the problem, then 3 feature beats, then the CTA end card`
+
+**Fighting the art-directed preset.** Each workflow adopts a frame preset and injects transitions; forcing a foreign theme yields a compromise, not your look (see [rules and anti-patterns](/prompting/rules-and-anti-patterns)).
+- ❌ `/product-launch-video ... plain white, no transitions between scenes`
+- ✅ pick the angle and tone, and let the preset carry the visual system
+
+**Assuming the agent knows your assets.** On the no-capture path there's no site to read; an unnamed logo or color is invented.
+- ❌ `use our brand colors`
+- ✅ `brand colors #5E6AD2 on off-black; logo at assets/logo.svg`

@@ -1,0 +1,125 @@
+---
+title: Editing existing videos
+description: "Direct the agent like an editor — trim, move, retime, swap, restyle — with the NLE verb you already know mapped to the prompt that lands it in one pass."
+---
+
+## Editing existing videos
+
+Most HyperFrames time isn't the first render — it's the twenty edits after it. A composition is plain HTML with `data-*` timing attributes and a GSAP timeline, so every edit you'd make in a non-linear editor maps to a specific, inspectable change in the source. You don't re-specify the video; you name the edit the way you'd say it to a human editor, and the agent makes the smallest change that does it.
+
+This page maps the editor verbs to the prompts that land them. Two habits from [Iterating](/prompting/iterating) apply to every one of them, so keep them in mind: **change one thing per render**, and **state targets as absolute values** ("scene 2 = 2 seconds", not "a bit shorter") so the agent lands it in a single pass instead of oscillating.
+
+## The verb → edit map
+
+Every timeline verb resolves to a `data-*` attribute or an inline style. This is what each one touches under the hood — useful to know because it's why absolute targets work and why some edits are cheap:
+
+| You say | Editor verb | What the agent edits |
+| --- | --- | --- |
+| "start scene 2 later / earlier" | Move | `data-start` |
+| "put the captions on top of the video" | Restack | `data-track-index` + inline `z-index` |
+| "end the logo sooner" | Trim (right) | `data-duration` |
+| "skip the first second of the clip" | Trim (front, media only) | `data-media-start` / `data-playback-start` |
+| "make scene 2 two seconds long" | Retime | `data-duration` (and the GSAP timeline length) |
+| "the audio bed is too loud" | Level | `data-volume` |
+
+<Note>
+  The mental model the Studio timeline uses: **move** changes when a clip *starts*, **right trim** changes when it *ends*, and **front trim** only exists for media clips — a `<video>` or `<audio>` can skip into its own content, but a GSAP-driven `<div>` can't start halfway through its animation. See [Timeline editing](/guides/timeline-editing) for the full clip-type breakdown.
+</Note>
+
+## Trim, move, and restack
+
+These are the pure-timing edits — no visual change, just when and where a layer lives on the timeline.
+
+> Trim the intro so it ends at 0:03 instead of 0:05.
+
+> Move the lower third to start at 0:08.
+
+> The captions are rendering behind the video — put them on a higher track so they sit on top.
+
+Absolute targets matter most here. "Make the intro shorter" invites a guess; "the intro should end at 3.0s" is a single `data-duration` write with nothing to overshoot.
+
+- ❌ `tighten up the opening`
+- ✅ `intro clip duration = 3s; leave its animation and position alone` — one attribute, and the freeze clause stops a rebuild from drifting on axes you'd already settled
+
+## Split a scene
+
+The Studio timeline exposes move and trim as drag gestures but does **not** yet offer split, slip, slide, ripple, or roll. You can still split by directing the agent, because it edits the HTML directly — a split is just one clip becoming two with adjusted `data-start` / `data-duration`:
+
+> Split scene 2 at 0:04 so I can drop a transition between the two halves.
+
+Name the exact cut point. The agent turns one clip into two adjacent clips; you then treat each half as its own layer.
+
+## Retime a scene
+
+Retiming is a duration change, but with one catch worth knowing: a scene driven by a GSAP timeline needs the timeline to be at least as long as the new duration, or the render cuts off early.
+
+> Make scene 2 run 4 seconds instead of 2.5 — keep the animation, just give it more room.
+
+- ❌ `stretch scene 2` — ambiguous whether you mean slower motion or a longer hold
+- ✅ `scene 2 duration = 4s, same motion, add the extra time as a hold at the end`
+
+<Warning>
+  If a retimed scene cuts off before its new end, the fix is extending the GSAP timeline length (the `tl.set({}, {}, <seconds>)` sentinel pattern). The agent handles this; it's the single most common reason a lengthened clip renders short. See the [Video editor cheatsheet](/guides/video-editor-cheatsheet#timing-cheatsheet).
+</Warning>
+
+## Make it snappier (retiming *feel*, not just duration)
+
+"Snappier," "punchier," "more relaxed" are pacing words, and they map to concrete easing and timing choices — [Vocabulary](/prompting/vocabulary) has the full table. The agent reads "snappy" as a decisive ease (`power4.out`) and tighter durations, "dreamy" as slow symmetrical motion, and so on.
+
+> Make scene 2 snappier — quicker entrances, harder cuts.
+
+> The reveal feels robotic; give it a bouncy overshoot.
+
+Change one scene's feel per render so you can attribute what helped. If a scene keeps missing, strip it to the minimal version (subject + its motion only), confirm it reads, then re-layer.
+
+## Adjust a keyframe
+
+Individual animation properties are editable — the value, the ease, the timing of any tween. You can direct these by prompt, or edit them yourself in the Studio Design Panel; either way they resolve to the same GSAP code.
+
+> The title slides in from too far — change its entrance to travel 40px, not 200.
+
+> Give the add-to-cart item an arc instead of a straight diagonal, like it's being tossed into the cart.
+
+State the property target absolutely (`Move X = 40`, `arc curviness ≈ 1.5`). [Keyframes & arc motion](/guides/keyframes) covers what's editable, arc-motion paths, and gesture recording.
+
+<Tip>
+  For an element-specific edit, the Design Panel's clipboard icon copies structured context — the element's id, position, size, and current animation — ready to paste into your prompt. It gives the agent exact spatial context instead of a vague "the title."
+</Tip>
+
+## Swap an asset
+
+Replacing a video, image, logo, or audio track is a source-swap. The one rule: **name the path.** The agent will search for "my logo," but a path skips the search and removes the ambiguity of which file you mean.
+
+> Replace the background music with `assets/track.mp3`.
+
+> Swap the hero image for `assets/product-v2.png` and keep its animation.
+
+- ❌ `use the new logo`
+- ✅ `swap the logo for assets/logo-2025.svg`
+
+## Change copy
+
+On-screen text is edited verbatim when you quote it. Unquoted text gets paraphrased — the agent treats a description as an instruction to write copy, not to place it exactly.
+
+> Change the headline to "Ship faster." — exact text, keep the styling.
+
+- ❌ `update the title to say something about speed`
+- ✅ `title copy: "Ship faster."`
+
+## Restyle one element
+
+Visual tweaks — color, size, weight, position of a single element — are where the "freeze the rest" clause earns its keep. Without it, a restyle prompt can trigger a rebuild that drifts on layout or motion you'd already approved.
+
+> Make the CTA button 20% larger and switch it to the accent color — don't touch anything else.
+
+- ❌ `make the CTA pop more`
+- ✅ `CTA background = accent color, font-size = 1.2× current; framing and motion are right, leave them`
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Iterating" href="/prompting/iterating">One variable per edit, absolute targets, freeze what works</Card>
+  <Card title="Vocabulary" href="/prompting/vocabulary">Pacing and easing words that retime the *feel* of a scene</Card>
+  <Card title="Timeline editing" href="/guides/timeline-editing">Which edits the Studio timeline persists, and how</Card>
+  <Card title="Video editor cheatsheet" href="/guides/video-editor-cheatsheet">The `data-*` attributes as timeline controls</Card>
+</CardGroup>

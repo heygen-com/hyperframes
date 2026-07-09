@@ -1,0 +1,125 @@
+---
+title: Code animations
+description: "Prompt code walkthroughs — typing, diffing, highlighting, scrolling — and pick a terminal or editor theme by name."
+---
+
+## Code animations
+
+Code is the one subject where the framework does the hard part for you. The [Code Animations](/catalog/blocks/code-typing) blocks handle syntax highlighting, caret tracking, diff coloring, and camera moves deterministically — you describe the *walkthrough*, name the block, and paste your snippet. This page is the vocabulary for doing that well; for turning a real pull request into a code-change video, see [Code and PRs](/prompting/code-and-prs).
+
+Everything here follows the [one-shot skeleton](/prompting/anatomy): route, spec, beats, copy, technique, negatives. The "technique" slot is where you name the block, and the "copy" slot is where your code goes — quoted exactly, because unquoted code gets paraphrased into something that won't compile.
+
+### Pick the motion by what the viewer should learn
+
+Each Code Animations block answers a different "what is the viewer supposed to notice." Map the intent to the block:
+
+| You want to show…                          | Name this block                                         | Length |
+| ------------------------------------------ | ------------------------------------------------------- | ------ |
+| Code being written, character by character | [`code-typing`](/catalog/blocks/code-typing)            | 5s     |
+| An edit — before → after, red/green        | [`code-diff`](/catalog/blocks/code-diff)                | 6s     |
+| One line as *the* line, everything else dim | [`code-highlight`](/catalog/blocks/code-highlight)      | 5s     |
+| Walking a long file to a spot deep inside  | [`code-scroll`](/catalog/blocks/code-scroll)            | 6s     |
+| One snippet transforming into another      | [`code-morph`](/catalog/blocks/code-morph)              | 7s     |
+| Snippets flying in and stacking up         | [`code-snippet-flight`](/catalog/blocks/code-snippet-flight) | 6s |
+| Code on a rotating 3D slab (title-card feel) | [`code-3d-extrude`](/catalog/blocks/code-3d-extrude)    | 8s     |
+| Code resolving out of a shader dissolve    | [`code-shader-dissolve`](/catalog/blocks/code-shader-dissolve) | 7s |
+| Code assembling from a particle swarm      | [`code-particle-assemble`](/catalog/blocks/code-particle-assemble) | 8s |
+
+The first four are the workhorses of a code *walkthrough* — they keep the code readable and the viewer oriented. The last three are entrance spectacle: they look great as an opener or a hero moment, but they trade legibility for motion, so don't ask them to carry an explanation.
+
+<Tip>
+  `code-morph` re-drives Shiki Magic Move as a paused GSAP timeline, and `code-diff` collapses removed lines and expands added lines. Both read "an edit happened" far more clearly than retyping the whole snippet with `code-typing` — reach for them when the story is *a change*, not *authoring from scratch*.
+</Tip>
+
+### Prompting a typing reveal
+
+`code-typing` streams tokens with a caret that tracks the frontier — no CSS animation, so it seeks cleanly. Give it the exact code and a pace.
+
+> /motion-graphics 6-second 1920x1080 video. A dark editor types this snippet, token by token, caret tracking the frontier, then holds on the blinking cursor for the final second:
+> ```
+> export async function render(comp: Composition) {
+>   await comp.seek(0);
+>   return comp.capture();
+> }
+> ```
+> Use the `code-typing` registry block. No narration, no image or media files.
+
+**Quote the code as a literal block.** Prose descriptions of code get paraphrased.
+- ❌ `type out a function that seeks to zero and captures`
+- ✅ paste the actual snippet in a fenced block — it renders verbatim
+
+**Give the caret somewhere to rest.** Compositions hold their final state, so if you don't ask for a hold the last frame is a frozen full snippet — the [dead-motion tell](/prompting/motion).
+- ❌ `types the code and ends`
+- ✅ `types the code, then holds on the blinking cursor for the final second`
+
+### Prompting a diff or a highlight
+
+For "here's what changed," hand `code-diff` the before and after and let it color the delta. For "look at *this* line," give `code-highlight` the full context and name the target line.
+
+> /motion-graphics 6-second 1920x1080 video. Show this edit as a colored diff — the removed line collapses in red, the added line expands in green:
+> removed: `const res = await fetch(url)`
+> added: `const res = await fetch(url, { signal })`
+> Use the `code-diff` registry block. No audio.
+
+> /motion-graphics 5-second 1920x1080 video. Show a 12-line config file; a highlight band sweeps to line 7 (`timeout: 30_000`) while the surrounding lines dim. Hold with line 7 lit. Use the `code-highlight` registry block. No audio.
+
+**Name the target line unambiguously.** The block dims context around one line — tell it which.
+- ❌ `highlight the important line`
+- ✅ `highlight line 7 (`timeout: 30_000`)`
+
+### Prompting a scroll-through
+
+`code-scroll` moves the camera down a long file to bring a target line to center and spotlights it — the block for walking real modules, not toy snippets.
+
+> /motion-graphics 6-second 1920x1080 video. Scroll a ~60-line source file so line 44 (`return dedupeFrames(frames)`) arrives at center and gets spotlighted; ease the scroll and let it settle without snapping. Use the `code-scroll` registry block. No audio.
+
+**Ask the scroll to ease and settle, not snap.** A linear scroll that stops dead reads mechanical.
+- ❌ `scroll straight to the line`
+- ✅ `ease the scroll and let it settle` — pair with the [motion grammar](/prompting/motion)
+
+### Choosing a theme by name
+
+The [Code Snippets](/catalog/blocks/code-snippet-monokai) blocks are pre-styled shells with per-character typing already built in. There are two families, and you select one by asking for it in plain language — the exact block name is the theme name.
+
+**macOS Terminal.app profiles** — a real terminal window chrome. Say "apple terminal, ocean profile" → [`code-snippet-apple-terminal-ocean`](/catalog/blocks/code-snippet-apple-terminal-ocean). The full set of profiles:
+
+| Profile      | Block                                     | Profile        | Block                                       |
+| ------------ | ----------------------------------------- | -------------- | ------------------------------------------- |
+| Basic        | `code-snippet-apple-terminal-basic`       | Novel          | `code-snippet-apple-terminal-novel`         |
+| Clear Dark   | `code-snippet-apple-terminal-clear-dark`  | Ocean          | `code-snippet-apple-terminal-ocean`         |
+| Clear Light  | `code-snippet-apple-terminal-clear-light` | Pro            | `code-snippet-apple-terminal-pro`           |
+| Grass        | `code-snippet-apple-terminal-grass`       | Red Sands      | `code-snippet-apple-terminal-red-sands`     |
+| Homebrew     | `code-snippet-apple-terminal-homebrew`    | Silver Aerogel | `code-snippet-apple-terminal-silver-aerogel`|
+| Man Page     | `code-snippet-apple-terminal-man-page`    | Solid Colors   | `code-snippet-apple-terminal-solid-colors`  |
+
+**VS Code workbench themes** — full editor chrome (activity bar, sidebar, tabs, terminal, status bar). Say "monokai" or "visual studio dark":
+
+| Say this               | Block                                 | Say this            | Block                              |
+| ---------------------- | ------------------------------------- | ------------------- | ---------------------------------- |
+| Monokai                | `code-snippet-monokai`                | Solarized Light     | `code-snippet-solarized-light`     |
+| Dark Modern            | `code-snippet-dark-modern`            | Light Modern        | `code-snippet-light-modern`        |
+| Dark Plus              | `code-snippet-dark-plus`              | Light Plus          | `code-snippet-light-plus`          |
+| Dark 2026              | `code-snippet-dark-2026`              | Light 2026          | `code-snippet-light-2026`          |
+| High Contrast          | `code-snippet-high-contrast`          | High Contrast Light | `code-snippet-high-contrast-light` |
+| Visual Studio Dark     | `code-snippet-visual-studio-dark`     | Visual Studio Light | `code-snippet-visual-studio-light` |
+
+> /motion-graphics 5-second 1920x1080 video. A macOS Terminal window in the Ocean profile types `npx skills add heygen-com/hyperframes` character by character, then holds on the prompt. Use the `code-snippet-apple-terminal-ocean` registry block. No narration.
+
+**Match the theme to the surface you're claiming to show.** A terminal command in a VS Code editor chrome reads wrong; a source file in Terminal.app reads wrong.
+- ❌ `monokai theme typing a shell command`
+- ✅ `apple terminal homebrew profile typing a shell command`
+
+<Tip>
+  Ambiguity resolves to the closest named block. "Dark theme" is under-specified — the agent picks one of a dozen dark variants and you may not get the one you pictured. Say the theme name. This is the [specification dial](/prompting/specification-dial) applied to code: name the block when the default choice can miss.
+</Tip>
+
+### Pairing with a pull request
+
+When the code you're animating comes from a real PR, don't hand-write the beats — the [`/pr-to-video`](/prompting/code-and-prs) workflow reads the diff and composes `code-diff`, `code-highlight`, and `code-scroll` around the actual changed hunks. Use the blocks on this page directly when you're illustrating a concept; route through the PR workflow when you're narrating a specific change set.
+
+### Where to go next
+
+- [Anatomy of a one-shot prompt](/prompting/anatomy) — the skeleton every prompt above uses.
+- [Copy-paste examples](/prompting/examples) — full prompts you can adapt.
+- [Code and PRs](/prompting/code-and-prs) — turning a GitHub PR into a code-change video.
+- [Motion that reads premium](/prompting/motion) — the hold-and-settle rules the code blocks still need from you.
