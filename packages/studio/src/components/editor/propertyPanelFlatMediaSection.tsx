@@ -15,9 +15,7 @@ import { FlatSelectRow, FlatSlider, FlatToggle } from "./propertyPanelFlatPrimit
 export function FlatMediaSection({
   projectDir,
   element,
-  // oxlint-disable-next-line no-unused-vars -- wired into the Fit/Position rows in Task 6
   styles,
-  // oxlint-disable-next-line no-unused-vars -- wired into the Fit/Position rows in Task 6
   onSetStyle,
   onSetAttribute,
   onSetHtmlAttribute,
@@ -59,6 +57,8 @@ export function FlatMediaSection({
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
   const hasAudio = element.dataAttributes["has-audio"] === "true";
+  const objectFit = styles["object-fit"] || "contain";
+  const objectPosition = styles["object-position"] || "center";
 
   const srcAttr = el.getAttribute("src") ?? "";
   const [copied, setCopied] = useState(false);
@@ -246,6 +246,34 @@ export function FlatMediaSection({
               }}
             />
           )}
+        </>
+      )}
+      {isVisualMedia && (
+        <>
+          <FlatSelectRow
+            label="Fit"
+            value={objectFit}
+            options={["contain", "cover", "fill", "none", "scale-down"]}
+            tier={objectFit === "contain" ? "default" : "explicitCustom"}
+            onChange={(next) => void onSetStyle("object-fit", next)}
+          />
+          <FlatSelectRow
+            label="Position"
+            value={objectPosition}
+            options={[
+              "center",
+              "top",
+              "bottom",
+              "left",
+              "right",
+              "left top",
+              "right top",
+              "left bottom",
+              "right bottom",
+            ]}
+            tier={objectPosition === "center" ? "default" : "explicitCustom"}
+            onChange={(next) => void onSetStyle("object-position", next)}
+          />
         </>
       )}
     </div>

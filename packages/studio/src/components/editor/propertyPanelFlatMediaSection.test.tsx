@@ -364,3 +364,70 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatMediaSection — fit/position", () => {
+  it("commits object-fit and object-position changes", () => {
+    const onSetStyle = vi.fn();
+    const { host, root } = (() => {
+      const element = makeVideoElement();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <FlatMediaSection
+            projectDir={null}
+            element={element}
+            styles={{ "object-fit": "cover", "object-position": "center" }}
+            onSetStyle={onSetStyle}
+            onSetAttribute={vi.fn()}
+            onSetHtmlAttribute={vi.fn()}
+          />,
+        );
+      });
+      return { host, root };
+    })();
+    const selects = host.querySelectorAll("select");
+    const fitSelect = Array.from(selects).find((s) => s.value === "cover");
+    expect(fitSelect).not.toBeUndefined();
+    act(() => {
+      if (fitSelect) {
+        fitSelect.value = "contain";
+        fitSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("object-fit", "contain");
+    act(() => root.unmount());
+  });
+
+  it("commits an object-position change", () => {
+    const onSetStyle = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{ "object-fit": "cover", "object-position": "center" }}
+          onSetStyle={onSetStyle}
+          onSetAttribute={vi.fn()}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const selects = host.querySelectorAll("select");
+    const positionSelect = Array.from(selects).find((s) => s.value === "center");
+    expect(positionSelect).not.toBeUndefined();
+    act(() => {
+      if (positionSelect) {
+        positionSelect.value = "left top";
+        positionSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("object-position", "left top");
+    act(() => root.unmount());
+  });
+});
