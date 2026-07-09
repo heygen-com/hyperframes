@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -118,6 +118,12 @@ interface StatesInventory {
   items: StateRecord[];
 }
 
+const featureBaselineAvailable =
+  spawnSync("git", ["cat-file", "-e", "96b1dd7beeeea01c637aca2cff2ec94fcc83fe02^{commit}"], {
+    cwd: repoRoot,
+  }).status === 0;
+const frozenSelectionTest = featureBaselineAvailable ? it : it.skip;
+
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
@@ -144,7 +150,13 @@ describe("Operator Black executable scope", () => {
     expect(scope.items).toEqual([...new Set(scope.items)].sort());
   });
 
-  it("matches the reproducible frozen git selection", () => {
+  it("declares whether frozen Git evidence is mandatory in this environment", () => {
+    if (process.env.HF_UI_REQUIRE_FROZEN_BASELINE === "1") {
+      expect(featureBaselineAvailable).toBe(true);
+    }
+  });
+
+  frozenSelectionTest("matches the reproducible frozen git selection", () => {
     const scope = readJson<Scope>(scopePath);
     const addedManifests = execFileSync(
       "git",
