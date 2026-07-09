@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const trackEvent = vi.fn();
+const flush = vi.fn(() => Promise.resolve());
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
+  flush: () => flush(),
 }));
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
@@ -29,6 +31,14 @@ const {
 describe("render telemetry events", () => {
   beforeEach(() => {
     trackEvent.mockClear();
+    flush.mockClear();
+  });
+
+  it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
+    trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
+    expect(flush).toHaveBeenCalledTimes(1);
+    trackRenderError({ fps: 30, quality: "draft", docker: false });
+    expect(flush).toHaveBeenCalledTimes(2);
   });
 
   it("redacts paths and URL query strings from render error messages", () => {
