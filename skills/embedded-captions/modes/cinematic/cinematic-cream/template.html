@@ -202,8 +202,18 @@
             tl.add(wsel, { opacity: 1, y: 0, duration: 450, ease: "outCubic" }, ms(w.start));
           } else {
             tl.add(wsel, { opacity: 0, y: 6, scale: 1.04, duration: 0 }, ms(w.start));
-            tl.add(wsel, { opacity: 1, y: 0, scale: 1.0, duration: 220,
-              ease: "outQuart", transformOrigin: "50% 50%" }, ms(w.start));
+            tl.add(
+              wsel,
+              {
+                opacity: 1,
+                y: 0,
+                scale: 1.0,
+                duration: 220,
+                ease: "outQuart",
+                transformOrigin: "50% 50%",
+              },
+              ms(w.start),
+            );
           }
         });
 

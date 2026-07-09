@@ -533,12 +533,26 @@
           var markY = -MARK_H / 2;
           tl.add(
             markLeft,
-            { opacity: 0, visibility: "hidden", left: leftMarkX(OVL), top: markY, scale: 0.72, duration: 0 },
+            {
+              opacity: 0,
+              visibility: "hidden",
+              left: leftMarkX(OVL),
+              top: markY,
+              scale: 0.72,
+              duration: 0,
+            },
             0,
           );
           tl.add(
             markRight,
-            { opacity: 0, visibility: "hidden", left: rightMarkX(-OVL), top: markY, scale: 0.72, duration: 0 },
+            {
+              opacity: 0,
+              visibility: "hidden",
+              left: rightMarkX(-OVL),
+              top: markY,
+              scale: 0.72,
+              duration: 0,
+            },
             0,
           );
           tl.add("#lockup", { scale: 1, transformOrigin: "50% 50%", duration: 0 }, 0);
@@ -558,8 +572,16 @@
           //     move: a fast launch + long settle (expo.out), and the velocity motion blur
           //     (attached below) smooths the travel so it reads silky, not stiff. Then HOLD
           //     - words fill the reserved center space; the marks don't track each word.
-          tl.add(markLeft, { left: leftMarkX(-OFF_FULL), duration: 300, ease: "outExpo" }, ms(SPLIT));
-          tl.add(markRight, { left: rightMarkX(OFF_FULL), duration: 300, ease: "outExpo" }, ms(SPLIT));
+          tl.add(
+            markLeft,
+            { left: leftMarkX(-OFF_FULL), duration: 300, ease: "outExpo" },
+            ms(SPLIT),
+          );
+          tl.add(
+            markRight,
+            { left: rightMarkX(OFF_FULL), duration: 300, ease: "outExpo" },
+            ms(SPLIT),
+          );
 
           // word reveals - each word eases in with a soft stretch on its onset (the key
           // word on the SURGE). Smooth deceleration (power3.out), NO poppy overshoot.
@@ -586,14 +608,14 @@
 
           // f50 SNAP-CLOSE - 1 frame: words vanish + both brackets teleport back together
           //     (the teleport reads as an impact streak through the motion blur).
-          tl.add(wordEls, { opacity: 0, visibility: "hidden", display: "none", duration: 0 }, ms(CLOSE));
-          tl.add(markLeft, { left: leftMarkX(OVL), duration: 0 }, ms(CLOSE));
-          tl.add(markRight, { left: rightMarkX(-OVL), duration: 0 }, ms(CLOSE));
           tl.add(
-            "#lockup",
-            { scale: [0.9, 1], duration: 220, ease: "outCubic" },
+            wordEls,
+            { opacity: 0, visibility: "hidden", display: "none", duration: 0 },
             ms(CLOSE),
           );
+          tl.add(markLeft, { left: leftMarkX(OVL), duration: 0 }, ms(CLOSE));
+          tl.add(markRight, { left: rightMarkX(-OVL), duration: 0 }, ms(CLOSE));
+          tl.add("#lockup", { scale: [0.9, 1], duration: 220, ease: "outCubic" }, ms(CLOSE));
 
           // SEE-SAW BOUNCE - the welded unit does a damped vertical spring + a building
           // rigid tilt (rotation: +deg = left-spark UP / right-cloud DOWN), beat-synced to
@@ -604,11 +626,31 @@
             B3 = 2.417,
             B4 = 2.625; // f51 f55 f58 f63
           tl.add("#lockup", { translateY: 0, rotate: 0, duration: 0 }, ms(CLOSE));
-          tl.add("#lockup", { translateY: 34, rotate: -3, duration: ms(B1 - CLOSE), ease: "inCubic" }, ms(CLOSE));
-          tl.add("#lockup", { translateY: -64, rotate: 10, duration: ms(B2 - B1), ease: "outQuart" }, ms(B1));
-          tl.add("#lockup", { translateY: -38, rotate: 6, duration: ms(B3 - B2), ease: "inOutCubic" }, ms(B2));
-          tl.add("#lockup", { translateY: -60, rotate: 10.5, duration: ms(B4 - B3), ease: "inOutCubic" }, ms(B3));
-          tl.add("#lockup", { translateY: -56, rotate: 10.5, duration: ms(DUR - B4), ease: "outSine" }, ms(B4));
+          tl.add(
+            "#lockup",
+            { translateY: 34, rotate: -3, duration: ms(B1 - CLOSE), ease: "inCubic" },
+            ms(CLOSE),
+          );
+          tl.add(
+            "#lockup",
+            { translateY: -64, rotate: 10, duration: ms(B2 - B1), ease: "outQuart" },
+            ms(B1),
+          );
+          tl.add(
+            "#lockup",
+            { translateY: -38, rotate: 6, duration: ms(B3 - B2), ease: "inOutCubic" },
+            ms(B2),
+          );
+          tl.add(
+            "#lockup",
+            { translateY: -60, rotate: 10.5, duration: ms(B4 - B3), ease: "inOutCubic" },
+            ms(B3),
+          );
+          tl.add(
+            "#lockup",
+            { translateY: -56, rotate: 10.5, duration: ms(DUR - B4), ease: "outSine" },
+            ms(B4),
+          );
 
           // pin duration, then attach velocity motion blur: the brackets (x: split + snap)
           // and the welded group (y: the ending bounce). MUST be after all tweens.

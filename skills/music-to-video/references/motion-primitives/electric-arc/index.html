@@ -127,11 +127,7 @@
       tl.add(arcs.join(","), { opacity: 1, duration: 40, ease: "steps(1)" }, 600);
       tl.add(arcs.join(","), { opacity: 0.5, duration: 40, ease: "steps(1)" }, 700);
       tl.add(arcs.join(","), { opacity: 1, duration: 40, ease: "steps(1)" }, 780);
-      tl.add(
-        ".arc-flash",
-        { opacity: [0, 1], duration: 60, ease: "steps(1)" },
-        500,
-      );
+      tl.add(".arc-flash", { opacity: [0, 1], duration: 60, ease: "steps(1)" }, 500);
       tl.add(".arc-flash", { opacity: 0, duration: 500, ease: "outCubic" }, 600);
 
       hyperframesAnime.register("main", tl);

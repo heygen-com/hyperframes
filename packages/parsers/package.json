@@ -111,6 +111,12 @@
       "node": "./dist/subCompositionValidity.js",
       "import": "./src/subCompositionValidity.ts",
       "types": "./src/subCompositionValidity.ts"
+    },
+    "./animation-runtime-detection": {
+      "bun": "./src/animationRuntimeDetection.ts",
+      "node": "./dist/animationRuntimeDetection.js",
+      "import": "./src/animationRuntimeDetection.ts",
+      "types": "./src/animationRuntimeDetection.ts"
     }
   },
   "publishConfig": {

@@ -135,7 +135,11 @@
 
       // Initial: all balls collapsed at center
       ["#ballA", "#ballB", "#ballC", "#ballD", "#ballE"].forEach((id) => {
-        tl.add(id, { translateX: "-50%", translateY: "-50%", scale: 0, opacity: 0, duration: 0 }, 0);
+        tl.add(
+          id,
+          { translateX: "-50%", translateY: "-50%", scale: 0, opacity: 0, duration: 0 },
+          0,
+        );
       });
       // Spawn outward
       tl.add(
@@ -227,11 +231,7 @@
       );
 
       // Reveal text behind
-      tl.add(
-        ".hero",
-        { opacity: [0, 1], scale: [0.95, 1], duration: 500, ease: "outQuart" },
-        600,
-      );
+      tl.add(".hero", { opacity: [0, 1], scale: [0.95, 1], duration: 500, ease: "outQuart" }, 600);
 
       hyperframesAnime.register("main", tl);
     </script>

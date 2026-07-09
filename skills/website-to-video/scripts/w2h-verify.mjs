@@ -260,7 +260,10 @@ async function checkPerBeatTimelineCoverage() {
     // inside option objects don't false-match.
     const positions = extractTopLevelPositionArgs(beat.content);
     if (positions.length === 0) {
-      offenders.push({ beat: beat.name, reason: "no timeline events with explicit position found" });
+      offenders.push({
+        beat: beat.name,
+        reason: "no timeline events with explicit position found",
+      });
       continue;
     }
 

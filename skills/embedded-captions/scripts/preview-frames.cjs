@@ -110,7 +110,9 @@ async function shotAt(browser, file, W, H, t) {
     while (Date.now() - t0 < 15000) {
       tlReady = await page.evaluate(() => {
         const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
-        return !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main);
+        return (
+          !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main)
+        );
       });
       if (tlReady) break;
       await new Promise((r) => setTimeout(r, 120));

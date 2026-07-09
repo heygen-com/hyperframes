@@ -99,10 +99,20 @@
       tl.add(".hero", { scale: 0.03, filter: "blur(20px)", opacity: 0, duration: 0 }, 0);
       tl.add(
         ".hero",
-        { scale: [0.03, 1], filter: ["blur(20px)", "blur(0px)"], opacity: [0, 1], duration: 320, ease: "inExpo" },
+        {
+          scale: [0.03, 1],
+          filter: ["blur(20px)", "blur(0px)"],
+          opacity: [0, 1],
+          duration: 320,
+          ease: "inExpo",
+        },
         450,
       );
-      tl.add(".radial-bg", { opacity: [0, 1], scale: [0.4, 1], duration: 320, ease: "inExpo" }, 450);
+      tl.add(
+        ".radial-bg",
+        { opacity: [0, 1], scale: [0.4, 1], duration: 320, ease: "inExpo" },
+        450,
+      );
       tl.add(
         ".speed-lines",
         { opacity: [0, 1], scale: [0.2, 1.4], duration: 320, ease: "inExpo" },
@@ -112,12 +122,22 @@
       tl.add(".hero", { scale: [0.96, 1], duration: 500, ease: "outElastic(1, .55)" }, 850);
       tl.add(
         ".zoom-stage",
-        { translateX: "__raw:amp", translateY: "__raw:amp * 0.5 * (i % 2 ? -1 : 1)", duration: 30, ease: "steps(1)" },
+        {
+          translateX: "__raw:amp",
+          translateY: "__raw:amp * 0.5 * (i % 2 ? -1 : 1)",
+          duration: 30,
+          ease: "steps(1)",
+        },
         0,
       );
       tl.add(
         ".zoom-stage",
-        { translateX: ["__raw:amp", 0], translateY: ["__raw:amp * 0.5 * (i % 2 ? -1 : 1)", 0], duration: 100, ease: "outCubic" },
+        {
+          translateX: ["__raw:amp", 0],
+          translateY: ["__raw:amp * 0.5 * (i % 2 ? -1 : 1)", 0],
+          duration: 100,
+          ease: "outCubic",
+        },
         0,
       );
       tl.add(".speed-lines", { opacity: [1, 0], duration: 400, ease: "outCubic" }, 820);

@@ -71,7 +71,12 @@
       tl.add("#hero", { translateX: 0, filter: "blur(0px)", duration: 0 }, 0);
       tl.add(
         "#hero",
-        { translateX: [0, 1800], filter: ["blur(0px)", "blur(30px)"], duration: 180, ease: "inQuint" },
+        {
+          translateX: [0, 1800],
+          filter: ["blur(0px)", "blur(30px)"],
+          duration: 180,
+          ease: "inQuint",
+        },
         1650,
       );
       hyperframesAnime.register("main", tl);

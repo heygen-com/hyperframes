@@ -90,7 +90,13 @@
       const tl = anime.createTimeline({ autoplay: false });
       tl.add(
         ".cell",
-        { opacity: [0, 1], visibility: ["hidden", "visible"], scale: [0.8, 1], duration: 220, ease: "outBack(1.8)" },
+        {
+          opacity: [0, 1],
+          visibility: ["hidden", "visible"],
+          scale: [0.8, 1],
+          duration: 220,
+          ease: "outBack(1.8)",
+        },
         0,
       );
       tl.add(
@@ -100,7 +106,14 @@
       );
       tl.add(
         ".cell",
-        { opacity: [0.25, 1], visibility: ["visible", "visible"], scale: [1, 1.25], color: "var(--hg-violet-2)", duration: 220, ease: "outBack(2)" },
+        {
+          opacity: [0.25, 1],
+          visibility: ["visible", "visible"],
+          scale: [1, 1.25],
+          color: "var(--hg-violet-2)",
+          duration: 220,
+          ease: "outBack(2)",
+        },
         2320,
       );
       hyperframesAnime.register("main", tl);

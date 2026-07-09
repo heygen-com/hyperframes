@@ -1,4 +1,4 @@
-import { classifyAnimationRuntime } from "@hyperframes/parsers";
+import { classifyAnimationRuntime } from "@hyperframes/parsers/animation-runtime-detection";
 import { applyAnimeSoftReload } from "./animeSoftReload";
 
 type IframeWindow = Window & {

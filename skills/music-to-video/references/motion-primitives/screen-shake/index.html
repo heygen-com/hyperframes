@@ -81,12 +81,22 @@
       tl.add(".impact-bg", { opacity: [1, 0], duration: 600, ease: "inCubic" }, 400);
       tl.add(
         ".shake-stage",
-        { translateX: "__raw:amp", translateY: "__raw:amp * 0.7 * (i % 2 ? -1 : 1)", duration: 30, ease: "steps(1)" },
+        {
+          translateX: "__raw:amp",
+          translateY: "__raw:amp * 0.7 * (i % 2 ? -1 : 1)",
+          duration: 30,
+          ease: "steps(1)",
+        },
         0,
       );
       tl.add(
         ".shake-stage",
-        { translateX: ["__raw:amp", 0], translateY: ["__raw:amp * 0.7 * (i % 2 ? -1 : 1)", 0], duration: 100, ease: "outCubic" },
+        {
+          translateX: ["__raw:amp", 0],
+          translateY: ["__raw:amp * 0.7 * (i % 2 ? -1 : 1)", 0],
+          duration: 100,
+          ease: "outCubic",
+        },
         0,
       );
       hyperframesAnime.register("main", tl);

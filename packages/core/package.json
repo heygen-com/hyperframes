@@ -240,7 +240,13 @@
       "types": "./src/figma/index.ts"
     },
     "./schemas/registry.json": "./schemas/registry.json",
-    "./schemas/registry-item.json": "./schemas/registry-item.json"
+    "./schemas/registry-item.json": "./schemas/registry-item.json",
+    "./ease-map": {
+      "bun": "./src/animation/easeMap.ts",
+      "node": "./dist/animation/easeMap.js",
+      "import": "./src/animation/easeMap.ts",
+      "types": "./src/animation/easeMap.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

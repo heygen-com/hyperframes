@@ -120,7 +120,11 @@
       );
       tl.add(".bg-mid", { scale: [1, 1.4], duration: 1800, ease: "inOutCubic" }, 100);
       tl.add(".bg-near", { scale: [1, 1.2], duration: 1800, ease: "inOutCubic" }, 100);
-      tl.add(".subject", { opacity: [0, 1], scale: [1.1, 1], duration: 600, ease: "outQuart" }, 150);
+      tl.add(
+        ".subject",
+        { opacity: [0, 1], scale: [1.1, 1], duration: 600, ease: "outQuart" },
+        150,
+      );
       tl.add(".layers", { skewY: -0.5, duration: 1800, ease: "inOutCubic" }, 100);
       hyperframesAnime.register("main", tl);
     </script>

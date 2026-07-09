@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { GSAP_TO_ANIME_EASE } from "@hyperframes/core";
+import { GSAP_TO_ANIME_EASE } from "@hyperframes/core/ease-map";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
 

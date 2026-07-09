@@ -509,7 +509,11 @@
           tl.add(cEl, { left: 960 + OFFSCREEN_R, top: 540, opacity: 0, duration: 0 }, 0);
           if (iconEl) {
             tl.add(iconEl, { opacity: 0, duration: 0 }, 0);
-            tl.add(iconEl.querySelector(".icon-glyph"), { scale: 0.4, rotate: -8, opacity: 0, duration: 0 }, 0);
+            tl.add(
+              iconEl.querySelector(".icon-glyph"),
+              { scale: 0.4, rotate: -8, opacity: 0, duration: 0 },
+              0,
+            );
             tl.add(rings, { opacity: 0, scale: 0.4, duration: 0 }, 0);
           }
 
@@ -526,11 +530,7 @@
             }
             tl.add(p._el, { opacity: 1, duration: 10 }, ms(times[0]));
             p._spans.forEach(function (w, i) {
-              tl.add(
-                w,
-                { opacity: 1, duration: ms(WORD_FADE), ease: "outCubic" },
-                ms(times[i]),
-              );
+              tl.add(w, { opacity: 1, duration: ms(WORD_FADE), ease: "outCubic" }, ms(times[i]));
             });
             if (p._grad.length) {
               tl.add(
@@ -543,28 +543,16 @@
                 ms(times[0]),
               );
             }
-            tl.add(
-              p._el,
-              { opacity: 0, duration: ms(CUT), ease: "inCubic" },
-              ms(p.out - CUT),
-            );
+            tl.add(p._el, { opacity: 0, duration: ms(CUT), ease: "inCubic" }, ms(p.out - CUT));
           });
 
           // climax slide-in
-          tl.add(
-            cEl,
-            { left: 960, opacity: 1, duration: ms(SLIDE), ease: "outQuart" },
-            ms(C.in),
-          );
+          tl.add(cEl, { left: 960, opacity: 1, duration: ms(SLIDE), ease: "outQuart" }, ms(C.in));
 
           // icon pop + ring
           if (iconEl) {
             var glyph = iconEl.querySelector(".icon-glyph");
-            tl.add(
-              iconEl,
-              { opacity: 1, duration: 300, ease: "outQuart" },
-              ms(C.iconAt),
-            );
+            tl.add(iconEl, { opacity: 1, duration: 300, ease: "outQuart" }, ms(C.iconAt));
             tl.add(
               glyph,
               {
@@ -576,11 +564,7 @@
               },
               ms(C.iconAt + 0.05),
             );
-            tl.add(
-              glyph,
-              { rotate: 13, duration: 100, ease: "outCubic" },
-              ms(C.iconAt + 0.4),
-            );
+            tl.add(glyph, { rotate: 13, duration: 100, ease: "outCubic" }, ms(C.iconAt + 0.4));
             tl.add(
               glyph,
               { rotate: 0, duration: 850, ease: "outElastic(1, .25)" },

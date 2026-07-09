@@ -115,17 +115,9 @@
         },
         370,
       );
-      tl.add(
-        ".flash",
-        { opacity: [0, 0.85], duration: 60, ease: "outQuint" },
-        250,
-      );
+      tl.add(".flash", { opacity: [0, 0.85], duration: 60, ease: "outQuint" }, 250);
       tl.add(".flash", { opacity: 0, duration: 350, ease: "inQuart" }, 310);
-      tl.add(
-        ".glow-ring",
-        { scale: 1.45, opacity: 0.4, duration: 1000, ease: "outCubic" },
-        550,
-      );
+      tl.add(".glow-ring", { scale: 1.45, opacity: 0.4, duration: 1000, ease: "outCubic" }, 550);
 
       hyperframesAnime.register("main", tl);
     </script>

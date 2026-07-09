@@ -248,7 +248,11 @@
         // and lock, holding to the end. Without one: the last word just holds (locks).
         if (HAS_RESOLVE) {
           if (prev) {
-            tl.add(prev, { opacity: 0, visibility: "hidden", duration: 0 }, Math.round(BEAT.flipEnd * 1000)); // clear the flicker
+            tl.add(
+              prev,
+              { opacity: 0, visibility: "hidden", duration: 0 },
+              Math.round(BEAT.flipEnd * 1000),
+            ); // clear the flicker
           }
           var prevR = null;
           for (var r = 0; r < resolveNodes.length; r++) {

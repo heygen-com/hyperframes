@@ -323,14 +323,18 @@
             tl.add(words[i], { opacity: 1, y: 0, duration: 420, ease: "outCubic" }, ms(w.start));
           } else {
             tl.add(words[i], { opacity: 0, y: 6, scale: 1.04, duration: 0 }, ms(w.start));
-            tl.add(words[i], {
-              opacity: 1,
-              y: 0,
-              scale: 1.0,
-              duration: 220,
-              ease: "outQuart",
-              transformOrigin: "50% 50%",
-            }, ms(w.start));
+            tl.add(
+              words[i],
+              {
+                opacity: 1,
+                y: 0,
+                scale: 1.0,
+                duration: 220,
+                ease: "outQuart",
+                transformOrigin: "50% 50%",
+              },
+              ms(w.start),
+            );
           }
         });
 

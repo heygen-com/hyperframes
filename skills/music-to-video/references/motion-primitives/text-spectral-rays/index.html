@@ -304,7 +304,11 @@
         // then fades for a clean loop.
         tl.add(state, { progress: 0, effectMix: 0, duration: 0 }, 0);
         tl.add(state, { effectMix: 1, duration: 450, ease: "outQuart", onUpdate: render }, 150);
-        tl.add(state, { progress: 1, duration: 3400 / speed, ease: "linear", onUpdate: render }, 200);
+        tl.add(
+          state,
+          { progress: 1, duration: 3400 / speed, ease: "linear", onUpdate: render },
+          200,
+        );
         tl.add(state, { effectMix: 0, duration: 400, ease: "inCubic", onUpdate: render }, 3600);
 
         registerTimeline();

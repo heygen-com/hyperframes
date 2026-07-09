@@ -255,9 +255,39 @@
         lenC = conn.getTotalLength() || 220;
       const full = CFG.mode === "full";
       tl.add("#wash", { opacity: 0, visibility: "hidden", duration: 0 }, 0);
-      tl.add(ra, { strokeDasharray: lenA, strokeDashoffset: lenA, opacity: 0, visibility: "hidden", duration: 0 }, 0);
-      tl.add(rb, { strokeDasharray: lenB, strokeDashoffset: lenB, opacity: 0, visibility: "hidden", duration: 0 }, 0);
-      tl.add(conn, { strokeDasharray: lenC, strokeDashoffset: lenC, opacity: 0, visibility: "hidden", duration: 0 }, 0);
+      tl.add(
+        ra,
+        {
+          strokeDasharray: lenA,
+          strokeDashoffset: lenA,
+          opacity: 0,
+          visibility: "hidden",
+          duration: 0,
+        },
+        0,
+      );
+      tl.add(
+        rb,
+        {
+          strokeDasharray: lenB,
+          strokeDashoffset: lenB,
+          opacity: 0,
+          visibility: "hidden",
+          duration: 0,
+        },
+        0,
+      );
+      tl.add(
+        conn,
+        {
+          strokeDasharray: lenC,
+          strokeDashoffset: lenC,
+          opacity: 0,
+          visibility: "hidden",
+          duration: 0,
+        },
+        0,
+      );
       tl.add("#callout", { opacity: 0, visibility: "hidden", scale: 0.6, duration: 0 }, 0);
       tl.add("#scan", { opacity: 0, visibility: "hidden", duration: 0 }, 0);
       tl.add(".tick", { opacity: 0, visibility: "hidden", duration: 0 }, 0);

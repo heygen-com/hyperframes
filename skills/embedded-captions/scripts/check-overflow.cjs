@@ -108,7 +108,10 @@ async function main() {
         if (
           await page.evaluate(() => {
             const animeEntry = window.hyperframesAnime && window.hyperframesAnime.get("main");
-            return !!(animeEntry && animeEntry.instance) || !!(window.__timelines && window.__timelines.main);
+            return (
+              !!(animeEntry && animeEntry.instance) ||
+              !!(window.__timelines && window.__timelines.main)
+            );
           })
         )
           return true;

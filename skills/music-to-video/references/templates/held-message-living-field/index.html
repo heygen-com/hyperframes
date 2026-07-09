@@ -380,27 +380,23 @@
         // ── 4. Deterministic timeline (unchanged motion design) ───────────
         var tl = anime.createTimeline({ autoplay: false });
 
-        tl.add(uniforms.uTime, { value: 12.0, duration: 12000, ease: "linear", onUpdate: renderFrame }, 0);
+        tl.add(
+          uniforms.uTime,
+          { value: 12.0, duration: 12000, ease: "linear", onUpdate: renderFrame },
+          0,
+        );
 
         tl.add(uniforms.uIntensity, { value: 0.55, duration: 3000, ease: "inOutSine" }, 0);
         tl.add(uniforms.uIntensity, { value: 1.0, duration: 1200, ease: "inCubic" }, 3000);
         tl.add(uniforms.uIntensity, { value: 0.55, duration: 3000, ease: "outCubic" }, 4200);
         tl.add(uniforms.uIntensity, { value: 0.3, duration: 4800, ease: "inOutSine" }, 7200);
 
-        tl.add(
-          uniforms.uChromAb,
-          { value: [0.0, 0.4], duration: 3000, ease: "inSine" },
-          0,
-        );
+        tl.add(uniforms.uChromAb, { value: [0.0, 0.4], duration: 3000, ease: "inSine" }, 0);
         tl.add(uniforms.uChromAb, { value: 1.6, duration: 1000, ease: "inQuart" }, 3000);
         tl.add(uniforms.uChromAb, { value: 0.25, duration: 1500, ease: "outCubic" }, 4000);
         tl.add(uniforms.uChromAb, { value: 0.18, duration: 6500, ease: "inOutSine" }, 5500);
 
-        tl.add(
-          uniforms.uReveal,
-          { value: [0.0, 1.0], duration: 1200, ease: "linear" },
-          3400,
-        );
+        tl.add(uniforms.uReveal, { value: [0.0, 1.0], duration: 1200, ease: "linear" }, 3400);
         tl.add(uniforms.uReveal, { value: 0.0, duration: 0 }, 4600);
 
         tl.add(uniforms.uPhase, { value: 0.6, duration: 5000, ease: "inOutSine" }, 1500);

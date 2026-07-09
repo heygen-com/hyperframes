@@ -9,6 +9,7 @@ export default defineConfig({
     gsapWriterAcorn: "src/gsapWriterAcorn.ts",
     gsapConstants: "src/gsapConstants.ts",
     animejsParserAcorn: "src/animejsParserAcorn.ts",
+    animationRuntimeDetection: "src/animationRuntimeDetection.ts",
     animejsWriterAcorn: "src/animejsWriterAcorn.ts",
     animejsConstants: "src/animejsConstants.ts",
     springEase: "src/springEase.ts",

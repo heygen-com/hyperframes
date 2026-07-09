@@ -99,14 +99,23 @@
         border-radius: 4px;
       }
     </style>
-      <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
   </head>
   <body>
-    <div id="main" class="stage" data-composition-id="main" data-start="0" data-duration="1" data-width="1920" data-height="1080" data-track-index="0">
+    <div
+      id="main"
+      class="stage"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="1"
+      data-width="1920"
+      data-height="1080"
+      data-track-index="0"
+    >
       <div class="region video-region"><span class="label">VIDEO · 1920×562 (top 52%)</span></div>
       <div class="region card-region"><span class="label">CARD · 1920×518 (bottom 48%)</span></div>
     </div>
-      <script>
+    <script>
       const tl = anime.createTimeline({ autoplay: false });
       tl.add("#main", { opacity: [1, 1], duration: 1, ease: "linear" }, 0);
       hyperframesAnime.register("main", tl);

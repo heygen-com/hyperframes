@@ -72,7 +72,13 @@
       const tl = anime.createTimeline({ autoplay: false });
       tl.add(
         "#hero",
-        { filter: ["blur(36px)", "blur(0px)"], scale: [1.08, 1], opacity: [0.25, 1], duration: 700, ease: "outCubic" },
+        {
+          filter: ["blur(36px)", "blur(0px)"],
+          scale: [1.08, 1],
+          opacity: [0.25, 1],
+          duration: 700,
+          ease: "outCubic",
+        },
         50,
       );
       tl.add(

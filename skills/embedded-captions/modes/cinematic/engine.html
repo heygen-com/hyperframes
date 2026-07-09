@@ -126,25 +126,25 @@
       const tl = anime.createTimeline({ autoplay: false });
       const ms = (seconds) => Math.max(0, Math.round((Number(seconds) || 0) * 1000));
       const EASES = {
-        "none": "linear",
-        "inQuad": "inQuad",
-        "outQuad": "outQuad",
-        "inOutQuad": "inOutQuad",
-        "inCubic": "inCubic",
-        "outCubic": "outCubic",
-        "inOutCubic": "inOutCubic",
-        "inQuart": "inQuart",
-        "outQuart": "outQuart",
-        "inOutQuart": "inOutQuart",
-        "inQuint": "inQuint",
-        "outQuint": "outQuint",
-        "inOutQuint": "inOutQuint",
+        none: "linear",
+        inQuad: "inQuad",
+        outQuad: "outQuad",
+        inOutQuad: "inOutQuad",
+        inCubic: "inCubic",
+        outCubic: "outCubic",
+        inOutCubic: "inOutCubic",
+        inQuart: "inQuart",
+        outQuart: "outQuart",
+        inOutQuart: "inOutQuart",
+        inQuint: "inQuint",
+        outQuint: "outQuint",
+        inOutQuint: "inOutQuint",
         "expo.in": "inExpo",
-        "outExpo": "outExpo",
+        outExpo: "outExpo",
         "expo.inOut": "inOutExpo",
         "sine.in": "inSine",
         "sine.out": "outSine",
-        "inOutSine": "inOutSine",
+        inOutSine: "inOutSine",
         "back.in": "inBack(1.70158)",
         "back.out": "outBack(1.70158)",
         "back.inOut": "inOutBack(1.70158)",
@@ -191,7 +191,9 @@
       const MOTION = parseJsonPlaceholder(String.raw`{{MOTION_JSON}}`, {});
       const HEROES = parseJsonPlaceholder(String.raw`{{HEROES_JSON}}`, []);
       const HERO_IDS = {};
-      HEROES.forEach(function (h) { HERO_IDS[h.id] = true; });
+      HEROES.forEach(function (h) {
+        HERO_IDS[h.id] = true;
+      });
 
       /* ── word entrance: the DNA's motion grammar ─────────────────────────
          Each tone = {y, x, blur, scale, rot, dur, ease} or {reveal:"burn"}.
@@ -199,7 +201,10 @@
          filter tween on the word span only (the container's depth-match filter
          is a separate element - no conflict, no reflow). */
       function wordReveal(wsel, m, at, idx) {
-        if (m.reveal === "burn") { setAt(wsel, { opacity: 1 }, at); return; }
+        if (m.reveal === "burn") {
+          setAt(wsel, { opacity: 1 }, at);
+          return;
+        }
         if (m.reveal === "flicker") {
           /* neon tube igniting, deterministic on/off pattern, phase-shifted by word
              index so a line of words doesn't strobe in unison */
@@ -211,15 +216,42 @@
           setAt(wsel, { opacity: 1 }, at + 0.152 + o);
           return;
         }
-        var from = { opacity: 0 }, to = { opacity: 1, duration: m.dur || 0.4,
-          ease: m.ease || "outCubic", overwrite: "auto", transformOrigin: "50% 70%" };
-        if (m.y) { from.y = m.y; to.y = 0; }
-        if (m.x) { from.x = m.x; to.x = 0; }
-        if (m.scale && m.scale !== 1) { from.scale = m.scale; to.scale = 1; }
-        if (m.stretchX && m.stretchX !== 1) { from.scaleX = m.stretchX; to.scaleX = 1; }
-        if (m.skewX) { from.skewX = m.skewX; to.skewX = 0; }
-        if (m.rot) { from.rotation = ((idx % 2) ? 1 : -1) * m.rot; to.rotation = 0; }
-        if (m.blur) { from.filter = "blur(" + m.blur + "px)"; to.filter = "blur(0px)"; }
+        var from = { opacity: 0 },
+          to = {
+            opacity: 1,
+            duration: m.dur || 0.4,
+            ease: m.ease || "outCubic",
+            overwrite: "auto",
+            transformOrigin: "50% 70%",
+          };
+        if (m.y) {
+          from.y = m.y;
+          to.y = 0;
+        }
+        if (m.x) {
+          from.x = m.x;
+          to.x = 0;
+        }
+        if (m.scale && m.scale !== 1) {
+          from.scale = m.scale;
+          to.scale = 1;
+        }
+        if (m.stretchX && m.stretchX !== 1) {
+          from.scaleX = m.stretchX;
+          to.scaleX = 1;
+        }
+        if (m.skewX) {
+          from.skewX = m.skewX;
+          to.skewX = 0;
+        }
+        if (m.rot) {
+          from.rotation = (idx % 2 ? 1 : -1) * m.rot;
+          to.rotation = 0;
+        }
+        if (m.blur) {
+          from.filter = "blur(" + m.blur + "px)";
+          to.filter = "blur(0px)";
+        }
         addFromTo(wsel, from, to, at);
       }
 
@@ -248,10 +280,17 @@
            reveal (slide-title idiom), wiping an empty container reads as nothing. */
         if (LINE_REVEAL && LINE_REVEAL.type === "wipe-x") {
           setAt(sel + " .w", { opacity: 1 }, Math.max(0, g.in - 0.01));
-          addFromTo(sel, { clipPath: "inset(0% 100% 0% 0%)" },
-            { clipPath: "inset(0% 0% 0% 0%)", duration: LINE_REVEAL.dur || 0.4,
-              ease: LINE_REVEAL.ease || "outExpo", overwrite: "auto" },
-            Math.max(0, g.in - 0.01));
+          addFromTo(
+            sel,
+            { clipPath: "inset(0% 100% 0% 0%)" },
+            {
+              clipPath: "inset(0% 0% 0% 0%)",
+              duration: LINE_REVEAL.dur || 0.4,
+              ease: LINE_REVEAL.ease || "outExpo",
+              overwrite: "auto",
+            },
+            Math.max(0, g.in - 0.01),
+          );
         } else {
           g.words.forEach(function (w, i) {
             wordReveal(sel + " .w[data-i='" + i + "']", m, w.start, i);
@@ -263,7 +302,12 @@
         var rank = mates.indexOf(g.id);
         var lead = (EXIT.stagger || 0) * (mates.length - 1 - rank);
         var exitAt = Math.max(g.in + 0.1, g.out - (EXIT.dur || 0.5) - lead);
-        var to = { opacity: 0, duration: EXIT.dur || 0.5, ease: EXIT.ease || "inCubic", overwrite: "auto" };
+        var to = {
+          opacity: 0,
+          duration: EXIT.dur || 0.5,
+          ease: EXIT.ease || "inCubic",
+          overwrite: "auto",
+        };
         if (EXIT.y) to.y = EXIT.y;
         if (EXIT.x) to.x = EXIT.x;
         if (EXIT.scale && EXIT.scale !== 1) to.scale = EXIT.scale;
@@ -275,7 +319,9 @@
       HEROES.forEach(function (HERO) {
         var hsel = "#" + HERO.id;
         var gsel = "#" + HERO.id + "-glow";
-        var hg = GROUPS.filter(function (g) { return g.id === HERO.id; })[0];
+        var hg = GROUPS.filter(function (g) {
+          return g.id === HERO.id;
+        })[0];
         var amp = HERO.amp || 1;
 
         /* act 1, SETUP: co-visible groups yield (dim) just before the hero lands.
@@ -285,8 +331,11 @@
           GROUPS.forEach(function (g) {
             if (g.id === HERO.id) return;
             if (g.in < HERO.in && g.out > HERO.in) {
-              addTo("#" + g.id, { opacity: HERO.dimOthers, duration: 0.3, ease: "outCubic", overwrite: "auto" },
-                    Math.max(0, HERO.in - 0.35));
+              addTo(
+                "#" + g.id,
+                { opacity: HERO.dimOthers, duration: 0.3, ease: "outCubic", overwrite: "auto" },
+                Math.max(0, HERO.in - 0.35),
+              );
             }
           });
         }
@@ -295,20 +344,48 @@
 
         /* act 2, IMPACT: container entrance (amplitude ∝ spoken loudness) */
         if (HERO.entrance === "settle") {
-          addFromTo(hsel, { scale: 1 + 0.10 * amp },
-            { scale: 1, duration: 0.50, ease: "outExpo", transformOrigin: "50% 60%", overwrite: "auto" }, HERO.in);
+          addFromTo(
+            hsel,
+            { scale: 1 + 0.1 * amp },
+            {
+              scale: 1,
+              duration: 0.5,
+              ease: "outExpo",
+              transformOrigin: "50% 60%",
+              overwrite: "auto",
+            },
+            HERO.in,
+          );
         } else if (HERO.entrance === "slam") {
           /* percussion: ONE unit, violent snap, geometry locks in 0.16s; heat comes after */
-          addFromTo(hsel, { scale: 1 + 0.22 * amp },
-            { scale: 1, duration: 0.16, ease: "outBack(2.2)", transformOrigin: "50% 55%", overwrite: "auto" }, HERO.in);
+          addFromTo(
+            hsel,
+            { scale: 1 + 0.22 * amp },
+            {
+              scale: 1,
+              duration: 0.16,
+              ease: "outBack(2.2)",
+              transformOrigin: "50% 55%",
+              overwrite: "auto",
+            },
+            HERO.in,
+          );
         } else if (HERO.entrance === "rise") {
-          addFromTo(hsel, { y: 22 * amp },
-            { y: 0, duration: 0.60, ease: "outCubic", overwrite: "auto" }, HERO.in);
+          addFromTo(
+            hsel,
+            { y: 22 * amp },
+            { y: 0, duration: 0.6, ease: "outCubic", overwrite: "auto" },
+            HERO.in,
+          );
         } else if (HERO.entrance === "wipe-up") {
           /* surgical slide-title reveal, clip-path only (not a transform: can't
              collide with the afterglow scale channel), bottom-up behind the subject */
-          addFromTo(hsel, { clipPath: "inset(100% 0% 0% 0%)" },
-            { clipPath: "inset(0% 0% 0% 0%)", duration: 0.45, ease: "outExpo", overwrite: "auto" }, HERO.in);
+          addFromTo(
+            hsel,
+            { clipPath: "inset(100% 0% 0% 0%)" },
+            { clipPath: "inset(0% 0% 0% 0%)", duration: 0.45, ease: "outExpo", overwrite: "auto" },
+            HERO.in,
+          );
         } else if (HERO.entrance === "flicker-on") {
           /* neon sign powering up, deterministic strobe, then steady */
           setAt(hsel, { opacity: 1 }, HERO.in);
@@ -316,14 +393,48 @@
           setAt(hsel, { opacity: 1 }, HERO.in + 0.095);
           setAt(hsel, { opacity: 0.4 }, HERO.in + 0.14);
           setAt(hsel, { opacity: 1 }, HERO.in + 0.19);
-          addFromTo(hsel, { scale: 1.03 }, { scale: 1, duration: 0.4, ease: "outCubic", overwrite: "auto", transformOrigin: "50% 55%" }, HERO.in + 0.19);
+          addFromTo(
+            hsel,
+            { scale: 1.03 },
+            {
+              scale: 1,
+              duration: 0.4,
+              ease: "outCubic",
+              overwrite: "auto",
+              transformOrigin: "50% 55%",
+            },
+            HERO.in + 0.19,
+          );
         } else if (HERO.entrance === "streak") {
           /* speed pass, slides in along its own motion blur (skew rides the velocity) */
-          addFromTo(hsel, { x: -90 * amp, skewX: -12, opacity: 0 },
-            { x: 0, skewX: 0, opacity: 1, duration: 0.28, ease: "outExpo", overwrite: "auto", transformOrigin: "50% 80%" }, HERO.in);
-        } else { /* emergence, grows out from behind the subject */
-          addFromTo(hsel, { scale: Math.max(0.74, 1 - 0.18 * amp) },
-            { scale: 1, duration: 0.55, ease: "outExpo", transformOrigin: "50% 62%", overwrite: "auto" }, HERO.in);
+          addFromTo(
+            hsel,
+            { x: -90 * amp, skewX: -12, opacity: 0 },
+            {
+              x: 0,
+              skewX: 0,
+              opacity: 1,
+              duration: 0.28,
+              ease: "outExpo",
+              overwrite: "auto",
+              transformOrigin: "50% 80%",
+            },
+            HERO.in,
+          );
+        } else {
+          /* emergence, grows out from behind the subject */
+          addFromTo(
+            hsel,
+            { scale: Math.max(0.74, 1 - 0.18 * amp) },
+            {
+              scale: 1,
+              duration: 0.55,
+              ease: "outExpo",
+              transformOrigin: "50% 62%",
+              overwrite: "auto",
+            },
+            HERO.in,
+          );
         }
 
         /* impact ripple (loud): the hero's landing bumps every co-visible caption,
@@ -332,8 +443,16 @@
           GROUPS.forEach(function (g) {
             if (g.id === HERO.id) return;
             if (g.in < HERO.in && g.out > HERO.in + 0.3) {
-              addTo("#" + g.id, { y: HERO.ripple, duration: 0.07, ease: "outCubic", overwrite: "auto" }, HERO.in + 0.04);
-              addTo("#" + g.id, { y: 0, duration: 0.20, ease: "outCubic", overwrite: "auto" }, HERO.in + 0.11);
+              addTo(
+                "#" + g.id,
+                { y: HERO.ripple, duration: 0.07, ease: "outCubic", overwrite: "auto" },
+                HERO.in + 0.04,
+              );
+              addTo(
+                "#" + g.id,
+                { y: 0, duration: 0.2, ease: "outCubic", overwrite: "auto" },
+                HERO.in + 0.11,
+              );
             }
           });
         }
@@ -346,8 +465,18 @@
             var letters = document.querySelectorAll(wsel + " .l");
             for (var li = 0; li < letters.length; li++) {
               var lf = { opacity: 0, y: "0.16em", scale: 1.05 };
-              var lt = { opacity: 1, y: 0, scale: 1, duration: 0.30, ease: "outQuint", overwrite: "auto" };
-              if (HERO.letterBlur) { lf.filter = "blur(" + HERO.letterBlur + "px)"; lt.filter = "blur(0px)"; }
+              var lt = {
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                duration: 0.3,
+                ease: "outQuint",
+                overwrite: "auto",
+              };
+              if (HERO.letterBlur) {
+                lf.filter = "blur(" + HERO.letterBlur + "px)";
+                lt.filter = "blur(0px)";
+              }
               addFromTo(letters[li], lf, lt, w.start + li * (HERO.letterStagger || 0.014));
             }
           } else {
@@ -361,10 +490,22 @@
           var glowAt = HERO.in + (HERO.entrance === "slam" ? 0.17 : 0.08);
           var glowPeak = Math.min(0.5, HERO.glow * amp) * (HERO.minor ? 0.5 : 1);
           setAt(gsel + " .w", { opacity: 1 }, Math.max(0, HERO.in - 0.01));
-          addFromTo(gsel, { opacity: 0 },
-            { opacity: glowPeak, duration: HERO.entrance === "slam" ? 0.3 : 0.5, ease: "outCubic", overwrite: "auto" },
-            glowAt);
-          addTo(gsel, { opacity: 0, duration: 0.5, ease: "inCubic", overwrite: "auto" }, HERO.out - 0.5);
+          addFromTo(
+            gsel,
+            { opacity: 0 },
+            {
+              opacity: glowPeak,
+              duration: HERO.entrance === "slam" ? 0.3 : 0.5,
+              ease: "outCubic",
+              overwrite: "auto",
+            },
+            glowAt,
+          );
+          addTo(
+            gsel,
+            { opacity: 0, duration: 0.5, ease: "inCubic", overwrite: "auto" },
+            HERO.out - 0.5,
+          );
           setAt(gsel, { opacity: 0, display: "none" }, HERO.out);
         }
 
@@ -374,11 +515,24 @@
           HERO.echoes.forEach(function (ec, k) {
             var esel = "#" + HERO.id + "-echo-" + k;
             setAt(esel + " .w", { opacity: 1 }, Math.max(0, HERO.in - 0.01));
-            addFromTo(esel,
+            addFromTo(
+              esel,
               { x: (ec.dx || 0) * 4, y: (ec.dy || 0) * 4, opacity: 0 },
-              { x: ec.dx || 0, y: ec.dy || 0, opacity: ec.opacity != null ? ec.opacity : 0.5,
-                duration: 0.22, ease: "outQuint", overwrite: "auto" }, HERO.in);
-            addTo(esel, { opacity: 0, duration: 0.4, ease: "inCubic", overwrite: "auto" }, HERO.out - 0.45);
+              {
+                x: ec.dx || 0,
+                y: ec.dy || 0,
+                opacity: ec.opacity != null ? ec.opacity : 0.5,
+                duration: 0.22,
+                ease: "outQuint",
+                overwrite: "auto",
+              },
+              HERO.in,
+            );
+            addTo(
+              esel,
+              { opacity: 0, duration: 0.4, ease: "inCubic", overwrite: "auto" },
+              HERO.out - 0.45,
+            );
             setAt(esel, { opacity: 0, display: "none" }, HERO.out);
           });
         }
@@ -387,9 +541,17 @@
            Targets the .w spans (the gradient lives there, see wordCss). Starts as the
            entrance settles so the specular hit is visible early in the hold. */
         if (HERO.sheen && HERO.out - HERO.in > 0.9) {
-          addFromTo(hsel + " .w", { backgroundPosition: "0% 50%" },
-            { backgroundPosition: "200% 50%", duration: Math.min(1.2, HERO.out - HERO.in - 0.5),
-              ease: "inOutQuad", overwrite: "auto" }, HERO.in + 0.22);
+          addFromTo(
+            hsel + " .w",
+            { backgroundPosition: "0% 50%" },
+            {
+              backgroundPosition: "200% 50%",
+              duration: Math.min(1.2, HERO.out - HERO.in - 0.5),
+              ease: "inOutQuad",
+              overwrite: "auto",
+            },
+            HERO.in + 0.22,
+          );
         }
 
         /* act 3, AFTERGLOW: ONE slow scale tween (no loops, deterministic).
@@ -398,14 +560,26 @@
            so the afterglow scale channel is always free by now. */
         var after = HERO.loom > 0 ? HERO.loom : HERO.breathe;
         if (!HERO.minor && after > 0 && HERO.out - HERO.in > 1.4) {
-          addFromTo(hsel, { scale: 1 },
-            { scale: 1 + after, duration: HERO.out - HERO.in - 1.2, ease: HERO.loom > 0 ? "inOutQuad" : "inOutSine", overwrite: "auto" },
-            HERO.in + 0.7);
+          addFromTo(
+            hsel,
+            { scale: 1 },
+            {
+              scale: 1 + after,
+              duration: HERO.out - HERO.in - 1.2,
+              ease: HERO.loom > 0 ? "inOutQuad" : "inOutSine",
+              overwrite: "auto",
+            },
+            HERO.in + 0.7,
+          );
         }
 
         /* exit */
         if (HERO.out < DUR) {
-          addTo(hsel, { opacity: 0, duration: 0.5, ease: "inCubic", overwrite: "auto" }, HERO.out - 0.5);
+          addTo(
+            hsel,
+            { opacity: 0, duration: 0.5, ease: "inCubic", overwrite: "auto" },
+            HERO.out - 0.5,
+          );
         }
         setAt(hsel, { opacity: 0, display: "none" }, HERO.out);
       });

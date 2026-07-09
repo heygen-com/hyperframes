@@ -395,10 +395,21 @@
 
         // rest pose: lockup leans at BASE_TILT, box leans extra, all content hidden.
         tl.add(lockupEl, { rotate: BASE_TILT, duration: 0 }, 0);
-        tl.add(slotbox, { rotate: BOX_TILT, opacity: 0, visibility: "hidden", scale: 0.86, duration: 0 }, 0);
+        tl.add(
+          slotbox,
+          { rotate: BOX_TILT, opacity: 0, visibility: "hidden", scale: 0.86, duration: 0 },
+          0,
+        );
         tl.add(
           anchorEls,
-          { opacity: 0, visibility: "hidden", translateY: 18, scale: 0.9, scaleX: 0.9, duration: 0 },
+          {
+            opacity: 0,
+            visibility: "hidden",
+            translateY: 18,
+            scale: 0.9,
+            scaleX: 0.9,
+            duration: 0,
+          },
           0,
         );
         allSlotLines.forEach(function (el, i) {

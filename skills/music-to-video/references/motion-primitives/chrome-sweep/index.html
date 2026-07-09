@@ -82,7 +82,11 @@
     </div>
     <script>
       const tl = anime.createTimeline({ autoplay: false });
-      tl.add(".chrome", { opacity: [0, 1], scale: [0.96, 1], duration: 300, ease: "outQuart" }, 200);
+      tl.add(
+        ".chrome",
+        { opacity: [0, 1], scale: [0.96, 1], duration: 300, ease: "outQuart" },
+        200,
+      );
       tl.add(
         ".chrome",
         { backgroundPosition: ["200% 0", "-100% 0"], duration: 1400, ease: "inOutCubic" },

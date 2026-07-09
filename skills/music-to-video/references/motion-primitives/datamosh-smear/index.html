@@ -156,11 +156,7 @@
       });
 
       // Scan noise pulses
-      tl.add(
-        ".scan-noise",
-        { opacity: [0, 1], duration: 60, ease: "steps(1)" },
-        200,
-      );
+      tl.add(".scan-noise", { opacity: [0, 1], duration: 60, ease: "steps(1)" }, 200);
       tl.add(".scan-noise", { opacity: 0.25, duration: 800, ease: "outCubic" }, 600);
 
       hyperframesAnime.register("main", tl);

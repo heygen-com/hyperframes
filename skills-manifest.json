@@ -2,7 +2,7 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "embedded-captions": {
-      "hash": "d1e0f77984f45275",
+      "hash": "b591c11122c5a120",
       "files": 144
     },
     "faceless-explainer": {
@@ -50,11 +50,11 @@
       "files": 103
     },
     "motion-graphics": {
-      "hash": "442084adb90b49de",
+      "hash": "8f86a4fba59e019d",
       "files": 23
     },
     "music-to-video": {
-      "hash": "642587b5e23a7594",
+      "hash": "9cd562c6f2710217",
       "files": 131
     },
     "pr-to-video": {
@@ -74,11 +74,11 @@
       "files": 2
     },
     "talking-head-recut": {
-      "hash": "4aa536387cb15280",
+      "hash": "727c4b07888f5081",
       "files": 27
     },
     "website-to-video": {
-      "hash": "5b176e6dd7b05ef8",
+      "hash": "67f6bfb6821548c7",
       "files": 32
     }
   }

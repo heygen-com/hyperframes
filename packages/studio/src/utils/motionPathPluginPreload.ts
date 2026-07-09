@@ -1,4 +1,4 @@
-import { classifyAnimationRuntime } from "@hyperframes/parsers";
+import { classifyAnimationRuntime } from "@hyperframes/parsers/animation-runtime-detection";
 import { ensureMotionPathPluginLoaded } from "./gsapSoftReload";
 
 type MotionPathPreloadWindow = Window & {

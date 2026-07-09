@@ -363,7 +363,11 @@
           // per-card transition duration derived from the gap into it (faster as we accelerate).
           function transDurMs(i) {
             var gapMs =
-              i === 0 ? (N > 1 ? LANDED_MS[1] - LANDED_MS[0] : 400) : LANDED_MS[i] - LANDED_MS[i - 1];
+              i === 0
+                ? N > 1
+                  ? LANDED_MS[1] - LANDED_MS[0]
+                  : 400
+                : LANDED_MS[i] - LANDED_MS[i - 1];
             return Math.max(120, Math.min(420, gapMs * 0.32));
           }
 

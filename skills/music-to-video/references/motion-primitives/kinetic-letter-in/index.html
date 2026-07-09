@@ -79,10 +79,20 @@
       const tl = anime.createTimeline({ autoplay: false });
       tl.add(
         ".char",
-        { translateY: [80, 0], opacity: [0, 1], duration: 550, ease: "outBack(2)", delay: anime.stagger(45) },
+        {
+          translateY: [80, 0],
+          opacity: [0, 1],
+          duration: 550,
+          ease: "outBack(2)",
+          delay: anime.stagger(45),
+        },
         50,
       );
-      tl.add(".char", { translateX: "__raw:(i) => (i - 3) * 22.4", duration: 600, ease: "outCubic" }, 700);
+      tl.add(
+        ".char",
+        { translateX: "__raw:(i) => (i - 3) * 22.4", duration: 600, ease: "outCubic" },
+        700,
+      );
       hyperframesAnime.register("main", tl);
     </script>
   </body>
