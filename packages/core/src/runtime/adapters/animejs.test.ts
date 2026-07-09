@@ -181,6 +181,28 @@ describe("animejs adapter", () => {
 
       expect(renderedState).toBe(fromState);
     });
+
+    it("does not strand a visibility-only set from priming at frame zero", () => {
+      document.body.innerHTML = '<div id="card"></div>';
+      const card = document.getElementById("card");
+      expect(card).not.toBeNull();
+      if (!card) return;
+
+      const instance = {
+        duration: 4000,
+        seek: vi.fn((timeMs: number) => {
+          if (timeMs >= 4000) {
+            card.style.visibility = "hidden";
+          }
+        }),
+      };
+
+      installHyperframesAnimeApi();
+      animeWindow.hyperframesAnime?.register("main", instance);
+      createAnimeJsAdapter().seek({ time: 0 });
+
+      expect(card.style.visibility).toBe("");
+    });
   });
 
   describe("seek", () => {

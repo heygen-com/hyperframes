@@ -203,6 +203,7 @@ function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
   primedAnimeInstances.add(instance);
   if (typeof instance.seek !== "function") return;
   const durationMs = readDurationMs(instance) ?? PRIME_FALLBACK_MS;
+  const inlineStyles = snapshotInlineStyles();
   try {
     // anime.js 4.5.0: a timeline child added at position > 0 is not rendered
     // to its "from" value until the timeline has been sought to/past that
@@ -215,6 +216,31 @@ function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
     instance.seek(0);
   } catch (err) {
     swallow("runtime.adapters.animejs.prime", err);
+  } finally {
+    restoreInlineStyles(inlineStyles);
+  }
+}
+
+type InlineStyleSnapshot = {
+  element: Element;
+  style: string | null;
+};
+
+function snapshotInlineStyles(): InlineStyleSnapshot[] {
+  if (typeof document === "undefined") return [];
+  return Array.from(document.querySelectorAll("*"), (element) => ({
+    element,
+    style: element.getAttribute("style"),
+  }));
+}
+
+function restoreInlineStyles(snapshot: InlineStyleSnapshot[]): void {
+  for (const { element, style } of snapshot) {
+    if (style == null) {
+      element.removeAttribute("style");
+    } else {
+      element.setAttribute("style", style);
+    }
   }
 }
 
