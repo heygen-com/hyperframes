@@ -271,6 +271,12 @@ export const Timeline = memo(function Timeline({
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
+  // The timeline canvas always fills at least the viewport width: when the content
+  // is shorter than the visible area (e.g. zoomed out), the ruler + empty track
+  // lanes keep going into the space instead of leaving dead black — CapCut-style.
+  // Only the RENDERED extent grows; clip positions/durations are untouched.
+  const displayContentWidth = Math.max(trackContentWidth, viewportWidth - GUTTER - 2);
+  const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const clipStateVersion = useMemo(
     () =>
       expandedElements
@@ -347,8 +353,8 @@ export const Timeline = memo(function Timeline({
   });
 
   const { major, minor } = useMemo(
-    () => generateTicks(effectiveDuration, pps),
-    [effectiveDuration, pps],
+    () => generateTicks(displayDuration, pps),
+    [displayDuration, pps],
   );
   const majorTickInterval = major.length >= 2 ? major[1] - major[0] : effectiveDuration;
 
@@ -429,7 +435,7 @@ export const Timeline = memo(function Timeline({
           major={major}
           minor={minor}
           pps={pps}
-          trackContentWidth={trackContentWidth}
+          trackContentWidth={displayContentWidth}
           totalH={totalH}
           effectiveDuration={effectiveDuration}
           majorTickInterval={majorTickInterval}
