@@ -1,7 +1,12 @@
-export const HEYGEN_MIN_VERSION = "0.1.6";
+// v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
+// ("heygen-cli can't use OAuth yet"), and OAuth is what the free-usage path
+// needs — so anything below this can't authenticate for free usage at all.
+export const HEYGEN_MIN_VERSION = "0.3.0";
+// Free-usage path is OAuth (`--oauth` → subscription/free credits); `--api-key`
+// bills API credits, so the onboarding steers to OAuth.
 export const HEYGEN_INSTALL_COMMAND =
-  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --key <key>";
-export const HEYGEN_AUTH_COMMAND = "heygen auth login --key <key>";
+  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --oauth";
+export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
 
 export const HEYGEN_NOT_FOUND_MESSAGE = `media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. Install: ${HEYGEN_INSTALL_COMMAND}`;

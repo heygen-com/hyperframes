@@ -3,7 +3,7 @@ import { reportHeygenFailure } from "./heygen-cli.mjs";
 
 // Voice / TTS generation via the HeyGen CLI — the only external CLI media-use
 // shells (CLI-only invariant: media-use holds no keys; the CLI owns auth).
-// Flags verified against `heygen voice speech create --help` (v0.1.6).
+// Flags verified against `heygen voice speech create --help` (v0.3.0).
 
 function runJson(bin, argv, label) {
   let out;

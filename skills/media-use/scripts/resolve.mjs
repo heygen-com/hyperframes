@@ -744,8 +744,23 @@ async function showCandidates() {
   }
 }
 
+// Best-effort latest stable CLI tag from the CDN (the install script's source of
+// truth). null on any failure (offline, no curl) — treated as "unknown", never fatal.
+function latestHeygenStable() {
+  const probe = runCommand("curl", [
+    "-fsSL",
+    "--max-time",
+    "4",
+    "https://static.heygen.ai/cli/stable",
+  ]);
+  return probe.status === 0 ? firstSemver(commandText(probe)) : null;
+}
+
 function heygenAuthCheck() {
-  const authProbe = runCommand("heygen", ["auth", "status", "--json"]);
+  // `heygen auth status` already emits JSON by default (only `--human` opts out
+  // to a table) — there is no `--json`/`--output` flag; passing one errors with
+  // "unknown flag". emailFromAuthStatus parses that default JSON.
+  const authProbe = runCommand("heygen", ["auth", "status"]);
   // spawnSync sets .error/.signal on a timeout or spawn failure (status then
   // null). A stalled auth endpoint (transient network/DNS) must not be reported
   // as an authoritative "not authenticated" with a re-login fix.
@@ -794,11 +809,18 @@ function runDoctor() {
     });
   } else if (heygenVersion) {
     const versionOk = !versionLessThan(heygenVersion, HEYGEN_MIN_VERSION);
+    // Keep it latest: even when the installed version clears the floor, nudge
+    // `heygen update` if a newer stable exists. Best-effort — silently skipped
+    // when the CDN is unreachable, so it never blocks the check.
+    const latest = versionOk ? latestHeygenStable() : null;
+    const behind = latest && versionLessThan(heygenVersion, latest);
     checks.push({
       name: "heygen version",
       ok: versionOk,
-      detail: `heygen v${heygenVersion} (need >= v${HEYGEN_MIN_VERSION})`,
-      fix: versionOk ? "" : HEYGEN_UPDATE_COMMAND,
+      detail: versionOk
+        ? `heygen v${heygenVersion}${behind ? ` (latest v${latest} available)` : ""}`
+        : `heygen v${heygenVersion} (need >= v${HEYGEN_MIN_VERSION})`,
+      fix: versionOk ? (behind ? HEYGEN_UPDATE_COMMAND : "") : HEYGEN_UPDATE_COMMAND,
     });
 
     checks.push(heygenAuthCheck());
@@ -880,7 +902,7 @@ function firstLine(text) {
 }
 
 function emailFromAuthStatus(text) {
-  // JSON only (auth status is queried with --json). No prose regex fallback: a
+  // JSON only (auth status emits JSON by default). No prose regex fallback: a
   // human-format body like "Session expired. Contact support@heygen.ai" would
   // otherwise report the user as authenticated as support@heygen.ai.
   const trimmed = String(text || "").trim();

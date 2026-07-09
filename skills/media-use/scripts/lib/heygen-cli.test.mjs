@@ -1,36 +1,32 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { classifyHeygenError, HEYGEN_NOT_FOUND_MESSAGE } from "./heygen-cli.mjs";
+import {
+  classifyHeygenError,
+  HEYGEN_NOT_AUTHENTICATED_MESSAGE,
+  HEYGEN_NOT_FOUND_MESSAGE,
+  HEYGEN_OUTDATED_MESSAGE,
+} from "./heygen-cli.mjs";
 
 test("classifies ENOENT-style missing heygen errors with install instructions", () => {
   const message = classifyHeygenError({ code: "ENOENT", message: "spawn heygen ENOENT" });
 
-  assert.equal(
-    message,
-    "media-use: heygen CLI not found — it's the free path for bgm/image/voice/avatar-video. Install: curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --key <key>",
-  );
+  assert.equal(message, HEYGEN_NOT_FOUND_MESSAGE);
 });
 
 test("classifies auth failures with login instructions", () => {
   const message = classifyHeygenError({ stderr: Buffer.from("Error: not logged in") });
 
-  assert.equal(
-    message,
-    "media-use: heygen CLI not authenticated (free usage) — run: heygen auth login --key <key>",
-  );
+  assert.equal(message, HEYGEN_NOT_AUTHENTICATED_MESSAGE);
 });
 
 test("classifies a real 401 as auth, but not a bare 401 substring in prose", () => {
   assert.equal(
     classifyHeygenError({ stderr: Buffer.from("HTTP 401 Unauthorized") }),
-    "media-use: heygen CLI not authenticated (free usage) — run: heygen auth login --key <key>",
+    HEYGEN_NOT_AUTHENTICATED_MESSAGE,
   );
   // A request id that merely contains "401" must NOT read as an auth failure.
   const noise = classifyHeygenError({ stderr: Buffer.from("upload failed (request req-401abc)") });
-  assert.notEqual(
-    noise,
-    "media-use: heygen CLI not authenticated (free usage) — run: heygen auth login --key <key>",
-  );
+  assert.notEqual(noise, HEYGEN_NOT_AUTHENTICATED_MESSAGE);
 });
 
 test("classifies old heygen versions with update instructions", () => {
@@ -38,7 +34,7 @@ test("classifies old heygen versions with update instructions", () => {
     stderr: Buffer.from("heygen v0.1.5 does not support --headers"),
   });
 
-  assert.equal(message, "media-use: heygen CLI is outdated — run: heygen update  (need >= v0.1.6)");
+  assert.equal(message, HEYGEN_OUTDATED_MESSAGE);
 });
 
 test("does not misclassify a resource 'not found' error as a missing CLI", () => {
