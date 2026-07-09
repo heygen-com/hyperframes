@@ -370,3 +370,59 @@ describe("FlatColorGradingSection — Effects", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatColorGradingSection — HDR banner and Apply scope", () => {
+  it("shows the HDR banner only when mediaMetadata reports an HDR source", () => {
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        mediaMetadata={{
+          kind: "video",
+          color: { dynamicRange: "hdr", hdrTransfer: "pq", label: "HDR10", isHdr: true },
+        }}
+      />,
+    );
+    expect(host.textContent).toContain("SDR preview");
+    act(() => root.unmount());
+  });
+
+  it("omits the HDR banner for SDR media", () => {
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        mediaMetadata={{
+          kind: "video",
+          color: { dynamicRange: "sdr", hdrTransfer: null, label: "SDR", isHdr: false },
+        }}
+      />,
+    );
+    expect(host.textContent).not.toContain("SDR preview");
+    act(() => root.unmount());
+  });
+
+  it("fires onApplyToScope from the Apply button, respecting applyBusy", () => {
+    const onApplyToScope = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingSection {...neutralPropsBase()} onApplyToScope={onApplyToScope} applyBusy />,
+    );
+    const applyButton = host.querySelector<HTMLButtonElement>('[data-flat-grade-apply="true"]');
+    expect(applyButton?.disabled).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("fires onApplyToScope exactly once when the Apply button is clicked while not busy", () => {
+    const onApplyToScope = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        onApplyToScope={onApplyToScope}
+        applyBusy={false}
+      />,
+    );
+    const applyButton = host.querySelector<HTMLButtonElement>('[data-flat-grade-apply="true"]');
+    expect(applyButton?.disabled).toBe(false);
+    act(() => applyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onApplyToScope).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+});
