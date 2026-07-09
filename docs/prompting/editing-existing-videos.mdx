@@ -3,8 +3,6 @@ title: Editing existing videos
 description: "Direct the agent like an editor — trim, move, retime, swap, restyle — with the NLE verb you already know mapped to the prompt that lands it in one pass."
 ---
 
-## Editing existing videos
-
 Most HyperFrames time isn't the first render — it's the twenty edits after it. A composition is plain HTML with `data-*` timing attributes and a GSAP timeline, so every edit you'd make in a non-linear editor maps to a specific, inspectable change in the source. You don't re-specify the video; you name the edit the way you'd say it to a human editor, and the agent makes the smallest change that does it.
 
 This page maps the editor verbs to the prompts that land them. Two habits from [Iterating](/prompting/iterating) apply to every one of them, so keep them in mind: **change one thing per render**, and **state targets as absolute values** ("scene 2 = 2 seconds", not "a bit shorter") so the agent lands it in a single pass instead of oscillating.
