@@ -16,7 +16,7 @@
         3.67 – 5.00s   Logo breathes (sine onUpdate, multiplicative on pop scale)
 
       Key differences :
-        - Single paused GSAP timeline registered to window.__timelines["main"]
+        - Single paused anime.js timeline registered to hyperframesAnime.register("main")
         - brandTextWidth measured via getBoundingClientRect after document.fonts.ready
         - HERO_FINAL_OFFSET_X derived from real measurement, not estimate
         - Breathing uses the onUpdate (multiplicative) form so it multiplies
@@ -25,7 +25,7 @@
         - Logo is loaded from a static PNG asset
     -->
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
 
     <style>
       :root {
@@ -109,7 +109,7 @@
         justify-content: center;
         width: 140px;
         height: 140px;
-        /* initial scale(0) set by GSAP fromTo */
+        /* initial scale(0) set by anime.js fromTo */
       }
       .hero .logo-mark {
         width: 100%;
@@ -241,9 +241,253 @@
       /* ================================================================
          TIMELINE — built synchronously so HyperFrames can seek it.
          ================================================================ */
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-      window.__timelines["main"] = tl;
+      const transformState = new WeakMap();
+      const transformKeys = new Set([
+        "x",
+        "y",
+        "z",
+        "translateX",
+        "translateY",
+        "translateZ",
+        "xPercent",
+        "yPercent",
+        "scale",
+        "scaleX",
+        "scaleY",
+        "rotation",
+        "rotate",
+        "rotationX",
+        "rotateX",
+        "rotationY",
+        "rotateY",
+      ]);
+      const propMap = new Map([
+        ["x", "translateX"],
+        ["y", "translateY"],
+        ["z", "translateZ"],
+        ["rotation", "rotate"],
+        ["rotationX", "rotateX"],
+        ["rotationY", "rotateY"],
+        ["rotationZ", "rotateZ"],
+      ]);
+
+      function ms(seconds) {
+        return Math.round(Number(seconds || 0) * 1000);
+      }
+
+      function resolveTargets(target) {
+        if (Array.isArray(target)) return target.flatMap(resolveTargets);
+        if (typeof target === "string") return [...document.querySelectorAll(target)];
+        return target ? [target] : [];
+      }
+
+      function cssLength(value) {
+        return typeof value === "number" ? value + "px" : String(value);
+      }
+
+      function cssAngle(value) {
+        return typeof value === "number" ? value + "deg" : String(value);
+      }
+
+      function renderTransform(state) {
+        const parts = [];
+        if (state.xPercent !== undefined) parts.push("translateX(" + state.xPercent + "%)");
+        if (state.yPercent !== undefined) parts.push("translateY(" + state.yPercent + "%)");
+        const tx = state.x ?? state.translateX;
+        const ty = state.y ?? state.translateY;
+        const tz = state.z ?? state.translateZ;
+        if (tx !== undefined) parts.push("translateX(" + cssLength(tx) + ")");
+        if (ty !== undefined) parts.push("translateY(" + cssLength(ty) + ")");
+        if (tz !== undefined) parts.push("translateZ(" + cssLength(tz) + ")");
+        const rotate = state.rotation ?? state.rotate;
+        const rotateX = state.rotationX ?? state.rotateX;
+        const rotateY = state.rotationY ?? state.rotateY;
+        const rotateZ = state.rotationZ ?? state.rotateZ;
+        if (rotate !== undefined) parts.push("rotate(" + cssAngle(rotate) + ")");
+        if (rotateX !== undefined) parts.push("rotateX(" + cssAngle(rotateX) + ")");
+        if (rotateY !== undefined) parts.push("rotateY(" + cssAngle(rotateY) + ")");
+        if (rotateZ !== undefined) parts.push("rotateZ(" + cssAngle(rotateZ) + ")");
+        if (state.scale !== undefined) parts.push("scale(" + state.scale + ")");
+        if (state.scaleX !== undefined) parts.push("scaleX(" + state.scaleX + ")");
+        if (state.scaleY !== undefined) parts.push("scaleY(" + state.scaleY + ")");
+        return parts.join(" ");
+      }
+
+      function setTweenState(target, vars) {
+        for (const item of resolveTargets(target)) {
+          if (!(item instanceof Element)) {
+            Object.assign(item, vars);
+            continue;
+          }
+          const state = transformState.get(item) ?? {};
+          let changedTransform = false;
+          for (const [key, value] of Object.entries(vars)) {
+            if (key === "attr") {
+              for (const [attrName, attrValue] of Object.entries(value))
+                item.setAttribute(attrName, attrValue);
+            } else if (key === "textContent") {
+              item.textContent = value;
+            } else if (key.startsWith("--")) {
+              item.style.setProperty(key, value);
+            } else if (transformKeys.has(key)) {
+              state[key] = value;
+              changedTransform = true;
+            } else if (key === "opacity") {
+              item.style.opacity = value;
+            } else if (key === "backgroundColor") {
+              item.style.backgroundColor = value;
+            } else if (key === "boxShadow") {
+              item.style.boxShadow = value;
+            } else {
+              item.style[key] = value;
+            }
+          }
+          if (changedTransform) {
+            transformState.set(item, state);
+            item.style.transform = renderTransform(state);
+          }
+        }
+      }
+
+      function getTweenProperty(target, key) {
+        const item = resolveTargets(target)[0];
+        if (!item) return undefined;
+        if (item instanceof Element && key.startsWith("--"))
+          return getComputedStyle(item).getPropertyValue(key);
+        if (item instanceof Element && transformKeys.has(key))
+          return transformState.get(item)?.[key];
+        return item[key];
+      }
+
+      function mapEase(ease) {
+        if (typeof ease !== "string") return ease;
+        const compact = ease.replace(/\s+/g, "");
+        const table = {
+          none: "linear",
+          "power1.in": "inQuad",
+          "power1.out": "outQuad",
+          "power1.inOut": "inOutQuad",
+          "power2.in": "inCubic",
+          "power2.out": "outCubic",
+          "power2.inOut": "inOutCubic",
+          "power3.in": "inQuart",
+          "power3.out": "outQuart",
+          "power3.inOut": "inOutQuart",
+          "power4.in": "inQuint",
+          "power4.out": "outQuint",
+          "power4.inOut": "inOutQuint",
+          "sine.inOut": "inOutSine",
+          "sine.out": "outSine",
+          "expo.out": "outExpo",
+          "expo.inOut": "inOutExpo",
+        };
+        if (table[compact]) return table[compact];
+        const back = /^back\.(in|out|inOut)\(([^)]*)\)$/.exec(compact);
+        if (back) return back[1] + "Back(" + back[2] + ")";
+        return ease;
+      }
+
+      function normalizeStagger(stagger) {
+        if (stagger === undefined) return undefined;
+        if (typeof stagger === "number") return anime.stagger(ms(stagger));
+        const span = stagger.each ?? stagger.amount;
+        if (span === undefined) return undefined;
+        const options = {};
+        if (stagger.from !== undefined) options.from = stagger.from;
+        if (stagger.grid !== undefined) options.grid = stagger.grid;
+        if (stagger.axis !== undefined) options.axis = stagger.axis;
+        if (stagger.start !== undefined) options.start = ms(stagger.start);
+        if (stagger.ease !== undefined) options.ease = mapEase(stagger.ease);
+        return anime.stagger(ms(span), options);
+      }
+
+      function normalizeTween(vars, fromVars, target, position) {
+        const props = {};
+        let driverKey = null;
+        for (const [key, value] of Object.entries(vars)) {
+          if (
+            ["duration", "ease", "stagger", "repeat", "yoyo", "overwrite", "onUpdate"].includes(key)
+          )
+            continue;
+          const animeKey = propMap.get(key) ?? key;
+          const fromValue = fromVars?.[key];
+          props[animeKey] = fromValue === undefined ? value : [fromValue, value];
+          if (driverKey === null) driverKey = key;
+        }
+        props.duration = ms(vars.duration ?? 0.5);
+        if (vars.ease !== undefined) props.ease = mapEase(vars.ease);
+        const delay = normalizeStagger(vars.stagger);
+        if (delay !== undefined) props.delay = delay;
+        if (vars.repeat !== undefined)
+          props.loop = vars.repeat === -1 ? true : Math.max(0, Math.floor(vars.repeat)) + 1;
+        if (vars.yoyo === true) props.alternate = true;
+        if (typeof vars.onUpdate === "function") {
+          const userUpdate = vars.onUpdate;
+          const durationSeconds = Number(vars.duration ?? 0.5);
+          props.onUpdate = function (self) {
+            const first = resolveTargets(target)[0];
+            let progress = 0;
+            if (driverKey !== null) {
+              const raw = keyValue(first, driverKey);
+              const start = Number(fromVars?.[driverKey] ?? 0);
+              const end = Number(vars[driverKey]);
+              const current = Number(raw);
+              if (
+                Number.isFinite(current) &&
+                Number.isFinite(start) &&
+                Number.isFinite(end) &&
+                end !== start
+              ) {
+                progress = (current - start) / (end - start);
+              }
+            }
+            adapterTime.current =
+              Number(position || 0) + Math.max(0, Math.min(1, progress)) * durationSeconds;
+            userUpdate.call(this, self);
+          };
+        }
+        return props;
+      }
+
+      function keyValue(target, key) {
+        if (!target) return undefined;
+        if (target instanceof Element && key.startsWith("--"))
+          return getComputedStyle(target).getPropertyValue(key);
+        return target[key];
+      }
+
+      const adapterTime = { current: 0 };
+
+      function createTimelineAdapter(timeline) {
+        return {
+          to(target, vars, position = 0) {
+            timeline.add(target, normalizeTween(vars, undefined, target, position), ms(position));
+            return this;
+          },
+          fromTo(target, fromVars, toVars, position = 0) {
+            timeline.add(target, normalizeTween(toVars, fromVars, target, position), ms(position));
+            return this;
+          },
+          set(target, vars, position = 0) {
+            timeline.add(
+              { tick: 0 },
+              {
+                tick: [0, 1],
+                duration: 1,
+                ease: "linear",
+                onUpdate: () => setTweenState(target, vars),
+              },
+              ms(position),
+            );
+            return this;
+          },
+          time() {
+            return adapterTime.current;
+          },
+        };
+      }
+      const tl = anime.createTimeline({ autoplay: false });
+      const anim = createTimelineAdapter(tl);
 
       {
         /* Measure the brand text width with a hidden DOM probe. */
@@ -269,13 +513,13 @@
         const textEl = document.querySelector(".companion-text");
 
         for (const entry of SEQUENCE) {
-          tl.set(textEl, { textContent: entry.text }, entry.t);
+          anim.set(textEl, { textContent: entry.text }, entry.t);
         }
 
         /* ============================================================
            PHASE 2: Hero pops in (elastic)
            ============================================================ */
-        tl.fromTo(
+        anim.fromTo(
           ".hero",
           { scale: 0 },
           {
@@ -290,7 +534,7 @@
            PHASE 3: Companion exit + container recenter
            Two concurrent tweens at the same timeline position.
            ============================================================ */
-        tl.to(
+        anim.to(
           ".companion",
           {
             opacity: 0,
@@ -301,7 +545,7 @@
           TIMING.slideStart,
         );
 
-        tl.to(
+        anim.to(
           ".recenter-shift",
           {
             x: FINAL_RECENTER_OFFSET,
@@ -314,7 +558,7 @@
         /* ============================================================
            PHASE 4: Zoom — scale (outer) + counter-translate (middle) + brand text exits.
            ============================================================ */
-        tl.to(
+        anim.to(
           ".zoom-scale",
           {
             scale: 5.5,
@@ -324,7 +568,7 @@
           TIMING.zoomStart,
         );
 
-        tl.to(
+        anim.to(
           ".zoom-translate",
           {
             x: -HERO_FINAL_OFFSET_X,
@@ -336,7 +580,7 @@
         );
 
         // Brand text fades out + slides left so the logo gets all the zoom space.
-        tl.to(
+        anim.to(
           ".brand-text",
           {
             opacity: 0,
@@ -359,16 +603,16 @@
 
         const breathDur = TOTAL_DURATION - TIMING.breathStart;
 
-        tl.to(
+        anim.to(
           { tick: 0 },
           {
             tick: 1,
             duration: breathDur,
             ease: "none",
             onUpdate: function () {
-              const idleTime = Math.max(0, tl.time() - TIMING.breathStart);
+              const idleTime = Math.max(0, anim.time() - TIMING.breathStart);
               const omega = (idleTime / SCALE_PERIOD) * Math.PI * 2;
-              gsap.set(heroEl, {
+              setTweenState(heroEl, {
                 scale: HERO_FINAL_SCALE * (1 + Math.sin(omega) * SCALE_AMP),
                 rotation: Math.sin(omega) * ROTATE_AMP,
               });
@@ -377,6 +621,7 @@
           TIMING.breathStart,
         );
       }
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>
