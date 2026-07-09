@@ -49,6 +49,13 @@ The standalone root needs an explicit **sized box** (`width`/`height` in px), an
 
 Each composition registers **exactly one** `gsap.timeline({ paused: true })` at `window.__timelines["<id>"]` (key = root `data-composition-id`), built **synchronously** at page load. Render duration = root `data-duration`, not timeline length. Don't manually nest sub-timelines into the host. Full contract (incl. non-GSAP runtimes) → `references/determinism-rules.md` + `hyperframes-animation/adapters/`.
 
+### First-pass lint gotchas (a guaranteed first build failure)
+
+Two rules that `lint` **does** catch, but only after the fact — write them right the first time:
+
+- The **root** composition element must carry `data-start="0"` (alongside `data-composition-id`/`data-width`/`data-height`); omitting it fails `lint` with `root_composition_missing_data_start`.
+- Never pair a CSS initial `transform` with a GSAP tween on the **same** property — the CSS value and the tween's start fight and `lint` rejects it with `gsap_css_transform_conflict`. Set the initial state inside the tween with `gsap.fromTo(el, { x: -40 }, { x: 0 })` instead of a CSS `transform: translateX(-40px)`.
+
 ### Non-negotiable rules (silent bugs `lint`/`validate`/`inspect` won't catch)
 
 Surfaced here; full rationale in the linked reference. Do not violate:
