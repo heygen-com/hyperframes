@@ -3,9 +3,9 @@
   lang="en"
   data-composition-variables='[
     {"id":"bgColor",    "type":"color",  "label":"Page background",       "default":"#050507"},
-    {"id":"colorLow",   "type":"color",  "label":"Flow — shadow tone",    "default":"#0a1430"},
-    {"id":"colorMid",   "type":"color",  "label":"Flow — mid tone",       "default":"#6a6f9e"},
-    {"id":"colorHigh",  "type":"color",  "label":"Flow — highlight tone", "default":"#e8f0ff"},
+    {"id":"colorLow",   "type":"color",  "label":"Flow - shadow tone",    "default":"#0a1430"},
+    {"id":"colorMid",   "type":"color",  "label":"Flow - mid tone",       "default":"#6a6f9e"},
+    {"id":"colorHigh",  "type":"color",  "label":"Flow - highlight tone", "default":"#e8f0ff"},
     {"id":"accentColor","type":"color",  "label":"Core / glow accent",    "default":"#aee4ff"},
     {"id":"flowSpeed",  "type":"number", "label":"Flow speed", "default":1, "min":0.1, "max":3, "step":0.1}
   ]'
@@ -14,7 +14,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>bg_flow_field</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -81,8 +81,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // ── Variables (palette + speed); falls back to defaults standalone ──
       const defaults = {
@@ -128,7 +127,7 @@
         "}",
       ].join("\n");
 
-      // Curl-noise flow field — ported verbatim from the held-message-living-field
+      // Curl-noise flow field - ported verbatim from the held-message-living-field
       // template's "living field" background. All visible state comes from uniforms.
       const FRAG = [
         "precision highp float;",
@@ -261,7 +260,7 @@
         uAccent: L("uAccent"),
       };
 
-      // animated uniform state (GSAP tweens these .value fields)
+      // animated uniform state (anime.js tweens these .value fields)
       const u = {
         uTime: { value: 0 },
         uPhase: { value: 0.1 },
@@ -294,33 +293,32 @@
       render(); // initial frame so a seek to 0 / first paint is correct
 
       // ── Energy-envelope drive (the "living field" breath): all repaint is via
-      // onUpdate, so the field is fully determined by the timeline position — no
+      // onUpdate, so the field is fully determined by the timeline position - no
       // requestAnimationFrame, seek-safe. ──
-      tl.eventCallback("onUpdate", render);
 
-      tl.to(u.uTime, { value: 4, duration: 4, ease: "none" }, 0);
+      tl.add(u.uTime, { value: 4, duration: 4000, ease: "linear", onUpdate: render }, 0);
 
       // energy: settle-in → breathe → SURGE → settle dark for the hold
-      tl.to(u.uIntensity, { value: 0.6, duration: 1.2, ease: "sine.inOut" }, 0);
-      tl.to(u.uIntensity, { value: 1.0, duration: 0.7, ease: "power2.in" }, 1.3);
-      tl.to(u.uIntensity, { value: 0.35, duration: 2.0, ease: "power2.out" }, 2.0);
+      tl.add(u.uIntensity, { value: 0.6, duration: 1200, ease: "inOutSine" }, 0);
+      tl.add(u.uIntensity, { value: 1.0, duration: 700, ease: "inCubic" }, 1300);
+      tl.add(u.uIntensity, { value: 0.35, duration: 2000, ease: "outCubic" }, 2000);
 
       // chromatic light-leak: light at entry, spikes on the surge, then settles
-      tl.fromTo(u.uChromAb, { value: 0 }, { value: 0.4, duration: 1.2, ease: "sine.in" }, 0);
-      tl.to(u.uChromAb, { value: 1.4, duration: 0.5, ease: "power3.in" }, 1.4);
-      tl.to(u.uChromAb, { value: 0.2, duration: 1.6, ease: "power2.out" }, 1.9);
+      tl.add(u.uChromAb, { value: [0, 0.4], duration: 1200, ease: "inSine" }, 0);
+      tl.add(u.uChromAb, { value: 1.4, duration: 500, ease: "inQuart" }, 1400);
+      tl.add(u.uChromAb, { value: 0.2, duration: 1600, ease: "outCubic" }, 1900);
 
       // a brief highlight sweep across the surge
-      tl.fromTo(u.uReveal, { value: 0 }, { value: 1, duration: 0.7, ease: "none" }, 1.3);
-      tl.set(u.uReveal, { value: 0 }, 2.0);
+      tl.add(u.uReveal, { value: [0, 1], duration: 700, ease: "linear" }, 1300);
+      tl.add(u.uReveal, { value: 0, duration: 0 }, 2000);
 
       // colour-temperature drift
-      tl.to(u.uPhase, { value: 0.6, duration: 2.2, ease: "sine.inOut" }, 0.6);
+      tl.add(u.uPhase, { value: 0.6, duration: 2200, ease: "inOutSine" }, 600);
 
       // black mask settles the field to near-black + central glow for the hold
-      tl.to(u.uVignette, { value: 0.85, duration: 1.6, ease: "power2.out" }, 1.9);
+      tl.add(u.uVignette, { value: 0.85, duration: 1600, ease: "outCubic" }, 1900);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

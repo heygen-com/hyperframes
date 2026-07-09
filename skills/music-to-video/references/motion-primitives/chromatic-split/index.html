@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>04 · chromatic_split</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -107,40 +107,27 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.fromTo(
-        ".stack",
-        { opacity: 0, scale: 0.95 },
-        { opacity: 1, scale: 1, duration: 0.25, ease: "power2.out" },
-        0.05,
-      );
-      tl.set(".layer.r", { x: -2 }, 0);
-      tl.set(".layer.g", { x: 2 }, 0);
-      tl.set(".layer.b", { x: 0 }, 0);
-      tl.to(".layer.r", { x: -14, duration: 0.06, ease: "steps(1)" }, 0.35);
-      tl.to(".layer.g", { x: 14, duration: 0.06, ease: "steps(1)" }, 0.35);
-      tl.to(".layer.r", { x: -4, duration: 0.06, ease: "steps(1)" }, 0.5);
-      tl.to(".layer.g", { x: 4, duration: 0.06, ease: "steps(1)" }, 0.5);
-      tl.to(".layer.r", { x: -22, duration: 0.04, ease: "steps(1)" }, 0.85);
-      tl.to(".layer.g", { x: 22, duration: 0.04, ease: "steps(1)" }, 0.85);
-      tl.to(".layer.b", { x: 6, duration: 0.04, ease: "steps(1)" }, 0.85);
-      tl.to(".layer.r", { x: -6, duration: 0.04, ease: "steps(1)" }, 0.97);
-      tl.to(".layer.g", { x: 6, duration: 0.04, ease: "steps(1)" }, 0.97);
-      tl.to(".layer.b", { x: -2, duration: 0.04, ease: "steps(1)" }, 0.97);
-      tl.to(".layer.r", { x: -3, duration: 0.4, ease: "power2.out" }, 1.2);
-      tl.to(".layer.g", { x: 3, duration: 0.4, ease: "power2.out" }, 1.2);
-      tl.to(".layer.b", { x: 0, duration: 0.4, ease: "power2.out" }, 1.2);
-      tl.fromTo(
-        ".scanlines",
-        { opacity: 0 },
-        { opacity: 0.85, duration: 0.06, ease: "steps(1)" },
-        0.35,
-      );
-      tl.to(".scanlines", { opacity: 0.25, duration: 0.5, ease: "power2.out" }, 1.0);
-
-      window.__timelines["main"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".stack", { opacity: [0, 1], scale: [0.95, 1], duration: 250, ease: "outCubic" }, 50);
+      tl.add(".layer.r", { translateX: -2, duration: 0 }, 0);
+      tl.add(".layer.g", { translateX: 2, duration: 0 }, 0);
+      tl.add(".layer.b", { translateX: 0, duration: 0 }, 0);
+      tl.add(".layer.r", { translateX: [-2, -14], duration: 60, ease: "steps(1)" }, 350);
+      tl.add(".layer.g", { translateX: [2, 14], duration: 60, ease: "steps(1)" }, 350);
+      tl.add(".layer.r", { translateX: [-14, -4], duration: 60, ease: "steps(1)" }, 500);
+      tl.add(".layer.g", { translateX: [14, 4], duration: 60, ease: "steps(1)" }, 500);
+      tl.add(".layer.r", { translateX: [-4, -22], duration: 40, ease: "steps(1)" }, 850);
+      tl.add(".layer.g", { translateX: [4, 22], duration: 40, ease: "steps(1)" }, 850);
+      tl.add(".layer.b", { translateX: [0, 6], duration: 40, ease: "steps(1)" }, 850);
+      tl.add(".layer.r", { translateX: [-22, -6], duration: 40, ease: "steps(1)" }, 970);
+      tl.add(".layer.g", { translateX: [22, 6], duration: 40, ease: "steps(1)" }, 970);
+      tl.add(".layer.b", { translateX: [6, -2], duration: 40, ease: "steps(1)" }, 970);
+      tl.add(".layer.r", { translateX: [-6, -3], duration: 400, ease: "outCubic" }, 1200);
+      tl.add(".layer.g", { translateX: [6, 3], duration: 400, ease: "outCubic" }, 1200);
+      tl.add(".layer.b", { translateX: [-2, 0], duration: 400, ease: "outCubic" }, 1200);
+      tl.add(".scanlines", { opacity: [0, 0.85], duration: 60, ease: "steps(1)" }, 350);
+      tl.add(".scanlines", { opacity: [0.85, 0.25], duration: 500, ease: "outCubic" }, 1000);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

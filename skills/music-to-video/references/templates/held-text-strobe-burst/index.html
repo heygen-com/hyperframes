@@ -3,21 +3,27 @@
   lang="en"
   data-composition-variables='[
     {"id":"markText",   "type":"string", "label":"Held word",                       "default":"NAMSHI"},
-    {"id":"fontStyle",  "type":"select", "label":"Font style", "options":["display","serif"], "default":"display"},
+    {"id":"fontStyle",  "type":"enum", "label":"Font style", "options":["display","serif"], "default":"display"},
     {"id":"markScale",  "type":"number", "label":"Word size scale", "default":1, "min":0.3, "max":2, "step":0.05},
     {"id":"idleColor",  "type":"color",  "label":"Idle background (between bursts)", "default":"#000000"},
     {"id":"idleInk",    "type":"color",  "label":"Idle word color",                 "default":"#ffffff"},
     {"id":"frames",     "type":"string", "label":"Texture frames JSON (empty=built-in)", "default":""},
     {"id":"strobePlan", "type":"string", "label":"Strobe plan JSON bursts (empty=built-in)", "default":""},
-    {"id":"decor",      "type":"select", "label":"Blueprint grid + crop border", "options":["no","yes"], "default":"no"}
+    {"id":"decor",      "type":"enum", "label":"Blueprint grid + crop border", "options":["no","yes"], "default":"no"}
   ]'
 >
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Held Text / Strobe Burst (Texture Flip) — Template</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Held Text / Strobe Burst (Texture Flip) - Template</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
+      @font-face {
+        font-family: "Impact";
+        src: local("Impact");
+        font-weight: 400;
+        font-style: normal;
+      }
       *,
       *::before,
       *::after {
@@ -52,7 +58,7 @@
         background: var(--idle-bg, #000);
       }
 
-      /* One full-frame layer per texture frame. Only opacity is toggled — a
+      /* One full-frame layer per texture frame. Only opacity is toggled - a
          seek-safe flip-book (deterministic under frame-by-frame render). */
       .look {
         position: absolute;
@@ -94,7 +100,7 @@
         filter: drop-shadow(0 18px 26px rgba(0, 0, 0, 0.28));
       }
 
-      /* THE technique: the word's letterforms are a window — a solid tint
+      /* THE technique: the word's letterforms are a window - a solid tint
          (multiply-blended) over a texture image, clipped to the text. */
       .word {
         color: transparent;
@@ -166,7 +172,7 @@
           '{"texture":"bricks-075-a","bg":"#ff9000","fill":"#7fb0c0","ink":"#241400"}]';
 
         // Built-in plan: as a BASE template the default is one continuous burst
-        // across the whole composition — flips every 0.125s (≈3f@24fps), never
+        // across the whole composition - flips every 0.125s (≈3f@24fps), never
         // stops, never cuts to idle. (For the gruop_4-faithful two-burst look,
         // pass strobePlan = [{start:1.125,end:1.542,step:.125},{start:2.042,end:2.708,step:.125}].)
         var BUILTIN_PLAN = '[{"start":0,"end":3,"step":0.125}]';
@@ -251,9 +257,10 @@
         });
 
         // ── Deterministic, beat-quantized timeline ────────────────────────
-        window.__timelines = window.__timelines || {};
-        var tl = gsap.timeline({ paused: true });
-        gsap.set(looks, { opacity: 0 });
+        var tl = anime.createTimeline({ autoplay: false });
+        looks.forEach(function (look) {
+          look.style.opacity = "0";
+        });
         var compDur = Number(root.getAttribute("data-duration")) || 3;
 
         function gridJumps(start, end, stp) {
@@ -278,24 +285,25 @@
           jumps.forEach(function (t) {
             if (!looks.length) return;
             var cur = looks[step % looks.length];
-            if (prev && prev !== cur) tl.set(prev, { opacity: 0 }, t);
-            tl.set(cur, { opacity: 1 }, t);
+            var tMs = Math.round(t * 1000);
+            if (prev && prev !== cur) tl.add(prev, { opacity: 0, duration: 0 }, tMs);
+            tl.add(cur, { opacity: 1, duration: 0 }, tMs);
             prev = cur;
             step += 1;
           });
-          // clean cut back to idle base (held word on black) at burst end —
+          // clean cut back to idle base (held word on black) at burst end -
           // but NOT when the burst runs to the composition end, so the strobe
           // never blacks out / stops on the last frame.
           if (prev && burst.end < compDur - 1e-6) {
-            tl.set(prev, { opacity: 0 }, burst.end);
+            tl.add(prev, { opacity: 0, duration: 0 }, Math.round(burst.end * 1000));
             prev = null;
           }
         });
 
         // pin total duration
-        tl.set({}, {}, compDur);
+        tl.add({}, { duration: 0 }, Math.round(compDur * 1000));
 
-        window.__timelines["held-text-strobe-burst"] = tl;
+        hyperframesAnime.register("held-text-strobe-burst", tl);
       })();
     </script>
   </body>

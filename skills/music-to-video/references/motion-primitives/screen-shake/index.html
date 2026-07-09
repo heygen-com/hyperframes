@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>07 · screen_shake</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -75,39 +75,21 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.fromTo(
-        ".hero",
-        { scale: 0.6, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.15, ease: "power4.out" },
-        0.3,
-      );
-      tl.fromTo(
-        ".impact-bg",
-        { opacity: 0 },
-        { opacity: 1, duration: 0.06, ease: "steps(1)" },
-        0.3,
-      );
-      tl.to(".impact-bg", { opacity: 0, duration: 0.6, ease: "power2.in" }, 0.4);
-
-      const shakeStart = 0.32;
-      const shakeAmps = [28, -24, 20, -22, 16, -18, 14, -14, 10, -8, 6, -5, 3, -2];
-      shakeAmps.forEach((amp, i) => {
-        tl.to(
-          ".shake-stage",
-          { x: amp, y: amp * 0.7 * (i % 2 ? -1 : 1), duration: 0.03, ease: "steps(1)" },
-          shakeStart + i * 0.03,
-        );
-      });
-      tl.to(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".hero", { scale: [0.6, 1], opacity: [0, 1], duration: 150, ease: "outQuint" }, 300);
+      tl.add(".impact-bg", { opacity: [0, 1], duration: 60, ease: "steps(1)" }, 300);
+      tl.add(".impact-bg", { opacity: [1, 0], duration: 600, ease: "inCubic" }, 400);
+      tl.add(
         ".shake-stage",
-        { x: 0, y: 0, duration: 0.1, ease: "power2.out" },
-        shakeStart + shakeAmps.length * 0.03,
+        { translateX: "__raw:amp", translateY: "__raw:amp * 0.7 * (i % 2 ? -1 : 1)", duration: 30, ease: "steps(1)" },
+        0,
       );
-
-      window.__timelines["main"] = tl;
+      tl.add(
+        ".shake-stage",
+        { translateX: ["__raw:amp", 0], translateY: ["__raw:amp * 0.7 * (i % 2 ? -1 : 1)", 0], duration: 100, ease: "outCubic" },
+        0,
+      );
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

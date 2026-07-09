@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>typewriter_reveal</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -93,30 +93,16 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      const chars = gsap.utils.toArray(".char");
-      const step = 0.07;
-
-      // Explicit per-character reveal: one set() per char at time i * step.
-      chars.forEach((char, i) => {
-        tl.set(char, { opacity: 1 }, i * step);
-      });
-
-      const lastT = (chars.length - 1) * step;
-
-      // Caret rides just past the last revealed char and blinks a finite number
-      // of times (no repeat:-1), then the phrase locks crisp.
-      tl.set("#caret", { opacity: 1 }, 0);
-      tl.to(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".char", { opacity: 1, duration: 0 }, 0);
+      tl.add("#caret", { opacity: 1, duration: 0 }, 0);
+      tl.add(
         "#caret",
-        { opacity: 0, duration: 0.09, ease: "steps(1)", repeat: 8, yoyo: true },
-        lastT + step,
+        { opacity: [1, 0], duration: 90, ease: "steps(1)", loop: 9, alternate: true },
+        0,
       );
-      tl.set("#caret", { opacity: 0 }, 2.32);
-
-      window.__timelines["main"] = tl;
+      tl.add("#caret", { opacity: 0, duration: 0 }, 2320);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

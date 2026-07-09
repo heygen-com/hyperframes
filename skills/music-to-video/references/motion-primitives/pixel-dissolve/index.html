@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>26 · pixel_dissolve</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -82,8 +82,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       const COLS = 24;
       const ROWS = 14;
@@ -106,16 +105,16 @@
       const order = cells.map((c, i) => ({ c, i, h: hash(i) })).sort((a, b) => a.h - b.h);
 
       // All cells start visible (covering hero), fade out in shuffled order
-      const TOTAL = 0.85;
+      const TOTAL_MS = 850;
       order.forEach((o, k) => {
-        const t = 0.35 + (k / order.length) * TOTAL;
-        tl.to(o.c, { opacity: 0, duration: 0.06, ease: "steps(1)" }, t);
+        const t = 350 + (k / order.length) * TOTAL_MS;
+        tl.add(o.c, { opacity: 0, duration: 60, ease: "steps(1)" }, t);
       });
 
       // After dissolve, gentle hero scale settle (it was always visible, now exposed)
-      tl.fromTo(".hero", { scale: 1.03 }, { scale: 1.0, duration: 0.5, ease: "power2.out" }, 1.0);
+      tl.add(".hero", { scale: [1.03, 1.0], duration: 500, ease: "outCubic" }, 1000);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

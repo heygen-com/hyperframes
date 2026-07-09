@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>10 · iris_open</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -81,24 +81,24 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.set(".iris-stage", { clipPath: "circle(0% at 50% 50%)" }, 0);
-      tl.fromTo(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(".iris-stage", { clipPath: "circle(0% at 50% 50%)", duration: 0 }, 0);
+      tl.add(
         ".iris-ring",
-        { scale: 0, opacity: 0.9 },
-        { scale: 9, opacity: 0, duration: 0.85, ease: "expo.out" },
-        0.2,
+        { scale: [0, 9], opacity: [0.9, 0], duration: 850, ease: "outExpo" },
+        200,
       );
-      tl.to(
+      tl.add(
         ".iris-stage",
-        { clipPath: "circle(75% at 50% 50%)", duration: 0.9, ease: "expo.out" },
-        0.3,
+        { clipPath: ["circle(0% at 50% 50%)", "circle(75% at 50% 50%)"], duration: 900, ease: "outExpo" },
+        300,
       );
-      tl.from(".iris-stage .hero", { y: 40, opacity: 0, duration: 0.6, ease: "power3.out" }, 0.6);
-
-      window.__timelines["main"] = tl;
+      tl.add(
+        ".iris-stage .hero",
+        { translateY: [40, 0], opacity: [0, 1], duration: 600, ease: "outQuart" },
+        600,
+      );
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

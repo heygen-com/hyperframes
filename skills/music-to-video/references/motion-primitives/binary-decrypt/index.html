@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>08 · binary_decrypt</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -78,8 +78,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       const SCRAMBLE = "01█▓▒░▀▄■◆◇▪▫";
       function scrambleChar(charIdx, phase) {
@@ -89,14 +88,14 @@
       }
       const cryptState = [{ p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }, { p: 0 }];
       cryptState.forEach((state, idx) => {
-        tl.to(
+        tl.add(
           state,
           {
             p: 1,
-            duration: 0.85,
-            delay: idx * 0.05,
-            ease: "power2.out",
-            onUpdate: function () {
+            duration: 850,
+            delay: idx * 50,
+            ease: "outCubic",
+            onUpdate: () => {
               const spans = document.querySelectorAll(".crypt .char");
               const span = spans[idx];
               if (!span) return;
@@ -110,11 +109,11 @@
               }
             },
           },
-          0.15,
+          150,
         );
       });
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>18 · 3d_card_flip</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -123,32 +123,22 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      tl.fromTo(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
         "#card",
-        { rotateY: 0, scale: 0.92, opacity: 0 },
-        { rotateY: 0, scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
-        0.15,
+        { rotateY: [0, 0], scale: [0.92, 1], opacity: [0, 1], duration: 450, ease: "outQuart" },
+        150,
       );
-
-      // Hold then flip
-      tl.to("#card", { rotateY: 180, duration: 1.0, ease: "power3.inOut" }, 0.7);
-
-      // Shadow squishes mid-flip
-      tl.to(
+      tl.add("#card", { rotateY: [0, 180], duration: 1000, ease: "inOutQuart" }, 700);
+      tl.add(".card-shadow", { scaleX: 0.6, opacity: 0.4, duration: 500, ease: "inOutCubic" }, 700);
+      tl.add(
         ".card-shadow",
-        { scaleX: 0.6, opacity: 0.4, duration: 0.5, ease: "power2.inOut" },
-        0.7,
+        { scaleX: [0.6, 1], opacity: [0.4, 0.7], duration: 500, ease: "inOutCubic" },
+        1200,
       );
-      tl.to(".card-shadow", { scaleX: 1, opacity: 0.7, duration: 0.5, ease: "power2.inOut" }, 1.2);
-
-      // Tiny landing settle
-      tl.to("#card", { scale: 1.02, duration: 0.12, ease: "power2.out" }, 1.68);
-      tl.to("#card", { scale: 1, duration: 0.3, ease: "elastic.out(1, 0.5)" }, 1.8);
-
-      window.__timelines["main"] = tl;
+      tl.add("#card", { scale: [1, 1.02], duration: 120, ease: "outCubic" }, 1680);
+      tl.add("#card", { scale: [1.02, 1], duration: 300, ease: "outElastic(1, .5)" }, 1800);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

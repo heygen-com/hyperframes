@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>16 · liquid_morph</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -104,28 +104,29 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      const BLOB_A =
-        "polygon(50% 5%, 65% 8%, 78% 16%, 88% 30%, 92% 50%, 88% 70%, 78% 84%, 65% 92%, 50% 95%, 35% 92%, 22% 84%, 12% 70%, 8% 50%, 12% 30%, 22% 16%, 35% 8%)";
-      const BLOB_B =
-        "polygon(38% 10%, 58% 4%, 75% 14%, 90% 28%, 95% 46%, 86% 60%, 80% 78%, 62% 88%, 46% 94%, 30% 86%, 16% 74%, 6% 58%, 10% 40%, 20% 22%, 30% 14%, 38% 10%)";
-      const BLOB_C =
-        "polygon(46% 8%, 62% 10%, 80% 20%, 92% 36%, 90% 52%, 92% 70%, 76% 86%, 58% 90%, 44% 94%, 28% 88%, 14% 76%, 10% 60%, 12% 44%, 18% 26%, 30% 12%, 38% 8%)";
-
-      tl.set(".blob", { clipPath: BLOB_A, scale: 0.95 }, 0);
-      tl.to(".blob", { clipPath: BLOB_B, scale: 1.05, duration: 0.7, ease: "power2.inOut" }, 0.2);
-      tl.to(".blob", { clipPath: BLOB_C, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 0.9);
-      tl.fromTo(
-        ".hero",
-        { opacity: 0, y: 30 },
-        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
-        0.4,
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        ".blob",
+        { clipPath: "polygon(50% 5%, 65% 8%, 78% 16%, 88% 30%, 92% 50%, 88% 70%, 78% 84%, 65% 92%, 50% 95%, 35% 92%, 22% 84%, 12% 70%, 8% 50%, 12% 30%, 22% 16%, 35% 8%)", scale: 0.95, duration: 0 },
+        0,
       );
-      tl.to(".blob", { rotation: 6, duration: 1.5, ease: "sine.inOut" }, 0.2);
-
-      window.__timelines["main"] = tl;
+      tl.add(
+        ".blob",
+        { clipPath: ["polygon(50% 5%, 65% 8%, 78% 16%, 88% 30%, 92% 50%, 88% 70%, 78% 84%, 65% 92%, 50% 95%, 35% 92%, 22% 84%, 12% 70%, 8% 50%, 12% 30%, 22% 16%, 35% 8%)", "polygon(38% 10%, 58% 4%, 75% 14%, 90% 28%, 95% 46%, 86% 60%, 80% 78%, 62% 88%, 46% 94%, 30% 86%, 16% 74%, 6% 58%, 10% 40%, 20% 22%, 30% 14%, 38% 10%)"], scale: [0.95, 1.05], duration: 700, ease: "inOutCubic" },
+        200,
+      );
+      tl.add(
+        ".blob",
+        { clipPath: ["polygon(38% 10%, 58% 4%, 75% 14%, 90% 28%, 95% 46%, 86% 60%, 80% 78%, 62% 88%, 46% 94%, 30% 86%, 16% 74%, 6% 58%, 10% 40%, 20% 22%, 30% 14%, 38% 10%)", "polygon(46% 8%, 62% 10%, 80% 20%, 92% 36%, 90% 52%, 92% 70%, 76% 86%, 58% 90%, 44% 94%, 28% 88%, 14% 76%, 10% 60%, 12% 44%, 18% 26%, 30% 12%, 38% 8%)"], scale: [1.05, 1], duration: 700, ease: "inOutCubic" },
+        900,
+      );
+      tl.add(
+        ".hero",
+        { opacity: [0, 1], translateY: [30, 0], duration: 600, ease: "outQuart" },
+        400,
+      );
+      tl.add(".blob", { rotate: 6, duration: 1500, ease: "inOutSine" }, 200);
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

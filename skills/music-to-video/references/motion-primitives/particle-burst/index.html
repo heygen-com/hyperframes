@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>24 · particle_burst</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -87,8 +87,7 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Build N particles deterministically
       const N = 36;
@@ -109,11 +108,10 @@
       }
 
       // Hero punch + flash entry
-      tl.fromTo(
+      tl.add(
         ".hero",
-        { scale: 0.85, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.3, ease: "power4.out" },
-        0.3,
+        { scale: [0.85, 1], opacity: [0, 1], duration: 300, ease: "outQuint" },
+        300,
       );
 
       // Particles burst out
@@ -122,20 +120,26 @@
         const radius = 500 + (i % 5) * 90 + (i % 3) * 40;
         const tx = Math.cos(angle) * radius;
         const ty = Math.sin(angle) * radius;
-        const dur = 1.1 + (i % 5) * 0.08;
-        tl.fromTo(
+        const durMs = 1100 + (i % 5) * 80;
+        tl.add(
           p,
-          { x: 0, y: 0, scale: 1, opacity: 1 },
-          { x: tx, y: ty, scale: 0, opacity: 0, duration: dur, ease: "expo.out" },
-          0.35 + (i % 6) * 0.012,
+          {
+            translateX: [0, tx],
+            translateY: [0, ty],
+            scale: [1, 0],
+            opacity: [1, 0],
+            duration: durMs,
+            ease: "outExpo",
+          },
+          350 + (i % 6) * 12,
         );
       });
 
       // Hero settle wobble
-      tl.to(".hero", { scale: 1.04, duration: 0.1, ease: "power3.out" }, 0.35);
-      tl.to(".hero", { scale: 1.0, duration: 0.5, ease: "elastic.out(1, 0.5)" }, 0.45);
+      tl.add(".hero", { scale: 1.04, duration: 100, ease: "outQuart" }, 350);
+      tl.add(".hero", { scale: 1.0, duration: 500, ease: "outElastic(1, .5)" }, 450);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

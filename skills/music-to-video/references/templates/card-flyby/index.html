@@ -2,18 +2,18 @@
 <html
   lang="en"
   data-composition-variables='[
-    {"id":"theme",    "type":"string", "label":"Palette theme — aurora | ember | mono | slate",     "default":"aurora"},
+    {"id":"theme",    "type":"string", "label":"Palette theme - aurora | ember | mono | slate",     "default":"aurora"},
     {"id":"bgColor",  "type":"color",  "label":"Stage background override (empty = theme bg)",       "default":""},
-    {"id":"cards",    "type":"string", "label":"Deck JSON — array of {tag,title,meta,color?}",        "default":""},
-    {"id":"landings", "type":"string", "label":"Landing beats JSON — abs seconds, one per card",     "default":""},
+    {"id":"cards",    "type":"string", "label":"Deck JSON - array of {tag,title,meta,color?}",        "default":""},
+    {"id":"landings", "type":"string", "label":"Landing beats JSON - abs seconds, one per card",     "default":""},
     {"id":"yaw",      "type":"number", "label":"Scene yaw (deg, side tilt of the whole deck)",        "default":-12}
   ]'
 >
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Card Flyby · accelerating 3D deck cascade — reference impl</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Card Flyby · accelerating 3D deck cascade - reference impl</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -38,7 +38,7 @@
         font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
       }
       /* .stage carries the perspective; .scene carries the static yaw. The cards' own
-         rotateX drives the tumble-forward — the scene only holds the side tilt. */
+         rotateX drives the tumble-forward - the scene only holds the side tilt. */
       .stage {
         position: absolute;
         left: 0;
@@ -106,7 +106,7 @@
         height: 1.5px;
         background: rgba(255, 255, 255, 0.22);
       }
-      /* Solid colored face — revealed via an angled clip-path wipe driven by --wipe.
+      /* Solid colored face - revealed via an angled clip-path wipe driven by --wipe.
          Polygon sweeps upper-left → lower-right at ~72°. wipe=0 collapsed off-element,
          wipe=1 covers the full card. */
       .solid {
@@ -123,7 +123,7 @@
           0 34px 100px rgba(0, 0, 0, 0.55),
           inset 0 1px 0 rgba(255, 255, 255, 0.14);
         overflow: hidden;
-        /* the title is the hero — centered in the card */
+        /* the title is the hero - centered in the card */
         display: flex;
         align-items: center;
         justify-content: center;
@@ -210,17 +210,10 @@
           //  Dwells shrink card-to-card → the deck reads as an accelerating rush into
           //  a held final card. Asset-free: wireframe + solid CSS cards, system fonts.
           //
-          //  COMPOSE BY DATA — `cards` (the deck) and `landings` (one beat per card)
+          //  COMPOSE BY DATA - `cards` (the deck) and `landings` (one beat per card)
           //  are the two data surfaces. Card count is data: 3/6/9 cards all "just
           //  work"; landings default to an accelerating schedule derived from count.
           // ════════════════════════════════════════════════════════════════════
-
-          window.__timelines = window.__timelines || {};
-          // force3D is set per card tween/set below (NOT a global default — a global
-          // would leak onto the plain-object padding tween and warn). It keeps a 3D
-          // matrix on every transform so cards never collapse to 2D: a card whose
-          // rotX/Y/Z all hit 0 (the front s0 pose) would otherwise drop out of the 3D
-          // stacking context and paint in DOM order, letting back cards render on top.
 
           // ── 1. Variables ──────────────────────────────────────────────────────
           var defaults = { theme: "aurora", bgColor: "", cards: "", landings: "", yaw: -12 };
@@ -232,7 +225,7 @@
               : {},
           );
 
-          // ── Palette themes — each is a COHESIVE ramp (one temperature/saturation
+          // ── Palette themes - each is a COHESIVE ramp (one temperature/saturation
           //    family) so any card count reads as a designed set. card.color still
           //    overrides per card. White-on-card stays AA at the card type sizes. ──
           var THEMES = {
@@ -254,7 +247,7 @@
               ink: "#ffffff",
               colors: ["#11243f", "#16314f", "#1b3d63", "#214a78", "#27568d", "#2d63a2"],
             },
-            // muted cool slate — understated / editorial
+            // muted cool slate - understated / editorial
             slate: {
               bg: "#0b0e12",
               ink: "#eef2f6",
@@ -263,7 +256,7 @@
           };
           var TH = THEMES[String(vars.theme || "").trim()] || THEMES.aurora;
 
-          // tiny hex helpers (deterministic, no deps) — derive shades + soft ink.
+          // tiny hex helpers (deterministic, no deps) - derive shades + soft ink.
           function parseHex(h) {
             h = String(h || "")
               .trim()
@@ -316,6 +309,7 @@
           var DEFAULT_LANDINGS = [0.4, 1.7, 2.7, 3.45, 4.0, 4.4];
 
           var DUR = 6.0; // matches data-duration
+          var DUR_MS = 6000;
           var YAW = Number(vars.yaw);
           if (!isFinite(YAW)) YAW = -12;
 
@@ -363,10 +357,14 @@
           if (!LANDED || LANDED.length !== N) {
             LANDED = N === DEFAULT_CARDS.length ? DEFAULT_LANDINGS.slice() : genLandings(N, DUR);
           }
+          var LANDED_MS = LANDED.map(function (t) {
+            return Math.round(t * 1000);
+          });
           // per-card transition duration derived from the gap into it (faster as we accelerate).
-          function transDur(i) {
-            var gap = i === 0 ? (N > 1 ? LANDED[1] - LANDED[0] : 0.4) : LANDED[i] - LANDED[i - 1];
-            return Math.max(0.12, Math.min(0.42, gap * 0.32));
+          function transDurMs(i) {
+            var gapMs =
+              i === 0 ? (N > 1 ? LANDED_MS[1] - LANDED_MS[0] : 400) : LANDED_MS[i] - LANDED_MS[i - 1];
+            return Math.max(120, Math.min(420, gapMs * 0.32));
           }
 
           // ── 3. Build the deck DOM from data ────────────────────────────────────
@@ -444,48 +442,45 @@
             return SLOT.far;
           }
 
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
 
-          function poseTween(idx, slot, t, dur, ease) {
+          function poseTween(idx, slot, tMs, durMs, ease) {
             // z-index is set instantly at the swap start so paint order matches the
-            // slot — CSS can't reliably depth-sort non-intersecting planes.
-            tl.set("#card-" + idx, { zIndex: slot.zi }, t);
-            tl.to(
+            // slot - CSS can't reliably depth-sort non-intersecting planes.
+            tl.add("#card-" + idx, { zIndex: slot.zi, duration: 0 }, tMs);
+            tl.add(
               "#card-" + idx,
               {
-                x: slot.x,
-                y: slot.y,
-                z: slot.z,
-                rotationX: slot.rotX,
+                translateX: slot.x,
+                translateY: slot.y,
+                translateZ: slot.z,
+                rotateX: slot.rotX,
                 scale: slot.scale,
                 opacity: slot.opacity,
-                force3D: true,
-                duration: dur,
-                ease: ease || "power2.inOut",
+                duration: durMs,
+                ease: ease || "inOutCubic",
               },
-              t,
+              tMs,
             );
           }
 
           // ── 5. Initial pose (front index = -1: nothing landed yet) ─────────────
           // card j sits at rel = j + 1, so card0 starts at s1, card1 at s2, etc. Apply
-          // via gsap.set (so the paused render at t=0 shows the staged stack) AND via
-          // tl.set at 0 (so scrubbing back to 0 restores it).
+          // via tl.add at 0 so scrubbing back to 0 restores it.
           for (var j = 0; j < N; j++) {
             var s = poseForRel(j + 1);
             var props = {
-              x: s.x,
-              y: s.y,
-              z: s.z,
-              rotationX: s.rotX,
+              translateX: s.x,
+              translateY: s.y,
+              translateZ: s.z,
+              rotateX: s.rotX,
               scale: s.scale,
               opacity: s.opacity,
               zIndex: s.zi,
-              force3D: true,
               "--wipe": 0,
+              duration: 0,
             };
-            gsap.set("#card-" + j, props);
-            tl.set("#card-" + j, props, 0);
+            tl.add("#card-" + j, props, 0);
           }
 
           // ── 6. Per-landing orchestration ───────────────────────────────────────
@@ -493,33 +488,33 @@
           // i-1 tumbles to exit, i rolls into s0 (+ wipe), the rest advance toward
           // the front. Cards outside the window are already at rest (far / gone).
           for (var L = 0; L < N; L++) {
-            var dur = transDur(L);
-            var t = Math.max(0, LANDED[L] - dur);
+            var durMs = transDurMs(L);
+            var tMs = Math.max(0, LANDED_MS[L] - durMs);
 
             for (var k = L - 1; k <= L + 4; k++) {
               if (k < 0 || k >= N) continue;
               var rel = k - L;
-              var ease = rel === 0 ? "power3.out" : rel < 0 ? "power2.in" : "power2.inOut";
-              poseTween(k, poseForRel(rel), t, dur, ease);
+              var ease = rel === 0 ? "outQuart" : rel < 0 ? "inCubic" : "inOutCubic";
+              poseTween(k, poseForRel(rel), tMs, durMs, ease);
             }
 
             // the landing card wipes in its solid face as it rolls up.
-            tl.to(
+            tl.add(
               "#card-" + L,
               {
                 "--wipe": 1,
-                duration: dur * 0.85,
-                ease: "power2.inOut",
+                duration: durMs * 0.85,
+                ease: "inOutCubic",
               },
-              t + dur * 0.15,
+              tMs + durMs * 0.15,
             );
           }
 
           // pad the timeline so duration() >= data-duration.
-          tl.to({}, { duration: DUR }, 0);
-          tl.seek(0);
+          var pad = { value: 0 };
+          tl.add(pad, { value: 1, duration: DUR_MS, ease: "linear" }, 0);
 
-          window.__timelines["card-flyby"] = tl;
+          hyperframesAnime.register("card-flyby", tl);
         })();
       </script>
     </div>

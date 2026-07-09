@@ -12,8 +12,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Split-Anchor Word-Slot · beat-synced kinetic typography — group_6 reference impl</title>
-    <script src="../../motion-primitives/assets/gsap.min.js"></script>
+    <title>Split-Anchor Word-Slot · beat-synced kinetic typography - group_6 reference impl</title>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -36,15 +36,15 @@
         background: #0a84ff;
       }
       /* #frame = the CENTERING wrapper. CSS positions it slightly ABOVE center (the source
-         sits high-center); GSAP never touches #frame, so the CSS transform here is safe. */
+         sits high-center); anime.js never touches #frame, so the CSS transform here is safe. */
       #frame {
         position: absolute;
         left: 50%;
         top: 43%;
         transform: translate(-50%, -50%);
       }
-      /* #lockup = the thing GSAP jitters/tilts (shake) — NO CSS transform, so GSAP owns
-         x/y/rotation cleanly. Holds the base tilt the whole brutalist lockup leans at. */
+      /* #lockup = the thing anime.js jitters/tilts (shake). No CSS transform here, so
+         anime.js owns translate/rotation cleanly. Holds the base tilt the lockup leans at. */
       #lockup {
         position: relative;
         display: flex;
@@ -67,16 +67,16 @@
         white-space: nowrap;
         will-change: transform, opacity;
       }
-      /* the inner .t span carries the faux-EXTENDED width (scaleX) for the ANCHORS — they
-         have no background, so nothing overflows. GSAP animates the outer element; the
-         span's scaleX is never touched by GSAP, so the two never fight (asset-free
+      /* the inner .t span carries the faux-EXTENDED width (scaleX) for the ANCHORS - they
+         have no background, so nothing overflows. anime.js animates the outer element; the
+         span's scaleX is never touched by anime.js, so the two never fight (asset-free
          Druk-Wide / Extended-Black look from a system font). */
       .t {
         display: inline-block;
         transform: scaleX(1.12);
         transform-origin: left center;
       }
-      /* slot TAPES carry their extend via the LINE's GSAP scaleX instead, so the tape
+      /* slot TAPES carry their extend via the LINE's anime.js scaleX instead, so the tape
          BACKGROUND stretches WITH the text and the word never overflows the strip. */
       .sline .t {
         transform: scaleX(1);
@@ -95,7 +95,7 @@
       }
       /* THREE stacked, offset, torn CARDS = the brutalist collage. Transparent during word
          phases; `bg` turns them black for the empty box + the expand zoom (they scale as one
-         with #slotbox, staying staggered). Siblings — NOT parent-clipped — so the offsets show. */
+         with #slotbox, staying staggered). Siblings - NOT parent-clipped - so the offsets show. */
       .card {
         position: absolute;
         inset: 0;
@@ -128,7 +128,7 @@
         align-items: flex-start;
         gap: 3px;
       }
-      /* each .sline is its OWN torn TAPE — sized to its word, its GSAP scaleX stretches
+      /* each .sline is its OWN torn TAPE - sized to its word, its anime.js scaleX stretches
          bg+text TOGETHER (no overflow), its own micro-rotation + stair offset + shadow. */
       .sline {
         font-weight: 900;
@@ -140,7 +140,7 @@
         padding: 0.03em 0.22em 0.08em 0.16em;
         clip-path: polygon(0% 6%, 98% 0%, 100% 90%, 3% 100%);
         box-shadow: 5px 6px 0 rgba(0, 0, 0, 0.16);
-        transform-origin: 0% 50%; /* GSAP scaleX stretches RIGHTward only — never back over the anchors */
+        transform-origin: 0% 50%; /* anime.js scaleX stretches RIGHTward only - never back over the anchors */
         will-change: transform, opacity;
       }
     </style>
@@ -175,7 +175,7 @@
         // ════════════════════════════════════════════════════════════════════
         //  SPLIT-ANCHOR WORD-SLOT  ·  ONE base lockup, FIVE beat-synced operators
         //  ────────────────────────────────────────────────────────────────────
-        //  BASE  : a kinetic-typography LOCKUP — a HELD left "anchor" column of R rows
+        //  BASE  : a kinetic-typography LOCKUP - a HELD left "anchor" column of R rows
         //          (fixed words) beside a torn-paper word-SLOT box on the right. The
         //          whole lockup LEANS at a base tilt (brutalist/acid attitude). R is
         //          data (the `anchors` comma-list). Asset-free: text + colored boxes.
@@ -183,19 +183,19 @@
         //
         //  OP lockup : pop the R anchor words in (punchy scale, faux motion-blur squash)
         //              + reveal the empty slot box. The held stage. (source f3–f12)
-        //  OP slot   : one word-GROUP cycle — lines WHIP in from the right (expo.out +
+        //  OP slot   : one word-GROUP cycle - lines WHIP in from the right (expo.out +
         //              scaleX stretch = fake motion blur), hold, then arc out down-left.
         //              own color per line. repeatable. (source f24–f44, f49–f66)
         //  OP bg     : HARD-CUT flip the whole scene to another theme on a beat (bg +
         //              anchor ink + box fill + slot ink invert, 0ms). 0/1/2× = changes
         //              none / once / twice. (source f83 blue→green)
         //  OP shake  : global per-beat JOLT of the lockup (x/y + rotation around the base
-        //              tilt) with a back-ease recoil — one punch per beat. (source f52–f100)
-        //  OP expand : EXIT wipe — fade text, then the slot box ZOOMS (expo.in, blur) from
+        //              tilt) with a back-ease recoil - one punch per beat. (source f52–f100)
+        //  OP expand : EXIT wipe - fade text, then the slot box ZOOMS (expo.in, blur) from
         //              its own centre until it swallows the frame. (source f106–f117)
         //
-        //  ARCHITECTURE: every operator writes GSAP tweens at ABSOLUTE audio seconds onto
-        //  ONE paused timeline → order-independent, may overlap (shake runs under slot/bg).
+        //  ARCHITECTURE: every operator writes anime.js tweens at ABSOLUTE audio milliseconds onto
+        //  ONE paused timeline; order-independent, may overlap (shake runs under slot/bg).
         //  A data PROGRAM lists which ops run on which beats; §7 dispatches it. Compose by
         //  editing DATA (the PROGRAM / `program` var / program.json), never operator code.
         // ════════════════════════════════════════════════════════════════════
@@ -231,7 +231,7 @@
         var BASE_TILT = -3.5; // deg, the lockup's resting lean
         var BOX_TILT = 2.6; // deg, the slot box's extra lean vs the anchors
 
-        // ── 2. THEME LIBRARY — brighter electric/fluoro to match the source ──
+        // ── 2. THEME LIBRARY - brighter electric/fluoro to match the source ──
         var THEMES = [
           { bg: "#0a84ff", ink: "#ffffff", box: "#f4f4f4", boxInk: "#0a84ff" }, // 0 electric blue
           { bg: "#5cf03a", ink: "#0a0a0a", box: "#0a0a0a", boxInk: "#5cf03a" }, // 1 lime/acid green (invert)
@@ -246,7 +246,7 @@
           return ACCENTS[((i % ACCENTS.length) + ACCENTS.length) % ACCENTS.length];
         }
 
-        // ── 3. THE PROGRAM (data) — see program.json ──
+        // ── 3. THE PROGRAM (data) - see program.json ──
         //  group_6: ~92 BPM · downbeats 2.322(f56)/4.923(f118) · hihat fill 2.16–4.18s.
         var DEFAULT_PROGRAM = [
           { op: "lockup", enter: [0.125, 0.333, 0.5], box: 0.292, theme: 0 },
@@ -328,7 +328,7 @@
 
         // left anchor column (held words). The faux-extend scaleX renders the glyphs WIDER
         // than their layout box (origin-left → overflow to the right); pin each row's width
-        // to the SCALED width so the column — and the slot box to its right — accounts for
+        // to the SCALED width so the column - and the slot box to its right - accounts for
         // it and never overlaps the held words.
         var anchorEls = [];
         for (var a = 0; a < R; a++) {
@@ -341,7 +341,7 @@
         }
 
         // the slot box is a TRANSPARENT backing during word phases (so only the per-line
-        // tapes show on the bg — no dead space). `bg` turns it into a solid torn card for
+        // tapes show on the bg - no dead space). `bg` turns it into a solid torn card for
         // the empty state + the expand zoom. ONE .sgroup per slot step, stacked in one grid
         // cell. Each .sline is its own TAPE (own width/rotation/offset). No runtime text edit.
         slotbox.style.background = "transparent";
@@ -376,8 +376,10 @@
         }, []);
 
         // ── 5. Timeline + helpers ────────────────────────────────────────────────
-        window.__timelines = window.__timelines || {};
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
+        function ms(t) {
+          return Math.round((Number(t) || 0) * 1000);
+        }
 
         function beatAt(i, n, beats) {
           if (!beats || !beats.length) return 0;
@@ -392,56 +394,55 @@
         } // per-line lean
 
         // rest pose: lockup leans at BASE_TILT, box leans extra, all content hidden.
-        gsap.set(lockupEl, { rotation: BASE_TILT });
-        gsap.set(slotbox, { rotation: BOX_TILT });
-        gsap.set(anchorEls, { autoAlpha: 0, y: 18, scale: 0.9, scaleX: 0.9 });
-        gsap.set(slotbox, { autoAlpha: 0, scale: 0.86 });
+        tl.add(lockupEl, { rotate: BASE_TILT, duration: 0 }, 0);
+        tl.add(slotbox, { rotate: BOX_TILT, opacity: 0, visibility: "hidden", scale: 0.86, duration: 0 }, 0);
+        tl.add(
+          anchorEls,
+          { opacity: 0, visibility: "hidden", translateY: 18, scale: 0.9, scaleX: 0.9, duration: 0 },
+          0,
+        );
         allSlotLines.forEach(function (el, i) {
-          gsap.set(el, { autoAlpha: 0, rotation: lineRot(i) });
+          tl.add(el, { opacity: 0, visibility: "hidden", rotate: lineRot(i), duration: 0 }, 0);
         });
 
         // ── 6. THE FIVE OPERATORS ────────────────────────────────────────────────
 
-        //  lockup — punchy anchor pop-in (scale + faux-blur squash) + box reveal.
+        //  lockup - punchy anchor pop-in (scale + faux-blur squash) + box reveal.
         function lockup(P) {
           var th = theme(P.theme != null ? P.theme : BASE_THEME);
-          tl.set(lockupEl, { rotation: BASE_TILT }, 0);
+          tl.add(lockupEl, { rotate: BASE_TILT, duration: 0 }, 0);
           anchorEls.forEach(function (el, i) {
-            tl.set(el.firstChild, { color: th.ink }, 0);
-            tl.fromTo(
+            tl.add(el.firstChild, { color: th.ink, duration: 0 }, 0);
+            tl.add(
               el,
-              { autoAlpha: 0, y: 26, scale: 0.84, scaleX: 0.7 },
               {
-                autoAlpha: 1,
-                y: 0,
-                scale: 1,
-                scaleX: 1,
-                duration: 0.2,
-                ease: "expo.out",
-                overwrite: "auto",
-                immediateRender: false,
+                opacity: [0, 1],
+                visibility: ["hidden", "visible"],
+                translateY: [26, 0],
+                scale: [0.84, 1],
+                scaleX: [0.7, 1],
+                duration: 200,
+                ease: "outExpo",
               },
-              beatAt(i, R, P.enter),
+              ms(beatAt(i, R, P.enter)),
             );
           });
           var boxAt = P.box != null ? P.box : beatAt(R - 1, R, P.enter);
-          tl.fromTo(
+          tl.add(
             slotbox,
-            { autoAlpha: 0, scale: 0.6, rotation: BOX_TILT - 6 },
             {
-              autoAlpha: 1,
-              scale: 1,
-              rotation: BOX_TILT,
-              duration: 0.22,
-              ease: "back.out(2.2)",
-              overwrite: "auto",
-              immediateRender: false,
+              opacity: [0, 1],
+              visibility: ["hidden", "visible"],
+              scale: [0.6, 1],
+              rotate: [BOX_TILT - 6, BOX_TILT],
+              duration: 220,
+              ease: "outBack(2.2)",
             },
-            boxAt,
+            ms(boxAt),
           );
         }
 
-        //  slot — word-GROUP cycle: WHIP in from the right (expo.out + scaleX stretch),
+        //  slot - word-GROUP cycle: WHIP in from the right (expo.out + scaleX stretch),
         //  hold, arc out down-left. each line its own colour + lean.
         function slot(P) {
           var g = groups[P.__g != null ? P.__g : 0];
@@ -451,130 +452,123 @@
           g.lines.forEach(function (el, i) {
             var col = P.colors && P.colors[i] != null ? accent(P.colors[i]) : th.boxInk;
             var tIn = beatAt(i, n, P.enter);
-            tl.set(g.spans[i], { color: col }, tIn);
-            tl.fromTo(
+            tl.add(g.spans[i], { color: col, duration: 0 }, ms(tIn));
+            tl.add(
               el,
-              { autoAlpha: 0, x: 150, scaleX: 1.7, rotation: lineRot(i) },
               {
-                autoAlpha: 1,
-                x: 0,
-                scaleX: 1.12,
-                rotation: lineRot(i),
-                duration: 0.24,
-                ease: "expo.out",
-                overwrite: "auto",
-                immediateRender: false,
+                opacity: [0, 1],
+                visibility: ["hidden", "visible"],
+                translateX: [150, 0],
+                scaleX: [1.7, 1.12],
+                rotate: [lineRot(i), lineRot(i)],
+                duration: 240,
+                ease: "outExpo",
               }, // rest scaleX 1.12 = faux-extend (bg stretches with text)
-              tIn,
+              ms(tIn),
             );
           });
           if (!P.exit || !P.exit.length) return;
           g.lines.forEach(function (el, i) {
-            tl.to(
+            tl.add(
               el,
               {
-                autoAlpha: 0,
-                x: -120,
-                y: 46,
+                opacity: 0,
+                visibility: "hidden",
+                translateX: -120,
+                translateY: 46,
                 scaleX: 1.4,
-                duration: 0.16,
-                ease: "power3.in",
-                overwrite: "auto",
+                duration: 160,
+                ease: "inQuart",
               },
-              beatAt(i, n, P.exit),
+              ms(beatAt(i, n, P.exit)),
             );
           });
         }
 
-        //  bg — hard-cut scene flip (0ms invert). 0/1/2 of these = bg changes 0/1/2×.
+        //  bg - hard-cut scene flip (0ms invert). 0/1/2 of these = bg changes 0/1/2×.
         function bg(P) {
           var th = theme(P.theme != null ? P.theme : 0);
-          tl.set(root, { backgroundColor: th.bg }, P.at);
-          tl.set(
+          tl.add(root, { backgroundColor: th.bg, duration: 0 }, ms(P.at));
+          tl.add(
             anchorEls.map(function (e) {
               return e.firstChild;
             }),
-            { color: th.ink },
-            P.at,
+            { color: th.ink, duration: 0 },
+            ms(P.at),
           );
-          tl.set(cards, { backgroundColor: th.box }, P.at); // 3 stacked torn cards = the EMPTY box + zoom target
-          tl.set(allSlotLines, { backgroundColor: th.box }, P.at); // recolor any visible tapes
-          tl.set(allSlotSpans, { color: th.boxInk }, P.at);
+          tl.add(cards, { backgroundColor: th.box, duration: 0 }, ms(P.at)); // 3 stacked torn cards = the EMPTY box + zoom target
+          tl.add(allSlotLines, { backgroundColor: th.box, duration: 0 }, ms(P.at)); // recolor any visible tapes
+          tl.add(allSlotSpans, { color: th.boxInk, duration: 0 }, ms(P.at));
         }
 
-        //  shake — per-beat JOLT around the base tilt, with a back-ease recoil.
+        //  shake - per-beat JOLT around the base tilt, with a back-ease recoil.
         function shake(P) {
           var amp = P.amp != null ? P.amp : 22;
           var rot = P.rot != null ? P.rot : 2.2;
           var settle = P.settle != null ? P.settle : 0.15;
           (P.beats || []).forEach(function (t, k) {
             var j = jolt(k);
-            tl.fromTo(
+            tl.add(
               lockupEl,
-              { x: (j.x * amp) / 5, y: (j.y * amp) / 4, rotation: BASE_TILT + (j.r * rot) / 3 },
               {
-                x: 0,
-                y: 0,
-                rotation: BASE_TILT,
-                duration: settle,
-                ease: "back.out(3)",
-                overwrite: "auto",
-                immediateRender: false,
+                translateX: [(j.x * amp) / 5, 0],
+                translateY: [(j.y * amp) / 4, 0],
+                rotate: [BASE_TILT + (j.r * rot) / 3, BASE_TILT],
+                duration: Math.round(settle * 1000),
+                ease: "outBack(3)",
               },
-              t,
+              ms(t),
             );
           });
         }
 
-        //  expand — EXIT wipe: fade text, then the box ZOOMS (expo.in + blur) to swallow
+        //  expand - EXIT wipe: fade text, then the box ZOOMS (expo.in + blur) to swallow
         //  the frame. keeps the lockup lean; clip-path off so the scaled box fully covers.
         function expand(P) {
           var fadeAt = P.fade != null ? P.fade : P.at;
-          tl.to(
+          tl.add(
             anchorEls,
-            { autoAlpha: 0, duration: 0.16, ease: "power2.in", overwrite: "auto" },
-            fadeAt,
+            { opacity: 0, visibility: "hidden", duration: 160, ease: "inCubic" },
+            ms(fadeAt),
           );
-          tl.to(
+          tl.add(
             allSlotLines,
-            { autoAlpha: 0, duration: 0.14, ease: "power2.in", overwrite: "auto" },
-            fadeAt,
+            { opacity: 0, visibility: "hidden", duration: 140, ease: "inCubic" },
+            ms(fadeAt),
           );
           var startAt = P.at,
             endAt = P.to != null ? P.to : P.at + 0.46;
-          tl.set(lockupEl, { x: 0, y: 0 }, startAt); // clear shake residual (keep the lean)
-          if (P.theme != null) tl.set(cards, { backgroundColor: theme(P.theme).box }, startAt);
+          tl.add(lockupEl, { translateX: 0, translateY: 0, duration: 0 }, ms(startAt)); // clear shake residual (keep the lean)
+          if (P.theme != null) {
+            tl.add(cards, { backgroundColor: theme(P.theme).box, duration: 0 }, ms(startAt));
+          }
           var mid = Math.max(startAt + 0.04, endAt - 0.12);
-          // stage A — the TORN mass grows but stays SUB-frame (≈half-screen, decelerating),
+          // stage A - the TORN mass grows but stays SUB-frame (≈half-screen, decelerating),
           // so the eye reads "the box is swelling" across most of the window (matches the
           // source, whose mass is only ~half-frame as late as f113). A big rest box covers
           // the frame at a low scale, so cap stage A low and let stage B do the swallow.
-          tl.fromTo(
+          tl.add(
             slotbox,
-            { scale: 1, filter: "blur(0px)" },
             {
-              scale: 2.2,
-              filter: "blur(4px)",
-              duration: mid - startAt,
-              ease: "power2.out",
-              overwrite: "auto",
-              immediateRender: false,
+              scale: [1, 2.2],
+              filter: ["blur(0px)", "blur(4px)"],
+              duration: ms(mid - startAt),
+              ease: "outCubic",
             },
-            startAt,
+            ms(startAt),
           );
-          // stage B — SWALLOW the frame in the last beats (accelerating), then flatten to solid.
-          tl.to(
+          // stage B - SWALLOW the frame in the last beats (accelerating), then flatten to solid.
+          tl.add(
             slotbox,
             {
               scale: 34,
               filter: "blur(12px)",
-              duration: endAt - mid,
-              ease: "power2.in",
-              overwrite: "auto",
+              duration: ms(endAt - mid),
+              ease: "inCubic",
             },
-            mid,
+            ms(mid),
           );
-          tl.set(card1, { clipPath: "none" }, endAt - 0.03); // card1 (inset 0) flattens to a solid full-frame black-out
+          tl.add(card1, { clipPath: "none", duration: 0 }, ms(endAt - 0.03)); // card1 (inset 0) flattens to a solid full-frame black-out
         }
 
         var OPS = { lockup: lockup, slot: slot, bg: bg, shake: shake, expand: expand };
@@ -585,9 +579,9 @@
           if (fn) fn(step);
         });
 
-        tl.to({}, { duration: 0.001 }, DUR);
-        tl.seek(0);
-        window.__timelines["group-six-recreate"] = tl;
+        var pad = { value: 0 };
+        tl.add(pad, { value: 1, duration: 1, ease: "linear" }, ms(DUR));
+        hyperframesAnime.register("group-six-recreate", tl);
       })();
     </script>
   </body>

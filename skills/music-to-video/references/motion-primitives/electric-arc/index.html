@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>11 · electric_arc</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -108,37 +108,33 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
-      tl.fromTo(
+      tl.add(
         ".arc-label",
-        { opacity: 0, scale: 0.9 },
-        { opacity: 1, scale: 1, duration: 0.3, ease: "power3.out" },
-        0.5,
+        { opacity: [0, 1], scale: [0.9, 1], duration: 300, ease: "outQuart" },
+        500,
       );
       const arcs = ["#arc1", "#arc2", "#arc3"];
       arcs.forEach((p, i) => {
-        tl.fromTo(
+        tl.add(
           p,
-          { strokeDashoffset: 1200, opacity: 0 },
-          { strokeDashoffset: 0, opacity: 1, duration: 0.18, ease: "power4.out" },
-          0.15 + i * 0.05,
+          { strokeDashoffset: [1200, 0], opacity: [0, 1], duration: 180, ease: "outQuint" },
+          150 + i * 50,
         );
       });
-      tl.to(arcs.join(","), { opacity: 0.3, duration: 0.04, ease: "steps(1)" }, 0.55);
-      tl.to(arcs.join(","), { opacity: 1, duration: 0.04, ease: "steps(1)" }, 0.6);
-      tl.to(arcs.join(","), { opacity: 0.5, duration: 0.04, ease: "steps(1)" }, 0.7);
-      tl.to(arcs.join(","), { opacity: 1, duration: 0.04, ease: "steps(1)" }, 0.78);
-      tl.fromTo(
+      tl.add(arcs.join(","), { opacity: 0.3, duration: 40, ease: "steps(1)" }, 550);
+      tl.add(arcs.join(","), { opacity: 1, duration: 40, ease: "steps(1)" }, 600);
+      tl.add(arcs.join(","), { opacity: 0.5, duration: 40, ease: "steps(1)" }, 700);
+      tl.add(arcs.join(","), { opacity: 1, duration: 40, ease: "steps(1)" }, 780);
+      tl.add(
         ".arc-flash",
-        { opacity: 0 },
-        { opacity: 1, duration: 0.06, ease: "steps(1)" },
-        0.5,
+        { opacity: [0, 1], duration: 60, ease: "steps(1)" },
+        500,
       );
-      tl.to(".arc-flash", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0.6);
+      tl.add(".arc-flash", { opacity: 0, duration: 500, ease: "outCubic" }, 600);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

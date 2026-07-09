@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>flash_cut</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -91,42 +91,41 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
+      const tl = anime.createTimeline({ autoplay: false });
 
       // Initial state: first word visible, others hidden, accent violet.
-      tl.set("#w0", { opacity: 1 }, 0);
-      tl.set("#w1", { opacity: 0 }, 0);
-      tl.set("#w2", { opacity: 0 }, 0);
-      tl.set("#accent", { backgroundColor: "#7c3aed", scaleX: 1 }, 0);
-      tl.set("#flash", { opacity: 0 }, 0);
+      tl.add("#w0", { opacity: 1, duration: 0 }, 0);
+      tl.add("#w1", { opacity: 0, duration: 0 }, 0);
+      tl.add("#w2", { opacity: 0, duration: 0 }, 0);
+      tl.add("#accent", { backgroundColor: "#7c3aed", scaleX: 1, duration: 0 }, 0);
+      tl.add("#flash", { opacity: 0, duration: 0 }, 0);
 
       // Two hits; during each white frame, swap underlying word + accent colour.
       const hits = [
-        { t: 0.5, from: "#w0", to: "#w1", color: "#a855f7", scaleX: 1.45 },
-        { t: 1.2, from: "#w1", to: "#w2", color: "#f5f5fa", scaleX: 0.7 },
+        { t: 500, from: "#w0", to: "#w1", color: "#a855f7", scaleX: 1.45 },
+        { t: 1200, from: "#w1", to: "#w2", color: "#f5f5fa", scaleX: 0.7 },
       ];
 
       hits.forEach((h) => {
         // Instant full-frame white flash on the hit.
-        tl.set("#flash", { opacity: 1 }, h.t);
+        tl.add("#flash", { opacity: 1, duration: 0 }, h.t);
         // While white (~2 frames at 30fps), swap the revealed state.
-        tl.set(h.from, { opacity: 0 }, h.t + 0.03);
-        tl.set(h.to, { opacity: 1 }, h.t + 0.03);
-        tl.set("#accent", { backgroundColor: h.color, scaleX: h.scaleX }, h.t + 0.03);
+        tl.add(h.from, { opacity: 0, duration: 0 }, h.t + 30);
+        tl.add(h.to, { opacity: 1, duration: 0 }, h.t + 30);
+        tl.add("#accent", { backgroundColor: h.color, scaleX: h.scaleX, duration: 0 }, h.t + 30);
         // Snap the flash back out within ~3 frames.
-        tl.set("#flash", { opacity: 0 }, h.t + 0.06);
+        tl.add("#flash", { opacity: 0, duration: 0 }, h.t + 60);
       });
 
       // Graceful loop: dip back to white at the very end and restore the start
       // state so the cycle re-enters cleanly on the next pass.
-      tl.set("#flash", { opacity: 1 }, 1.74);
-      tl.set("#w2", { opacity: 0 }, 1.77);
-      tl.set("#w0", { opacity: 1 }, 1.77);
-      tl.set("#accent", { backgroundColor: "#7c3aed", scaleX: 1 }, 1.77);
-      tl.set("#flash", { opacity: 0 }, 1.8);
+      tl.add("#flash", { opacity: 1, duration: 0 }, 1740);
+      tl.add("#w2", { opacity: 0, duration: 0 }, 1770);
+      tl.add("#w0", { opacity: 1, duration: 0 }, 1770);
+      tl.add("#accent", { backgroundColor: "#7c3aed", scaleX: 1, duration: 0 }, 1770);
+      tl.add("#flash", { opacity: 0, duration: 0 }, 1800);
 
-      window.__timelines["main"] = tl;
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>

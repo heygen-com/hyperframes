@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>word_grid_burst</title>
-    <script src="../assets/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       :root {
         --hg-violet: #7c3aed;
@@ -87,40 +87,23 @@
       </div>
     </div>
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      // Deterministic reveal order: scatter sequence across the 15-cell grid.
-      const order = [7, 0, 12, 4, 9, 2, 14, 6, 11, 1, 8, 3, 13, 5, 10];
-      const cells = gsap.utils.toArray(".cell");
-      const step = 0.13;
-      const FOCUS = 7; // chosen focal cell ("DRIVE")
-
-      // Each cell pops in on its own "onset" — explicit per-cell timing.
-      order.forEach((idx, i) => {
-        tl.fromTo(
-          cells[idx],
-          { autoAlpha: 0, scale: 0.8 },
-          { autoAlpha: 1, scale: 1, duration: 0.22, ease: "back.out(1.8)" },
-          i * step,
-        );
-      });
-
-      // Downbeat refocus (~2.3s): dim the whole grid, pop the focal word.
-      tl.to(".cell", { autoAlpha: 0.25, duration: 0.18, ease: "power2.out" }, 2.3);
-      tl.to(
-        cells[FOCUS],
-        {
-          autoAlpha: 1,
-          scale: 1.25,
-          color: "var(--hg-violet-2)",
-          duration: 0.22,
-          ease: "back.out(2)",
-        },
-        2.32,
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
+        ".cell",
+        { opacity: [0, 1], visibility: ["hidden", "visible"], scale: [0.8, 1], duration: 220, ease: "outBack(1.8)" },
+        0,
       );
-
-      window.__timelines["main"] = tl;
+      tl.add(
+        ".cell",
+        { opacity: [1, 0.25], visibility: ["visible", "visible"], duration: 180, ease: "outCubic" },
+        2300,
+      );
+      tl.add(
+        ".cell",
+        { opacity: [0.25, 1], visibility: ["visible", "visible"], scale: [1, 1.25], color: "var(--hg-violet-2)", duration: 220, ease: "outBack(2)" },
+        2320,
+      );
+      hyperframesAnime.register("main", tl);
     </script>
   </body>
 </html>
