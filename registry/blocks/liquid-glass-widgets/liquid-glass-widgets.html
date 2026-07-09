@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Liquid Glass Widgets</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="lib/liquid-glass.iife.js"></script>
     <style>
@@ -600,9 +600,8 @@
         requestGlassRender(0);
       });
 
-      /* ── GSAP Timeline ──────────────────────────────────────────────── */
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      /* ── Anime Timeline ─────────────────────────────────────────────── */
+      var tl = anime.createTimeline({ autoplay: false });
 
       /* Glass + text element pairs */
       var s1g = document.getElementById("glass-stat1");
@@ -639,58 +638,58 @@
       var statText = [s1t, s2t, s3t];
       var showcaseText = sct;
       var pillText = [p1t, p2t, p3t];
-      gsap.set(glassPanels, { opacity: 1, top: 1160 });
-      gsap.set(statText, { opacity: 1, y: 860 }); // 1160 - 300
-      gsap.set(showcaseText, { opacity: 1, y: 780 }); // 1160 - 380
-      gsap.set(pillText, { opacity: 1, y: 440 }); // 1160 - 720
+      tl.add(glassPanels, { opacity: 1, top: 1160, duration: 0 }, 0);
+      tl.add(statText, { opacity: 1, translateY: 860, duration: 0 }, 0); // 1160 - 300
+      tl.add(showcaseText, { opacity: 1, translateY: 780, duration: 0 }, 0); // 1160 - 380
+      tl.add(pillText, { opacity: 1, translateY: 440, duration: 0 }, 0); // 1160 - 720
 
-      tl.to(s1g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.12);
-      tl.to(s1t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.12); // 300 - 300
-      tl.to(s2g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.24);
-      tl.to(s2t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.24); // 300 - 300
-      tl.to(s3g, { top: 300, duration: 0.46, ease: "power3.out" }, 0.36);
-      tl.to(s3t, { y: 0, duration: 0.46, ease: "power3.out" }, 0.36); // 300 - 300
-      tl.to(scg, { top: 380, duration: 0.5, ease: "power3.out" }, 0.5);
-      tl.to(sct, { y: 0, duration: 0.5, ease: "power3.out" }, 0.5); // 380 - 380
-      tl.to(p1g, { top: 720, duration: 0.32, ease: "power3.out" }, 0.9);
-      tl.to(p1t, { y: 0, duration: 0.32, ease: "power3.out" }, 0.9); // 720 - 720
-      tl.to(p2g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.0);
-      tl.to(p2t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.0); // 720 - 720
-      tl.to(p3g, { top: 720, duration: 0.32, ease: "power3.out" }, 1.1);
-      tl.to(p3t, { y: 0, duration: 0.32, ease: "power3.out" }, 1.1); // 720 - 720
+      tl.add(s1g, { top: 300, duration: 460, ease: "outQuart" }, 120);
+      tl.add(s1t, { translateY: 0, duration: 460, ease: "outQuart" }, 120); // 300 - 300
+      tl.add(s2g, { top: 300, duration: 460, ease: "outQuart" }, 240);
+      tl.add(s2t, { translateY: 0, duration: 460, ease: "outQuart" }, 240); // 300 - 300
+      tl.add(s3g, { top: 300, duration: 460, ease: "outQuart" }, 360);
+      tl.add(s3t, { translateY: 0, duration: 460, ease: "outQuart" }, 360); // 300 - 300
+      tl.add(scg, { top: 380, duration: 500, ease: "outQuart" }, 500);
+      tl.add(sct, { translateY: 0, duration: 500, ease: "outQuart" }, 500); // 380 - 380
+      tl.add(p1g, { top: 720, duration: 320, ease: "outQuart" }, 900);
+      tl.add(p1t, { translateY: 0, duration: 320, ease: "outQuart" }, 900); // 720 - 720
+      tl.add(p2g, { top: 720, duration: 320, ease: "outQuart" }, 1000);
+      tl.add(p2t, { translateY: 0, duration: 320, ease: "outQuart" }, 1000); // 720 - 720
+      tl.add(p3g, { top: 720, duration: 320, ease: "outQuart" }, 1100);
+      tl.add(p3t, { translateY: 0, duration: 320, ease: "outQuart" }, 1100); // 720 - 720
 
-      tl.to("#temp-meter", { width: "76%", duration: 1.7, ease: "power2.out" }, 0.9);
-      tl.to(
+      tl.add("#temp-meter", { width: "76%", duration: 1700, ease: "outCubic" }, 900);
+      tl.add(
         tempCounter,
         {
           value: 25,
-          duration: 2.2,
-          ease: "power2.out",
+          duration: 2200,
+          ease: "outCubic",
           onUpdate: function () {
             tempValue.textContent = Math.round(tempCounter.value);
           },
         },
-        0.9,
+        900,
       );
-      tl.to("#battery-fill", { width: "91%", duration: 2.4, ease: "power2.out" }, 1.05);
-      tl.to(
+      tl.add("#battery-fill", { width: "91%", duration: 2400, ease: "outCubic" }, 1050);
+      tl.add(
         batteryCounter,
         {
           value: 91,
-          duration: 2.4,
-          ease: "power2.out",
+          duration: 2400,
+          ease: "outCubic",
           onUpdate: function () {
             batteryValue.textContent = Math.round(batteryCounter.value);
           },
         },
-        1.05,
+        1050,
       );
-      tl.to(
+      tl.add(
         stepsCounter,
         {
           value: 9.1,
-          duration: 2.6,
-          ease: "power2.out",
+          duration: 2600,
+          ease: "outCubic",
           onUpdate: function () {
             var degrees = Math.round(stepsCounter.value * 31.4);
             stepsValue.textContent = stepsCounter.value.toFixed(1) + "K";
@@ -702,58 +701,65 @@
               "deg)";
           },
         },
-        1.2,
+        1200,
       );
-      tl.to("#showcase-progress", { width: "92%", duration: 4.1, ease: "none" }, 1.2);
-      tl.to(
+      tl.add("#showcase-progress", { width: "92%", duration: 4100, ease: "linear" }, 1200);
+      tl.add(
         "#showcase-dot",
-        { scale: 1.5, duration: 0.25, ease: "power2.out", yoyo: true, repeat: 7 },
-        1.4,
+        { scale: 1.5, duration: 250, ease: "outCubic", alternate: true, loop: 7 },
+        1400,
       );
-      tl.call(
-        function () {
-          showcaseStatus.textContent = "Preview ready";
-        },
-        null,
-        5.2,
+      tl.call(function () {
+        showcaseStatus.textContent = "Preview ready";
+      }, 5200);
+      tl.add(scg, { top: "-=10", duration: 200, ease: "outCubic", alternate: true, loop: 1 }, 5200);
+      tl.add(
+        sct,
+        { translateY: "-=10", duration: 200, ease: "outCubic", alternate: true, loop: 1 },
+        5200,
       );
-      tl.to(scg, { top: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
-      tl.to(sct, { y: "-=10", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 }, 5.2);
-      tl.to(
+      tl.add(
         ".pill-dot",
-        { scale: 1.55, duration: 0.2, ease: "power2.out", stagger: 0.12, yoyo: true, repeat: 3 },
-        2.2,
+        {
+          scale: 1.55,
+          duration: 200,
+          ease: "outCubic",
+          delay: anime.stagger(120),
+          alternate: true,
+          loop: 3,
+        },
+        2200,
       );
 
-      tl.to(
+      tl.add(
         [s1g, s2g, s3g],
-        { top: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
-        5.7,
+        { top: "-=12", duration: 200, ease: "outCubic", alternate: true, loop: 1 },
+        5700,
       );
-      tl.to(
+      tl.add(
         [s1t, s2t, s3t],
-        { y: "-=12", duration: 0.2, ease: "power2.out", yoyo: true, repeat: 1 },
-        5.7,
+        { translateY: "-=12", duration: 200, ease: "outCubic", alternate: true, loop: 1 },
+        5700,
       );
-      tl.to(
+      tl.add(
         [s1g, s2g, s3g, scg, p1g, p2g, p3g],
-        { top: "+=760", duration: 0.42, ease: "power2.in" },
-        6.74,
+        { top: "+=760", duration: 420, ease: "inCubic" },
+        6740,
       );
-      tl.to(
+      tl.add(
         [s1t, s2t, s3t, sct, p1t, p2t, p3t],
-        { y: "+=760", duration: 0.42, ease: "power2.in" },
-        6.74,
+        { translateY: "+=760", duration: 420, ease: "inCubic" },
+        6740,
       );
 
       /* Duration driver */
-      tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);
+      tl.add({ v: 0 }, { v: 1, duration: DURATION * 1000, ease: "linear" }, 0);
 
-      tl.eventCallback("onUpdate", function () {
-        requestGlassRender(tl.time());
-      });
+      tl.onUpdate = (self) => {
+        requestGlassRender(self.currentTime / 1000);
+      };
 
-      window.__timelines["liquid-glass-widgets"] = tl;
+      hyperframesAnime.register("liquid-glass-widgets", tl);
     </script>
   </body>
 </html>

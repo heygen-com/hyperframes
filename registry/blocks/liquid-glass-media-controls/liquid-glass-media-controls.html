@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Liquid Glass Media Controls</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="lib/liquid-glass.iife.js"></script>
     <style>
@@ -565,9 +565,8 @@
         requestGlassRender(0);
       });
 
-      /* ── GSAP Timeline ──────────────────────────────────────────────── */
-      window.__timelines = window.__timelines || {};
-      var tl = gsap.timeline({ paused: true });
+      /* ── Anime Timeline ─────────────────────────────────────────────── */
+      var tl = anime.createTimeline({ autoplay: false });
 
       var gs = document.getElementById("glass-search");
       var gt = document.getElementById("glass-toggle");
@@ -583,102 +582,101 @@
 
       // Glass panels live inside <canvas layoutsubtree> (html-in-canvas): the canvas lib
       // reads their sub-pixel computed top/left, so animating layout props on them does
-      // NOT stutter and is exempt from gsap_non_transform_motion. They keep top/left.
+      // NOT stutter and is exempt from the non-transform-motion lint rule. They keep top/left.
       // Plain-DOM text overlays DO stutter on layout props, so they use transforms (x/y).
       // CSS resting tops — search 300, toggle 390, media 476, slider 616 — are the
       // transform base; the original set seeded top:1160, i.e. y = 1160 - restingTop.
-      gsap.set([gs, gt, gm, gsl], { top: 1160, opacity: 1 });
-      gsap.set(ts, { y: 860, opacity: 1 });
-      gsap.set(tt, { y: 770, opacity: 1 });
-      gsap.set(tm, { y: 684, opacity: 1 });
-      gsap.set(tsl, { y: 544, opacity: 1 });
-      gsap.set("#sound-wave span", { height: 7 });
+      tl.add([gs, gt, gm, gsl], { top: 1160, opacity: 1, duration: 0 }, 0);
+      tl.add(ts, { translateY: 860, opacity: 1, duration: 0 }, 0);
+      tl.add(tt, { translateY: 770, opacity: 1, duration: 0 }, 0);
+      tl.add(tm, { translateY: 684, opacity: 1, duration: 0 }, 0);
+      tl.add(tsl, { translateY: 544, opacity: 1, duration: 0 }, 0);
+      tl.add("#sound-wave span", { height: 7, duration: 0 }, 0);
 
-      tl.to(gs, { top: 300, duration: 0.48, ease: "power3.out" }, 0.12);
-      tl.to(ts, { y: 0, duration: 0.48, ease: "power3.out" }, 0.12);
-      tl.to(gt, { top: 390, duration: 0.44, ease: "power3.out" }, 0.22);
-      tl.to(tt, { y: 0, duration: 0.44, ease: "power3.out" }, 0.22);
-      tl.to(gm, { top: 476, duration: 0.44, ease: "power3.out" }, 0.32);
-      tl.to(tm, { y: 0, duration: 0.44, ease: "power3.out" }, 0.32);
-      tl.to(gsl, { top: 616, duration: 0.46, ease: "power3.out" }, 0.42);
-      tl.to(tsl, { y: 0, duration: 0.46, ease: "power3.out" }, 0.42);
+      tl.add(gs, { top: 300, duration: 480, ease: "outQuart" }, 120);
+      tl.add(ts, { translateY: 0, duration: 480, ease: "outQuart" }, 120);
+      tl.add(gt, { top: 390, duration: 440, ease: "outQuart" }, 220);
+      tl.add(tt, { translateY: 0, duration: 440, ease: "outQuart" }, 220);
+      tl.add(gm, { top: 476, duration: 440, ease: "outQuart" }, 320);
+      tl.add(tm, { translateY: 0, duration: 440, ease: "outQuart" }, 320);
+      tl.add(gsl, { top: 616, duration: 460, ease: "outQuart" }, 420);
+      tl.add(tsl, { translateY: 0, duration: 460, ease: "outQuart" }, 420);
 
-      tl.call(
-        function () {
-          searchLabel.textContent = "Search Music";
-        },
-        null,
-        0.9,
-      );
-      tl.to(
+      tl.call(function () {
+        searchLabel.textContent = "Search Music";
+      }, 900);
+      tl.add(
         "#search-caret",
-        { opacity: 1, duration: 0.1, yoyo: true, repeat: 5, ease: "none" },
-        0.94,
+        { opacity: 1, duration: 100, alternate: true, loop: 5, ease: "linear" },
+        940,
       );
-      tl.call(
-        function () {
-          searchLabel.textContent = "Midnight Drive";
-        },
-        null,
-        1.55,
-      );
-      tl.to("#toggle-pill", { x: 209, duration: 0.24, ease: "power2.out" }, 1.82);
-      tl.to(
+      tl.call(function () {
+        searchLabel.textContent = "Midnight Drive";
+      }, 1550);
+      tl.add("#toggle-pill", { translateX: 209, duration: 240, ease: "outCubic" }, 1820);
+      tl.add(
         ".play-btn",
-        { scale: 0.86, duration: 0.12, ease: "power2.out", yoyo: true, repeat: 1 },
-        2.18,
+        { scale: 0.86, duration: 120, ease: "outCubic", alternate: true, loop: 1 },
+        2180,
       );
-      tl.to("#album-sheen", { x: 182, duration: 0.75, ease: "power2.out" }, 2.2);
-      tl.to(
+      tl.add("#album-sheen", { translateX: 182, duration: 750, ease: "outCubic" }, 2200);
+      tl.add(
         "#sound-wave span",
-        { height: 15, duration: 0.22, ease: "power2.inOut", stagger: 0.05, yoyo: true, repeat: 12 },
-        2.2,
+        {
+          height: 15,
+          duration: 220,
+          ease: "inOutCubic",
+          delay: anime.stagger(50),
+          alternate: true,
+          loop: 12,
+        },
+        2200,
       );
-      tl.to(
+      tl.add(
         sliderValue,
         {
           value: 82,
-          duration: 4.4,
-          ease: "none",
+          duration: 4400,
+          ease: "linear",
           onUpdate: function () {
             sliderPct.textContent = Math.round(sliderValue.value) + "%";
           },
         },
-        1.2,
+        1200,
       );
-      tl.to("#slider-fill", { width: "82%", duration: 4.4, ease: "none" }, 1.2);
-      tl.to(
+      tl.add("#slider-fill", { width: "82%", duration: 4400, ease: "linear" }, 1200);
+      tl.add(
         "#live-dot",
-        { scale: 1.45, duration: 0.24, ease: "power2.out", yoyo: true, repeat: 4 },
-        2.6,
+        { scale: 1.45, duration: 240, ease: "outCubic", alternate: true, loop: 4 },
+        2600,
       );
-      tl.to("#toggle-pill", { x: 419, duration: 0.24, ease: "power2.out" }, 4.15);
+      tl.add("#toggle-pill", { translateX: 419, duration: 240, ease: "outCubic" }, 4150);
 
       // Settle + exit. Split so glass panels keep relative top (exempt, html-in-canvas)
       // and plain-DOM text overlays use the relative transform equivalent (y). Inline
       // array literals so the linter can resolve each group's targets; a pre-declared
       // array variable resolves to __unresolved__ and would lose the canvas exemption.
-      tl.to(
+      tl.add(
         [gs, gt, gm, gsl],
-        { top: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
-        5.55,
+        { top: "-=8", duration: 220, ease: "outCubic", alternate: true, loop: 1 },
+        5550,
       );
-      tl.to(
+      tl.add(
         [ts, tt, tm, tsl],
-        { y: "-=8", duration: 0.22, ease: "power2.out", yoyo: true, repeat: 1 },
-        5.55,
+        { translateY: "-=8", duration: 220, ease: "outCubic", alternate: true, loop: 1 },
+        5550,
       );
-      tl.to([gs, gt, gm, gsl], { top: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
-      tl.to([ts, tt, tm, tsl], { y: "+=760", duration: 0.42, ease: "power2.in" }, 6.72);
+      tl.add([gs, gt, gm, gsl], { top: "+=760", duration: 420, ease: "inCubic" }, 6720);
+      tl.add([ts, tt, tm, tsl], { translateY: "+=760", duration: 420, ease: "inCubic" }, 6720);
 
       /* Duration driver */
-      tl.to({ v: 0 }, { v: 1, duration: DURATION, ease: "none" }, 0);
+      tl.add({ v: 0 }, { v: 1, duration: DURATION * 1000, ease: "linear" }, 0);
 
-      tl.eventCallback("onUpdate", function () {
-        requestGlassRender(tl.time());
-      });
+      tl.onUpdate = (self) => {
+        requestGlassRender(self.currentTime / 1000);
+      };
 
-      window.__timelines["liquid-glass-media-controls"] = tl;
+      hyperframesAnime.register("liquid-glass-media-controls", tl);
     </script>
   </body>
 </html>
