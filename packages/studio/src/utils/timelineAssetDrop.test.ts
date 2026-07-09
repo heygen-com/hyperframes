@@ -7,7 +7,29 @@ import {
   insertTimelineAssetIntoSource,
   resolveTimelineAssetCompositionSize,
   resolveTimelineAssetSrc,
+  setCompositionDurationToContent,
 } from "./timelineAssetDrop";
+
+describe("setCompositionDurationToContent", () => {
+  const src = (dur: number) =>
+    `<div id="root" data-composition-id="c" data-duration="${dur}">x</div>`;
+
+  it("shrinks the root duration to the content end", () => {
+    expect(setCompositionDurationToContent(src(20), 8)).toContain('data-duration="8"');
+  });
+
+  it("grows the root duration to the content end", () => {
+    expect(setCompositionDurationToContent(src(5), 12)).toContain('data-duration="12"');
+  });
+
+  it("is a no-op when content end is 0 (empty timeline keeps its declared length)", () => {
+    expect(setCompositionDurationToContent(src(12), 0)).toBe(src(12));
+  });
+
+  it("is a no-op when already equal", () => {
+    expect(setCompositionDurationToContent(src(9), 9)).toBe(src(9));
+  });
+});
 
 describe("getTimelineAssetKind", () => {
   it("detects image, video, and audio assets", () => {

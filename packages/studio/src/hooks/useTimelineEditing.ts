@@ -7,6 +7,7 @@ import { useRazorSplit } from "./useRazorSplit";
 import {
   buildTimelineAssetId,
   extendCompositionDurationIfNeeded,
+  setCompositionDurationToContent,
   buildTimelineAssetInsertHtml,
   buildTimelineFileDropPlacements,
   fitTimelineAssetGeometry,
@@ -373,8 +374,20 @@ export function useTimelineEditing({
           changed?: boolean;
           content?: string;
         };
-        const patchedContent =
+        const removedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
+        // Content-driven duration: shrink the composition to the furthest remaining
+        // clip end in this file (grow-only extend on drop has a shrink counterpart on
+        // delete), so deleting the last/longest clip removes trailing empty space.
+        const contentEnd = timelineElements.reduce(
+          (max, te) =>
+            (te.key ?? te.id) !== (element.key ?? element.id) &&
+            (te.sourceFile || activeCompPath || "index.html") === targetPath
+              ? Math.max(max, te.start + te.duration)
+              : max,
+          0,
+        );
+        const patchedContent = setCompositionDurationToContent(removedContent, contentEnd);
         domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,

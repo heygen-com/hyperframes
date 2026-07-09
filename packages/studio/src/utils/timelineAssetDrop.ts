@@ -144,6 +144,21 @@ export function extendCompositionDurationIfNeeded(source: string, requiredEnd: n
   return source.replace(match[0], `${match[1]}${roundToCenti(requiredEnd)}${match[3]}`);
 }
 
+/**
+ * Set the composition root's `data-duration` to `contentEnd` (grow OR shrink) so the
+ * timeline length tracks content — the content-driven counterpart to
+ * extendCompositionDurationIfNeeded's grow-only ratchet. Used after edits that can
+ * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
+ * an empty timeline keeps its declared duration instead of collapsing to 0.
+ */
+export function setCompositionDurationToContent(source: string, contentEnd: number): string {
+  const match = source.match(/(<[^>]*data-composition-id="[^"]*"[^>]*data-duration=")([^"]*)(")/);
+  if (!match || !Number.isFinite(contentEnd) || contentEnd <= 0) return source;
+  const next = roundToCenti(contentEnd);
+  if (Number.parseFloat(match[2]) === next) return source;
+  return source.replace(match[0], `${match[1]}${next}${match[3]}`);
+}
+
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
   const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
   if (!match || match.index == null) {
