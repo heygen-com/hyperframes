@@ -11,12 +11,12 @@ import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
 import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
+import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
-import { MediaSection } from "./propertyPanelMediaSection";
 
 type EditingSections = ReturnType<typeof resolveEditingSections>;
 
@@ -41,8 +41,8 @@ const EMPTY_GSAP_EFFECT_HANDLERS = {
  * (same one-directional-import precedent as FlatTextSection). Rendered only
  * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open/pin group state.
  *
- * The Text/Style/Layout/Motion groups share the one-open accordion. The legacy
- * Media and Color-Grading sections render unchanged below the flat groups.
+ * The Text/Style/Layout/Motion/Media groups share the one-open accordion. The
+ * legacy Color-Grading section renders unchanged below the flat groups.
  */
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
@@ -215,7 +215,13 @@ export function PropertyPanelFlat({
   // switching the selection re-mounts this component and re-derives the
   // default instead of preserving stale state across unrelated elements.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
-    isTextEditableSelection(element) ? "text" : showEditableSections ? "style" : "layout",
+    isTextEditableSelection(element)
+      ? "text"
+      : showEditableSections
+        ? "style"
+        : sections.media
+          ? "media"
+          : "layout",
   );
   const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
@@ -427,15 +433,24 @@ export function PropertyPanelFlat({
           />
         )}
         {sections.media && (
-          <MediaSection
-            projectDir={projectDir}
-            element={element}
-            styles={styles}
-            onSetStyle={onSetStyle}
-            onSetAttribute={onSetAttribute}
-            onSetHtmlAttribute={onSetHtmlAttribute}
-            onRemoveBackground={onRemoveBackground}
-          />
+          <FlatGroup
+            title="Media"
+            isOpen={openGroupId === "media" || pinnedGroupIds.includes("media")}
+            isPinned={pinnedGroupIds.includes("media")}
+            onToggleOpen={() => toggleOpen("media")}
+            onTogglePin={() => togglePin("media")}
+            summary={element.tagName}
+          >
+            <FlatMediaSection
+              projectDir={projectDir}
+              element={element}
+              styles={styles}
+              onSetStyle={onSetStyle}
+              onSetAttribute={onSetAttribute}
+              onSetHtmlAttribute={onSetHtmlAttribute}
+              onRemoveBackground={onRemoveBackground}
+            />
+          </FlatGroup>
         )}
         {showEditableSections && (
           <StyleSections
