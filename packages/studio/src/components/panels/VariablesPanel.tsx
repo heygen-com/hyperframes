@@ -32,6 +32,14 @@ function shellSingleQuote(value: string): string {
 
 interface VariablesPanelProps {
   sdkSession: Composition | null;
+  /**
+   * Override the composition this panel manages as its PRIMARY comp, instead of
+   * the shell's `activeCompPath`. Set when the Variables manager is opened
+   * against a specific sub-composition file (a bound-chip click), so the panel's
+   * declarations, persist target, handoff, and "other compositions" exclusion
+   * all key off that file rather than the host.
+   */
+  compPathOverride?: string | null;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -247,11 +255,15 @@ const EMPTY_STATE = (
 // fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
+  compPathOverride,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
 }: VariablesPanelProps) {
-  const { activeCompPath, showToast } = useStudioShellContext();
+  const { activeCompPath: shellActiveCompPath, showToast } = useStudioShellContext();
+  // The manager can target a specific sub-composition file (bound-chip open);
+  // everywhere else this is just the shell's active composition.
+  const activeCompPath = compPathOverride ?? shellActiveCompPath;
   const { refreshKey } = useStudioPlaybackContext();
   const { readProjectFile, writeProjectFile, fileTree } = useFileManagerContext();
   const { domEditSelection } = useDomEditContext();

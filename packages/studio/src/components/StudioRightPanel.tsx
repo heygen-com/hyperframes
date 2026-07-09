@@ -581,6 +581,8 @@ export function StudioRightPanel({
       </div>
       <VariablesManagerSlideOver
         sdkSession={sdkSession}
+        projectId={projectId}
+        activeCompPath={activeCompPath}
         reloadPreview={reloadPreview}
         domEditSaveTimestampRef={domEditSaveTimestampRef}
         recordEdit={recordEdit}

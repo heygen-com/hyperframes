@@ -87,7 +87,10 @@ export function PromotableControl({
           title={`Bound to variable "${promote.boundId}" — open the Variables manager`}
           onClick={(e) => {
             e.stopPropagation();
-            openVariablesManager(true);
+            // Open the manager against the SAME file this control's variable
+            // lives in (a sub-comp file when the selection is inside an inlined
+            // sub-composition), so it isn't managing the host by mistake.
+            openVariablesManager(true, promote.targetPath);
           }}
           className="absolute right-1.5 top-0 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent transition-colors hover:bg-studio-accent/30"
         >

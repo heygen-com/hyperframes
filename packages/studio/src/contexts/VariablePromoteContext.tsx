@@ -36,6 +36,13 @@ export interface ChannelPromote {
   promote: () => void;
   /** Update the bound variable's default value in place. */
   setDefault: (value: string) => void;
+  /**
+   * Composition file this channel's variables live in — the selection's own
+   * sourceFile (a sub-comp when the element is inside an inlined sub-composition),
+   * else the active composition. The bound chip passes this to the Variables
+   * manager so it opens against the same file promotion writes to.
+   */
+  targetPath: string;
 }
 
 interface VariablePromoteContextValue {
@@ -44,6 +51,7 @@ interface VariablePromoteContextValue {
   actions: BindAction[];
   declarations: CompositionVariable[];
   persist: (label: string, mutate: (session: Composition) => void) => Promise<boolean>;
+  targetPath: string;
 }
 
 const VariablePromoteContext = createContext<VariablePromoteContextValue | null>(null);
@@ -58,11 +66,13 @@ export function VariablePromoteProvider({
   session,
   selection,
   persist,
+  targetPath,
   children,
 }: {
   session: Composition | null;
   selection: DomEditSelection | null;
   persist: (label: string, mutate: (session: Composition) => void) => Promise<boolean>;
+  targetPath: string;
   children: React.ReactNode;
 }) {
   // Re-derive actions/bindings after each persisted schema edit.
@@ -85,8 +95,8 @@ export function VariablePromoteProvider({
   }, [session, revision]);
 
   const value = useMemo<VariablePromoteContextValue>(
-    () => ({ session, selection, actions, declarations, persist }),
-    [session, selection, actions, declarations, persist],
+    () => ({ session, selection, actions, declarations, persist, targetPath }),
+    [session, selection, actions, declarations, persist, targetPath],
   );
 
   return (
@@ -105,7 +115,7 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
 
   return useMemo(() => {
     if (!ctx || !ctx.session || !ctx.selection?.hfId) return null;
-    const { session, selection, actions, declarations, persist } = ctx;
+    const { session, selection, actions, declarations, persist, targetPath } = ctx;
     const hfId = selection.hfId!;
     const action = matchAction(actions, channel);
     const boundId = readBinding(session, hfId, channel);
@@ -116,6 +126,7 @@ export function useVariablePromoteChannel(channel: PromoteChannel): ChannelPromo
       action,
       boundId,
       declaration,
+      targetPath,
       promote: () => {
         if (!action) return;
         // Right-click promote auto-names, so always mint a fresh id — unlike the

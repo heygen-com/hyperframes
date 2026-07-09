@@ -38,7 +38,12 @@ export function DesignPanelPromoteProvider({
     activeCompPath: targetPath,
   });
   return (
-    <VariablePromoteProvider session={handle.session} selection={selection} persist={persist}>
+    <VariablePromoteProvider
+      session={handle.session}
+      selection={selection}
+      persist={persist}
+      targetPath={targetPath}
+    >
       {children}
     </VariablePromoteProvider>
   );

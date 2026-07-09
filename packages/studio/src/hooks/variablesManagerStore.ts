@@ -12,10 +12,19 @@ import { create } from "zustand";
  */
 interface VariablesManagerState {
   open: boolean;
-  setOpen: (open: boolean) => void;
+  /**
+   * Composition file the manager should manage as its PRIMARY composition. A
+   * bound-chip click passes the promoted element's own file (a sub-comp when the
+   * selection lives inside an inlined sub-composition) so the manager edits the
+   * same file promotion wrote to — not the host. `null` targets the active/master
+   * composition (the header trigger's behavior).
+   */
+  targetPath: string | null;
+  setOpen: (open: boolean, targetPath?: string | null) => void;
 }
 
 export const useVariablesManagerStore = create<VariablesManagerState>((set) => ({
   open: false,
-  setOpen: (open) => set({ open }),
+  targetPath: null,
+  setOpen: (open, targetPath = null) => set({ open, targetPath }),
 }));
