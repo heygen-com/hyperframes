@@ -378,6 +378,44 @@ describe("FlatSelectRow", () => {
   });
 });
 
+describe("FlatSelectRow — label/value options", () => {
+  it("renders distinct labels for entries with a different display label than value", () => {
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Preset"
+        value="natural-lift"
+        options={[
+          { value: "neutral", label: "Neutral" },
+          { value: "natural-lift", label: "Natural Lift" },
+          { value: "fresh-pop", label: "Fresh Pop" },
+        ]}
+        tier="explicitCustom"
+        onChange={vi.fn()}
+      />,
+    );
+    const select = host.querySelector("select");
+    expect(select?.value).toBe("natural-lift");
+    const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
+    expect(options).toEqual(["Neutral", "Natural Lift", "Fresh Pop"]);
+    act(() => root.unmount());
+  });
+
+  it("still treats a bare string array as value===label (Plan 2 behavior unchanged)", () => {
+    const { host, root } = renderInto(
+      <FlatSelectRow
+        label="Blend"
+        value="multiply"
+        options={["normal", "multiply", "screen"]}
+        tier="explicitCustom"
+        onChange={vi.fn()}
+      />,
+    );
+    const options = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);
+    expect(options).toEqual(["normal", "multiply", "screen"]);
+    act(() => root.unmount());
+  });
+});
+
 describe("FlatToggle", () => {
   it("renders the off state with a dim label and dim knob, and fires onChange(true) on click", () => {
     const onChange = vi.fn();

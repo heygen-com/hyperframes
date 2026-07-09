@@ -352,12 +352,15 @@ export function FlatSelectRow({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
   tier: PropertyValueTier;
   disabled?: boolean;
   onChange: (nextValue: string) => void;
   onReset?: () => void;
 }) {
+  const normalizedOptions = options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option,
+  );
   return (
     <div className="group flex min-h-[30px] items-center justify-between">
       <span className={`text-[11px] ${VALUE_TIER_LABEL_CLASS[tier]}`}>{label}</span>
@@ -369,9 +372,9 @@ export function FlatSelectRow({
             onChange={(e) => onChange(e.target.value)}
             className={`appearance-none bg-transparent text-right font-mono text-[11px] outline-none disabled:cursor-not-allowed ${VALUE_TIER_VALUE_CLASS[tier]}`}
           >
-            {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
+            {normalizedOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
