@@ -98,6 +98,7 @@ export const Timeline = memo(function Timeline({
   const duration = usePlayerStore((s) => s.duration);
   const timelineReady = usePlayerStore((s) => s.timelineReady);
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
@@ -211,6 +212,8 @@ export const Timeline = memo(function Timeline({
   const trackOrder = useMemo(() => tracks.map(([trackNum]) => trackNum), [tracks]);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
+  const expandedElementsRef = useRef(expandedElements);
+  expandedElementsRef.current = expandedElements;
 
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
@@ -341,6 +344,7 @@ export const Timeline = memo(function Timeline({
     rangeSelection,
     setRangeSelection,
     shiftClickClipRef,
+    marqueeRect,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
@@ -355,6 +359,9 @@ export const Timeline = memo(function Timeline({
     dragScrollRaf,
     isDragging,
     setShowPopover,
+    elementsRef: expandedElementsRef,
+    trackOrderRef,
+    onSelectElement,
   });
   // Wire setRangeSelection into the stable ref consumed by useTimelineClipDrag
   setRangeSelectionRef.current = setRangeSelection;
@@ -459,12 +466,14 @@ export const Timeline = memo(function Timeline({
           effectiveDuration={effectiveDuration}
           majorTickInterval={majorTickInterval}
           rangeSelection={rangeSelection}
+          marqueeRect={marqueeRect}
           theme={theme}
           displayTrackOrder={displayTrackOrder}
           trackOrder={trackOrder}
           tracks={tracks}
           trackStyles={trackStyles}
           selectedElementId={selectedElementId}
+          selectedElementIds={selectedElementIds}
           hoveredClip={hoveredClip}
           draggedClip={draggedClip}
           resizingClip={resizingClip}

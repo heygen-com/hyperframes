@@ -24,6 +24,7 @@ import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingA
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { isMusicTrack } from "../../utils/timelineInspector";
+import type { Rect } from "../../utils/marqueeGeometry";
 
 function ClipLintDot({ element }: { element: TimelineElement }) {
   const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
@@ -46,12 +47,16 @@ interface TimelineCanvasProps {
   effectiveDuration: number;
   majorTickInterval: number;
   rangeSelection: TimelineRangeSelection | null;
+  /** Live rubber-band multi-select rectangle (canvas coordinates), or null. */
+  marqueeRect: Rect | null;
   theme: TimelineTheme;
   displayTrackOrder: number[];
   trackOrder: number[];
   tracks: [number, TimelineElement[]][];
   trackStyles: Map<number, TrackVisualStyle>;
   selectedElementId: string | null;
+  /** Marquee multi-selection — highlighted alongside the primary selection. */
+  selectedElementIds: Set<string>;
   hoveredClip: string | null;
   draggedClip: DraggedClipState | null;
   resizingClip: ResizingClipState | null;
@@ -104,12 +109,14 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   effectiveDuration,
   majorTickInterval,
   rangeSelection,
+  marqueeRect,
   theme,
   displayTrackOrder,
   trackOrder,
   tracks,
   trackStyles,
   selectedElementId,
+  selectedElementIds,
   hoveredClip,
   draggedClip,
   resizingClip: _resizingClip,
@@ -311,7 +318,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     const clipStyle = getTrackStyle(el.tag);
                     const elementKey = el.key ?? el.id;
                     const capabilities = getTimelineEditCapabilities(el);
-                    const isSelected = selectedElementId === elementKey;
+                    const isSelected =
+                      selectedElementId === elementKey || selectedElementIds.has(elementKey);
                     const isComposition = !!el.compositionSrc;
                     // elementKey (el.key ?? el.id) is already unique per clip; do NOT
                     // fold in the map index, or a splice/reorder remounts every clip
@@ -444,7 +452,13 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                             }
                             return;
                           }
-                          const nextElement = isSelected ? null : el;
+                          // Plain click single-selects: drop any marquee multi-selection.
+                          // Only a click on the PRIMARY selection toggles it off — a click
+                          // on a marquee-selected clip narrows the selection to that clip.
+                          const hadMultiSelection = selectedElementIds.size > 0;
+                          usePlayerStore.getState().clearSelectedElementIds();
+                          const nextElement =
+                            selectedElementId === elementKey && !hadMultiSelection ? null : el;
                           setSelectedElementId(nextElement ? elementKey : null);
                           onSelectElement?.(nextElement);
                         }}
@@ -574,6 +588,25 @@ export const TimelineCanvas = memo(function TimelineCanvas({
             {renderClipChildren(activeDraggedElement, getTrackStyle(activeDraggedElement.tag))}
           </TimelineClip>
         </div>
+      )}
+
+      {/* Marquee (rubber-band) multi-select rectangle — mirrors the canvas
+          MarqueeOverlay look: semi-transparent accent fill + dashed border. */}
+      {marqueeRect && (
+        <div
+          aria-hidden="true"
+          className="absolute pointer-events-none"
+          style={{
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            width: marqueeRect.width,
+            height: marqueeRect.height,
+            background: "rgba(60,230,172,0.10)",
+            border: "1px dashed rgba(60,230,172,0.7)",
+            borderRadius: 2,
+            zIndex: 70,
+          }}
+        />
       )}
 
       {/* Range highlight */}
