@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  FlatLayoutSection,
   LayoutFlexBlock,
   LayoutGeometryRows,
   LayoutTransform3DBlock,
@@ -36,6 +37,7 @@ function getFlatRowInput(host: HTMLElement, label: string): HTMLInputElement {
 
 function baseGeometryProps(overrides: Partial<Parameters<typeof LayoutGeometryRows>[0]> = {}) {
   return {
+    element: {} as never,
     displayX: 0,
     displayY: -24,
     displayW: 257.4,
@@ -109,6 +111,32 @@ describe("LayoutGeometryRows", () => {
     );
     const full = host.querySelectorAll('[data-flat-kf-gutter="true"][style*="opacity: 1"]');
     expect(full.length).toBeGreaterThan(0);
+    act(() => root.unmount());
+  });
+
+  it("passes the real element/selection (not null) to onCommitAnimatedProperty when adding a keyframe", () => {
+    const onCommitAnimatedProperty = vi.fn();
+    const element = { id: "el-1" } as unknown as Parameters<
+      typeof LayoutGeometryRows
+    >[0]["element"];
+    const { host, root } = renderInto(
+      <LayoutGeometryRows
+        {...baseGeometryProps({
+          element,
+          gsapAnimId: "anim-1",
+          navKeyframes: [{ percentage: 50, properties: { x: 5 } }],
+          currentPct: 0,
+          onCommitAnimatedProperty,
+        })}
+      />,
+    );
+    const addButton = host.querySelector('[title="Add x keyframe"]');
+    if (!addButton) throw new Error("expected an Add x keyframe button");
+    act(() => {
+      (addButton as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onCommitAnimatedProperty).toHaveBeenCalledWith(element, "x", 0);
+    expect(onCommitAnimatedProperty).not.toHaveBeenCalledWith(null, "x", 0);
     act(() => root.unmount());
   });
 });
@@ -186,6 +214,80 @@ describe("LayoutTransform3DBlock", () => {
     // PropertyPanel3dTransform's own internals aren't this task's concern (it's
     // reused unmodified) — just confirm the wrapper mounted something.
     expect(host.children.length).toBeGreaterThan(0);
+    act(() => root.unmount());
+  });
+});
+
+describe("FlatLayoutSection", () => {
+  it("renders geometry rows, z-index, flex (when applicable), and the 3D transform block in order", () => {
+    const { host, root } = renderInto(
+      <FlatLayoutSection
+        element={{} as never}
+        styles={{ display: "flex", "flex-direction": "row" }}
+        onSetStyle={vi.fn()}
+        disabled={false}
+        displayX={0}
+        displayY={0}
+        displayW={100}
+        displayH={100}
+        displayR={0}
+        manualOffsetEditingDisabled={false}
+        manualSizeEditingDisabled={false}
+        manualRotationEditingDisabled={false}
+        commitManualOffset={vi.fn()}
+        commitManualSize={vi.fn()}
+        commitManualRotation={vi.fn()}
+        gsapAnimId={null}
+        navKeyframes={null}
+        currentPct={0}
+        seekFromKfPct={vi.fn()}
+        animIdForProp={(p) => p}
+        gsapRuntimeValues={{}}
+        gsapKeyframes={null}
+        elStart={0}
+        elDuration={0}
+        onSeekToTime={vi.fn()}
+      />,
+    );
+    const text = host.textContent ?? "";
+    expect(text).toContain("X");
+    expect(text).toContain("Z-index");
+    expect(text).toContain("Flex");
+    expect(text).toContain("3D Transform");
+    act(() => root.unmount());
+  });
+
+  it("omits the Flex block for a non-flex element", () => {
+    const { host, root } = renderInto(
+      <FlatLayoutSection
+        element={{} as never}
+        styles={{ display: "block" }}
+        onSetStyle={vi.fn()}
+        disabled={false}
+        displayX={0}
+        displayY={0}
+        displayW={100}
+        displayH={100}
+        displayR={0}
+        manualOffsetEditingDisabled={false}
+        manualSizeEditingDisabled={false}
+        manualRotationEditingDisabled={false}
+        commitManualOffset={vi.fn()}
+        commitManualSize={vi.fn()}
+        commitManualRotation={vi.fn()}
+        gsapAnimId={null}
+        navKeyframes={null}
+        currentPct={0}
+        seekFromKfPct={vi.fn()}
+        animIdForProp={(p) => p}
+        gsapRuntimeValues={{}}
+        gsapKeyframes={null}
+        elStart={0}
+        elDuration={0}
+        onSeekToTime={vi.fn()}
+      />,
+    );
+    expect(host.textContent).not.toContain("Flex");
     act(() => root.unmount());
   });
 });
