@@ -11,6 +11,7 @@ import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
 import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
+import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
@@ -96,8 +97,12 @@ export function PropertyPanelFlat({
   currentPct,
   animIdForProp,
   gsapRuntimeValues,
-  elStart,
-  elDuration,
+  // Renamed: PropertyPanel.tsx still computes/passes these for its own legacy
+  // (non-flat) panel, but the flat path recomputes its own basis below via
+  // deriveElementTiming so it agrees with Motion's Timing row — ignore the
+  // parent's naive `elDuration ?? 1` fallback.
+  elStart: _elStart,
+  elDuration: _elDuration,
   onCommitAnimatedProperty,
   onCommitAnimatedProperties,
   onSeekToTime,
@@ -222,6 +227,12 @@ export function PropertyPanelFlat({
     setPinnedGroupIds((current) =>
       current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
     );
+  // Basis for the Layout keyframe gutter (X/Y/W/H/Angle + 3D Transform) —
+  // must agree with Motion's Timing row (FlatTimingRow), which infers the
+  // range from animations when there's no explicit data-duration. Computed
+  // here (not threaded from PropertyPanel) both to keep that file under its
+  // 600-LOC gate and because element/gsapAnimations are already in scope.
+  const { start: elStart, duration: elDuration } = deriveElementTiming(element, gsapAnimations);
   // Trivial percentage→time seek, derived here rather than threaded from
   // PropertyPanel (keeps that file under its 600-LOC gate).
   const seekFromKfPct = (pct: number) => onSeekToTime?.(elStart + (pct / 100) * elDuration);

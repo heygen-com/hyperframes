@@ -143,6 +143,40 @@ function animatedElement() {
   };
 }
 
+// Inferred-timing fixture (whole-plan coherence fix): NO explicit data-start
+// or data-duration — sections.timing must turn on via animationCount (fed
+// from gsapAnimations.length), not an authored attribute, so both the Motion
+// Timing row and the Layout keyframe gutter are forced to infer the range
+// from the element's own GSAP tween instead of reading it off an attribute.
+function inferredMotionElement() {
+  return {
+    ...baseElement(),
+    id: "inferred-anim",
+    selector: "#inferred-anim",
+    label: "Inferred Anim",
+  };
+}
+
+// A single "to" tween running from t=2 to t=5 (position 2, duration 3), with
+// keyframes on "x" at 0/50/100% — enough to drive both FlatTimingRow's
+// inference and the Layout "x" row's keyframe-seek gutter.
+const INFERRED_TIMING_ANIMATION = {
+  id: "a1",
+  targetSelector: "#inferred-anim",
+  method: "to",
+  position: 2,
+  duration: 3,
+  properties: { x: 100 },
+  keyframes: {
+    format: "percentage",
+    keyframes: [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 50, properties: { x: 50 } },
+      { percentage: 100, properties: { x: 100 } },
+    ],
+  },
+} as never;
+
 async function renderPanel(
   flatEnabled: boolean,
   elementOverride: ReturnType<typeof baseElement> = baseElement(),
@@ -413,6 +447,68 @@ describe("PropertyPanel — Motion group (Plan 3b)", () => {
       });
       openFlatGroup(host, "Motion");
       expect(openGroupText(host)).toContain("Add effect");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+// Whole-plan coherence fix: Layout's keyframe-seek basis and Motion's Timing
+// row basis must agree on the same start/duration for an element that has
+// animations but no explicit data-duration — before the fix, Layout fell back
+// to a naive `duration ?? 1` while Motion correctly inferred the range from
+// the tween (position 2, duration 3 -> start 2 / duration 3 / end 5).
+describe("PropertyPanel — flat Layout/Motion timing agreement (whole-plan coherence fix)", () => {
+  it(
+    "Motion's Timing row shows the inferred start/end/duration for an element with animations but no explicit duration",
+    async () => {
+      const { host, root } = await renderPanel(true, inferredMotionElement(), {
+        gsapAnimations: [INFERRED_TIMING_ANIMATION],
+      });
+      openFlatGroup(host, "Motion");
+      const motionGroup = host.querySelector('[data-flat-group-open="true"]');
+      if (!motionGroup) throw new Error("expected the Motion group to be open");
+      expect(motionGroup.textContent).toContain("Inferred");
+      const inputs = motionGroup.querySelectorAll<HTMLInputElement>("input");
+      // FlatTimingRow renders Start, End, Duration in that order.
+      expect(inputs[0]?.value).toBe("2.00s");
+      expect(inputs[1]?.value).toBe("5.00s");
+      expect(inputs[2]?.value).toBe("3.00s");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "Layout's X-row keyframe gutter seeks to the SAME absolute time Motion's Timing row shows as the midpoint (50% of an inferred 2s-5s range = 3.5s)",
+    async () => {
+      const onSeekToTime = vi.fn();
+      const { host, root } = await renderPanel(true, inferredMotionElement(), {
+        gsapAnimations: [INFERRED_TIMING_ANIMATION],
+        onSeekToTime,
+      });
+      openFlatGroup(host, "Layout");
+      const layoutGroup = host.querySelector('[data-flat-group-open="true"]');
+      if (!layoutGroup) throw new Error("expected the Layout group to be open");
+
+      const xRow = Array.from(layoutGroup.querySelectorAll<HTMLElement>(".group")).find(
+        (el) => el.querySelector("span")?.textContent === "X",
+      );
+      if (!xRow) throw new Error("expected an X row");
+      const gutter = xRow.querySelector('[data-flat-kf-gutter="true"]');
+      if (!gutter) throw new Error("expected a keyframe gutter on the X row");
+      // The diamond button always carries a `title`; the two plain arrow
+      // buttons don't. At currentPct=0 with keyframes at 0/50/100%, the prev
+      // arrow is disabled (no earlier keyframe) and the next arrow seeks to
+      // the 50% keyframe — exactly the case the coherence bug affected.
+      const nextArrow = Array.from(gutter.querySelectorAll<HTMLButtonElement>("button")).find(
+        (b) => !b.title && !b.disabled,
+      );
+      if (!nextArrow) throw new Error("expected an enabled next-keyframe arrow button");
+      act(() => nextArrow.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+
+      // Same basis as the Timing row: start 2 + 50% * duration 3 = 3.5.
+      expect(onSeekToTime).toHaveBeenCalledWith(3.5);
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

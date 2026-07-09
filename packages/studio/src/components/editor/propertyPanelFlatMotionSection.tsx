@@ -7,21 +7,7 @@ import { CommitField } from "./propertyPanelPrimitives";
 import { AnimationCard } from "./AnimationCard";
 import { ADD_METHODS, ADD_METHOD_LABELS, METHOD_TOOLTIPS } from "./gsapAnimationConstants";
 import type { GsapAnimationEditCallbacks } from "./gsapAnimationCallbacks";
-
-function deriveTimingFromAnimations(
-  animations: GsapAnimation[],
-): { start: number; duration: number } | null {
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const a of animations) {
-    const s = a.resolvedStart ?? (typeof a.position === "number" ? a.position : 0);
-    const d = a.duration ?? 0;
-    lo = Math.min(lo, s);
-    hi = Math.max(hi, s + d);
-  }
-  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return null;
-  return { start: lo, duration: hi - lo };
-}
+import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 
 export function FlatTimingRow({
   element,
@@ -32,15 +18,7 @@ export function FlatTimingRow({
   animations?: GsapAnimation[];
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
 }) {
-  const explicitStart = Number.parseFloat(element.dataAttributes.start ?? "0") || 0;
-  const explicitDuration =
-    Number.parseFloat(
-      element.dataAttributes.duration ?? element.dataAttributes["hf-authored-duration"] ?? "0",
-    ) || 0;
-
-  const derived = explicitDuration > 0 ? null : deriveTimingFromAnimations(animations);
-  const start = derived ? derived.start : explicitStart;
-  const duration = derived ? derived.duration : explicitDuration;
+  const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
   const commitStart = (nextValue: string) => {
