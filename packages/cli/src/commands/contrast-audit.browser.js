@@ -2,8 +2,9 @@
 // Loaded as a raw string and injected via page.addScriptTag to avoid
 // esbuild mangling (page.evaluate serializes functions; __name helpers break).
 //
-// NOTE: WCAG math (relLum, wcagRatio, parseColor, median) is duplicated in
-// skills/hyperframes/scripts/contrast-report.mjs — keep in sync.
+// NOTE: WCAG math (relLum, wcagRatio, parseColor, median) plus the DOM-walk /
+// foreground-color-read logic is duplicated in
+// skills/hyperframes-creative/scripts/contrast-report.mjs — keep in sync.
 
 /* eslint-disable */
 window.__contrastAudit = async function (imgBase64, time) {
@@ -30,6 +31,36 @@ window.__contrastAudit = async function (imgBase64, time) {
       return parseFloat(s.trim());
     });
     return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
+  }
+
+  // Like parseColor, but returns null instead of defaulting to black when the
+  // value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords such as
+  // "none"/"context-fill", or a gradient/pattern reference like
+  // 'url("#grad")'. Callers should fall back to another source of truth
+  // rather than trust a fabricated black.
+  function tryParseSolidColor(c) {
+    var m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    var p = m[1].split(",").map(function (s) {
+      return parseFloat(s.trim());
+    });
+    if (
+      p.some(function (v) {
+        return isNaN(v);
+      })
+    )
+      return null;
+    return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
+  }
+
+  // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
+  // property, not `color` — the two are independent CSS properties in SVG.
+  // A page can set `fill` (inline style, `fill` attribute, or a CSS rule)
+  // without ever touching `color`, in which case getComputedStyle(el).color
+  // resolves to the inherited/initial value (often black) and does not
+  // reflect what's actually rendered on screen.
+  function isSvgTextElement(el) {
+    return !!el.ownerSVGElement;
   }
 
   function selectorOf(el) {
@@ -151,7 +182,15 @@ window.__contrastAudit = async function (imgBase64, time) {
     if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= w || rect.top >= h) continue;
     if (isClippedAway(el, rect)) continue;
 
-    var fg = parseColor(cs.color);
+    // For SVG text, `fill` is the paint that's actually rendered; `color` is
+    // frequently just the inherited/initial value and unrelated to what's on
+    // screen. Only trust `fill` when it resolves to a solid color — "none",
+    // "context-fill", and gradient/pattern refs (url(#...)) fall back to
+    // `color` rather than crashing parseColor or reporting a fabricated
+    // black.
+    var fg = isSvgTextElement(el)
+      ? tryParseSolidColor(cs.fill) || parseColor(cs.color)
+      : parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
 
     // Prefer an opaque own/ancestor background-color over the pixel ring. A

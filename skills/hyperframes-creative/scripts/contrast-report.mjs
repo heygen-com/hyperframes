@@ -120,6 +120,24 @@ async function probeTextElements(session, _t) {
       const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
       return [parts[0], parts[1], parts[2], parts[3] ?? 1];
     };
+    // Like parseColor, but returns null instead of defaulting to black when
+    // the value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords
+    // such as "none"/"context-fill", or a gradient/pattern reference like
+    // 'url("#grad")'. Callers should fall back to another source of truth
+    // rather than trust a fabricated black.
+    const tryParseSolidColor = (c) => {
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (!m) return null;
+      const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
+      if (parts.some((v) => Number.isNaN(v))) return null;
+      return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+    };
+    // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
+    // property, not `color` — the two are independent CSS properties in
+    // SVG. A page can set `fill` without ever touching `color`, in which
+    // case getComputedStyle(el).color resolves to the inherited/initial
+    // value (often black) and does not reflect what's actually rendered.
+    const isSvgTextElement = (el) => !!el.ownerSVGElement;
     const selectorOf = (el) => {
       if (el.id) return `#${el.id}`;
       const cls = [...el.classList].slice(0, 2).join(".");
@@ -137,10 +155,13 @@ async function probeTextElements(session, _t) {
       if (parseFloat(cs.opacity) <= 0.01) continue;
       const rect = el.getBoundingClientRect();
       if (rect.width < 8 || rect.height < 8) continue;
+      const fg = isSvgTextElement(el)
+        ? tryParseSolidColor(cs.fill) || parseColor(cs.color)
+        : parseColor(cs.color);
       out.push({
         selector: selectorOf(el),
         text: el.textContent.trim().slice(0, 60),
-        fg: parseColor(cs.color),
+        fg,
         fontSize: parseFloat(cs.fontSize),
         fontWeight: Number(cs.fontWeight) || 400,
         bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
