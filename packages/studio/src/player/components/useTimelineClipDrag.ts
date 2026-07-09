@@ -19,7 +19,7 @@ import {
   type TimelineSnapTarget,
   type TimelineSnapType,
 } from "./timelineSnapping";
-import { resolveInsertRow } from "./timelineCollision";
+import { resolveInsertRow, clampTrackToZone, isInsertAllowedForZone } from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 
 const EMPTY_BEAT_TIMES: number[] = [];
@@ -223,23 +223,35 @@ export function useTimelineClipDrag({
       // insertion affordance at/below the first audio lane so it never appears
       // under the bottom. Compare in ROW-INDEX space (position in trackOrder), not
       // raw track values — track indices can shift, but the display row is stable.
+      // Kind-zone rows: audio lanes sit below the visual lanes. audioRow = the
+      // display-row of the first audio lane (or -1 when there is no audio yet).
       const order = trackOrderRef.current;
       const audioRow = order.findIndex((t) =>
         elementsRef.current.some((e) => e.track === t && isAudioTimelineElement(e)),
       );
+      const draggedIsAudio = isAudioTimelineElement(drag.element);
+      // Kind-aware new-track insert: only allow a new lane in the clip's OWN zone —
+      // visual inserts stay out of the audio zone; audio clips can create new audio
+      // tracks. Otherwise suppress the insertion affordance (land on a lane instead).
       const insertRow =
-        rawInsertRow !== null && audioRow >= 0 && rawInsertRow > audioRow ? null : rawInsertRow;
-      // Free placement: land on the hovered lane at the (snapped) time. Overlaps are
-      // allowed — layered overlays are real HyperFrames content — so there's no
-      // collision-push to a free lane and no main-track magnet. Snapping (when the
-      // magnet toggle is on) still aligns edges to the playhead / clips / beats.
+        rawInsertRow !== null && isInsertAllowedForZone(rawInsertRow, audioRow, draggedIsAudio)
+          ? rawInsertRow
+          : null;
+      // Free placement, zone-respecting: land on the hovered lane at the (snapped)
+      // time (overlaps allowed — layered content is real), but clamp to the clip's
+      // kind-zone so a visual clip never lands among audio lanes (or vice-versa) and
+      // then snaps back on re-zone. Snapping still aligns edges when the magnet is on.
+      const previewTrack =
+        insertRow === null
+          ? clampTrackToZone(nextMove.track, order, audioRow, draggedIsAudio)
+          : nextMove.track;
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
         previewStart: snap.start,
-        previewTrack: nextMove.track,
+        previewTrack,
         insertRow,
         snapTime: snap.snapTime,
         snapType: snap.snapType,

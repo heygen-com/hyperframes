@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import {
   buildTrackInsert,
+  clampTrackToZone,
+  isInsertAllowedForZone,
   isLaneFree,
   resolveInsertRow,
   resolvePlacement,
@@ -212,5 +214,44 @@ describe("resolveInsertRow", () => {
 
   it("inserts below the bottom lane when the pointer is past the last lane", () => {
     expect(resolveInsertRow(3.4, n, 0.22)).toBe(3);
+  });
+});
+
+describe("clampTrackToZone", () => {
+  // trackOrder [0,1,2,3]: rows 0,1 = visual; rows 2,3 = audio (audioRow = 2).
+  const order = [0, 1, 2, 3];
+
+  it("is a no-op when there is no audio zone", () => {
+    expect(clampTrackToZone(3, order, -1, false)).toBe(3);
+  });
+
+  it("keeps a visual clip in the visual zone", () => {
+    expect(clampTrackToZone(1, order, 2, false)).toBe(1); // already visual
+    expect(clampTrackToZone(3, order, 2, false)).toBe(1); // in audio → last visual lane
+  });
+
+  it("keeps an audio clip in the audio zone", () => {
+    expect(clampTrackToZone(2, order, 2, true)).toBe(2); // already audio
+    expect(clampTrackToZone(0, order, 2, true)).toBe(2); // in visual → first audio lane
+  });
+});
+
+describe("isInsertAllowedForZone", () => {
+  // audioRow = 2
+  it("allows any insert when there is no audio zone", () => {
+    expect(isInsertAllowedForZone(0, -1, false)).toBe(true);
+    expect(isInsertAllowedForZone(3, -1, true)).toBe(true);
+  });
+
+  it("allows a visual insert only at/above the audio zone top", () => {
+    expect(isInsertAllowedForZone(0, 2, false)).toBe(true);
+    expect(isInsertAllowedForZone(2, 2, false)).toBe(true); // bottom of the visual zone
+    expect(isInsertAllowedForZone(3, 2, false)).toBe(false); // inside the audio zone
+  });
+
+  it("allows an audio insert only at/below the audio zone top (audio clips make audio tracks)", () => {
+    expect(isInsertAllowedForZone(2, 2, true)).toBe(true);
+    expect(isInsertAllowedForZone(4, 2, true)).toBe(true); // below the bottom
+    expect(isInsertAllowedForZone(1, 2, true)).toBe(false); // inside the visual zone
   });
 });

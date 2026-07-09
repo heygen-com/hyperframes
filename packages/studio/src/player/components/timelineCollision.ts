@@ -1,6 +1,42 @@
 import type { TimelineElement } from "../store/playerStore";
 
 /**
+ * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
+ * the rows ABOVE the first audio lane; audio clips stay AT/BELOW it. Prevents a
+ * clip from appearing to land in the wrong zone mid-drag (which normalizeToZones
+ * would then snap back). `audioRow` = index in `trackOrder` of the first audio
+ * lane, or -1 when there is no audio zone yet (then it's a no-op).
+ */
+export function clampTrackToZone(
+  targetTrack: number,
+  trackOrder: number[],
+  audioRow: number,
+  isAudio: boolean,
+): number {
+  if (audioRow < 0) return targetTrack;
+  const row = trackOrder.indexOf(targetTrack);
+  if (row < 0) return targetTrack;
+  if (isAudio) return row >= audioRow ? targetTrack : (trackOrder[audioRow] ?? targetTrack);
+  return row < audioRow ? targetTrack : (trackOrder[audioRow - 1] ?? targetTrack);
+}
+
+/**
+ * Whether a new-track insert at boundary `insertRow` is allowed for a clip of the
+ * given kind. Visual clips may only insert visual lanes (boundary at/above the top
+ * of the audio zone); audio clips may only insert audio lanes (boundary at/below
+ * it) — so audio clips CAN create a new audio track, and neither kind inserts into
+ * the other's zone. `audioRow` = first audio lane row, or -1 (no audio zone) → any.
+ */
+export function isInsertAllowedForZone(
+  insertRow: number,
+  audioRow: number,
+  isAudio: boolean,
+): boolean {
+  if (audioRow < 0) return true;
+  return isAudio ? insertRow >= audioRow : insertRow <= audioRow;
+}
+
+/**
  * Fraction of a track height near a lane boundary that switches a vertical drag
  * from "target this lane" into "insert a new track at this boundary". Tuned by
  * feel — bigger = easier to hit boundaries (harder to land on a lane).
