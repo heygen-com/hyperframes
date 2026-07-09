@@ -277,3 +277,60 @@ describe("FlatStyleSection — Shadow and Blend", () => {
     act(() => root.unmount());
   });
 });
+
+describe("FlatStyleSection — blur sliders", () => {
+  it("renders Layer blur and Backdrop sliders and commits through onSetStyle", () => {
+    const onSetStyle = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatStyleSection
+          projectId="proj-1"
+          element={makeElement()}
+          styles={{ filter: "blur(4px)" }}
+          assets={[]}
+          onSetStyle={onSetStyle}
+          gsapBorderRadius={null}
+        />,
+      );
+    });
+    expect(host.textContent).toContain("Layer blur");
+    expect(host.textContent).toContain("Backdrop");
+    expect(host.textContent).toContain("4px");
+    const track = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+    });
+    // filterBlurValue=4 -> max=Math.max(40, 4)=40; clientX=50 of width 100 -> ratio 0.5 -> 20px.
+    expect(onSetStyle).toHaveBeenCalledWith("filter", "blur(20px)");
+    act(() => root.unmount());
+  });
+
+  it("renders the Backdrop slider from backdrop-filter and commits a new blur value on track click", () => {
+    const { host, root, onSetStyle } = renderSection({ "backdrop-filter": "blur(6px)" });
+    expect(host.textContent).toContain("Backdrop");
+    expect(host.textContent).toContain("6px");
+    const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
+    const backdropTrack = tracks[tracks.length - 1];
+    Object.defineProperty(backdropTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      backdropTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+    });
+    // backdropBlurValue=6 -> max=Math.max(60, 6)=60; clientX=50 of width 100 -> ratio 0.5 -> 30px.
+    expect(onSetStyle).toHaveBeenCalledWith("backdrop-filter", "blur(30px)");
+    act(() => root.unmount());
+  });
+
+  it("does not render a fill/knob highlight for a zero-value blur (default tier)", () => {
+    const { host, root } = renderSection({});
+    expect(host.querySelectorAll('[data-flat-slider-fill="true"]')).toHaveLength(0);
+    act(() => root.unmount());
+  });
+});

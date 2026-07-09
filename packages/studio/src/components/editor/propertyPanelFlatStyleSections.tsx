@@ -12,13 +12,20 @@ import {
   extractBackgroundImageUrl,
   formatNumericValue,
   formatPxMetricValue,
+  getCssFilterFunctionPx,
   inferBoxShadowPreset,
   normalizePanelPxValue,
   parseNumericValue,
   parsePxMetricValue,
+  setCssFilterFunctionPx,
   type BoxShadowPreset,
 } from "./propertyPanelHelpers";
-import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
+import {
+  FlatRow,
+  FlatSegmentedRow,
+  FlatSelectRow,
+  FlatSlider,
+} from "./propertyPanelFlatPrimitives";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
@@ -317,6 +324,55 @@ function FlatShadowBlendRows({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Flat Layer blur + Backdrop sliders                                 */
+/* ------------------------------------------------------------------ */
+
+function FlatBlurSliders({
+  styles,
+  disabled,
+  onSetStyle,
+}: {
+  styles: Record<string, string>;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
+  const filterBlurValue = getCssFilterFunctionPx(styles.filter, "blur");
+  const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
+
+  return (
+    <>
+      <FlatSlider
+        label="Layer blur"
+        value={filterBlurValue}
+        min={0}
+        max={Math.max(40, Math.ceil(filterBlurValue))}
+        tier={filterBlurValue > 0 ? "explicitCustom" : "default"}
+        displayValue={`${formatNumericValue(filterBlurValue)}px`}
+        disabled={disabled}
+        onCommit={(next) =>
+          void onSetStyle("filter", setCssFilterFunctionPx(styles.filter, "blur", next))
+        }
+      />
+      <FlatSlider
+        label="Backdrop"
+        value={backdropBlurValue}
+        min={0}
+        max={Math.max(60, Math.ceil(backdropBlurValue))}
+        tier={backdropBlurValue > 0 ? "explicitCustom" : "default"}
+        displayValue={`${formatNumericValue(backdropBlurValue)}px`}
+        disabled={disabled}
+        onCommit={(next) =>
+          void onSetStyle(
+            "backdrop-filter",
+            setCssFilterFunctionPx(styles["backdrop-filter"], "blur", next),
+          )
+        }
+      />
+    </>
+  );
+}
+
 export function FlatStyleSection({
   projectId,
   element,
@@ -357,6 +413,7 @@ export function FlatStyleSection({
         disabled={styleEditingDisabled}
         onSetStyle={onSetStyle}
       />
+      <FlatBlurSliders styles={styles} disabled={styleEditingDisabled} onSetStyle={onSetStyle} />
     </div>
   );
 }
