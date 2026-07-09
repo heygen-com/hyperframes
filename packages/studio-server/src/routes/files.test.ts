@@ -805,4 +805,54 @@ tl.to("#box", { opacity: 1, duration: 1 }, 0);
     // The variable target was not flattened to a string-literal selector
     expect(result.after).toContain("tl.to(kicker,");
   });
+
+  it("shift-positions-batch equals sequential single shifts (atomic multi-clip)", async () => {
+    const TWO_TWEENS = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, x: 100 }, 1);
+tl.to("#b", { duration: 1, x: 200 }, 2);
+</script></body></html>`;
+
+    const seqDir = createProjectDir();
+    writeHtml(seqDir, "seq.html", TWO_TWEENS);
+    const seqApp = new Hono();
+    registerFileRoutes(seqApp, createAdapter(seqDir));
+    await seqApp.request("http://localhost/projects/demo/gsap-mutations/seq.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions", targetSelector: "#a", delta: 1 }),
+    });
+    const seqRes = await seqApp.request("http://localhost/projects/demo/gsap-mutations/seq.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions", targetSelector: "#b", delta: 0.5 }),
+    });
+    const seqAfter = ((await seqRes.json()) as { after: string }).after;
+
+    const batchDir = createProjectDir();
+    writeHtml(batchDir, "batch.html", TWO_TWEENS);
+    const batchApp = new Hono();
+    registerFileRoutes(batchApp, createAdapter(batchDir));
+    const batchRes = await batchApp.request(
+      "http://localhost/projects/demo/gsap-mutations/batch.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "shift-positions-batch",
+          shifts: [
+            { targetSelector: "#a", delta: 1 },
+            { targetSelector: "#b", delta: 0.5 },
+          ],
+        }),
+      },
+    );
+    const batch = (await batchRes.json()) as { ok: boolean; changed: boolean; after: string };
+
+    expect(batchRes.status).toBe(200);
+    expect(batch.ok).toBe(true);
+    expect(batch.changed).toBe(true);
+    // Batching #a then #b in one write == applying them as two sequential single shifts.
+    expect(batch.after).toBe(seqAfter);
+  });
 });
