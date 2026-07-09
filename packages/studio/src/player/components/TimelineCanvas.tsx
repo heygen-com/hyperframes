@@ -364,6 +364,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                             element: el,
                             edge,
                             originClientX: e.clientX,
+                            originScrollLeft: scrollRef.current?.scrollLeft ?? 0,
                             previewStart: el.start,
                             previewDuration: el.duration,
                             previewPlaybackStart: el.playbackStart,

@@ -16,9 +16,36 @@ export interface DragCommitDeps {
   onMoveElement?: (element: TimelineElement, updates: StartTrack) => Promise<void> | void;
   /** Atomic multi-clip persist (single undo) for lane changes + track inserts. */
   onMoveElements?: (edits: TimelineMoveEdit[]) => Promise<void> | void;
+  /**
+   * The current multi-selection (store.selectedElementIds). When the dragged
+   * clip is part of a multi-selection (size > 1), the WHOLE selection moves by
+   * the dragged clip's time delta — the standard NLE gesture. Track changes
+   * apply to the dragged clip only; the others keep their lanes.
+   */
+  selectedKeys?: ReadonlySet<string> | null;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+/** Optimistically apply + persist a batch of moves with rollback on failure. */
+function persistMoveEdits(edits: TimelineMoveEdit[], deps: DragCommitDeps): void {
+  if (edits.length === 0) return;
+  const { updateElement, onMoveElement, onMoveElements } = deps;
+  const prev = edits.map((e) => ({
+    key: keyOf(e.element),
+    start: e.element.start,
+    track: e.element.track,
+  }));
+  for (const e of edits) updateElement(keyOf(e.element), e.updates);
+  const persisted = onMoveElements
+    ? onMoveElements(edits)
+    : Promise.all(edits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
+  Promise.resolve(persisted).catch((error) => {
+    for (const p of prev) updateElement(p.key, { start: p.start, track: p.track });
+    console.error("[Timeline] Failed to persist clip edits", error);
+  });
+}
 
 /**
  * A fractional track value for a NEW lane inserted at boundary `insertRow` in
@@ -45,13 +72,29 @@ export function insertTrackValue(trackOrder: number[], insertRow: number): numbe
  */
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
-  const { elements, trackOrder, updateElement, onMoveElement, onMoveElements } = deps;
+  const { elements, trackOrder, updateElement, onMoveElement, selectedKeys } = deps;
   const dragKey = keyOf(drag.element);
   const isTopologyChange = drag.insertRow != null || drag.previewTrack !== drag.element.track;
+  // Multi-selection drag: engaged only when the dragged clip is itself part of
+  // a multi-selection. Every selected clip shifts by the same time delta
+  // (clamped ≥ 0); only the dragged clip changes track.
+  const multiKeys =
+    selectedKeys && selectedKeys.size > 1 && selectedKeys.has(dragKey) ? selectedKeys : null;
+  const delta = drag.previewStart - drag.element.start;
+  const movedStart = (e: TimelineElement): number =>
+    keyOf(e) === dragKey ? drag.previewStart : Math.max(0, round3(e.start + delta));
 
   // ── Pure time-move (same lane) ──────────────────────────────────────────────
   if (!isTopologyChange) {
-    if (drag.previewStart === drag.element.start) return;
+    if (delta === 0) return;
+    if (multiKeys) {
+      const edits: TimelineMoveEdit[] = elements
+        .filter((e) => multiKeys.has(keyOf(e)))
+        .map((e) => ({ element: e, updates: { start: movedStart(e), track: e.track } }))
+        .filter((e) => e.updates.start !== e.element.start);
+      persistMoveEdits(edits, deps);
+      return;
+    }
     const updates = { start: drag.previewStart, track: drag.element.track };
     const prev = { start: drag.element.start, track: drag.element.track };
     updateElement(dragKey, updates);
@@ -65,31 +108,20 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   // ── Lane change / new track: normalize the whole set, persist all atomically ─
   const targetTrack =
     drag.insertRow != null ? insertTrackValue(trackOrder, drag.insertRow) : drag.previewTrack;
-  const candidate = elements.map((e) =>
-    keyOf(e) === dragKey ? { ...e, start: drag.previewStart, track: targetTrack } : e,
-  );
+  const candidate = elements.map((e) => {
+    if (keyOf(e) === dragKey) return { ...e, start: drag.previewStart, track: targetTrack };
+    if (multiKeys?.has(keyOf(e))) return { ...e, start: movedStart(e) };
+    return e;
+  });
   const normalized = normalizeToZones(candidate);
   const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
   const edits: TimelineMoveEdit[] = [];
   for (const norm of normalized) {
     const src = bySrc.get(keyOf(norm));
     if (!src) continue;
-    const start = keyOf(norm) === dragKey ? drag.previewStart : src.start;
+    const start =
+      keyOf(norm) === dragKey || multiKeys?.has(keyOf(norm)) ? movedStart(src) : src.start;
     edits.push({ element: src, updates: { start, track: norm.track } });
   }
-  if (edits.length === 0) return;
-
-  const prev = edits.map((e) => ({
-    key: keyOf(e.element),
-    start: e.element.start,
-    track: e.element.track,
-  }));
-  for (const e of edits) updateElement(keyOf(e.element), e.updates);
-  const persisted = onMoveElements
-    ? onMoveElements(edits)
-    : Promise.all(edits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
-  Promise.resolve(persisted).catch((error) => {
-    for (const p of prev) updateElement(p.key, { start: p.start, track: p.track });
-    console.error("[Timeline] Failed to persist clip edits", error);
-  });
+  persistMoveEdits(edits, deps);
 }

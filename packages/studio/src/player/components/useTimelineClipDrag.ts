@@ -54,6 +54,14 @@ export interface ResizingClipState {
   element: TimelineElement;
   edge: "start" | "end";
   originClientX: number;
+  /**
+   * scrollLeft at gesture start. Edge auto-scroll moves the content under a
+   * stationary pointer, so the trim math folds (current − origin) scrollLeft
+   * into the pointer x — mirroring resolveTimelineMove's scroll compensation.
+   * Optional so pre-existing constructors/tests stay valid; when absent the
+   * first preview update captures the current scrollLeft.
+   */
+  originScrollLeft?: number;
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
@@ -260,6 +268,127 @@ export function useTimelineClipDrag({
     [scrollRef, ppsRef, durationRef, trackOrderRef, buildSnapTargets],
   );
 
+  // Recompute the trim preview for a pointer x. Shared by the pointermove
+  // resize branch and the edge auto-scroll stepper (which re-runs it as the
+  // content scrolls under a stationary pointer, so the trim keeps tracking).
+  // fallow-ignore-next-line complexity
+  const applyResizePointer = useCallback(
+    // fallow-ignore-next-line complexity
+    (resize: ResizingClipState, clientX: number) => {
+      const scroll = scrollRef.current;
+      // Scroll compensation: auto-scroll moves the content while the pointer
+      // stays put, so fold the scroll delta into the pointer x (mirrors
+      // resolveTimelineMove's originScrollLeft handling).
+      const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
+      const effectiveClientX =
+        clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
+
+      const sourceRemaining =
+        resize.element.sourceDuration != null
+          ? Math.max(
+              0,
+              (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
+                Math.max(resize.element.playbackRate ?? 1, 0.1),
+            )
+          : Number.POSITIVE_INFINITY;
+      const normalizedTag = resize.element.tag.toLowerCase();
+      const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
+      const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
+      // Trim limit = available source media only — NOT the composition length.
+      // Duration is content-driven (the comp grows/shrinks to fit on commit), so
+      // capping a trim at the current comp end both blocked extending the last
+      // clip rightward and, after a far move, collapsed a clip to the sliver
+      // between its start and the comp end (the 8s→0.95s audio incident).
+      // Images/text/shapes have no source, so they extend freely.
+      const maxEnd = resize.element.start + sourceRemaining;
+      let nextResize = resolveTimelineResize(
+        {
+          start: resize.element.start,
+          duration: resize.element.duration,
+          originClientX: resize.originClientX,
+          pixelsPerSecond: ppsRef.current,
+          minStart: 0,
+          maxEnd,
+          playbackStart:
+            resize.edge === "start" && canSeedPlaybackStart
+              ? (resize.element.playbackStart ?? 0)
+              : resize.element.playbackStart,
+          playbackRate: resize.element.playbackRate,
+        },
+        resize.edge,
+        effectiveClientX,
+      );
+
+      // Snap edge to unified targets (beats + clip edges + playhead) when available.
+      // The snap must stay inside the same limits resolveTimelineResize enforces,
+      // or it would push the edge past the available source media / composition end.
+      // The music track defines the beats, so it must not snap to them —
+      // but it still snaps to the playhead and other clip edges.
+      const trimTargets = buildSnapTargets(
+        resize.element.key ?? resize.element.id,
+        !isMusicTrack(resize.element),
+      );
+      if (trimTargets.length > 0) {
+        const snapSecs = TIMELINE_SNAP_PX / Math.max(ppsRef.current, 1);
+        if (resize.edge === "end") {
+          const edgeTime = nextResize.start + nextResize.duration;
+          const snapped = snapTimelineTime(edgeTime, trimTargets, snapSecs).time;
+          // Stay within [start+minDuration, maxEnd] so the snap can't create a
+          // degenerate clip or run past the source/composition limit.
+          const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
+          if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
+            nextResize = { ...nextResize, duration: snappedDuration };
+          }
+        } else {
+          const snapped = snapTimelineTime(nextResize.start, trimTargets, snapSecs).time;
+          const delta = nextResize.start - snapped; // >0 when snapping left
+          // Leftward snap reveals more source; cap so playbackStart can't go < 0.
+          const maxLeftDelta =
+            nextResize.playbackStart != null
+              ? nextResize.playbackStart / playbackRate
+              : Number.POSITIVE_INFINITY;
+          // Also require the resulting duration to stay >= minDuration so a
+          // rightward snap (delta < 0) can't collapse the clip to zero/negative.
+          const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
+          if (
+            snapped !== nextResize.start &&
+            snapped >= 0 &&
+            delta <= maxLeftDelta + 1e-6 &&
+            snappedDuration >= 0.05
+          ) {
+            nextResize = {
+              ...nextResize,
+              start: snapped,
+              duration: snappedDuration,
+              playbackStart:
+                nextResize.playbackStart != null
+                  ? Math.round(
+                      Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000,
+                    ) / 1000
+                  : undefined,
+            };
+          }
+        }
+      }
+
+      setResizingClip((prev) =>
+        prev
+          ? {
+              ...prev,
+              started: true,
+              originScrollLeft,
+              previewStart: nextResize.start,
+              previewDuration: nextResize.duration,
+              previewPlaybackStart: nextResize.playbackStart,
+            }
+          : prev,
+      );
+    },
+    [scrollRef, ppsRef, buildSnapTargets],
+  );
+  const applyResizePointerRef = useRef(applyResizePointer);
+  applyResizePointerRef.current = applyResizePointer;
+
   const stopClipDragAutoScroll = useCallback(() => {
     clipDragPointerRef.current = null;
     if (clipDragScrollRaf.current) {
@@ -271,9 +400,10 @@ export function useTimelineClipDrag({
   const stepClipDragAutoScroll = useCallback(() => {
     clipDragScrollRaf.current = 0;
     const drag = draggedClipRef.current;
+    const resize = resizingClipRef.current;
     const pointer = clipDragPointerRef.current;
     const scroll = scrollRef.current;
-    if (!drag || !pointer || !scroll) return;
+    if ((!drag && !resize) || !pointer || !scroll) return;
 
     const rect = scroll.getBoundingClientRect();
     const delta = resolveTimelineAutoScroll(rect, pointer.clientX, pointer.clientY);
@@ -287,9 +417,15 @@ export function useTimelineClipDrag({
 
     scroll.scrollLeft = nextScrollLeft;
     scroll.scrollTop = nextScrollTop;
-    setDraggedClip((prev) =>
-      prev ? updateDraggedClipPreview(prev, pointer.clientX, pointer.clientY) : prev,
-    );
+    if (drag) {
+      setDraggedClip((prev) =>
+        prev ? updateDraggedClipPreview(prev, pointer.clientX, pointer.clientY) : prev,
+      );
+    } else if (resize) {
+      // Re-run the trim preview so the edge keeps tracking while the content
+      // scrolls under the stationary pointer (scroll-compensated pointer x).
+      applyResizePointerRef.current(resize, pointer.clientX);
+    }
     clipDragScrollRaf.current = requestAnimationFrame(stepClipDragAutoScroll);
   }, [scrollRef, updateDraggedClipPreview]);
 
@@ -340,105 +476,11 @@ export function useTimelineClipDrag({
         setShowPopover(false);
         setRangeSelectionRef.current?.(null);
 
-        const sourceRemaining =
-          resize.element.sourceDuration != null
-            ? Math.max(
-                0,
-                (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
-                  Math.max(resize.element.playbackRate ?? 1, 0.1),
-              )
-            : Number.POSITIVE_INFINITY;
-        const normalizedTag = resize.element.tag.toLowerCase();
-        const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
-        const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
-        // Trim limit = available source media only — NOT the composition length.
-        // Duration is content-driven (the comp grows/shrinks to fit on commit), so
-        // capping a trim at the current comp end both blocked extending the last
-        // clip rightward and, after a far move, collapsed a clip to the sliver
-        // between its start and the comp end (the 8s→0.95s audio incident).
-        // Images/text/shapes have no source, so they extend freely.
-        const maxEnd = resize.element.start + sourceRemaining;
-        let nextResize = resolveTimelineResize(
-          {
-            start: resize.element.start,
-            duration: resize.element.duration,
-            originClientX: resize.originClientX,
-            pixelsPerSecond: ppsRef.current,
-            minStart: 0,
-            maxEnd,
-            playbackStart:
-              resize.edge === "start" && canSeedPlaybackStart
-                ? (resize.element.playbackStart ?? 0)
-                : resize.element.playbackStart,
-            playbackRate: resize.element.playbackRate,
-          },
-          resize.edge,
-          e.clientX,
-        );
-
-        // Snap edge to unified targets (beats + clip edges + playhead) when available.
-        // The snap must stay inside the same limits resolveTimelineResize enforces,
-        // or it would push the edge past the available source media / composition end.
-        // The music track defines the beats, so it must not snap to them —
-        // but it still snaps to the playhead and other clip edges.
-        const trimTargets = buildSnapTargets(
-          resize.element.key ?? resize.element.id,
-          !isMusicTrack(resize.element),
-        );
-        if (trimTargets.length > 0) {
-          const snapSecs = TIMELINE_SNAP_PX / Math.max(ppsRef.current, 1);
-          if (resize.edge === "end") {
-            const edgeTime = nextResize.start + nextResize.duration;
-            const snapped = snapTimelineTime(edgeTime, trimTargets, snapSecs).time;
-            // Stay within [start+minDuration, maxEnd] so the snap can't create a
-            // degenerate clip or run past the source/composition limit.
-            const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-            if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
-              nextResize = { ...nextResize, duration: snappedDuration };
-            }
-          } else {
-            const snapped = snapTimelineTime(nextResize.start, trimTargets, snapSecs).time;
-            const delta = nextResize.start - snapped; // >0 when snapping left
-            // Leftward snap reveals more source; cap so playbackStart can't go < 0.
-            const maxLeftDelta =
-              nextResize.playbackStart != null
-                ? nextResize.playbackStart / playbackRate
-                : Number.POSITIVE_INFINITY;
-            // Also require the resulting duration to stay >= minDuration so a
-            // rightward snap (delta < 0) can't collapse the clip to zero/negative.
-            const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-            if (
-              snapped !== nextResize.start &&
-              snapped >= 0 &&
-              delta <= maxLeftDelta + 1e-6 &&
-              snappedDuration >= 0.05
-            ) {
-              nextResize = {
-                ...nextResize,
-                start: snapped,
-                duration: snappedDuration,
-                playbackStart:
-                  nextResize.playbackStart != null
-                    ? Math.round(
-                        Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000,
-                      ) / 1000
-                    : undefined,
-              };
-            }
-          }
-        }
-
-        setResizingClip((prev) =>
-          prev
-            ? {
-                ...prev,
-                started: true,
-                previewStart: nextResize.start,
-                previewDuration: nextResize.duration,
-                previewPlaybackStart: nextResize.playbackStart,
-              }
-            : prev,
-        );
+        applyResizePointerRef.current(resize, e.clientX);
+        // Edge auto-scroll during a trim, exactly like the move branch — lets a
+        // right-edge trim keep extending past the current viewport (the stepper
+        // re-runs the scroll-compensated preview each frame).
+        syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
         return;
       }
 
@@ -537,13 +579,15 @@ export function useTimelineClipDrag({
       clearSuppressedClick();
 
       // Commit the drag — insert (new track), main-track ripple (reflow contiguous),
-      // or a plain single-clip move. See timelineClipDragCommit.
+      // a plain single-clip move, or a multi-selection move (every selected clip
+      // shifts by the dragged clip's time delta). See timelineClipDragCommit.
       commitDraggedClipMove(drag, {
         elements: elementsRef.current,
         trackOrder: trackOrderRef.current,
         updateElement,
         onMoveElement: onMoveElementRef.current,
         onMoveElements: onMoveElementsRef.current,
+        selectedKeys: usePlayerStore.getState().selectedElementIds,
       });
     };
 

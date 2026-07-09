@@ -372,71 +372,95 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
   });
+  // Atomic multi-clip delete: ONE pass that removes every element from the
+  // source (grouped per owning file), then ONE content-driven duration sync +
+  // ONE save (single undo entry) + one reload — mirroring the batched pattern
+  // in persistTimelineElementsMove. The single-clip delete is the same path
+  // with a one-element list.
   // fallow-ignore-next-line complexity
-  const handleTimelineElementDelete = useCallback(
+  const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (element: TimelineElement) => {
+    async (elementsToDelete: TimelineElement[]) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
       }
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-      const label = getTimelineElementLabel(element);
-      const targetPath = element.sourceFile || activeCompPath || "index.html";
+      if (elementsToDelete.length === 0) return;
+      const count = elementsToDelete.length;
+      const label = count === 1 ? getTimelineElementLabel(elementsToDelete[0]) : `${count} clips`;
       try {
-        const originalContent = await readFileContent(pid, targetPath);
-        const patchTarget = buildPatchTarget(element);
-        if (!patchTarget) {
-          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+        // Group by owning source file — one read → remove-all → duration-sync
+        // cycle per file, all folded into a single history entry below.
+        const groups = new Map<string, TimelineElement[]>();
+        for (const element of elementsToDelete) {
+          const targetPath = element.sourceFile || activeCompPath || "index.html";
+          const bucket = groups.get(targetPath);
+          if (bucket) bucket.push(element);
+          else groups.set(targetPath, [element]);
         }
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: patchTarget }),
-          },
-        );
-        if (!removeResponse.ok) {
-          throw new Error(`Failed to delete ${element.id} from ${targetPath}`);
+        const originals = new Map<string, string>();
+        const patchedFiles: Record<string, string> = {};
+        for (const [targetPath, groupElements] of groups) {
+          const originalContent = await readFileContent(pid, targetPath);
+          originals.set(targetPath, originalContent);
+          let content = originalContent;
+          for (const element of groupElements) {
+            const patchTarget = buildPatchTarget(element);
+            if (!patchTarget) {
+              throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+            }
+            const removeResponse = await fetch(
+              `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ target: patchTarget }),
+              },
+            );
+            if (!removeResponse.ok) {
+              throw new Error(`Failed to delete ${element.id} from ${targetPath}`);
+            }
+            const removeData = (await removeResponse.json()) as {
+              changed?: boolean;
+              content?: string;
+            };
+            content = typeof removeData.content === "string" ? removeData.content : content;
+          }
+          // Content-driven duration: shrink the composition to the furthest
+          // remaining clip end, read from the post-removal SOURCE (raw
+          // data-duration), so deleting the last/longest clip removes trailing
+          // empty space. Measured from the source, not the store, whose
+          // durations are runtime-truncated (HANDOFF-3 §6.1 feedback loop).
+          const deleteContentEnd = furthestClipEndFromSource(content);
+          patchedFiles[targetPath] = setCompositionDurationToContent(content, deleteContentEnd);
+          // Optimistically reflect the shrunk length in the readout/seek bar.
+          if (deleteContentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
+            usePlayerStore.getState().setDuration(deleteContentEnd);
+          }
         }
-        const removeData = (await removeResponse.json()) as {
-          changed?: boolean;
-          content?: string;
-        };
-        const removedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
-        // Content-driven duration: shrink the composition to the furthest remaining
-        // clip end, read from the post-removal SOURCE (raw data-duration), so
-        // deleting the last/longest clip removes trailing empty space. Measured
-        // from the source, not the store, whose durations are runtime-truncated
-        // (HANDOFF-3 §6.1 feedback loop).
-        const deleteContentEnd = furthestClipEndFromSource(removedContent);
-        const patchedContent = setCompositionDurationToContent(removedContent, deleteContentEnd);
-        // Optimistically reflect the shrunk length in the readout/seek bar.
-        if (deleteContentEnd > 0) usePlayerStore.getState().setDuration(deleteContentEnd);
         domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
-          label: "Delete timeline clip",
+          label: count === 1 ? "Delete timeline clip" : `Delete ${count} timeline clips`,
           kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
+          files: patchedFiles,
+          readFile: async (path) => originals.get(path) ?? "",
           writeFile: writeProjectFile,
           recordEdit,
         });
+        const deletedKeys = new Set(elementsToDelete.map((e) => e.key ?? e.id));
         usePlayerStore
           .getState()
-          .setElements(
-            timelineElements.filter((te) => (te.key ?? te.id) !== (element.key ?? element.id)),
-          );
+          .setElements(timelineElements.filter((te) => !deletedKeys.has(te.key ?? te.id)));
         usePlayerStore.getState().setSelectedElementId(null);
+        usePlayerStore.getState().clearSelectedElementIds();
         forceReloadSdkSession?.();
         reloadPreview();
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        showToast(`Deleted ${label}. Use Undo to restore ${count === 1 ? "it" : "them"}.`, "info");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
+        const message = error instanceof Error ? error.message : "Failed to delete timeline clips";
         showToast(message);
       }
     },
@@ -451,6 +475,26 @@ export function useTimelineEditing({
       isRecordingRef,
       forceReloadSdkSession,
     ],
+  );
+
+  const handleTimelineElementDelete = useCallback(
+    (element: TimelineElement) => {
+      // Deleting a clip that is part of the marquee multi-selection deletes the
+      // WHOLE selection (standard NLE behavior) — one atomic pass, single undo.
+      // A delete on a clip outside the selection only removes that clip.
+      const { selectedElementIds } = usePlayerStore.getState();
+      const key = element.key ?? element.id;
+      if (selectedElementIds.size > 1 && selectedElementIds.has(key)) {
+        const byKey = new Map(timelineElements.map((te) => [te.key ?? te.id, te]));
+        const targets = [...selectedElementIds]
+          .map((id) => byKey.get(id))
+          .filter((te): te is TimelineElement => te != null);
+        if (!targets.some((te) => (te.key ?? te.id) === key)) targets.push(element);
+        return handleTimelineElementsDelete(targets);
+      }
+      return handleTimelineElementsDelete([element]);
+    },
+    [handleTimelineElementsDelete, timelineElements],
   );
   // fallow-ignore-next-line complexity
   const handleTimelineAssetDrop = useCallback(
@@ -645,6 +689,7 @@ export function useTimelineEditing({
     handleTimelineElementMove,
     handleTimelineElementsMove,
     handleTimelineElementResize,
+    handleTimelineElementsDelete,
     handleToggleTrackHidden,
     handleToggleElementHidden,
     handleTimelineElementDelete,

@@ -2,11 +2,12 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { buildClipRangeSelection, type TimelineRangeSelection } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import { GUTTER, RULER_H } from "./timelineLayout";
+import { GUTTER } from "./timelineLayout";
 import {
   computeMarqueeSelection,
   getMarqueeRect,
   isMarqueeDrag,
+  isTimelineRulerPress,
   type MarqueeClipInput,
 } from "./timelineMarquee";
 import type { Rect } from "../../utils/marqueeGeometry";
@@ -122,8 +123,12 @@ export function useTimelineRangeSelection({
       setRangeSelection(null);
       setShowPopover(false);
       const point = toContentPoint(e.clientX, e.clientY);
-      // Ruler press → scrub the playhead (the standard scrub surface).
-      if (!point || point.y < RULER_H) {
+      // Ruler press → scrub the playhead (the standard scrub surface). The
+      // ruler is sticky, so this decision uses VIEWPORT-space y — content-space
+      // y (which folds in scrollTop) breaks once the body is scrolled down and
+      // the stuck ruler visually overlays scrolled-away track rows.
+      const scrollRect = scrollRef.current?.getBoundingClientRect();
+      if (!point || !scrollRect || isTimelineRulerPress(e.clientY, scrollRect.top)) {
         isDragging.current = true;
         seekFromX(e.clientX);
         return;

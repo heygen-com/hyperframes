@@ -15,6 +15,24 @@ export interface MarqueeClipInput {
   track: number;
 }
 
+/**
+ * Ruler-vs-body decision for a pointerdown on the timeline scroll container.
+ *
+ * The ruler is `position: sticky; top: 0` — once the body is scrolled down its
+ * VISUAL position stays pinned to the container top while its LAYOUT position
+ * scrolls away. The hit test must therefore use VIEWPORT-space y (clientY
+ * relative to the scroll container's bounding rect), NOT content-space y
+ * (clientY - rect.top + scrollTop), which misclassifies a press on the stuck
+ * ruler as a body/marquee press whenever scrollTop > 0.
+ */
+export function isTimelineRulerPress(
+  clientY: number,
+  scrollRectTop: number,
+  rulerHeight: number = RULER_H,
+): boolean {
+  return clientY - scrollRectTop < rulerHeight;
+}
+
 export function isMarqueeDrag(
   originX: number,
   originY: number,

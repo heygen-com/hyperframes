@@ -14,6 +14,15 @@ export const CLIP_HANDLE_W = 18;
  * rendered width (see Timeline.tsx displayContentWidth).
  */
 export const DRAG_EXTEND_MARGIN_PX = 160;
+/**
+ * The rendered timeline always spans at least this many seconds of ruler +
+ * track lanes, even when the composition is shorter — the empty space on the
+ * right is a real, drag/drop-enabled surface (clips can be moved into it; the
+ * composition grows on commit, content-driven). In fit mode the fit pps is
+ * derived against this floor, so a 10s comp renders as ~1/6 of the viewport
+ * with 60s of ruler after it.
+ */
+export const MIN_TIMELINE_EXTENT_S = 60;
 const TIMELINE_SCROLL_BUFFER = 20;
 
 /* ── Timeline duration ─────────────────────────────────────────────── */
@@ -135,6 +144,45 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return formatTime(safeTime);
+}
+
+/* ── Width / duration derivation ──────────────────────────────────── */
+/**
+ * Fit-mode pixels-per-second: fill the viewport with the composition, but
+ * never map fewer than MIN_TIMELINE_EXTENT_S seconds onto it — a short comp
+ * takes a fraction of the width and the remaining ruler runs to 1:00.
+ * Manual zoom multiplies this base, so the floor only anchors the default.
+ */
+export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
+  const safeDuration =
+    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
+  const span = Math.max(safeDuration, MIN_TIMELINE_EXTENT_S);
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER) return 100;
+  return (viewportWidth - GUTTER - 2) / span;
+}
+
+/**
+ * The rendered timeline extent in px. Always covers, whichever is largest:
+ * the actual clip content, the visible viewport (no dead black after short
+ * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
+ * margin (drag/trim-to-extend), and the MIN_TIMELINE_EXTENT_S floor. Only the
+ * RENDERED extent grows; clip positions/durations are untouched.
+ */
+export function getTimelineDisplayContentWidth(input: {
+  trackContentWidth: number;
+  viewportWidth: number;
+  pps: number;
+  dragGhostEndPx?: number;
+  resizeGhostEndPx?: number;
+}): number {
+  const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
+  return Math.max(
+    input.trackContentWidth,
+    input.viewportWidth - GUTTER - 2,
+    input.dragGhostEndPx ?? 0,
+    input.resizeGhostEndPx ?? 0,
+    MIN_TIMELINE_EXTENT_S * safePps,
+  );
 }
 
 /* ── Scroll / zoom helpers ────────────────────────────────────────── */

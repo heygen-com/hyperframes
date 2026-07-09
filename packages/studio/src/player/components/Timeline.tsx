@@ -28,6 +28,8 @@ import {
   GUTTER,
   generateTicks,
   getTimelineCanvasHeight,
+  getTimelineDisplayContentWidth,
+  getTimelineFitPps,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -272,10 +274,9 @@ export const Timeline = memo(function Timeline({
   const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
   selectedElementRef.current = selectedElement;
 
-  const fitPps =
-    viewportWidth > GUTTER && effectiveDuration > 0
-      ? (viewportWidth - GUTTER - 2) / effectiveDuration
-      : 100;
+  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
+  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
+  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
   const trackContentWidth = Math.max(0, effectiveDuration * pps);
@@ -289,15 +290,23 @@ export const Timeline = memo(function Timeline({
   const dragGhostEndPx = draggedClip?.started
     ? (draggedClip.previewStart + draggedClip.element.duration) * pps + DRAG_EXTEND_MARGIN_PX
     : 0;
-  // The timeline canvas always fills at least the viewport width: when the content
-  // is shorter than the visible area (e.g. zoomed out), the ruler + empty track
-  // lanes keep going into the space instead of leaving dead black — CapCut-style.
-  // Only the RENDERED extent grows; clip positions/durations are untouched.
-  const displayContentWidth = Math.max(
+  // Trim-to-extend: same mechanic for a right-edge RESIZE — the rendered extent
+  // tracks the trim preview's end so the edge auto-scroll zone always has room
+  // to keep stepping while the trim grows past the current timeline width.
+  const resizeGhostEndPx = resizingClip?.started
+    ? (resizingClip.previewStart + resizingClip.previewDuration) * pps + DRAG_EXTEND_MARGIN_PX
+    : 0;
+  // The timeline canvas always fills at least the viewport width AND the
+  // MIN_TIMELINE_EXTENT_S floor: the ruler + empty track lanes keep going into
+  // the space instead of leaving dead black — CapCut-style. Only the RENDERED
+  // extent grows; clip positions/durations are untouched.
+  const displayContentWidth = getTimelineDisplayContentWidth({
     trackContentWidth,
-    viewportWidth - GUTTER - 2,
+    viewportWidth,
+    pps,
     dragGhostEndPx,
-  );
+    resizeGhostEndPx,
+  });
   const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
   const clipStateVersion = useMemo(
     () =>

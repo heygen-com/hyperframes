@@ -2,11 +2,44 @@ import { describe, it, expect } from "vitest";
 import {
   MARQUEE_DRAG_THRESHOLD_PX,
   isMarqueeDrag,
+  isTimelineRulerPress,
   getMarqueeRect,
   getTimelineClipRect,
   computeMarqueeSelection,
 } from "./timelineMarquee";
 import { GUTTER, TRACK_H, RULER_H, CLIP_Y } from "./timelineLayout";
+
+describe("isTimelineRulerPress", () => {
+  const rectTop = 500; // scroll container's viewport top
+
+  it("treats a press inside the ruler band as a ruler press (unscrolled)", () => {
+    expect(isTimelineRulerPress(rectTop, rectTop)).toBe(true);
+    expect(isTimelineRulerPress(rectTop + RULER_H - 1, rectTop)).toBe(true);
+  });
+
+  it("treats a press below the ruler band as a body press", () => {
+    expect(isTimelineRulerPress(rectTop + RULER_H, rectTop)).toBe(false);
+    expect(isTimelineRulerPress(rectTop + RULER_H + 100, rectTop)).toBe(false);
+  });
+
+  it("stays a ruler press when the body is scrolled down (sticky ruler)", () => {
+    // The ruler is position:sticky — scrolled down, its VISUAL band is still
+    // the top RULER_H px of the container. Content-space math
+    // (clientY - rectTop + scrollTop) would report y = 10 + 300 = 310 ≥ RULER_H
+    // and misclassify this as a body/marquee press; viewport-space math must
+    // still classify it as a ruler press regardless of scrollTop.
+    const scrollTop = 300;
+    const clientY = rectTop + 10; // visually on the stuck ruler
+    const contentSpaceY = clientY - rectTop + scrollTop;
+    expect(contentSpaceY).toBeGreaterThanOrEqual(RULER_H); // the old, broken signal
+    expect(isTimelineRulerPress(clientY, rectTop)).toBe(true);
+  });
+
+  it("honors a custom ruler height", () => {
+    expect(isTimelineRulerPress(rectTop + 30, rectTop, 32)).toBe(true);
+    expect(isTimelineRulerPress(rectTop + 33, rectTop, 32)).toBe(false);
+  });
+});
 
 describe("isMarqueeDrag", () => {
   it("treats sub-threshold movement as a click, not a drag", () => {

@@ -289,9 +289,14 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
         return;
       }
     }
-    const { selectedElementId, elements } = usePlayerStore.getState();
-    if (selectedElementId) {
-      const el = elements.find((e) => (e.key ?? e.id) === selectedElementId);
+    // Delete acts on the primary selection OR the marquee multi-selection —
+    // the delete handler expands a clip that is part of the multi-selection
+    // into an atomic delete of the whole selection (single undo).
+    const { selectedElementId, selectedElementIds, elements } = usePlayerStore.getState();
+    const selectionKeys = new Set(selectedElementIds);
+    if (selectedElementId) selectionKeys.add(selectedElementId);
+    if (selectionKeys.size > 0) {
+      const el = elements.find((e) => selectionKeys.has(e.key ?? e.id));
       if (el) {
         event.preventDefault();
         void cb.handleTimelineElementDelete(el);
