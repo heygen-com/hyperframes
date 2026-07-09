@@ -14,6 +14,7 @@ type KeyframeEntry = Array<{
 }> | null;
 
 interface GeometryRowsProps {
+  element: DomEditSelection;
   displayX: number;
   displayY: number;
   displayW: number;
@@ -31,15 +32,16 @@ interface GeometryRowsProps {
   seekFromKfPct: (pct: number) => void;
   animIdForProp: (prop: string) => string;
   onCommitAnimatedProperty?: (
-    element: unknown,
+    element: DomEditSelection,
     property: string,
     value: number,
-  ) => void | Promise<void>;
+  ) => Promise<void>;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
   onConvertToKeyframes?: (animId: string) => void;
 }
 
 function KeyframeGutter({
+  element,
   property,
   displayValue,
   gsapAnimId,
@@ -55,6 +57,7 @@ function KeyframeGutter({
   displayValue: number;
 } & Pick<
   GeometryRowsProps,
+  | "element"
   | "gsapAnimId"
   | "navKeyframes"
   | "currentPct"
@@ -74,7 +77,7 @@ function KeyframeGutter({
         currentPercentage={currentPct}
         onSeek={seekFromKfPct}
         onAddKeyframe={() =>
-          onCommitAnimatedProperty && void onCommitAnimatedProperty(null, property, displayValue)
+          onCommitAnimatedProperty && void onCommitAnimatedProperty(element, property, displayValue)
         }
         onRemoveKeyframe={(pct) => onRemoveKeyframe?.(animIdForProp(property), pct)}
         onConvertToKeyframes={() => onConvertToKeyframes?.(animIdForProp(property))}
@@ -84,6 +87,7 @@ function KeyframeGutter({
 }
 
 export function LayoutGeometryRows({
+  element,
   displayX,
   displayY,
   displayW,
@@ -105,6 +109,7 @@ export function LayoutGeometryRows({
   onConvertToKeyframes,
 }: GeometryRowsProps) {
   const gutterProps = {
+    element,
     gsapAnimId,
     navKeyframes,
     currentPct,
@@ -299,6 +304,66 @@ export function LayoutTransform3DBlock({
         onSeekToTime={onSeekToTime}
         onRemoveKeyframe={onRemoveKeyframe}
         onConvertToKeyframes={onConvertToKeyframes}
+        onLivePreviewProps={onLivePreviewProps}
+      />
+    </div>
+  );
+}
+
+interface FlatLayoutSectionProps
+  extends
+    Omit<GeometryRowsProps, never>,
+    Pick<
+      Parameters<typeof LayoutTransform3DBlock>[0],
+      | "gsapRuntimeValues"
+      | "resolveAnimIdForProp"
+      | "gsapKeyframes"
+      | "elStart"
+      | "elDuration"
+      | "onCommitAnimatedProperties"
+      | "onSeekToTime"
+      | "onLivePreviewProps"
+    > {
+  element: DomEditSelection;
+  styles: Record<string, string>;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  disabled: boolean;
+}
+
+export function FlatLayoutSection({
+  element,
+  styles,
+  onSetStyle,
+  disabled,
+  gsapRuntimeValues,
+  resolveAnimIdForProp,
+  gsapKeyframes,
+  elStart,
+  elDuration,
+  onCommitAnimatedProperties,
+  onSeekToTime,
+  onLivePreviewProps,
+  ...geometry
+}: FlatLayoutSectionProps) {
+  return (
+    <div className="space-y-1.5">
+      <LayoutGeometryRows element={element} {...geometry} />
+      <LayoutZIndexRow styles={styles} onSetStyle={onSetStyle} />
+      <LayoutFlexBlock styles={styles} onSetStyle={onSetStyle} disabled={disabled} />
+      <LayoutTransform3DBlock
+        gsapRuntimeValues={gsapRuntimeValues}
+        gsapAnimId={geometry.gsapAnimId}
+        resolveAnimIdForProp={resolveAnimIdForProp}
+        gsapKeyframes={gsapKeyframes}
+        currentPct={geometry.currentPct}
+        elStart={elStart}
+        elDuration={elDuration}
+        element={element}
+        onCommitAnimatedProperty={geometry.onCommitAnimatedProperty}
+        onCommitAnimatedProperties={onCommitAnimatedProperties}
+        onSeekToTime={onSeekToTime}
+        onRemoveKeyframe={geometry.onRemoveKeyframe}
+        onConvertToKeyframes={geometry.onConvertToKeyframes}
         onLivePreviewProps={onLivePreviewProps}
       />
     </div>
