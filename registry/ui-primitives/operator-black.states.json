@@ -1,0 +1,600 @@
+{
+  "version": 1,
+  "name": "operator-black",
+  "items": [
+    {
+      "id": "accordion",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-accordion-trigger",
+      "reducedMotion": "Preserve expansion state without spatial or blur motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "alert",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep the alert visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "alert-dialog",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-alert-dialog button",
+      "reducedMotion": "Use opacity only and preserve the open state.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "aspect-ratio",
+      "staticStates": ["not-applicable"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "No authored spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "avatar",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep identity content visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "backdrop",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Use opacity only for backdrop state.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "badge",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep semantic text visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "blur-in",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Remove blur and reveal content immediately.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "breadcrumb",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-breadcrumb a",
+      "reducedMotion": "No authored spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "button",
+      "staticStates": ["idle", "hover", "press", "loading", "success"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-button",
+      "reducedMotion": "Remove spatial motion while preserving state and status.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "press", "loading", "success", "end"]
+    },
+    {
+      "id": "button-group",
+      "staticStates": ["idle", "press"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-button-group button",
+      "reducedMotion": "Preserve pressed selection without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "press", "end"]
+    },
+    {
+      "id": "calendar",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-calendar button",
+      "reducedMotion": "Preserve current and selected dates without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "card",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-card button",
+      "reducedMotion": "Keep card content visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "caret",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Show the caret without looping motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "carousel",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-carousel button",
+      "reducedMotion": "Switch slides without spatial interpolation.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "chart",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Render final data values without animated growth.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "checkbox",
+      "staticStates": ["unchecked", "checked"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-checkbox",
+      "reducedMotion": "Preserve checked state without scale or draw motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "checked", "end"]
+    },
+    {
+      "id": "collapsible",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-collapsible button",
+      "reducedMotion": "Preserve disclosure state without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "combobox",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-combobox-trigger",
+      "reducedMotion": "Reveal choices with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "command-menu",
+      "staticStates": ["open"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep the command surface visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "command-menu-item",
+      "staticStates": ["idle", "hover"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-remocn-command-menu-item .row",
+      "reducedMotion": "Preserve row emphasis without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "hover", "end"]
+    },
+    {
+      "id": "context-menu",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-context-menu",
+      "reducedMotion": "Reveal the menu with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "cursor",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Show the final pointer state without travel.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "dialog",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-dialog button",
+      "reducedMotion": "Use opacity only and preserve dialog state.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "drawer",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-drawer button",
+      "reducedMotion": "Remove edge translation and preserve drawer state.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "dropdown-menu",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-dropdown-trigger",
+      "reducedMotion": "Reveal the menu with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "dropdown-menu-item",
+      "staticStates": ["idle", "hover"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-remocn-dropdown-menu-item .row",
+      "reducedMotion": "Preserve row emphasis without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "hover", "end"]
+    },
+    {
+      "id": "empty",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-empty button",
+      "reducedMotion": "Keep the empty state visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "field",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-field-control",
+      "reducedMotion": "Preserve field state without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "hover-card",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-hover-card button",
+      "reducedMotion": "Reveal the card with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "input",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-input-field",
+      "reducedMotion": "Preserve value and focus state without caret looping.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "input-group",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-input-group input",
+      "reducedMotion": "Keep the input group visible without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "input-otp",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-input-otp",
+      "reducedMotion": "Reveal digits immediately without stagger.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "item",
+      "staticStates": ["idle", "hover"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-item",
+      "reducedMotion": "Preserve row emphasis without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "hover", "end"]
+    },
+    {
+      "id": "kbd",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "No authored spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "label",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "No authored spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "menubar",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-menubar button",
+      "reducedMotion": "Preserve current item without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "native-select",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-native-select select",
+      "reducedMotion": "Preserve native selection without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "navigation-menu",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-navigation-menu a",
+      "reducedMotion": "Preserve current navigation state without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "pagination",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-pagination button",
+      "reducedMotion": "Preserve the current page without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "popover",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-popover-anchor",
+      "reducedMotion": "Reveal the popover with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "progress",
+      "staticStates": ["loading", "success"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Show the current value without animated travel.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "progress-steps",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Show the current step without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "radio",
+      "staticStates": ["checked", "unchecked"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Preserve checked state without scale motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "checked", "end"]
+    },
+    {
+      "id": "registry",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep registry rows visible without stagger.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "remocn-ui",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Keep interface rows visible without stagger.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "resizable",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-resizable-handle",
+      "reducedMotion": "Preserve pane sizes without animated resizing.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "scroll-area",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-scroll-area",
+      "reducedMotion": "Preserve scroll position without smooth motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "select",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-select-trigger",
+      "reducedMotion": "Reveal options with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "select-item",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-remocn-select-item .row",
+      "reducedMotion": "Preserve option state without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "separator",
+      "staticStates": ["not-applicable"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "No authored motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "sheet",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-sheet button",
+      "reducedMotion": "Remove edge translation and preserve sheet state.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "sidebar",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-sidebar a",
+      "reducedMotion": "Preserve active navigation without spatial motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "skeleton",
+      "staticStates": ["loading"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Use static solid loading blocks without shimmer.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "skeleton-block",
+      "staticStates": ["loading"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Use static solid loading blocks without shimmer.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "slider",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-slider",
+      "reducedMotion": "Show the current value without animated travel.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "spinner",
+      "staticStates": ["loading"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Replace rotation with a static loading indicator.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "stepper",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-step",
+      "reducedMotion": "Show completed and current steps without pulse or scale motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "switch",
+      "staticStates": ["off", "on"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-switch",
+      "reducedMotion": "Preserve switch state without thumb travel animation.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "on", "end"]
+    },
+    {
+      "id": "table",
+      "staticStates": ["baseline"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Render rows without staggered entrance.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "tabs",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-tabs [role=tab]",
+      "reducedMotion": "Preserve active tab without indicator travel.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "textarea",
+      "staticStates": ["idle"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-textarea-field textarea",
+      "reducedMotion": "Keep value and focus state without entrance motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "end"]
+    },
+    {
+      "id": "toast",
+      "staticStates": ["open", "closed", "success"],
+      "liveControllerBehaviors": [],
+      "focusTarget": "none",
+      "reducedMotion": "Use opacity only and preserve status announcement.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    },
+    {
+      "id": "toggle",
+      "staticStates": ["idle", "press"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-toggle",
+      "reducedMotion": "Preserve pressed state without compression motion.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "press", "end"]
+    },
+    {
+      "id": "toggle-group",
+      "staticStates": ["idle", "press"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-toggle-group button",
+      "reducedMotion": "Preserve selection without indicator travel.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "press", "end"]
+    },
+    {
+      "id": "tooltip",
+      "staticStates": ["open", "closed"],
+      "liveControllerBehaviors": [],
+      "focusTarget": ".hf-ui-tooltip-trigger",
+      "reducedMotion": "Reveal the tooltip with opacity only.",
+      "themeFixture": "both",
+      "renderCheckpoints": ["start", "open", "end"]
+    }
+  ]
+}
