@@ -3,7 +3,11 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LayoutGeometryRows } from "./propertyPanelFlatLayoutSection";
+import {
+  LayoutFlexBlock,
+  LayoutGeometryRows,
+  LayoutZIndexRow,
+} from "./propertyPanelFlatLayoutSection";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -104,6 +108,58 @@ describe("LayoutGeometryRows", () => {
     );
     const full = host.querySelectorAll('[data-flat-kf-gutter="true"][style*="opacity: 1"]');
     expect(full.length).toBeGreaterThan(0);
+    act(() => root.unmount());
+  });
+});
+
+describe("LayoutZIndexRow", () => {
+  it("renders the current z-index at the default tier and commits edits", () => {
+    const onSetStyle = vi.fn();
+    const { host, root } = renderInto(
+      <LayoutZIndexRow styles={{ "z-index": "3" }} onSetStyle={onSetStyle} />,
+    );
+    expect(host.textContent).toContain("Z-index");
+    const input = host.querySelector("input");
+    if (!input) throw new Error("expected an input");
+    expect(input.value).toBe("3");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => {
+      setter.call(input, "5");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("focusout", { bubbles: true }));
+    });
+    expect(onSetStyle).toHaveBeenCalledWith("z-index", "5");
+    act(() => root.unmount());
+  });
+});
+
+describe("LayoutFlexBlock", () => {
+  it("renders nothing when the element is not flex", () => {
+    const { host, root } = renderInto(
+      <LayoutFlexBlock styles={{ display: "block" }} onSetStyle={vi.fn()} disabled={false} />,
+    );
+    expect(host.textContent).toBe("");
+    act(() => root.unmount());
+  });
+
+  it("renders direction/justify/align/gap and commits a direction change", () => {
+    const onSetStyle = vi.fn();
+    const { host, root } = renderInto(
+      <LayoutFlexBlock
+        styles={{ display: "flex", "flex-direction": "row", gap: "8px" }}
+        onSetStyle={onSetStyle}
+        disabled={false}
+      />,
+    );
+    expect(host.textContent).toContain("Flex");
+    const columnOption = Array.from(host.querySelectorAll('[data-flat-segment="true"]')).find(
+      (el) => el.textContent === "Column",
+    );
+    if (!columnOption) throw new Error("expected a Column segment option");
+    act(() =>
+      (columnOption as HTMLElement).dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(onSetStyle).toHaveBeenCalledWith("flex-direction", "column");
     act(() => root.unmount());
   });
 });
