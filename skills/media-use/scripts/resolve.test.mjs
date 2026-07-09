@@ -118,10 +118,6 @@ function normalizeWithCoreSource(grading) {
   );
 }
 
-function runResolveStatus(args) {
-  return spawnResolve(args);
-}
-
 const tests = [];
 function test(name, fn) {
   tests.push({ name, fn });
@@ -334,8 +330,8 @@ test("--json returns error JSON on stub provider failure", () => {
   cleanup();
 });
 
-test("--doctor --json reports dependency checks and top-level ok follows ffmpeg only", () => {
-  const result = runResolveStatus(["--doctor", "--json"]);
+test("--doctor --json reports dependency checks and top-level ok requires ffmpeg and ffprobe", () => {
+  const result = spawnResolve(["--doctor", "--json"]);
   assert.match(result.stdout.trim(), /^\{/);
   assert.equal(result.stderr, "");
   assert.ok(result.status === 0 || result.status === 1);
@@ -361,8 +357,10 @@ test("--doctor --json reports dependency checks and top-level ok follows ffmpeg 
   }
 
   const ffmpeg = byName.get("ffmpeg on PATH");
-  assert.equal(parsed.ok, ffmpeg.ok);
-  assert.equal(result.status, ffmpeg.ok ? 0 : 1);
+  const ffprobe = byName.get("ffprobe on PATH");
+  const strictOk = ffmpeg.ok && ffprobe.ok;
+  assert.equal(parsed.ok, strictOk);
+  assert.equal(result.status, strictOk ? 0 : 1);
 });
 
 test("one-line output format matches contract", () => {

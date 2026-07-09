@@ -31,6 +31,11 @@ import {
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
 
+// resolve shells `fetch`/`freezeUrl` and modern ESM; 18 is the floor where those
+// exist without flags. Named so the --doctor node check verifies something real
+// (O2). Declared before the top-level `--doctor` branch that calls runDoctor().
+const MIN_NODE_VERSION = "18.0.0";
+
 const { values: args } = parseArgs({
   options: {
     type: { type: "string", short: "t" },
@@ -112,6 +117,15 @@ if (args.candidates || args["dry-run"]) {
 
 if (args.doctor) {
   const doctor = runDoctor();
+  const failed = doctor.checks.filter((check) => !check.ok);
+  // Non-PII: instrument the exact question the feature exists to answer — how
+  // often is --doctor run and which check fails most. Awaited so a short-lived
+  // run flushes before exit.
+  await track("media_use_doctor_run", {
+    ok: doctor.ok,
+    checks_failed: failed.length,
+    failed: failed.map((check) => check.name),
+  });
   if (args.json) {
     console.log(JSON.stringify({ ok: doctor.ok, checks: doctor.checks }));
   } else {
@@ -730,6 +744,25 @@ async function showCandidates() {
   }
 }
 
+function heygenAuthCheck() {
+  const authProbe = runCommand("heygen", ["auth", "status", "--json"]);
+  // spawnSync sets .error/.signal on a timeout or spawn failure (status then
+  // null). A stalled auth endpoint (transient network/DNS) must not be reported
+  // as an authoritative "not authenticated" with a re-login fix.
+  const timedOut = authProbe.error?.code === "ETIMEDOUT" || authProbe.signal != null;
+  const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
+  return {
+    name: "heygen authenticated",
+    ok: !!email,
+    detail: email
+      ? `heygen authenticated as ${email}`
+      : timedOut
+        ? "heygen auth status timed out — possible network issue, not proof of sign-out"
+        : "heygen not authenticated",
+    fix: email ? "" : timedOut ? "check network, then re-run --doctor" : HEYGEN_AUTH_COMMAND,
+  };
+}
+
 function runDoctor() {
   const checks = [];
   const heygenVersionProbe = runCommand("heygen", ["--version"]);
@@ -768,30 +801,19 @@ function runDoctor() {
       fix: versionOk ? "" : HEYGEN_UPDATE_COMMAND,
     });
 
-    const authProbe = runCommand("heygen", ["auth", "status"]);
-    const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
-    checks.push({
-      name: "heygen authenticated",
-      ok: !!email,
-      detail: email ? `heygen authenticated as ${email}` : "heygen not authenticated",
-      fix: email ? "" : HEYGEN_AUTH_COMMAND,
-    });
+    checks.push(heygenAuthCheck());
   } else {
+    // Fail-open: heygen ran but printed no semver (dev/stripped build). We can't
+    // verify the version, so we don't block on it — but say so rather than a bare
+    // green check that implies a real version comparison happened.
     checks.push({
       name: "heygen version",
       ok: true,
-      detail: "heygen version did not include semver",
+      detail: "heygen present; version unverifiable (no semver in --version output)",
       fix: "",
     });
 
-    const authProbe = runCommand("heygen", ["auth", "status"]);
-    const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
-    checks.push({
-      name: "heygen authenticated",
-      ok: !!email,
-      detail: email ? `heygen authenticated as ${email}` : "heygen not authenticated",
-      fix: email ? "" : HEYGEN_AUTH_COMMAND,
-    });
+    checks.push(heygenAuthCheck());
   }
 
   const ffmpegProbe = runCommand("ffmpeg", ["-version"]);
@@ -810,15 +832,20 @@ function runDoctor() {
     fix: ffprobeProbe.status === 0 ? "" : "brew install ffmpeg",
   });
 
+  const nodeOk = !versionLessThan(process.versions.node, MIN_NODE_VERSION);
   checks.push({
     name: "node version",
-    ok: true,
-    detail: process.version,
-    fix: "",
+    ok: nodeOk,
+    detail: `${process.version} (need >= v${MIN_NODE_VERSION})`,
+    fix: nodeOk ? "" : `upgrade Node to >= v${MIN_NODE_VERSION}`,
   });
 
+  // ffmpeg AND ffprobe are both strictly required (see SKILL.md); the exit code
+  // must reflect that so a script gating on `--doctor` doesn't pass with ffprobe
+  // missing and then break at the first probe call.
   const ffmpeg = checks.find((check) => check.name === "ffmpeg on PATH");
-  return { ok: !!ffmpeg?.ok, checks };
+  const ffprobe = checks.find((check) => check.name === "ffprobe on PATH");
+  return { ok: !!ffmpeg?.ok && !!ffprobe?.ok, checks };
 }
 
 function printDoctor(checks) {
@@ -853,18 +880,17 @@ function firstLine(text) {
 }
 
 function emailFromAuthStatus(text) {
+  // JSON only (auth status is queried with --json). No prose regex fallback: a
+  // human-format body like "Session expired. Contact support@heygen.ai" would
+  // otherwise report the user as authenticated as support@heygen.ai.
   const trimmed = String(text || "").trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("{")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      return parsed?.data?.email || parsed?.email || null;
-    } catch {
-      return null;
-    }
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed?.data?.email || parsed?.email || null;
+  } catch {
+    return null;
   }
-  const match = trimmed.match(/[^\s@]+@[^\s@]+\.[^\s@]+/);
-  return match ? match[0] : null;
 }
 
 async function reuseGlobal(shaArg) {

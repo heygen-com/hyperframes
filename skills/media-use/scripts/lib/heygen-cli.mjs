@@ -1,6 +1,6 @@
 export const HEYGEN_MIN_VERSION = "0.1.6";
 export const HEYGEN_INSTALL_COMMAND =
-  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash  then  heygen auth login --key <key>";
+  "curl -fsSL https://static.heygen.ai/cli/install.sh | bash && heygen auth login --key <key>";
 export const HEYGEN_AUTH_COMMAND = "heygen auth login --key <key>";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
 
@@ -22,18 +22,21 @@ export function classifyHeygenError(err) {
     .join("\n");
   const lower = text.toLowerCase();
 
-  if (
-    err?.code === "ENOENT" ||
-    lower.includes("command not found") ||
-    lower.includes("not found")
-  ) {
+  // Only ENOENT (spawn of a missing binary) or a shell's "command not found"
+  // mean the CLI itself is absent. A bare "not found" would misfire on the CLI's
+  // own resource errors (e.g. a stale voiceId → "voice not found"), whose message
+  // embeds the `heygen ...` command line — sending users to reinstall a CLI they
+  // just ran successfully. Keep this narrow.
+  if (err?.code === "ENOENT" || lower.includes("command not found")) {
     return HEYGEN_NOT_FOUND_MESSAGE;
   }
 
   if (
     lower.includes("unauthorized") ||
     lower.includes("unauthenticated") ||
-    lower.includes("401") ||
+    // \b401\b, not a bare "401" substring — otherwise request IDs (req-401abc),
+    // URLs, and retry-after headers would misclassify as an auth failure.
+    /\b401\b/.test(lower) ||
     lower.includes("not logged in") ||
     lower.includes("no api key") ||
     lower.includes("missing api key") ||
