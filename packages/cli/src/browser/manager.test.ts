@@ -599,3 +599,37 @@ describe("installWithCorruptArchiveRecovery", () => {
     expect(clearCache).toHaveBeenCalledTimes(1);
   });
 });
+
+// Regression guard for HF#2103: `hyperframes render` hung forever on macOS
+// (Apple Silicon) under Node >= 24.16. Root cause was NOT in this file — it was
+// the extractor `@puppeteer/browsers` <3.0.2 shells out to. That chain
+// (`@puppeteer/browsers` -> `extract-zip@2.0.1` -> `yauzl@2.10.0`) hits a
+// classic-stream backpressure regression (nodejs/node#63487) that surfaces a
+// latent fd-slicer `destroy()` bug in yauzl 2.x (yauzl#169): the inflate read
+// stream stalls partway through the first entry large enough to cross the write
+// highWaterMark, never emits `end`, and `stream.pipeline` never settles — so
+// extraction busy-spins forever, leaving a half-extracted cache with no
+// executable (puppeteer/puppeteer#14957).
+//
+// `@puppeteer/browsers` 3.0.2 dropped extract-zip/yauzl entirely (now uses
+// `modern-tar`), which is the fix. This test fails if a dependency change ever
+// drags the pin back below 3.x — i.e. reintroduces the broken extractor.
+describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", () => {
+  it("stays on the extractor-free major (>= 3) that dropped extract-zip/yauzl", async () => {
+    const { createRequire } = await import("node:module");
+    const require = createRequire(import.meta.url);
+    const pkg = require("@puppeteer/browsers/package.json") as {
+      version: string;
+      dependencies?: Record<string, string>;
+    };
+
+    const major = Number.parseInt(pkg.version.split(".")[0] ?? "0", 10);
+    expect(major).toBeGreaterThanOrEqual(3);
+
+    // Belt and suspenders: the durable fix is the *absence* of the broken
+    // extractor, not just a version number, so assert it directly.
+    const deps = pkg.dependencies ?? {};
+    expect(deps["extract-zip"]).toBeUndefined();
+    expect(deps["yauzl"]).toBeUndefined();
+  });
+});
