@@ -1185,7 +1185,7 @@
       var breatheEase = cbz(0.37, 0.0, 0.63, 1.0);
 
       // ── Animation State ────────────────────────────────────────────────
-      var S = {
+      var initialState = {
         phX: 0,
         phY: 0.1,
         phZ: 0.5,
@@ -1214,6 +1214,12 @@
         iosN3: 0,
         p: 0,
       };
+
+      var S = Object.assign({}, initialState);
+
+      function resetState() {
+        Object.assign(S, initialState);
+      }
 
       function render() {
         var d = S.drift;
@@ -1294,6 +1300,7 @@
 
       function seekTimeline(timeMs) {
         var clampedMs = Math.max(0, Math.min(15000, Number(timeMs) || 0));
+        resetState();
         tl.seek(clampedMs);
         render();
       }
