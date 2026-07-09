@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "apple-money-count",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Apple Money Count",
   "description": "Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound.",
   "tags": ["showcase", "finance", "kinetic", "youtube", "sfx"],

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "x-post",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "X Post Card",
   "description": "Animated X/Twitter post card overlay with engagement metrics",
   "tags": ["social", "overlay", "twitter"],

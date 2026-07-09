@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "spotify-card",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Spotify Now Playing",
   "description": "Animated Spotify now-playing card with album art and progress bar",
   "tags": ["social", "overlay", "spotify"],

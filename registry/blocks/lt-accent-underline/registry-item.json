@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "lt-accent-underline",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Lower Third — Accent Underline",
   "description": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility",
   "tags": ["lower-third", "overlay", "podcast", "interview", "minimal"],

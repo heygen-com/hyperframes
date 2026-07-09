@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -26,7 +26,7 @@
         font-family: "DM Sans", sans-serif;
       }
 
-      [data-composition-id="reddit-post"] .reddit-card {
+      #root .reddit-card {
         position: absolute;
         top: 50%;
         left: 50%;
@@ -39,39 +39,39 @@
       }
 
       /* Header */
-      [data-composition-id="reddit-post"] .post-header {
+      #root .post-header {
         display: flex;
         align-items: center;
         gap: 14px;
         margin-bottom: 24px;
       }
 
-      [data-composition-id="reddit-post"] .subreddit-icon {
+      #root .subreddit-icon {
         width: 48px;
         height: 48px;
         flex-shrink: 0;
       }
 
-      [data-composition-id="reddit-post"] .subreddit-icon svg {
+      #root .subreddit-icon svg {
         width: 48px;
         height: 48px;
         display: block;
       }
 
-      [data-composition-id="reddit-post"] .post-meta {
+      #root .post-meta {
         display: flex;
         flex-direction: column;
         gap: 2px;
       }
 
-      [data-composition-id="reddit-post"] .subreddit-name {
+      #root .subreddit-name {
         font-size: 28px;
         font-weight: 700;
         color: #d7dadc;
         line-height: 1.3;
       }
 
-      [data-composition-id="reddit-post"] .post-author {
+      #root .post-author {
         font-size: 24px;
         font-weight: 400;
         color: #818384;
@@ -79,7 +79,7 @@
       }
 
       /* Content */
-      [data-composition-id="reddit-post"] .post-title {
+      #root .post-title {
         font-size: 38px;
         font-weight: 700;
         color: #d7dadc;
@@ -91,7 +91,7 @@
         overflow: hidden;
       }
 
-      [data-composition-id="reddit-post"] .post-body {
+      #root .post-body {
         font-size: 28px;
         font-weight: 400;
         color: #818384;
@@ -104,7 +104,7 @@
       }
 
       /* Action bar */
-      [data-composition-id="reddit-post"] .action-bar {
+      #root .action-bar {
         display: flex;
         align-items: center;
         gap: 28px;
@@ -112,7 +112,7 @@
         border-top: 1px solid #343536;
       }
 
-      [data-composition-id="reddit-post"] .vote-group {
+      #root .vote-group {
         display: flex;
         align-items: center;
         gap: 10px;
@@ -121,7 +121,7 @@
         padding: 8px 16px;
       }
 
-      [data-composition-id="reddit-post"] .vote-btn {
+      #root .vote-btn {
         width: 32px;
         height: 32px;
         display: flex;
@@ -130,13 +130,13 @@
         cursor: pointer;
       }
 
-      [data-composition-id="reddit-post"] .vote-btn svg {
+      #root .vote-btn svg {
         width: 28px;
         height: 28px;
         display: block;
       }
 
-      [data-composition-id="reddit-post"] .vote-count {
+      #root .vote-count {
         font-size: 26px;
         font-weight: 700;
         color: #d7dadc;
@@ -144,7 +144,7 @@
         text-align: center;
       }
 
-      [data-composition-id="reddit-post"] .action-btn {
+      #root .action-btn {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -153,13 +153,13 @@
         padding: 10px 20px;
       }
 
-      [data-composition-id="reddit-post"] .action-btn svg {
+      #root .action-btn svg {
         width: 26px;
         height: 26px;
         display: block;
       }
 
-      [data-composition-id="reddit-post"] .action-btn span {
+      #root .action-btn span {
         font-size: 24px;
         font-weight: 400;
         color: #818384;
@@ -257,90 +257,59 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      var tl = gsap.timeline({ paused: true });
-
-      var card = document.getElementById("card");
-      var upvoteBtn = document.getElementById("upvote-btn");
-      var upvoteArrow = document.getElementById("upvote-arrow");
       var voteCount = document.getElementById("vote-count");
+      var voteState = { value: 4200 };
+
+      function renderVoteCount(value) {
+        voteCount.textContent = (Math.round(value) / 1000).toFixed(1) + "k";
+      }
+
+      renderVoteCount(voteState.value);
+
+      var tl = anime.createTimeline({ autoplay: false });
 
       // Start off-screen below
-      gsap.set(card, { y: 400, opacity: 0 });
-
-      // Slide in from bottom
-      tl.to(
-        card,
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.6,
-          ease: "power3.out",
-        },
-        0.1,
+      tl.add(
+        "#card",
+        { translateY: [400, 0], opacity: [0, 1], duration: 600, ease: "outQuart" },
+        100,
       );
 
       // Upvote press-in
-      tl.to(
-        upvoteBtn,
-        {
-          scale: 0.85,
-          duration: 0.12,
-          ease: "power2.out",
-        },
-        1.5,
-      );
+      tl.add("#upvote-btn", { scale: 0.85, duration: 120, ease: "outCubic" }, 1500);
 
       // Upvote release with spring bounce
-      tl.to(
-        upvoteBtn,
-        {
-          scale: 1,
-          duration: 0.4,
-          ease: "elastic.out(1, 0.4)",
-        },
-        1.62,
-      );
+      tl.add("#upvote-btn", { scale: [0.85, 1], duration: 400, ease: "outElastic(1, .4)" }, 1620);
 
       // Arrow turns orange
-      tl.to(
-        upvoteArrow,
-        {
-          attr: { fill: "#ff4500" },
-          duration: 0.12,
-          ease: "none",
-        },
-        1.62,
-      );
+      tl.add("#upvote-arrow", { fill: "#ff4500", duration: 120, ease: "linear" }, 1620);
 
       // Vote count turns orange + increments
-      tl.to(
-        voteCount,
+      tl.add("#vote-count", { color: "#ff4500", duration: 120, ease: "linear" }, 1620);
+      tl.add(
+        voteState,
         {
-          color: "#ff4500",
-          duration: 0.12,
-          ease: "none",
-          onStart: function () {
-            voteCount.textContent = "4.3k";
+          value: 4300,
+          duration: 120,
+          ease: "linear",
+          onUpdate: function () {
+            renderVoteCount(voteState.value);
+          },
+          onComplete: function () {
+            renderVoteCount(4300);
           },
         },
-        1.62,
+        1620,
       );
 
       // Slide out to bottom
-      tl.to(
-        card,
-        {
-          y: 400,
-          opacity: 0,
-          duration: 0.3,
-          ease: "power3.in",
-        },
-        4.2,
+      tl.add(
+        "#card",
+        { translateY: [0, 400], opacity: [1, 0], duration: 300, ease: "inQuart" },
+        4200,
       );
 
-      window.__timelines["reddit-post"] = tl;
+      hyperframesAnime.register("reddit-post", tl, { labels: {} });
     </script>
   </body>
 </html>

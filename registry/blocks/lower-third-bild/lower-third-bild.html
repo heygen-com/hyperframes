@@ -18,7 +18,7 @@
         src: url("assets/fonts/BarlowCondensed-ExtraBold.woff2") format("woff2");
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -119,8 +119,6 @@
 
       <script>
         (function () {
-          window.__timelines = window.__timelines || {};
-
           var vars =
             window.__hyperframes && window.__hyperframes.getVariables
               ? window.__hyperframes.getVariables()
@@ -137,13 +135,16 @@
           var mainOuter = document.getElementById("lb-main-outer");
           var subOuter = document.getElementById("lb-sub-outer");
 
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
+          tl.add([mainOuter, subOuter], { opacity: 1, duration: 0, ease: "linear" }, 0);
+          tl.add("#lb-drv", { opacity: [0, 0], duration: dur * 1000, ease: "linear" }, 0);
+          tl.add(
+            [mainOuter, subOuter],
+            { opacity: 0, visibility: "hidden", duration: 0, ease: "linear" },
+            dur * 1000,
+          );
 
-          gsap.set([mainOuter, subOuter], { opacity: 1 });
-
-          tl.set([mainOuter, subOuter], { opacity: 0, visibility: "hidden" }, dur);
-
-          window.__timelines["lower-third-bild"] = tl;
+          hyperframesAnime.register("lower-third-bild", tl, { labels: {} });
         })();
       </script>
     </div>

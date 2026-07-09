@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "lt-dark-card",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Lower Third — Dark Card",
   "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
   "tags": ["lower-third", "overlay", "podcast", "interview", "dark"],

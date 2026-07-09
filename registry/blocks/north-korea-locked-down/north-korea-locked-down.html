@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -251,55 +251,83 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      const tl = gsap.timeline({
-        paused: true,
-        defaults: { overwrite: "auto" },
-      });
-
-      tl.fromTo(
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add(
         "#camera",
-        { scale: 0.92, x: -70, y: 18, filter: "saturate(0.92) contrast(0.98)" },
         {
-          scale: 2.12,
-          x: -56,
-          y: -22,
-          filter: "saturate(1.08) contrast(1.04)",
-          duration: 3.18,
-          ease: "expo.inOut",
+          scale: [0.92, 2.12],
+          translateX: [-70, -56],
+          translateY: [18, -22],
+          filter: ["saturate(0.92) contrast(0.98)", "saturate(1.08) contrast(1.04)"],
+          duration: 3180,
+          ease: "inOutExpo",
         },
         0,
       );
-      tl.to("#camera", { scale: 2.2, x: -44, y: -34, duration: 0.42, ease: "back.out(1.5)" }, 3.18);
-      tl.from(
+      tl.add(
+        "#camera",
+        {
+          scale: [2.12, 2.2],
+          translateX: [-56, -44],
+          translateY: [-22, -34],
+          duration: 420,
+          ease: "outBack(1.5)",
+        },
+        3180,
+      );
+      tl.add(
         ".corner",
-        { opacity: 0, scale: 0.72, duration: 0.28, stagger: 0.035, ease: "power3.out" },
-        0.42,
+        {
+          opacity: [0, 1],
+          scale: [0.72, 1],
+          duration: 280,
+          ease: "outQuart",
+          delay: anime.stagger(35),
+        },
+        420,
       );
-      tl.to(".corner", { opacity: 0.72, duration: 0.18, ease: "power2.out" }, 1.2);
-      tl.fromTo(
+      tl.add(".corner", { opacity: [0, 0.72], duration: 180, ease: "outCubic" }, 1200);
+      tl.add(
         "#annotation",
-        { opacity: 0, scale: 0.92, x: 4, y: -4 },
-        { opacity: 1, scale: 1, x: 0, y: 0, duration: 0.16, ease: "power2.out" },
-        3.12,
+        {
+          opacity: [0, 1],
+          scale: [0.92, 1],
+          translateX: [4, 0],
+          translateY: [-4, 0],
+          duration: 160,
+          ease: "outCubic",
+        },
+        3120,
       );
-      tl.to("#circle-a", { strokeDashoffset: 0, duration: 0.62, ease: "power2.out" }, 3.24);
-      tl.to("#circle-b", { strokeDashoffset: 0, duration: 0.44, ease: "power3.out" }, 3.46);
-      tl.to("#label", { opacity: 1, scale: 1, duration: 0.28, ease: "back.out(2.1)" }, 3.78);
-      tl.to("#redWash", { opacity: 1, duration: 0.24, ease: "power2.out" }, 3.82);
-      tl.to("#scanline", { opacity: 0.44, duration: 0.18, ease: "none" }, 3.86);
-      tl.to(
+      tl.add("#circle-a", { strokeDashoffset: 0, duration: 620, ease: "outCubic" }, 3240);
+      tl.add("#circle-b", { strokeDashoffset: 0, duration: 440, ease: "outQuart" }, 3460);
+      tl.add("#label", { opacity: 1, scale: 1, duration: 280, ease: "outBack(2.1)" }, 3780);
+      tl.add("#redWash", { opacity: 1, duration: 240, ease: "outCubic" }, 3820);
+      tl.add("#scanline", { opacity: 0.44, duration: 180, ease: "linear" }, 3860);
+      tl.add(
         "#annotation",
-        { scale: 1.045, duration: 0.14, yoyo: true, repeat: 1, ease: "sine.inOut" },
-        4.1,
+        { scale: [1, 1.045], duration: 140, ease: "inOutSine", loop: 2, alternate: true },
+        4100,
       );
-      tl.to("#camera", { scale: 2.06, x: -82, y: -8, duration: 2.35, ease: "sine.inOut" }, 4.2);
-      tl.to("#redWash", { opacity: 0.82, duration: 2.35, ease: "sine.inOut" }, 4.2);
-      tl.to(".corner", { opacity: 0.38, duration: 0.72, ease: "sine.inOut" }, 5.82);
-      tl.to("#label", { y: -6, duration: 0.4, yoyo: true, repeat: 1, ease: "sine.inOut" }, 5.94);
-
-      window.__timelines["north-korea-locked-down"] = tl;
+      tl.add(
+        "#camera",
+        {
+          scale: [2.2, 2.06],
+          translateX: [-44, -82],
+          translateY: [-34, -8],
+          duration: 2350,
+          ease: "inOutSine",
+        },
+        4200,
+      );
+      tl.add("#redWash", { opacity: [1, 0.82], duration: 2350, ease: "inOutSine" }, 4200);
+      tl.add(".corner", { opacity: [0.72, 0.38], duration: 720, ease: "inOutSine" }, 5820);
+      tl.add(
+        "#label",
+        { translateY: -6, duration: 400, ease: "inOutSine", loop: 2, alternate: true },
+        5940,
+      );
+      hyperframesAnime.register("north-korea-locked-down", tl, { labels: {} });
     </script>
   </body>
 </html>

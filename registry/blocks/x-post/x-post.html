@@ -8,7 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -26,7 +26,7 @@
         font-family: "Inter", sans-serif;
       }
 
-      [data-composition-id="x-post"] .x-card {
+      #root .x-card {
         position: absolute;
         top: 50%;
         left: 50%;
@@ -41,7 +41,7 @@
       }
 
       /* Bottom glow */
-      [data-composition-id="x-post"] .x-card::after {
+      #root .x-card::after {
         content: "";
         position: absolute;
         bottom: 0;
@@ -53,7 +53,7 @@
       }
 
       /* Header row */
-      [data-composition-id="x-post"] .post-header {
+      #root .post-header {
         display: flex;
         align-items: flex-start;
         gap: 14px;
@@ -61,7 +61,7 @@
         position: relative;
       }
 
-      [data-composition-id="x-post"] .avatar {
+      #root .avatar {
         width: 52px;
         height: 52px;
         flex-shrink: 0;
@@ -69,39 +69,39 @@
         overflow: hidden;
       }
 
-      [data-composition-id="x-post"] .avatar svg {
+      #root .avatar svg {
         width: 52px;
         height: 52px;
         display: block;
       }
 
-      [data-composition-id="x-post"] .user-info {
+      #root .user-info {
         display: flex;
         flex-direction: column;
         gap: 2px;
         flex: 1;
       }
 
-      [data-composition-id="x-post"] .name-row {
+      #root .name-row {
         display: flex;
         align-items: center;
         gap: 6px;
       }
 
-      [data-composition-id="x-post"] .display-name {
+      #root .display-name {
         font-size: 26px;
         font-weight: 700;
         color: #e7e9ea;
         line-height: 1.3;
       }
 
-      [data-composition-id="x-post"] .verified-badge svg {
+      #root .verified-badge svg {
         width: 22px;
         height: 22px;
         display: block;
       }
 
-      [data-composition-id="x-post"] .handle {
+      #root .handle {
         font-size: 22px;
         font-weight: 400;
         color: #8b98a5;
@@ -109,7 +109,7 @@
       }
 
       /* X logo top-right */
-      [data-composition-id="x-post"] .x-logo {
+      #root .x-logo {
         position: absolute;
         top: 2px;
         right: 0;
@@ -117,14 +117,14 @@
         height: 32px;
       }
 
-      [data-composition-id="x-post"] .x-logo svg {
+      #root .x-logo svg {
         width: 32px;
         height: 32px;
         display: block;
       }
 
       /* Tweet body */
-      [data-composition-id="x-post"] .tweet-body {
+      #root .tweet-body {
         font-size: 30px;
         font-weight: 400;
         color: #e7e9ea;
@@ -136,12 +136,12 @@
         overflow: hidden;
       }
 
-      [data-composition-id="x-post"] .hashtag {
+      #root .hashtag {
         color: #1d9bf0;
       }
 
       /* Timestamp */
-      [data-composition-id="x-post"] .timestamp {
+      #root .timestamp {
         font-size: 22px;
         color: #8b98a5;
         padding-bottom: 20px;
@@ -150,7 +150,7 @@
       }
 
       /* Metrics bar — matches real X spacing */
-      [data-composition-id="x-post"] .metrics-bar {
+      #root .metrics-bar {
         display: flex;
         align-items: center;
         padding: 0;
@@ -158,7 +158,7 @@
         z-index: 1;
       }
 
-      [data-composition-id="x-post"] .metrics-left {
+      #root .metrics-left {
         display: flex;
         align-items: center;
         flex: 1;
@@ -166,19 +166,19 @@
         padding-right: 60px;
       }
 
-      [data-composition-id="x-post"] .metrics-right {
+      #root .metrics-right {
         display: flex;
         align-items: center;
         gap: 20px;
       }
 
-      [data-composition-id="x-post"] .metric {
+      #root .metric {
         display: flex;
         align-items: center;
         gap: 8px;
       }
 
-      [data-composition-id="x-post"] .metric-icon {
+      #root .metric-icon {
         width: 35px;
         height: 35px;
         display: flex;
@@ -186,13 +186,13 @@
         justify-content: center;
       }
 
-      [data-composition-id="x-post"] .metric-icon svg {
+      #root .metric-icon svg {
         width: 35px;
         height: 35px;
         display: block;
       }
 
-      [data-composition-id="x-post"] .metric-count {
+      #root .metric-count {
         font-size: 20px;
         font-weight: 400;
         color: #8b98a5;
@@ -341,102 +341,62 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-
-      var tl = gsap.timeline({ paused: true });
-
-      var card = document.getElementById("card");
-      var likeBtn = document.getElementById("like-btn");
-      var heartOutline = document.getElementById("heart-outline");
-      var heartFilled = document.getElementById("heart-filled");
       var likeCount = document.getElementById("like-count");
+      var likeState = { value: 10900 };
+
+      function renderLikeCount(value) {
+        likeCount.textContent = (Math.round(value) / 1000).toFixed(1) + "K";
+      }
+
+      renderLikeCount(likeState.value);
+
+      var tl = anime.createTimeline({ autoplay: false });
 
       // Start off-screen below
-      gsap.set(card, { y: 400, opacity: 0 });
-
-      // Slide in from bottom
-      tl.to(
-        card,
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.6,
-          ease: "power3.out",
-        },
-        0.1,
+      tl.add(
+        "#card",
+        { translateY: [400, 0], opacity: [0, 1], duration: 600, ease: "outQuart" },
+        100,
       );
 
       // Like press-in
-      tl.to(
-        likeBtn,
-        {
-          scale: 0.85,
-          duration: 0.12,
-          ease: "power2.out",
-        },
-        1.5,
-      );
+      tl.add("#like-btn", { scale: 0.85, duration: 120, ease: "outCubic" }, 1500);
 
       // Like release with spring bounce
-      tl.to(
-        likeBtn,
-        {
-          scale: 1,
-          duration: 0.4,
-          ease: "elastic.out(1, 0.4)",
-        },
-        1.62,
-      );
+      tl.add("#like-btn", { scale: [0.85, 1], duration: 400, ease: "outElastic(1, .4)" }, 1620);
 
       // Hide outline heart
-      tl.to(
-        heartOutline,
-        {
-          opacity: 0,
-          duration: 0.01,
-          ease: "none",
-        },
-        1.62,
-      );
+      tl.add("#heart-outline", { opacity: 0, duration: 10, ease: "linear" }, 1620);
 
       // Show filled heart
-      tl.to(
-        heartFilled,
-        {
-          opacity: 1,
-          duration: 0.12,
-          ease: "none",
-        },
-        1.62,
-      );
+      tl.add("#heart-filled", { opacity: 1, duration: 120, ease: "linear" }, 1620);
 
       // Like count turns pink + increments
-      tl.to(
-        likeCount,
+      tl.add("#like-count", { color: "#f91880", duration: 120, ease: "linear" }, 1620);
+      tl.add(
+        likeState,
         {
-          color: "#f91880",
-          duration: 0.12,
-          ease: "none",
-          onStart: function () {
-            likeCount.textContent = "11.0K";
+          value: 11000,
+          duration: 120,
+          ease: "linear",
+          onUpdate: function () {
+            renderLikeCount(likeState.value);
+          },
+          onComplete: function () {
+            renderLikeCount(11000);
           },
         },
-        1.62,
+        1620,
       );
 
       // Slide out to bottom
-      tl.to(
-        card,
-        {
-          y: 400,
-          opacity: 0,
-          duration: 0.3,
-          ease: "power3.in",
-        },
-        4.2,
+      tl.add(
+        "#card",
+        { translateY: [0, 400], opacity: [1, 0], duration: 300, ease: "inQuart" },
+        4200,
       );
 
-      window.__timelines["x-post"] = tl;
+      hyperframesAnime.register("x-post", tl, { labels: {} });
     </script>
   </body>
 </html>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "lt-kicker-name",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "Lower Third — Kicker Name",
   "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
   "tags": ["lower-third", "overlay", "podcast", "interview", "bold"],
