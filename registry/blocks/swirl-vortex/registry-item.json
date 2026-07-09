@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "swirl-vortex",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Swirl Vortex",
   "description": "Shader transition with swirling vortex distortion",
   "tags": ["transition", "shader"],

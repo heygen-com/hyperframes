@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "ridged-burn",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Ridged Burn",
   "description": "Shader transition with ridged turbulence burn effect",
   "tags": ["transition", "shader"],

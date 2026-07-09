@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Distortion Transitions</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -228,157 +228,172 @@
 
     <script>
       (function () {
-        var tl = gsap.timeline({ defaults: { ease: "none" } });
-        window.__timelines = window.__timelines || {};
-        window.__timelines["main"] = tl;
+        var tl = anime.createTimeline({ autoplay: false });
+        var MS = 1000;
 
-        function resetScenes() {
-          tl.set("#scene1", { opacity: 1 });
-          tl.set("#scene2", { opacity: 0 });
-          tl.set("#s1", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
-          tl.set("#s2", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
-          tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 });
-          tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 });
+        function resetScenes(position) {
+          tl.set("#scene1", { opacity: 1, visibility: "visible" }, position);
+          tl.set("#scene2", { opacity: 0, visibility: "hidden" }, position);
+          tl.set("#s1", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }, position);
+          tl.set("#s2", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }, position);
+          tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 }, position);
+          tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 }, position);
         }
 
         // ===== TITLE CARD (0–3s) =====
         tl.set("#title-card", { opacity: 1 }, 0);
-        tl.fromTo(
+        tl.add(
           ".card-title",
-          { y: 30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-          0.4,
+          { y: [30, 0], opacity: [0, 1], duration: 0.6 * MS, ease: "outCubic" },
+          0.4 * MS,
         );
-        tl.fromTo(
+        tl.add(
           ".card-sub",
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
-          0.8,
+          { y: [20, 0], opacity: [0, 1], duration: 0.5 * MS, ease: "outCubic" },
+          0.8 * MS,
         );
-        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 2.6);
+        tl.add("#title-card", { opacity: 0, duration: 0.4 * MS, ease: "inCubic" }, 2.6 * MS);
 
         // ===== DEMO 1: Glitch (3–8s) =====
         var T;
 
         // Reset & show scene A
-        tl.call(function () {}, [], 3);
-        resetScenes();
+        resetScenes(3 * MS);
 
         // Show info bar
-        tl.to("#info1", { opacity: 1, duration: 0.3, ease: "power2.out" }, 3);
+        tl.add("#info1", { opacity: 1, duration: 0.3 * MS, ease: "outCubic" }, 3 * MS);
 
         // Hold 1.5s, transition at T=4.5
         T = 4.5;
 
         // Glitch transition
-        tl.set("#glitch-r", { opacity: 1, x: 40, y: -8 }, T);
-        tl.set("#glitch-b", { opacity: 1, x: -30, y: 12 }, T);
-        tl.set("#s1", { x: -15 }, T);
+        tl.set("#glitch-r", { opacity: 1, x: 40, y: -8 }, T * MS);
+        tl.set("#glitch-b", { opacity: 1, x: -30, y: 12 }, T * MS);
+        tl.set("#s1", { x: -15 }, T * MS);
 
-        tl.set("#glitch-r", { x: -30, y: 15 }, T + 0.03);
-        tl.set("#glitch-b", { x: 50, y: -10 }, T + 0.03);
-        tl.set("#s1", { x: 20 }, T + 0.03);
+        tl.set("#glitch-r", { x: -30, y: 15 }, (T + 0.03) * MS);
+        tl.set("#glitch-b", { x: 50, y: -10 }, (T + 0.03) * MS);
+        tl.set("#s1", { x: 20 }, (T + 0.03) * MS);
 
-        tl.set("#glitch-r", { x: 60, y: -20 }, T + 0.06);
-        tl.set("#glitch-b", { x: -40, y: 8 }, T + 0.06);
-        tl.set("#s1", { x: -25 }, T + 0.06);
+        tl.set("#glitch-r", { x: 60, y: -20 }, (T + 0.06) * MS);
+        tl.set("#glitch-b", { x: -40, y: 8 }, (T + 0.06) * MS);
+        tl.set("#s1", { x: -25 }, (T + 0.06) * MS);
 
-        tl.set("#glitch-r", { x: -20, y: 5 }, T + 0.09);
-        tl.set("#glitch-b", { x: 35, y: -15 }, T + 0.09);
+        tl.set("#glitch-r", { x: -20, y: 5 }, (T + 0.09) * MS);
+        tl.set("#glitch-b", { x: 35, y: -15 }, (T + 0.09) * MS);
 
         // Swap at T + 0.12
-        tl.set("#scene1", { opacity: 0 }, T + 0.12);
-        tl.set("#scene2", { opacity: 1 }, T + 0.12);
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, (T + 0.12) * MS);
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, (T + 0.12) * MS);
 
         // Clear
-        tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 }, T + 0.15);
-        tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 }, T + 0.15);
-        tl.set("#s1", { x: 0 }, T + 0.15);
+        tl.set("#glitch-r", { opacity: 0, x: 0, y: 0 }, (T + 0.15) * MS);
+        tl.set("#glitch-b", { opacity: 0, x: 0, y: 0 }, (T + 0.15) * MS);
+        tl.set("#s1", { x: 0 }, (T + 0.15) * MS);
 
         // Hold 1.0s, hide info, gap 0.5s
-        tl.to("#info1", { opacity: 0, duration: 0.3, ease: "power2.in" }, 7.0);
+        tl.add("#info1", { opacity: 0, duration: 0.3 * MS, ease: "inCubic" }, 7.0 * MS);
 
         // ===== DEMO 2: Chromatic Aberration (8–13s) =====
-        tl.call(function () {}, [], 8);
-        resetScenes();
+        resetScenes(8 * MS);
 
-        tl.to("#info2", { opacity: 1, duration: 0.3, ease: "power2.out" }, 8);
+        tl.add("#info2", { opacity: 1, duration: 0.3 * MS, ease: "outCubic" }, 8 * MS);
 
         T = 9.5;
 
         // Chromatic aberration transition
-        tl.set("#glitch-r", { opacity: 0.6, x: 0 }, T);
-        tl.set("#glitch-b", { opacity: 0.6, x: 0 }, T);
-        tl.to("#glitch-r", { x: -80, opacity: 0.8, duration: 0.3, ease: "power2.in" }, T);
-        tl.to("#glitch-b", { x: 80, opacity: 0.8, duration: 0.3, ease: "power2.in" }, T);
+        tl.set("#glitch-r", { opacity: 0.6, x: 0 }, T * MS);
+        tl.set("#glitch-b", { opacity: 0.6, x: 0 }, T * MS);
+        tl.add("#glitch-r", { x: -80, opacity: 0.8, duration: 0.3 * MS, ease: "inCubic" }, T * MS);
+        tl.add("#glitch-b", { x: 80, opacity: 0.8, duration: 0.3 * MS, ease: "inCubic" }, T * MS);
 
         // Swap
-        tl.set("#scene1", { opacity: 0 }, T + 0.3);
-        tl.set("#scene2", { opacity: 1 }, T + 0.3);
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, (T + 0.3) * MS);
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, (T + 0.3) * MS);
 
         // Converge back
-        tl.to("#glitch-r", { x: 0, opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.3);
-        tl.to("#glitch-b", { x: 0, opacity: 0, duration: 0.3, ease: "power2.out" }, T + 0.3);
+        tl.add(
+          "#glitch-r",
+          { x: 0, opacity: 0, duration: 0.3 * MS, ease: "outCubic" },
+          (T + 0.3) * MS,
+        );
+        tl.add(
+          "#glitch-b",
+          { x: 0, opacity: 0, duration: 0.3 * MS, ease: "outCubic" },
+          (T + 0.3) * MS,
+        );
 
-        tl.to("#info2", { opacity: 0, duration: 0.3, ease: "power2.in" }, 12.0);
+        tl.add("#info2", { opacity: 0, duration: 0.3 * MS, ease: "inCubic" }, 12.0 * MS);
 
         // ===== DEMO 3: Ripple (13–18s) =====
-        tl.call(function () {}, [], 13);
-        resetScenes();
+        resetScenes(13 * MS);
 
-        tl.to("#info3", { opacity: 1, duration: 0.3, ease: "power2.out" }, 13);
+        tl.add("#info3", { opacity: 1, duration: 0.3 * MS, ease: "outCubic" }, 13 * MS);
 
         T = 14.5;
 
         // Ripple distortion transition
-        tl.to("#s1", { x: 30, scale: 1.02, duration: 0.04, ease: "none" }, T);
-        tl.to(
+        tl.add("#s1", { x: 30, scale: 1.02, duration: 0.04 * MS, ease: "linear" }, T * MS);
+        tl.add(
           "#s1",
-          { x: -25, scale: 0.98, filter: "blur(4px)", duration: 0.04, ease: "none" },
-          T + 0.04,
+          { x: -25, scale: 0.98, filter: "blur(4px)", duration: 0.04 * MS, ease: "linear" },
+          (T + 0.04) * MS,
         );
-        tl.to(
+        tl.add(
           "#s1",
-          { x: 20, scale: 1.01, filter: "blur(6px)", duration: 0.04, ease: "none" },
-          T + 0.08,
+          { x: 20, scale: 1.01, filter: "blur(6px)", duration: 0.04 * MS, ease: "linear" },
+          (T + 0.08) * MS,
         );
-        tl.to(
+        tl.add(
           "#s1",
-          { x: -15, scale: 0.99, filter: "blur(8px)", duration: 0.04, ease: "none" },
-          T + 0.12,
+          { x: -15, scale: 0.99, filter: "blur(8px)", duration: 0.04 * MS, ease: "linear" },
+          (T + 0.12) * MS,
         );
-        tl.to(
+        tl.add(
           "#s1",
-          { x: 10, opacity: 0, filter: "blur(10px)", duration: 0.04, ease: "none" },
-          T + 0.16,
+          { x: 10, opacity: 0, filter: "blur(10px)", duration: 0.04 * MS, ease: "linear" },
+          (T + 0.16) * MS,
         );
-        tl.set("#scene2", { opacity: 1 }, T + 0.16);
-        tl.fromTo(
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, (T + 0.16) * MS);
+        tl.add(
           "#s2",
-          { x: -15, scale: 1.02, filter: "blur(8px)" },
-          { x: 0, scale: 1, filter: "blur(0px)", duration: 0.2, ease: "power2.out" },
-          T + 0.2,
+          {
+            x: [-15, 0],
+            scale: [1.02, 1],
+            filter: ["blur(8px)", "blur(0px)"],
+            duration: 0.2 * MS,
+            ease: "outCubic",
+          },
+          (T + 0.2) * MS,
         );
 
-        tl.to("#info3", { opacity: 0, duration: 0.3, ease: "power2.in" }, 17.0);
+        tl.add("#info3", { opacity: 0, duration: 0.3 * MS, ease: "inCubic" }, 17.0 * MS);
 
         // ===== OUTRO (18–21s) =====
-        tl.set("#scene1", { opacity: 0 }, 18);
-        tl.set("#scene2", { opacity: 0 }, 18);
-        tl.set("#outro-card", { opacity: 1 }, 18);
-        tl.fromTo(
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, 18 * MS);
+        tl.set("#scene2", { opacity: 0, visibility: "hidden" }, 18 * MS);
+        tl.set("#outro-card", { opacity: 1 }, 18 * MS);
+        tl.add(
           "#outro-card .card-title",
-          { y: 30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-          18.3,
+          { y: [30, 0], opacity: [0, 1], duration: 0.6 * MS, ease: "outCubic" },
+          18.3 * MS,
         );
-        tl.fromTo(
+        tl.add(
           "#outro-card .card-sub",
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
-          18.7,
+          { y: [20, 0], opacity: [0, 1], duration: 0.5 * MS, ease: "outCubic" },
+          18.7 * MS,
         );
-        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 20.5);
+        tl.add("#outro-card", { opacity: 0, duration: 0.4 * MS, ease: "inCubic" }, 20.5 * MS);
+
+        hyperframesAnime.register("main", tl, {
+          labels: {
+            title: 0,
+            glitch: 3,
+            chromatic: 8,
+            ripple: 13,
+            outro: 18,
+          },
+        });
       })();
     </script>
   </body>

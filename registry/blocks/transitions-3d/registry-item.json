@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "transitions-3d",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "3D Transitions",
   "description": "Showcase of 3D perspective flip and rotate transitions",
   "tags": ["transition", "showcase"],

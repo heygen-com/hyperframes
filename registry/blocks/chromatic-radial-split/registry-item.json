@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "chromatic-radial-split",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Chromatic Radial Split",
   "description": "Shader transition with chromatic aberration radial split",
   "tags": ["transition", "shader"],

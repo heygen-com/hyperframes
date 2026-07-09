@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "cinematic-zoom",
   "type": "hyperframes:block",
+  "runtime": "gsap",
   "title": "Cinematic Zoom",
   "description": "Shader transition with dramatic zoom blur",
   "tags": ["transition", "shader"],

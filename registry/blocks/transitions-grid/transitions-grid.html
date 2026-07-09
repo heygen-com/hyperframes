@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Grid Transitions</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -176,9 +176,8 @@
 
     <script>
       (function () {
-        var tl = gsap.timeline({ defaults: { ease: "none" } });
-        window.__timelines = window.__timelines || {};
-        window.__timelines["main"] = tl;
+        var tl = anime.createTimeline({ autoplay: false });
+        var MS = 1000;
 
         // Generate grid cells
         var gridColors = [
@@ -206,40 +205,37 @@
         }
         document.getElementById("grid-container").innerHTML = gridHTML;
 
-        function resetScenes() {
-          tl.set("#scene1", { opacity: 1 });
-          tl.set("#scene2", { opacity: 0 });
-          tl.set("#s1", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
-          tl.set("#s2", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 });
+        function resetScenes(position) {
+          tl.set("#scene1", { opacity: 1, visibility: "visible" }, position);
+          tl.set("#scene2", { opacity: 0, visibility: "hidden" }, position);
+          tl.set("#s1", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }, position);
+          tl.set("#s2", { x: 0, y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }, position);
           for (var g = 0; g < 12; g++) {
-            tl.set("#cell-" + g, { opacity: 0 });
+            tl.set("#cell-" + g, { opacity: 0 }, position);
           }
         }
 
         // ===== TITLE CARD (0–3s) =====
         tl.set("#title-card", { opacity: 1 }, 0);
-        tl.fromTo(
+        tl.add(
           ".card-title",
-          { y: 30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-          0.4,
+          { y: [30, 0], opacity: [0, 1], duration: 0.6 * MS, ease: "outCubic" },
+          0.4 * MS,
         );
-        tl.fromTo(
+        tl.add(
           ".card-sub",
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
-          0.8,
+          { y: [20, 0], opacity: [0, 1], duration: 0.5 * MS, ease: "outCubic" },
+          0.8 * MS,
         );
-        tl.to("#title-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 2.6);
+        tl.add("#title-card", { opacity: 0, duration: 0.4 * MS, ease: "inCubic" }, 2.6 * MS);
 
         // ===== DEMO 1: Grid Dissolve (3–8s) =====
         var T;
 
-        tl.call(function () {}, [], 3);
-        resetScenes();
+        resetScenes(3 * MS);
 
         // Show info bar
-        tl.to("#info1", { opacity: 1, duration: 0.3, ease: "power2.out" }, 3);
+        tl.add("#info1", { opacity: 1, duration: 0.3 * MS, ease: "outCubic" }, 3 * MS);
 
         // Hold 1.5s, transition at T=4.5
         T = 4.5;
@@ -259,46 +255,52 @@
         // Ripple in from center
         var stag = 0.04;
         for (var c = 0; c < cells.length; c++) {
-          tl.to(
+          tl.add(
             "#cell-" + cells[c].id,
-            { opacity: 1, duration: 0.15, ease: "power2.out" },
-            T + c * stag,
+            { opacity: 1, duration: 0.15 * MS, ease: "outCubic" },
+            (T + c * stag) * MS,
           );
         }
 
         // Swap scenes at midpoint
-        tl.set("#scene1", { opacity: 0 }, T + 0.35);
-        tl.set("#scene2", { opacity: 1 }, T + 0.35);
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, (T + 0.35) * MS);
+        tl.set("#scene2", { opacity: 1, visibility: "visible" }, (T + 0.35) * MS);
 
         // Ripple out
         for (var c = 0; c < cells.length; c++) {
-          tl.to(
+          tl.add(
             "#cell-" + cells[c].id,
-            { opacity: 0, duration: 0.15, ease: "power2.in" },
-            T + 0.5 + c * stag,
+            { opacity: 0, duration: 0.15 * MS, ease: "inCubic" },
+            (T + 0.5 + c * stag) * MS,
           );
         }
 
         // Hold 1.0s, hide info, gap 0.5s
-        tl.to("#info1", { opacity: 0, duration: 0.3, ease: "power2.in" }, 7.0);
+        tl.add("#info1", { opacity: 0, duration: 0.3 * MS, ease: "inCubic" }, 7.0 * MS);
 
         // ===== OUTRO (8–11s) =====
-        tl.set("#scene1", { opacity: 0 }, 8);
-        tl.set("#scene2", { opacity: 0 }, 8);
-        tl.set("#outro-card", { opacity: 1 }, 8);
-        tl.fromTo(
+        tl.set("#scene1", { opacity: 0, visibility: "hidden" }, 8 * MS);
+        tl.set("#scene2", { opacity: 0, visibility: "hidden" }, 8 * MS);
+        tl.set("#outro-card", { opacity: 1 }, 8 * MS);
+        tl.add(
           "#outro-card .card-title",
-          { y: 30, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.6, ease: "power2.out" },
-          8.3,
+          { y: [30, 0], opacity: [0, 1], duration: 0.6 * MS, ease: "outCubic" },
+          8.3 * MS,
         );
-        tl.fromTo(
+        tl.add(
           "#outro-card .card-sub",
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.5, ease: "power2.out" },
-          8.7,
+          { y: [20, 0], opacity: [0, 1], duration: 0.5 * MS, ease: "outCubic" },
+          8.7 * MS,
         );
-        tl.to("#outro-card", { opacity: 0, duration: 0.4, ease: "power2.in" }, 10.5);
+        tl.add("#outro-card", { opacity: 0, duration: 0.4 * MS, ease: "inCubic" }, 10.5 * MS);
+
+        hyperframesAnime.register("main", tl, {
+          labels: {
+            title: 0,
+            grid: 3,
+            outro: 8,
+          },
+        });
       })();
     </script>
   </body>
