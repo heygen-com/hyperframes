@@ -57,8 +57,6 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
-  cropMode?: boolean;
-  onCropModeChange?: (active: boolean) => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -89,8 +87,6 @@ export function EditorShell({
   isGestureRecording,
   recordingState,
   onToggleRecording,
-  cropMode,
-  onCropModeChange,
   blockPreview,
   gestureOverlay,
 }: EditorShellProps) {
@@ -148,8 +144,6 @@ export function EditorShell({
                 isGestureRecording={isGestureRecording}
                 recordingState={recordingState}
                 onToggleRecording={onToggleRecording}
-                cropMode={cropMode}
-                onCropModeChange={onCropModeChange}
                 gestureOverlay={gestureOverlay}
               />
             }

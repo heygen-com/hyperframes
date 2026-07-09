@@ -26,8 +26,6 @@ export interface PreviewOverlaysProps {
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
-  cropMode?: boolean;
-  onCropModeChange?: (active: boolean) => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -38,8 +36,6 @@ export function PreviewOverlays({
   isGestureRecording,
   recordingState,
   onToggleRecording,
-  cropMode,
-  onCropModeChange,
   gestureOverlay,
 }: PreviewOverlaysProps) {
   const { activeCompPath, previewIframeRef } = useStudioShellContext();
@@ -127,8 +123,6 @@ export function PreviewOverlays({
         onBoxSizeCommit={handleDomBoxSizeCommit}
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
-        cropMode={cropMode}
-        onCropModeChange={onCropModeChange}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}
