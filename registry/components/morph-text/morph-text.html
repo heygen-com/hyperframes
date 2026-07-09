@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Figtree:wght@900&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -212,22 +212,25 @@
         }
 
         var proxy = { t: 0 };
-        var tl = gsap.timeline({ paused: true });
+        var tl = anime.createTimeline({ autoplay: false });
 
-        tl.to(proxy, {
-          t: duration,
-          duration: duration,
-          ease: "none",
-          onUpdate: function () {
-            applyMorph(proxy.t);
+        tl.add(
+          proxy,
+          {
+            t: duration,
+            duration: duration * 1000,
+            ease: "linear",
+            onUpdate: function () {
+              applyMorph(proxy.t);
+            },
           },
-        });
+          0,
+        );
 
         applyMorph(0);
         tl.seek(0);
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["morph-text"] = tl;
+        hyperframesAnime.register("morph-text", tl, {});
       })();
     </script>
   </body>

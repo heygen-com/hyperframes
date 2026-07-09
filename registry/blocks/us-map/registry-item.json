@@ -2,8 +2,9 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "us-map",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "US Map",
-  "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
+  "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG",
   "tags": ["data", "map", "geography", "usa", "choropleth"],
   "dimensions": {
     "width": 1920,

@@ -132,75 +132,47 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
       (function () {
-        const tl = gsap.timeline({ paused: true });
-
-        // Timing Constants
-        const S1_START = 1.86;
-        const S1_END = 4.5;
-        const S2_START = 4.68;
-        const S2_END = 8.6;
-        const S3_START = 8.88;
-        const S3_END = 14.2;
-
-        const SLIDE_DUR = 0.25; // 250ms
-        const SHARP_EASE = "power2.out";
-
-        // Stat 1 Animation
-        tl.fromTo(
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add(
           "#stat1",
-          { x: -200, opacity: 0 },
-          { x: 0, opacity: 1, duration: SLIDE_DUR, ease: SHARP_EASE },
-          S1_START,
+          { translateX: [-200, 0], opacity: [0, 1], duration: 250, ease: "outCubic" },
+          1860,
         );
-        tl.to(
+        tl.add(
           "#stat1",
-          { x: 200, opacity: 0, duration: SLIDE_DUR, ease: "power2.in" },
-          S1_END - SLIDE_DUR,
+          { translateX: [0, 200], opacity: [1, 0], duration: 250, ease: "inCubic" },
+          4250,
         );
-
-        // Stat 2 Animation
-        tl.fromTo(
+        tl.add(
           "#stat2",
-          { y: 200, opacity: 0 },
-          { y: 0, opacity: 1, duration: SLIDE_DUR, ease: SHARP_EASE },
-          S2_START,
+          { translateY: [200, 0], opacity: [0, 1], duration: 250, ease: "outCubic" },
+          4680,
         );
-        // Progress bar fill
-        tl.to(
-          "#stat2 .progress-bar",
-          { width: "62%", duration: S2_END - S2_START - SLIDE_DUR * 2, ease: "none" },
-          S2_START + SLIDE_DUR,
-        );
-        tl.to(
+        tl.add("#stat2 .progress-bar", { width: "62%", duration: 3420, ease: "linear" }, 4930);
+        tl.add(
           "#stat2",
-          { y: -200, opacity: 0, duration: SLIDE_DUR, ease: "power2.in" },
-          S2_END - SLIDE_DUR,
+          { translateY: [0, -200], opacity: [1, 0], duration: 250, ease: "inCubic" },
+          8350,
         );
-
-        // Stat 3 Animation
-        tl.fromTo(
+        tl.add(
           "#stat3",
-          { x: 200, opacity: 0 },
-          { x: 0, opacity: 1, duration: SLIDE_DUR, ease: SHARP_EASE },
-          S3_START,
+          { translateX: [200, 0], opacity: [0, 1], duration: 250, ease: "outCubic" },
+          8880,
         );
-        // Stagger blocks
-        tl.from(
+        tl.add(
           "#stat3 .block",
-          { scale: 0, duration: 0.3, stagger: 0.1, ease: "back.out(1.7)" },
-          S3_START + SLIDE_DUR,
+          { scale: [0, 1], duration: 300, ease: "outBack(1.7)", delay: anime.stagger(100) },
+          9130,
         );
-        tl.to(
+        tl.add(
           "#stat3",
-          { x: -200, opacity: 0, duration: SLIDE_DUR, ease: "power2.in" },
-          S3_END - SLIDE_DUR,
+          { translateX: [0, -200], opacity: [1, 0], duration: 250, ease: "inCubic" },
+          13950,
         );
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines["graphics"] = tl;
+        hyperframesAnime.register("graphics", tl, { labels: {} });
       })();
     </script>
   </div>

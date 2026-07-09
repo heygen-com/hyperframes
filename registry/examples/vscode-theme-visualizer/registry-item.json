@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "vscode-theme-visualizer",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "VS Code Theme Visualizer",
   "description": "Faithful VS Code workbench recreation with per-character typing animation across 12 built-in themes. Activity bar, sidebar, tabs, editor, terminal, and status bar — all driven by official theme JSON files.",
   "tags": ["code", "developer", "showcase", "vscode", "themes"],

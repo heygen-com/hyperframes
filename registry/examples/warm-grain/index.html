@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Warm Grain - Hyperframes</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       body,
       html {
@@ -119,9 +119,8 @@
       >
         <div class="grain-texture"></div>
         <script>
-          const grainTl = gsap.timeline({ paused: true });
-          window.__timelines = window.__timelines || {};
-          window.__timelines["grain-overlay"] = grainTl;
+          const grainTl = anime.createTimeline({ autoplay: false });
+          hyperframesAnime.register("grain-overlay", grainTl, { labels: {} });
         </script>
       </div>
 
@@ -176,95 +175,79 @@
       ></div>
 
       <script>
-        const tl = gsap.timeline({ paused: true });
-
-        // A-Roll Framing Strategy
-        // 1. 0s-1.8s: Intro scale up from small (60%) to medium (80%) - Shifted right slightly to clear speaker card
-        // 2. 1.8s-4.6s: Grid view / Shift Left (x: 600, scale: 70%) for 47% graphic
-        // 3. 4.6s-8.8s: Shift Center-Bottom (y: 800, scale: 70%) for 62% graphic (top)
-        // 4. 8.8s-14s: Shift Right (x: 1320, scale: 75%) for Editing Skills graphic (left)
-        // 5. 14s-17s: Final Reveal (Center, scale: 100%)
-
-        // Initial state
-        gsap.set("#a-roll", {
-          x: 1100,
-          y: 540,
-          xPercent: -50,
-          yPercent: -50,
-          width: 1920 * 0.6,
-          height: 1080 * 0.6,
-        });
-
-        // 1. Intro Scale Up (0s - 1.8s)
-        tl.to(
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add(
           "#a-roll",
           {
-            x: 1200,
-            width: 1920 * 0.8,
-            height: 1080 * 0.8,
-            duration: 1.8,
-            ease: "power2.inOut",
+            translateX: "calc(-50% + 1100px)",
+            translateY: "calc(-50% + 540px)",
+            width: 1152,
+            height: 648,
+            duration: 0,
           },
           0,
         );
-
-        // 2. Moment 1: 47% Graphic Trigger (1.8s) - Shift Left
-        tl.to(
+        tl.add(
           "#a-roll",
           {
-            x: 600,
-            y: 540,
-            width: 1920 * 0.7,
-            height: 1080 * 0.7,
-            duration: 0.5,
-            ease: "power2.inOut",
+            translateX: ["calc(-50% + 1100px)", "calc(-50% + 1200px)"],
+            translateY: "calc(-50% + 540px)",
+            width: [1152, 1536],
+            height: [648, 864],
+            duration: 1800,
+            ease: "inOutCubic",
           },
-          1.8,
+          0,
         );
-
-        // 3. Moment 2: 62% Graphic Trigger (4.6s) - Shift Center-Bottom
-        tl.to(
+        tl.add(
           "#a-roll",
           {
-            x: 960,
-            y: 750,
-            width: 1920 * 0.7,
-            height: 1080 * 0.7,
-            duration: 0.5,
-            ease: "power2.inOut",
+            translateX: ["calc(-50% + 1200px)", "calc(-50% + 600px)"],
+            translateY: ["calc(-50% + 540px)", "calc(-50% + 540px)"],
+            width: [1536, 1344],
+            height: [864, 756],
+            duration: 500,
+            ease: "inOutCubic",
           },
-          4.6,
+          1800,
         );
-
-        // 4. Moment 3: Editing Skills Trigger (8.8s) - Shift Right
-        tl.to(
+        tl.add(
           "#a-roll",
           {
-            x: 1320,
-            y: 540,
-            width: 1920 * 0.75,
-            height: 1080 * 0.75,
-            duration: 0.5,
-            ease: "power2.inOut",
+            translateX: ["calc(-50% + 600px)", "calc(-50% + 960px)"],
+            translateY: ["calc(-50% + 540px)", "calc(-50% + 750px)"],
+            width: [1344, 1344],
+            height: [756, 756],
+            duration: 500,
+            ease: "inOutCubic",
           },
-          8.8,
+          4600,
         );
-
-        // 5. Final Reveal (14s - 17s)
-        tl.to(
+        tl.add(
           "#a-roll",
           {
-            x: 960,
-            y: 540,
-            width: 1920 * 1.0,
-            height: 1080 * 1.0,
-            duration: 1.0,
-            ease: "power2.inOut",
+            translateX: ["calc(-50% + 960px)", "calc(-50% + 1320px)"],
+            translateY: ["calc(-50% + 750px)", "calc(-50% + 540px)"],
+            width: [1344, 1440],
+            height: [756, 810],
+            duration: 500,
+            ease: "inOutCubic",
           },
-          14,
+          8800,
         );
-
-        window.__timelines["main-video"] = tl;
+        tl.add(
+          "#a-roll",
+          {
+            translateX: ["calc(-50% + 1320px)", "calc(-50% + 960px)"],
+            translateY: ["calc(-50% + 540px)", "calc(-50% + 540px)"],
+            width: [1440, 1920],
+            height: [810, 1080],
+            duration: 1000,
+            ease: "inOutCubic",
+          },
+          14000,
+        );
+        hyperframesAnime.register("main-video", tl, { labels: {} });
       </script>
     </div>
   </body>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Slideshow Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       @font-face {
         font-family: "Inter";
@@ -147,7 +147,7 @@
         <div class="slide-tag" id="intro-tag">Hyperframes</div>
         <h1 class="slide-heading" id="intro-heading">Write HTML. Ship Video.</h1>
         <p class="slide-body" id="intro-body-1">
-          A composition framework that turns deterministic HTML + GSAP into frame-perfect MP4.
+          A composition framework that turns deterministic HTML + anime.js into frame-perfect MP4.
         </p>
         <ul class="bullet-list" id="intro-bullets">
           <li id="intro-bullet-1">Render at any resolution or framerate</li>
@@ -155,42 +155,34 @@
         </ul>
         <script>
           (function () {
-            window.__timelines = window.__timelines || {};
-            var tl = gsap.timeline({ paused: true });
-            // Entrance: tag fades up, then heading, then body
-            tl.fromTo(
+
+            const tl = anime.createTimeline({ autoplay: false });
+            tl.add(
               "#intro-tag",
-              { opacity: 0, y: 24 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+              { opacity: [0, 1], translateY: [24, 0], duration: 600, ease: "outCubic" },
               0,
             );
-            tl.fromTo(
+            tl.add(
               "#intro-heading",
-              { opacity: 0, y: 40 },
-              { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
-              0.2,
+              { opacity: [0, 1], translateY: [40, 0], duration: 700, ease: "outQuart" },
+              200,
             );
-            tl.fromTo(
+            tl.add(
               "#intro-body-1",
-              { opacity: 0, y: 20 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
-              0.5,
+              { opacity: [0, 1], translateY: [20, 0], duration: 600, ease: "outCubic" },
+              500,
             );
-            // Fragment 1 hold point at 3s — bullet 1 reveals here
-            tl.fromTo(
+            tl.add(
               "#intro-bullet-1",
-              { opacity: 0, x: -20 },
-              { opacity: 1, x: 0, duration: 0.5, ease: "back.out(1.4)" },
-              1.5,
+              { opacity: [0, 1], translateX: [-20, 0], duration: 500, ease: "outBack(1.4)" },
+              1500,
             );
-            // Fragment 2 hold point at 6s — bullet 2 reveals here
-            tl.fromTo(
+            tl.add(
               "#intro-bullet-2",
-              { opacity: 0, x: -20 },
-              { opacity: 1, x: 0, duration: 0.5, ease: "back.out(1.4)" },
-              4.5,
+              { opacity: [0, 1], translateX: [-20, 0], duration: 500, ease: "outBack(1.4)" },
+              4500,
             );
-            window.__timelines["scene-intro"] = tl;
+            hyperframesAnime.register("scene-intro", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -211,27 +203,23 @@
         </p>
         <script>
           (function () {
-            window.__timelines = window.__timelines || {};
-            var tl = gsap.timeline({ paused: true });
-            tl.fromTo(
+            var tl = anime.createTimeline({ autoplay: false });
+            tl.add(
               "#features-tag",
-              { opacity: 0, scale: 0.8 },
-              { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.7)" },
+              { opacity: [0, 1], scale: [0.8, 1], duration: 500, ease: "outBack(1.7)" },
               0,
             );
-            tl.fromTo(
+            tl.add(
               "#features-heading",
-              { opacity: 0, y: 40 },
-              { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" },
-              0.15,
+              { opacity: [0, 1], translateY: [40, 0], duration: 700, ease: "outQuart" },
+              150,
             );
-            tl.fromTo(
+            tl.add(
               "#features-body",
-              { opacity: 0, y: 20 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
-              0.45,
+              { opacity: [0, 1], translateY: [20, 0], duration: 600, ease: "outCubic" },
+              450,
             );
-            window.__timelines["scene-features"] = tl;
+            hyperframesAnime.register("scene-features", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -252,27 +240,23 @@
         </p>
         <script>
           (function () {
-            window.__timelines = window.__timelines || {};
-            var tl = gsap.timeline({ paused: true });
-            tl.fromTo(
+            var tl = anime.createTimeline({ autoplay: false });
+            tl.add(
               "#cta-tag",
-              { opacity: 0, y: -20 },
-              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+              { opacity: [0, 1], translateY: [-20, 0], duration: 500, ease: "outCubic" },
               0,
             );
-            tl.fromTo(
+            tl.add(
               "#cta-heading",
-              { opacity: 0, scale: 0.9 },
-              { opacity: 1, scale: 1, duration: 0.8, ease: "elastic.out(1, 0.6)" },
-              0.2,
+              { opacity: [0, 1], scale: [0.9, 1], duration: 800, ease: "outElastic(1, .6)" },
+              200,
             );
-            tl.fromTo(
+            tl.add(
               "#cta-body",
-              { opacity: 0, y: 20 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
-              0.5,
+              { opacity: [0, 1], translateY: [20, 0], duration: 600, ease: "outCubic" },
+              500,
             );
-            window.__timelines["scene-cta"] = tl;
+            hyperframesAnime.register("scene-cta", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -295,27 +279,23 @@
         </p>
         <script>
           (function () {
-            window.__timelines = window.__timelines || {};
-            var tl = gsap.timeline({ paused: true });
-            tl.fromTo(
+            var tl = anime.createTimeline({ autoplay: false });
+            tl.add(
               "#branch-a-tag",
-              { opacity: 0, x: -30 },
-              { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" },
+              { opacity: [0, 1], translateX: [-30, 0], duration: 500, ease: "outCubic" },
               0,
             );
-            tl.fromTo(
+            tl.add(
               "#branch-a-heading",
-              { opacity: 0, y: 30 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
-              0.2,
+              { opacity: [0, 1], translateY: [30, 0], duration: 600, ease: "outQuart" },
+              200,
             );
-            tl.fromTo(
+            tl.add(
               "#branch-a-body",
-              { opacity: 0, y: 20 },
-              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-              0.45,
+              { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+              450,
             );
-            window.__timelines["scene-branch-a"] = tl;
+            hyperframesAnime.register("scene-branch-a", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -335,27 +315,23 @@
         </p>
         <script>
           (function () {
-            window.__timelines = window.__timelines || {};
-            var tl = gsap.timeline({ paused: true });
-            tl.fromTo(
+            var tl = anime.createTimeline({ autoplay: false });
+            tl.add(
               "#branch-b-tag",
-              { opacity: 0, x: -30 },
-              { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" },
+              { opacity: [0, 1], translateX: [-30, 0], duration: 500, ease: "outCubic" },
               0,
             );
-            tl.fromTo(
+            tl.add(
               "#branch-b-heading",
-              { opacity: 0, y: 30 },
-              { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
-              0.2,
+              { opacity: [0, 1], translateY: [30, 0], duration: 600, ease: "outQuart" },
+              200,
             );
-            tl.fromTo(
+            tl.add(
               "#branch-b-body",
-              { opacity: 0, y: 20 },
-              { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
-              0.45,
+              { opacity: [0, 1], translateY: [20, 0], duration: 500, ease: "outCubic" },
+              450,
             );
-            window.__timelines["scene-branch-b"] = tl;
+            hyperframesAnime.register("scene-branch-b", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -363,12 +339,11 @@
       <!-- ── Root timeline ─────────────────────────────── -->
       <script>
         (function () {
-          window.__timelines = window.__timelines || {};
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
           // Root timeline spans the full 32s; individual scene timelines
           // are registered separately under their own composition-id keys.
-          tl.to({}, { duration: 32 });
-          window.__timelines["main"] = tl;
+          tl.add({}, { duration: 32000 });
+          hyperframesAnime.register("main", tl, { labels: {} });
         })();
       </script>
     </div>

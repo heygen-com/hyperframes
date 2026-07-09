@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hyperframes - Play Mode</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       body,
       html {
@@ -118,13 +118,13 @@
         </style>
         <script>
           (function () {
-            const tl = gsap.timeline({ paused: true });
+            const tl = anime.createTimeline({ autoplay: false });
             const bg = document.getElementById("background-layer");
             // Sync with A-roll framing 3 (4.659s)
-            tl.to(bg, { backgroundColor: "#0057FF", duration: 0.5 }, 4.659);
+            tl.add(bg, { backgroundColor: "#0057FF", duration: 500 }, 4659);
             // Sync with A-roll framing 4 (8.88s)
-            tl.to(bg, { backgroundColor: "#FFFFFF", duration: 0.5 }, 8.88);
-            window.__timelines["background"] = tl;
+            tl.add(bg, { backgroundColor: "#FFFFFF", duration: 500 }, 8880);
+            hyperframesAnime.register("background", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -175,14 +175,28 @@
         </style>
         <script>
           (function () {
-            const tl = gsap.timeline({ paused: true });
-            const container = document.getElementById("aroll-container");
-            gsap.set(container, { y: -1100, scale: 0.8 });
-            tl.to(container, { y: 0, duration: 1.2, ease: "elastic.out(1, 0.6)" }, 0);
-            tl.to(container, { scale: 1.4, x: -300, duration: 1, ease: "back.out(1.7)" }, 1.839);
-            tl.to(container, { scale: 0.7, x: 400, duration: 1, ease: "back.out(1.7)" }, 4.659);
-            tl.to(container, { scale: 0.9, x: 0, duration: 1, ease: "back.out(1.7)" }, 8.88);
-            window.__timelines["aroll-layer"] = tl;
+            const tl = anime.createTimeline({ autoplay: false });
+            tl.add(
+              "#aroll-container",
+              { translateY: [-1100, 0], duration: 1200, ease: "outElastic(1, .6)" },
+              0,
+            );
+            tl.add(
+              "#aroll-container",
+              { scale: [0.8, 1.4], translateX: -300, duration: 1000, ease: "outBack(1.7)" },
+              1839,
+            );
+            tl.add(
+              "#aroll-container",
+              { scale: [1.4, 0.7], translateX: [-300, 400], duration: 1000, ease: "outBack(1.7)" },
+              4659,
+            );
+            tl.add(
+              "#aroll-container",
+              { scale: [0.7, 0.9], translateX: [400, 0], duration: 1000, ease: "outBack(1.7)" },
+              8880,
+            );
+            hyperframesAnime.register("aroll-layer", tl, { labels: {} });
           })();
         </script>
       </div>
@@ -220,9 +234,8 @@
       ></div>
 
       <script>
-        window.__timelines = window.__timelines || {};
-        const tl = gsap.timeline({ paused: true });
-        window.__timelines["main-video"] = tl;
+        const tl = anime.createTimeline({ autoplay: false });
+        hyperframesAnime.register("main-video", tl, { labels: {} });
       </script>
     </div>
   </body>

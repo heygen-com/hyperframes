@@ -3,7 +3,7 @@
 
   Usage: place this snippet AFTER your .shimmer-sweep-target elements.
   Wrap your text element with class="shimmer-sweep-target" and
-  paste this snippet into your composition. The GSAP timeline drives
+  paste this snippet into your composition. The anime.js timeline drives
   the sweep position for deterministic frame-by-frame rendering.
 
   Customize:
@@ -52,15 +52,13 @@
 </script>
 
 <!--
-  Timeline integration example (add to your composition's GSAP timeline):
+  Timeline integration example (add to your composition's anime.js timeline):
 
   // Single sweep from left to right
-  tl.fromTo(".shimmer-sweep-target", {
-    "--shimmer-pos": "-20%",
-  }, {
-    "--shimmer-pos": "120%",
-    duration: 1.2,
-    ease: "power2.inOut",
-    stagger: 0.15,
-  }, startTime);
+  tl.add(".shimmer-sweep-target", {
+    "--shimmer-pos": ["-20%", "120%"],
+    duration: 1200,
+    ease: "inOutCubic",
+    delay: anime.stagger(150),
+  }, startTimeMs);
 -->

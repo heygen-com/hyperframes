@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "grain-overlay",
   "type": "hyperframes:component",
+  "runtime": "animejs",
   "title": "Grain Overlay",
   "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
   "tags": ["texture", "grain", "overlay", "film"],

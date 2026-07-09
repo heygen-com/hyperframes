@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       *,
       *::before,
@@ -1016,10 +1016,21 @@
       <!-- Root timeline — spans full 108s composition -->
       <script>
         (function () {
-          window.__timelines = window.__timelines || {};
-          var tl = gsap.timeline({ paused: true });
-          tl.to({}, { duration: 108 });
-          window.__timelines["root"] = tl;
+          var tl = anime.createTimeline({ autoplay: false });
+          var rootState = { time: 0 };
+          tl.add(
+            rootState,
+            {
+              time: 108,
+              duration: 108000,
+              ease: "linear",
+              onUpdate: function () {
+                if (window.__hfSetTime) window.__hfSetTime(rootState.time);
+              },
+            },
+            0,
+          );
+          hyperframesAnime.register("root", tl, { labels: {} });
         })();
       </script>
 
@@ -1260,7 +1271,7 @@
       } // end else (renderer OK)
     </script>
 
-    <!-- Scene visibility controller + imperative GSAP entrance driver -->
+    <!-- Scene visibility controller + imperative anime.js entrance driver -->
     <script>
       (function () {
         var scenes = [
@@ -1290,23 +1301,24 @@
         function fireEntrance(sceneEl) {
           var animEls = sceneEl.querySelectorAll("[data-anim]");
           if (!animEls.length) return;
-          gsap.from(animEls, {
-            opacity: 0,
-            y: 28,
-            duration: 0.4,
-            stagger: 0.07,
-            ease: "power2.out",
-            overwrite: true
+          anime.animate(animEls, {
+            opacity: [0, 1],
+            translateY: [28, 0],
+            duration: 400,
+            delay: anime.stagger(70),
+            ease: "outCubic"
           });
         }
 
         function revealProblem(id) {
           var el = document.getElementById(id);
           if (!el) return;
-          gsap.fromTo(el,
-            { opacity: 0, x: -24 },
-            { opacity: 1, x: 0, duration: 0.35, ease: "power2.out", overwrite: true }
-          );
+          anime.animate(el, {
+            opacity: [0, 1],
+            translateX: [-24, 0],
+            duration: 350,
+            ease: "outCubic"
+          });
         }
 
         function updateVisibility(t) {
@@ -1327,7 +1339,7 @@
                 probRevealed = [false, false];
                 probFragments.forEach(function (f) {
                   var pEl = document.getElementById(f.id);
-                  if (pEl) gsap.set(pEl, { opacity: 0, x: 0, clearProps: "transform" });
+                  if (pEl) anime.utils.set(pEl, { opacity: 0, translateX: 0 });
                 });
               }
               lastActiveId = s.id;
@@ -1349,15 +1361,6 @@
         // Show first slide immediately
         updateVisibility(0);
 
-        function hookRoot() {
-          var root = window.__timelines && window.__timelines["root"];
-          if (root) {
-            root.eventCallback("onUpdate", function () {
-              updateVisibility(root.time());
-            });
-          }
-        }
-        hookRoot();
       })();
     </script>
 
@@ -1524,16 +1527,8 @@
 
         window.__hfSetTime = patchedUpdateVisibility;
 
-        // Also re-hook the root timeline callback after load
-        // (the timeline callback was set before our patch)
-        window.addEventListener('load', function () {
-          var root = window.__timelines && window.__timelines['root'];
-          if (root) {
-            root.eventCallback('onUpdate', function () {
-              patchedUpdateVisibility(root.time());
-            });
-          }
-        });
+        // Root timeline reads window.__hfSetTime dynamically, so this patch is
+        // picked up on the next seek/update without re-hooking the timeline.
       })();
     </script>
 

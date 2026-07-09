@@ -45,59 +45,245 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
       (function () {
-        const TRANSCRIPT = [
-          { text: "We", start: 0.119, end: 0.259 },
-          { text: "asked", start: 0.319, end: 0.479 },
-          { text: "what", start: 0.519, end: 0.659 },
-          { text: "you", start: 0.699, end: 0.819 },
-          { text: "needed.", start: 0.859, end: 1.819 },
-          { text: "Forty-seven", start: 1.839, end: 2.299 },
-          { text: "percent", start: 2.399, end: 2.679 },
-          { text: "of", start: 2.7, end: 2.799 },
-          { text: "you", start: 2.839, end: 2.939 },
-          { text: "said", start: 3.039, end: 3.179 },
-          { text: "motion", start: 3.24, end: 3.559 },
-          { text: "graphics.", start: 3.579, end: 4.639 },
-          { text: "Sixty-two", start: 4.659, end: 5.179 },
-          { text: "percent", start: 5.299, end: 5.759 },
-          { text: "said", start: 5.859, end: 5.98 },
-          { text: "static", start: 6.099, end: 6.399 },
-          { text: "content", start: 6.46, end: 6.879 },
-          { text: "was", start: 6.92, end: 7.079 },
-          { text: "costing", start: 7.099, end: 7.48 },
-          { text: "you", start: 7.5, end: 7.579 },
-          { text: "attention,", start: 7.679, end: 8.659 },
-          { text: "and", start: 8.699, end: 8.86 },
-          { text: "three", start: 8.88, end: 9.06 },
-          { text: "out", start: 9.079, end: 9.18 },
-          { text: "of", start: 9.199, end: 9.34 },
-          { text: "four", start: 9.38, end: 9.799 },
-          { text: "said", start: 9.84, end: 10.0 },
-          { text: "you", start: 10.019, end: 10.159 },
-          { text: "know", start: 10.179, end: 10.36 },
-          { text: "the", start: 10.38, end: 10.479 },
-          { text: "look", start: 10.52, end: 10.699 },
-          { text: "you", start: 10.739, end: 10.859 },
-          { text: "want", start: 10.98, end: 11.34 },
-          { text: "but", start: 11.359, end: 11.52 },
-          { text: "don't", start: 11.56, end: 11.779 },
-          { text: "have", start: 11.819, end: 11.94 },
-          { text: "the", start: 11.96, end: 12.06 },
-          { text: "editing", start: 12.079, end: 12.4 },
-          { text: "skills", start: 12.52, end: 12.86 },
-          { text: "to", start: 12.88, end: 13.0 },
-          { text: "get", start: 13.019, end: 13.18 },
-          { text: "there.", start: 13.22, end: 14.22 },
-          { text: "So", start: 14.239, end: 14.399 },
-          { text: "we", start: 14.42, end: 14.52 },
-          { text: "built", start: 14.619, end: 14.88 },
-          { text: "Hyperframes", start: 15.079, end: 15.42 },
-        ];
+        const TRANSCRIPT = JSON.parse(`
+          [
+            {
+              "text": "We",
+              "start": 0.119,
+              "end": 0.259
+            },
+            {
+              "text": "asked",
+              "start": 0.319,
+              "end": 0.479
+            },
+            {
+              "text": "what",
+              "start": 0.519,
+              "end": 0.659
+            },
+            {
+              "text": "you",
+              "start": 0.699,
+              "end": 0.819
+            },
+            {
+              "text": "needed.",
+              "start": 0.859,
+              "end": 1.819
+            },
+            {
+              "text": "Forty-seven",
+              "start": 1.839,
+              "end": 2.299
+            },
+            {
+              "text": "percent",
+              "start": 2.399,
+              "end": 2.679
+            },
+            {
+              "text": "of",
+              "start": 2.7,
+              "end": 2.799
+            },
+            {
+              "text": "you",
+              "start": 2.839,
+              "end": 2.939
+            },
+            {
+              "text": "said",
+              "start": 3.039,
+              "end": 3.179
+            },
+            {
+              "text": "motion",
+              "start": 3.24,
+              "end": 3.559
+            },
+            {
+              "text": "graphics.",
+              "start": 3.579,
+              "end": 4.639
+            },
+            {
+              "text": "Sixty-two",
+              "start": 4.659,
+              "end": 5.179
+            },
+            {
+              "text": "percent",
+              "start": 5.299,
+              "end": 5.759
+            },
+            {
+              "text": "said",
+              "start": 5.859,
+              "end": 5.98
+            },
+            {
+              "text": "static",
+              "start": 6.099,
+              "end": 6.399
+            },
+            {
+              "text": "content",
+              "start": 6.46,
+              "end": 6.879
+            },
+            {
+              "text": "was",
+              "start": 6.92,
+              "end": 7.079
+            },
+            {
+              "text": "costing",
+              "start": 7.099,
+              "end": 7.48
+            },
+            {
+              "text": "you",
+              "start": 7.5,
+              "end": 7.579
+            },
+            {
+              "text": "attention,",
+              "start": 7.679,
+              "end": 8.659
+            },
+            {
+              "text": "and",
+              "start": 8.699,
+              "end": 8.86
+            },
+            {
+              "text": "three",
+              "start": 8.88,
+              "end": 9.06
+            },
+            {
+              "text": "out",
+              "start": 9.079,
+              "end": 9.18
+            },
+            {
+              "text": "of",
+              "start": 9.199,
+              "end": 9.34
+            },
+            {
+              "text": "four",
+              "start": 9.38,
+              "end": 9.799
+            },
+            {
+              "text": "said",
+              "start": 9.84,
+              "end": 10
+            },
+            {
+              "text": "you",
+              "start": 10.019,
+              "end": 10.159
+            },
+            {
+              "text": "know",
+              "start": 10.179,
+              "end": 10.36
+            },
+            {
+              "text": "the",
+              "start": 10.38,
+              "end": 10.479
+            },
+            {
+              "text": "look",
+              "start": 10.52,
+              "end": 10.699
+            },
+            {
+              "text": "you",
+              "start": 10.739,
+              "end": 10.859
+            },
+            {
+              "text": "want",
+              "start": 10.98,
+              "end": 11.34
+            },
+            {
+              "text": "but",
+              "start": 11.359,
+              "end": 11.52
+            },
+            {
+              "text": "don't",
+              "start": 11.56,
+              "end": 11.779
+            },
+            {
+              "text": "have",
+              "start": 11.819,
+              "end": 11.94
+            },
+            {
+              "text": "the",
+              "start": 11.96,
+              "end": 12.06
+            },
+            {
+              "text": "editing",
+              "start": 12.079,
+              "end": 12.4
+            },
+            {
+              "text": "skills",
+              "start": 12.52,
+              "end": 12.86
+            },
+            {
+              "text": "to",
+              "start": 12.88,
+              "end": 13
+            },
+            {
+              "text": "get",
+              "start": 13.019,
+              "end": 13.18
+            },
+            {
+              "text": "there.",
+              "start": 13.22,
+              "end": 14.22
+            },
+            {
+              "text": "So",
+              "start": 14.239,
+              "end": 14.399
+            },
+            {
+              "text": "we",
+              "start": 14.42,
+              "end": 14.52
+            },
+            {
+              "text": "built",
+              "start": 14.619,
+              "end": 14.88
+            },
+            {
+              "text": "Hyperframes",
+              "start": 15.079,
+              "end": 15.42
+            }
+          ]
+        `);
         const container = document.getElementById("captions-container");
-        const tl = gsap.timeline({ paused: true });
+        const tl = anime.createTimeline({ autoplay: false });
 
         // Group transcript into lines (max 5 words)
         const lines = [];
@@ -118,25 +304,26 @@
           container.appendChild(el);
 
           // Animation: Pop in with scale-up bounce (0% to 110% to 100%)
-          tl.to(
+          tl.add(
             el,
             {
-              autoAlpha: 1,
+              opacity: 1,
+              visibility: "visible",
               scale: 1.1,
-              duration: 0.2,
-              ease: "power2.out",
+              duration: 200,
+              ease: "outCubic",
             },
-            startTime,
+            startTime * 1000,
           );
 
-          tl.to(
+          tl.add(
             el,
             {
               scale: 1,
-              duration: 0.1,
-              ease: "power2.inOut",
+              duration: 100,
+              ease: "inOutCubic",
             },
-            startTime + 0.2,
+            (startTime + 0.2) * 1000,
           );
 
           // Stay visible until next line or end of its duration
@@ -144,20 +331,20 @@
           const hideTime =
             index < lines.length - 1 ? Math.min(endTime, lines[index + 1][0].start) : endTime;
 
-          tl.to(
+          tl.add(
             el,
             {
-              autoAlpha: 0,
+              opacity: 0,
+              visibility: "hidden",
               scale: 0,
-              duration: 0.15,
-              ease: "power2.in",
+              duration: 150,
+              ease: "inCubic",
             },
-            hideTime,
+            hideTime * 1000,
           );
         });
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["captions"] = tl;
+        hyperframesAnime.register("captions", tl, { labels: {} });
       })();
     </script>
   </div>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "kinetic-type",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "Kinetic Type",
   "description": "Bold kinetic typography promo",
   "dimensions": {

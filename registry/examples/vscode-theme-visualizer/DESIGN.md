@@ -39,4 +39,4 @@ The visual identity is sourced from official VS Code built-in theme JSON files f
 
 - Theme changes should feel like command-palette theme switching: quick, crisp, and functional.
 - Code typing is the hero action. UI chrome should support it without becoming theatrical.
-- All animation must be deterministic and GSAP-controlled.
+- All animation must be deterministic and anime.js-controlled.

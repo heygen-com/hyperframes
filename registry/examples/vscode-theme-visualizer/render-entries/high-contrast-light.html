@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Default High Contrast Light Render Entry</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -42,8 +42,11 @@
         data-track-index="1"
       ></div>
       <script>
-        window.__timelines = window.__timelines || {};
-        window.__timelines["render-high-contrast-light"] = gsap.timeline({ paused: true });
+        hyperframesAnime.register(
+          "render-high-contrast-light",
+          anime.createTimeline({ autoplay: false }),
+          { labels: {} },
+        );
       </script>
     </div>
   </body>

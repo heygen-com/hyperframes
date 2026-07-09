@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Kinetic Type</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -76,24 +76,12 @@
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      const tl = gsap.timeline({ paused: true });
-
-      // The A-roll <video> is a host-root element, so the sub-composition
-      // timeline cannot reach it. Drive its reveal here on the main timeline at
-      // global time (the graphics sub-comp starts at 0, so scene-local == global).
-      //
-      // COUPLING: the reveal/hide times below (2.2 / 11.7 / 13.5) are hand-tuned
-      // to the graphics-layer sub-composition's scene boundaries and assume it is
-      // mounted at data-start="0". If you re-time the sub-composition's scenes or
-      // change its data-start, these absolute times drift out of alignment and
-      // must be updated to match the new scene boundaries.
-      tl.set("#a-roll-video", { opacity: 0 }, 0);
-      tl.set("#a-roll-video", { opacity: 1 }, 2.2); // reveal after the Scene 1 white wipe
-      tl.to("#a-roll-video", { opacity: 0, duration: 0.4 }, 11.7); // hide for the Wes Anderson scene
-      tl.set("#a-roll-video", { opacity: 1 }, 13.5); // back for the Vignelli outro
-
-      window.__timelines["main"] = tl;
+      const tl = anime.createTimeline({ autoplay: false });
+      tl.add("#a-roll-video", { opacity: 0, duration: 0 }, 0);
+      tl.add("#a-roll-video", { opacity: 1, duration: 0 }, 2200);
+      tl.add("#a-roll-video", { opacity: [1, 0], duration: 400 }, 11700);
+      tl.add("#a-roll-video", { opacity: 1, duration: 0 }, 13500);
+      hyperframesAnime.register("main", tl, { labels: {} });
     </script>
   </body>
 </html>

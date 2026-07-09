@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Libre+Franklin:wght@300;400;600&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -208,7 +208,7 @@
       <script>
         (function () {
           const svg = document.querySelector('[data-composition-id="data-chart"] .chart-svg');
-          const tl = gsap.timeline({ paused: true });
+          const tl = anime.createTimeline({ autoplay: false });
 
           // Data
           const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
@@ -298,45 +298,45 @@
 
           // --- ANIMATION TIMELINE ---
 
-          tl.to(
+          tl.add(
             '[data-composition-id="data-chart"] .headline',
             {
               clipPath: "inset(0 0% 0 0)",
-              duration: 1.2,
-              ease: "power1.inOut",
+              duration: 1200,
+              ease: "inOutQuad",
             },
             0,
           );
 
-          tl.to(
+          tl.add(
             '[data-composition-id="data-chart"] .subtitle',
             {
               clipPath: "inset(0 0% 0 0)",
-              duration: 1.2,
-              ease: "power1.inOut",
+              duration: 1200,
+              ease: "inOutQuad",
             },
-            0.2,
+            200,
           );
 
-          tl.to(
+          tl.add(
             '[data-composition-id="data-chart"] .key',
             {
               opacity: 1,
-              duration: 0.4,
-              ease: "power2.out",
+              duration: 400,
+              ease: "outCubic",
             },
-            1.0,
+            1000,
           );
 
-          tl.to(
+          tl.add(
             '[data-composition-id="data-chart"] .grid-line',
             {
               opacity: 1,
-              duration: 0.5,
-              stagger: 0.25,
-              ease: "power2.out",
+              duration: 500,
+              delay: anime.stagger(250),
+              ease: "outCubic",
             },
-            0.5,
+            500,
           );
 
           // Bars
@@ -345,49 +345,52 @@
 
           bars.forEach((bar, i) => {
             const barHeight = (revenueData[i] / maxRevenue) * chartHeight;
-            const startTime = 1.5 + i * 0.5;
+            const startTime = 1500 + i * 500;
 
-            tl.to(
+            tl.add(
               bar,
               {
-                attr: { height: barHeight, y: startY - barHeight },
-                duration: 0.8,
-                ease: "power2.out",
+                height: barHeight,
+                y: startY - barHeight,
+                duration: 800,
+                ease: "outCubic",
               },
               startTime,
             );
 
-            tl.to(
+            tl.add(
               barLabels[i],
               {
                 opacity: 1,
-                duration: 0.3,
-                ease: "power2.out",
+                duration: 300,
+                ease: "outCubic",
               },
-              startTime + 0.8,
+              startTime + 800,
             );
           });
 
           // Line
-          const lastBarStartTime = 1.5 + (months.length - 1) * 0.5;
-          const lineStartTime = lastBarStartTime + 0.5;
+          const lastBarStartTime = 1500 + (months.length - 1) * 500;
+          const lineStartTime = lastBarStartTime + 500;
 
-          tl.to(
+          tl.add(
             conversionPath,
             {
               strokeDashoffset: 0,
-              duration: 3,
-              ease: "none",
+              duration: 3000,
+              ease: "linear",
             },
             lineStartTime,
           );
 
           // Line Dot & Labels
-          tl.set(
+          tl.add(
             lineDot,
             {
               opacity: 1,
-              attr: { cx: getX(0), cy: getLineY(conversionData[0]) },
+              cx: getX(0),
+              cy: getLineY(conversionData[0]),
+              duration: 0,
             },
             lineStartTime,
           );
@@ -397,38 +400,39 @@
             if (i > 0) {
               const x = getX(i);
               const y = getLineY(conversionData[i]);
-              tl.to(
+              tl.add(
                 lineDot,
                 {
-                  attr: { cx: x, cy: y },
-                  duration: 3 / (months.length - 1),
-                  ease: "none",
+                  cx: x,
+                  cy: y,
+                  duration: 3000 / (months.length - 1),
+                  ease: "linear",
                 },
-                lineStartTime + ((i - 1) / (months.length - 1)) * 3,
+                lineStartTime + ((i - 1) / (months.length - 1)) * 3000,
               );
             }
 
-            const labelTime = lineStartTime + (i / (months.length - 1)) * 3 + 0.2;
+            const labelTime = lineStartTime + (i / (months.length - 1)) * 3000 + 200;
 
             lineLabels[i].textContent = "0.0%";
 
-            tl.to(
+            tl.add(
               lineLabels[i],
               {
                 opacity: 1,
-                duration: 0.1,
-                ease: "power2.out",
+                duration: 100,
+                ease: "outCubic",
               },
               labelTime,
             );
 
             const dummy = { val: 0 };
-            tl.to(
+            tl.add(
               dummy,
               {
                 val: conversionData[i],
-                duration: 0.8,
-                ease: "power2.out",
+                duration: 800,
+                ease: "outCubic",
                 onUpdate: () => {
                   lineLabels[i].textContent = dummy.val.toFixed(1) + "%";
                 },
@@ -438,18 +442,17 @@
           });
 
           // Source Line
-          tl.to(
+          tl.add(
             '[data-composition-id="data-chart"] .source',
             {
               opacity: 1,
-              duration: 0.5,
-              ease: "power2.out",
+              duration: 500,
+              ease: "outCubic",
             },
-            ">+0.5",
+            9000,
           );
 
-          window.__timelines = window.__timelines || {};
-          window.__timelines["data-chart"] = tl;
+          hyperframesAnime.register("data-chart", tl, { labels: {} });
         })();
       </script>
     </div>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "swiss-grid",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "Swiss Grid",
   "description": "Structured grid layout",
   "dimensions": {

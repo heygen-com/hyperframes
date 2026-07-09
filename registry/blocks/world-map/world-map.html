@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=block"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
@@ -325,71 +325,68 @@
                 tooltipEl.style.transform = "translateY(4px)";
               });
 
-            /* ── GSAP Timeline ── */
+            /* ── Animation Timeline ── */
             buildTimeline();
           },
         );
 
         function buildTimeline() {
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
 
           /* 0s: Headline clip-path wipe reveal (1s) */
-          tl.to(
+          tl.add(
             "#world-map .headline",
             {
               clipPath: "inset(0 0% 0 0)",
-              duration: 1,
-              ease: "power3.inOut",
+              duration: 1000,
+              ease: "inOutQuart",
             },
             0,
           );
 
           /* 0.4s: Subtitle fade in (0.6s) */
-          tl.to(
+          tl.add(
             "#world-map .subtitle",
             {
               opacity: 1,
-              duration: 0.6,
-              ease: "power2.out",
+              duration: 600,
+              ease: "outCubic",
             },
-            0.4,
+            400,
           );
 
           /* 1.0s: Countries stagger reveal */
-          tl.to(
+          tl.add(
             "#world-map .country-path",
             {
               opacity: 1,
-              duration: 0.3,
-              stagger: {
-                each: 0.02,
-                from: "center",
-              },
-              ease: "power1.out",
+              duration: 300,
+              delay: anime.stagger(20, { from: "center" }),
+              ease: "outQuad",
             },
-            1.0,
+            1000,
           );
 
           /* 4.0s: Legend fade in */
-          tl.to(
+          tl.add(
             "#world-map .legend-group",
             {
               opacity: 1,
-              duration: 0.6,
-              ease: "power2.out",
+              duration: 600,
+              ease: "outCubic",
             },
-            4.0,
+            4000,
           );
 
           /* 4.5s: Source fade in */
-          tl.to(
+          tl.add(
             "#world-map .source",
             {
               opacity: 1,
-              duration: 0.5,
-              ease: "power2.out",
+              duration: 500,
+              ease: "outCubic",
             },
-            4.5,
+            4500,
           );
 
           /* 5.0s: Highlight pulse on top 5 GDP countries */
@@ -397,37 +394,34 @@
             var selector = '#world-map [data-country="' + top5Codes[i] + '"]';
 
             /* Pulse up: brightness + white stroke */
-            tl.to(
+            tl.add(
               selector,
               {
-                filter: "brightness(1.5)",
-                stroke: "#ffffff",
-                strokeWidth: 1.8,
-                duration: 0.4,
-                ease: "power2.out",
+                filter: ["brightness(1)", "brightness(1.5)"],
+                stroke: ["#1e293b", "#ffffff"],
+                strokeWidth: [0.6, 1.8],
+                duration: 400,
+                ease: "outCubic",
               },
-              5.0 + i * 0.15,
+              5000 + i * 150,
             );
 
             /* Pulse back to normal */
-            tl.to(
+            tl.add(
               selector,
               {
-                filter: "brightness(1)",
-                stroke: "#1e293b",
-                strokeWidth: 0.6,
-                duration: 0.6,
-                ease: "power2.inOut",
+                filter: ["brightness(1.5)", "brightness(1)"],
+                stroke: ["#ffffff", "#1e293b"],
+                strokeWidth: [1.8, 0.6],
+                duration: 600,
+                ease: "inOutCubic",
               },
-              5.0 + i * 0.15 + 0.4,
+              5400 + i * 150,
             );
           }
 
           /* Register timeline */
-          if (!window.__timelines) {
-            window.__timelines = {};
-          }
-          window.__timelines["world-map"] = tl;
+          hyperframesAnime.register("world-map", tl, { labels: {} });
         }
       })();
     </script>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "us-map-hex",
   "type": "hyperframes:block",
+  "runtime": "animejs",
   "title": "US Hex Grid Map",
   "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
   "tags": ["data", "map", "geography", "usa", "hexgrid", "tilegrid"],

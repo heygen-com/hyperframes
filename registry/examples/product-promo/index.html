@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Product Promo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=block"
       rel="stylesheet"
@@ -118,41 +118,68 @@
 
         <script>
           (function () {
-            const tl = gsap.timeline({ paused: true });
-            const text = document.querySelector("#caption-text");
-
-            tl.to(text, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, 0);
-            tl.to(text, { opacity: 0, y: -20, duration: 0.3, ease: "power3.in" }, 3.2);
-            tl.set(text, { innerText: "Three cursors. One file. Zero meetings.", y: 40 }, 3.5);
-            tl.to(text, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 3.5);
-            tl.to(text, { opacity: 0, y: -20, duration: 0.3, ease: "power3.in" }, 7.7);
-            tl.set(
-              text,
-              { innerText: "Components in. Feedback resolved. No one waited.", y: 40 },
-              8.0,
+            const tl = anime.createTimeline({ autoplay: false });
+            tl.add(
+              "#caption-text",
+              { opacity: 1, translateY: 0, duration: 800, ease: "outQuart" },
+              0,
             );
-            tl.to(text, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 8.0);
-            tl.to(text, { opacity: 0, y: -20, duration: 0.4, ease: "power3.in" }, 12.1);
-
-            window.__timelines = window.__timelines || {};
-            window.__timelines["captions"] = tl;
+            tl.add(
+              "#caption-text",
+              { opacity: [1, 0], translateY: [0, -20], duration: 300, ease: "inQuart" },
+              3200,
+            );
+            tl.add(
+              "#caption-text",
+              { innerText: "Three cursors. One file. Zero meetings.", translateY: 40, duration: 0 },
+              3500,
+            );
+            tl.add(
+              "#caption-text",
+              { opacity: [0, 1], translateY: [40, 0], duration: 600, ease: "outQuart" },
+              3500,
+            );
+            tl.add(
+              "#caption-text",
+              { opacity: [1, 0], translateY: [0, -20], duration: 300, ease: "inQuart" },
+              7700,
+            );
+            tl.add(
+              "#caption-text",
+              {
+                innerText: "Components in. Feedback resolved. No one waited.",
+                translateY: 40,
+                duration: 0,
+              },
+              8000,
+            );
+            tl.add(
+              "#caption-text",
+              { opacity: [0, 1], translateY: [40, 0], duration: 600, ease: "outQuart" },
+              8000,
+            );
+            tl.add(
+              "#caption-text",
+              { opacity: [1, 0], translateY: [0, -20], duration: 400, ease: "inQuart" },
+              12100,
+            );
+            hyperframesAnime.register("captions", tl, { labels: {} });
           })();
         </script>
       </div>
     </div>
 
     <script>
-      window.__timelines = window.__timelines || {};
-      const mainTl = gsap.timeline({ paused: true });
+      const mainTl = anime.createTimeline({ autoplay: false });
 
-      mainTl.set("#scene-2-4", { scale: 1, filter: "blur(0px)" }, 1.5);
-      mainTl.to(
+      mainTl.add("#scene-2-4", { scale: 1, filter: "blur(0px)", duration: 0 }, 1500);
+      mainTl.add(
         "#scene-2-4",
-        { duration: 0.25, scale: 0.94, filter: "blur(6px)", opacity: 0, ease: "power2.in" },
-        13.75,
+        { duration: 250, scale: 0.94, filter: "blur(6px)", opacity: 0, ease: "inCubic" },
+        13750,
       );
 
-      window.__timelines["main"] = mainTl;
+      hyperframesAnime.register("main", mainTl, { labels: {} });
     </script>
   </body>
 </html>

@@ -11,7 +11,7 @@
   3. Add data-pu-row="0|1|2|..." and data-pu-col="0|1|2|..." per card.
   4. Mark the card that starts at full size with data-pu-focus="true".
   5. Drive --pu-progress 0 → 1 on the .parallax-unzoom-grid from your
-     composition's paused GSAP timeline (see example at bottom).
+     composition's paused anime.js timeline (see example at bottom).
 
   Tunable CSS variables on .parallax-unzoom-grid:
   - --pu-focus-scale  (default 6)      starting scale of the focus card
@@ -83,18 +83,13 @@
 </script>
 
 <!--
-  Timeline integration example (paste into your composition's GSAP timeline):
+  Timeline integration example (paste into your composition's anime.js timeline):
 
-  tl.fromTo(
-    ".parallax-unzoom-grid",
-    { "--pu-progress": 0 },
-    {
-      "--pu-progress": 1,
-      duration: 2.4,
-      ease: "power2.inOut",
-    },
-    startTime, // start time in seconds
-  );
+  tl.add(".parallax-unzoom-grid", {
+    "--pu-progress": [0, 1],
+    duration: 2400,
+    ease: "inOutCubic",
+  }, startTimeMs);
 
   Chaining with parallax-zoom example:
   // Scene 1 (0-3s): zoom IN to the focal card via parallax-zoom

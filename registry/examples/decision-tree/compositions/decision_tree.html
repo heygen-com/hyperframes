@@ -272,162 +272,171 @@
       }
     </style>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <script>
       (function () {
-        const tl = gsap.timeline({ paused: true });
+        const tl = anime.createTimeline({ autoplay: false });
+        const S = '[data-composition-id="decision-tree"]';
+        const nodePython = document.querySelector(S + " #node-python");
+        const pythonText = document.querySelector(S + " #python-text");
+        const labels = {
+          hold1: 1,
+          hold2: 2.5,
+          hold3: 4.45,
+          hold4: 5.85,
+          hold5: 6.25,
+          hold6: 7.05,
+          hold7: 9.6,
+        };
+        const hold1 = 1000;
+        const hold2 = 2500;
+        const hold3 = 4450;
+        const hold4 = 5850;
+        const hold5 = 6250;
+        const hold6 = 7050;
+        const hold7 = 9600;
 
-        // 1. Root node scales from 0→100% over 0.4s
-        tl.to("#node-root", { scale: 1, duration: 0.4, ease: "power2.out" });
+        if (nodePython && !nodePython.querySelector(".selection-border")) {
+          const border = document.createElement("div");
+          border.className = "selection-border";
+          nodePython.appendChild(border);
+        }
 
-        // 2. Hold 0.6s
-        tl.addLabel("hold1", "+=0.6");
+        function addTimelineCall(position, callback) {
+          tl.add({ value: 0 }, { value: 0, duration: 0, onComplete: callback }, position);
+        }
 
-        // 3. Two elbow connectors draw downward-left and downward-right simultaneously (0.5s)
-        tl.to(
-          ".connector#path-1-L, .connector#path-1-R",
-          {
-            strokeDashoffset: 0,
-            duration: 0.5,
-            ease: "none",
-          },
-          "hold1",
+        function resetInteractiveState() {
+          if (pythonText) pythonText.innerHTML = "Start with Pythom";
+          document.querySelectorAll(S + " .squiggle-container").forEach((el) => {
+            el.style.opacity = "";
+          });
+          document.querySelectorAll(S + " .selection-border").forEach((el) => {
+            el.style.opacity = "";
+          });
+        }
+
+        tl.add(
+          S + " #node-root",
+          { translateX: "-50%", translateY: "-50%", scale: 1, duration: 400, ease: "outCubic" },
+          0,
         );
-
-        // Labels fade in at midpoint
-        tl.to(
-          "#label-yes, #label-not-sure",
-          {
-            opacity: 1,
-            duration: 0.2,
-          },
-          "hold1+=0.25",
+        tl.add(
+          S + " .connector#path-1-L, " + S + " .connector#path-1-R",
+          { strokeDashoffset: 0, duration: 500, ease: "linear" },
+          hold1,
         );
-
-        // 4. Level 2 nodes scale in at endpoints with 0.2s stagger
-        tl.to("#node-yes", { scale: 1, duration: 0.4, ease: "back.out(1.7)" }, "hold1+=0.4");
-        tl.to("#node-not-sure", { scale: 1, duration: 0.4, ease: "back.out(1.7)" }, "hold1+=0.6");
-
-        // 5. Hold 0.5s
-        tl.addLabel("hold2", "+=0.5");
-
-        // 6. Four connectors draw down from level 2 (0.4s)
-        tl.to(
-          ".connector#path-2-LL, .connector#path-2-LR, .connector#path-2-RL, .connector#path-2-RR",
-          {
-            strokeDashoffset: 0,
-            duration: 0.4,
-            ease: "none",
-          },
-          "hold2",
+        tl.add(
+          S + " #label-yes, " + S + " #label-not-sure",
+          { opacity: 1, duration: 200 },
+          hold1 + 250,
         );
-
-        // 7. Four leaf nodes scale in with 0.15s stagger
-        const leafNodes = ["#node-python", "#node-nocode", "#node-website", "#node-course"];
+        tl.add(
+          S + " #node-yes",
+          {
+            translateX: "-50%",
+            translateY: "-50%",
+            scale: 1,
+            duration: 400,
+            ease: "outBack(1.7)",
+          },
+          hold1 + 400,
+        );
+        tl.add(
+          S + " #node-not-sure",
+          {
+            translateX: "-50%",
+            translateY: "-50%",
+            scale: 1,
+            duration: 400,
+            ease: "outBack(1.7)",
+          },
+          hold1 + 600,
+        );
+        tl.add(
+          S +
+            " .connector#path-2-LL, " +
+            S +
+            " .connector#path-2-LR, " +
+            S +
+            " .connector#path-2-RL, " +
+            S +
+            " .connector#path-2-RR",
+          { strokeDashoffset: 0, duration: 400, ease: "linear" },
+          hold2,
+        );
+        const leafNodes = [
+          S + " #node-python",
+          S + " #node-nocode",
+          S + " #node-website",
+          S + " #node-course",
+        ];
         leafNodes.forEach((id, i) => {
-          tl.to(id, { scale: 1, duration: 0.4, ease: "back.out(1.7)" }, `hold2+=${0.3 + i * 0.15}`);
-        });
-
-        // Red wavy underline appears with text
-        tl.to(".squiggle-container", { opacity: 1, duration: 0.1 }, "hold2+=0.3");
-
-        // 8. Hold 0.8s
-        tl.addLabel("hold3", "+=0.8");
-
-        // 9. Cursor drifts in from bottom-right (1s) to lavender sticky
-        tl.to(
-          "#cursor",
-          {
-            x: -1470,
-            y: -540,
-            duration: 1,
-            ease: "power1.inOut",
-          },
-          "hold3",
-        );
-
-        // 10. Cursor clicks. Selection border appears.
-        tl.add(() => {
-          const node = document.querySelector("#node-python");
-          if (!node) return;
-          if (!node.querySelector(".selection-border")) {
-            const border = document.createElement("div");
-            border.className = "selection-border";
-            node.appendChild(border);
-          }
-          gsap.set(".selection-border", { opacity: 1 });
-        }, "hold3+=1");
-
-        // Visual click feedback
-        tl.to(
-          "#cursor",
-          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1, overwrite: "auto" },
-          "hold3+=1",
-        );
-
-        // 11. Hold 0.3s
-        tl.addLabel("hold4", "+=0.3");
-
-        // 12. Cursor double-clicks "Pythom" — highlight in blue
-        tl.to(
-          "#cursor",
-          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 3, overwrite: "auto" },
-          "hold4",
-        );
-        tl.add(() => {
-          const textEl = document.querySelector("#python-text");
-          if (!textEl) return;
-          textEl.innerHTML = 'Start with <span class="text-highlight">Pythom</span>';
-        }, "hold4+=0.1");
-
-        // 13. Hold 0.2s
-        tl.addLabel("hold5", "+=0.2");
-
-        // 14. Highlighted text deletes and "Python" types in (fast)
-        // Squiggle disappears when last char lands
-        const typingStart = tl.labels["hold5"];
-        const words = ["P", "Py", "Pyt", "Pyth", "Pytho", "Python"];
-        words.forEach((word, i) => {
           tl.add(
-            () => {
-              const el = document.querySelector("#python-text");
-              if (el) el.innerHTML = `Start with <span class="text-highlight">${word}</span>`;
+            id,
+            {
+              translateX: "-50%",
+              translateY: "-50%",
+              scale: 1,
+              duration: 400,
+              ease: "outBack(1.7)",
             },
-            typingStart + i * 0.05,
+            hold2 + 300 + i * 150,
           );
         });
-
-        // Remove highlight and squiggle at the end of typing
-        const typingEnd = typingStart + words.length * 0.05;
-        tl.add(() => {
-          const pyEl = document.querySelector("#python-text");
-          if (pyEl) pyEl.innerHTML = "Start with Python";
-          gsap.set(".squiggle-container", { opacity: 0 });
-        }, typingEnd);
-
-        // 15. Hold 0.5s
-        tl.addLabel("hold6", typingEnd + 0.5);
-
-        // 16. Cursor moves slightly and clicks away to deselect
-        tl.to("#cursor", { x: -1420, y: -500, duration: 0.3, overwrite: "auto" }, "hold6");
-        tl.to(
-          "#cursor",
-          { scale: 0.8, duration: 0.05, yoyo: true, repeat: 1, overwrite: "auto" },
-          "hold6+=0.3",
+        tl.add(S + " .squiggle-container", { opacity: 1, duration: 100 }, hold2 + 300);
+        tl.add(
+          S + " #cursor",
+          { translateX: -1470, translateY: -540, duration: 1000, ease: "inOutQuad" },
+          hold3,
         );
-        tl.to(".selection-border", { opacity: 0, duration: 0.1 }, "hold6+=0.3");
+        addTimelineCall(hold3 + 1000, () => {
+          const border = nodePython && nodePython.querySelector(".selection-border");
+          if (border) border.style.opacity = "1";
+        });
+        tl.add(
+          S + " #cursor",
+          { scale: 0.8, duration: 50, loop: 2, alternate: true },
+          hold3 + 1000,
+        );
+        tl.add(S + " #cursor", { scale: 0.8, duration: 50, loop: 4, alternate: true }, hold4);
+        addTimelineCall(hold4 + 100, () => {
+          if (!pythonText) return;
+          pythonText.innerHTML = 'Start with <span class="text-highlight">Pythom</span>';
+        });
+        const typingStart = hold5;
+        const words = ["P", "Py", "Pyt", "Pyth", "Pytho", "Python"];
+        words.forEach((word, i) => {
+          addTimelineCall(typingStart + i * 50, () => {
+            if (pythonText)
+              pythonText.innerHTML = `Start with <span class="text-highlight">${word}</span>`;
+          });
+        });
+        const typingEnd = typingStart + words.length * 50;
+        addTimelineCall(typingEnd, () => {
+          if (pythonText) pythonText.innerHTML = "Start with Python";
+          document.querySelectorAll(S + " .squiggle-container").forEach((el) => {
+            el.style.opacity = "0";
+          });
+        });
+        tl.add(S + " #cursor", { translateX: -1420, translateY: -500, duration: 300 }, hold6);
+        tl.add(S + " #cursor", { scale: 0.8, duration: 50, loop: 2, alternate: true }, hold6 + 300);
+        tl.add(S + " .selection-border", { opacity: 0, duration: 100 }, hold6 + 300);
+        tl.add(
+          S + " #emoji-thumb",
+          {
+            translateX: "-50%",
+            translateY: "-50%",
+            scale: 1,
+            duration: 150,
+            ease: "outBack(2)",
+          },
+          hold6 + 400,
+        );
+        tl.add(S + " #fade-overlay", { opacity: 1, duration: 500 }, hold7);
 
-        // 17. 👍 emoji pops in
-        tl.to("#emoji-thumb", { scale: 1, duration: 0.15, ease: "back.out(2)" }, "hold6+=0.4");
-
-        // 18. Hold 2s
-        tl.addLabel("hold7", "+=2");
-
-        // 19. Fade entire screen to white over 0.5s
-        tl.to("#fade-overlay", { opacity: 1, duration: 0.5 }, "hold7");
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines["decision-tree"] = tl;
+        hyperframesAnime.register("decision-tree", tl, { labels: labels });
+        resetInteractiveState();
       })();
     </script>
   </div>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Motion Blur — Velocity Showcase</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -132,7 +132,7 @@
         color: #181822;
       }
 
-      /* Animated elements — both types live at left:0, GSAP drives x */
+      /* Animated elements — both types live at left:0, the timeline drives translateX */
       .pill {
         position: absolute;
         left: 0;
@@ -335,6 +335,24 @@
           if (!window._hfMbUid) window._hfMbUid = 0;
           var ns = "http://www.w3.org/2000/svg";
 
+          function getTimelineTimeSeconds(tl) {
+            return (Number(tl.currentTime) || 0) / 1000;
+          }
+
+          function getTimelineDurationMs(tl) {
+            return Math.max(Number(tl.duration) || 0, 100);
+          }
+
+          function readTranslate(el, property) {
+            var value = anime.utils.get(el, property, false);
+            var parsed = typeof value === "number" ? value : parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+          }
+
+          function setMotionStyles(el, styles) {
+            anime.utils.set(el, styles);
+          }
+
           function attachMotionBlur(selector, tl, opts) {
             opts = opts || {};
             var blurScale = opts.blurScale !== undefined ? opts.blurScale : 0.008;
@@ -426,27 +444,27 @@
                 ghosts: ghosts,
                 feTopBlur: feTopBlur,
                 filterId: uid,
-                prevX: parseFloat(gsap.getProperty(el, "x")) || 0,
-                prevY: parseFloat(gsap.getProperty(el, "y")) || 0,
-                prevTime: tl.time(),
+                prevX: readTranslate(el, "translateX"),
+                prevY: readTranslate(el, "translateY"),
+                prevTime: getTimelineTimeSeconds(tl),
               };
             });
 
-            // tl.eventCallback("onUpdate") is not available in the HyperFrames renderer —
-            // the runtime proxies the timeline. Tween onUpdate fires on every seek instead.
+            // Timeline-level update hooks are not available through the renderer proxy.
+            // A tween onUpdate fires on every seek instead.
             var _proxy = { t: 0 };
-            tl.to(
+            tl.add(
               _proxy,
               {
                 t: 1,
-                duration: Math.max(tl.duration(), 0.1),
-                ease: "none",
+                duration: getTimelineDurationMs(tl),
+                ease: "linear",
                 onUpdate: function () {
-                  var time = tl.time();
+                  var time = getTimelineTimeSeconds(tl);
 
                   state.forEach(function (s) {
-                    var x = parseFloat(gsap.getProperty(s.el, "x")) || 0;
-                    var y = parseFloat(gsap.getProperty(s.el, "y")) || 0;
+                    var x = readTranslate(s.el, "translateX");
+                    var y = readTranslate(s.el, "translateY");
                     var dt = time - s.prevTime;
 
                     if (dt > 0.0005) {
@@ -487,7 +505,7 @@
                           var sy = 1 + Math.min(Math.abs(vy) * stretchScale, stretchMax);
                           var ox = axis !== "y" ? (vx >= 0 ? "100% 50%" : "0% 50%") : "50% 50%";
                           var oy = axis !== "x" ? (vy >= 0 ? "50% 100%" : "50% 0%") : "50% 50%";
-                          gsap.set(s.el, {
+                          setMotionStyles(s.el, {
                             scaleX: axis !== "y" ? sx : 1,
                             scaleY: axis !== "x" ? sy : 1,
                             transformOrigin: axis === "x" ? ox : axis === "y" ? oy : "50% 50%",
@@ -502,7 +520,11 @@
                         });
                         s.feTopBlur.setAttribute("stdDeviation", "0 0");
                         if (stretchMax > 0) {
-                          gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                          setMotionStyles(s.el, {
+                            scaleX: 1,
+                            scaleY: 1,
+                            transformOrigin: "50% 50%",
+                          });
                         }
                       }
 
@@ -518,7 +540,7 @@
                       });
                       s.feTopBlur.setAttribute("stdDeviation", "0 0");
                       if (stretchMax > 0) {
-                        gsap.set(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
+                        setMotionStyles(s.el, { scaleX: 1, scaleY: 1, transformOrigin: "50% 50%" });
                       }
                       s.prevX = x;
                       s.prevY = y;
@@ -533,21 +555,22 @@
           }
 
           /* ── Timeline ─────────────────────────────────────────────── */
-          var tl = gsap.timeline({ paused: true });
+          var tl = anime.createTimeline({ autoplay: false });
+          var allTargets = "#s1, #s2, #s3, #s4, #s5, #t1, #t2, #t3, #t4, #t5";
 
           // All elements start at x=-400 (off-screen left), travel to x=1920 (off-screen right).
           // Shape + text in each group share the same duration → same velocity → same blur.
-          gsap.set(["#s1", "#s2", "#s3", "#s4", "#s5", "#t1", "#t2", "#t3", "#t4", "#t5"], {
-            x: -400,
+          anime.utils.set(allTargets, {
+            translateX: -400,
           });
 
-          tl.to(["#s1", "#t1"], { x: 1640, duration: 3.0, ease: "power3.inOut" }, 0);
-          tl.to(["#s2", "#t2"], { x: 1640, duration: 1.5, ease: "power3.inOut" }, 0);
-          tl.to(["#s3", "#t3"], { x: 1640, duration: 0.7, ease: "power3.inOut" }, 0);
-          tl.to(["#s4", "#t4"], { x: 1640, duration: 0.35, ease: "power3.inOut" }, 0);
-          tl.to(["#s5", "#t5"], { x: 1640, duration: 0.2, ease: "power3.inOut" }, 0);
+          tl.add("#s1, #t1", { translateX: 1640, duration: 3000, ease: "inOutQuart" }, 0);
+          tl.add("#s2, #t2", { translateX: 1640, duration: 1500, ease: "inOutQuart" }, 0);
+          tl.add("#s3, #t3", { translateX: 1640, duration: 700, ease: "inOutQuart" }, 0);
+          tl.add("#s4, #t4", { translateX: 1640, duration: 350, ease: "inOutQuart" }, 0);
+          tl.add("#s5, #t5", { translateX: 1640, duration: 200, ease: "inOutQuart" }, 0);
 
-          tl.set(document.body, {}, 4);
+          tl.add(document.body, { duration: 0 }, 4000);
 
           attachMotionBlur(
             ["#s1", "#s2", "#s3", "#s4", "#s5", "#t1", "#t2", "#t3", "#t4", "#t5"],
@@ -555,8 +578,7 @@
             { axis: "x", blurMax: 80, stretchMax: 0 },
           );
 
-          window.__timelines = window.__timelines || {};
-          window.__timelines["motion-blur-example"] = tl;
+          hyperframesAnime.register("motion-blur-example", tl, { labels: {} });
         })();
       </script>
     </div>

@@ -2,6 +2,7 @@
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "warm-grain",
   "type": "hyperframes:example",
+  "runtime": "animejs",
   "title": "Warm Grain",
   "description": "Cream aesthetic with grain texture",
   "dimensions": {
