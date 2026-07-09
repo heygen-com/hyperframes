@@ -65,6 +65,22 @@ describe("resolveCropInsetFromEdgeDrag", () => {
   });
 });
 
+describe("resolveCropInsetFromMoveDrag", () => {
+  const startInsets = { top: 10, right: 20, bottom: 30, left: 40 };
+
+  it("shifts opposing insets together so the crop size stays constant", () => {
+    expect(
+      resolveCropInsetFromMoveDrag({ startInsets, deltaX: 20, deltaY: -10, scaleX: 2, scaleY: 1 }),
+    ).toEqual({ top: 0, right: 10, bottom: 40, left: 50 });
+  });
+
+  it("clamps the window inside the element bounds", () => {
+    expect(
+      resolveCropInsetFromMoveDrag({ startInsets, deltaX: 999, deltaY: 999, scaleX: 1, scaleY: 1 }),
+    ).toEqual({ top: 40, right: 0, bottom: 0, left: 60 });
+  });
+});
+
 describe("cropRectFromInsets", () => {
   it("shrinks the overlay rect by scaled insets", () => {
     expect(
@@ -86,21 +102,5 @@ describe("cropRectFromInsets", () => {
     );
     expect(r.width).toBe(0);
     expect(r.height).toBe(0);
-  });
-});
-
-describe("resolveCropInsetFromMoveDrag", () => {
-  const startInsets = { top: 10, right: 20, bottom: 30, left: 40 };
-
-  it("shifts opposing insets together so the crop size stays constant", () => {
-    expect(
-      resolveCropInsetFromMoveDrag({ startInsets, deltaX: 20, deltaY: -10, scaleX: 2, scaleY: 1 }),
-    ).toEqual({ top: 0, right: 10, bottom: 40, left: 50 });
-  });
-
-  it("clamps the window inside the element bounds", () => {
-    expect(
-      resolveCropInsetFromMoveDrag({ startInsets, deltaX: 999, deltaY: 999, scaleX: 1, scaleY: 1 }),
-    ).toEqual({ top: 40, right: 0, bottom: 0, left: 60 });
   });
 });

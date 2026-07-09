@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Crop, MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
+import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
 
@@ -39,9 +39,6 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
   const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
   const motionPathArmed = usePlayerStore((s) => s.motionPathArmed);
   const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
-  const cropAvailable = usePlayerStore((s) => s.cropAvailable);
-  const cropMode = usePlayerStore((s) => s.cropMode);
-  const setCropMode = usePlayerStore((s) => s.setCropMode);
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -102,22 +99,6 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
       className="absolute top-2 right-2 z-50 flex items-center gap-1"
       onPointerDown={(e) => e.stopPropagation()}
     >
-      {cropAvailable && (
-        <button
-          type="button"
-          className={`rounded-md p-1.5 transition-colors ${
-            cropMode
-              ? "bg-studio-accent/20 text-studio-accent"
-              : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
-          }`}
-          onClick={() => setCropMode(!cropMode)}
-          title={cropMode ? "Exit crop (Esc)" : "Crop selection"}
-          aria-label="Crop selection"
-          aria-pressed={cropMode}
-        >
-          <Crop size={16} weight={cropMode ? "fill" : "regular"} />
-        </button>
-      )}
       {motionPathCreateAvailable && (
         <button
           type="button"

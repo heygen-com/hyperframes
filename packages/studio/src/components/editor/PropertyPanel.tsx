@@ -100,8 +100,6 @@ export const PropertyPanel = memo(function PropertyPanel({
   recordingState,
   recordingDuration,
   onToggleRecording,
-  cropMode,
-  onCropModeChange,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
   const { showToast } = useStudioShellContext();
@@ -584,8 +582,6 @@ export const PropertyPanel = memo(function PropertyPanel({
             onSetStyle={onSetStyle}
             onImportAssets={onImportAssets}
             gsapBorderRadius={gsapBorderRadius}
-            cropMode={cropMode}
-            onCropModeChange={onCropModeChange}
           />
         )}
       </div>

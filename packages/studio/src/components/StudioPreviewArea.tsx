@@ -70,8 +70,6 @@ export interface StudioPreviewAreaProps {
   isGestureRecording?: boolean;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
-  cropMode?: boolean;
-  onCropModeChange?: (active: boolean) => void;
   gestureOverlay?: ReactNode;
 }
 
@@ -97,8 +95,6 @@ export function StudioPreviewArea({
   isGestureRecording,
   recordingState,
   onToggleRecording,
-  cropMode,
-  onCropModeChange,
   blockPreview,
   gestureOverlay,
 }: StudioPreviewAreaProps) {
@@ -387,8 +383,6 @@ export function StudioPreviewArea({
                     onBoxSizeCommit={handleDomBoxSizeCommit}
                     onRotationCommit={handleDomRotationCommit}
                     onStyleCommit={handleDomStyleCommit}
-                    cropMode={cropMode}
-                    onCropModeChange={onCropModeChange}
                     gridVisible={snapPrefs.gridVisible}
                     gridSpacing={snapPrefs.gridSpacing}
                     recordingState={recordingState}

@@ -85,8 +85,9 @@ export function resolveCropInsetFromEdgeDrag(input: CropInsetDragInput): ClipPat
   return next;
 }
 
-/** Drag the whole crop window: both opposing insets shift together, the crop
- *  size stays constant, clamped inside the element bounds. */
+/** Pan the crop window: opposing insets shift together so the crop size stays
+ *  constant, clamped inside the element bounds. Repositions which part of the
+ *  element shows through a fixed-size crop (the center "reposition" handle). */
 export function resolveCropInsetFromMoveDrag(input: {
   startInsets: ClipPathInsetSides;
   deltaX: number;

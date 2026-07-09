@@ -21,7 +21,7 @@ import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import { useCropOverlay } from "../../hooks/useCropMode";
+import { useCropOverlay } from "../../hooks/useCropOverlay";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -75,8 +75,6 @@ interface DomEditOverlayProps {
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;
-  cropMode?: boolean;
-  onCropModeChange?: (active: boolean) => void;
   gridVisible?: boolean;
   gridSpacing?: number;
   recordingState?: GestureRecordingState;
@@ -105,8 +103,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onBoxSizeCommit,
   onRotationCommit,
   onStyleCommit,
-  cropMode = false,
-  onCropModeChange,
   onMarqueeSelect,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -178,9 +174,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const { hasCropInsets, cropOutlineInsetPx } = useCropOverlay({
     selection,
-    groupCount: groupSelections.length,
-    cropMode,
-    onCropModeChange,
     overlayRect,
   });
   // Inset crops draw their own outline child; other clip shapes keep the raw mirror.
@@ -273,11 +266,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
-    if (cropMode) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     if (suppressNextOverlayMouseDownRef.current) {
       suppressNextOverlayMouseDownRef.current = false;
       suppressNextBoxMouseDownRef.current = false;
@@ -301,13 +289,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement || event.button !== 0) return;
-    if (cropMode) {
-      // Reaching here = click outside the element (crop UI swallows its own) — exit crop mode.
-      event.preventDefault();
-      event.stopPropagation();
-      onCropModeChange?.(false);
-      return;
-    }
     if (event.shiftKey) {
       // Use the already-updated hover selection rather than re-resolving async
       const candidate = hoverSelectionRef.current;
@@ -355,17 +336,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     }
   };
 
-  // Selection re-resolves (and the box re-keys) on every click, so native
-  // dblclick never fires on the box — detect double-click by pointerdown
-  // timestamp (a no-move drag gesture suppresses the click event entirely).
-  const lastBoxPointerDownAtRef = useRef(0);
   const handleBoxClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
-    if (cropMode) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     if (gestureRef.current || groupGestureRef.current) return;
     if (suppressNextBoxClickRef.current) {
       suppressNextBoxClickRef.current = false;
@@ -395,10 +367,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       }
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
-      onPointerMove={cropMode ? undefined : marquee.onPointerMove}
+      onPointerMove={marquee.onPointerMove}
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
-      onPointerUp={cropMode ? undefined : marquee.onPointerUp}
-      onPointerCancel={cropMode ? undefined : marquee.onPointerCancel}
+      onPointerUp={marquee.onPointerUp}
+      onPointerCancel={marquee.onPointerCancel}
     >
       {hoverSelection && hoverRect && compRect.width > 0 && (
         <div
@@ -444,7 +416,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <>
-          {allowCanvasMovement && !cropMode && selection.capabilities.canApplyManualRotation && (
+          {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
             <DomEditRotateHandle
               overlayRect={overlayRect}
               cropOutlineInsetPx={cropOutlineInsetPx}
@@ -466,27 +438,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               height: overlayRect.height,
               clipPath: boxClipPath,
               cursor:
-                allowCanvasMovement && !cropMode && selection.capabilities.canApplyManualOffset
+                allowCanvasMovement && selection.capabilities.canApplyManualOffset
                   ? "move"
                   : "default",
             }}
             onPointerDown={(e) => {
-              if (cropMode) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-              }
               if (!allowCanvasMovement || e.shiftKey) return;
-              const now = Date.now();
-              const isDoubleClick = now - lastBoxPointerDownAtRef.current < 400;
-              lastBoxPointerDownAtRef.current = now;
-              if (isDoubleClick && onCropModeChange && selection.capabilities.canCrop) {
-                lastBoxPointerDownAtRef.current = 0;
-                e.preventDefault();
-                e.stopPropagation();
-                onCropModeChange(true);
-                return;
-              }
               if (selection.capabilities.canApplyManualOffset) {
                 gestures.startGesture("drag", e);
                 return;
@@ -515,7 +472,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                 }}
               />
             )}
-            {allowCanvasMovement && !cropMode && selection.capabilities.canApplyManualSize && (
+            {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
               <div
                 className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
                 style={{
@@ -533,7 +490,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               />
             )}
           </div>
-          {cropMode && (
+          {selection.capabilities.canCrop && groupSelections.length <= 1 && (
             <DomEditCropHandles
               selection={selection}
               overlayRect={overlayRect}

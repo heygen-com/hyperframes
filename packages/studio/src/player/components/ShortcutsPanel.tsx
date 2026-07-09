@@ -63,10 +63,8 @@ const SHORTCUT_SECTIONS = [
   {
     title: "Crop",
     hints: [
-      { key: "DblClick", label: "Crop selected element" },
-      { key: "Drag edge", label: "Adjust crop side" },
-      { key: "Drag frame", label: "Move crop window" },
-      { key: "Esc", label: "Exit crop (or click outside)" },
+      { key: "Drag edge", label: "Crop a side" },
+      { key: "Drag center", label: "Reposition the crop" },
     ],
   },
   {

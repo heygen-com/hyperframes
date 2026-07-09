@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, Layers, Palette, Scissors, Settings, Square, Zap } from "../../icons/SystemIcons";
+import { Eye, Layers, Palette, Settings, Square, Zap } from "../../icons/SystemIcons";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
@@ -47,8 +47,6 @@ export function StyleSections({
   onSetStyle,
   onImportAssets,
   gsapBorderRadius,
-  cropMode = false,
-  onCropModeChange,
 }: {
   projectId: string;
   element: DomEditSelection;
@@ -57,8 +55,6 @@ export function StyleSections({
   onSetStyle: (prop: string, value: string) => void | Promise<void>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
-  cropMode?: boolean;
-  onCropModeChange?: (active: boolean) => void;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
   const isFlex = styles.display === "flex" || styles.display === "inline-flex";
@@ -404,20 +400,6 @@ export function StyleSections({
               </div>
             </div>
           )}
-          <button
-            type="button"
-            disabled={styleEditingDisabled || !onCropModeChange}
-            aria-pressed={cropMode}
-            onClick={() => onCropModeChange?.(!cropMode)}
-            className={`inline-flex h-8 w-fit items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              cropMode
-                ? "border-studio-accent/60 bg-studio-accent/15 text-studio-accent"
-                : "border-panel-border bg-panel-input text-panel-text-2 hover:text-white"
-            }`}
-          >
-            <Scissors size={13} />
-            Crop
-          </button>
         </div>
       </Section>
 
