@@ -50,6 +50,8 @@ interface RegistryItemBase {
   author?: string;
   /** URL for the author / creator credit. */
   authorUrl?: string;
+  /** URL for the external source used to create or inspire the item. */
+  sourceUrl?: string;
   /** Original prompt used to create or inspire the item. */
   sourcePrompt?: string;
   /** SPDX license identifier. */

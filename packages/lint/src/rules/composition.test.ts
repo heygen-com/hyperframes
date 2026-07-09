@@ -1,8 +1,17 @@
 // fallow-ignore-file code-duplication
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
+import { isRegistrySourceFile } from "./composition.js";
 
 describe("composition rules", () => {
+  describe("isRegistrySourceFile", () => {
+    it("matches canonical registry component source HTML files", () => {
+      expect(
+        isRegistrySourceFile("/project/registry/components/cursor-trail/cursor-trail.html"),
+      ).toBe(true);
+    });
+  });
+
   describe("subcomposition guidance", () => {
     it("warns when any HTML composition file is over 300 lines", async () => {
       const html = Array.from({ length: 301 }, (_, i) =>

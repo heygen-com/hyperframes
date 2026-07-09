@@ -25,3 +25,6 @@ export {
   isBlockItem,
   isComponentItem,
 } from "./types.js";
+
+export type { RegistryProvenanceSubject, RegistryProvenanceFinding } from "./provenance.js";
+export { checkProvenanceTags } from "./provenance.js";

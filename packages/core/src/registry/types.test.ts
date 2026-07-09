@@ -220,6 +220,7 @@ describe("registry types", () => {
         description: "d",
         author: "heygen",
         authorUrl: "https://example.com/heygen",
+        sourceUrl: "https://example.com/source",
         sourcePrompt: "Create a shader wipe.",
         license: "Apache-2.0",
         minCliVersion: "0.4.0",
@@ -234,6 +235,7 @@ describe("registry types", () => {
       };
       expect(item.author).toBe("heygen");
       expect(item.authorUrl).toBe("https://example.com/heygen");
+      expect(item.sourceUrl).toBe("https://example.com/source");
       expect(item.sourcePrompt).toBe("Create a shader wipe.");
     });
   });
