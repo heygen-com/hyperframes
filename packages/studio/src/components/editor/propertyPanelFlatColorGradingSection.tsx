@@ -138,18 +138,39 @@ const EFFECT_SLIDERS: Array<{ key: HfColorGradingEffectKey; label: string }> = [
   { key: "pixelate", label: "Pixelate" },
 ];
 
+function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
+  if (metadata?.color.dynamicRange !== "hdr") return null;
+  return (
+    <div
+      data-flat-grade-hdr-banner="true"
+      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-amber-100"
+    >
+      <div className="mb-0.5 flex items-center justify-between gap-2">
+        <span className="font-semibold">{metadata.color.label} source</span>
+        <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
+          SDR preview
+        </span>
+      </div>
+      <p className="text-amber-100/80">
+        These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
+        is not true HDR color grading yet.
+      </p>
+    </div>
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function FlatColorGradingSection({
   grading,
   assets,
   onImportAssets,
   onCommitColorGrading,
-  applyScope: _applyScope,
-  applyBusy: _applyBusy,
-  onSetApplyScope: _onSetApplyScope,
-  onApplyToScope: _onApplyToScope,
-  onApplyScopeAvailable: _onApplyScopeAvailable,
-  mediaMetadata: _mediaMetadata,
+  applyScope,
+  applyBusy,
+  onSetApplyScope,
+  onApplyToScope,
+  onApplyScopeAvailable,
+  mediaMetadata,
 }: {
   grading: NormalizedHfColorGrading;
   assets: string[];
@@ -218,6 +239,7 @@ export function FlatColorGradingSection({
 
   return (
     <div className="space-y-1.5">
+      <HdrBanner metadata={mediaMetadata} />
       <div data-flat-grade-preset="true" className="flex min-h-[30px] items-center justify-between">
         <span className="text-[11px] text-panel-text-2">Preset</span>
         <FlatSelectRow
@@ -424,6 +446,32 @@ export function FlatColorGradingSection({
           );
         })}
       </div>
+
+      {onApplyScopeAvailable && (
+        <div className="flex items-center justify-between gap-2 border-t border-panel-hairline pt-1.5">
+          <span className="flex items-center gap-1.5 text-[11px] text-panel-text-2">
+            Copy grade to
+            <select
+              value={applyScope}
+              onChange={(e) => onSetApplyScope(e.target.value as "source-file" | "project")}
+              disabled={applyBusy}
+              className="bg-transparent font-mono text-[11px] text-panel-text-0 outline-none disabled:opacity-50"
+            >
+              <option value="source-file">Current file media</option>
+              <option value="project">All project media</option>
+            </select>
+          </span>
+          <button
+            type="button"
+            data-flat-grade-apply="true"
+            disabled={applyBusy}
+            onClick={onApplyToScope}
+            className="text-[11px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {applyBusy ? "Applying" : "Apply"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
