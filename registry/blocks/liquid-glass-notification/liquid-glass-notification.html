@@ -374,29 +374,24 @@
           if (glassCanvas.requestPaint) glassCanvas.requestPaint();
         });
 
-        var tl = anime.createTimeline({ autoplay: false });
-
-        tl.add(
-          {},
-          {
-            duration: 8000,
-            ease: "linear",
-            onUpdate: function (self) {
-              var t = self.currentTime / 1000;
-              uniforms.uTime.value = t;
-              threeRenderer.render(threeScene, threeCamera);
-              if (lgReady) {
-                glassCanvas.onpaint = function () {
-                  glassCtx.clearRect(0, 0, 1920, 1080);
-                  glassCtx.drawImage(threeCanvas, 0, 0, 1920, 1080);
-                  lg.renderGlassElements();
-                };
-                if (glassCanvas.requestPaint) glassCanvas.requestPaint();
-              }
-            },
+        var tl = anime.createTimeline({
+          autoplay: false,
+          onUpdate: function () {
+            var t = tl.currentTime / 1000;
+            uniforms.uTime.value = t;
+            threeRenderer.render(threeScene, threeCamera);
+            if (lgReady) {
+              glassCanvas.onpaint = function () {
+                glassCtx.clearRect(0, 0, 1920, 1080);
+                glassCtx.drawImage(threeCanvas, 0, 0, 1920, 1080);
+                lg.renderGlassElements();
+              };
+              if (glassCanvas.requestPaint) glassCanvas.requestPaint();
+            }
           },
-          0,
-        );
+        });
+
+        tl.add({}, { duration: 8000, ease: "linear" }, 0);
 
         var renderStatus = document.getElementById("render-status");
         var renderCopy = document.getElementById("render-copy");

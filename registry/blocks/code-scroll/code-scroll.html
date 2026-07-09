@@ -57,11 +57,14 @@
         right: -200px;
         bottom: -260px;
       }
-      .editor {
+      .editor-anchor {
         position: absolute;
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
+      }
+      .editor {
+        position: relative;
         width: 1380px;
         height: 800px;
         background: #0b0f17;
@@ -240,16 +243,18 @@
       <div class="bg-grid" data-layout-ignore></div>
       <div class="bg-glow a" data-layout-ignore></div>
       <div class="bg-glow b" data-layout-ignore></div>
-      <div class="editor" id="editor" data-layout-ignore>
-        <div class="titlebar">
-          <div class="dots">
-            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <div class="editor-anchor">
+        <div class="editor" id="editor" data-layout-ignore>
+          <div class="titlebar">
+            <div class="dots">
+              <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            </div>
+            <span class="filename"
+              ><span class="accent">fetchWithRetry.js</span> — Code Scroll To Line</span
+            >
           </div>
-          <span class="filename"
-            ><span class="accent">fetchWithRetry.js</span> — Code Scroll To Line</span
-          >
+          <div class="code-surface" id="surface"></div>
         </div>
-        <div class="code-surface" id="surface"></div>
       </div>
     </div>
     <script>

@@ -149,12 +149,17 @@
         color: var(--claude);
       }
 
-      .star-center {
+      .star-center-anchor {
+        position: absolute;
         left: 960px;
         top: 530px;
+        transform: translate(-50%, -50%);
+      }
+
+      .star-center {
+        position: relative;
         width: 150px;
         height: 150px;
-        transform: translate(-50%, -50%);
       }
 
       .star-brand {
@@ -765,17 +770,19 @@
           <div class="burst-block burst-d"></div>
           <div class="burst-block burst-e"></div>
           <div class="burst-block burst-f"></div>
-          <div class="claude-star star-center burst-star" aria-hidden="true">
-            <svg viewBox="-50 -50 100 100">
-              <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
-                <line x1="0" y1="-38" x2="0" y2="38" />
-                <line x1="-38" y1="0" x2="38" y2="0" />
-                <line x1="-27" y1="-27" x2="27" y2="27" />
-                <line x1="-27" y1="27" x2="27" y2="-27" />
-                <line x1="-14" y1="-35" x2="14" y2="35" />
-                <line x1="-35" y1="-14" x2="35" y2="14" />
-              </g>
-            </svg>
+          <div class="star-center-anchor">
+            <div class="claude-star star-center burst-star" aria-hidden="true">
+              <svg viewBox="-50 -50 100 100">
+                <g stroke="currentColor" stroke-width="8" stroke-linecap="round">
+                  <line x1="0" y1="-38" x2="0" y2="38" />
+                  <line x1="-38" y1="0" x2="38" y2="0" />
+                  <line x1="-27" y1="-27" x2="27" y2="27" />
+                  <line x1="-27" y1="27" x2="27" y2="-27" />
+                  <line x1="-14" y1="-35" x2="14" y2="35" />
+                  <line x1="-35" y1="-14" x2="35" y2="14" />
+                </g>
+              </svg>
+            </div>
           </div>
         </div>
       </div>
@@ -1592,12 +1599,14 @@
         4.92,
       );
 
-      addTo(
-        tl,
-        ".prompt-text span",
-        { opacity: 1, duration: 0.01, stagger: { amount: 2.85 }, ease: "none" },
-        4.18,
-      );
+      const promptSpans = [...document.querySelectorAll(".prompt-text span")];
+      const promptTypeStartMs = 4180;
+      const promptTypeSpreadMs = 2850;
+      promptSpans.forEach((span, index) => {
+        const delayMs =
+          promptSpans.length <= 1 ? 0 : (promptTypeSpreadMs * index) / (promptSpans.length - 1);
+        tl.add(span, { opacity: 1, duration: 10 }, promptTypeStartMs + delayMs);
+      });
       addTo(tl, "#sendFull", { opacity: 1, scale: 1, duration: 0.24, ease: "power3.out" }, 7.32);
       addFromTo(
         tl,
