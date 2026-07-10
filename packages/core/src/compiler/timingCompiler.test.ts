@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   compileTimingAttrs,
@@ -5,6 +7,15 @@ import {
   extractResolvedMedia,
   clampDurations,
 } from "./timingCompiler.js";
+
+// Raw 0x00 bytes in the HFMASK delimiters shipped once and broke every render
+// under Bun's transpiler while behaving fine under Node (issue #2139) — only a
+// byte-level check catches that, so keep the delimiters as \x00 escapes.
+it("source contains no raw NUL bytes", () => {
+  const testPath = expect.getState().testPath ?? "";
+  const src = readFileSync(join(dirname(testPath), "timingCompiler.ts"), "latin1");
+  expect(src.includes("\x00")).toBe(false);
+});
 
 describe("compileTimingAttrs", () => {
   it("adds data-end when data-start and data-duration are present on a video", () => {
