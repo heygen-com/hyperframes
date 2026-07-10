@@ -692,6 +692,45 @@ describe("PropertyPanel — Grade group (flag on)", () => {
     },
     RENDER_TIMEOUT_MS,
   );
+
+  it(
+    "does not render the legacy Style/Grade Section duplicates for a style-and-grade-editable element",
+    async () => {
+      // A <video> with no text fields is both style-editable (inherited
+      // capabilities.canEditStyles: true) and grade-editable (tag === "video"),
+      // so both the flat Style and Grade groups render — the exact shape that
+      // used to also mount the legacy ColorGradingSection + StyleSections below
+      // them (the hybrid-duplication bug this task retires).
+      const { host, root } = await renderPanel(true, {
+        ...baseElement(),
+        tagName: "video",
+        textFields: [],
+      });
+      expect(host.textContent).toContain("Style");
+      expect(host.textContent).toContain("Grade");
+      // The legacy `Section` primitive (propertyPanelStyleSections.tsx /
+      // propertyPanelColorGradingSection.tsx) renders a `<section
+      // data-panel-section="<slugified-title>">` for each of its sections. A
+      // bare textContent check can't tell a legacy Section title apart from a
+      // flat row label with the same word — "Fill" is both the legacy Fill
+      // `Section` title AND a row label inside FlatStyleSection, which is
+      // supposed to still be there — so assert on the legacy Section's actual
+      // DOM shape instead of a substring match.
+      for (const slug of [
+        "radius",
+        "stroke",
+        "effects",
+        "clip",
+        "transparency",
+        "fill",
+        "color-grading",
+      ]) {
+        expect(host.querySelector(`[data-panel-section="${slug}"]`)).toBeNull();
+      }
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
 });
 
 describe("PropertyPanel — Media group (Plan 4)", () => {
