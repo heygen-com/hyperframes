@@ -109,4 +109,40 @@ describe("shouldInjectRuntime", () => {
       }
     });
   });
+
+  describe("anime compositions (hasAnimeRegistrations)", () => {
+    it("never late-injects once an anime registry is present, even with nested scenes", () => {
+      expect(
+        shouldInjectRuntime({
+          ...baseState,
+          hasNestedCompositions: true,
+          hasAnimeRegistrations: true,
+          attempts: 1,
+        }),
+      ).toBe(false);
+    });
+
+    it("never late-injects once an anime registry is present, even past the GSAP grace period", () => {
+      expect(
+        shouldInjectRuntime({
+          ...baseState,
+          hasTimelines: true,
+          hasAnimeRegistrations: true,
+          attempts: 10,
+        }),
+      ).toBe(false);
+    });
+
+    it("omitting the field entirely preserves existing GSAP semantics (undefined is falsy)", () => {
+      expect(
+        shouldInjectRuntime({
+          hasRuntime: false,
+          hasTimelines: true,
+          hasNestedCompositions: false,
+          runtimeInjected: false,
+          attempts: 5,
+        }),
+      ).toBe(true);
+    });
+  });
 });

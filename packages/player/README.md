@@ -67,6 +67,7 @@ Show a static image before playback starts:
 | `loop`                 | boolean                         | false         | Restart when the composition ends                                           |
 | `shader-capture-scale` | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
 | `shader-loading`       | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
+| `runtime-src`          | string                          | published CDN | Overrides the HyperFrames runtime URL used whenever the player injects it   |
 
 ### Shader transition previews
 
@@ -82,6 +83,19 @@ When a composition uses `@hyperframes/shader-transitions`, the player can own pr
 ```
 
 `shader-loading="player"` shows the player-owned transition-prep overlay from shader progress messages. `composition` leaves direct composition fallback behavior alone, and `none` suppresses the loader.
+
+### Runtime injection (`runtime-src`)
+
+Compositions authored with the anime.js runtime call `hyperframesAnime.register(...)` inline; a raw composition loaded straight into the player (no runtime present yet) needs the HyperFrames runtime installed before that call runs, or it throws. The player detects this and fetches, rewrites, and reloads the composition with the runtime pre-injected, using the published `@hyperframes/core` CDN build by default. Set `runtime-src` to point at a self-hosted or pinned runtime build instead:
+
+```html
+<hyperframes-player
+  src="./composition/index.html"
+  runtime-src="/vendor/hyperframe.runtime.iife.js"
+></hyperframes-player>
+```
+
+GSAP-only compositions that self-bootstrap `window.__timelines` don't need this and are unaffected.
 
 ### Audio lock (host-mandated silent playback)
 

@@ -50,6 +50,19 @@ function clampPlaybackRate(rate: number): number {
   return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
 }
 
+/**
+ * `<hyperframes-player>` — embeddable web component that renders a HyperFrames
+ * composition inside a sandboxed iframe and drives it (play/pause/seek) either
+ * through the runtime's postMessage bridge or, for same-origin standalone
+ * compositions, directly against their timeline object.
+ *
+ * `runtime-src` (optional): overrides the published `@hyperframes/core` CDN
+ * runtime URL used whenever the player needs to inject the runtime into a raw
+ * composition (an anime.js composition loaded without the runtime, or a GSAP
+ * composition without nested sub-compositions past its grace period). Useful
+ * for pinning a specific runtime build, self-hosting the runtime bundle, or
+ * testing against a local build instead of jsdelivr.
+ */
 class HyperframesPlayer extends HTMLElement {
   static get observedAttributes() {
     return [
@@ -64,6 +77,7 @@ class HyperframesPlayer extends HTMLElement {
       "poster",
       "playback-rate",
       "audio-src",
+      "runtime-src",
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
     ];
@@ -140,6 +154,7 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this.dispatchEvent(new CustomEvent("error", { detail: { message } })),
+      getRuntimeUrl: () => this.getAttribute("runtime-src"),
     });
 
     this.addEventListener("click", (event) => {
