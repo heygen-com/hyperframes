@@ -338,8 +338,23 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         const fixedStart = g.resizeFixedCornerStart;
         let anchor: { dx: number; dy: number };
         if (cornersAfterSize && fixedStart) {
+          // `fixedNow` is measured on the LIVE element, which already carries the
+          // offset applied on the PREVIOUS frame. `applyManualOffsetDragDraft`
+          // treats its argument as the ABSOLUTE offset (from initialOffset 0), so
+          // `fixedStart - fixedNow` is only the RESIDUAL correction — it must be
+          // ADDED to the offset already in flight, not used as the absolute value.
+          // Using it absolutely makes the anchor oscillate between the correct
+          // value and zero every frame (measure moves the corner back to
+          // fixedStart → residual 0 → offset dropped → corner un-pins → repeat).
+          // Release then commits whichever parity the last pointermove landed on,
+          // so anchored corners "shift a bit" after release; SE is memberless and
+          // never enters this loop. Accumulate onto the previous anchor to fix.
+          const prev = g.lastResizeAnchor ?? { dx: 0, dy: 0 };
           const fixedNow = cornersAfterSize[anchorCornerForHandle(handle)];
-          anchor = { dx: fixedStart.x - fixedNow.x, dy: fixedStart.y - fixedNow.y };
+          anchor = {
+            dx: prev.dx + (fixedStart.x - fixedNow.x),
+            dy: prev.dy + (fixedStart.y - fixedNow.y),
+          };
         } else {
           // Geometry unmeasurable (no live DOM) — fall back to the AABB delta.
           anchor = resolveResizeAnchorOffset({
