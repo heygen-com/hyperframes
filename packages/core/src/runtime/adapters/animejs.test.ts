@@ -56,6 +56,7 @@ describe("animejs adapter", () => {
     delete animeWindow.anime;
     delete animeWindow.__hfAnime;
     delete animeWindow.hyperframesAnime;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -490,6 +491,56 @@ describe("animejs adapter", () => {
     freshElement.remove();
   });
 
+  it("only corrects the earliest implicit transform tween for a target property", () => {
+    vi.stubGlobal(
+      "DOMMatrixReadOnly",
+      class {
+        a = 1;
+        b = 0;
+        c = 0;
+        d = 1;
+        e = 120;
+        f = 0;
+      },
+    );
+    const element = document.createElement("div");
+    element.style.transform = "matrix(1, 0, 0, 1, 120, 0)";
+    document.body.append(element);
+    const laterTween = {
+      target: element,
+      property: "translateX",
+      _hasFromValue: 0,
+      _fromNumber: 0,
+      _number: 0,
+      _unit: "px",
+      _absoluteStartTime: 0.0001,
+      _next: null,
+    };
+    const earliestTween = {
+      target: element,
+      property: "translateX",
+      _hasFromValue: 0,
+      _fromNumber: -960,
+      _number: -960,
+      _unit: "px",
+      _absoluteStartTime: 0,
+      _next: laterTween,
+    };
+    const instance = {
+      _head: earliestTween,
+      seek: vi.fn(),
+    };
+
+    installHyperframesAnimeApi();
+    animeWindow.hyperframesAnime?.register("test-earliest-transform", instance);
+
+    expect(earliestTween._fromNumber).toBe(120);
+    expect(earliestTween._number).toBe(120);
+    expect(laterTween._fromNumber).toBe(0);
+    expect(laterTween._number).toBe(0);
+    element.remove();
+  });
+
   // jsdom does not provide DOMMatrixReadOnly, so browser transform decomposition is unavailable.
   it.skip("corrects implicit transform from-values from the CSS-cascaded transform", () => {
     const element = document.createElement("div");
@@ -502,6 +553,7 @@ describe("animejs adapter", () => {
       _fromNumber: 1,
       _number: 1,
       _unit: null,
+      _absoluteStartTime: 0,
       _next: null,
     };
     const instance = {

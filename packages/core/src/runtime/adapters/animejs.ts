@@ -313,6 +313,16 @@ const TRANSFORM_DECOMPOSED_PROPERTIES = new Set([
 
 type TransformDecomposition = Partial<Record<string, number>>;
 
+type ImplicitTransformFromCandidate = {
+  node: Record<string, unknown>;
+  startTime: number;
+};
+
+type ImplicitTransformFromCandidates = WeakMap<
+  Element,
+  Map<string, ImplicitTransformFromCandidate>
+>;
+
 const lastKnownCircleClipPathByElement = new WeakMap<Element, string>();
 const CIRCLE_CLIP_PATH_CENTER_PATTERN = /circle\(\s*[\d.]+%\s+at\s+([\d.]+%\s+[\d.]+%)\s*\)/i;
 
@@ -409,22 +419,28 @@ function resolveAnimeTargetElements(targets: unknown): Element[] {
 // scale=1, rotate=0), rendering the element at (or near) its target value
 // from the very first frame regardless of the authored CSS starting state
 // (e.g. `.node { transform: translate(-50%, -50%) scale(0); }`). This
-// mutates each affected tween's internal `_fromNumber`/`_number` fields —
-// read at render time as the tween's "from" value — with the correct
-// CSS-cascaded value BEFORE the instance's very first seek, so every
-// subsequent render (including the prime-then-restore dance below) computes
-// the right interpolation across the tween's whole lifecycle.
+// mutates the earliest affected tween's internal `_fromNumber`/`_number`
+// fields for each target/property pair — read at render time as the tween's
+// "from" value — with the correct CSS-cascaded value BEFORE the instance's
+// very first seek, so every subsequent render (including the prime-then-restore
+// dance below) computes the right interpolation across the tween's lifecycle.
 function correctImplicitTransformFromValues(instance: RuntimeAnimeInstance): void {
-  const seen = new WeakSet<object>();
-  const decomposedByTarget = new WeakMap<Element, TransformDecomposition>();
+  const candidates: ImplicitTransformFromCandidates = new WeakMap();
+  let seen = new WeakSet<object>();
   visitAnimeRenderable(instance, seen, (node) => {
-    correctImplicitTransformFromValueForNode(node, decomposedByTarget);
+    selectImplicitTransformFromCandidate(node, candidates);
+  });
+
+  const decomposedByTarget = new WeakMap<Element, TransformDecomposition>();
+  seen = new WeakSet<object>();
+  visitAnimeRenderable(instance, seen, (node) => {
+    correctImplicitTransformFromValueForNode(node, candidates, decomposedByTarget);
   });
 }
 
-function correctImplicitTransformFromValueForNode(
+function selectImplicitTransformFromCandidate(
   node: Record<string, unknown>,
-  decomposedByTarget: WeakMap<Element, TransformDecomposition>,
+  candidates: ImplicitTransformFromCandidates,
 ): void {
   const property = readStringProperty(node, "property");
   if (!property || !TRANSFORM_DECOMPOSED_PROPERTIES.has(property)) return;
@@ -432,6 +448,40 @@ function correctImplicitTransformFromValueForNode(
   if (!isStyleElement(target)) return;
   if (readBooleanishProperty(node, "_hasFromValue")) return;
   if (typeof Reflect.get(node, "_fromNumber") !== "number") return;
+  const startTime = readFiniteNumberProperty(node, "_absoluteStartTime");
+  if (startTime == null) return;
+
+  recordImplicitTransformFromCandidate(candidates, target, property, node, startTime);
+}
+
+function recordImplicitTransformFromCandidate(
+  candidates: ImplicitTransformFromCandidates,
+  target: HTMLElement | SVGElement,
+  property: string,
+  node: Record<string, unknown>,
+  startTime: number,
+): void {
+  let candidatesByProperty = candidates.get(target);
+  if (!candidatesByProperty) {
+    candidatesByProperty = new Map();
+    candidates.set(target, candidatesByProperty);
+  }
+  const current = candidatesByProperty.get(property);
+  if (!current || startTime < current.startTime) {
+    candidatesByProperty.set(property, { node, startTime });
+  }
+}
+
+function correctImplicitTransformFromValueForNode(
+  node: Record<string, unknown>,
+  candidates: ImplicitTransformFromCandidates,
+  decomposedByTarget: WeakMap<Element, TransformDecomposition>,
+): void {
+  const property = readStringProperty(node, "property");
+  if (!property) return;
+  const target = Reflect.get(node, "target");
+  if (!isStyleElement(target)) return;
+  if (candidates.get(target)?.get(property)?.node !== node) return;
 
   applyCorrectedTransformFromValue(node, target, property, decomposedByTarget);
 }
