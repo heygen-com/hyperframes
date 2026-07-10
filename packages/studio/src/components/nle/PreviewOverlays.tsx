@@ -16,6 +16,8 @@ import {
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { readHfId } from "../editor/domEditing";
+import { buildStableSelector } from "../editor/domEditingDom";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
 import type { ReactNode } from "react";
@@ -126,18 +128,40 @@ export function PreviewOverlays({
         onRotationCommit={handleDomRotationCommit}
         onStyleCommit={handleDomStyleCommit}
         onDeleteSelection={handleDomEditElementDelete}
-        onApplyZIndex={(sel, zIndex) =>
-          handleDomZIndexReorderCommit([
-            {
-              element: sel.element,
-              zIndex,
-              id: sel.id ?? undefined,
-              selector: sel.selector,
-              selectorIndex: sel.selectorIndex,
-              sourceFile: sel.sourceFile,
-            },
-          ])
-        }
+        onApplyZIndex={(sel, patches) => {
+          const entries = patches
+            .map((patch) => {
+              // The selected element carries its full selection identity.
+              if (patch.element === sel.element) {
+                return {
+                  element: sel.element,
+                  zIndex: patch.zIndex,
+                  id: sel.id ?? undefined,
+                  selector: sel.selector,
+                  selectorIndex: sel.selectorIndex,
+                  sourceFile: sel.sourceFile,
+                };
+              }
+              // Sibling elements are raw iframe DOM nodes with no selection
+              // object. Derive a PatchTarget from the node itself; siblings live
+              // in the same document, so they share the selection's sourceFile.
+              const id = patch.element.id || undefined;
+              const selector = buildStableSelector(patch.element);
+              // Skip a sibling we cannot robustly target (no id and no selector);
+              // its z stays live-only. The repro (all clips have ids) is unaffected.
+              if (!id && !selector && !readHfId(patch.element)) return null;
+              return {
+                element: patch.element,
+                zIndex: patch.zIndex,
+                id,
+                selector,
+                selectorIndex: undefined,
+                sourceFile: sel.sourceFile,
+              };
+            })
+            .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+          if (entries.length > 0) handleDomZIndexReorderCommit(entries);
+        }}
         gridVisible={snapPrefs.gridVisible}
         gridSpacing={snapPrefs.gridSpacing}
         recordingState={recordingState}

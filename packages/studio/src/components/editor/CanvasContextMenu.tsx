@@ -6,32 +6,17 @@
  * overflow-adjusted, dismissed on outside-click or Escape via
  * useContextMenuDismiss.
  *
- * ── Wiring gap (z-order persistence) ────────────────────────────────────────
- * Z-index changes are applied optimistically to the live iframe element via
- * `resolveZOrderChange` and then surfaced through the `onApplyZIndex` prop.
+ * ── Wiring (z-order persistence) ─────────────────────────────────────────────
+ * Z-index changes are applied optimistically to the live iframe element(s) via
+ * `resolveZOrderChange`, which returns a MULTI-element patch list (tie-aware:
+ * moving a target past an equal-z sibling can require renumbering the affected
+ * set). The patches are surfaced through the `onApplyZIndex` prop.
  *
  * The prop MUST be wired at the call site to route through the full persist
- * path. In PreviewOverlays.tsx the call site is:
- *
- *   <CanvasContextMenu
- *     ...
- *     onApplyZIndex={(zIndex) => {
- *       if (!selection) return;
- *       // handleDomZIndexReorderCommit from useDomEditActionsContext()
- *       handleDomZIndexReorderCommit([{
- *         element: selection.element,
- *         zIndex,
- *         id: selection.id,
- *         selector: selection.selector,
- *         selectorIndex: selection.selectorIndex,
- *         sourceFile: selection.sourceFile,
- *       }]);
- *     }}
- *   />
- *
- * Until wired, z-index is applied live to the iframe DOM element (visible
- * immediately) but is NOT persisted to the HTML source and will reset on
- * preview reload.
+ * path. PreviewOverlays.tsx builds the per-patch PatchTargets (the selected
+ * element carries its full selection identity; sibling elements are iframe DOM
+ * nodes, so their id / selector are derived from the node and they share the
+ * selection's sourceFile) and forwards them to handleDomZIndexReorderCommit.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -39,7 +24,11 @@ import { memo } from "react";
 import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
-import { isZOrderActionEnabled, resolveZOrderChange } from "./canvasContextMenuZOrder";
+import {
+  isZOrderActionEnabled,
+  resolveZOrderChange,
+  type ZOrderPatch,
+} from "./canvasContextMenuZOrder";
 
 interface CanvasContextMenuProps {
   /** Viewport x of the right-click event. */
@@ -49,10 +38,12 @@ interface CanvasContextMenuProps {
   selection: DomEditSelection;
   onClose: () => void;
   /**
-   * Called with the resolved new z-index after an optimistic DOM update.
-   * Wire to handleDomZIndexReorderCommit (see module-level wiring comment).
+   * Called with the resolved z-order patch list after an optimistic DOM update.
+   * Each patch is an { element, zIndex } pair (the target and, when a renumber
+   * is needed, affected siblings). Wire to handleDomZIndexReorderCommit (see
+   * module-level wiring comment).
    */
-  onApplyZIndex?: (zIndex: number) => void;
+  onApplyZIndex?: (patches: ZOrderPatch[]) => void;
   /**
    * Delete the selected element. Wire to handleDomEditElementDelete from
    * useDomEditActionsContext — same path as the Delete/Backspace hotkey.
@@ -89,17 +80,17 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   const el = selection.element;
 
   function handleZAction(action: ZAction) {
-    const next = resolveZOrderChange(el, action);
-    if (next === null) return;
+    const patches = resolveZOrderChange(el, action);
+    if (patches === null) return;
     // Optimistic update — visible immediately even before persist completes.
-    el.style.zIndex = String(next);
-    if (el.ownerDocument?.defaultView) {
-      const computed = el.ownerDocument.defaultView.getComputedStyle(el);
-      if (computed.position === "static") {
-        el.style.position = "relative";
+    for (const patch of patches) {
+      patch.element.style.zIndex = String(patch.zIndex);
+      const view = patch.element.ownerDocument?.defaultView;
+      if (view && view.getComputedStyle(patch.element).position === "static") {
+        patch.element.style.position = "relative";
       }
     }
-    onApplyZIndex?.(next);
+    onApplyZIndex?.(patches);
     onClose();
   }
 
