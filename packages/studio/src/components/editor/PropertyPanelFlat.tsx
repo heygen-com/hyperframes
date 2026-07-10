@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
@@ -6,7 +6,7 @@ import type { PropertyPanelProps } from "./propertyPanelHelpers";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
-import { FlatGroup } from "./propertyPanelFlatPrimitives";
+import { FlatGroup, PinnedGroupRow, PinnedZoneDivider } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
@@ -18,12 +18,21 @@ import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { useColorGradingController } from "./useColorGradingController";
+import { usePersistedPinnedGroups } from "../../hooks/usePersistedPinnedGroups";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
 } from "./propertyPanelFlatColorGradingSection";
 
 type EditingSections = ReturnType<typeof resolveEditingSections>;
+
+type FlatGroupDescriptor = {
+  id: string;
+  title: string;
+  summary?: string;
+  accessory?: ReactNode;
+  content: ReactNode;
+};
 
 // Type-only fallback for the Motion effect-card callbacks. Used solely to
 // satisfy FlatMotionSection's required-callback shape when the effect list is
@@ -228,7 +237,6 @@ export function PropertyPanelFlat({
           ? "media"
           : "layout",
   );
-  const [pinnedGroupIds, setPinnedGroupIds] = useState<string[]>([]);
 
   // Grade group state. Called unconditionally (React rules-of-hooks) even when
   // sections.colorGrading is false — unlike the legacy ColorGradingSection,
@@ -246,12 +254,9 @@ export function PropertyPanelFlat({
 
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
+  const { pinnedGroupIds, togglePin } = usePersistedPinnedGroups(elementKind);
   const toggleOpen = (groupId: string) =>
     setOpenGroupId((current) => (current === groupId ? "" : groupId));
-  const togglePin = (groupId: string) =>
-    setPinnedGroupIds((current) =>
-      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
-    );
   // Basis for the Layout keyframe gutter (X/Y/W/H/Angle + 3D Transform) —
   // must agree with Motion's Timing row (FlatTimingRow), which infers the
   // range from animations when there's no explicit data-duration. Computed
@@ -307,6 +312,152 @@ export function PropertyPanelFlat({
   const showMotionEffects = gsapEffectHandlers !== null;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
+  // Ordered group descriptors — one per FlatGroup this panel renders, gated by
+  // the same conditions the inline JSX used. Partitioned into pinned/unpinned
+  // below so pinned groups render first (always open, no accordion) above the
+  // PinnedZoneDivider, with the rest in the one-open accordion beneath it.
+  const groups: FlatGroupDescriptor[] = [];
+  if (isTextEditable) {
+    groups.push({
+      id: "text",
+      title: "Text",
+      summary: formatTextFieldPreview(element.textFields[0]?.value ?? ""),
+      content: (
+        <FlatTextSection
+          element={element}
+          styles={styles}
+          fontAssets={fontAssets}
+          onImportFonts={onImportFonts}
+          onSetText={onSetText}
+          onSetTextFieldStyle={onSetTextFieldStyle}
+          onAddTextField={onAddTextField}
+          onRemoveTextField={onRemoveTextField}
+        />
+      ),
+    });
+  }
+  if (showEditableSections) {
+    groups.push({
+      id: "style",
+      title: "Style",
+      summary: `fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${Math.round((parseFloat(styles.opacity ?? "1") || 1) * 100)}%`,
+      content: (
+        <FlatStyleSection
+          projectId={projectId}
+          element={element}
+          styles={styles}
+          assets={assets}
+          onSetStyle={onSetStyle}
+          onImportAssets={onImportAssets}
+          gsapBorderRadius={gsapBorderRadius}
+        />
+      ),
+    });
+  }
+  groups.push({
+    id: "layout",
+    title: "Layout",
+    accessory: <span className="text-[9px] text-panel-text-5">drag values to scrub</span>,
+    summary: `${formatPxMetricValue(displayX)},${formatPxMetricValue(displayY)} · ${Math.round(displayW)}×${Math.round(displayH)}`,
+    content: (
+      <FlatLayoutSection
+        element={element}
+        styles={styles}
+        onSetStyle={onSetStyle}
+        disabled={!element.capabilities.canEditStyles}
+        displayX={displayX}
+        displayY={displayY}
+        displayW={displayW}
+        displayH={displayH}
+        displayR={displayR}
+        manualOffsetEditingDisabled={manualOffsetEditingDisabled}
+        manualSizeEditingDisabled={manualSizeEditingDisabled}
+        manualRotationEditingDisabled={manualRotationEditingDisabled}
+        commitManualOffset={commitManualOffset}
+        commitManualSize={commitManualSize}
+        commitManualRotation={commitManualRotation}
+        gsapAnimId={gsapAnimId}
+        navKeyframes={navKeyframes}
+        currentPct={currentPct}
+        seekFromKfPct={seekFromKfPct}
+        animIdForProp={animIdForProp}
+        resolveAnimIdForProp={animIdForProp}
+        gsapRuntimeValues={gsapRuntimeValues}
+        gsapKeyframes={navKeyframes}
+        elStart={elStart}
+        elDuration={elDuration}
+        onCommitAnimatedProperty={onCommitAnimatedProperty}
+        onCommitAnimatedProperties={onCommitAnimatedProperties}
+        onSeekToTime={onSeekToTime}
+        onRemoveKeyframe={onRemoveKeyframe}
+        onConvertToKeyframes={onConvertToKeyframes}
+        onLivePreviewProps={createGsapLivePreview(previewIframeRef ?? { current: null })}
+      />
+    ),
+  });
+  if (showMotionGroup) {
+    groups.push({
+      id: "motion",
+      title: "Motion",
+      summary: `${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`,
+      content: (
+        <FlatMotionSection
+          element={element}
+          animations={gsapAnimations}
+          showTiming={showMotionTiming}
+          showEffects={showMotionEffects}
+          multipleTimelines={gsapMultipleTimelines}
+          unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+          onSetAttribute={onSetAttribute}
+          {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
+        />
+      ),
+    });
+  }
+  if (sections.colorGrading) {
+    groups.push({
+      id: "grade",
+      title: "Grade",
+      accessory: <FlatColorGradingAccessory state={colorGradingController} />,
+      summary: `${colorGradingController.grading.preset ?? "neutral"} · ${Math.round(colorGradingController.grading.intensity * 100)}%`,
+      content: (
+        <FlatColorGradingSection
+          grading={colorGradingController.grading}
+          assets={assets}
+          onImportAssets={onImportAssets}
+          onCommitColorGrading={colorGradingController.commitColorGrading}
+          applyScope={colorGradingController.applyScope}
+          applyBusy={colorGradingController.applyBusy}
+          onSetApplyScope={colorGradingController.setApplyScope}
+          onApplyToScope={() => void colorGradingController.applyToScope()}
+          onApplyScopeAvailable={Boolean(onApplyColorGradingScope)}
+          mediaMetadata={colorGradingController.mediaMetadata}
+        />
+      ),
+    });
+  }
+  if (sections.media) {
+    groups.push({
+      id: "media",
+      title: "Media",
+      summary: element.tagName,
+      content: (
+        <FlatMediaSection
+          projectDir={projectDir}
+          element={element}
+          styles={styles}
+          onSetStyle={onSetStyle}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={onSetHtmlAttribute}
+          onRemoveBackground={onRemoveBackground}
+        />
+      ),
+    });
+  }
+
+  const pinned = groups.filter((g) => pinnedGroupIds.includes(g.id));
+  const unpinned = groups.filter((g) => !pinnedGroupIds.includes(g.id));
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <PropertyPanelFlatHeader
@@ -326,138 +477,31 @@ export function PropertyPanelFlat({
         showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
       />
       <div className="flex-1 overflow-y-auto">
-        {isTextEditable && (
-          <FlatGroup
-            title="Text"
-            isOpen={openGroupId === "text" || pinnedGroupIds.includes("text")}
-            isPinned={pinnedGroupIds.includes("text")}
-            onToggleOpen={() => toggleOpen("text")}
-            onTogglePin={() => togglePin("text")}
-            summary={formatTextFieldPreview(element.textFields[0]?.value ?? "")}
+        {pinned.map((g) => (
+          <PinnedGroupRow
+            key={g.id}
+            title={g.title}
+            accessory={g.accessory}
+            onUnpin={() => togglePin(g.id)}
           >
-            <FlatTextSection
-              element={element}
-              styles={styles}
-              fontAssets={fontAssets}
-              onImportFonts={onImportFonts}
-              onSetText={onSetText}
-              onSetTextFieldStyle={onSetTextFieldStyle}
-              onAddTextField={onAddTextField}
-              onRemoveTextField={onRemoveTextField}
-            />
-          </FlatGroup>
-        )}
-
-        {showEditableSections && (
+            {g.content}
+          </PinnedGroupRow>
+        ))}
+        {pinned.length > 0 && unpinned.length > 0 && <PinnedZoneDivider />}
+        {unpinned.map((g) => (
           <FlatGroup
-            title="Style"
-            isOpen={openGroupId === "style" || pinnedGroupIds.includes("style")}
-            isPinned={pinnedGroupIds.includes("style")}
-            onToggleOpen={() => toggleOpen("style")}
-            onTogglePin={() => togglePin("style")}
-            summary={`fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${Math.round((parseFloat(styles.opacity ?? "1") || 1) * 100)}%`}
+            key={g.id}
+            title={g.title}
+            isOpen={openGroupId === g.id}
+            isPinned={false}
+            onToggleOpen={() => toggleOpen(g.id)}
+            onTogglePin={() => togglePin(g.id)}
+            summary={g.summary}
+            accessory={g.accessory}
           >
-            <FlatStyleSection
-              projectId={projectId}
-              element={element}
-              styles={styles}
-              assets={assets}
-              onSetStyle={onSetStyle}
-              onImportAssets={onImportAssets}
-              gsapBorderRadius={gsapBorderRadius}
-            />
+            {g.content}
           </FlatGroup>
-        )}
-
-        <FlatGroup
-          title="Layout"
-          isOpen={openGroupId === "layout" || pinnedGroupIds.includes("layout")}
-          isPinned={pinnedGroupIds.includes("layout")}
-          onToggleOpen={() => toggleOpen("layout")}
-          onTogglePin={() => togglePin("layout")}
-          accessory={<span className="text-[9px] text-panel-text-5">drag values to scrub</span>}
-          summary={`${formatPxMetricValue(displayX)},${formatPxMetricValue(displayY)} · ${Math.round(displayW)}×${Math.round(displayH)}`}
-        >
-          <FlatLayoutSection
-            element={element}
-            styles={styles}
-            onSetStyle={onSetStyle}
-            disabled={!element.capabilities.canEditStyles}
-            displayX={displayX}
-            displayY={displayY}
-            displayW={displayW}
-            displayH={displayH}
-            displayR={displayR}
-            manualOffsetEditingDisabled={manualOffsetEditingDisabled}
-            manualSizeEditingDisabled={manualSizeEditingDisabled}
-            manualRotationEditingDisabled={manualRotationEditingDisabled}
-            commitManualOffset={commitManualOffset}
-            commitManualSize={commitManualSize}
-            commitManualRotation={commitManualRotation}
-            gsapAnimId={gsapAnimId}
-            navKeyframes={navKeyframes}
-            currentPct={currentPct}
-            seekFromKfPct={seekFromKfPct}
-            animIdForProp={animIdForProp}
-            resolveAnimIdForProp={animIdForProp}
-            gsapRuntimeValues={gsapRuntimeValues}
-            gsapKeyframes={navKeyframes}
-            elStart={elStart}
-            elDuration={elDuration}
-            onCommitAnimatedProperty={onCommitAnimatedProperty}
-            onCommitAnimatedProperties={onCommitAnimatedProperties}
-            onSeekToTime={onSeekToTime}
-            onRemoveKeyframe={onRemoveKeyframe}
-            onConvertToKeyframes={onConvertToKeyframes}
-            onLivePreviewProps={createGsapLivePreview(previewIframeRef ?? { current: null })}
-          />
-        </FlatGroup>
-
-        {showMotionGroup && (
-          <FlatGroup
-            title="Motion"
-            isOpen={openGroupId === "motion" || pinnedGroupIds.includes("motion")}
-            isPinned={pinnedGroupIds.includes("motion")}
-            onToggleOpen={() => toggleOpen("motion")}
-            onTogglePin={() => togglePin("motion")}
-            summary={`${gsapAnimations.length} effect${gsapAnimations.length === 1 ? "" : "s"}`}
-          >
-            <FlatMotionSection
-              element={element}
-              animations={gsapAnimations}
-              showTiming={showMotionTiming}
-              showEffects={showMotionEffects}
-              multipleTimelines={gsapMultipleTimelines}
-              unsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-              onSetAttribute={onSetAttribute}
-              {...(gsapEffectHandlers ?? EMPTY_GSAP_EFFECT_HANDLERS)}
-            />
-          </FlatGroup>
-        )}
-        {sections.colorGrading && (
-          <FlatGroup
-            title="Grade"
-            isOpen={openGroupId === "grade" || pinnedGroupIds.includes("grade")}
-            isPinned={pinnedGroupIds.includes("grade")}
-            onToggleOpen={() => toggleOpen("grade")}
-            onTogglePin={() => togglePin("grade")}
-            accessory={<FlatColorGradingAccessory state={colorGradingController} />}
-            summary={`${colorGradingController.grading.preset ?? "neutral"} · ${Math.round(colorGradingController.grading.intensity * 100)}%`}
-          >
-            <FlatColorGradingSection
-              grading={colorGradingController.grading}
-              assets={assets}
-              onImportAssets={onImportAssets}
-              onCommitColorGrading={colorGradingController.commitColorGrading}
-              applyScope={colorGradingController.applyScope}
-              applyBusy={colorGradingController.applyBusy}
-              onSetApplyScope={colorGradingController.setApplyScope}
-              onApplyToScope={() => void colorGradingController.applyToScope()}
-              onApplyScopeAvailable={Boolean(onApplyColorGradingScope)}
-              mediaMetadata={colorGradingController.mediaMetadata}
-            />
-          </FlatGroup>
-        )}
+        ))}
         {sections.colorGrading && (
           <ColorGradingSection
             key={[
@@ -474,26 +518,6 @@ export function PropertyPanelFlat({
             onSetAttributeLive={onSetAttributeLive}
             onApplyScope={onApplyColorGradingScope}
           />
-        )}
-        {sections.media && (
-          <FlatGroup
-            title="Media"
-            isOpen={openGroupId === "media" || pinnedGroupIds.includes("media")}
-            isPinned={pinnedGroupIds.includes("media")}
-            onToggleOpen={() => toggleOpen("media")}
-            onTogglePin={() => togglePin("media")}
-            summary={element.tagName}
-          >
-            <FlatMediaSection
-              projectDir={projectDir}
-              element={element}
-              styles={styles}
-              onSetStyle={onSetStyle}
-              onSetAttribute={onSetAttribute}
-              onSetHtmlAttribute={onSetHtmlAttribute}
-              onRemoveBackground={onRemoveBackground}
-            />
-          </FlatGroup>
         )}
         {showEditableSections && (
           <StyleSections
