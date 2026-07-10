@@ -25,6 +25,8 @@ Goal: Lock the PR reference and the core video brief, and create the HyperFrames
 
 Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo), then confirm the brief in two rounds — through the question UI when the environment has one, conversationally otherwise. The intro text states **message** (the ONE thing the video must say about this change, in one sentence), **language**, and the style (always **claude**). Skip a question only when the user's request already answered it.
 
+**Check for a recipe first.** Before any question, run `node ../media-use/scripts/recipe.mjs list --hyperframes . --workflow pr-to-video`. On a match (the user named one, said "like last time", or the list has one for this workflow), ask one question before the mode — one match: use recipe <name> (approved <date>)?; several: list them all and ask which one, or none. Adopting one answers the brief from the recipe — state those values as locked fields with "from recipe <name>" receipts, skip Step 2 (`recipe.mjs use` copies its frame.md in), and draft Step 3 from its storyboard skeleton. The mode question still follows, and the review gates still run — a recipe fills in answers, not approvals. Declined or no match: proceed to Round 1.
+
 **Round 1 — mode.** One question, asked first **and alone** — wait for the answer before any Round 2 question goes out; never bundle the brief questions into the same message. Skip it when the request already carried a signal ("surprise me" / "just build it"):
 
 - **Collaborative (recommended)** — confirm the key choices together before building.
@@ -39,7 +41,7 @@ Autonomous → ask nothing more. State the locked brief (all fields + receipts) 
 - **Length — how long?** From the size table below; the tier is a ceiling, and a one-headline story recommends inside 30–90s ("+A/−D across F files" is the receipt).
 - **Destination — where will it play?** YouTube / embed → 16:9 (default for a code explainer) · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
 
-A "go" accepts all recommended defaults.
+Before asking, read the remembered defaults — brief contract § 2: a remembered value becomes the recommended option, its receipt naming the source project. A "go" accepts all recommended defaults.
 
 **Recommend the length from the PR's change size**, not a fixed guess. Before confirming the brief, peek at the PR once — a read-only call that also grounds the angle (Step 1 still does the full deterministic fetch):
 
@@ -64,7 +66,7 @@ Initialize only if `hyperframes.json` is missing. Name `<project>` from the PR i
 
 **Show sign-in status before the brief** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../media-use` → Preflight for the canonical guidance.
 
-**Gate:** `hyperframes.json` exists; the PR ref is captured; angle, audience, length, destination → aspect, message, and language are locked; sign-in status was shown (signed in, or continuing offline).
+**Gate:** `hyperframes.json` exists; the PR ref is captured; angle, audience, length, destination → aspect, message, and language are locked; sign-in status was shown (signed in, or continuing offline); the confirmed answers were recorded as preferences (brief contract § 2).
 
 ---
 
@@ -133,7 +135,7 @@ Goal: Generate narration, word timings, music, and audio metadata from the appro
 
 Start audio after Step 3 approval. Run it in the background, then continue to Step 4.
 
-**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node ../media-use/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `../media-use/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). Omit `--voice` only when the user expressed no preference.
+**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node ../media-use/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `../media-use/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). When the user expressed no preference, fall back to the remembered voice (brief contract § 2) before the pipeline default, and say which one you used; omit `--voice` only when neither names one. When the user explicitly picked a voice this run, record it (`prefs.mjs record --key voice`).
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --voice <voice-id> &`
 

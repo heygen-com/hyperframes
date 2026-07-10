@@ -33,6 +33,8 @@ Initialize only if `hyperframes.json` is missing. Name `<project>` from the bran
 
 **Confirm the brief** in two rounds — through the question UI when the environment has one, conversationally otherwise. The intro text states **message** (the ONE thing the promo must communicate, in one sentence) and **language**. Skip a question only when the user's request already answered it. (`VO_MODE` is asked in Step 1 only when a script was pasted.)
 
+**Check for a recipe first.** Before any question, run `node ../media-use/scripts/recipe.mjs list --hyperframes . --workflow product-launch-video`. On a match (the user named one, said "like last time", or the list has one for this workflow), ask one question before the mode — one match: use recipe <name> (approved <date>)?; several: list them all and ask which one, or none. Adopting one answers the brief from the recipe — state those values as locked fields with "from recipe <name>" receipts, skip Step 2 (`recipe.mjs use` copies its frame.md in), and draft Step 3 from its storyboard skeleton. The mode question still follows, and the review gates still run — a recipe fills in answers, not approvals. Declined or no match: proceed to Round 1.
+
 **Round 1 — mode.** One question, asked first **and alone** — wait for the answer before any Round 2 question goes out; never bundle the brief questions into the same message. Skip it when the request already carried a signal ("surprise me" / "just build it"):
 
 - **Collaborative (recommended)** — confirm the key choices together before building.
@@ -46,9 +48,9 @@ Autonomous → ask nothing more. State the locked brief (all fields + receipts) 
 - **Length — how long?** Recommend inside the 30–90s sweet spot, scaled to how much material the input gives you, with its basis.
 - **Destination — where will it play?** YouTube / embed → 16:9 · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
 
-A "go" accepts all recommended defaults.
+Before asking, read the remembered defaults — brief contract § 2: a remembered value becomes the recommended option, its receipt naming the source project. A "go" accepts all recommended defaults.
 
-**Gate:** `hyperframes.json` exists, and the brief fields (angle, length, destination → aspect, message, language) are locked; sign-in status was shown (signed in, or continuing offline).
+**Gate:** `hyperframes.json` exists, and the brief fields (angle, length, destination → aspect, message, language) are locked; sign-in status was shown (signed in, or continuing offline); the confirmed answers were recorded as preferences (brief contract § 2).
 
 ---
 
@@ -82,7 +84,7 @@ The script does the rest deterministically: copies the preset's `FRAME.md` → `
 
 `tokens.json` with no brand colors/fonts (e.g. no capture) → the script keeps the preset's own palette, a complete shippable design. If the brief names brand colors/fonts the capture missed, add them to `capture/extracted/tokens.json` before running (or use the user's `design.md` to populate it); only adjust `frame.md` by hand afterward if a mapping truly needs it.
 
-**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from a named preset, and (when the preset ships one) `.hyperframes/caption-skin.html` exists as the caption skin source.
+**Gate:** `build-frame.mjs` exited 0 — `frame.md` exists from a named preset, and (when the preset ships one) `.hyperframes/caption-skin.html` exists as the caption skin source; the chosen preset was recorded as a preference (`--key style_preset --workflow <this workflow>`, brief contract § 2).
 
 ---
 
@@ -106,7 +108,7 @@ Goal: Generate narration, word timings, music, and audio metadata from the appro
 
 Start audio after Step 3 approval. Run it in the background, then continue to Step 4.
 
-**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node ../media-use/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `../media-use/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). Omit `--voice` only when the user expressed no preference.
+**Choose the narration voice from the user's ask before invoking.** If the request named a voice, gender, or tone, pick a matching voice id and pass it with `--voice <id>`. The pipeline default is otherwise **Marcia (female)** on HeyGen / `am_michael` on Kokoro — so a request like "a male voice" is silently ignored unless you pass the flag. Voice ids are provider-specific; resolve against whichever provider Step 0's sign-in status selected: **HeyGen** (signed in) via `node ../media-use/audio/scripts/heygen-tts.mjs --list` (or `GET /v3/voices?engine=starfish`); **Kokoro** (offline) via the voice table in `../media-use/audio/references/tts.md` (prefixes `am_`/`bm_` male, `af_`/`bf_` female). When the user expressed no preference, fall back to the remembered voice (brief contract § 2) before the pipeline default, and say which one you used; omit `--voice` only when neither names one. When the user explicitly picked a voice this run, record it (`prefs.mjs record --key voice`).
 
 `node <SKILL_DIR>/scripts/audio.mjs --script ./SCRIPT.md --storyboard ./STORYBOARD.md --hyperframes . --out ./audio_meta.json --voice <voice-id> &`
 

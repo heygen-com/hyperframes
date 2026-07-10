@@ -24,7 +24,7 @@ metadata: { "tags": "orchestrator, general-video, fallback, freeform, compositio
 
 ### Discovery — open-ended requests only
 
-For vague, exploratory requests ("make something for our brand", "a cool intro") — understand intent before picking colors:
+For vague, exploratory requests ("make something for our brand", "a cool intro") — understand intent before picking colors. Read the remembered defaults first (`hyperframes-core/references/brief-contract.md` § 2, Remembered defaults): a remembered destination or audience becomes the recommended answer, its receipt naming the source project. A named recipe goes further — "like last time" or a recipe name: `media-use` → `scripts/recipe.mjs use` fills design, structure, and brief from the frozen bundle (confirm with one question first).
 
 - **Audience** — who watches? developers / executives / general consumers?
 - **Platform** — where does it play? social (15s) / website hero / product demo / internal?
