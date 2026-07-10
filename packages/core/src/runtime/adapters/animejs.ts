@@ -561,9 +561,20 @@ function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
     // before any real seek. See U3-GATE-RESULT.md "Critical finding". This
     // mirrors the GSAP totalTime nudge in runtime/init.ts for its analogous
     // no-render-at-creation-position edge case.
-    instance.seek(durationMs);
+    //
+    // Pass muteCallbacks=true (anime.js's own Timer.seek(time, muteCallbacks)
+    // parameter): a timeline child added via tl.call(fn) or tl.add({
+    // onComplete: fn }) fires that callback as a side effect of ANY seek that
+    // crosses its position, including this priming seek to full duration.
+    // Unlike CSS transforms, a callback's side effects (mutating textContent,
+    // toggling a class, ...) are author JS with no "from" value to interpolate
+    // back from, so an unmuted priming seek would fire it once, permanently,
+    // before the composition's first real frame. muteCallbacks suppresses
+    // onBegin/onComplete/onUpdate/onLoop/onRender for this seek only; a later
+    // real seek that reaches the same position still fires it normally.
+    instance.seek(durationMs, true);
     inlineStylesAfterDuration = snapshotPrimeInlineStyles();
-    instance.seek(0);
+    instance.seek(0, true);
     inlineStylesAfterZero = snapshotPrimeInlineStyles();
   } catch (err) {
     swallow("runtime.adapters.animejs.prime", err);
