@@ -49,20 +49,43 @@ export function FlatColorGradingAccessory({
             commitCompare(false);
             window.removeEventListener("pointerup", release);
             window.removeEventListener("pointercancel", release);
+            window.removeEventListener("blur", release);
           };
           window.addEventListener("pointerup", release);
           window.addEventListener("pointercancel", release);
+          window.addEventListener("blur", release);
+        }}
+        onBlur={() => {
+          if (compareEnabled) commitCompare(false);
+        }}
+        onKeyDown={(e) => {
+          if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;
+          e.preventDefault();
+          if (!compareEnabled) commitCompare(true);
+        }}
+        onKeyUp={(e) => {
+          if (!gradingActive || (e.key !== " " && e.key !== "Enter")) return;
+          e.preventDefault();
+          commitCompare(false);
         }}
         title="Hold to show original"
         className="flex-shrink-0 text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Compare size={12} />
       </button>
-      <span
-        data-flat-grade-status-dot="true"
-        title={runtimeStatus.message}
-        className={`h-[5px] w-[5px] flex-shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
-      />
+      <span className="flex min-w-0 items-center gap-1" title={runtimeStatus.message}>
+        <span
+          data-flat-grade-status-dot="true"
+          title={runtimeStatus.message}
+          className={`h-[5px] w-[5px] flex-shrink-0 rounded-full ${STATUS_DOT_CLASS[runtimeStatus.state]}`}
+        />
+        <span
+          data-flat-grade-status-message="true"
+          className="max-w-[84px] truncate text-[9px] text-panel-text-4"
+        >
+          {runtimeStatus.message}
+        </span>
+      </span>
       <button
         type="button"
         data-flat-grade-reset="true"
@@ -99,6 +122,11 @@ const ADJUST_SLIDERS: Array<{
   { key: "vibrance", label: "Vibrance", min: -100, max: 100, step: 1 },
   { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1 },
 ];
+
+function visibleIntensity(grading: NormalizedHfColorGrading): number {
+  // Earlier drafts could persist 0% strength; the next manual edit should revive visible grading.
+  return grading.intensity === 0 ? 1 : grading.intensity;
+}
 
 function formatAdjustValue(key: HfColorGradingAdjustKey, rawPercent: number): string {
   if (key === "exposure") {
@@ -140,6 +168,15 @@ const EFFECT_SLIDERS: Array<{ key: HfColorGradingEffectKey; label: string }> = [
 
 function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   if (metadata?.color.dynamicRange !== "hdr") return null;
+  const details = [
+    metadata.color.codecName,
+    metadata.color.profile,
+    metadata.color.pixelFormat,
+    metadata.color.colorPrimaries,
+    metadata.color.colorTransfer,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div
       data-flat-grade-hdr-banner="true"
@@ -155,6 +192,14 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
         These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
         is not true HDR color grading yet.
       </p>
+      {details && (
+        <p
+          data-flat-grade-hdr-detail="true"
+          className="mt-0.5 truncate text-[9px] text-amber-100/55"
+        >
+          {details}
+        </p>
+      )}
     </div>
   );
 }
@@ -201,7 +246,11 @@ export function FlatColorGradingSection({
     onCommitColorGrading({ ...grading, intensity: value / 100 });
   };
   const applyLut = (src: string | null, intensity = 1) => {
-    onCommitColorGrading({ ...grading, lut: src ? { src, intensity } : null });
+    onCommitColorGrading({
+      ...grading,
+      intensity: visibleIntensity(grading),
+      lut: src ? { src, intensity } : null,
+    });
   };
   const importLuts = async (files: FileList | null) => {
     if (!files?.length || !onImportAssets) return;
@@ -225,11 +274,16 @@ export function FlatColorGradingSection({
         displayValue={`${Math.round(value * 100)}%`}
         centerTick={key === "vignetteRoundness"}
         onCommit={(next) =>
-          onCommitColorGrading({ ...grading, details: { ...grading.details, [key]: next / 100 } })
+          onCommitColorGrading({
+            ...grading,
+            intensity: visibleIntensity(grading),
+            details: { ...grading.details, [key]: next / 100 },
+          })
         }
         onReset={() =>
           onCommitColorGrading({
             ...grading,
+            intensity: visibleIntensity(grading),
             details: { ...grading.details, [key]: spec.defaultValue },
           })
         }
@@ -361,12 +415,14 @@ export function FlatColorGradingSection({
                 onCommit={(next) =>
                   onCommitColorGrading({
                     ...grading,
+                    intensity: visibleIntensity(grading),
                     adjust: { ...grading.adjust, [slider.key]: next / 100 },
                   })
                 }
                 onReset={() =>
                   onCommitColorGrading({
                     ...grading,
+                    intensity: visibleIntensity(grading),
                     adjust: { ...grading.adjust, [slider.key]: 0 },
                   })
                 }
@@ -432,12 +488,14 @@ export function FlatColorGradingSection({
                 onCommit={(next) =>
                   onCommitColorGrading({
                     ...grading,
+                    intensity: visibleIntensity(grading),
                     effects: { ...grading.effects, [slider.key]: next / 100 },
                   })
                 }
                 onReset={() =>
                   onCommitColorGrading({
                     ...grading,
+                    intensity: visibleIntensity(grading),
                     effects: { ...grading.effects, [slider.key]: 0 },
                   })
                 }
