@@ -151,16 +151,16 @@ export function StudioLeftSidebar({
         onPreviewBlock={onPreviewBlock}
         onAddAssetToTimeline={onAddAssetToTimeline}
       />
-      {/* Vertical resize divider: 1px visible seam, 8px pointer-capture zone via
-          the absolutely-positioned inner hit area. The outer element is w-px so
-          it contributes only 1px of gap in the flex row; the inner -left-[3.5px]
+      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
+          the absolutely-positioned inner hit area. The outer element is w-[3px] so
+          it contributes only 3px of gap in the flex row; the inner -left-[2.5px]
           element widens the hit area to 8px without affecting layout. */}
       <div
         role="separator"
         aria-label="Resize sidebar"
         aria-orientation="vertical"
         tabIndex={0}
-        className="group relative w-px flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
+        className="group relative w-[3px] flex-shrink-0 cursor-col-resize outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("left", e)}
         onPointerMove={handlePanelResizeMove}
@@ -174,10 +174,10 @@ export function StudioLeftSidebar({
           setLeftWidth(Math.max(160, Math.min(maxLeft, leftWidth + delta)));
         }}
       >
-        {/* Expanded hit zone: 8px wide, centered on the 1px seam */}
-        <div className="absolute inset-y-0 -left-[3.5px] w-2" />
+        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
+        <div className="absolute inset-y-0 -left-[2.5px] w-2" />
         {/* Visible hairline */}
-        <div className="absolute top-1/2 left-0 h-[52px] w-px -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
+        <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
     </>
   );

@@ -226,7 +226,11 @@ export type UseDomEditOverlayGesturesOptions = {
     (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
   >;
   onBoxSizeCommitRef: RefObject<
-    (s: DomEditSelection, n: { width: number; height: number }) => Promise<void> | void
+    (
+      s: DomEditSelection,
+      n: { width: number; height: number },
+      offset?: { x: number; y: number },
+    ) => Promise<void> | void
   >;
   onRotationCommitRef: RefObject<
     (s: DomEditSelection, n: { angle: number }) => Promise<void> | void

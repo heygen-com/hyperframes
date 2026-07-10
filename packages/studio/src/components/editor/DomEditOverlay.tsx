@@ -118,6 +118,7 @@ interface DomEditOverlayProps {
   onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
+    offset?: { x: number; y: number },
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;

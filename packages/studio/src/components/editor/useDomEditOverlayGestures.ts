@@ -501,18 +501,21 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
-      // Anchored corner resize also moved the element — commit the offset
-      // after the size lands (sequenced so the two source mutations can't race).
+      // Anchored corner resize (NW/NE/SW) also moved the element to keep the
+      // opposite corner fixed. Land the size AND the anchor offset in a SINGLE
+      // box-size commit (one persist, one undo entry). The prior two-commit
+      // sequence re-stamped the element from source after the size-only persist
+      // but before the offset persist landed — that one frame (new size, old
+      // offset) was the release "jump". SE has no anchor member → size only.
       const member = g.pathOffsetMember;
       const anchor = g.lastResizeAnchor;
       const finalOffset =
         member && anchor && (anchor.dx !== 0 || anchor.dy !== 0)
           ? applyManualOffsetDragCommit(member, anchor.dx, anchor.dy)
           : null;
-      void Promise.resolve(opts.onBoxSizeCommitRef.current(sel, finalSize))
-        .then(() => {
-          if (finalOffset) return opts.onPathOffsetCommitRef.current(sel, finalOffset);
-        })
+      void Promise.resolve(
+        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined),
+      )
         .catch(() => {
           if (
             g.manualEditDragToken &&
