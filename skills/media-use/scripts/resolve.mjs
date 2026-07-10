@@ -420,6 +420,10 @@ async function run() {
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
       prompt: intent,
+      // heygenAuthMethodFor spreads first so an explicit authMethod on a
+      // future provider's own metadata.provenance can still override it below
+      // -- safe today (no provider sets authMethod itself), but keep this
+      // ordering if that ever changes.
       ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
     },
@@ -1077,7 +1081,11 @@ async function result(record, source) {
     // in prod, which --doctor can't (it only answers "reachable now?").
     via: record.provenance?.via,
     // Free (OAuth) vs. paid (API-key) heygen path — sparse: absent for every
-    // non-heygen provider (see heygenAuthMethodFor at construction time).
+    // non-heygen provider (see heygenAuthMethodFor at construction time). On a
+    // cache/reuse hit this reports how the asset was ORIGINALLY fetched, not
+    // this resolve's own credential state — intentional: it's a conversion
+    // signal about the fetch that actually consumed a heygen credit, not
+    // about the (free, no-credential) act of copying a cached file.
     auth_method: record.provenance?.authMethod,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,

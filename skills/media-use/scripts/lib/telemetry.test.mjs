@@ -182,6 +182,45 @@ test("track identifies a signed-in HeyGen account once and still sends events", 
   }
 });
 
+test("track identifies with a lowercased email regardless of stored casing", async () => {
+  const savedEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const { root, home } = sandbox();
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true };
+  };
+  try {
+    withoutTelemetryOptOut();
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(home, ".hyperframes/config.json"),
+      JSON.stringify({ anonymousId: "anon-3" }),
+    );
+    mkdirSync(join(home, ".heygen"), { recursive: true });
+    writeFileSync(
+      join(home, ".heygen/credentials"),
+      JSON.stringify({ user: { email: "Alice@Example.com", username: "alice" } }),
+    );
+
+    await track("media_use_resolve", { type: "bgm", source: "search" });
+
+    const batch = parseFetchBodies(calls);
+    const identify = batch.filter((item) => item.event === "$identify");
+    assert.equal(identify.length, 1);
+    // Lowercased so this joins with heygen-cli's own identify call regardless
+    // of the account's stored email casing -- otherwise the same person could
+    // split into two PostHog profiles by email case alone.
+    assert.equal(identify[0].distinct_id, "alice@example.com");
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
 test("track does not identify when signed out", async () => {
   const savedEnv = { ...process.env };
   const originalFetch = globalThis.fetch;

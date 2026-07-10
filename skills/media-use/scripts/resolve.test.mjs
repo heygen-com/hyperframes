@@ -730,7 +730,12 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
     // Override this one invocation's env only: allow tracking (DO_NOT_TRACK
     // default flipped off), sandbox HOME so anonymousId()/showTelemetryNotice()
     // never touch the real developer machine, and point the host at the local
-    // server. Every other test in this file keeps its untouched default env.
+    // server. HEYGEN_CONFIG_DIR is sandboxed too -- runResolve's env is
+    // {...process.env, ...env}, so a developer with that var set to a real
+    // credentials dir would otherwise have heygenAccountDistinctId() read
+    // their real email into this test's local-server payload despite HOME
+    // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
+    // path). Every other test in this file keeps its untouched default env.
     runResolve(["--type", "bgm", "--intent", "telemetry seam test", "--project", tmp, "--json"], {
       env: {
         DO_NOT_TRACK: "0",
@@ -738,6 +743,7 @@ test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real intercept
         CI: "",
         NODE_ENV: "test",
         HOME: sandboxHome,
+        HEYGEN_CONFIG_DIR: join(sandboxHome, ".heygen"),
         MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
       },
     });

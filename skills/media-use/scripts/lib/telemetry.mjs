@@ -139,7 +139,10 @@ function heygenAccountDistinctId() {
     const user = parsed.user;
     if (!user || typeof user !== "object" || Array.isArray(user)) return null;
     const id = typeof user.email === "string" && user.email.trim() ? user.email : user.username;
-    return typeof id === "string" && id.trim() ? id.trim() : null;
+    // Lowercased so this joins with the CLI's own identify call regardless of
+    // the account's stored email casing — two different-case distinct ids
+    // would otherwise split one person across two PostHog profiles.
+    return typeof id === "string" && id.trim() ? id.trim().toLowerCase() : null;
   } catch {
     return null;
   }
