@@ -67,12 +67,32 @@
       <section class="hf-ui-demo-stage" aria-label="Select specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!-- Select - animate --hf-select-open from 0 to 1. -->
-<div data-hf-ui-root class="hf-ui-select">
-  <button class="hf-ui-select-trigger" type="button">1080p <span>⌄</span></button>
-  <div class="hf-ui-select-menu">
-    <div class="hf-ui-select-option is-active">1080p</div>
-    <div class="hf-ui-select-option">4K</div>
-    <div class="hf-ui-select-option">Square</div>
+<div data-hf-ui-root class="hf-ui-select" data-state="closed">
+  <button
+    class="hf-ui-select-trigger"
+    type="button"
+    aria-haspopup="listbox"
+    aria-expanded="false"
+    aria-controls="hf-ui-select-menu"
+  >
+    1080p
+    <span aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="m7 9.5 5 5 5-5" /></svg>
+    </span>
+  </button>
+  <div
+    id="hf-ui-select-menu"
+    class="hf-ui-select-menu"
+    role="listbox"
+    aria-label="Resolution options"
+    aria-hidden="true"
+  >
+    <div class="hf-ui-select-option is-active" role="option" aria-selected="true">
+      1080p
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7" /></svg>
+    </div>
+    <div class="hf-ui-select-option" role="option" aria-selected="false">4K</div>
+    <div class="hf-ui-select-option" role="option" aria-selected="false">Square</div>
   </div>
 </div>
 <style>
@@ -214,55 +234,140 @@
     --hf-select-open: 0;
     position: relative;
     display: inline-block;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+  }
+  .hf-ui-select[data-state="open"] {
+    --hf-select-open: 1;
   }
   .hf-ui-select-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
     min-width: 160px;
-    height: 42px;
-    padding: 0 14px;
-    border: 1px solid #e4e4e7;
-    border-radius: 11px;
-    background: #fff;
+    height: var(--_hf-ui-control-height);
+    padding: 0 var(--_hf-ui-space-3);
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
     color: inherit;
-    font:
-      750 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
+    box-shadow: var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
   }
   .hf-ui-select-trigger span {
+    display: grid;
+    place-items: center;
     transform: rotate(calc(var(--hf-select-open) * 180deg));
+    transition: transform var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-select-trigger svg,
+  .hf-ui-select-option svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-ui-select-trigger:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-select-trigger:hover {
+      border-color: var(--_hf-ui-control-border-hover);
+    }
+  }
+  .hf-ui-select-trigger:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-select-trigger:disabled,
+  .hf-ui-select-trigger[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  .hf-ui-select[aria-invalid="true"] .hf-ui-select-trigger,
+  .hf-ui-select-trigger[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
   }
   .hf-ui-select-menu {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
     width: 100%;
-    padding: 6px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
+    z-index: 10;
+    padding: var(--_hf-ui-space-1);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-select-open);
-    transform: translateY(calc((1 - var(--hf-select-open)) * -8px))
-      scale(calc(0.97 + var(--hf-select-open) * 0.03));
-    box-shadow: 0 22px 64px rgba(0, 0, 0, 0.16);
+    transform: translateY(calc((1 - var(--hf-select-open)) * -4px))
+      scale(calc(0.98 + var(--hf-select-open) * 0.02));
+    transform-origin: top left;
+    box-shadow: var(--_hf-ui-shadow-contact);
+    transition:
+      opacity var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit),
+      transform var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit);
+  }
+  .hf-ui-select[data-state="open"] .hf-ui-select-menu {
+    transition-duration: var(--_hf-ui-duration-overlay-enter);
+    transition-timing-function: var(--_hf-ui-ease-enter);
   }
   .hf-ui-select-option {
-    height: 32px;
-    padding: 0 10px;
-    border-radius: 8px;
+    min-height: 40px;
+    padding: 0 var(--_hf-ui-space-2);
+    border-radius: var(--_hf-ui-radius-control);
     display: flex;
     align-items: center;
-    color: #52525b;
+    gap: var(--_hf-ui-space-2);
+    color: var(--_hf-ui-text-muted);
     font-size: 13px;
-    font-weight: 650;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-select-option.is-active {
-    background: #f4f4f5;
-    color: #18181b;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+  }
+  .hf-ui-select-option svg {
+    margin-inline-start: auto;
+    color: var(--_hf-ui-accent);
+  }
+  .hf-ui-select-option[aria-disabled="true"] {
+    color: var(--_hf-ui-text-faint);
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-select-menu {
+      display: grid;
+      gap: 4px;
+    }
+    .hf-ui-select-trigger {
+      position: relative;
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-select-trigger::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
+    .hf-ui-select-option {
+      position: relative;
+    }
+    .hf-ui-select-option::before {
+      position: absolute;
+      inset-block: -2px;
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 <!-- hf-ui:canonical:end -->
@@ -270,12 +375,25 @@
       <p class="hf-ui-demo-caption">Select</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        const selectRoot = document.querySelector(".hf-ui-select");
+        const selectTrigger = document.querySelector(".hf-ui-select-trigger");
+        const selectMenu = document.querySelector(".hf-ui-select-menu");
+        tl.addLabel("start", 0);
+        tl.set(selectRoot, { "--hf-select-open": 0, attr: { "data-state": "closed" } }, 0);
+        tl.set(selectTrigger, { attr: { "aria-expanded": "false" } }, 0);
+        tl.set(selectMenu, { attr: { "aria-hidden": "true" } }, 0);
+        tl.addLabel("open", 1);
+        tl.set(selectRoot, { attr: { "data-state": "open" } }, 1);
+        tl.set(selectTrigger, { attr: { "aria-expanded": "true" } }, 1);
+        tl.set(selectMenu, { attr: { "aria-hidden": "false" } }, 1);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          selectRoot,
+          { "--hf-select-open": 0 },
+          { "--hf-select-open": 1, duration: 0.21, ease: "power3.out" },
+          1,
         );
+        tl.addLabel("end", 3.99);
+        tl.to(selectRoot, { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["select-demo"] = tl;
       </script>

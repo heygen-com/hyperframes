@@ -3,7 +3,7 @@
   "name": "separator",
   "type": "hyperframes:component",
   "title": "Separator",
-  "description": "A separator primitive with horizontal and vertical variants for interface compositions",
+  "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
   "tags": ["ui-primitive", "remocn-port", "separator", "layout"],
   "files": [
     {

@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,16 +68,32 @@
       <section class="hf-ui-demo-stage" aria-label="Carousel specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Carousel - remocn-inspired UI primitive for HyperFrames.
+  Carousel - Operator Black scene-navigation primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-carousel">
-  <section>Scene 01</section>
-  <section>Scene 02</section>
-  <nav><span></span><span class="active"></span><span></span></nav>
+<div
+  data-hf-ui-root
+  class="hf-ui-carousel"
+  role="region"
+  aria-roledescription="carousel"
+  aria-label="Scene preview"
+>
+  <section role="group" aria-roledescription="slide" aria-label="Previous scene" aria-hidden="true">
+    Scene 01
+  </section>
+  <section role="group" aria-roledescription="slide" aria-label="Current scene" aria-hidden="false">
+    Scene 02
+  </section>
+  <nav aria-label="Carousel pages">
+    <button type="button" aria-label="Previous scene"><span></span></button>
+    <button type="button" aria-label="Current scene" aria-current="true">
+      <span class="active"></span>
+    </button>
+    <button type="button" aria-label="Next scene"><span></span></button>
+  </nav>
 </div>
 
 <style>
@@ -216,61 +233,108 @@
   /* hf-ui:tokens:end */
   .hf-ui-carousel {
     position: relative;
-    width: 420px;
-    height: 240px;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(420px, 100%);
+    height: auto;
+    aspect-ratio: 7 / 4;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-carousel section {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #111827, #2563eb);
-    color: #fff;
-    font-size: 28px;
-    font-weight: 900;
-    box-shadow: 0 24px 70px rgba(37, 99, 235, 0.2);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-semibold) 14px/1 var(--_hf-ui-font-mono);
+    box-shadow: var(--_hf-ui-shadow-inset), var(--_hf-ui-shadow-contact);
   }
   .hf-ui-carousel section:first-child {
-    transform: translateX(-34px) scale(0.88);
-    opacity: 0.45;
+    transform: translateY(-8px) scale(0.98);
+    opacity: 0.6;
   }
   .hf-ui-carousel nav {
     position: absolute;
-    left: 50%;
-    bottom: -24px;
+    inset-inline-start: 50%;
+    inset-block-end: -40px;
     display: flex;
-    gap: 6px;
+    gap: 0;
     transform: translateX(-50%);
+  }
+  .hf-ui-carousel nav button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--_hf-ui-control-height);
+    height: var(--_hf-ui-control-height);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    transform: translateY(0) scale(1);
+    transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-carousel nav span {
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: #d4d4d8;
+    background: var(--_hf-ui-control-border);
+    transition:
+      width var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
   }
   .hf-ui-carousel nav .active {
-    width: 22px;
-    background: #18181b;
+    width: 20px;
+    background: var(--_hf-ui-accent);
+  }
+  .hf-ui-carousel nav button:focus-visible {
+    border-radius: var(--_hf-ui-radius-control);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-carousel nav button:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  @media (pointer: coarse) {
+    .hf-ui-carousel nav {
+      gap: 4px;
+    }
+    .hf-ui-carousel nav button::before {
+      position: absolute;
+      inset: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-carousel section:last-of-type', { x: 46, opacity: 0, scale: 0.9 }, { x: 0, opacity: 1, scale: 1, duration: 0.46, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-ui-carousel section:last-of-type', { x: 24, opacity: 0, scale: 0.98, filter: 'blur(1.5px)' }, { x: 0, opacity: 1, scale: 1, filter: 'blur(0px)', duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Carousel</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-carousel section:last-of-type",
+          { x: 24, opacity: 0, scale: 0.98, filter: "blur(1.5px)" },
+          {
+            x: 0,
+            opacity: 1,
+            scale: 1,
+            filter: "blur(0px)",
+            duration: 0.21,
+            ease: "power3.out",
+          },
+          0.6,
         );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["carousel-demo"] = tl;
       </script>

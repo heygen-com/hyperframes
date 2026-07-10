@@ -67,18 +67,23 @@
       <section class="hf-ui-demo-stage" aria-label="Command Menu Item specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Command Menu Item - remocn component ported to HyperFrames authoring format.
+  Command Menu Item - Operator Black command-row state specimen.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div data-hf-ui-root class="hf-remocn-command-menu-item">
-  <div class="row">
-    <span class="label">Command Menu Item</span><span class="hint">Ctrl K</span>
+<div data-hf-ui-root class="hf-remocn-command-menu-item" role="listbox" aria-label="Commands">
+  <div class="row" data-state="idle" role="option" aria-selected="false" tabindex="0">
+    <span class="label">New composition</span><span class="hint">N</span>
   </div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+  <div class="row" data-state="hover" role="option" aria-selected="true" tabindex="0">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9" /></svg>
+    <span class="label">Render preview</span><span class="hint">R</span>
+  </div>
+  <div class="row" role="option" aria-disabled="true" tabindex="-1">
+    <span class="label">Publish project</span><span class="hint">Unavailable</span>
+  </div>
 </div>
 
 <style>
@@ -217,57 +222,99 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-command-menu-item {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface-raised);
+    --hf-row-x: 0px;
+    --hf-row-opacity: 1;
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
-  }
-  .hf-remocn-command-menu-item {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    width: min(360px, 100%);
+    padding: var(--_hf-ui-space-2);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--hf-surface);
+    box-shadow: var(--_hf-ui-shadow-contact);
     display: grid;
-    gap: 12px;
+    gap: var(--_hf-ui-space-1);
   }
   .hf-remocn-command-menu-item .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
-    display: flex;
+    min-height: var(--_hf-ui-control-height);
+    border-radius: var(--_hf-ui-radius-control);
+    background: transparent;
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
+    gap: var(--_hf-ui-space-2);
+    padding: 0 var(--_hf-ui-space-3);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-command-menu-item .label {
-    font-weight: 800;
+    grid-column: 2;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-command-menu-item .hint {
-    color: #71717a;
-    font-size: 13px;
+    grid-column: 3;
+    color: var(--hf-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
+  }
+  .hf-remocn-command-menu-item .row[data-state="hover"] {
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+  }
+  .hf-remocn-command-menu-item .row[aria-disabled="true"] {
+    opacity: 0.48;
+  }
+  .hf-remocn-command-menu-item .row svg {
+    grid-column: 1;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--hf-accent);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-remocn-command-menu-item .row:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  @media (pointer: coarse) {
+    .hf-remocn-command-menu-item .row {
+      min-height: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-command-menu-item .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.set('.hf-remocn-command-menu-item', { opacity: 1 }, startTime);
+  tl.fromTo('.hf-remocn-command-menu-item .row', { '--hf-row-x': '-4px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.16, stagger: 0.04, ease: 'power2.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Command Menu Item</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-remocn-command-menu-item .row",
+          { "--hf-row-x": "-4px", "--hf-row-opacity": 0 },
+          { "--hf-row-x": "0px", "--hf-row-opacity": 1, duration: 0.16, ease: "power2.out" },
+          0.2,
         );
+        tl.fromTo(
+          ".hf-remocn-command-menu-item .row:nth-child(2)",
+          { backgroundColor: "#141414" },
+          { backgroundColor: "#101010", duration: 0.16 },
+          1.2,
+        );
+        tl.addLabel("hover", 1.4);
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["command-menu-item-demo"] = tl;
       </script>

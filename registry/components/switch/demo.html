@@ -67,17 +67,24 @@
       <section class="hf-ui-demo-stage" aria-label="Switch specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Switch - shadcn-style toggle primitive for HyperFrames.
+  Switch - Operator Black toggle primitive for HyperFrames.
 
   Toggle data-state between off and on, or animate --hf-switch-progress from a
   paused GSAP timeline.
 -->
 
 <div data-hf-ui-root class="hf-ui-switch-row">
-  <span class="hf-ui-switch" data-state="off" role="switch" aria-checked="false">
+  <span
+    class="hf-ui-switch"
+    data-state="off"
+    role="switch"
+    aria-checked="false"
+    aria-labelledby="hf-ui-switch-label"
+    tabindex="0"
+  >
     <span class="hf-ui-switch-thumb"></span>
   </span>
-  <span class="hf-ui-switch-label">Auto enhance</span>
+  <span id="hf-ui-switch-label" class="hf-ui-switch-label">Auto enhance</span>
 </div>
 
 <style>
@@ -219,8 +226,8 @@
     display: inline-flex;
     align-items: center;
     gap: 12px;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-switch {
     --hf-switch-progress: 0;
@@ -228,9 +235,24 @@
     display: inline-block;
     width: 42px;
     height: 24px;
-    border-radius: 999px;
-    background: color-mix(in srgb, #18181b calc(var(--hf-switch-progress) * 100%), #e4e4e7);
-    box-shadow: inset 0 0 0 1px rgba(24, 24, 27, 0.06);
+    border: 1px solid
+      color-mix(
+        in srgb,
+        var(--_hf-ui-accent) calc(var(--hf-switch-progress) * 100%),
+        var(--_hf-ui-control-border)
+      );
+    border-radius: 9999px;
+    background: color-mix(
+      in srgb,
+      var(--_hf-ui-accent) calc(var(--hf-switch-progress) * 100%),
+      var(--_hf-ui-surface-inset)
+    );
+    box-shadow: var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transition:
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-switch[data-state="on"] {
     --hf-switch-progress: 1;
@@ -239,37 +261,81 @@
     position: absolute;
     top: 3px;
     left: 3px;
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    background: #ffffff;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: color-mix(
+      in srgb,
+      var(--_hf-ui-action-contrast) calc(var(--hf-switch-progress) * 100%),
+      var(--_hf-ui-text-muted)
+    );
     transform: translateX(calc(var(--hf-switch-progress) * 18px));
-    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+    transition: transform var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
     will-change: transform;
+  }
+  .hf-ui-switch:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-switch:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-switch[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-switch:hover {
+      border-color: var(--_hf-ui-control-border-hover);
+    }
   }
   .hf-ui-switch-label {
     font-size: 15px;
-    font-weight: 650;
+    font-weight: var(--_hf-ui-weight-medium);
     line-height: 1;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-switch-row {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
+    .hf-ui-switch::before {
+      position: absolute;
+      inset-block: -10px;
+      inset-inline: -1px;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
 
-  tl.to(".hf-ui-switch", { "--hf-switch-progress": 1, duration: 0.28, ease: "power3.out" }, startTime);
+  tl.to(".hf-ui-switch", { "--hf-switch-progress": 1, duration: 0.16, ease: "power3.out" }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Switch</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
+        const switchControl = document.querySelector(".hf-ui-switch");
+        tl.addLabel("start", 0);
+        tl.set(
+          switchControl,
+          { "--hf-switch-progress": 0, attr: { "data-state": "off", "aria-checked": "false" } },
           0,
         );
+        tl.addLabel("on", 1.1);
+        tl.set(switchControl, { attr: { "data-state": "on", "aria-checked": "true" } }, 1.1);
+        tl.fromTo(
+          switchControl,
+          { "--hf-switch-progress": 0 },
+          { "--hf-switch-progress": 1, duration: 0.16, ease: "power3.out" },
+          1.1,
+        );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-switch-row", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["switch-demo"] = tl;
       </script>

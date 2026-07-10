@@ -3,7 +3,7 @@
   "name": "label",
   "type": "hyperframes:component",
   "title": "Label",
-  "description": "A label primitive for clear form and control annotations in video UI scenes",
+  "description": "A calm form label with compact requirement metadata for video UI scenes",
   "tags": ["ui-primitive", "remocn-port", "label", "form"],
   "files": [
     {

@@ -1,12 +1,20 @@
 <!--
-  Breadcrumb - remocn-inspired UI primitive for HyperFrames.
+  Breadcrumb - Operator Black navigation primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
 <nav data-hf-ui-root class="hf-ui-breadcrumb" aria-label="Breadcrumb">
-  <span>Projects</span><i>/</i><span>Launch</span><i>/</i><strong>Preview</strong>
+  <a href="#projects">Projects</a>
+  <i aria-hidden="true"
+    ><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg
+  ></i>
+  <a href="#launch">Launch</a>
+  <i aria-hidden="true"
+    ><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg
+  ></i>
+  <strong aria-current="page">Preview</strong>
 </nav>
 
 <style>
@@ -146,24 +154,64 @@
   /* hf-ui:tokens:end */
   .hf-ui-breadcrumb {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 9px;
-    color: #71717a;
-    font:
-      750 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    max-width: 100%;
+    gap: 8px;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
+  }
+  .hf-ui-breadcrumb a {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    min-height: var(--_hf-ui-control-height);
+    color: inherit;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    transition: color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-breadcrumb a:focus-visible {
+    border-radius: var(--_hf-ui-radius-control);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
   .hf-ui-breadcrumb i {
-    color: #d4d4d8;
+    display: grid;
+    place-items: center;
+    color: var(--_hf-ui-text-faint);
     font-style: normal;
   }
+  .hf-ui-breadcrumb i svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
   .hf-ui-breadcrumb strong {
-    color: #18181b;
+    color: var(--_hf-ui-text-strong);
+    font-weight: var(--_hf-ui-weight-semibold);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-breadcrumb a:hover {
+      color: var(--_hf-ui-text);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-breadcrumb a::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-breadcrumb > *', { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.22, stagger: 0.045, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-breadcrumb > *', { opacity: 0.55, x: -4 }, { opacity: 1, x: 0, duration: 0.21, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->

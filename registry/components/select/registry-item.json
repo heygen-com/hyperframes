@@ -3,7 +3,7 @@
   "name": "select",
   "type": "hyperframes:component",
   "title": "Select",
-  "description": "A select primitive with trigger, animated menu, option rows, and active option highlight",
+  "description": "An origin-aware select with a matte menu and explicit selected option",
   "tags": ["ui-primitive", "remocn-port", "select", "control"],
   "files": [
     {

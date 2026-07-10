@@ -1,5 +1,5 @@
 <!--
-  Blur In - shadcn-style UI primitive for HyperFrames.
+  Blur In - Operator Black content-focus reveal primitive.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -151,11 +151,8 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.28em;
-    color: #111827;
-    font:
-      850 56px/1 Inter,
-      system-ui,
-      sans-serif;
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-semibold) 52px/1 var(--_hf-ui-font-sans);
     letter-spacing: -0.02em;
   }
   .hf-ui-blur-in span {
@@ -168,5 +165,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-blur-in span', { opacity: 0, y: 28, filter: 'blur(18px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.58, stagger: 0.08, ease: 'power3.out' }, 0.45);
+  tl.fromTo('.hf-ui-blur-in span', { opacity: 0, y: 8, filter: 'blur(10px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.36, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->

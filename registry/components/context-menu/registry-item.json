@@ -3,7 +3,7 @@
   "name": "context-menu",
   "type": "hyperframes:component",
   "title": "Context Menu",
-  "description": "A context menu primitive with pointer anchor, item stagger, shortcut hints, and selected state",
+  "description": "An Operator Black context menu with a pointer anchor, technical shortcuts, and mint selection check",
   "tags": ["ui-primitive", "remocn-port", "context-menu", "menu"],
   "files": [
     {

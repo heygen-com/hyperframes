@@ -67,7 +67,7 @@
       <section class="hf-ui-demo-stage" aria-label="Command Menu specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Command Menu - shadcn-style UI primitive for HyperFrames.
+  Command Menu - Operator Black command palette primitive.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -76,7 +76,10 @@
 <div data-hf-ui-root class="hf-ui-command-menu">
   <div class="hf-ui-command-search">Search commands...</div>
   <div class="hf-ui-command-group">Create</div>
-  <div class="hf-ui-command-item is-active"><span>New composition</span><kbd>N</kbd></div>
+  <div class="hf-ui-command-item is-active">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9" /></svg>
+    <span>New composition</span><kbd>N</kbd>
+  </div>
   <div class="hf-ui-command-item"><span>Add text layer</span><kbd>T</kbd></div>
   <div class="hf-ui-command-item"><span>Render preview</span><kbd>R</kbd></div>
 </div>
@@ -217,67 +220,94 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-command-menu {
-    width: 520px;
-    padding: 12px;
-    border: 1px solid #27272a;
-    border-radius: 22px;
-    background: #111113;
-    color: #fafafa;
-    font-family: Inter, system-ui, sans-serif;
-    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+    width: min(520px, 100%);
+    padding: var(--_hf-ui-space-3);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
+    box-shadow: var(--_hf-ui-shadow-modal);
   }
   .hf-ui-command-search {
-    height: 50px;
-    padding: 15px 16px;
-    border-radius: 14px;
-    background: #1f1f23;
-    color: #a1a1aa;
-    font-weight: 750;
+    min-height: var(--_hf-ui-control-height);
+    padding: 12px var(--_hf-ui-space-4);
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-muted);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-regular);
   }
   .hf-ui-command-group {
     padding: 18px 12px 8px;
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
     font-size: 12px;
-    font-weight: 900;
+    font-weight: var(--_hf-ui-weight-semibold);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
   .hf-ui-command-item {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    gap: var(--_hf-ui-space-2);
     align-items: center;
-    height: 48px;
+    min-height: var(--_hf-ui-control-height);
     padding: 0 14px;
-    border-radius: 13px;
-    font-size: 16px;
-    font-weight: 750;
+    border-radius: var(--_hf-ui-radius-control);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-command-item.is-active {
-    background: #fafafa;
-    color: #111113;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    box-shadow: inset 2px 0 0 var(--_hf-ui-accent);
   }
   .hf-ui-command-item kbd {
-    color: inherit;
-    opacity: 0.58;
+    grid-column: 3;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
+  }
+  .hf-ui-command-item > span {
+    grid-column: 2;
+  }
+  .hf-ui-command-item svg {
+    grid-column: 1;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--_hf-ui-accent);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-command-menu', { opacity: 0, y: 30, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.42, ease: 'back.out(1.2)' }, 0.35);
-  tl.fromTo('.hf-ui-command-item', { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.3, stagger: 0.07, ease: 'power2.out' }, 0.72);
+  tl.fromTo('.hf-ui-command-menu', { opacity: 0, y: -4, scale: 0.98 }, { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: 'power3.out' }, startTime);
+  tl.set('.hf-ui-command-item', { opacity: 1 }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Command Menu</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-command-menu",
+          { opacity: 0, y: -4, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: "power3.out" },
+          0.2,
         );
+        tl.fromTo(
+          ".hf-ui-command-item.is-active",
+          { backgroundColor: "#141414" },
+          { backgroundColor: "#101010", duration: 0.16 },
+          1.2,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["command-menu-demo"] = tl;
       </script>

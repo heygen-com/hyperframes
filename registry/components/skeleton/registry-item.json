@@ -3,7 +3,7 @@
   "name": "skeleton",
   "type": "hyperframes:component",
   "title": "Skeleton",
-  "description": "A loading skeleton primitive with shimmer sweep and reveal-ready rows for app mockups",
+  "description": "An Operator Black loading skeleton using deterministic solid layers instead of gradient shimmer",
   "tags": ["ui-primitive", "remocn-port", "skeleton", "loading"],
   "files": [
     {

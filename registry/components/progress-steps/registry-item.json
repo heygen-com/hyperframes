@@ -3,7 +3,7 @@
   "name": "progress-steps",
   "type": "hyperframes:component",
   "title": "Progress Steps",
-  "description": "A multi-step progress indicator with active, pending, and done states.",
+  "description": "A vertical progress sequence with clear complete, current, and waiting states.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

@@ -1,14 +1,14 @@
 <!--
-  Registry - remocn component ported to HyperFrames authoring format.
+  Registry - Operator Black installable-component metadata list.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
 <div data-hf-ui-root class="hf-remocn-registry">
-  <div class="row"><span class="label">Registry</span><span class="hint">Ctrl K</span></div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+  <div class="row"><span class="label">button</span><span class="hint">component</span></div>
+  <div class="row"><span class="label">dialog</span><span class="hint">overlay</span></div>
+  <div class="row"><span class="label">chart</span><span class="hint">data</span></div>
 </div>
 
 <style>
@@ -147,43 +147,50 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-registry {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface);
+    --hf-row-x: 0px;
+    --hf-row-opacity: 1;
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
-  }
-  .hf-remocn-registry {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    width: min(440px, 100%);
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--hf-surface);
+    padding: var(--_hf-ui-space-3);
+    box-shadow: var(--_hf-ui-shadow-inset);
     display: grid;
-    gap: 12px;
+    gap: var(--_hf-ui-space-1);
   }
   .hf-remocn-registry .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
+    min-height: var(--_hf-ui-control-height);
+    border-radius: var(--_hf-ui-radius-control);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 var(--_hf-ui-space-3);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-registry .label {
-    font-weight: 800;
+    font-family: var(--_hf-ui-font-mono);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-registry .hint {
-    color: #71717a;
-    font-size: 13px;
+    color: var(--hf-muted);
+    font-size: 12px;
+  }
+  .hf-remocn-registry .row:nth-child(2) {
+    background: var(--_hf-ui-surface-inset);
+    box-shadow: inset 2px 0 0 var(--hf-accent);
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-registry .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.set('.hf-remocn-registry', { opacity: 1 }, startTime);
+  tl.fromTo('.hf-remocn-registry .row', { '--hf-row-x': '-4px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.16, ease: 'power2.out' }, startTime);
 -->

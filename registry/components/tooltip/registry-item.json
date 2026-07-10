@@ -3,7 +3,7 @@
   "name": "tooltip",
   "type": "hyperframes:component",
   "title": "Tooltip",
-  "description": "A tooltip primitive with trigger, floating label, arrow, and reveal animation",
+  "description": "An Operator Black tooltip with a technical trigger icon and origin-aware Soft Optical reveal",
   "tags": ["ui-primitive", "remocn-port", "tooltip", "overlay"],
   "files": [
     {

@@ -3,7 +3,7 @@
   "name": "command-menu-item",
   "type": "hyperframes:component",
   "title": "Command Menu Item",
-  "description": "A focused command-row primitive with shortcut and selection states.",
+  "description": "An Operator Black command-row specimen with technical shortcuts and restrained selection state.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

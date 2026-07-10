@@ -3,7 +3,7 @@
         "name": "accordion",
         "type": "component",
         "title": "Accordion",
-        "description": "An accordion primitive with animated content reveal, chevron rotation, and stacked trigger rows",
+        "description": "A precise disclosure row with a machined edge, accessible expansion state, and deterministic reveal hooks",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -31,7 +31,7 @@
         "name": "alert-dialog",
         "type": "component",
         "title": "Alert Dialog",
-        "description": "A destructive-action alert dialog primitive with overlay, warning icon, copy, and action row",
+        "description": "An Operator Black destructive confirmation dialog with a flat backdrop and centered Soft Optical motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -101,7 +101,7 @@
         "name": "blur-in",
         "type": "component",
         "title": "Blur In",
-        "description": "A blur-in text primitive with word-level focus resolve for product reveal moments",
+        "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -129,7 +129,7 @@
         "name": "button",
         "type": "component",
         "title": "Button",
-        "description": "A video-safe shadcn-style button primitive with hover, press, loading, and success states",
+        "description": "A video-safe action button with tactile press, loading, and success states",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -392,7 +392,7 @@
         "name": "caret",
         "type": "component",
         "title": "Caret",
-        "description": "A typing caret primitive with deterministic blink and typed-value reveal",
+        "description": "A matte command-field caret with finite blink timing and a deterministic typed-value reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -406,7 +406,7 @@
         "name": "checkbox",
         "type": "component",
         "title": "Checkbox",
-        "description": "A checkbox primitive with unchecked, checked, and label reveal states for product UI scenes",
+        "description": "An accessible checkbox with tactile feedback and a functional mint check state",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -458,7 +458,7 @@
         "name": "combobox",
         "type": "component",
         "title": "Combobox",
-        "description": "A combobox primitive with search trigger, filtered option list, and selected-row highlight",
+        "description": "A searchable combobox with an anchored option list and explicit selection check",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -472,7 +472,7 @@
         "name": "command-menu",
         "type": "component",
         "title": "Command Menu",
-        "description": "A command palette primitive with search row, grouped actions, and selected command highlight",
+        "description": "An Operator Black command palette with a recessed search field and mint selection check",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -486,7 +486,7 @@
         "name": "context-menu",
         "type": "component",
         "title": "Context Menu",
-        "description": "A context menu primitive with pointer anchor, item stagger, shortcut hints, and selected state",
+        "description": "An Operator Black context menu with a pointer anchor, technical shortcuts, and mint selection check",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -512,7 +512,7 @@
         "name": "cursor",
         "type": "component",
         "title": "Cursor",
-        "description": "A cursor primitive with pointer travel, click ripple, and label callout for guided product demos",
+        "description": "A technical SVG pointer with guided travel, a functional click ripple, and a compact action callout",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -539,7 +539,7 @@
         "name": "dialog",
         "type": "component",
         "title": "Dialog",
-        "description": "A centered modal dialog primitive with overlay, title, description, and action row",
+        "description": "An Operator Black centered modal with a flat backdrop, restrained actions, and Soft Optical motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -565,7 +565,7 @@
         "name": "drawer",
         "type": "component",
         "title": "Drawer",
-        "description": "A bottom drawer primitive with handle, stacked rows, and spring-like slide-in motion",
+        "description": "An Operator Black bottom drawer with matte rows and edge-attached Soft Optical motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -579,7 +579,7 @@
         "name": "dropdown-menu",
         "type": "component",
         "title": "Dropdown Menu",
-        "description": "A dropdown menu primitive with trigger press, menu scale, item stagger, and keyboard-focus styling",
+        "description": "An Operator Black dropdown menu with origin-aware motion and a mint selection check",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -771,7 +771,7 @@
         "name": "input",
         "type": "component",
         "title": "Input",
-        "description": "A video-safe text field primitive with label, helper text, focus ring, and typed value reveal",
+        "description": "A video-safe text field with label, helper copy, focus state, and typed-value reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1215,7 +1215,7 @@
         "name": "popover",
         "type": "component",
         "title": "Popover",
-        "description": "A small anchored popover primitive with origin-aware scale and content fade for inline controls",
+        "description": "An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1229,7 +1229,7 @@
         "name": "progress",
         "type": "component",
         "title": "Progress",
-        "description": "A progress bar primitive with label, percentage text, and deterministic fill animation",
+        "description": "An Operator Black progress primitive with a mint active segment and tabular percentage value",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1243,7 +1243,7 @@
         "name": "radio",
         "type": "component",
         "title": "Radio Group",
-        "description": "A radio group primitive with animated selection ring and active label emphasis",
+        "description": "An accessible radio group with restrained selection and active-label emphasis",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1270,7 +1270,7 @@
         "name": "resizable",
         "type": "component",
         "title": "Resizable",
-        "description": "A resizable panels primitive with animated split, drag handle, and content emphasis",
+        "description": "An accessible split-pane primitive with structural edges, a keyboard-focusable handle, and deterministic resizing",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1320,7 +1320,7 @@
         "name": "select",
         "type": "component",
         "title": "Select",
-        "description": "A select primitive with trigger, animated menu, option rows, and active option highlight",
+        "description": "An origin-aware select with a matte menu and explicit selected option",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1348,7 +1348,7 @@
         "name": "sheet",
         "type": "component",
         "title": "Sheet",
-        "description": "A side sheet primitive with overlay, title stack, and right-edge slide transition",
+        "description": "An Operator Black side sheet with a flat backdrop and right-edge Soft Optical motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1404,7 +1404,7 @@
         "name": "skeleton",
         "type": "component",
         "title": "Skeleton",
-        "description": "A loading skeleton primitive with shimmer sweep and reveal-ready rows for app mockups",
+        "description": "An Operator Black loading skeleton using deterministic solid layers instead of gradient shimmer",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1418,7 +1418,7 @@
         "name": "slider",
         "type": "component",
         "title": "Slider",
-        "description": "A slider primitive with animated fill, thumb travel, and value readout for controls and settings scenes",
+        "description": "An accessible slider with semantic progress fill, physical thumb, and value readout",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1462,7 +1462,7 @@
         "name": "spinner",
         "type": "component",
         "title": "Spinner",
-        "description": "A deterministic loading spinner primitive with ring, sweep, and optional status label",
+        "description": "An Operator Black finite loading spinner with a 1.5px progress ring and status label",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1489,7 +1489,7 @@
         "name": "stepper",
         "type": "component",
         "title": "Stepper",
-        "description": "A stepper primitive with numbered milestones, connector progress, and active-step emphasis",
+        "description": "A horizontal stepper with numbered milestones, semantic progress, and current-step emphasis",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1515,7 +1515,7 @@
         "name": "switch",
         "type": "component",
         "title": "Switch",
-        "description": "A toggle switch primitive with track, thumb, and on/off state animation",
+        "description": "A tactile switch with a physical thumb and semantic on/off treatment",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1529,7 +1529,7 @@
         "name": "tabs",
         "type": "component",
         "title": "Tabs",
-        "description": "A tab primitive with segmented triggers, animated indicator, and active panel state",
+        "description": "A minimal tab primitive with an inset mint selection edge, open content hierarchy, and a seek-safe indicator",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1610,7 +1610,7 @@
         "name": "toast",
         "type": "component",
         "title": "Toast",
-        "description": "A toast notification primitive with slide-in, status dot, progress rail, and exit variables",
+        "description": "An Operator Black toast with a semantic success check, progress rail, and stack-origin motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1624,7 +1624,7 @@
         "name": "toggle-group",
         "type": "component",
         "title": "Toggle Group",
-        "description": "A segmented toggle group primitive with sliding active background and icon/text buttons",
+        "description": "A segmented toggle group with a recessed sliding selection indicator",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -1638,7 +1638,7 @@
         "name": "tooltip",
         "type": "component",
         "title": "Tooltip",
-        "description": "A tooltip primitive with trigger, floating label, arrow, and reveal animation",
+        "description": "An Operator Black tooltip with a technical trigger icon and origin-aware Soft Optical reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2074,7 +2074,7 @@
         "name": "alert",
         "type": "component",
         "title": "Alert",
-        "description": "A status alert primitive with icon, title, message, and entrance emphasis",
+        "description": "An Operator Black status alert with a matte surface, technical icon, title, and message",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2088,7 +2088,7 @@
         "name": "aspect-ratio",
         "type": "component",
         "title": "Aspect Ratio",
-        "description": "An aspect-ratio frame primitive for media, previews, and card thumbnails",
+        "description": "A matte aspect-ratio frame for media and previews with a compact technical dimension label",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2102,7 +2102,7 @@
         "name": "avatar",
         "type": "component",
         "title": "Avatar",
-        "description": "An avatar primitive with initials, status ring, and group-friendly sizing variables",
+        "description": "A matte initials avatar with a functional availability indicator and host-controlled sizing",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2116,7 +2116,7 @@
         "name": "badge",
         "type": "component",
         "title": "Badge",
-        "description": "A compact badge primitive for labels, counts, and status chips",
+        "description": "An Operator Black semantic badge for restrained success, warning, and neutral status labels",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2130,7 +2130,7 @@
         "name": "breadcrumb",
         "type": "component",
         "title": "Breadcrumb",
-        "description": "A breadcrumb primitive for compact path and hierarchy reveals",
+        "description": "A quiet path-navigation primitive with technical SVG separators and a strong current-page treatment",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2144,7 +2144,7 @@
         "name": "button-group",
         "type": "component",
         "title": "Button Group",
-        "description": "A segmented button group primitive for mode switches and toolbars",
+        "description": "A compact segmented action group with clear pressed-state emphasis",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2158,7 +2158,7 @@
         "name": "calendar",
         "type": "component",
         "title": "Calendar",
-        "description": "A compact calendar primitive with selected date and animated week rows",
+        "description": "A compact date grid with a recessed selected day and deterministic reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2172,7 +2172,7 @@
         "name": "card",
         "type": "component",
         "title": "Card",
-        "description": "A composable card primitive with header, metric row, content, and animated reveal hooks",
+        "description": "A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2186,7 +2186,7 @@
         "name": "carousel",
         "type": "component",
         "title": "Carousel",
-        "description": "A carousel primitive with stacked cards, active slide, and progress dots",
+        "description": "A restrained scene carousel with layered media surfaces, accessible position controls, and deterministic slide motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2200,7 +2200,7 @@
         "name": "chart",
         "type": "component",
         "title": "Chart",
-        "description": "A minimal chart primitive with animated bars and value labels",
+        "description": "An Operator Black categorical bar chart using the shared solid data palette and deterministic growth",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2214,7 +2214,7 @@
         "name": "collapsible",
         "type": "component",
         "title": "Collapsible",
-        "description": "A collapsible primitive with header, chevron rotation, and height reveal",
+        "description": "A compact disclosure surface with an accessible trigger, restrained chevron motion, and deterministic height reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2228,7 +2228,7 @@
         "name": "empty",
         "type": "component",
         "title": "Empty",
-        "description": "An empty-state primitive with icon, title, description, and call-to-action slot",
+        "description": "An Operator Black empty state using open space, a technical icon, clear copy, and neutral action",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2242,7 +2242,7 @@
         "name": "field",
         "type": "component",
         "title": "Field",
-        "description": "A field wrapper primitive with label, control slot, description, and error slot",
+        "description": "A labeled field wrapper with an accessible control and supporting description",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2256,7 +2256,7 @@
         "name": "hover-card",
         "type": "component",
         "title": "Hover Card",
-        "description": "A hover-card primitive with trigger chip, profile preview, and reveal transition",
+        "description": "An Operator Black hover card with a matte profile preview and origin-aware Soft Optical reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2270,7 +2270,7 @@
         "name": "input-group",
         "type": "component",
         "title": "Input Group",
-        "description": "An input group primitive with prefix, text field, and trailing action",
+        "description": "A compound input with technical prefix, editable value, and attached action",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2284,7 +2284,7 @@
         "name": "input-otp",
         "type": "component",
         "title": "Input OTP",
-        "description": "An OTP input primitive with slot reveal and active focus ring",
+        "description": "A segmented one-time-code field with tabular digits and an active slot",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2298,7 +2298,7 @@
         "name": "item",
         "type": "component",
         "title": "Item",
-        "description": "A list item primitive with leading icon, content stack, and trailing metadata",
+        "description": "A border-led interactive list row with neutral monogram, compact metadata, and deterministic hover state",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2312,7 +2312,7 @@
         "name": "kbd",
         "type": "component",
         "title": "Kbd",
-        "description": "A keyboard shortcut primitive with keycap depth and press animation",
+        "description": "A physical keyboard legend with machined keycap depth, system monospace type, and finite press motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2326,7 +2326,7 @@
         "name": "label",
         "type": "component",
         "title": "Label",
-        "description": "A label primitive for clear form and control annotations in video UI scenes",
+        "description": "A calm form label with compact requirement metadata for video UI scenes",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2340,7 +2340,7 @@
         "name": "menubar",
         "type": "component",
         "title": "Menubar",
-        "description": "A menubar primitive for compact app menus and editor chrome scenes",
+        "description": "A compact matte menubar for editor chrome with physical press response and restrained current-item emphasis",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2354,7 +2354,7 @@
         "name": "native-select",
         "type": "component",
         "title": "Native Select",
-        "description": "A native-select style primitive for compact dropdown controls in rendered UI",
+        "description": "A compact native select with a clear label, technical value, and focus state",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2368,7 +2368,7 @@
         "name": "navigation-menu",
         "type": "component",
         "title": "Navigation Menu",
-        "description": "A navigation menu primitive with active item and expandable preview panel",
+        "description": "An anchored navigation menu with a functional selection edge and opaque trigger-origin preview surface",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2382,7 +2382,7 @@
         "name": "pagination",
         "type": "component",
         "title": "Pagination",
-        "description": "A pagination primitive with active page, neighbor pages, and compact controls",
+        "description": "A tactile pagination row with 40px controls, a recessed current page, and deterministic press feedback",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2396,7 +2396,7 @@
         "name": "scroll-area",
         "type": "component",
         "title": "Scroll Area",
-        "description": "A scroll-area primitive with visible viewport, list content, and animated scrollbar thumb",
+        "description": "A focused matte viewport with spacing-led list content and synchronized seek-safe scrollbar motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2410,7 +2410,7 @@
         "name": "separator",
         "type": "component",
         "title": "Separator",
-        "description": "A separator primitive with horizontal and vertical variants for interface compositions",
+        "description": "A one-pixel structural separator with horizontal and vertical variants plus a seek-safe progress reveal",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2424,7 +2424,7 @@
         "name": "sidebar",
         "type": "component",
         "title": "Sidebar",
-        "description": "A sidebar primitive with active rail item, grouped links, and slide-in animation",
+        "description": "A single-plane sidebar with spacious link rhythm, logical-start selection, and soft deterministic entry motion",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2438,7 +2438,7 @@
         "name": "table",
         "type": "component",
         "title": "Table",
-        "description": "A compact table primitive for rendered status, usage, and comparison scenes",
+        "description": "A compact structured-data table with machined row rules, semantic statuses, and tabular time values",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2452,7 +2452,7 @@
         "name": "textarea",
         "type": "component",
         "title": "Textarea",
-        "description": "A multiline text field primitive with typed copy and helper text",
+        "description": "A resilient multiline field with a precise focus treatment and readable copy",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2466,7 +2466,7 @@
         "name": "toggle",
         "type": "component",
         "title": "Toggle",
-        "description": "A single toggle button primitive with pressed and unpressed states",
+        "description": "A tactile toggle button with distinct pressed and unpressed states",
         "tags": [
             "ui-primitive",
             "remocn-port",
@@ -2941,7 +2941,7 @@
         "name": "backdrop",
         "type": "component",
         "title": "Backdrop",
-        "description": "A composable glass backdrop layer for dialog, drawer, and modal scenes.",
+        "description": "An Operator Black flat dimming backdrop for dialog, drawer, sheet, and modal scenes.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3014,7 +3014,7 @@
         "name": "command-menu-item",
         "type": "component",
         "title": "Command Menu Item",
-        "description": "A focused command-row primitive with shortcut and selection states.",
+        "description": "An Operator Black command-row specimen with technical shortcuts and restrained selection state.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3098,7 +3098,7 @@
         "name": "dropdown-menu-item",
         "type": "component",
         "title": "Dropdown Menu Item",
-        "description": "A menu-row primitive with icon, label, hint, and active state.",
+        "description": "An Operator Black menu-row specimen showing idle, hover, selected, and disabled treatments.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3254,7 +3254,7 @@
         "name": "progress-steps",
         "type": "component",
         "title": "Progress Steps",
-        "description": "A multi-step progress indicator with active, pending, and done states.",
+        "description": "A vertical progress sequence with clear complete, current, and waiting states.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3266,7 +3266,7 @@
         "name": "registry",
         "type": "component",
         "title": "Registry",
-        "description": "A catalog registry card for showing installable component metadata.",
+        "description": "An Operator Black registry list for compact installable-component metadata.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3278,7 +3278,7 @@
         "name": "remocn-ui",
         "type": "component",
         "title": "Remocn UI",
-        "description": "A compact kit card that explains the remocn primitives now available in HyperFrames.",
+        "description": "An Operator Black summary of the UI primitive families available in HyperFrames.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3290,7 +3290,7 @@
         "name": "select-item",
         "type": "component",
         "title": "Select Item",
-        "description": "A select-row primitive with check mark, hint, and active highlight.",
+        "description": "A compact option list with selection check, technical hints, and disabled state.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3302,7 +3302,7 @@
         "name": "skeleton-block",
         "type": "component",
         "title": "Skeleton Block",
-        "description": "A skeleton loading block that resolves into real content.",
+        "description": "An Operator Black skeleton block built from deterministic solid loading rows.",
         "tags": [
             "ui-primitive",
             "remocn-port"
@@ -3369,19 +3369,6 @@
         ],
         "href": "/catalog/components/tool-menu-slide-in",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tool-menu-slide-in.png"
-    },
-    {
-        "name": "v0",
-        "type": "component",
-        "title": "v0",
-        "description": "A prompt-to-interface agent surface with generated component preview.",
-        "tags": [
-            "showcase",
-            "remocn-port",
-            "ai"
-        ],
-        "href": "/catalog/components/v0",
-        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/v0.png"
     },
     {
         "name": "x-follow-card",

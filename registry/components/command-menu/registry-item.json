@@ -3,7 +3,7 @@
   "name": "command-menu",
   "type": "hyperframes:component",
   "title": "Command Menu",
-  "description": "A command palette primitive with search row, grouped actions, and selected command highlight",
+  "description": "An Operator Black command palette with a recessed search field and mint selection check",
   "tags": ["ui-primitive", "remocn-port", "command-menu", "overlay"],
   "files": [
     {

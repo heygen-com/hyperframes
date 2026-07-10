@@ -3,7 +3,7 @@
   "name": "calendar",
   "type": "hyperframes:component",
   "title": "Calendar",
-  "description": "A compact calendar primitive with selected date and animated week rows",
+  "description": "A compact date grid with a recessed selected day and deterministic reveal",
   "tags": ["ui-primitive", "remocn-port", "calendar", "date"],
   "files": [
     {

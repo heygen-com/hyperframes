@@ -1,11 +1,11 @@
 <!--
-  Table - remocn-inspired UI primitive for HyperFrames.
+  Table - Operator Black structured-data primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<table data-hf-ui-root class="hf-ui-table">
+<table data-hf-ui-root class="hf-ui-table" aria-label="Render queue">
   <thead>
     <tr>
       <th>Scene</th>
@@ -16,17 +16,17 @@
   <tbody>
     <tr>
       <td>Intro</td>
-      <td>Ready</td>
+      <td data-status="ready">Ready</td>
       <td>0:04</td>
     </tr>
     <tr>
       <td>Demo</td>
-      <td>Rendering</td>
+      <td data-status="rendering">Rendering</td>
       <td>0:12</td>
     </tr>
     <tr>
       <td>CTA</td>
-      <td>Queued</td>
+      <td data-status="queued">Queued</td>
       <td>0:03</td>
     </tr>
   </tbody>
@@ -168,37 +168,54 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-table {
-    width: 520px;
+    width: min(520px, 100%);
+    table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
     overflow: hidden;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
-    box-shadow: 0 18px 48px rgba(24, 24, 27, 0.1);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-table th,
   .hf-ui-table td {
-    padding: 13px 16px;
-    text-align: left;
-    border-bottom: 1px solid #f1f1f4;
-    font-size: 14px;
+    padding: 12px clamp(8px, 3vw, 16px);
+    border-block-end: 1px solid var(--_hf-ui-border);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-regular);
+    text-align: start;
+    overflow-wrap: anywhere;
   }
   .hf-ui-table th {
-    background: #fafafa;
-    color: #71717a;
-    font-size: 12px;
-    font-weight: 850;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-muted);
+    font-size: 11px;
+    font-weight: var(--_hf-ui-weight-semibold);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
   .hf-ui-table tr:last-child td {
-    border-bottom: 0;
+    border-block-end: 0;
+  }
+  .hf-ui-table td:last-child {
+    font-family: var(--_hf-ui-font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-ui-table td[data-status="ready"] {
+    color: var(--_hf-ui-accent);
+  }
+  .hf-ui-table td[data-status="rendering"] {
+    color: var(--_hf-ui-warning);
+  }
+  .hf-ui-table td[data-status="queued"] {
+    color: var(--_hf-ui-text-muted);
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-table tbody tr', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.24, stagger: 0.08, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-table tbody tr', { opacity: 0.55, y: 4 }, { opacity: 1, y: 0, duration: 0.21, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->

@@ -3,7 +3,7 @@
   "name": "collapsible",
   "type": "hyperframes:component",
   "title": "Collapsible",
-  "description": "A collapsible primitive with header, chevron rotation, and height reveal",
+  "description": "A compact disclosure surface with an accessible trigger, restrained chevron motion, and deterministic height reveal",
   "tags": ["ui-primitive", "remocn-port", "collapsible", "disclosure"],
   "files": [
     {

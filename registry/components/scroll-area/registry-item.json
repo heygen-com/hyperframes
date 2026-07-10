@@ -3,7 +3,7 @@
   "name": "scroll-area",
   "type": "hyperframes:component",
   "title": "Scroll Area",
-  "description": "A scroll-area primitive with visible viewport, list content, and animated scrollbar thumb",
+  "description": "A focused matte viewport with spacing-led list content and synchronized seek-safe scrollbar motion",
   "tags": ["ui-primitive", "remocn-port", "scroll-area", "layout"],
   "files": [
     {

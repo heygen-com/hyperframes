@@ -3,7 +3,7 @@
   "name": "switch",
   "type": "hyperframes:component",
   "title": "Switch",
-  "description": "A toggle switch primitive with track, thumb, and on/off state animation",
+  "description": "A tactile switch with a physical thumb and semantic on/off treatment",
   "tags": ["ui-primitive", "remocn-port", "switch", "toggle"],
   "files": [
     {

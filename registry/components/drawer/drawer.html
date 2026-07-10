@@ -1,13 +1,19 @@
 <!--
-  Drawer - shadcn-style UI primitive for HyperFrames.
+  Drawer - Operator Black bottom-attached overlay primitive.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
 -->
 
-<div data-hf-ui-root class="hf-ui-drawer">
+<div
+  data-hf-ui-root
+  class="hf-ui-drawer"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="hf-ui-drawer-title"
+>
   <div class="hf-ui-drawer-handle"></div>
-  <h3>Export options</h3>
+  <h3 id="hf-ui-drawer-title">Export options</h3>
   <div class="hf-ui-drawer-row"><span>MP4 1080p</span><strong>Ready</strong></div>
   <div class="hf-ui-drawer-row"><span>Transparent WebM</span><strong>Beta</strong></div>
 </div>
@@ -148,43 +154,48 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-drawer {
-    width: 520px;
-    padding: 16px 24px 24px;
-    border: 1px solid #e4e4e7;
-    border-radius: 28px 28px 18px 18px;
-    background: #ffffff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
-    box-shadow: 0 -10px 70px rgba(0, 0, 0, 0.14);
+    width: min(520px, 100%);
+    padding: var(--_hf-ui-space-3) var(--_hf-ui-space-6) var(--_hf-ui-space-6);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-block-end: 0;
+    border-radius: var(--_hf-ui-radius-overlay) var(--_hf-ui-radius-overlay) 0 0;
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.3);
   }
   .hf-ui-drawer-handle {
     width: 56px;
-    height: 5px;
+    height: 4px;
     margin: 0 auto 22px;
     border-radius: 999px;
-    background: #d4d4d8;
+    background: var(--_hf-ui-control-border);
   }
   .hf-ui-drawer h3 {
     margin: 0 0 18px;
-    font-size: 24px;
+    color: var(--_hf-ui-text-strong);
+    font-size: 18px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-drawer-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 54px;
-    border-top: 1px solid #f4f4f5;
-    font-weight: 760;
+    min-height: var(--_hf-ui-control-height);
+    padding-inline: var(--_hf-ui-space-3);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-drawer-row strong {
-    color: #71717a;
-    font-size: 13px;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-medium) 12px/1 var(--_hf-ui-font-mono);
     text-transform: uppercase;
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-drawer', { y: 180, opacity: 0 }, { y: 0, opacity: 1, duration: 0.58, ease: 'back.out(1.15)' }, 0.35);
-  tl.fromTo('.hf-ui-drawer-row', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28, stagger: 0.08, ease: 'power2.out' }, 0.78);
+  tl.fromTo('.hf-ui-drawer', { y: '100%', opacity: 0 }, { y: 0, opacity: 1, duration: 0.36, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-ui-drawer-row', { opacity: 0 }, { opacity: 1, duration: 0.16, ease: 'power2.out' }, startTime + 0.2);
 -->

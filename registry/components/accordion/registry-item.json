@@ -3,7 +3,7 @@
   "name": "accordion",
   "type": "hyperframes:component",
   "title": "Accordion",
-  "description": "An accordion primitive with animated content reveal, chevron rotation, and stacked trigger rows",
+  "description": "A precise disclosure row with a machined edge, accessible expansion state, and deterministic reveal hooks",
   "tags": ["ui-primitive", "remocn-port", "accordion", "disclosure"],
   "files": [
     {

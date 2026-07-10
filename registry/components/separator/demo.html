@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,13 +68,15 @@
       <section class="hf-ui-demo-stage" aria-label="Separator specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Separator - remocn-inspired UI primitive for HyperFrames.
+  Separator - Operator Black structural rule primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-separator" role="separator"><span></span></div>
+<div data-hf-ui-root class="hf-ui-separator" role="separator" aria-orientation="horizontal">
+  <span></span>
+</div>
 
 <style>
   /* hf-ui:tokens:start */
@@ -212,16 +215,16 @@
   /* hf-ui:tokens:end */
   .hf-ui-separator {
     --hf-separator-progress: 1;
-    width: 360px;
+    width: min(360px, 100%);
     height: 1px;
-    background: #e4e4e7;
+    background: var(--_hf-ui-border);
     overflow: hidden;
   }
   .hf-ui-separator span {
     display: block;
     width: calc(var(--hf-separator-progress) * 100%);
     height: 100%;
-    background: #18181b;
+    background: var(--_hf-ui-control-border);
     transform-origin: left center;
   }
   .hf-ui-separator[data-orientation="vertical"] {
@@ -232,19 +235,23 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-separator', { '--hf-separator-progress': 0 }, { '--hf-separator-progress': 1, duration: 0.42, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-separator', { '--hf-separator-progress': 0 }, { '--hf-separator-progress': 1, duration: 0.42, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Separator</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
+        tl.set(".hf-ui-separator", { "--hf-separator-progress": 0, immediateRender: true }, 0);
+        tl.to(
+          ".hf-ui-separator",
+          { "--hf-separator-progress": 1, duration: 0.42, ease: "power3.out" },
+          0.6,
         );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["separator-demo"] = tl;
       </script>

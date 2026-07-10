@@ -3,7 +3,7 @@
   "name": "native-select",
   "type": "hyperframes:component",
   "title": "Native Select",
-  "description": "A native-select style primitive for compact dropdown controls in rendered UI",
+  "description": "A compact native select with a clear label, technical value, and focus state",
   "tags": ["ui-primitive", "remocn-port", "native-select", "control"],
   "files": [
     {

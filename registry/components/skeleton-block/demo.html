@@ -67,16 +67,22 @@
       <section class="hf-ui-demo-stage" aria-label="Skeleton Block specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Skeleton Block - remocn component ported to HyperFrames authoring format.
+  Skeleton Block - Operator Black solid loading rows.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div data-hf-ui-root class="hf-remocn-skeleton-block">
-  <div class="row"><span class="label">Skeleton Block</span><span class="hint">Ctrl K</span></div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+<div data-hf-ui-root class="hf-remocn-skeleton-block" role="status" aria-label="Loading content">
+  <div class="row" aria-hidden="true">
+    <span class="label">Loading title</span><span class="hint">Loading value</span>
+  </div>
+  <div class="row" aria-hidden="true">
+    <span class="label">Loading title</span><span class="hint">Loading value</span>
+  </div>
+  <div class="row" aria-hidden="true">
+    <span class="label">Loading title</span><span class="hint">Loading value</span>
+  </div>
 </div>
 
 <style>
@@ -215,57 +221,74 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-skeleton-block {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface);
+    --hf-row-x: 0px;
+    --hf-row-opacity: 1;
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
-  }
-  .hf-remocn-skeleton-block {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    width: min(420px, 100%);
+    padding: var(--_hf-ui-space-4);
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--hf-surface);
     display: grid;
-    gap: 12px;
+    gap: var(--_hf-ui-space-3);
   }
   .hf-remocn-skeleton-block .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
+    min-height: var(--_hf-ui-control-height);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 var(--_hf-ui-space-3);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-skeleton-block .label {
-    font-weight: 800;
+    width: 54%;
+    height: 10px;
+    overflow: hidden;
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-border);
+    color: transparent;
+    font-size: 1px;
   }
   .hf-remocn-skeleton-block .hint {
-    color: #71717a;
-    font-size: 13px;
+    width: 22%;
+    height: 10px;
+    overflow: hidden;
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-border-strong);
+    color: transparent;
+    font-size: 1px;
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-skeleton-block .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.set('.hf-remocn-skeleton-block', { opacity: 1 }, startTime);
+  tl.fromTo('.hf-remocn-skeleton-block .row', { '--hf-row-x': '-4px', '--hf-row-opacity': 0.5 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.16, stagger: 0.04, ease: 'power2.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Skeleton Block</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-remocn-skeleton-block .row",
+          { "--hf-row-x": "-4px", "--hf-row-opacity": 0.5 },
+          { "--hf-row-x": "0px", "--hf-row-opacity": 1, duration: 0.16, ease: "power2.out" },
+          0.2,
         );
+        tl.to(".hf-remocn-skeleton-block .row", { opacity: 0.68, duration: 0.16 }, 1.5);
+        tl.to(".hf-remocn-skeleton-block .row", { opacity: 1, duration: 0.16 }, 1.66);
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["skeleton-block-demo"] = tl;
       </script>

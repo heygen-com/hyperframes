@@ -3,7 +3,7 @@
   "name": "toggle",
   "type": "hyperframes:component",
   "title": "Toggle",
-  "description": "A single toggle button primitive with pressed and unpressed states",
+  "description": "A tactile toggle button with distinct pressed and unpressed states",
   "tags": ["ui-primitive", "remocn-port", "toggle", "control"],
   "files": [
     {

@@ -67,16 +67,16 @@
       <section class="hf-ui-demo-stage" aria-label="Backdrop specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Backdrop - remocn component ported to HyperFrames authoring format.
+  Backdrop - Operator Black flat dimming layer specimen.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
 <div data-hf-ui-root class="hf-remocn-backdrop">
-  <div class="row"><span class="label">Backdrop</span><span class="hint">Ctrl K</span></div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+  <div class="row"><span class="label">Timeline</span><span class="hint">00:04.00</span></div>
+  <div class="row"><span class="label">Layers</span><span class="hint">12 visible</span></div>
+  <div class="row"><span class="label">Export</span><span class="hint">1080p</span></div>
 </div>
 
 <style>
@@ -215,57 +215,81 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-backdrop {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface);
+    --hf-row-x: 0px;
+    --hf-row-opacity: 1;
+    --hf-backdrop-open: 0.62;
+    position: relative;
+    overflow: hidden;
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
-  }
-  .hf-remocn-backdrop {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    width: min(560px, 100%);
+    min-height: 300px;
+    padding: var(--_hf-ui-space-6);
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-canvas);
     display: grid;
-    gap: 12px;
+    align-content: center;
+    gap: var(--_hf-ui-space-3);
+  }
+  .hf-remocn-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, var(--hf-backdrop-open));
+    pointer-events: none;
   }
   .hf-remocn-backdrop .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
+    min-height: var(--_hf-ui-control-height);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--hf-surface);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 var(--_hf-ui-space-4);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
   .hf-remocn-backdrop .label {
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-backdrop .hint {
-    color: #71717a;
-    font-size: 13px;
+    color: var(--hf-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-backdrop .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.set('.hf-remocn-backdrop .row', { '--hf-row-x': '0px', '--hf-row-opacity': 1 }, startTime);
+  tl.fromTo('.hf-remocn-backdrop', { '--hf-backdrop-open': 0 }, { '--hf-backdrop-open': 0.62, duration: 0.16, ease: 'power2.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Backdrop</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-remocn-backdrop",
+          { "--hf-backdrop-open": 0 },
+          { "--hf-backdrop-open": 0.62, duration: 0.16, ease: "power2.out" },
+          0.3,
         );
+        tl.to(".hf-remocn-backdrop", { "--hf-backdrop-open": 0, duration: 0.14 }, 3.2);
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-remocn-backdrop",
+          { "--hf-backdrop-open": 0.62, duration: 0.21, ease: "power2.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["backdrop-demo"] = tl;
       </script>

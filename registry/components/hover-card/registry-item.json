@@ -3,7 +3,7 @@
   "name": "hover-card",
   "type": "hyperframes:component",
   "title": "Hover Card",
-  "description": "A hover-card primitive with trigger chip, profile preview, and reveal transition",
+  "description": "An Operator Black hover card with a matte profile preview and origin-aware Soft Optical reveal",
   "tags": ["ui-primitive", "remocn-port", "hover-card", "overlay"],
   "files": [
     {

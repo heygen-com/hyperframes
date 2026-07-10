@@ -1,5 +1,5 @@
 <!--
-  Button - shadcn-style UI primitive for HyperFrames.
+  Button - Operator Black action primitive for HyperFrames.
 
   States:
     idle | hover | press | loading | success
@@ -152,9 +152,9 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-button {
-    --hf-button-bg: #171717;
-    --hf-button-fg: #ffffff;
-    --hf-button-border: transparent;
+    --hf-button-bg: var(--_hf-ui-action);
+    --hf-button-fg: var(--_hf-ui-action-contrast);
+    --hf-button-border: var(--_hf-ui-action);
     --hf-button-scale: 1;
     --hf-button-y: 0px;
     position: relative;
@@ -162,38 +162,56 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-width: 148px;
-    height: 44px;
-    padding: 0 22px;
+    min-width: 128px;
+    height: var(--_hf-ui-control-height);
+    padding: 0 var(--_hf-ui-space-4);
     border: 1px solid var(--hf-button-border);
-    border-radius: 10px;
+    border-radius: var(--_hf-ui-radius-control);
     background: var(--hf-button-bg);
     color: var(--hf-button-fg);
-    font:
-      700 15px/1 Inter,
-      system-ui,
-      sans-serif;
-    letter-spacing: 0;
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
     transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
-    will-change: transform, background, color;
+    box-shadow: var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+    will-change: transform;
   }
   .hf-ui-button[data-variant="secondary"] {
-    --hf-button-bg: #f3f4f6;
-    --hf-button-fg: #171717;
+    --hf-button-bg: var(--_hf-ui-surface);
+    --hf-button-fg: var(--_hf-ui-text-strong);
+    --hf-button-border: var(--_hf-ui-control-border);
   }
   .hf-ui-button[data-variant="outline"] {
-    --hf-button-bg: #ffffff;
-    --hf-button-fg: #171717;
-    --hf-button-border: #d4d4d8;
-    box-shadow: none;
+    --hf-button-bg: transparent;
+    --hf-button-fg: var(--_hf-ui-text);
+    --hf-button-border: var(--_hf-ui-control-border);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-button[data-state="hover"] {
-    --hf-button-y: -1px;
+    --hf-button-border: var(--_hf-ui-control-border-hover);
   }
   .hf-ui-button[data-state="press"] {
     --hf-button-y: 1px;
-    --hf-button-scale: 0.97;
+    --hf-button-scale: 0.98;
+  }
+  .hf-ui-button:disabled,
+  .hf-ui-button[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-button:not(:disabled, [aria-disabled="true"]):hover {
+      --hf-button-border: var(--_hf-ui-control-border-hover);
+    }
+  }
+  .hf-ui-button:not(:disabled, [aria-disabled="true"]):active {
+    --hf-button-y: 1px;
+    --hf-button-scale: 0.98;
   }
   .hf-ui-button-spinner,
   .hf-ui-button-check {
@@ -201,20 +219,20 @@
     opacity: 0;
   }
   .hf-ui-button-spinner {
-    width: 17px;
-    height: 17px;
-    border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid color-mix(in srgb, currentColor 32%, transparent);
     border-top-color: currentColor;
-    border-radius: 999px;
+    border-radius: 50%;
   }
   .hf-ui-button-check {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     fill: none;
-    stroke: currentColor;
-    stroke-width: 2.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke: var(--_hf-ui-accent);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-button[data-state="loading"] .hf-ui-button-label,
   .hf-ui-button[data-state="success"] .hf-ui-button-label {
@@ -224,12 +242,23 @@
   .hf-ui-button[data-state="success"] .hf-ui-button-check {
     opacity: 1;
   }
+  @media (pointer: coarse) {
+    .hf-ui-button {
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-button::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
+  }
 </style>
 
 <!--
   Timeline integration:
 
-  tl.to(".hf-ui-button", { "--hf-button-y": "-1px", duration: 0.18, ease: "power2.out" }, startTime);
+  tl.to(".hf-ui-button", { "--hf-button-y": "1px", "--hf-button-scale": 0.98, duration: 0.12, ease: "power3.out" }, startTime);
   tl.set(".hf-ui-button", { attr: { "data-state": "loading" } }, startTime + 0.2);
   tl.to(".hf-ui-button-spinner", { rotate: 360, duration: 0.8, ease: "none" }, startTime + 0.2);
   tl.set(".hf-ui-button", { attr: { "data-state": "success" } }, startTime + 1.1);

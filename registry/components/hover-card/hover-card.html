@@ -1,13 +1,13 @@
 <!--
-  Hover Card - remocn-inspired UI primitive for HyperFrames.
+  Hover Card - Operator Black anchored profile preview.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
 <div data-hf-ui-root class="hf-ui-hover-card">
-  <button type="button">@maya</button>
-  <aside>
+  <button type="button" aria-expanded="true" aria-controls="hf-ui-hover-card-panel">@maya</button>
+  <aside id="hf-ui-hover-card-panel">
     <strong>Maya Chen</strong><span>Motion designer</span>
     <p>Building reusable launch scenes.</p>
   </aside>
@@ -151,16 +151,26 @@
   .hf-ui-hover-card {
     position: relative;
     display: inline-grid;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    width: min(260px, 100%);
+    color: var(--_hf-ui-text);
   }
   .hf-ui-hover-card button {
-    height: 38px;
+    justify-self: start;
+    height: var(--_hf-ui-control-height);
     padding: 0 14px;
-    border: 1px solid #e4e4e7;
-    border-radius: 999px;
-    background: #fff;
-    font-weight: 850;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
+    transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-hover-card button:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-hover-card button:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
   .hf-ui-hover-card aside {
     position: absolute;
@@ -168,18 +178,33 @@
     left: 0;
     display: grid;
     gap: 6px;
-    width: 260px;
+    width: 100%;
     padding: 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 13px;
-    background: #fff;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-hover-open, 1);
-    transform: translateY(var(--hf-hover-y, 0px));
-    box-shadow: 0 20px 56px rgba(24, 24, 27, 0.14);
+    transform: translateY(var(--hf-hover-y, 0px)) scale(var(--hf-hover-open, 1));
+    transform-origin: top left;
+    box-shadow: var(--_hf-ui-shadow-contact);
+    transition:
+      opacity var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit),
+      transform var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit);
+  }
+  .hf-ui-hover-card aside strong {
+    color: var(--_hf-ui-text-strong);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-hover-card span,
   .hf-ui-hover-card p {
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
+    overflow-wrap: anywhere;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-hover-card button {
+      min-height: var(--_hf-ui-hit-target);
+    }
   }
   .hf-ui-hover-card p {
     margin: 0;
@@ -189,5 +214,5 @@
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-hover-card aside', { '--hf-hover-open': 0, '--hf-hover-y': '10px' }, { '--hf-hover-open': 1, '--hf-hover-y': '0px', duration: 0.28, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-hover-card aside', { '--hf-hover-open': 0.98, '--hf-hover-y': '-4px', opacity: 0 }, { '--hf-hover-open': 1, '--hf-hover-y': '0px', opacity: 1, duration: 0.21, ease: 'power3.out' }, startTime);
 -->

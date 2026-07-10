@@ -1,11 +1,11 @@
 <!--
-  Chart - remocn-inspired UI primitive for HyperFrames.
+  Chart - Operator Black categorical data primitive.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<figure data-hf-ui-root class="hf-ui-chart">
+<figure data-hf-ui-root class="hf-ui-chart" role="img" aria-label="Weekly usage bar chart">
   <div>
     <span style="--h: 0.42"></span><span style="--h: 0.7"></span><span style="--h: 0.55"></span
     ><span style="--h: 0.88"></span>
@@ -151,13 +151,12 @@
   .hf-ui-chart {
     display: grid;
     gap: 12px;
-    width: 360px;
+    width: min(360px, 100%);
     padding: 20px;
-    border: 1px solid #e4e4e7;
-    border-radius: 14px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
   }
   .hf-ui-chart div {
     display: grid;
@@ -168,14 +167,27 @@
   }
   .hf-ui-chart span {
     display: block;
-    height: calc(var(--h) * var(--hf-chart-progress, 1) * 100%);
-    border-radius: 10px 10px 4px 4px;
-    background: linear-gradient(180deg, #0ea5e9, #2563eb);
+    height: calc(var(--h) * 100%);
+    border-radius: var(--_hf-ui-radius-control) var(--_hf-ui-radius-control) 0 0;
+    background: var(--_hf-ui-data-1);
+    transform: scaleY(var(--hf-chart-progress, 1));
+    transform-origin: bottom;
+    will-change: transform;
+  }
+  .hf-ui-chart span:nth-child(2) {
+    background: var(--_hf-ui-data-2);
+  }
+  .hf-ui-chart span:nth-child(3) {
+    background: var(--_hf-ui-data-3);
+  }
+  .hf-ui-chart span:nth-child(4) {
+    background: var(--_hf-ui-data-4);
   }
   .hf-ui-chart figcaption {
     margin: 0;
-    color: #71717a;
-    font-weight: 850;
+    color: var(--_hf-ui-text-muted);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
 </style>
 

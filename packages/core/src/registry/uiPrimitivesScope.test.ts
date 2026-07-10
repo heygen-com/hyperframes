@@ -82,8 +82,10 @@ const allowedStateLabels = new Set([
   "baseline",
   "checked",
   "closed",
+  "disabled",
   "hover",
   "idle",
+  "invalid",
   "loading",
   "not-applicable",
   "off",
@@ -93,6 +95,30 @@ const allowedStateLabels = new Set([
   "success",
   "unchecked",
 ]);
+
+const controlsAndFormsIds = [
+  "button",
+  "button-group",
+  "calendar",
+  "checkbox",
+  "combobox",
+  "field",
+  "input",
+  "input-group",
+  "input-otp",
+  "label",
+  "native-select",
+  "progress-steps",
+  "radio",
+  "select",
+  "select-item",
+  "slider",
+  "stepper",
+  "switch",
+  "textarea",
+  "toggle",
+  "toggle-group",
+] as const;
 
 interface Scope {
   version: number;
@@ -243,6 +269,44 @@ describe("Operator Black state inventory schema", () => {
       expect(record.renderCheckpoints.every((checkpoint) => checkpoint.trim().length > 0)).toBe(
         true,
       );
+    }
+  });
+
+  it("declares disabled and invalid support or an explicit not-applicable decision for controls", () => {
+    const inventory = readJson<StatesInventory>(statesPath);
+    const records = new Map(inventory.items.map((record) => [record.id, record]));
+
+    for (const id of controlsAndFormsIds) {
+      const record = records.get(id);
+      expect(record, `${id} state record`).toBeDefined();
+
+      for (const state of ["disabled", "invalid"] as const) {
+        const supported = record?.staticStates.includes(state);
+        const notApplicable = record?.liveControllerBehaviors.includes(`${state}: not-applicable`);
+        expect(
+          supported || notApplicable,
+          `${id} must support ${state} or declare ${state}: not-applicable`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("binds every declared render checkpoint to a named demo timeline label", () => {
+    const inventory = readJson<StatesInventory>(statesPath);
+
+    for (const record of inventory.items) {
+      const demo = readFileSync(
+        resolve(repoRoot, "registry/components", record.id, "demo.html"),
+        "utf8",
+      );
+
+      for (const checkpoint of record.renderCheckpoints) {
+        const escaped = checkpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        expect(
+          new RegExp(`\\.addLabel\\(\\s*["']${escaped}["']\\s*,`).test(demo),
+          `${record.id} demo is missing timeline label ${checkpoint}`,
+        ).toBe(true);
+      }
     }
   });
 });

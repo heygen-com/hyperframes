@@ -3,7 +3,7 @@
   "name": "kbd",
   "type": "hyperframes:component",
   "title": "Kbd",
-  "description": "A keyboard shortcut primitive with keycap depth and press animation",
+  "description": "A physical keyboard legend with machined keycap depth, system monospace type, and finite press motion",
   "tags": ["ui-primitive", "remocn-port", "kbd", "shortcut"],
   "files": [
     {

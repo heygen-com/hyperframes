@@ -66,8 +66,8 @@
       <!-- prettier-ignore -->
       <section class="hf-ui-demo-stage" aria-label="Spinner specimen" inert>
         <!-- hf-ui:canonical:start -->
-<!-- Spinner - rotate .hf-ui-spinner-ring from a paused GSAP timeline. -->
-<div data-hf-ui-root class="hf-ui-spinner">
+<!-- Spinner - finite Operator Black loading indicator for paused GSAP timelines. -->
+<div data-hf-ui-root class="hf-ui-spinner" role="status" aria-label="Rendering">
   <span class="hf-ui-spinner-ring"></span><span>Rendering</span>
 </div>
 <style>
@@ -209,32 +209,37 @@
     display: inline-flex;
     align-items: center;
     gap: 10px;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
-    font:
-      750 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
   }
   .hf-ui-spinner-ring {
     width: 22px;
     height: 22px;
-    border: 3px solid #e4e4e7;
-    border-top-color: #18181b;
+    border: 1.5px solid var(--_hf-ui-border-strong);
+    border-top-color: var(--_hf-ui-accent);
     border-radius: 999px;
   }
+  @media (prefers-reduced-motion: reduce) {
+    .hf-ui-spinner-ring {
+      transform: none !important;
+    }
+  }
 </style>
+
+<!--
+  Timeline integration:
+  tl.to('.hf-ui-spinner-ring', { rotation: 720, duration: 2.4, ease: 'none' }, startTime);
+-->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Spinner</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
-        );
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
+        tl.to(".hf-ui-spinner-ring", { rotation: 720, duration: 2.4, ease: "none" }, 0.3);
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["spinner-demo"] = tl;
       </script>

@@ -1,5 +1,5 @@
 <!--
-  Native Select - remocn-inspired UI primitive for HyperFrames.
+  Native Select - Operator Black native choice primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
@@ -10,8 +10,10 @@
   ><select>
     <option>1080p</option>
     <option>4K</option>
-  </select></label
->
+  </select>
+  <svg class="hf-ui-native-select-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="m7 9.5 5 5 5-5" /></svg
+></label>
 
 <style>
   /* hf-ui:tokens:start */
@@ -149,33 +151,74 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-native-select {
+    position: relative;
     display: grid;
     gap: 8px;
-    width: 240px;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(240px, 100%);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-native-select span {
     font-size: 13px;
-    font-weight: 800;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-native-select select {
-    height: 42px;
+    height: var(--_hf-ui-control-height);
     padding: 0 38px 0 13px;
-    border: 1px solid #d4d4d8;
-    border-radius: 10px;
-    background: #fff;
-    color: #18181b;
-    font:
-      750 15px/1 Inter,
-      system-ui,
-      sans-serif;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-mono);
     appearance: none;
-    box-shadow: 0 0 0 var(--hf-select-ring, 0px) rgba(24, 24, 27, 0.1);
+    box-shadow:
+      0 0 0 var(--hf-select-ring, 0px) color-mix(in srgb, var(--_hf-ui-accent) 36%, transparent),
+      var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transition:
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      box-shadow var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-native-select select:focus-visible {
+    border-color: var(--_hf-ui-accent);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-native-select select:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+  .hf-ui-native-select select[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
+  }
+  .hf-ui-native-select-icon {
+    position: absolute;
+    right: 12px;
+    bottom: 11px;
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: var(--_hf-ui-text-muted);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    pointer-events: none;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-native-select {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
+    .hf-ui-native-select::after {
+      position: absolute;
+      inset-inline: 0;
+      bottom: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      height: var(--_hf-ui-hit-target);
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-native-select select', { '--hf-select-ring': '0px' }, { '--hf-select-ring': '5px', duration: 0.24, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-native-select select', { '--hf-select-ring': '0px' }, { '--hf-select-ring': '2px', duration: 0.16, ease: 'power3.out' }, startTime);
 -->

@@ -3,7 +3,7 @@
   "name": "cursor",
   "type": "hyperframes:component",
   "title": "Cursor",
-  "description": "A cursor primitive with pointer travel, click ripple, and label callout for guided product demos",
+  "description": "A technical SVG pointer with guided travel, a functional click ripple, and a compact action callout",
   "tags": ["ui-primitive", "remocn-port", "cursor", "pointer"],
   "files": [
     {

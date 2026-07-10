@@ -162,7 +162,6 @@ const remainingRemocnComponents = [
   "terminal-simulator",
   "terminal-to-browser-deploy",
   "tool-menu-slide-in",
-  "v0",
   "x-follow-card",
   "x-followers-overview",
   "zoom-through-transition",
@@ -247,6 +246,22 @@ describe("remocn UI primitives catalog slice", () => {
 
   it("ports the remaining remocn showcase, effect, transition, and social entries", () => {
     expectRegisteredComponents(remainingRemocnComponents, ["remocn-port"]);
+  });
+
+  it("does not publish the retired v0 showcase component", () => {
+    const registry = readJson<{ items: { name: string }[] }>(
+      resolve(registryRoot, "registry.json"),
+    );
+    const catalogIndex = readJson<{ name: string }[]>(
+      resolve(repoRoot, "docs/public/catalog-index.json"),
+    );
+    const docsNavigation = readFileSync(resolve(repoRoot, "docs/docs.json"), "utf8");
+
+    expect(registry.items.some(({ name }) => name === "v0")).toBe(false);
+    expect(catalogIndex.some(({ name }) => name === "v0")).toBe(false);
+    expect(docsNavigation).not.toContain("catalog/components/v0");
+    expect(existsSync(resolve(registryRoot, "components/v0"))).toBe(false);
+    expect(existsSync(resolve(repoRoot, "docs/catalog/components/v0.mdx"))).toBe(false);
   });
 
   it("registers HyperFrames-native advanced motion primitives", () => {

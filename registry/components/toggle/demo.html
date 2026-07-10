@@ -67,7 +67,7 @@
       <section class="hf-ui-demo-stage" aria-label="Toggle specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Toggle - remocn-inspired UI primitive for HyperFrames.
+  Toggle - Operator Black pressed-state primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
@@ -214,38 +214,83 @@
     --hf-toggle-scale: 1;
     height: 40px;
     padding: 0 14px;
-    border: 1px solid #d4d4d8;
-    border-radius: 10px;
-    background: #fff;
-    color: #18181b;
-    font:
-      850 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
     transform: scale(var(--hf-toggle-scale));
+    box-shadow: var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
   }
   .hf-ui-toggle[aria-pressed="true"] {
-    background: #18181b;
-    color: #fff;
-    border-color: #18181b;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    border-color: var(--_hf-ui-border-strong);
+    box-shadow:
+      inset 0 -2px 0 var(--_hf-ui-accent),
+      var(--_hf-ui-shadow-inset);
+  }
+  .hf-ui-toggle:active {
+    --hf-toggle-scale: 0.98;
+    transform: translateY(1px) scale(var(--hf-toggle-scale));
+  }
+  .hf-ui-toggle:disabled,
+  .hf-ui-toggle[aria-disabled="true"] {
+    --hf-toggle-scale: 1;
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-toggle:hover {
+      border-color: var(--_hf-ui-control-border-hover);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-toggle {
+      position: relative;
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-toggle::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-toggle', { '--hf-toggle-scale': 0.9 }, { '--hf-toggle-scale': 1, duration: 0.24, ease: 'back.out(1.8)' }, startTime);
+  tl.fromTo('.hf-ui-toggle', { '--hf-toggle-scale': 0.98 }, { '--hf-toggle-scale': 1, duration: 0.16, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Toggle</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.addLabel("press", 0.9);
+        tl.to(
+          ".hf-ui-toggle",
+          { "--hf-toggle-scale": 0.98, y: 1, duration: 0.12, ease: "power3.out" },
+          0.9,
         );
+        tl.to(
+          ".hf-ui-toggle",
+          { "--hf-toggle-scale": 1, y: 0, duration: 0.12, ease: "power3.out" },
+          1.02,
+        );
+        tl.set(".hf-ui-toggle", { attr: { "aria-pressed": "false" } }, 1.5);
+        tl.set(".hf-ui-toggle", { attr: { "aria-pressed": "true" } }, 2.2);
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-toggle", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["toggle-demo"] = tl;
       </script>

@@ -3,7 +3,7 @@
   "name": "progress",
   "type": "hyperframes:component",
   "title": "Progress",
-  "description": "A progress bar primitive with label, percentage text, and deterministic fill animation",
+  "description": "An Operator Black progress primitive with a mint active segment and tabular percentage value",
   "tags": ["ui-primitive", "remocn-port", "progress", "status"],
   "files": [
     {

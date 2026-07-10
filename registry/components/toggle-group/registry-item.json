@@ -3,7 +3,7 @@
   "name": "toggle-group",
   "type": "hyperframes:component",
   "title": "Toggle Group",
-  "description": "A segmented toggle group primitive with sliding active background and icon/text buttons",
+  "description": "A segmented toggle group with a recessed sliding selection indicator",
   "tags": ["ui-primitive", "remocn-port", "toggle-group", "control"],
   "files": [
     {

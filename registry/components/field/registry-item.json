@@ -3,7 +3,7 @@
   "name": "field",
   "type": "hyperframes:component",
   "title": "Field",
-  "description": "A field wrapper primitive with label, control slot, description, and error slot",
+  "description": "A labeled field wrapper with an accessible control and supporting description",
   "tags": ["ui-primitive", "remocn-port", "field", "form"],
   "files": [
     {

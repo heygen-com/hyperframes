@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,13 +68,13 @@
       <section class="hf-ui-demo-stage" aria-label="Item specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Item - remocn-inspired UI primitive for HyperFrames.
+  Item - Operator Black list-row primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-item">
+<div data-hf-ui-root class="hf-ui-item" data-state="idle" role="button" tabindex="0">
   <span class="hf-ui-item-icon">A</span>
   <div>
     <strong>Audio synced</strong>
@@ -219,55 +220,85 @@
   /* hf-ui:tokens:end */
   .hf-ui-item {
     display: grid;
-    grid-template-columns: 42px 1fr auto;
+    grid-template-columns: 40px 1fr auto;
     align-items: center;
     gap: 12px;
-    width: 420px;
-    padding: 12px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(420px, 100%);
+    min-height: 64px;
+    padding: 8px;
+    border-block-end: 1px solid var(--_hf-ui-border);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    cursor: pointer;
+    transform: translateY(0) scale(1);
+    transition:
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-item strong {
+    color: var(--_hf-ui-text-strong);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-item-icon {
     display: grid;
     place-items: center;
-    width: 42px;
-    height: 42px;
-    border-radius: 10px;
-    background: #eef2ff;
-    color: #4338ca;
-    font-weight: 900;
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-item p {
     margin: 4px 0 0;
-    color: #71717a;
-    font-size: 13px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 12px;
   }
   .hf-ui-item em {
-    color: #71717a;
+    color: var(--_hf-ui-text-faint);
+    font: var(--_hf-ui-weight-medium) 11px/1 var(--_hf-ui-font-mono);
     font-style: normal;
-    font-size: 12px;
-    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .hf-ui-item:focus-visible {
+    border-radius: var(--_hf-ui-radius-control);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-item:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-item[data-state="hover"] {
+    background: var(--_hf-ui-surface-inset);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-item:hover {
+      background: var(--_hf-ui-surface-inset);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-item', { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.26, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-item', { opacity: 0.55, x: -4 }, { opacity: 1, x: 0, duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Item</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
-        );
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
+        tl.set(".hf-ui-item", { attr: { "data-state": "idle" } }, 0);
+        tl.addLabel("hover", 1);
+        tl.set(".hf-ui-item", { attr: { "data-state": "hover" } }, 1);
+        tl.set(".hf-ui-item", { attr: { "data-state": "idle" } }, 2.4);
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["item-demo"] = tl;
       </script>

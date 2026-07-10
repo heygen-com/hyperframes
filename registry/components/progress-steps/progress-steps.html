@@ -1,14 +1,20 @@
 <!--
-  Progress Steps - remocn component ported to HyperFrames authoring format.
+  Progress Steps - Operator Black vertical progress primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div data-hf-ui-root class="hf-remocn-progress-steps">
-  <div class="row"><span class="label">Progress Steps</span><span class="hint">Ctrl K</span></div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+<div data-hf-ui-root class="hf-remocn-progress-steps" role="list" aria-label="Publish progress">
+  <div class="row" role="listitem">
+    <span class="label">Import footage</span><span class="hint">Complete</span>
+  </div>
+  <div class="row" role="listitem" aria-current="step">
+    <span class="label">Adjust pacing</span><span class="hint">In progress</span>
+  </div>
+  <div class="row" role="listitem">
+    <span class="label">Export master</span><span class="hint">Waiting</span>
+  </div>
 </div>
 
 <style>
@@ -147,43 +153,96 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-progress-steps {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface);
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-remocn-progress-steps {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    position: relative;
+    width: min(360px, 100%);
+    padding-inline-start: 44px;
     display: grid;
-    gap: 12px;
+    gap: var(--_hf-ui-space-1);
+    counter-reset: hf-progress-step;
+  }
+  .hf-remocn-progress-steps::before,
+  .hf-remocn-progress-steps::after {
+    position: absolute;
+    inset-inline-start: 17px;
+    top: 20px;
+    width: 1px;
+    content: "";
+  }
+  .hf-remocn-progress-steps::before {
+    bottom: 20px;
+    background: var(--_hf-ui-border-strong);
+  }
+  .hf-remocn-progress-steps::after {
+    height: 50%;
+    background: var(--hf-accent);
   }
   .hf-remocn-progress-steps .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
+    position: relative;
+    min-height: 48px;
+    border-radius: var(--_hf-ui-radius-control);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 var(--_hf-ui-space-3);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
+    counter-increment: hf-progress-step;
+  }
+  .hf-remocn-progress-steps .row::before {
+    position: absolute;
+    inset-inline-start: -36px;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: 50%;
+    background: var(--hf-surface);
+    color: var(--hf-muted);
+    content: counter(hf-progress-step);
+    font: var(--_hf-ui-weight-semibold) 10px/1 var(--_hf-ui-font-mono);
+    transform: translateY(-50%);
+    z-index: 1;
+  }
+  .hf-remocn-progress-steps .row:first-child::before {
+    border-color: var(--hf-accent);
+    background: var(--hf-accent);
+    color: var(--_hf-ui-action-contrast);
+  }
+  .hf-remocn-progress-steps .row[aria-current="step"] {
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+  }
+  .hf-remocn-progress-steps .row[aria-current="step"]::before {
+    border-color: var(--hf-accent);
+    color: var(--hf-accent);
   }
   .hf-remocn-progress-steps .label {
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-progress-steps .hint {
-    color: #71717a;
-    font-size: 13px;
+    color: var(--hf-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
+  }
+  @media (pointer: coarse) {
+    .hf-remocn-progress-steps .row {
+      min-block-size: max(48px, var(--_hf-ui-hit-target));
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-progress-steps .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-remocn-progress-steps .row', { '--hf-row-x': '-4px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.16, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->

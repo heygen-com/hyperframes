@@ -1,5 +1,5 @@
 <!--
-  Sheet - shadcn-style UI primitive for HyperFrames.
+  Sheet - Operator Black right-attached overlay primitive.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -7,8 +7,8 @@
 
 <div data-hf-ui-root class="hf-ui-sheet-scene">
   <div class="hf-ui-sheet-overlay"></div>
-  <aside class="hf-ui-sheet">
-    <h3>Layer settings</h3>
+  <aside class="hf-ui-sheet" role="dialog" aria-modal="true" aria-labelledby="hf-ui-sheet-title">
+    <h3 id="hf-ui-sheet-title">Layer settings</h3>
     <p>Adjust timing, opacity, and easing for this composition element.</p>
     <div class="hf-ui-sheet-field"><span>Opacity</span><strong>82%</strong></div>
     <div class="hf-ui-sheet-field"><span>Duration</span><strong>4.0s</strong></div>
@@ -152,17 +152,17 @@
   /* hf-ui:tokens:end */
   .hf-ui-sheet-scene {
     position: relative;
-    width: 620px;
+    width: min(620px, 100%);
     height: 380px;
     overflow: hidden;
-    border-radius: 28px;
-    background: #e5e7eb;
-    font-family: Inter, system-ui, sans-serif;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-canvas);
   }
   .hf-ui-sheet-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(24, 24, 27, 0.42);
+    background: rgba(0, 0, 0, 0.58);
   }
   .hf-ui-sheet {
     position: absolute;
@@ -170,35 +170,48 @@
     top: 0;
     display: grid;
     align-content: start;
-    gap: 16px;
-    width: 320px;
+    gap: var(--_hf-ui-space-4);
+    width: min(320px, 100%);
     height: 100%;
-    padding: 32px;
-    background: #ffffff;
-    color: #18181b;
-    box-shadow: -20px 0 70px rgba(0, 0, 0, 0.18);
+    padding: var(--_hf-ui-space-8);
+    border-inline-start: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay) 0 0 var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
+    box-shadow: -14px 0 30px rgba(0, 0, 0, 0.32);
   }
   .hf-ui-sheet h3 {
     margin: 0;
-    font-size: 26px;
+    color: var(--_hf-ui-text-strong);
+    font-size: 18px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-sheet p {
     margin: 0 0 12px;
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
+    font-size: 14px;
     line-height: 1.45;
   }
   .hf-ui-sheet-field {
     display: flex;
     justify-content: space-between;
-    padding: 14px 0;
-    border-top: 1px solid #e4e4e7;
-    font-weight: 800;
+    min-height: var(--_hf-ui-control-height);
+    padding-inline: var(--_hf-ui-space-3);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
+  }
+  .hf-ui-sheet-field strong {
+    color: var(--_hf-ui-text-strong);
+    font-family: var(--_hf-ui-font-mono);
+    font-weight: var(--_hf-ui-weight-medium);
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-sheet-overlay', { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' }, 0.25);
-  tl.fromTo('.hf-ui-sheet', { x: 340 }, { x: 0, duration: 0.48, ease: 'power3.out' }, 0.38);
-  tl.fromTo('.hf-ui-sheet-field', { x: 20, opacity: 0 }, { x: 0, opacity: 1, duration: 0.24, stagger: 0.08, ease: 'power2.out' }, 0.78);
+  tl.fromTo('.hf-ui-sheet-overlay', { opacity: 0 }, { opacity: 1, duration: 0.24, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-sheet', { x: '100%' }, { x: 0, duration: 0.36, ease: 'power3.out' }, startTime);
+  tl.fromTo('.hf-ui-sheet-field', { opacity: 0 }, { opacity: 1, duration: 0.16, ease: 'power2.out' }, startTime + 0.2);
 -->

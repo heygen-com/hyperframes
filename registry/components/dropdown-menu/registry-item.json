@@ -3,7 +3,7 @@
   "name": "dropdown-menu",
   "type": "hyperframes:component",
   "title": "Dropdown Menu",
-  "description": "A dropdown menu primitive with trigger press, menu scale, item stagger, and keyboard-focus styling",
+  "description": "An Operator Black dropdown menu with origin-aware motion and a mint selection check",
   "tags": ["ui-primitive", "remocn-port", "dropdown-menu", "menu"],
   "files": [
     {

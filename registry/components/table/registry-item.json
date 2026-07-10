@@ -3,7 +3,7 @@
   "name": "table",
   "type": "hyperframes:component",
   "title": "Table",
-  "description": "A compact table primitive for rendered status, usage, and comparison scenes",
+  "description": "A compact structured-data table with machined row rules, semantic statuses, and tabular time values",
   "tags": ["ui-primitive", "remocn-port", "table", "data"],
   "files": [
     {

@@ -3,7 +3,7 @@
   "name": "backdrop",
   "type": "hyperframes:component",
   "title": "Backdrop",
-  "description": "A composable glass backdrop layer for dialog, drawer, and modal scenes.",
+  "description": "An Operator Black flat dimming backdrop for dialog, drawer, sheet, and modal scenes.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

@@ -3,7 +3,7 @@
   "name": "blur-in",
   "type": "hyperframes:component",
   "title": "Blur In",
-  "description": "A blur-in text primitive with word-level focus resolve for product reveal moments",
+  "description": "An Operator Black word-level content reveal that resolves its own text from controlled blur",
   "tags": ["ui-primitive", "remocn-port", "blur-in", "text-effect"],
   "files": [
     {

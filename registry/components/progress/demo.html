@@ -76,7 +76,9 @@
 <div
   data-hf-ui-root
   class="hf-ui-progress"
+  data-state="loading"
   role="progressbar"
+  aria-label="Rendering progress"
   aria-valuemin="0"
   aria-valuemax="100"
   aria-valuenow="64"
@@ -230,30 +232,36 @@
     display: grid;
     gap: 10px;
     width: min(360px, 100%);
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-progress-header {
     display: flex;
     justify-content: space-between;
     gap: 16px;
     font-size: 14px;
-    font-weight: 700;
+    font-weight: var(--_hf-ui-weight-medium);
     line-height: 1;
   }
   .hf-ui-progress-track {
     position: relative;
-    height: 10px;
+    height: 8px;
     border-radius: 999px;
-    background: #e4e4e7;
+    background: var(--_hf-ui-surface-inset);
     overflow: hidden;
   }
   .hf-ui-progress-bar {
-    width: calc(var(--hf-progress-value) * 100%);
+    width: 100%;
     height: 100%;
     border-radius: inherit;
-    background: #18181b;
-    will-change: width;
+    background: var(--_hf-ui-accent);
+    transform: scaleX(var(--hf-progress-value));
+    transform-origin: left;
+    will-change: transform;
+  }
+  .hf-ui-progress-header span:last-child {
+    color: var(--_hf-ui-text-strong);
+    font-family: var(--_hf-ui-font-mono);
+    font-variant-numeric: tabular-nums;
   }
 </style>
 
@@ -267,12 +275,16 @@
       <p class="hf-ui-demo-caption">Progress</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-progress",
+          { "--hf-progress-value": 0 },
+          { "--hf-progress-value": 0.64, duration: 1.2, ease: "power2.out" },
+          0.3,
         );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["progress-demo"] = tl;
       </script>

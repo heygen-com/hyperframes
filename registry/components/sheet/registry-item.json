@@ -3,7 +3,7 @@
   "name": "sheet",
   "type": "hyperframes:component",
   "title": "Sheet",
-  "description": "A side sheet primitive with overlay, title stack, and right-edge slide transition",
+  "description": "An Operator Black side sheet with a flat backdrop and right-edge Soft Optical motion",
   "tags": ["ui-primitive", "remocn-port", "sheet", "overlay"],
   "files": [
     {

@@ -1,5 +1,5 @@
 <!--
-  Label - remocn-inspired UI primitive for HyperFrames.
+  Label - Operator Black form label primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
@@ -146,23 +146,28 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    color: #18181b;
-    font:
-      800 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
   }
   .hf-ui-label span {
-    padding: 3px 7px;
-    border-radius: 999px;
-    background: #f4f4f5;
-    color: #71717a;
+    padding: 3px 6px;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-muted);
     font-size: 11px;
+    font-weight: var(--_hf-ui-weight-medium);
+    letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-label {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-label', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.24, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-label', { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.16, ease: 'power3.out' }, startTime);
 -->

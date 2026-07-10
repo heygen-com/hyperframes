@@ -3,7 +3,7 @@
   "name": "menubar",
   "type": "hyperframes:component",
   "title": "Menubar",
-  "description": "A menubar primitive for compact app menus and editor chrome scenes",
+  "description": "A compact matte menubar for editor chrome with physical press response and restrained current-item emphasis",
   "tags": ["ui-primitive", "remocn-port", "menubar", "navigation"],
   "files": [
     {

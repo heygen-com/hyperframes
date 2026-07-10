@@ -264,8 +264,7 @@
               "catalog/components/infinite-marquee",
               "catalog/components/landing-code-showcase",
               "catalog/components/pricing-tier-focus",
-              "catalog/components/terminal-to-browser-deploy",
-              "catalog/components/v0"
+              "catalog/components/terminal-to-browser-deploy"
             ]
           },
           {

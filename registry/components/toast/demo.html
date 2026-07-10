@@ -66,9 +66,11 @@
       <!-- prettier-ignore -->
       <section class="hf-ui-demo-stage" aria-label="Toast specimen" inert>
         <!-- hf-ui:canonical:start -->
-<!-- Toast - animate --hf-toast-progress from 0 to 1 for entry and rail fill. -->
-<div data-hf-ui-root class="hf-ui-toast" role="status">
-  <span class="hf-ui-toast-dot"></span>
+<!-- Toast - Operator Black success notice anchored to the logical top end. -->
+<div data-hf-ui-root class="hf-ui-toast" role="status" data-state="success">
+  <span class="hf-ui-toast-dot" data-status="success">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9" /></svg>
+  </span>
   <div><strong>Render complete</strong><span>Your video is ready to share.</span></div>
   <span class="hf-ui-toast-rail"></span>
 </div>
@@ -208,61 +210,98 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-toast {
-    --hf-toast-progress: 0;
+    --hf-toast-progress: 1;
     position: relative;
     display: grid;
-    grid-template-columns: 10px 1fr;
+    grid-template-columns: 24px 1fr;
     gap: 12px;
     width: min(360px, 100%);
     padding: 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
     opacity: var(--hf-toast-progress);
-    transform: translateY(calc((1 - var(--hf-toast-progress)) * 18px));
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+    transform: translateY(calc((1 - var(--hf-toast-progress)) * -8px))
+      scale(calc(0.98 + var(--hf-toast-progress) * 0.02));
+    transform-origin: top right;
+    box-shadow: var(--_hf-ui-shadow-contact);
+    transition:
+      opacity var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit),
+      transform var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit);
   }
   .hf-ui-toast-dot {
-    width: 10px;
-    height: 10px;
-    margin-top: 5px;
-    border-radius: 999px;
-    background: #16a34a;
-    box-shadow: 0 0 0 calc(var(--hf-toast-progress) * 8px) rgba(22, 163, 74, 0.12);
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-accent);
+  }
+  .hf-ui-toast-dot svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-toast strong {
     display: block;
-    font-size: 15px;
+    color: var(--_hf-ui-text-strong);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-toast span {
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
     font-size: 13px;
   }
   .hf-ui-toast-rail {
     position: absolute;
-    left: 16px;
-    right: 16px;
-    bottom: 9px;
-    height: 3px;
+    left: var(--_hf-ui-space-4);
+    right: var(--_hf-ui-space-4);
+    bottom: var(--_hf-ui-space-2);
+    height: 2px;
     border-radius: 999px;
-    background: #18181b;
+    background: var(--_hf-ui-accent);
     transform: scaleX(var(--hf-toast-progress));
     transform-origin: left;
   }
+  .hf-ui-toast[data-state="open"],
+  .hf-ui-toast[data-state="success"] {
+    transition-duration: var(--_hf-ui-duration-overlay-enter);
+    transition-timing-function: var(--_hf-ui-ease-enter);
+  }
 </style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-toast', { '--hf-toast-progress': 0 }, { '--hf-toast-progress': 1, duration: 0.21, ease: 'power3.out' }, startTime);
+-->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Toast</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-toast",
+          { "--hf-toast-progress": 0 },
+          { "--hf-toast-progress": 1, duration: 0.21, ease: "power3.out" },
+          0.2,
         );
+        tl.to(".hf-ui-toast", { "--hf-toast-progress": 0, duration: 0.14 }, 3.2);
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-ui-toast",
+          { "--hf-toast-progress": 1, duration: 0.21, ease: "power3.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["toast-demo"] = tl;
       </script>

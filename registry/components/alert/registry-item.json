@@ -3,7 +3,7 @@
   "name": "alert",
   "type": "hyperframes:component",
   "title": "Alert",
-  "description": "A status alert primitive with icon, title, message, and entrance emphasis",
+  "description": "An Operator Black status alert with a matte surface, technical icon, title, and message",
   "tags": ["ui-primitive", "remocn-port", "alert", "status"],
   "files": [
     {

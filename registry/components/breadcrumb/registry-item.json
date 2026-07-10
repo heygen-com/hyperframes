@@ -3,7 +3,7 @@
   "name": "breadcrumb",
   "type": "hyperframes:component",
   "title": "Breadcrumb",
-  "description": "A breadcrumb primitive for compact path and hierarchy reveals",
+  "description": "A quiet path-navigation primitive with technical SVG separators and a strong current-page treatment",
   "tags": ["ui-primitive", "remocn-port", "breadcrumb", "navigation"],
   "files": [
     {

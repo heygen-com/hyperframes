@@ -3,7 +3,7 @@
   "name": "aspect-ratio",
   "type": "hyperframes:component",
   "title": "Aspect Ratio",
-  "description": "An aspect-ratio frame primitive for media, previews, and card thumbnails",
+  "description": "A matte aspect-ratio frame for media and previews with a compact technical dimension label",
   "tags": ["ui-primitive", "remocn-port", "aspect-ratio", "layout"],
   "files": [
     {

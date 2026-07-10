@@ -73,8 +73,15 @@
 -->
 
 <div data-hf-ui-root class="hf-ui-popover">
-  <button class="hf-ui-popover-anchor" type="button">Format</button>
-  <div class="hf-ui-popover-panel" role="dialog">
+  <button
+    class="hf-ui-popover-anchor"
+    type="button"
+    aria-expanded="true"
+    aria-controls="hf-ui-popover-panel"
+  >
+    Format
+  </button>
+  <div class="hf-ui-popover-panel" id="hf-ui-popover-panel" role="dialog" aria-label="Text style">
     <strong>Text style</strong>
     <span>Choose how the caption should appear in this scene.</span>
   </div>
@@ -216,23 +223,29 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-popover {
-    --hf-popover-open: 0;
+    --hf-popover-open: 1;
     position: relative;
     display: inline-block;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-popover-anchor {
     height: 40px;
     padding: 0 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 10px;
-    background: #ffffff;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
     color: inherit;
-    font:
-      750 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-popover-anchor:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-popover-anchor:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
   .hf-ui-popover-panel {
     position: absolute;
@@ -242,36 +255,62 @@
     display: grid;
     gap: 7px;
     padding: 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #ffffff;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-popover-open);
-    transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * -8px))
-      scale(calc(0.96 + var(--hf-popover-open) * 0.04));
+    transform: translateX(-50%) translateY(calc((1 - var(--hf-popover-open)) * -4px))
+      scale(calc(0.98 + var(--hf-popover-open) * 0.02));
     transform-origin: top center;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--_hf-ui-shadow-contact);
     will-change: transform, opacity;
+    transition:
+      opacity var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit),
+      transform var(--_hf-ui-duration-overlay-exit) var(--_hf-ui-ease-exit);
   }
   .hf-ui-popover-panel strong {
-    font-size: 15px;
+    color: var(--_hf-ui-text-strong);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-popover-panel span {
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
     font-size: 13px;
     line-height: 1.45;
   }
+  @media (pointer: coarse) {
+    .hf-ui-popover-anchor {
+      min-height: var(--_hf-ui-hit-target);
+    }
+  }
 </style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-popover', { '--hf-popover-open': 0 }, { '--hf-popover-open': 1, duration: 0.21, ease: 'power3.out' }, startTime);
+-->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Popover</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-popover",
+          { "--hf-popover-open": 0 },
+          { "--hf-popover-open": 1, duration: 0.21, ease: "power3.out" },
+          0.3,
         );
+        tl.to(".hf-ui-popover", { "--hf-popover-open": 0, duration: 0.14 }, 3.2);
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-ui-popover",
+          { "--hf-popover-open": 1, duration: 0.21, ease: "power3.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["popover-demo"] = tl;
       </script>

@@ -3,7 +3,7 @@
   "name": "skeleton-block",
   "type": "hyperframes:component",
   "title": "Skeleton Block",
-  "description": "A skeleton loading block that resolves into real content.",
+  "description": "An Operator Black skeleton block built from deterministic solid loading rows.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

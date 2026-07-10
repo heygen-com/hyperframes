@@ -67,16 +67,25 @@
       <section class="hf-ui-demo-stage" aria-label="Field specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Field - remocn-inspired UI primitive for HyperFrames.
+  Field - Operator Black labeled field primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-field">
-  <label>Email</label>
-  <div class="hf-ui-field-control">maya@example.com</div>
-  <p>Used for render notifications.</p>
+<div data-hf-ui-root class="hf-ui-field" role="group" aria-labelledby="hf-ui-field-label">
+  <label id="hf-ui-field-label">Email</label>
+  <div
+    class="hf-ui-field-control"
+    role="textbox"
+    aria-labelledby="hf-ui-field-label"
+    aria-readonly="true"
+    aria-describedby="hf-ui-field-help"
+    tabindex="0"
+  >
+    maya@example.com
+  </div>
+  <p id="hf-ui-field-help">Used for render notifications.</p>
 </div>
 
 <style>
@@ -217,47 +226,81 @@
   .hf-ui-field {
     display: grid;
     gap: 8px;
-    width: 340px;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(340px, 100%);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-field label {
-    font-size: 14px;
-    font-weight: 850;
+    color: var(--_hf-ui-text-strong);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-field-control {
-    height: 42px;
+    height: var(--_hf-ui-control-height);
     display: flex;
     align-items: center;
     padding: 0 13px;
-    border: 1px solid #d4d4d8;
-    border-radius: 10px;
-    background: #fff;
-    font-weight: 700;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-regular);
+    box-shadow: var(--_hf-ui-shadow-inset);
+  }
+  .hf-ui-field-control:focus-visible {
+    border-color: var(--_hf-ui-accent);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-field-control[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
+  }
+  .hf-ui-field-control[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
   }
   .hf-ui-field p {
     margin: 0;
-    color: #71717a;
-    font-size: 13px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 12px;
     line-height: 1.35;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-field-control {
+      position: relative;
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-field-control::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-field > *', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.2, stagger: 0.05, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-field > *', { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.16, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Field</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.to(
+          ".hf-ui-field-control",
+          { borderColor: "var(--_hf-ui-accent)", duration: 0.16, ease: "power3.out" },
+          0.9,
         );
+        tl.to(
+          ".hf-ui-field-control",
+          { borderColor: "var(--_hf-ui-control-border)", duration: 0.16, ease: "power3.out" },
+          2.2,
+        );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-field", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["field-demo"] = tl;
       </script>

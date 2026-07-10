@@ -3,7 +3,7 @@
   "name": "caret",
   "type": "hyperframes:component",
   "title": "Caret",
-  "description": "A typing caret primitive with deterministic blink and typed-value reveal",
+  "description": "A matte command-field caret with finite blink timing and a deterministic typed-value reveal",
   "tags": ["ui-primitive", "remocn-port", "caret", "typing"],
   "files": [
     {

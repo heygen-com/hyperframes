@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,15 +68,16 @@
       <section class="hf-ui-demo-stage" aria-label="Navigation Menu specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Navigation Menu - remocn-inspired UI primitive for HyperFrames.
+  Navigation Menu - Operator Black anchored navigation primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<nav data-hf-ui-root class="hf-ui-navigation-menu">
-  <a>Product</a><a aria-current="page">Templates</a><a>Docs</a>
-  <div>Featured: launch video kit</div>
+<nav data-hf-ui-root class="hf-ui-navigation-menu" aria-label="Primary navigation">
+  <a href="#product">Product</a><a href="#templates" aria-current="page">Templates</a
+  ><a href="#docs">Docs</a>
+  <div role="region" aria-label="Featured resource">Featured: launch video kit</div>
 </nav>
 
 <style>
@@ -215,52 +217,102 @@
   /* hf-ui:tokens:end */
   .hf-ui-navigation-menu {
     position: relative;
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
-    padding: 5px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(300px, 100%);
+    padding: 0;
+    border-block-end: 1px solid var(--_hf-ui-border);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-navigation-menu a {
-    padding: 10px 13px;
-    border-radius: 9px;
-    font-weight: 850;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--_hf-ui-control-height);
+    padding: 0 12px;
+    border-radius: var(--_hf-ui-radius-control) var(--_hf-ui-radius-control) 0 0;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
+    text-decoration: none;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transform: translateY(0) scale(1);
+    transition:
+      color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-navigation-menu [aria-current="page"] {
-    background: #f4f4f5;
+    color: var(--_hf-ui-text-strong);
+    box-shadow: inset 0 -2px 0 var(--_hf-ui-accent);
+  }
+  .hf-ui-navigation-menu a:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-navigation-menu a:active {
+    transform: translateY(1px) scale(0.98);
   }
   .hf-ui-navigation-menu div {
     position: absolute;
-    top: 54px;
-    left: 0;
-    width: 280px;
-    padding: 14px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
-    box-shadow: 0 20px 56px rgba(24, 24, 27, 0.12);
-    font-weight: 800;
+    inset-block-start: 48px;
+    inset-inline-start: 0;
+    width: 100%;
+    padding: 16px;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
+    box-shadow: var(--_hf-ui-shadow-contact);
+    transform-origin: top center;
+    overflow-wrap: anywhere;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-navigation-menu a:hover {
+      color: var(--_hf-ui-text);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-navigation-menu a::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-navigation-menu div', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.26, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-navigation-menu div', { opacity: 0, y: -4, scale: 0.98, filter: 'blur(1.5px)' }, { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Navigation Menu</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-navigation-menu div",
+          { opacity: 0, y: -4, scale: 0.98, filter: "blur(1.5px)" },
+          {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            filter: "blur(0px)",
+            duration: 0.21,
+            ease: "power3.out",
+          },
+          0.6,
         );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["navigation-menu-demo"] = tl;
       </script>

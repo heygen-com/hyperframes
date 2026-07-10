@@ -8,7 +8,9 @@
 <div
   data-hf-ui-root
   class="hf-ui-progress"
+  data-state="loading"
   role="progressbar"
+  aria-label="Rendering progress"
   aria-valuemin="0"
   aria-valuemax="100"
   aria-valuenow="64"
@@ -162,30 +164,36 @@
     display: grid;
     gap: 10px;
     width: min(360px, 100%);
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-progress-header {
     display: flex;
     justify-content: space-between;
     gap: 16px;
     font-size: 14px;
-    font-weight: 700;
+    font-weight: var(--_hf-ui-weight-medium);
     line-height: 1;
   }
   .hf-ui-progress-track {
     position: relative;
-    height: 10px;
+    height: 8px;
     border-radius: 999px;
-    background: #e4e4e7;
+    background: var(--_hf-ui-surface-inset);
     overflow: hidden;
   }
   .hf-ui-progress-bar {
-    width: calc(var(--hf-progress-value) * 100%);
+    width: 100%;
     height: 100%;
     border-radius: inherit;
-    background: #18181b;
-    will-change: width;
+    background: var(--_hf-ui-accent);
+    transform: scaleX(var(--hf-progress-value));
+    transform-origin: left;
+    will-change: transform;
+  }
+  .hf-ui-progress-header span:last-child {
+    color: var(--_hf-ui-text-strong);
+    font-family: var(--_hf-ui-font-mono);
+    font-variant-numeric: tabular-nums;
   }
 </style>
 

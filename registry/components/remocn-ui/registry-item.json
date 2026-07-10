@@ -3,7 +3,7 @@
   "name": "remocn-ui",
   "type": "hyperframes:component",
   "title": "Remocn UI",
-  "description": "A compact kit card that explains the remocn primitives now available in HyperFrames.",
+  "description": "An Operator Black summary of the UI primitive families available in HyperFrames.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

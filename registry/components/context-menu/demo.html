@@ -67,19 +67,30 @@
       <section class="hf-ui-demo-stage" aria-label="Context Menu specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Context Menu - shadcn-style UI primitive for HyperFrames.
+  Context Menu - Operator Black pointer-anchored menu.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
 -->
 
 <div data-hf-ui-root class="hf-ui-context-scene">
-  <div class="hf-ui-context-cursor"></div>
-  <div class="hf-ui-context-menu">
-    <div class="hf-ui-context-item is-active"><span>Duplicate</span><kbd>D</kbd></div>
-    <div class="hf-ui-context-item"><span>Rename</span><kbd>R</kbd></div>
+  <svg class="hf-ui-context-cursor" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="m5 3 13 10-7 1-3 6L5 3Z" />
+  </svg>
+  <div class="hf-ui-context-menu" role="menu" aria-label="Scene actions">
+    <div class="hf-ui-context-item is-active" role="menuitem" tabindex="0">
+      <svg class="hf-ui-context-check" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m6 12 4 4 8-9" />
+      </svg>
+      <span>Duplicate</span><kbd>D</kbd>
+    </div>
+    <div class="hf-ui-context-item" role="menuitem" tabindex="-1">
+      <span>Rename</span><kbd>R</kbd>
+    </div>
     <div class="hf-ui-context-separator"></div>
-    <div class="hf-ui-context-item danger"><span>Delete</span><kbd>Del</kbd></div>
+    <div class="hf-ui-context-item danger" role="menuitem" tabindex="-1">
+      <span>Delete</span><kbd>Del</kbd>
+    </div>
   </div>
 </div>
 
@@ -220,78 +231,133 @@
   /* hf-ui:tokens:end */
   .hf-ui-context-scene {
     position: relative;
-    width: 360px;
+    width: min(360px, 100%);
     height: 260px;
-    font-family: Inter, system-ui, sans-serif;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-context-cursor {
     position: absolute;
-    left: 54px;
-    top: 38px;
+    inset-block-start: 38px;
+    inset-inline-start: 54px;
     width: 24px;
-    height: 34px;
-    clip-path: polygon(0 0, 0 100%, 9px 78%, 16px 96%, 22px 93%, 15px 74%, 34px 74%);
-    background: #18181b;
-    filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.22));
+    height: 24px;
+    fill: var(--_hf-ui-surface-raised);
+    stroke: var(--_hf-ui-text-strong);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-context-menu {
     position: absolute;
-    left: 94px;
-    top: 62px;
-    width: 230px;
-    padding: 8px;
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #ffffff;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.14);
+    inset-block-start: 62px;
+    inset-inline-start: clamp(8px, calc(100% - 246px), 94px);
+    width: min(230px, calc(100% - 16px));
+    padding: var(--_hf-ui-space-2);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    box-shadow: var(--_hf-ui-shadow-contact);
     transform-origin: top left;
   }
   .hf-ui-context-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
     align-items: center;
     justify-content: space-between;
-    height: 38px;
+    min-height: var(--_hf-ui-control-height);
     padding: 0 10px;
-    border-radius: 10px;
-    color: #18181b;
-    font-size: 14px;
-    font-weight: 760;
+    border-radius: var(--_hf-ui-radius-control);
+    color: var(--_hf-ui-text);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-context-item.is-active {
-    background: #18181b;
-    color: #ffffff;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    box-shadow: inset 2px 0 0 var(--_hf-ui-accent);
   }
   .hf-ui-context-item.danger {
-    color: #dc2626;
+    color: var(--_hf-ui-danger);
   }
   .hf-ui-context-separator {
     height: 1px;
     margin: 6px;
-    background: #e4e4e7;
+    background: var(--_hf-ui-border);
   }
   .hf-ui-context-item kbd {
     color: inherit;
-    opacity: 0.52;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
+  }
+  .hf-ui-context-item > span {
+    grid-column: 2;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .hf-ui-context-check {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: transparent;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-ui-context-item.is-active .hf-ui-context-check {
+    stroke: var(--_hf-ui-accent);
+  }
+  .hf-ui-context-item:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  [dir="rtl"] .hf-ui-context-menu {
+    transform-origin: top right;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-context-item {
+      min-height: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-context-cursor', { x: -36, y: -18, opacity: 0 }, { x: 0, y: 0, opacity: 1, duration: 0.36, ease: 'power2.out' }, 0.25);
-  tl.fromTo('.hf-ui-context-menu', { opacity: 0, scale: 0.88 }, { opacity: 1, scale: 1, duration: 0.26, ease: 'back.out(1.8)' }, 0.62);
-  tl.fromTo('.hf-ui-context-item', { x: -10, opacity: 0 }, { x: 0, opacity: 1, duration: 0.2, stagger: 0.05, ease: 'power2.out' }, 0.75);
+  tl.fromTo('.hf-ui-context-cursor', { x: -12, y: -8, opacity: 0 }, { x: 0, y: 0, opacity: 1, duration: 0.16, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-context-menu', { opacity: 0, x: -4, y: -4, scale: 0.98 }, { opacity: 1, x: 0, y: 0, scale: 1, duration: 0.21, ease: 'power3.out' }, startTime + 0.16);
+  tl.set('.hf-ui-context-item', { opacity: 1 }, startTime + 0.16);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Context Menu</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-context-cursor",
+          { x: -12, y: -8, opacity: 0 },
+          { x: 0, y: 0, opacity: 1, duration: 0.16, ease: "power2.out" },
+          0.2,
         );
+        tl.fromTo(
+          ".hf-ui-context-menu",
+          { x: -4, y: -4, opacity: 0, scale: 0.98 },
+          { x: 0, y: 0, opacity: 1, scale: 1, duration: 0.21, ease: "power3.out" },
+          0.36,
+        );
+        tl.to(
+          ".hf-ui-context-menu",
+          { x: -2, y: -2, opacity: 0, scale: 0.99, duration: 0.14 },
+          3.2,
+        );
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-ui-context-menu",
+          { x: 0, y: 0, opacity: 1, scale: 1, duration: 0.21, ease: "power3.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["context-menu-demo"] = tl;
       </script>

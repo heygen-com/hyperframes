@@ -1,13 +1,14 @@
 <!--
-  Pagination - remocn-inspired UI primitive for HyperFrames.
+  Pagination - Operator Black navigation primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
 <nav data-hf-ui-root class="hf-ui-pagination" aria-label="Pagination">
-  <button type="button">Prev</button><a>1</a><a aria-current="page">2</a><a>3</a
-  ><button type="button">Next</button>
+  <button type="button" aria-label="Previous page">Prev</button><a href="#page-1">1</a
+  ><a href="#page-2" aria-current="page">2</a><a href="#page-3">3</a
+  ><button type="button" aria-label="Next page">Next</button>
 </nav>
 
 <style>
@@ -147,29 +148,65 @@
   /* hf-ui:tokens:end */
   .hf-ui-pagination {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    font-family: Inter, system-ui, sans-serif;
+    justify-content: center;
+    gap: 4px;
+    max-width: 100%;
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-pagination :is(a, button) {
+    position: relative;
     display: grid;
     place-items: center;
-    min-width: 38px;
-    height: 38px;
-    padding: 0 11px;
-    border: 1px solid #e4e4e7;
-    border-radius: 9px;
-    background: #fff;
-    color: #18181b;
-    font-weight: 800;
+    min-width: var(--_hf-ui-control-height);
+    height: var(--_hf-ui-control-height);
+    padding: 0 12px;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    box-shadow: var(--_hf-ui-shadow-inset);
+    cursor: pointer;
+    transform: translateY(0) scale(1);
+    transition:
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-pagination [aria-current="page"] {
-    background: #18181b;
-    color: #fff;
+    border-color: var(--_hf-ui-border-strong);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    box-shadow:
+      inset 0 -2px 0 var(--_hf-ui-accent),
+      var(--_hf-ui-shadow-inset);
+  }
+  .hf-ui-pagination :is(a, button):focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-pagination :is(a, button):active {
+    transform: translateY(1px) scale(0.98);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-pagination :is(a, button):hover {
+      border-color: var(--_hf-ui-control-border-hover);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-pagination :is(a, button)::before {
+      position: absolute;
+      inset: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-pagination > *', { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.2, stagger: 0.035, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-pagination > *', { opacity: 0.55, y: 4 }, { opacity: 1, y: 0, duration: 0.21, stagger: 0.04, ease: 'power3.out' }, startTime);
 -->

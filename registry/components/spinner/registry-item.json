@@ -3,7 +3,7 @@
   "name": "spinner",
   "type": "hyperframes:component",
   "title": "Spinner",
-  "description": "A deterministic loading spinner primitive with ring, sweep, and optional status label",
+  "description": "An Operator Black finite loading spinner with a 1.5px progress ring and status label",
   "tags": ["ui-primitive", "remocn-port", "spinner", "loading"],
   "files": [
     {

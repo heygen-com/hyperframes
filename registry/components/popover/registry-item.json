@@ -3,7 +3,7 @@
   "name": "popover",
   "type": "hyperframes:component",
   "title": "Popover",
-  "description": "A small anchored popover primitive with origin-aware scale and content fade for inline controls",
+  "description": "An Operator Black anchored popover with a matte surface and trigger-origin Soft Optical motion",
   "tags": ["ui-primitive", "remocn-port", "popover", "overlay"],
   "files": [
     {

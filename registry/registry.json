@@ -1172,10 +1172,6 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "v0",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "x-follow-card",
       "type": "hyperframes:component"
     },

@@ -1,11 +1,11 @@
 <!--
-  Scroll Area - remocn-inspired UI primitive for HyperFrames.
+  Scroll Area - Operator Black bounded-content primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-scroll-area">
+<div data-hf-ui-root class="hf-ui-scroll-area" role="region" tabindex="0" aria-label="Scene list">
   <div class="hf-ui-scroll-content">
     <p>Intro scene</p>
     <p>Feature sweep</p>
@@ -152,41 +152,52 @@
   /* hf-ui:tokens:end */
   .hf-ui-scroll-area {
     position: relative;
-    width: 320px;
+    width: min(320px, 100%);
     height: 190px;
     padding: 16px 28px 16px 16px;
     overflow: hidden;
-    border: 1px solid #e4e4e7;
-    border-radius: 13px;
-    background: #fff;
-    font-family: Inter, system-ui, sans-serif;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-scroll-content {
     display: grid;
-    gap: 10px;
+    gap: 4px;
     transform: translateY(var(--hf-scroll-y, 0px));
+    will-change: transform;
   }
   .hf-ui-scroll-content p {
     margin: 0;
-    padding: 12px;
-    border-radius: 10px;
-    background: #f4f4f5;
-    color: #18181b;
-    font-weight: 750;
+    min-height: 36px;
+    padding: 10px 12px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
+  }
+  .hf-ui-scroll-content p:first-child {
+    color: var(--_hf-ui-text-strong);
   }
   .hf-ui-scroll-thumb {
     position: absolute;
-    right: 9px;
-    top: 16px;
-    width: 5px;
+    inset-block-start: 16px;
+    inset-inline-end: 9px;
+    width: 4px;
     height: 52px;
     border-radius: 999px;
-    background: #a1a1aa;
+    background: var(--_hf-ui-control-border);
     transform: translateY(var(--hf-scroll-thumb-y, 0px));
+    will-change: transform;
+  }
+  .hf-ui-scroll-area:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.to('.hf-ui-scroll-content', { '--hf-scroll-y': '-76px', duration: 0.8, ease: 'power2.inOut' }, startTime); tl.to('.hf-ui-scroll-thumb', { '--hf-scroll-thumb-y': '62px', duration: 0.8, ease: 'power2.inOut' }, startTime);
+  tl.to('.hf-ui-scroll-content', { '--hf-scroll-y': '-64px', duration: 0.8, ease: 'power3.out' }, startTime); tl.to('.hf-ui-scroll-thumb', { '--hf-scroll-thumb-y': '62px', duration: 0.8, ease: 'power3.out' }, startTime);
 -->

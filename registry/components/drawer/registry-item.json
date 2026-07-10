@@ -3,7 +3,7 @@
   "name": "drawer",
   "type": "hyperframes:component",
   "title": "Drawer",
-  "description": "A bottom drawer primitive with handle, stacked rows, and spring-like slide-in motion",
+  "description": "An Operator Black bottom drawer with matte rows and edge-attached Soft Optical motion",
   "tags": ["ui-primitive", "remocn-port", "drawer", "overlay"],
   "files": [
     {

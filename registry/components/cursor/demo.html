@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,7 +68,7 @@
       <section class="hf-ui-demo-stage" aria-label="Cursor specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Cursor - shadcn-style UI primitive for HyperFrames.
+  Cursor - Operator Black guided-pointer primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -76,7 +77,11 @@
 <div data-hf-ui-root class="hf-ui-cursor-stage">
   <div class="hf-ui-cursor-target">Generate</div>
   <div class="hf-ui-cursor-ripple"></div>
-  <div class="hf-ui-cursor-pointer"></div>
+  <div class="hf-ui-cursor-pointer">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 3v17l4.5-4 3.5 7 3.4-1.7-3.3-6.4H20Z" />
+    </svg>
+  </div>
   <div class="hf-ui-cursor-label">Click</div>
 </div>
 
@@ -217,76 +222,111 @@
   /* hf-ui:tokens:end */
   .hf-ui-cursor-stage {
     position: relative;
-    width: 420px;
+    width: min(420px, 100%);
     height: 240px;
-    font-family: Inter, system-ui, sans-serif;
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-cursor-target {
     position: absolute;
-    left: 170px;
-    top: 84px;
+    left: calc(60% - 75px);
+    top: 88px;
     display: grid;
     place-items: center;
     width: 150px;
-    height: 56px;
-    border-radius: 14px;
-    background: #18181b;
-    color: #ffffff;
-    font-weight: 850;
+    height: var(--_hf-ui-control-height);
+    border: 1px solid var(--_hf-ui-action);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-action);
+    color: var(--_hf-ui-action-contrast);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-cursor-pointer {
     position: absolute;
     left: 70px;
     top: 42px;
-    width: 28px;
-    height: 40px;
-    clip-path: polygon(0 0, 0 100%, 10px 78%, 18px 98%, 25px 95%, 17px 74%, 38px 74%);
-    background: #ffffff;
-    filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.32));
+    width: 24px;
+    height: 24px;
+    color: var(--_hf-ui-text-strong);
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.32));
+  }
+  .hf-ui-cursor-pointer svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: var(--_hf-ui-surface-raised);
+    stroke: var(--_hf-ui-canvas);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-cursor-ripple {
     position: absolute;
-    left: 240px;
-    top: 112px;
-    width: 20px;
-    height: 20px;
-    border: 2px solid #18181b;
+    left: 60%;
+    top: 108px;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--_hf-ui-text-strong);
     border-radius: 999px;
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.2);
+    transform: translate(-50%, -50%) scale(0.55);
   }
   .hf-ui-cursor-label {
     position: absolute;
     left: 64px;
     top: 88px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: #ffffff;
-    color: #18181b;
-    font-size: 13px;
-    font-weight: 850;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+    padding: 7px 10px;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 11px/1 var(--_hf-ui-font-mono);
+    box-shadow: var(--_hf-ui-shadow-contact);
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-cursor-pointer', { x: 0, y: 0, opacity: 0 }, { x: 154, y: 74, opacity: 1, duration: 0.82, ease: 'power3.inOut' }, 0.25);
-  tl.fromTo('.hf-ui-cursor-label', { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out' }, 0.35);
-  tl.fromTo('.hf-ui-cursor-ripple', { opacity: 0.75, scale: 0.2 }, { opacity: 0, scale: 2.7, duration: 0.54, ease: 'power2.out' }, 1.02);
-  tl.to('.hf-ui-cursor-target', { scale: 0.96, duration: 0.1, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.02);
+  tl.fromTo('.hf-ui-cursor-pointer', { x: 0, y: 0, opacity: 0 }, { x: 154, y: 74, opacity: 1, duration: 0.72, ease: 'power3.out' }, 0.25);
+  tl.fromTo('.hf-ui-cursor-label', { opacity: 0, y: 4, scale: 0.98 }, { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: 'power3.out' }, 0.35);
+  tl.fromTo('.hf-ui-cursor-ripple', { opacity: 0.75, scale: 0.55 }, { opacity: 0, scale: 2.1, duration: 0.42, ease: 'power3.out' }, 1.02);
+  tl.to('.hf-ui-cursor-target', { scale: 0.98, y: 1, duration: 0.12, ease: 'power3.out' }, 1.02);
+  tl.to('.hf-ui-cursor-target', { scale: 1, y: 0, duration: 0.12, ease: 'power3.out' }, 1.14);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Cursor</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-cursor-pointer",
+          { x: 0, y: 0, opacity: 0 },
+          { x: 154, y: 74, opacity: 1, duration: 0.72, ease: "power3.out" },
+          0.25,
         );
+        tl.fromTo(
+          ".hf-ui-cursor-label",
+          { opacity: 0, y: 4, scale: 0.98 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: "power3.out" },
+          0.35,
+        );
+        tl.fromTo(
+          ".hf-ui-cursor-ripple",
+          { opacity: 0.75, scale: 0.55 },
+          { opacity: 0, scale: 2.1, duration: 0.42, ease: "power3.out" },
+          1.02,
+        );
+        tl.to(
+          ".hf-ui-cursor-target",
+          { y: 1, scale: 0.98, duration: 0.12, ease: "power3.out" },
+          1.02,
+        );
+        tl.to(".hf-ui-cursor-target", { y: 0, scale: 1, duration: 0.12, ease: "power3.out" }, 1.15);
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["cursor-demo"] = tl;
       </script>

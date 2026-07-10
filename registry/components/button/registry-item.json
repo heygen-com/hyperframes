@@ -3,7 +3,7 @@
   "name": "button",
   "type": "hyperframes:component",
   "title": "Button",
-  "description": "A video-safe shadcn-style button primitive with hover, press, loading, and success states",
+  "description": "A video-safe action button with tactile press, loading, and success states",
   "tags": ["ui-primitive", "remocn-port", "button", "control"],
   "files": [
     {

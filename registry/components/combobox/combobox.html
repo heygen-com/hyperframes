@@ -1,19 +1,43 @@
 <!--
-  Combobox - shadcn-style UI primitive for HyperFrames.
+  Combobox - Operator Black searchable choice primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
 -->
 
 <div data-hf-ui-root class="hf-ui-combobox" data-state="open">
-  <button class="hf-ui-combobox-trigger" type="button">
+  <button
+    class="hf-ui-combobox-trigger"
+    type="button"
+    aria-haspopup="listbox"
+    aria-expanded="true"
+    aria-controls="hf-ui-combobox-menu"
+  >
     <span>Framework</span><strong>HyperFrames</strong>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5" /></svg>
   </button>
   <div class="hf-ui-combobox-menu">
-    <div class="hf-ui-combobox-search">Search frameworks...</div>
-    <div class="hf-ui-combobox-option is-muted">Remotion</div>
-    <div class="hf-ui-combobox-option is-active">HyperFrames</div>
-    <div class="hf-ui-combobox-option">Motion Canvas</div>
+    <div
+      class="hf-ui-combobox-search"
+      role="searchbox"
+      aria-label="Search frameworks"
+      aria-readonly="true"
+    >
+      Search frameworks...
+    </div>
+    <div
+      id="hf-ui-combobox-menu"
+      class="hf-ui-combobox-options"
+      role="listbox"
+      aria-label="Framework options"
+    >
+      <div class="hf-ui-combobox-option is-muted" role="option" aria-selected="false">Remotion</div>
+      <div class="hf-ui-combobox-option is-active" role="option" aria-selected="true">
+        HyperFrames
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7" /></svg>
+      </div>
+      <div class="hf-ui-combobox-option" role="option" aria-selected="false">Motion Canvas</div>
+    </div>
   </div>
 </div>
 
@@ -153,64 +177,144 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-combobox {
-    width: 360px;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    width: min(360px, 100%);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-combobox-trigger,
   .hf-ui-combobox-menu {
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #ffffff;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--_hf-ui-border-strong);
+    background: var(--_hf-ui-surface-raised);
   }
   .hf-ui-combobox-trigger {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    height: 58px;
-    padding: 0 18px;
+    height: var(--_hf-ui-control-height);
+    padding: 0 var(--_hf-ui-space-3);
+    border-radius: var(--_hf-ui-radius-control);
+    box-shadow: var(--_hf-ui-shadow-inset);
+    color: var(--_hf-ui-text);
+    cursor: pointer;
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
   }
   .hf-ui-combobox-trigger span {
-    color: #71717a;
-    font-size: 14px;
-    font-weight: 750;
+    color: var(--_hf-ui-text-muted);
+    font-size: 12px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-combobox-trigger strong {
-    font-size: 18px;
+    margin-inline-start: auto;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
+  }
+  .hf-ui-combobox-trigger svg,
+  .hf-ui-combobox-option svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-ui-combobox-trigger:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-combobox-trigger:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-combobox-trigger:disabled,
+  .hf-ui-combobox-trigger[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  .hf-ui-combobox[aria-invalid="true"] .hf-ui-combobox-trigger,
+  .hf-ui-combobox-trigger[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
   }
   .hf-ui-combobox-menu {
     display: grid;
-    gap: 6px;
-    margin-top: 10px;
-    padding: 10px;
-    transform-origin: top center;
+    gap: 2px;
+    margin-top: var(--_hf-ui-space-2);
+    padding: var(--_hf-ui-space-1);
+    border-radius: var(--_hf-ui-radius-overlay);
+    box-shadow: var(--_hf-ui-shadow-contact);
+    transform-origin: top left;
     will-change: opacity, transform;
   }
   .hf-ui-combobox-search,
   .hf-ui-combobox-option {
-    border-radius: 11px;
-    padding: 10px 12px;
-    font-size: 15px;
-    font-weight: 700;
+    min-height: 36px;
+    border-radius: var(--_hf-ui-radius-control);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-combobox-search {
-    color: #a1a1aa;
-    background: #f4f4f5;
+    margin-bottom: 2px;
+    border: 1px solid var(--_hf-ui-border);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-muted);
+  }
+  .hf-ui-combobox-options {
+    display: grid;
+    gap: 2px;
+  }
+  .hf-ui-combobox-option {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-combobox-option.is-active {
-    background: #18181b;
-    color: #ffffff;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+  }
+  .hf-ui-combobox-option.is-active svg {
+    margin-inline-start: auto;
+    color: var(--_hf-ui-accent);
   }
   .hf-ui-combobox-option.is-muted {
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
+  }
+  .hf-ui-combobox-option[aria-disabled="true"] {
+    color: var(--_hf-ui-text-faint);
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-combobox-trigger {
+      position: relative;
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-combobox-trigger::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
+    .hf-ui-combobox-option {
+      position: relative;
+      margin-block: 2px;
+    }
+    .hf-ui-combobox-option::before {
+      position: absolute;
+      inset-block: -2px;
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-combobox-trigger', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.34, ease: 'power2.out' }, 0.3);
-  tl.fromTo('.hf-ui-combobox-menu', { opacity: 0, y: -8, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: 'power3.out' }, 0.62);
-  tl.fromTo('.hf-ui-combobox-option', { x: -12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.24, stagger: 0.06, ease: 'power2.out' }, 0.82);
+  tl.fromTo('.hf-ui-combobox-trigger', { y: 4, opacity: 0 }, { y: 0, opacity: 1, duration: 0.21, ease: 'power3.out' }, 0.3);
+  tl.fromTo('.hf-ui-combobox-menu', { opacity: 0, y: -4, scale: 0.98 }, { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: 'power3.out' }, 0.52);
+  tl.fromTo('.hf-ui-combobox-option', { opacity: 0 }, { opacity: 1, duration: 0.16, ease: 'power3.out' }, 0.68);
 -->

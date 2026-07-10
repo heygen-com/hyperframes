@@ -3,7 +3,7 @@
   "name": "select-item",
   "type": "hyperframes:component",
   "title": "Select Item",
-  "description": "A select-row primitive with check mark, hint, and active highlight.",
+  "description": "A compact option list with selection check, technical hints, and disabled state.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

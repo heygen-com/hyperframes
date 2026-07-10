@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,7 +68,7 @@
       <section class="hf-ui-demo-stage" aria-label="Caret specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Caret - shadcn-style UI primitive for HyperFrames.
+  Caret - Operator Black typed-command primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -213,52 +214,69 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-caret-line {
+    --hf-caret-width: 167px;
     display: inline-flex;
     align-items: center;
-    min-height: 58px;
-    padding: 0 18px;
-    border: 1px solid #d4d4d8;
-    border-radius: 14px;
-    background: #ffffff;
-    color: #18181b;
-    font:
-      750 28px/1 Inter,
-      system-ui,
-      sans-serif;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+    min-height: 48px;
+    padding: 0 14px;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-medium) 18px/1 var(--_hf-ui-font-sans);
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-caret-value {
     display: inline-block;
+    width: var(--hf-caret-width);
     overflow: hidden;
     white-space: nowrap;
   }
   .hf-ui-caret {
     display: inline-block;
-    width: 3px;
-    height: 32px;
+    width: 2px;
+    height: 22px;
     margin-left: 4px;
-    border-radius: 999px;
-    background: #18181b;
+    background: var(--_hf-ui-accent);
     opacity: 1;
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-caret-value', { width: 0 }, { width: 244, duration: 1.1, ease: 'steps(17)' }, 0.35);
-  tl.to('.hf-ui-caret', { opacity: 0.12, duration: 0.16, repeat: 9, yoyo: true, ease: 'none' }, 0.35);
+  tl.fromTo('.hf-ui-caret-value', { width: 0 }, { width: 167, duration: 1.1, ease: 'steps(17)' }, 0.35);
+  tl.to('.hf-ui-caret', { opacity: 0.18, duration: 0.15, ease: 'none' }, 0.35);
+  tl.to('.hf-ui-caret', { opacity: 1, duration: 0.15, ease: 'none' }, 0.51);
+  tl.to('.hf-ui-caret', { opacity: 0.18, duration: 0.15, ease: 'none' }, 0.67);
+  tl.to('.hf-ui-caret', { opacity: 1, duration: 0.15, ease: 'none' }, 0.83);
+  tl.to('.hf-ui-caret', { opacity: 0.18, duration: 0.15, ease: 'none' }, 0.99);
+  tl.to('.hf-ui-caret', { opacity: 1, duration: 0.15, ease: 'none' }, 1.15);
+  tl.to('.hf-ui-caret', { opacity: 0.18, duration: 0.15, ease: 'none' }, 1.31);
+  tl.to('.hf-ui-caret', { opacity: 1, duration: 0.15, ease: 'none' }, 1.47);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Caret</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-caret-value",
+          { width: 0 },
+          { width: 167, duration: 1.1, ease: "steps(17)" },
+          0.35,
         );
+        tl.to(".hf-ui-caret", { opacity: 0.18, duration: 0.15, ease: "none" }, 0.35);
+        tl.to(".hf-ui-caret", { opacity: 1, duration: 0.15, ease: "none" }, 0.51);
+        tl.to(".hf-ui-caret", { opacity: 0.18, duration: 0.15, ease: "none" }, 0.67);
+        tl.to(".hf-ui-caret", { opacity: 1, duration: 0.15, ease: "none" }, 0.83);
+        tl.to(".hf-ui-caret", { opacity: 0.18, duration: 0.15, ease: "none" }, 0.99);
+        tl.to(".hf-ui-caret", { opacity: 1, duration: 0.15, ease: "none" }, 1.15);
+        tl.to(".hf-ui-caret", { opacity: 0.18, duration: 0.15, ease: "none" }, 1.31);
+        tl.to(".hf-ui-caret", { opacity: 1, duration: 0.15, ease: "none" }, 1.47);
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["caret-demo"] = tl;
       </script>

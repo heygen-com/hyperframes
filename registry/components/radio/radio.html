@@ -1,7 +1,21 @@
 <!-- Radio Group - animate --hf-radio-selected between 0 and 1 on each option. -->
-<div data-hf-ui-root class="hf-ui-radio-group" role="radiogroup">
-  <label class="hf-ui-radio" style="--hf-radio-selected: 1"><span></span>Fast</label>
-  <label class="hf-ui-radio" style="--hf-radio-selected: 0"><span></span>Cinematic</label>
+<div data-hf-ui-root class="hf-ui-radio-group" role="radiogroup" aria-label="Render mode">
+  <label
+    class="hf-ui-radio"
+    style="--hf-radio-selected: 1"
+    role="radio"
+    aria-checked="true"
+    tabindex="0"
+    ><span aria-hidden="true"></span>Fast</label
+  >
+  <label
+    class="hf-ui-radio"
+    style="--hf-radio-selected: 0"
+    role="radio"
+    aria-checked="false"
+    tabindex="-1"
+    ><span aria-hidden="true"></span>Cinematic</label
+  >
 </div>
 <style>
   /* hf-ui:tokens:start */
@@ -141,29 +155,61 @@
   .hf-ui-radio-group {
     display: grid;
     gap: 12px;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-radio {
     display: inline-flex;
     align-items: center;
     gap: 12px;
-    color: color-mix(in srgb, #18181b calc(55% + var(--hf-radio-selected) * 45%), #71717a);
-    font:
-      700 15px/1 Inter,
-      system-ui,
-      sans-serif;
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-medium) 14px/1 var(--_hf-ui-font-sans);
+    cursor: pointer;
+    transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-radio[aria-checked="true"] {
+    color: var(--_hf-ui-text-strong);
   }
   .hf-ui-radio span {
     width: 20px;
     height: 20px;
-    border: 1.5px solid color-mix(in srgb, #18181b calc(var(--hf-radio-selected) * 100%), #d4d4d8);
-    border-radius: 999px;
-    background: radial-gradient(
-      circle,
-      #18181b calc(var(--hf-radio-selected) * 36%),
-      transparent calc(var(--hf-radio-selected) * 38%)
-    );
-    transform: scale(calc(0.94 + var(--hf-radio-selected) * 0.06));
+    display: grid;
+    place-items: center;
+    border: 1.5px solid var(--_hf-ui-control-border);
+    border-radius: 50%;
+    background: var(--_hf-ui-surface);
+    box-shadow: var(--_hf-ui-shadow-inset);
+  }
+  .hf-ui-radio[aria-checked="true"] span {
+    border-color: var(--_hf-ui-accent);
+  }
+  .hf-ui-radio span::after {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--_hf-ui-accent);
+    content: "";
+    opacity: var(--hf-radio-selected);
+    transform: scale(calc(0.75 + var(--hf-radio-selected) * 0.25));
+  }
+  .hf-ui-radio:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-radio:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-radio[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  .hf-ui-radio-group[aria-invalid="true"] .hf-ui-radio span {
+    border-color: var(--_hf-ui-danger);
+  }
+  @media (pointer: coarse) {
+    .hf-ui-radio {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
   }
 </style>

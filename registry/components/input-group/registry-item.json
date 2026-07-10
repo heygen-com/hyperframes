@@ -3,7 +3,7 @@
   "name": "input-group",
   "type": "hyperframes:component",
   "title": "Input Group",
-  "description": "An input group primitive with prefix, text field, and trailing action",
+  "description": "A compound input with technical prefix, editable value, and attached action",
   "tags": ["ui-primitive", "remocn-port", "input-group", "field"],
   "files": [
     {

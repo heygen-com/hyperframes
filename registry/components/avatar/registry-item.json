@@ -3,7 +3,7 @@
   "name": "avatar",
   "type": "hyperframes:component",
   "title": "Avatar",
-  "description": "An avatar primitive with initials, status ring, and group-friendly sizing variables",
+  "description": "A matte initials avatar with a functional availability indicator and host-controlled sizing",
   "tags": ["ui-primitive", "remocn-port", "avatar", "identity"],
   "files": [
     {

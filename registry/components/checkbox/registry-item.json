@@ -3,7 +3,7 @@
   "name": "checkbox",
   "type": "hyperframes:component",
   "title": "Checkbox",
-  "description": "A checkbox primitive with unchecked, checked, and label reveal states for product UI scenes",
+  "description": "An accessible checkbox with tactile feedback and a functional mint check state",
   "tags": ["ui-primitive", "remocn-port", "checkbox", "control"],
   "files": [
     {

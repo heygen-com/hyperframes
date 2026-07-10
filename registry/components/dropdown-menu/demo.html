@@ -74,16 +74,39 @@
 -->
 
 <div data-hf-ui-root class="hf-ui-dropdown">
-  <button class="hf-ui-dropdown-trigger" type="button">Actions</button>
-  <div class="hf-ui-dropdown-menu" role="menu">
-    <button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 0" type="button">
-      Duplicate
+  <button
+    class="hf-ui-dropdown-trigger"
+    type="button"
+    aria-expanded="true"
+    aria-controls="hf-ui-dropdown-menu"
+  >
+    Actions
+  </button>
+  <div class="hf-ui-dropdown-menu" id="hf-ui-dropdown-menu" role="menu">
+    <button
+      class="hf-ui-dropdown-item"
+      style="--hf-dropdown-item-stagger: 0"
+      type="button"
+      role="menuitem"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 4 4 8-9" /></svg>
+      <span>Duplicate</span>
     </button>
-    <button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 1" type="button">
-      Export
+    <button
+      class="hf-ui-dropdown-item"
+      style="--hf-dropdown-item-stagger: 1"
+      type="button"
+      role="menuitem"
+    >
+      <span>Export</span>
     </button>
-    <button class="hf-ui-dropdown-item" style="--hf-dropdown-item-stagger: 2" type="button">
-      Archive
+    <button
+      class="hf-ui-dropdown-item"
+      style="--hf-dropdown-item-stagger: 2"
+      type="button"
+      role="menuitem"
+    >
+      <span>Archive</span>
     </button>
   </div>
 </div>
@@ -224,24 +247,20 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-dropdown {
-    --hf-dropdown-open: 0;
+    --hf-dropdown-open: 1;
     position: relative;
     display: inline-block;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-dropdown-trigger {
-    height: 42px;
+    height: var(--_hf-ui-control-height);
     padding: 0 18px;
-    border: 1px solid #e4e4e7;
-    border-radius: 11px;
-    background: #ffffff;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
     color: inherit;
-    font:
-      750 14px/1 Inter,
-      system-ui,
-      sans-serif;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
+    box-shadow: var(--_hf-ui-shadow-inset);
     transform: translateY(calc(var(--hf-dropdown-open) * 1px));
   }
   .hf-ui-dropdown-menu {
@@ -249,57 +268,93 @@
     top: calc(100% + 10px);
     right: 0;
     width: 184px;
-    padding: 7px;
-    border: 1px solid #e4e4e7;
-    border-radius: 14px;
-    background: #ffffff;
+    padding: var(--_hf-ui-space-2);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
     opacity: var(--hf-dropdown-open);
-    transform: translateY(calc((1 - var(--hf-dropdown-open)) * -8px))
-      scale(calc(0.96 + var(--hf-dropdown-open) * 0.04));
+    transform: translateY(calc((1 - var(--hf-dropdown-open)) * -4px))
+      scale(calc(0.98 + var(--hf-dropdown-open) * 0.02));
     transform-origin: top right;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.18);
-    pointer-events: none;
+    box-shadow: var(--_hf-ui-shadow-contact);
     will-change: transform, opacity;
   }
   .hf-ui-dropdown-item {
-    display: block;
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    align-items: center;
+    gap: var(--_hf-ui-space-2);
     width: 100%;
-    height: 34px;
+    min-height: var(--_hf-ui-control-height);
     padding: 0 10px;
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--_hf-ui-radius-control);
     background: transparent;
-    color: #27272a;
-    font:
-      650 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-medium) 13px/1 var(--_hf-ui-font-sans);
     text-align: left;
     opacity: var(--hf-dropdown-open);
-    transform: translateY(
-      calc((1 - var(--hf-dropdown-open)) * (6px + var(--hf-dropdown-item-stagger) * 2px))
-    );
+    transform: translateY(calc((1 - var(--hf-dropdown-open)) * 4px));
+  }
+  .hf-ui-dropdown-item svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: transparent;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-dropdown-item:first-child {
-    background: #f4f4f5;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    box-shadow: inset 2px 0 0 var(--_hf-ui-accent);
+  }
+  .hf-ui-dropdown-item:first-child svg {
+    stroke: var(--_hf-ui-accent);
+  }
+  .hf-ui-dropdown-item:not(:first-child) {
+    padding-inline-start: 36px;
+  }
+  .hf-ui-dropdown-trigger:focus-visible,
+  .hf-ui-dropdown-item:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-dropdown-trigger,
+    .hf-ui-dropdown-item {
+      min-height: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.to('.hf-ui-dropdown', { '--hf-dropdown-open': 1, duration: 0.26, ease: 'power3.out' }, startTime);
+  tl.to('.hf-ui-dropdown', { '--hf-dropdown-open': 1, duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Dropdown Menu</p>
       <script>
         const tl = gsap.timeline({ paused: true });
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+          ".hf-ui-dropdown",
+          { "--hf-dropdown-open": 0 },
+          { "--hf-dropdown-open": 1, duration: 0.21, ease: "power3.out" },
+          0.3,
         );
+        tl.to(".hf-ui-dropdown", { "--hf-dropdown-open": 0, duration: 0.14 }, 3.2);
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-ui-dropdown",
+          { "--hf-dropdown-open": 1, duration: 0.21, ease: "power3.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["dropdown-menu-demo"] = tl;
       </script>

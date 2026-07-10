@@ -3,7 +3,7 @@
   "name": "pagination",
   "type": "hyperframes:component",
   "title": "Pagination",
-  "description": "A pagination primitive with active page, neighbor pages, and compact controls",
+  "description": "A tactile pagination row with 40px controls, a recessed current page, and deterministic press feedback",
   "tags": ["ui-primitive", "remocn-port", "pagination", "navigation"],
   "files": [
     {

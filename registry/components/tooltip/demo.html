@@ -73,8 +73,18 @@
 -->
 
 <div data-hf-ui-root class="hf-ui-tooltip">
-  <button class="hf-ui-tooltip-trigger" type="button">?</button>
-  <div class="hf-ui-tooltip-content" role="tooltip">
+  <button
+    class="hf-ui-tooltip-trigger"
+    type="button"
+    aria-label="Brand voice guidance"
+    aria-describedby="hf-ui-tooltip-content"
+  >
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 16v-5M12 8v-.01" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  </button>
+  <div class="hf-ui-tooltip-content" id="hf-ui-tooltip-content" role="tooltip" aria-hidden="true">
     Match the brand voice before exporting.
     <span class="hf-ui-tooltip-arrow" aria-hidden="true"></span>
   </div>
@@ -220,21 +230,29 @@
     position: relative;
     display: inline-flex;
     justify-content: center;
-    font-family: Inter, system-ui, sans-serif;
   }
   .hf-ui-tooltip-trigger {
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border: 1px solid #d4d4d8;
-    border-radius: 999px;
-    background: #ffffff;
-    color: #18181b;
-    font:
-      800 16px/1 Inter,
-      system-ui,
-      sans-serif;
+    width: var(--_hf-ui-control-height);
+    height: var(--_hf-ui-control-height);
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+  }
+  .hf-ui-tooltip-trigger svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-ui-tooltip-trigger:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
   .hf-ui-tooltip-content {
     position: absolute;
@@ -243,17 +261,18 @@
     width: max-content;
     max-width: 260px;
     padding: 10px 12px;
-    border-radius: 10px;
-    background: #18181b;
-    color: #ffffff;
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
     font-size: 13px;
-    font-weight: 650;
+    font-weight: var(--_hf-ui-weight-medium);
     line-height: 1.35;
     opacity: var(--hf-tooltip-open);
-    transform: translateX(-50%) translateY(calc((1 - var(--hf-tooltip-open)) * 6px))
-      scale(calc(0.96 + var(--hf-tooltip-open) * 0.04));
+    transform: translateX(-50%) translateY(calc((1 - var(--hf-tooltip-open)) * 4px))
+      scale(calc(0.98 + var(--hf-tooltip-open) * 0.02));
     transform-origin: 50% 100%;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+    box-shadow: var(--_hf-ui-shadow-contact);
   }
   .hf-ui-tooltip-arrow {
     position: absolute;
@@ -261,27 +280,45 @@
     bottom: -5px;
     width: 10px;
     height: 10px;
-    background: #18181b;
+    border-inline-end: 1px solid var(--_hf-ui-border-strong);
+    border-block-end: 1px solid var(--_hf-ui-border-strong);
+    background: var(--_hf-ui-surface-raised);
     transform: translateX(-50%) rotate(45deg);
+  }
+  @media (pointer: coarse) {
+    .hf-ui-tooltip-trigger {
+      min-width: var(--_hf-ui-hit-target);
+      min-height: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
 
-  tl.to(".hf-ui-tooltip", { "--hf-tooltip-open": 1, duration: 0.22, ease: "power2.out" }, startTime);
+  tl.to(".hf-ui-tooltip", { "--hf-tooltip-open": 1, duration: 0.21, ease: "power3.out" }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Tooltip</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
+        tl.to(
+          ".hf-ui-tooltip",
+          { "--hf-tooltip-open": 1, duration: 0.21, ease: "power3.out" },
+          0.3,
         );
+        tl.to(".hf-ui-tooltip", { "--hf-tooltip-open": 0, duration: 0.14 }, 3.2);
+        tl.addLabel("open", 0.64);
+        tl.to(
+          ".hf-ui-tooltip",
+          { "--hf-tooltip-open": 1, duration: 0.21, ease: "power3.out" },
+          3.5,
+        );
+        tl.addLabel("end", 4);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, "end");
         window.__timelines = window.__timelines || {};
         window.__timelines["tooltip-demo"] = tl;
       </script>

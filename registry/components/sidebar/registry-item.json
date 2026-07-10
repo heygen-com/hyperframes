@@ -3,7 +3,7 @@
   "name": "sidebar",
   "type": "hyperframes:component",
   "title": "Sidebar",
-  "description": "A sidebar primitive with active rail item, grouped links, and slide-in animation",
+  "description": "A single-plane sidebar with spacious link rhythm, logical-start selection, and soft deterministic entry motion",
   "tags": ["ui-primitive", "remocn-port", "sidebar", "navigation"],
   "files": [
     {

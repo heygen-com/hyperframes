@@ -3,7 +3,7 @@
   "name": "slider",
   "type": "hyperframes:component",
   "title": "Slider",
-  "description": "A slider primitive with animated fill, thumb travel, and value readout for controls and settings scenes",
+  "description": "An accessible slider with semantic progress fill, physical thumb, and value readout",
   "tags": ["ui-primitive", "remocn-port", "slider", "control"],
   "files": [
     {

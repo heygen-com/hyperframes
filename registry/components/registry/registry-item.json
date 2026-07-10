@@ -3,7 +3,7 @@
   "name": "registry",
   "type": "hyperframes:component",
   "title": "Registry",
-  "description": "A catalog registry card for showing installable component metadata.",
+  "description": "An Operator Black registry list for compact installable-component metadata.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

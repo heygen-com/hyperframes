@@ -3,7 +3,7 @@
   "name": "alert-dialog",
   "type": "hyperframes:component",
   "title": "Alert Dialog",
-  "description": "A destructive-action alert dialog primitive with overlay, warning icon, copy, and action row",
+  "description": "An Operator Black destructive confirmation dialog with a flat backdrop and centered Soft Optical motion",
   "tags": ["ui-primitive", "remocn-port", "alert-dialog", "overlay"],
   "files": [
     {

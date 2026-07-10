@@ -85,8 +85,8 @@
     },
     {
       "id": "button",
-      "staticStates": ["idle", "hover", "press", "loading", "success"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["idle", "hover", "press", "loading", "success", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-button",
       "reducedMotion": "Remove spatial motion while preserving state and status.",
       "themeFixture": "both",
@@ -94,8 +94,8 @@
     },
     {
       "id": "button-group",
-      "staticStates": ["idle", "press"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["idle", "press", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-button-group button",
       "reducedMotion": "Preserve pressed selection without spatial motion.",
       "themeFixture": "both",
@@ -103,9 +103,9 @@
     },
     {
       "id": "calendar",
-      "staticStates": ["baseline"],
-      "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-calendar button",
+      "staticStates": ["baseline", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
+      "focusTarget": ".hf-ui-calendar-grid [tabindex=\"0\"]",
       "reducedMotion": "Preserve current and selected dates without spatial motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "end"]
@@ -148,7 +148,7 @@
     },
     {
       "id": "checkbox",
-      "staticStates": ["unchecked", "checked"],
+      "staticStates": ["unchecked", "checked", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-checkbox",
       "reducedMotion": "Preserve checked state without scale or draw motion.",
@@ -166,7 +166,7 @@
     },
     {
       "id": "combobox",
-      "staticStates": ["open", "closed"],
+      "staticStates": ["open", "closed", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-combobox-trigger",
       "reducedMotion": "Reveal choices with opacity only.",
@@ -186,7 +186,7 @@
       "id": "command-menu-item",
       "staticStates": ["idle", "hover"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-remocn-command-menu-item .row",
+      "focusTarget": ".hf-remocn-command-menu-item .row[tabindex=\"0\"]",
       "reducedMotion": "Preserve row emphasis without spatial motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "hover", "end"]
@@ -195,7 +195,7 @@
       "id": "context-menu",
       "staticStates": ["open", "closed"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-context-menu",
+      "focusTarget": ".hf-ui-context-item.is-active[tabindex=\"0\"]",
       "reducedMotion": "Reveal the menu with opacity only.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "open", "end"]
@@ -222,7 +222,7 @@
       "id": "drawer",
       "staticStates": ["open", "closed"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-drawer button",
+      "focusTarget": "none",
       "reducedMotion": "Remove edge translation and preserve drawer state.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "open", "end"]
@@ -240,7 +240,7 @@
       "id": "dropdown-menu-item",
       "staticStates": ["idle", "hover"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-remocn-dropdown-menu-item .row",
+      "focusTarget": ".hf-remocn-dropdown-menu-item .row[tabindex=\"0\"]",
       "reducedMotion": "Preserve row emphasis without spatial motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "hover", "end"]
@@ -256,7 +256,7 @@
     },
     {
       "id": "field",
-      "staticStates": ["baseline"],
+      "staticStates": ["baseline", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-field-control",
       "reducedMotion": "Preserve field state without spatial motion.",
@@ -274,16 +274,16 @@
     },
     {
       "id": "input",
-      "staticStates": ["idle"],
+      "staticStates": ["idle", "disabled", "invalid"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-input-field",
+      "focusTarget": ".hf-ui-input-shell",
       "reducedMotion": "Preserve value and focus state without caret looping.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "end"]
     },
     {
       "id": "input-group",
-      "staticStates": ["idle"],
+      "staticStates": ["idle", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-input-group input",
       "reducedMotion": "Keep the input group visible without entrance motion.",
@@ -292,7 +292,7 @@
     },
     {
       "id": "input-otp",
-      "staticStates": ["idle"],
+      "staticStates": ["idle", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-input-otp",
       "reducedMotion": "Reveal digits immediately without stagger.",
@@ -320,7 +320,7 @@
     {
       "id": "label",
       "staticStates": ["baseline"],
-      "liveControllerBehaviors": [],
+      "liveControllerBehaviors": ["disabled: not-applicable", "invalid: not-applicable"],
       "focusTarget": "none",
       "reducedMotion": "No authored spatial motion.",
       "themeFixture": "both",
@@ -337,7 +337,7 @@
     },
     {
       "id": "native-select",
-      "staticStates": ["idle"],
+      "staticStates": ["idle", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-native-select select",
       "reducedMotion": "Preserve native selection without entrance motion.",
@@ -383,7 +383,7 @@
     {
       "id": "progress-steps",
       "staticStates": ["baseline"],
-      "liveControllerBehaviors": [],
+      "liveControllerBehaviors": ["disabled: not-applicable", "invalid: not-applicable"],
       "focusTarget": "none",
       "reducedMotion": "Show the current step without entrance motion.",
       "themeFixture": "both",
@@ -391,9 +391,9 @@
     },
     {
       "id": "radio",
-      "staticStates": ["checked", "unchecked"],
+      "staticStates": ["checked", "unchecked", "disabled", "invalid"],
       "liveControllerBehaviors": [],
-      "focusTarget": "none",
+      "focusTarget": ".hf-ui-radio[tabindex=\"0\"]",
       "reducedMotion": "Preserve checked state without scale motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "checked", "end"]
@@ -436,7 +436,7 @@
     },
     {
       "id": "select",
-      "staticStates": ["open", "closed"],
+      "staticStates": ["open", "closed", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-select-trigger",
       "reducedMotion": "Reveal options with opacity only.",
@@ -445,9 +445,9 @@
     },
     {
       "id": "select-item",
-      "staticStates": ["idle"],
-      "liveControllerBehaviors": [],
-      "focusTarget": ".hf-remocn-select-item .row",
+      "staticStates": ["idle", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
+      "focusTarget": ".hf-remocn-select-item .row[tabindex=\"0\"]",
       "reducedMotion": "Preserve option state without spatial motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "end"]
@@ -465,7 +465,7 @@
       "id": "sheet",
       "staticStates": ["open", "closed"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-sheet button",
+      "focusTarget": "none",
       "reducedMotion": "Remove edge translation and preserve sheet state.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "open", "end"]
@@ -499,8 +499,8 @@
     },
     {
       "id": "slider",
-      "staticStates": ["idle"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["idle", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-slider",
       "reducedMotion": "Show the current value without animated travel.",
       "themeFixture": "both",
@@ -518,16 +518,16 @@
     {
       "id": "stepper",
       "staticStates": ["idle"],
-      "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-step",
+      "liveControllerBehaviors": ["disabled: not-applicable", "invalid: not-applicable"],
+      "focusTarget": "none",
       "reducedMotion": "Show completed and current steps without pulse or scale motion.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "end"]
     },
     {
       "id": "switch",
-      "staticStates": ["off", "on"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["off", "on", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-switch",
       "reducedMotion": "Preserve switch state without thumb travel animation.",
       "themeFixture": "both",
@@ -546,14 +546,14 @@
       "id": "tabs",
       "staticStates": ["idle"],
       "liveControllerBehaviors": [],
-      "focusTarget": ".hf-ui-tabs [role=tab]",
+      "focusTarget": ".hf-ui-tabs [role=tab][tabindex=\"0\"]",
       "reducedMotion": "Preserve active tab without indicator travel.",
       "themeFixture": "both",
       "renderCheckpoints": ["start", "end"]
     },
     {
       "id": "textarea",
-      "staticStates": ["idle"],
+      "staticStates": ["idle", "disabled", "invalid"],
       "liveControllerBehaviors": [],
       "focusTarget": ".hf-ui-textarea-field textarea",
       "reducedMotion": "Keep value and focus state without entrance motion.",
@@ -571,8 +571,8 @@
     },
     {
       "id": "toggle",
-      "staticStates": ["idle", "press"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["idle", "press", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-toggle",
       "reducedMotion": "Preserve pressed state without compression motion.",
       "themeFixture": "both",
@@ -580,8 +580,8 @@
     },
     {
       "id": "toggle-group",
-      "staticStates": ["idle", "press"],
-      "liveControllerBehaviors": [],
+      "staticStates": ["idle", "press", "disabled"],
+      "liveControllerBehaviors": ["invalid: not-applicable"],
       "focusTarget": ".hf-ui-toggle-group button",
       "reducedMotion": "Preserve selection without indicator travel.",
       "themeFixture": "both",

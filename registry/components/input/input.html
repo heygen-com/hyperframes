@@ -1,5 +1,5 @@
 <!--
-  Input - shadcn-style text field primitive for HyperFrames.
+  Input - Operator Black text field primitive for HyperFrames.
 
   Animate --hf-input-focus and --hf-input-value-progress from a paused GSAP
   timeline to move from empty to focused to typed states.
@@ -7,7 +7,13 @@
 
 <label data-hf-ui-root class="hf-ui-input-field">
   <span class="hf-ui-input-label">Project name</span>
-  <span class="hf-ui-input-shell">
+  <span
+    class="hf-ui-input-shell"
+    role="textbox"
+    aria-label="Project name"
+    aria-readonly="true"
+    tabindex="0"
+  >
     <span class="hf-ui-input-value">Launch recap</span>
     <span class="hf-ui-input-caret" aria-hidden="true"></span>
   </span>
@@ -155,47 +161,78 @@
     display: grid;
     gap: 8px;
     width: min(360px, 100%);
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-input-label {
-    font-size: 14px;
-    font-weight: 700;
+    color: var(--_hf-ui-text-strong);
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-semibold);
     line-height: 1;
   }
   .hf-ui-input-shell {
     position: relative;
     display: flex;
     align-items: center;
-    height: 44px;
-    padding: 0 14px;
-    border: 1px solid color-mix(in srgb, #18181b calc(var(--hf-input-focus) * 60%), #d4d4d8);
-    border-radius: 10px;
-    background: #ffffff;
-    box-shadow: 0 0 0 calc(var(--hf-input-focus) * 4px) rgba(24, 24, 27, 0.1);
+    height: var(--_hf-ui-control-height);
+    padding: 0 var(--_hf-ui-space-3);
+    border: 1px solid
+      color-mix(
+        in srgb,
+        var(--_hf-ui-accent) calc(var(--hf-input-focus) * 100%),
+        var(--_hf-ui-control-border)
+      );
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    box-shadow:
+      0 0 0 calc(var(--hf-input-focus) * 2px)
+        color-mix(in srgb, var(--_hf-ui-accent) 42%, transparent),
+      var(--_hf-ui-shadow-inset);
     overflow: hidden;
+    transition:
+      border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      box-shadow var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-input-shell:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-input-shell[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
+  }
+  .hf-ui-input-shell[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
   }
   .hf-ui-input-value {
     display: inline-block;
     max-width: calc(var(--hf-input-value-progress) * 100%);
     overflow: hidden;
     white-space: nowrap;
-    font-size: 15px;
-    font-weight: 600;
+    color: var(--_hf-ui-text);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-regular);
     line-height: 1;
   }
   .hf-ui-input-caret {
-    width: 2px;
-    height: 18px;
-    margin-left: 2px;
-    border-radius: 999px;
-    background: #18181b;
+    width: 1px;
+    height: 16px;
+    margin-inline-start: 2px;
+    background: var(--_hf-ui-accent);
     opacity: var(--hf-input-focus);
   }
   .hf-ui-input-helper {
-    color: #71717a;
-    font-size: 13px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 12px;
     line-height: 1.35;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-input-shell::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
@@ -203,6 +240,6 @@
   Timeline integration:
 
   tl.set(".hf-ui-input-field", { "--hf-input-value-progress": 0 });
-  tl.to(".hf-ui-input-field", { "--hf-input-focus": 1, duration: 0.18 }, startTime);
+  tl.to(".hf-ui-input-field", { "--hf-input-focus": 1, duration: 0.16, ease: "power3.out" }, startTime);
   tl.to(".hf-ui-input-field", { "--hf-input-value-progress": 1, duration: 0.8, ease: "steps(12)" }, startTime + 0.2);
 -->

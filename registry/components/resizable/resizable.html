@@ -1,5 +1,5 @@
 <!--
-  Resizable - shadcn-style UI primitive for HyperFrames.
+  Resizable - Operator Black split-pane primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Use the timeline integration
   note at the bottom as the starting point for deterministic GSAP animation.
@@ -7,7 +7,16 @@
 
 <div data-hf-ui-root class="hf-ui-resizable">
   <div class="hf-ui-resizable-pane primary">Preview</div>
-  <div class="hf-ui-resizable-handle"></div>
+  <div
+    class="hf-ui-resizable-handle"
+    role="separator"
+    tabindex="0"
+    aria-orientation="vertical"
+    aria-valuemin="20"
+    aria-valuemax="80"
+    aria-valuenow="58"
+    aria-label="Resize preview and inspector"
+  ></div>
   <div class="hf-ui-resizable-pane secondary">Inspector</div>
 </div>
 
@@ -149,44 +158,81 @@
   .hf-ui-resizable {
     --hf-resizable-left: 58%;
     display: grid;
-    grid-template-columns: var(--hf-resizable-left) 10px 1fr;
-    width: 620px;
+    grid-template-columns: var(--hf-resizable-left) 12px 1fr;
+    width: min(620px, 100%);
     height: 280px;
-    padding: 10px;
-    border: 1px solid #e4e4e7;
-    border-radius: 24px;
-    background: #ffffff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
-    box-shadow: 0 22px 70px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    overflow: hidden;
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-resizable-pane {
     display: grid;
     place-items: center;
-    border-radius: 16px;
-    font-weight: 850;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-resizable-pane.primary {
-    background: #18181b;
-    color: #ffffff;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
   }
   .hf-ui-resizable-pane.secondary {
-    background: #f4f4f5;
-    color: #52525b;
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text-muted);
   }
   .hf-ui-resizable-handle {
+    position: relative;
     align-self: stretch;
     justify-self: center;
-    width: 4px;
-    margin: 18px 0;
-    border-radius: 999px;
-    background: #d4d4d8;
+    width: 12px;
+    margin-block: 4px;
+    border-inline: 1px solid var(--_hf-ui-border);
+    background: var(--_hf-ui-surface);
+    cursor: col-resize;
+  }
+  .hf-ui-resizable-handle::before {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    width: 2px;
+    height: 48px;
+    background: var(--_hf-ui-control-border);
+    content: "";
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .hf-ui-resizable-handle:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-resizable-handle:focus-visible::before {
+    background: var(--_hf-ui-accent);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-resizable-handle:hover::before {
+      background: var(--_hf-ui-control-border-hover);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-resizable-handle::after {
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 50%;
+      width: var(--_hf-ui-hit-target);
+      content: "";
+      transform: translateX(-50%);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-resizable', { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.36, ease: 'power2.out' }, 0.3);
-  tl.to('.hf-ui-resizable', { '--hf-resizable-left': '68%', duration: 0.72, ease: 'power3.inOut' }, 0.85);
-  tl.to('.hf-ui-resizable-handle', { scaleY: 1.22, duration: 0.16, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 0.85);
+  tl.fromTo('.hf-ui-resizable', { opacity: 0, y: 4, scale: 0.98 }, { opacity: 1, y: 0, scale: 1, duration: 0.21, ease: 'power3.out' }, 0.3);
+  tl.to('.hf-ui-resizable', { '--hf-resizable-left': '68%', duration: 0.72, ease: 'power3.out' }, 0.85);
+  tl.to('.hf-ui-resizable-handle', { scaleY: 0.98, duration: 0.12, ease: 'power3.out' }, 0.85);
+  tl.to('.hf-ui-resizable-handle', { scaleY: 1, duration: 0.12, ease: 'power3.out' }, 0.97);
 -->

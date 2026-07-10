@@ -67,13 +67,20 @@
       <section class="hf-ui-demo-stage" aria-label="Checkbox specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Checkbox - shadcn-style checkbox primitive for HyperFrames.
+  Checkbox - Operator Black binary-choice primitive for HyperFrames.
 
   Toggle data-state between unchecked and checked, or animate
   --hf-checkbox-progress from a paused GSAP timeline.
 -->
 
-<div data-hf-ui-root class="hf-ui-checkbox" data-state="unchecked">
+<div
+  data-hf-ui-root
+  class="hf-ui-checkbox"
+  data-state="unchecked"
+  role="checkbox"
+  aria-checked="false"
+  tabindex="0"
+>
   <span class="hf-ui-checkbox-box" aria-hidden="true">
     <svg viewBox="0 0 24 24">
       <path d="M5 12.5l4.5 4.5L19 7" />
@@ -222,8 +229,10 @@
     display: inline-flex;
     align-items: center;
     gap: 12px;
-    font-family: Inter, system-ui, sans-serif;
-    color: #18181b;
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    cursor: pointer;
+    transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-checkbox[data-state="checked"] {
     --hf-checkbox-progress: 1;
@@ -231,49 +240,88 @@
   .hf-ui-checkbox-box {
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     border: 1.5px solid
-      color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #d4d4d8);
-    border-radius: 6px;
-    background: color-mix(in srgb, #18181b calc(var(--hf-checkbox-progress) * 100%), #ffffff);
-    transform: scale(calc(0.95 + var(--hf-checkbox-progress) * 0.05));
+      color-mix(
+        in srgb,
+        var(--_hf-ui-accent) calc(var(--hf-checkbox-progress) * 100%),
+        var(--_hf-ui-control-border)
+      );
+    border-radius: var(--_hf-ui-radius-control);
+    background: color-mix(
+      in srgb,
+      var(--_hf-ui-accent) calc(var(--hf-checkbox-progress) * 100%),
+      var(--_hf-ui-surface)
+    );
+    transform: scale(calc(0.98 + var(--hf-checkbox-progress) * 0.02));
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-checkbox svg {
     width: 15px;
     height: 15px;
     fill: none;
-    stroke: #ffffff;
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke: var(--_hf-ui-action-contrast);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
     opacity: var(--hf-checkbox-progress);
     stroke-dasharray: 24;
     stroke-dashoffset: calc((1 - var(--hf-checkbox-progress)) * 24);
   }
   .hf-ui-checkbox-label {
     font-size: 15px;
-    font-weight: 650;
+    font-weight: var(--_hf-ui-weight-medium);
     line-height: 1;
+  }
+  .hf-ui-checkbox:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-checkbox[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  .hf-ui-checkbox[aria-invalid="true"] .hf-ui-checkbox-box {
+    border-color: var(--_hf-ui-danger);
+  }
+  @media (pointer: coarse) {
+    .hf-ui-checkbox {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
   }
 </style>
 
 <!--
   Timeline integration:
 
-  tl.to(".hf-ui-checkbox", { "--hf-checkbox-progress": 1, duration: 0.22, ease: "back.out(2)" }, startTime);
+  tl.to(".hf-ui-checkbox", { "--hf-checkbox-progress": 1, duration: 0.16, ease: "power3.out" }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Checkbox</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
+        const checkbox = document.querySelector(".hf-ui-checkbox");
+        tl.addLabel("start", 0);
+        tl.set(
+          checkbox,
+          {
+            "--hf-checkbox-progress": 0,
+            attr: { "data-state": "unchecked", "aria-checked": "false" },
+          },
           0,
         );
+        tl.addLabel("checked", 1.1);
+        tl.set(checkbox, { attr: { "data-state": "checked", "aria-checked": "true" } }, 1.1);
+        tl.fromTo(
+          checkbox,
+          { "--hf-checkbox-progress": 0 },
+          { "--hf-checkbox-progress": 1, duration: 0.16, ease: "power3.out" },
+          1.1,
+        );
+        tl.addLabel("end", 3.99);
+        tl.to(checkbox, { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["checkbox-demo"] = tl;
       </script>

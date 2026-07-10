@@ -1,5 +1,11 @@
-<!-- Skeleton - animate --hf-skeleton-shimmer from -1 to 1 for a loading sweep. -->
-<div data-hf-ui-root class="hf-ui-skeleton-card">
+<!-- Skeleton - deterministic solid-layer loading placeholder without gradients. -->
+<div
+  data-hf-ui-root
+  class="hf-ui-skeleton-card"
+  role="status"
+  aria-label="Loading content"
+  aria-busy="true"
+>
   <span class="hf-ui-skeleton avatar"></span>
   <span class="hf-ui-skeleton line wide"></span>
   <span class="hf-ui-skeleton line"></span>
@@ -140,28 +146,31 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-skeleton-card {
-    --hf-skeleton-shimmer: -1;
+    --hf-skeleton-shimmer: 1;
     display: grid;
     grid-template-columns: 42px 1fr;
     gap: 12px;
     width: min(360px, 100%);
     padding: 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #fff;
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
   }
   .hf-ui-skeleton {
     position: relative;
     overflow: hidden;
     border-radius: 999px;
-    background: #ececef;
+    background: var(--_hf-ui-surface-inset);
   }
   .hf-ui-skeleton::after {
     content: "";
     position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.78), transparent);
-    transform: translateX(calc(var(--hf-skeleton-shimmer) * 120%));
+    inset-block: 0;
+    width: 28%;
+    background: var(--_hf-ui-border);
+    opacity: 0.42;
+    transform: translateX(calc(var(--hf-skeleton-shimmer) * 460% - 100%));
+    will-change: transform;
   }
   .hf-ui-skeleton.avatar {
     grid-row: span 2;
@@ -176,4 +185,15 @@
   .hf-ui-skeleton.line.wide {
     width: 82%;
   }
+  @media (prefers-reduced-motion: reduce) {
+    .hf-ui-skeleton::after {
+      opacity: 0;
+      transform: none;
+    }
+  }
 </style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-skeleton-card', { '--hf-skeleton-shimmer': -1 }, { '--hf-skeleton-shimmer': 1, duration: 1.6, ease: 'none' }, startTime);
+-->

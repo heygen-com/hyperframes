@@ -67,17 +67,26 @@
       <section class="hf-ui-demo-stage" aria-label="Calendar specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Calendar - remocn-inspired UI primitive for HyperFrames.
+  Calendar - Operator Black date-grid primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
-<div data-hf-ui-root class="hf-ui-calendar">
+<div
+  data-hf-ui-root
+  class="hf-ui-calendar"
+  role="grid"
+  aria-label="June 2026"
+  aria-rowcount="1"
+  aria-colcount="7"
+>
   <header>June 2026</header>
-  <div class="hf-ui-calendar-grid">
-    <span>22</span><span>23</span><strong>24</strong><span>25</span><span>26</span><span>27</span
-    ><span>28</span>
+  <div class="hf-ui-calendar-grid" role="row">
+    <span role="gridcell" tabindex="-1">22</span><span role="gridcell" tabindex="-1">23</span
+    ><strong role="gridcell" aria-selected="true" tabindex="0">24</strong
+    ><span role="gridcell" tabindex="-1">25</span><span role="gridcell" tabindex="-1">26</span
+    ><span role="gridcell" tabindex="-1">27</span><span role="gridcell" tabindex="-1">28</span>
   </div>
 </div>
 
@@ -218,52 +227,104 @@
   /* hf-ui:tokens:end */
   .hf-ui-calendar {
     display: grid;
-    gap: 14px;
-    width: 300px;
-    padding: 18px;
-    border: 1px solid #e4e4e7;
-    border-radius: 14px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
+    gap: var(--_hf-ui-space-3);
+    width: min(300px, 100%);
+    padding: var(--_hf-ui-space-4);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    box-shadow: var(--_hf-ui-shadow-inset);
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-ui-calendar header {
-    font-size: 18px;
-    font-weight: 900;
+    color: var(--_hf-ui-text-strong);
+    font-size: 14px;
+    font-weight: var(--_hf-ui-weight-semibold);
   }
   .hf-ui-calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+    gap: var(--_hf-ui-space-1);
   }
   .hf-ui-calendar-grid :is(span, strong) {
     display: grid;
     place-items: center;
     height: 34px;
-    border-radius: 9px;
+    border-radius: var(--_hf-ui-radius-control);
     font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-ui-calendar-grid strong {
-    background: #18181b;
-    color: #fff;
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+    box-shadow: inset 0 -2px 0 var(--_hf-ui-accent);
+  }
+  .hf-ui-calendar-grid [tabindex]:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-calendar-grid [aria-disabled="true"] {
+    color: var(--_hf-ui-text-faint);
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-calendar {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
+    .hf-ui-calendar-grid {
+      min-width: 0;
+      grid-template-columns: repeat(7, var(--_hf-ui-hit-target));
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      padding-block: 5px;
+      scrollbar-width: thin;
+    }
+    .hf-ui-calendar-grid :is(span, strong) {
+      position: relative;
+      justify-self: center;
+      width: var(--_hf-ui-control-height);
+      height: var(--_hf-ui-control-height);
+    }
+    .hf-ui-calendar-grid :is(span, strong)::before {
+      position: absolute;
+      inset: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-calendar-grid > *', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.18, stagger: 0.03, ease: 'back.out(1.6)' }, startTime);
+  tl.fromTo('.hf-ui-calendar-grid > *', { opacity: 0, scale: 0.98 }, { opacity: 1, scale: 1, duration: 0.16, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Calendar</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.to(
+          ".hf-ui-calendar-grid strong",
+          { y: 1, scale: 0.98, duration: 0.12, ease: "power3.out" },
+          1,
         );
+        tl.to(
+          ".hf-ui-calendar-grid strong",
+          { y: 0, scale: 1, duration: 0.12, ease: "power3.out" },
+          1.12,
+        );
+        tl.fromTo(
+          ".hf-ui-calendar-grid > *",
+          { opacity: 0.62 },
+          { opacity: 1, duration: 0.16, ease: "power3.out" },
+          1.5,
+        );
+        tl.set(".hf-ui-calendar-grid strong", { clearProps: "transform" }, 1.24);
+        tl.set(".hf-ui-calendar-grid > *", { clearProps: "opacity" }, 1.66);
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-calendar", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["calendar-demo"] = tl;
       </script>

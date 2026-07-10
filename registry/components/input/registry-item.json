@@ -3,7 +3,7 @@
   "name": "input",
   "type": "hyperframes:component",
   "title": "Input",
-  "description": "A video-safe text field primitive with label, helper text, focus ring, and typed value reveal",
+  "description": "A video-safe text field with label, helper copy, focus state, and typed-value reveal",
   "tags": ["ui-primitive", "remocn-port", "input", "field"],
   "files": [
     {

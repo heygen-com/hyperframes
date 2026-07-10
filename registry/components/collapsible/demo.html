@@ -36,6 +36,7 @@
       .hf-ui-demo-stage {
         display: grid;
         place-items: center;
+        width: min(720px, 100%);
         min-width: 0;
         max-width: 100%;
       }
@@ -67,15 +68,24 @@
       <section class="hf-ui-demo-stage" aria-label="Collapsible specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Collapsible - remocn-inspired UI primitive for HyperFrames.
+  Collapsible - Operator Black disclosure primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
 <section data-hf-ui-root class="hf-ui-collapsible" data-state="open">
-  <header><strong>Advanced settings</strong><span>v</span></header>
-  <div><p>Enable motion blur, grain, and high quality interpolation.</p></div>
+  <header>
+    <button type="button" aria-expanded="true" aria-controls="hf-ui-collapsible-details">
+      <strong>Advanced settings</strong>
+      <span aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m7 9 5 5 5-5" /></svg>
+      </span>
+    </button>
+  </header>
+  <div id="hf-ui-collapsible-details">
+    <p>Enable motion blur, grain, and high quality interpolation.</p>
+  </div>
 </section>
 
 <style>
@@ -215,53 +225,128 @@
   /* hf-ui:tokens:end */
   .hf-ui-collapsible {
     --hf-collapse-open: 1;
-    width: 380px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fff;
-    color: #18181b;
-    font-family: Inter, system-ui, sans-serif;
-    overflow: hidden;
+    width: min(380px, 100%);
+    border: 1px solid var(--_hf-ui-border);
+    border-radius: var(--_hf-ui-radius-surface);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
+    font-family: var(--_hf-ui-font-sans);
+    overflow: visible;
+    box-shadow: var(--_hf-ui-shadow-inset);
   }
   .hf-ui-collapsible header {
+    min-height: var(--_hf-ui-control-height);
+  }
+  .hf-ui-collapsible header button {
+    position: relative;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 14px 16px;
-    font-weight: 850;
+    justify-content: space-between;
+    width: 100%;
+    min-height: var(--_hf-ui-control-height);
+    padding: 0 16px;
+    border: 0;
+    border-radius: var(--_hf-ui-radius-control) var(--_hf-ui-radius-control) 0 0;
+    background: transparent;
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-semibold) 13px/1.2 var(--_hf-ui-font-sans);
+    cursor: pointer;
+    transform: translateY(0) scale(1);
+    transition:
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response),
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
   }
   .hf-ui-collapsible header span {
+    display: grid;
+    place-items: center;
     transform: rotate(calc(var(--hf-collapse-open) * 180deg));
+    will-change: transform;
+  }
+  .hf-ui-collapsible header svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  .hf-ui-collapsible header button:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-collapsible header button:active {
+    transform: translateY(1px) scale(0.98);
   }
   .hf-ui-collapsible div {
     max-height: calc(var(--hf-collapse-open) * 120px);
     overflow: hidden;
-    border-top: 1px solid #f1f1f4;
+    border-block-start: 1px solid var(--_hf-ui-border);
+    opacity: var(--hf-collapse-open);
   }
   .hf-ui-collapsible p {
     margin: 0;
-    padding: 14px 16px;
-    color: #71717a;
-    font-size: 14px;
-    line-height: 1.45;
+    padding: 12px 16px 16px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .hf-ui-collapsible header button:hover {
+      background: var(--_hf-ui-surface-inset);
+    }
+  }
+  @media (pointer: coarse) {
+    .hf-ui-collapsible header button::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-collapsible', { '--hf-collapse-open': 0 }, { '--hf-collapse-open': 1, duration: 0.38, ease: 'power2.inOut' }, startTime);
+  tl.fromTo('.hf-ui-collapsible', { '--hf-collapse-open': 0 }, { '--hf-collapse-open': 1, duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Collapsible</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
+        tl.addLabel("start", 0);
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
+        tl.set(
+          ".hf-ui-collapsible",
+          {
+            "--hf-collapse-open": 0,
+            attr: { "data-state": "closed" },
+            immediateRender: true,
+          },
           0,
         );
+        tl.set(
+          ".hf-ui-collapsible button",
+          { attr: { "aria-expanded": "false" }, immediateRender: true },
+          0,
+        );
+        tl.set(
+          ".hf-ui-collapsible > div",
+          { attr: { "aria-hidden": "true" }, immediateRender: true },
+          0,
+        );
+        tl.addLabel("open", 1);
+        tl.set(".hf-ui-collapsible", { attr: { "data-state": "open" } }, 1);
+        tl.set(".hf-ui-collapsible button", { attr: { "aria-expanded": "true" } }, 1);
+        tl.set(".hf-ui-collapsible > div", { attr: { "aria-hidden": "false" } }, 1);
+        tl.to(
+          ".hf-ui-collapsible",
+          { "--hf-collapse-open": 1, duration: 0.21, ease: "power3.out" },
+          1,
+        );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-demo-stage", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["collapsible-demo"] = tl;
       </script>

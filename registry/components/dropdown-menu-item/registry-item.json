@@ -3,7 +3,7 @@
   "name": "dropdown-menu-item",
   "type": "hyperframes:component",
   "title": "Dropdown Menu Item",
-  "description": "A menu-row primitive with icon, label, hint, and active state.",
+  "description": "An Operator Black menu-row specimen showing idle, hover, selected, and disabled treatments.",
   "tags": ["ui-primitive", "remocn-port"],
   "files": [
     {

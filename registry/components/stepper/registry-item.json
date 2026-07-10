@@ -3,7 +3,7 @@
   "name": "stepper",
   "type": "hyperframes:component",
   "title": "Stepper",
-  "description": "A stepper primitive with numbered milestones, connector progress, and active-step emphasis",
+  "description": "A horizontal stepper with numbered milestones, semantic progress, and current-step emphasis",
   "tags": ["ui-primitive", "remocn-port", "stepper", "progress"],
   "files": [
     {

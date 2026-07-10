@@ -3,7 +3,7 @@
   "name": "navigation-menu",
   "type": "hyperframes:component",
   "title": "Navigation Menu",
-  "description": "A navigation menu primitive with active item and expandable preview panel",
+  "description": "An anchored navigation menu with a functional selection edge and opaque trigger-origin preview surface",
   "tags": ["ui-primitive", "remocn-port", "navigation-menu", "navigation"],
   "files": [
     {

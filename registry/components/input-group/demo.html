@@ -67,14 +67,18 @@
       <section class="hf-ui-demo-stage" aria-label="Input Group specimen" inert>
         <!-- hf-ui:canonical:start -->
 <!--
-  Input Group - remocn-inspired UI primitive for HyperFrames.
+  Input Group - Operator Black compound field primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Animate the CSS variables
   from a paused GSAP timeline for deterministic video renders.
 -->
 
 <div data-hf-ui-root class="hf-ui-input-group">
-  <span>https://</span><input value="hyperframes.dev" readonly /><button type="button">Copy</button>
+  <span>https://</span><input aria-label="Project URL" value="hyperframes.dev" readonly /><button
+    type="button"
+  >
+    Copy
+  </button>
 </div>
 
 <style>
@@ -216,54 +220,118 @@
     display: grid;
     grid-template-columns: auto 1fr auto;
     align-items: center;
-    width: 460px;
-    height: 46px;
+    width: min(460px, 100%);
+    height: var(--_hf-ui-control-height);
     overflow: hidden;
-    border: 1px solid #d4d4d8;
-    border-radius: 11px;
-    background: #fff;
-    font-family: Inter, system-ui, sans-serif;
+    border: 1px solid var(--_hf-ui-control-border);
+    border-radius: var(--_hf-ui-radius-control);
+    background: var(--_hf-ui-surface);
+    box-shadow: var(--_hf-ui-shadow-inset);
+    font-family: var(--_hf-ui-font-sans);
+    transition: border-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
   }
   .hf-ui-input-group span {
-    padding: 0 13px;
-    color: #71717a;
-    font-weight: 800;
+    padding: 0 var(--_hf-ui-space-3);
+    color: var(--_hf-ui-text-muted);
+    font: var(--_hf-ui-weight-medium) 12px/1 var(--_hf-ui-font-mono);
   }
   .hf-ui-input-group input {
     min-width: 0;
     height: 100%;
     border: 0;
-    color: #18181b;
-    font:
-      750 15px/1 Inter,
-      system-ui,
-      sans-serif;
+    outline: 0;
+    background: transparent;
+    color: var(--_hf-ui-text);
+    font: var(--_hf-ui-weight-regular) 13px/1 var(--_hf-ui-font-mono);
   }
   .hf-ui-input-group button {
     align-self: stretch;
     border: 0;
-    border-left: 1px solid #e4e4e7;
-    background: #fafafa;
-    padding: 0 14px;
-    font-weight: 850;
+    border-inline-start: 1px solid var(--_hf-ui-border);
+    background: var(--_hf-ui-surface-inset);
+    padding: 0 var(--_hf-ui-space-3);
+    color: var(--_hf-ui-text-strong);
+    font: var(--_hf-ui-weight-semibold) 12px/1 var(--_hf-ui-font-sans);
+    cursor: pointer;
+    transition:
+      transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response),
+      background-color var(--_hf-ui-duration-state) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-input-group:focus-within {
+    border-color: var(--_hf-ui-accent);
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  .hf-ui-input-group button:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-input-group[aria-invalid="true"] {
+    border-color: var(--_hf-ui-danger);
+  }
+  .hf-ui-input-group[aria-disabled="true"],
+  .hf-ui-input-group:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+  .hf-ui-input-group input:disabled,
+  .hf-ui-input-group button:disabled,
+  .hf-ui-input-group button[aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  @media (pointer: coarse) {
+    .hf-ui-input-group {
+      position: relative;
+      overflow: visible;
+      margin-block: calc((var(--_hf-ui-hit-target) - var(--_hf-ui-control-height)) / 2);
+    }
+    .hf-ui-input-group input {
+      height: var(--_hf-ui-hit-target);
+      margin-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+    }
+    .hf-ui-input-group button {
+      position: relative;
+    }
+    .hf-ui-input-group button::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-ui-input-group', { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.28, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-ui-input-group', { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.21, ease: 'power3.out' }, startTime);
 -->
 <!-- hf-ui:canonical:end -->
       </section>
       <p class="hf-ui-demo-caption">Input Group</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
+        tl.addLabel("start", 0);
+        tl.to(
+          ".hf-ui-input-group button",
+          { y: 1, scale: 0.98, duration: 0.12, ease: "power3.out" },
+          1,
         );
+        tl.to(
+          ".hf-ui-input-group button",
+          { y: 0, scale: 1, duration: 0.12, ease: "power3.out" },
+          1.12,
+        );
+        tl.to(
+          ".hf-ui-input-group",
+          { borderColor: "var(--_hf-ui-accent)", duration: 0.16, ease: "power3.out" },
+          1.5,
+        );
+        tl.to(
+          ".hf-ui-input-group",
+          { borderColor: "var(--_hf-ui-control-border)", duration: 0.16, ease: "power3.out" },
+          2.4,
+        );
+        tl.addLabel("end", 3.99);
+        tl.to(".hf-ui-input-group", { opacity: 1, duration: 0.01 }, 3.99);
         window.__timelines = window.__timelines || {};
         window.__timelines["input-group-demo"] = tl;
       </script>

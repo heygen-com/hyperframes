@@ -3,7 +3,7 @@
   "name": "dialog",
   "type": "hyperframes:component",
   "title": "Dialog",
-  "description": "A centered modal dialog primitive with overlay, title, description, and action row",
+  "description": "An Operator Black centered modal with a flat backdrop, restrained actions, and Soft Optical motion",
   "tags": ["ui-primitive", "remocn-port", "dialog", "overlay"],
   "files": [
     {

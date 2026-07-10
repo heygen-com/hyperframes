@@ -3,7 +3,7 @@
   "name": "empty",
   "type": "hyperframes:component",
   "title": "Empty",
-  "description": "An empty-state primitive with icon, title, description, and call-to-action slot",
+  "description": "An Operator Black empty state using open space, a technical icon, clear copy, and neutral action",
   "tags": ["ui-primitive", "remocn-port", "empty", "state"],
   "files": [
     {

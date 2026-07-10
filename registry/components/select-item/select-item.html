@@ -1,14 +1,22 @@
 <!--
-  Select Item - remocn component ported to HyperFrames authoring format.
+  Select Item - Operator Black option-list primitive for HyperFrames.
 
   Paste the markup and CSS into a composition. Drive the timeline integration
   from a paused GSAP timeline so renders remain deterministic.
 -->
 
-<div data-hf-ui-root class="hf-remocn-select-item">
-  <div class="row"><span class="label">Select Item</span><span class="hint">Ctrl K</span></div>
-  <div class="row"><span class="label">Selected</span><span class="hint">active</span></div>
-  <div class="row"><span class="label">Disabled</span><span class="hint">pending</span></div>
+<div data-hf-ui-root class="hf-remocn-select-item" role="listbox" aria-label="Codec">
+  <div class="row" role="option" aria-selected="false" tabindex="-1">
+    <span class="label">ProRes 422</span><span class="hint">Master</span>
+  </div>
+  <div class="row" role="option" aria-selected="true" tabindex="0">
+    <span class="label">H.264</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7" /></svg>
+    <span class="hint">Current</span>
+  </div>
+  <div class="row" role="option" aria-selected="false" aria-disabled="true" tabindex="-1">
+    <span class="label">WebM alpha</span><span class="hint">Unavailable</span>
+  </div>
 </div>
 
 <style>
@@ -147,43 +155,83 @@
   }
   /* hf-ui:tokens:end */
   .hf-remocn-select-item {
-    --hf-accent: #2563eb;
-    --hf-ink: #111827;
-    --hf-muted: #6b7280;
-    --hf-surface: #ffffff;
+    --hf-accent: var(--_hf-ui-accent);
+    --hf-ink: var(--_hf-ui-text);
+    --hf-muted: var(--_hf-ui-text-muted);
+    --hf-surface: var(--_hf-ui-surface-raised);
     color: var(--hf-ink);
-    font-family: Inter, system-ui, sans-serif;
+    font-family: var(--_hf-ui-font-sans);
   }
   .hf-remocn-select-item {
-    width: 560px;
-    border-radius: 22px;
-    background: #fff;
-    padding: 22px;
-    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.14);
+    width: min(360px, 100%);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--hf-surface);
+    padding: var(--_hf-ui-space-1);
+    box-shadow: var(--_hf-ui-shadow-contact);
     display: grid;
-    gap: 12px;
+    gap: 2px;
   }
   .hf-remocn-select-item .row {
-    height: 52px;
-    border-radius: 14px;
-    background: #f4f4f5;
-    display: flex;
+    min-height: 40px;
+    border-radius: var(--_hf-ui-radius-control);
+    background: transparent;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 16px;
+    gap: var(--_hf-ui-space-2);
+    padding: 0 var(--_hf-ui-space-2);
     transform: translateX(var(--hf-row-x, 0px));
     opacity: var(--hf-row-opacity, 1);
   }
+  .hf-remocn-select-item .row[aria-selected="true"] {
+    background: var(--_hf-ui-surface-inset);
+    color: var(--_hf-ui-text-strong);
+  }
+  .hf-remocn-select-item .row[aria-disabled="true"] {
+    opacity: 0.46;
+  }
+  .hf-remocn-select-item .row:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
   .hf-remocn-select-item .label {
-    font-weight: 800;
+    font-size: 13px;
+    font-weight: var(--_hf-ui-weight-medium);
   }
   .hf-remocn-select-item .hint {
-    color: #71717a;
-    font-size: 13px;
+    grid-column: 3;
+    color: var(--hf-muted);
+    font: var(--_hf-ui-weight-regular) 11px/1 var(--_hf-ui-font-mono);
+  }
+  .hf-remocn-select-item svg {
+    grid-column: 2;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--hf-accent);
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+  @media (pointer: coarse) {
+    .hf-remocn-select-item {
+      min-block-size: var(--_hf-ui-hit-target);
+    }
+    .hf-remocn-select-item .row {
+      position: relative;
+      margin-block: 2px;
+    }
+    .hf-remocn-select-item .row::before {
+      position: absolute;
+      inset-block: -2px;
+      inset-inline: 0;
+      content: "";
+    }
   }
 </style>
 
 <!--
   Timeline integration:
-  tl.fromTo('.hf-remocn-select-item .row', { '--hf-row-x': '-16px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.22, stagger: 0.07, ease: 'power2.out' }, startTime);
+  tl.fromTo('.hf-remocn-select-item .row', { '--hf-row-x': '-4px', '--hf-row-opacity': 0 }, { '--hf-row-x': '0px', '--hf-row-opacity': 1, duration: 0.16, ease: 'power3.out' }, startTime);
 -->

@@ -8,13 +8,16 @@
 <div
   data-hf-ui-root
   class="hf-ui-dialog"
+  data-state="open"
   role="dialog"
   aria-modal="true"
   aria-labelledby="hf-ui-dialog-title"
 >
   <div class="hf-ui-dialog-overlay" aria-hidden="true"></div>
   <div class="hf-ui-dialog-panel">
-    <button class="hf-ui-dialog-close" type="button" aria-label="Close">x</button>
+    <button class="hf-ui-dialog-close" type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+    </button>
     <h2 id="hf-ui-dialog-title">Edit profile</h2>
     <p>Make changes to your profile here. Click save when you are done.</p>
     <div class="hf-ui-dialog-actions">
@@ -160,84 +163,116 @@
   }
   /* hf-ui:tokens:end */
   .hf-ui-dialog {
-    --hf-dialog-overlay: 0;
-    --hf-dialog-opacity: 0;
-    --hf-dialog-scale: 0.96;
-    --hf-dialog-y: 12px;
+    --hf-dialog-overlay: 1;
+    --hf-dialog-opacity: 1;
+    --hf-dialog-scale: 1;
+    --hf-dialog-y: 0px;
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    font-family: Inter, system-ui, sans-serif;
-    pointer-events: none;
+    color: var(--_hf-ui-text);
   }
   .hf-ui-dialog-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.5));
+    background: rgba(0, 0, 0, calc(var(--hf-dialog-overlay) * 0.62));
   }
   .hf-ui-dialog-panel {
     position: relative;
     width: min(440px, calc(100% - 48px));
-    padding: 26px;
-    border: 1px solid #e4e4e7;
-    border-radius: 16px;
-    background: #ffffff;
-    color: #18181b;
+    padding: var(--_hf-ui-space-6);
+    border: 1px solid var(--_hf-ui-border-strong);
+    border-radius: var(--_hf-ui-radius-overlay);
+    background: var(--_hf-ui-surface-raised);
+    color: var(--_hf-ui-text);
     opacity: var(--hf-dialog-opacity);
     transform: translateY(var(--hf-dialog-y)) scale(var(--hf-dialog-scale));
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+    box-shadow: var(--_hf-ui-shadow-modal);
     will-change: transform, opacity;
   }
   .hf-ui-dialog h2 {
     margin: 0;
-    font-size: 20px;
+    color: var(--_hf-ui-text-strong);
+    font-size: 18px;
+    font-weight: var(--_hf-ui-weight-semibold);
     line-height: 1.2;
   }
   .hf-ui-dialog p {
     margin: 10px 0 0;
-    color: #71717a;
-    font-size: 15px;
+    color: var(--_hf-ui-text-muted);
+    font-size: 14px;
     line-height: 1.5;
   }
   .hf-ui-dialog-close {
     position: absolute;
     top: 14px;
     right: 14px;
-    width: 28px;
-    height: 28px;
-    border: 0;
-    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid transparent;
+    border-radius: var(--_hf-ui-radius-control);
     background: transparent;
-    color: #71717a;
+    color: var(--_hf-ui-text-muted);
+  }
+  .hf-ui-dialog-close svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
   }
   .hf-ui-dialog-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 10px;
+    gap: var(--_hf-ui-space-2);
     margin-top: 24px;
   }
   .hf-ui-dialog button {
-    font:
-      700 14px/1 Inter,
-      system-ui,
-      sans-serif;
+    font: var(--_hf-ui-weight-semibold) 13px/1 var(--_hf-ui-font-sans);
+    transition: transform var(--_hf-ui-duration-press) var(--_hf-ui-ease-response);
+  }
+  .hf-ui-dialog button:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  .hf-ui-dialog button:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
   }
   .hf-ui-dialog-cancel,
   .hf-ui-dialog-action {
+    position: relative;
     height: 40px;
     padding: 0 18px;
-    border-radius: 10px;
+    border-radius: var(--_hf-ui-radius-control);
   }
   .hf-ui-dialog-cancel {
-    border: 1px solid #e4e4e7;
-    background: #ffffff;
-    color: #18181b;
+    border: 1px solid var(--_hf-ui-control-border);
+    background: var(--_hf-ui-surface);
+    color: var(--_hf-ui-text);
   }
   .hf-ui-dialog-action {
-    border: 0;
-    background: #18181b;
-    color: white;
+    border: 1px solid var(--_hf-ui-action);
+    background: var(--_hf-ui-action);
+    color: var(--_hf-ui-action-contrast);
+  }
+  @media (pointer: coarse) {
+    .hf-ui-dialog-cancel::before,
+    .hf-ui-dialog-action::before {
+      position: absolute;
+      inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      inset-inline: 0;
+      content: "";
+    }
+    .hf-ui-dialog-close::before {
+      position: absolute;
+      inset: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);
+      content: "";
+    }
   }
 </style>
 
@@ -249,7 +284,7 @@
     "--hf-dialog-opacity": 1,
     "--hf-dialog-scale": 1,
     "--hf-dialog-y": "0px",
-    duration: 0.32,
+    duration: 0.28,
     ease: "power3.out",
   }, startTime);
 -->

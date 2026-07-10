@@ -3,7 +3,7 @@
   "name": "card",
   "type": "hyperframes:component",
   "title": "Card",
-  "description": "A composable card primitive with header, metric row, content, and animated reveal hooks",
+  "description": "A single semantic card surface with calm type hierarchy, success status, a review action, and Soft Optical reveal hooks",
   "tags": ["ui-primitive", "remocn-port", "card", "surface"],
   "files": [
     {
