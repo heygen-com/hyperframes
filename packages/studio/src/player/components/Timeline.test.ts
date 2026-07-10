@@ -18,7 +18,14 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
-import { RULER_H, TRACK_H } from "./timelineLayout";
+import {
+  GUTTER,
+  MIN_TIMELINE_EXTENT_S,
+  RULER_H,
+  TRACK_H,
+  getTimelineDisplayContentWidth,
+  getTimelineFitPps,
+} from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
@@ -390,6 +397,80 @@ describe("shouldAutoScrollTimeline", () => {
   });
 });
 
+describe("getTimelineFitPps (min 60s extent)", () => {
+  const viewport = 632; // usable width = 632 - GUTTER - 2 = 598
+
+  it("computes fit pps against the 60s floor for short compositions", () => {
+    // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
+    const pps = getTimelineFitPps(viewport, 10);
+    expect(pps).toBeCloseTo((viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - GUTTER - 2) / 6);
+  });
+
+  it("keeps filling the viewport with the composition when it is 60s or longer", () => {
+    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo((viewport - GUTTER - 2) / 60);
+    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo((viewport - GUTTER - 2) / 120);
+  });
+
+  it("falls back to 100 pps before the viewport is measured", () => {
+    expect(getTimelineFitPps(0, 10)).toBe(100);
+    expect(getTimelineFitPps(GUTTER, 10)).toBe(100);
+    expect(getTimelineFitPps(Number.NaN, 10)).toBe(100);
+  });
+
+  it("uses the floor for zero/invalid durations", () => {
+    expect(getTimelineFitPps(viewport, 0)).toBeCloseTo(
+      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+    expect(getTimelineFitPps(viewport, Number.NaN)).toBeCloseTo(
+      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+  });
+});
+
+describe("getTimelineDisplayContentWidth", () => {
+  it("always spans at least MIN_TIMELINE_EXTENT_S seconds of content", () => {
+    // 10s of content at 20 pps = 200px; the floor keeps 60s (1200px) rendered.
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 400, pps: 20 }),
+    ).toBe(MIN_TIMELINE_EXTENT_S * 20);
+  });
+
+  it("still fills the viewport when that is larger than the 60s floor", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 2000, pps: 5 }),
+    ).toBe(2000 - GUTTER - 2);
+  });
+
+  it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        dragGhostEndPx: 5000,
+      }),
+    ).toBe(5000);
+  });
+
+  it("tracks a resize (trim) ghost past every other bound (trim-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        resizeGhostEndPx: 4200,
+      }),
+    ).toBe(4200);
+  });
+
+  it("keeps long content authoritative", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 9000, viewportWidth: 400, pps: 50 }),
+    ).toBe(9000);
+  });
+});
+
 describe("getTimelineScrollLeftForZoomTransition", () => {
   it("resets horizontal scroll when switching from manual zoom back to fit", () => {
     expect(getTimelineScrollLeftForZoomTransition("manual", "fit", 480)).toBe(0);
@@ -524,7 +605,9 @@ describe("resolveTimelineAssetDrop", () => {
           trackOrder: [0, 3, 7],
         },
         432,
-        310,
+        // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
+        // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
+        368,
       ),
     ).toEqual({ start: 3, track: 3 });
   });

@@ -1,9 +1,3 @@
-export const TIMELINE_TOGGLE_SHORTCUT_LABEL = "Shift+T";
-type TimelineToggleHotkeyEvent = Pick<
-  KeyboardEvent,
-  "key" | "shiftKey" | "metaKey" | "ctrlKey" | "altKey" | "target"
->;
-
 interface EditableTargetLike {
   tagName?: string;
   isContentEditable?: boolean;
@@ -27,15 +21,4 @@ export function isEditableTarget(target: EventTarget | null): boolean {
       "input, textarea, select, [contenteditable='true'], [role='textbox'], .cm-editor",
     ),
   );
-}
-
-export function shouldHandleTimelineToggleHotkey(event: TimelineToggleHotkeyEvent): boolean {
-  if (event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (!event.shiftKey) return false;
-  if (event.key.toLowerCase() !== "t") return false;
-  return !isEditableTarget(event.target);
-}
-
-export function getTimelineToggleTitle(timelineVisible: boolean): string {
-  return `${timelineVisible ? "Hide" : "Show"} timeline editor (${TIMELINE_TOGGLE_SHORTCUT_LABEL})`;
 }

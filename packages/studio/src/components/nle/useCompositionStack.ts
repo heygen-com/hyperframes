@@ -1,4 +1,4 @@
-// Composition drill-down stack management for NLELayout
+// Composition drill-down stack management for NLEContext/EditorShell
 import { useState, useCallback, useRef, useEffect } from "react";
 import { usePlayerStore } from "../../player";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
