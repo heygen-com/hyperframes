@@ -67,6 +67,40 @@ export interface UseDomEditNudgeParams {
   >;
 }
 
+type NudgeTarget = {
+  key: string;
+  selection: DomEditSelection;
+  element: HTMLElement;
+  rect: OverlayRect;
+};
+
+/** Drag members for a multi-selection nudge (same snapshot a group drag uses). */
+function resolveGroupNudgeTargets(groupItems: GroupOverlayItem[]): NudgeTarget[] | null {
+  if (!canCanvasNudgeTargets(groupItems.map((item) => item.selection))) return null;
+  return filterNestedDomEditGroupItems(groupItems);
+}
+
+/** Drag member for a single-selection nudge, or null when it can't be moved. */
+function resolveSingleNudgeTarget(
+  sel: DomEditSelection | null,
+  rect: OverlayRect | null,
+): NudgeTarget[] | null {
+  if (!sel || !rect || !sel.capabilities.canApplyManualOffset || !sel.element.isConnected) {
+    return null;
+  }
+  return [{ key: sel.id ?? sel.selector ?? sel.label, selection: sel, element: sel.element, rect }];
+}
+
+/**
+ * True when a keydown must not start/extend a nudge: canvas movement disabled,
+ * a pointer gesture already owns the element, or the user is typing in a field.
+ */
+function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): boolean {
+  if (!p.allowCanvasMovement || event.defaultPrevented) return true;
+  if (p.gestureRef.current || p.groupGestureRef.current || p.blockedMoveRef.current) return true;
+  return isEditableTarget(event.target);
+}
+
 export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: () => void } {
   const sessionRef = useRef<NudgeSession | null>(null);
   const paramsRef = useRef(params);
@@ -108,30 +142,10 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     const p = paramsRef.current;
     const groupItems = p.groupOverlayItemsRef.current;
     const isGroup = groupItems.length > 1;
-    let targets: Array<{
-      key: string;
-      selection: DomEditSelection;
-      element: HTMLElement;
-      rect: OverlayRect;
-    }>;
-    if (isGroup) {
-      if (!canCanvasNudgeTargets(groupItems.map((item) => item.selection))) return null;
-      targets = filterNestedDomEditGroupItems(groupItems);
-    } else {
-      const sel = p.selectionRef.current;
-      const rect = p.overlayRectRef.current;
-      if (!sel || !rect || !sel.capabilities.canApplyManualOffset || !sel.element.isConnected) {
-        return null;
-      }
-      targets = [
-        {
-          key: sel.id ?? sel.selector ?? sel.label,
-          selection: sel,
-          element: sel.element,
-          rect,
-        },
-      ];
-    }
+    const targets = isGroup
+      ? resolveGroupNudgeTargets(groupItems)
+      : resolveSingleNudgeTarget(p.selectionRef.current, p.overlayRectRef.current);
+    if (!targets) return null;
     const members: ManualOffsetDragMember[] = [];
     for (const target of targets) {
       const result = createManualOffsetDragMember(target);
@@ -149,10 +163,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
 
   const handleKeyDown = (event: KeyboardEvent) => {
     const p = paramsRef.current;
-    if (!p.allowCanvasMovement || event.defaultPrevented) return;
-    // A pointer gesture owns the element — don't fight it.
-    if (p.gestureRef.current || p.groupGestureRef.current || p.blockedMoveRef.current) return;
-    if (isEditableTarget(event.target)) return;
+    if (shouldIgnoreNudgeKey(p, event)) return;
     const delta = resolveCanvasNudgeDelta(event);
     if (!delta) return;
     const session = sessionRef.current ?? beginSession();

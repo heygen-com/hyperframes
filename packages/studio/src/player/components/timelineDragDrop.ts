@@ -11,6 +11,27 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   trackOrderRef: RefObject<number[]>;
 }
 
+type TimelinePlacement = { start: number; track: number };
+
+/**
+ * Parse a JSON drag payload and, if it yields a value, forward it to the drop
+ * callback. Malformed payloads are ignored. Shared by the asset + block paths so
+ * the parse/guard/dispatch shape lives in one place.
+ */
+function applyJsonDropPayload(
+  raw: string,
+  pick: (parsed: Record<string, string | undefined>) => string | undefined,
+  apply: (value: string, placement: TimelinePlacement) => void,
+  placement: TimelinePlacement,
+): void {
+  try {
+    const value = pick(JSON.parse(raw) as Record<string, string | undefined>);
+    if (value) apply(value, placement);
+  } catch {
+    /* ignore malformed drag payloads */
+  }
+}
+
 /**
  * Dropping an asset/file/block onto the timeline places it at the PLAYHEAD —
  * start is the current playhead time, only the track comes from the drop y.
@@ -44,7 +65,7 @@ export function useTimelineAssetDrop({
   const clearDropPreview = useCallback(() => setIsDragOver(false), []);
 
   const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number): { start: number; track: number } => {
+    (clientX: number, clientY: number): TimelinePlacement => {
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
       // Track comes from the vertical drop position; start is the playhead.
@@ -80,22 +101,12 @@ export function useTimelineAssetDrop({
       }
       const assetPayload = e.dataTransfer.getData(TIMELINE_ASSET_MIME);
       if (assetPayload && onAssetDrop) {
-        try {
-          const parsed = JSON.parse(assetPayload) as { path?: string };
-          if (parsed.path) void onAssetDrop(parsed.path, placement);
-        } catch {
-          /* ignore malformed drag payloads */
-        }
+        applyJsonDropPayload(assetPayload, (p) => p.path, onAssetDrop, placement);
         return;
       }
       const blockPayload = e.dataTransfer.getData(TIMELINE_BLOCK_MIME);
       if (blockPayload && onBlockDrop) {
-        try {
-          const parsed = JSON.parse(blockPayload) as { name?: string };
-          if (parsed.name) void onBlockDrop(parsed.name, placement);
-        } catch {
-          /* ignore malformed drag payloads */
-        }
+        applyJsonDropPayload(blockPayload, (p) => p.name, onBlockDrop, placement);
       }
     },
     [resolveDropPlacement, onFileDrop, onAssetDrop, onBlockDrop],

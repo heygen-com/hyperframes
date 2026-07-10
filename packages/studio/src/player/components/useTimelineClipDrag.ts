@@ -1,83 +1,31 @@
 import { useRef, useState, useCallback, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import {
-  resolveTimelineMove,
-  resolveTimelineResize,
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
   resolveTimelineDragEscape,
-  type BlockedTimelineEditIntent,
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H, getTimelineRowFromY } from "./timelineLayout";
-import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isMusicTrack } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
-import {
-  TIMELINE_SNAP_PX,
-  collectTimelineSnapTargets,
-  snapMoveToTargets,
-  snapTimelineTime,
-  type TimelineSnapTarget,
-  type TimelineSnapType,
-} from "./timelineSnapping";
-import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
+import { collectTimelineSnapTargets, type TimelineSnapTarget } from "./timelineSnapping";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 import type { StackingPatch } from "./timelineStackingSync";
-import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
+import { computeDragPreview, computeResizePreview } from "./timelineClipDragPreview";
+import type {
+  DraggedClipState,
+  ResizingClipState,
+  BlockedClipState,
+} from "./timelineClipDragTypes";
+
+export type {
+  DraggedClipState,
+  ResizingClipState,
+  BlockedClipState,
+} from "./timelineClipDragTypes";
 
 const EMPTY_BEAT_TIMES: number[] = [];
-
-/* ── Shared state types ─────────────────────────────────────────── */
-export interface DraggedClipState {
-  element: TimelineElement;
-  originClientX: number;
-  originClientY: number;
-  originScrollLeft: number;
-  originScrollTop: number;
-  pointerClientX: number;
-  pointerClientY: number;
-  pointerOffsetX: number;
-  pointerOffsetY: number;
-  previewStart: number;
-  previewTrack: number;
-  /**
-   * When non-null, the drop inserts a NEW track at this visual row boundary
-   * (0 = above the top lane, trackOrder.length = below the bottom) instead of
-   * landing on previewTrack. Drives the insertion-line indicator.
-   */
-  insertRow: number | null;
-  /** Snap target the clip will land on, for the guide highlight. */
-  snapTime: number | null;
-  snapType: TimelineSnapType | null;
-  started: boolean;
-}
-
-export interface ResizingClipState {
-  element: TimelineElement;
-  edge: "start" | "end";
-  originClientX: number;
-  /**
-   * scrollLeft at gesture start. Edge auto-scroll moves the content under a
-   * stationary pointer, so the trim math folds (current − origin) scrollLeft
-   * into the pointer x — mirroring resolveTimelineMove's scroll compensation.
-   * Optional so pre-existing constructors/tests stay valid; when absent the
-   * first preview update captures the current scrollLeft.
-   */
-  originScrollLeft?: number;
-  previewStart: number;
-  previewDuration: number;
-  previewPlaybackStart?: number;
-  started: boolean;
-}
-
-export interface BlockedClipState {
-  element: TimelineElement;
-  intent: BlockedTimelineEditIntent;
-  originClientX: number;
-  originClientY: number;
-  started: boolean;
-}
 
 /* ── Hook ───────────────────────────────────────────────────────── */
 interface UseTimelineClipDragInput {
@@ -96,7 +44,7 @@ interface UseTimelineClipDragInput {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
-  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
@@ -205,219 +153,43 @@ export function useTimelineClipDrag({
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
+  // Recompute the dragged-clip preview for a pointer position. The heavy lifting
+  // (move + snap + group clamp + drop placement) is a tested pure function so
+  // what runs here is what's verified — see timelineClipDragPreview.
   const updateDraggedClipPreview = useCallback(
-    (drag: DraggedClipState, clientX: number, clientY: number): DraggedClipState => {
-      const scroll = scrollRef.current;
-      // Allow dragging past the current content into the rendered timeline extent
-      // (the viewport-fill keeps that ≥ the viewport width). The composition grows
-      // to fit on commit (content-driven duration), so don't cap at content length.
-      const pps = ppsRef.current;
-      const dragMaxStart = Math.max(
-        durationRef.current,
-        scroll && pps > 0 ? scroll.scrollWidth / pps : durationRef.current,
-      );
-      const nextMove = resolveTimelineMove(
-        {
-          start: drag.element.start,
-          track: drag.element.track,
-          duration: drag.element.duration,
-          originClientX: drag.originClientX,
-          originClientY: drag.originClientY,
-          originScrollLeft: drag.originScrollLeft,
-          originScrollTop: drag.originScrollTop,
-          currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
-          currentScrollTop: scroll?.scrollTop ?? drag.originScrollTop,
-          pixelsPerSecond: pps,
-          trackHeight: TRACK_H,
-          maxStart: dragMaxStart,
-          trackOrder: trackOrderRef.current,
-        },
-        clientX,
-        clientY,
-      );
-      // The music track defines the beats, so it must not snap to them —
-      // but it still snaps to the playhead and other clip edges.
-      const targets = buildSnapTargets(
-        drag.element.key ?? drag.element.id,
-        !isMusicTrack(drag.element),
-      );
-      const snap = snapMoveToTargets(
-        nextMove.start,
-        drag.element.duration,
-        targets,
-        pps,
-        // Relaxed clamp: allow the snapped start past the content, up to the
-        // rendered extent (see dragMaxStart) — the composition grows on commit.
-        dragMaxStart + drag.element.duration,
-      );
-      // Rigid group move: when the grabbed clip is part of a multi-selection, the
-      // WHOLE formation shifts by its delta on commit (see timelineClipDragCommit).
-      // Clamp that delta here — against every selected member's start — so the
-      // grabbed clip can't out-run the group: it STOPS the instant any member
-      // would cross 0, exactly as it lands on commit. Without this the ghost
-      // leads freely while a passenger clamps at 0, deforming the formation
-      // (main keeps it rigid — clampTimelineGroupMoveDelta). Lane changes still
-      // apply to the grabbed clip only, so only the start (x) is constrained.
-      const dragKey = drag.element.key ?? drag.element.id;
-      const selectedKeys = usePlayerStore.getState().selectedElementIds;
-      let previewStart = snap.start;
-      if (selectedKeys.size > 1 && selectedKeys.has(dragKey)) {
-        const memberStarts = elementsRef.current
-          .filter((e) => selectedKeys.has(e.key ?? e.id))
-          .map((e) => e.start);
-        const clampedDelta = clampGroupMoveDelta(snap.start - drag.element.start, memberStarts);
-        previewStart = drag.element.start + clampedDelta;
-      }
-      // rowFloat = the pointer's position in track-heights from the top lane; a
-      // near-boundary hover requests a deliberate new-track insert. Uses the
-      // shared row→y inverse so the top breathing pad is subtracted consistently.
-      const rowFloat = scroll
-        ? getTimelineRowFromY(clientY - scroll.getBoundingClientRect().top + scroll.scrollTop)
-        : 0;
-      const rawInsertRow = resolveInsertRow(rowFloat, trackOrderRef.current.length);
-      const audioTracks = new Set(
-        elementsRef.current.filter(isAudioTimelineElement).map((e) => e.track),
-      );
-      // The whole drop decision (no same-track overlap, zone-respecting, relocate
-      // or create) — one tested pure function, so what runs here is what's verified.
-      const { track: previewTrack, insertRow } = resolveZoneDropPlacement({
-        order: trackOrderRef.current,
-        audioTracks,
+    (drag: DraggedClipState, clientX: number, clientY: number): DraggedClipState =>
+      computeDragPreview(drag, clientX, clientY, {
+        scroll: scrollRef.current,
+        pps: ppsRef.current,
+        duration: durationRef.current,
+        trackOrder: trackOrderRef.current,
         elements: elementsRef.current,
-        desiredTrack: nextMove.track,
-        deliberateInsertRow: rawInsertRow,
-        start: previewStart,
-        duration: drag.element.duration,
-        dragKey,
-        isAudio: isAudioTimelineElement(drag.element),
-      });
-      return {
-        ...drag,
-        started: true,
-        pointerClientX: clientX,
-        pointerClientY: clientY,
-        previewStart,
-        previewTrack,
-        insertRow,
-        snapTime: snap.snapTime,
-        snapType: snap.snapType,
-      };
-    },
+        selectedKeys: usePlayerStore.getState().selectedElementIds,
+        buildSnapTargets,
+      }),
     [scrollRef, ppsRef, durationRef, trackOrderRef, buildSnapTargets],
   );
 
-  // Recompute the trim preview for a pointer x. Shared by the pointermove
-  // resize branch and the edge auto-scroll stepper (which re-runs it as the
-  // content scrolls under a stationary pointer, so the trim keeps tracking).
-  // fallow-ignore-next-line complexity
+  // Recompute the trim preview for a pointer x. Shared by the pointermove resize
+  // branch and the edge auto-scroll stepper (which re-runs it as the content
+  // scrolls under a stationary pointer, so the trim keeps tracking). The compute
+  // is a pure function (timelineClipDragPreview); here we only apply the state.
   const applyResizePointer = useCallback(
-    // fallow-ignore-next-line complexity
     (resize: ResizingClipState, clientX: number) => {
-      const scroll = scrollRef.current;
-      // Scroll compensation: auto-scroll moves the content while the pointer
-      // stays put, so fold the scroll delta into the pointer x (mirrors
-      // resolveTimelineMove's originScrollLeft handling).
-      const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
-      const effectiveClientX =
-        clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
-
-      const sourceRemaining =
-        resize.element.sourceDuration != null
-          ? Math.max(
-              0,
-              (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
-                Math.max(resize.element.playbackRate ?? 1, 0.1),
-            )
-          : Number.POSITIVE_INFINITY;
-      const normalizedTag = resize.element.tag.toLowerCase();
-      const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
-      const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
-      // Trim limit = available source media only — NOT the composition length.
-      // Duration is content-driven (the comp grows/shrinks to fit on commit), so
-      // capping a trim at the current comp end both blocked extending the last
-      // clip rightward and, after a far move, collapsed a clip to the sliver
-      // between its start and the comp end (the 8s→0.95s audio incident).
-      // Images/text/shapes have no source, so they extend freely.
-      const maxEnd = resize.element.start + sourceRemaining;
-      let nextResize = resolveTimelineResize(
-        {
-          start: resize.element.start,
-          duration: resize.element.duration,
-          originClientX: resize.originClientX,
-          pixelsPerSecond: ppsRef.current,
-          minStart: 0,
-          maxEnd,
-          playbackStart:
-            resize.edge === "start" && canSeedPlaybackStart
-              ? (resize.element.playbackStart ?? 0)
-              : resize.element.playbackStart,
-          playbackRate: resize.element.playbackRate,
-        },
-        resize.edge,
-        effectiveClientX,
-      );
-
-      // Snap edge to unified targets (beats + clip edges + playhead) when available.
-      // The snap must stay inside the same limits resolveTimelineResize enforces,
-      // or it would push the edge past the available source media / composition end.
-      // The music track defines the beats, so it must not snap to them —
-      // but it still snaps to the playhead and other clip edges.
-      const trimTargets = buildSnapTargets(
-        resize.element.key ?? resize.element.id,
-        !isMusicTrack(resize.element),
-      );
-      if (trimTargets.length > 0) {
-        const snapSecs = TIMELINE_SNAP_PX / Math.max(ppsRef.current, 1);
-        if (resize.edge === "end") {
-          const edgeTime = nextResize.start + nextResize.duration;
-          const snapped = snapTimelineTime(edgeTime, trimTargets, snapSecs).time;
-          // Stay within [start+minDuration, maxEnd] so the snap can't create a
-          // degenerate clip or run past the source/composition limit.
-          const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-          if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
-            nextResize = { ...nextResize, duration: snappedDuration };
-          }
-        } else {
-          const snapped = snapTimelineTime(nextResize.start, trimTargets, snapSecs).time;
-          const delta = nextResize.start - snapped; // >0 when snapping left
-          // Leftward snap reveals more source; cap so playbackStart can't go < 0.
-          const maxLeftDelta =
-            nextResize.playbackStart != null
-              ? nextResize.playbackStart / playbackRate
-              : Number.POSITIVE_INFINITY;
-          // Also require the resulting duration to stay >= minDuration so a
-          // rightward snap (delta < 0) can't collapse the clip to zero/negative.
-          const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-          if (
-            snapped !== nextResize.start &&
-            snapped >= 0 &&
-            delta <= maxLeftDelta + 1e-6 &&
-            snappedDuration >= 0.05
-          ) {
-            nextResize = {
-              ...nextResize,
-              start: snapped,
-              duration: snappedDuration,
-              playbackStart:
-                nextResize.playbackStart != null
-                  ? Math.round(
-                      Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000,
-                    ) / 1000
-                  : undefined,
-            };
-          }
-        }
-      }
-
+      const next = computeResizePreview(resize, clientX, {
+        scroll: scrollRef.current,
+        pps: ppsRef.current,
+        buildSnapTargets,
+      });
       setResizingClip((prev) =>
         prev
           ? {
               ...prev,
               started: true,
-              originScrollLeft,
-              previewStart: nextResize.start,
-              previewDuration: nextResize.duration,
-              previewPlaybackStart: nextResize.playbackStart,
+              originScrollLeft: next.originScrollLeft,
+              previewStart: next.previewStart,
+              previewDuration: next.previewDuration,
+              previewPlaybackStart: next.previewPlaybackStart,
             }
           : prev,
       );
@@ -489,45 +261,39 @@ export function useTimelineClipDrag({
       });
     };
 
-    const handleWindowPointerMove = (e: PointerEvent) => {
-      const drag = draggedClipRef.current;
-      const resize = resizingClipRef.current;
-      const blocked = blockedClipRef.current;
+    /* ── pointermove branch handlers (dispatched by drag/resize/blocked) ── */
+    const handleResizePointerMove = (e: PointerEvent, resize: ResizingClipState) => {
+      const distance = Math.abs(e.clientX - resize.originClientX);
+      if (!resize.started && distance < 2) return;
 
-      if (resize) {
-        const distance = Math.abs(e.clientX - resize.originClientX);
-        if (!resize.started && distance < 2) return;
+      setShowPopover(false);
+      setRangeSelectionRef.current?.(null);
 
+      applyResizePointerRef.current(resize, e.clientX);
+      // Edge auto-scroll during a trim, exactly like the move branch — lets a
+      // right-edge trim keep extending past the current viewport (the stepper
+      // re-runs the scroll-compensated preview each frame).
+      syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
+    };
+
+    const handleBlockedPointerMove = (e: PointerEvent, blocked: BlockedClipState) => {
+      const distance = Math.hypot(
+        e.clientX - blocked.originClientX,
+        e.clientY - blocked.originClientY,
+      );
+      const threshold = blocked.intent === "move" ? 4 : 2;
+      if (!blocked.started && distance < threshold) return;
+      if (!blocked.started) {
+        blocked.started = true;
+        blockedClipRef.current = blocked;
+        suppressClickRef.current = true;
         setShowPopover(false);
         setRangeSelectionRef.current?.(null);
-
-        applyResizePointerRef.current(resize, e.clientX);
-        // Edge auto-scroll during a trim, exactly like the move branch — lets a
-        // right-edge trim keep extending past the current viewport (the stepper
-        // re-runs the scroll-compensated preview each frame).
-        syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
-        return;
+        onBlockedEditAttemptRef.current?.(blocked.element, blocked.intent);
       }
+    };
 
-      if (blocked) {
-        const distance = Math.hypot(
-          e.clientX - blocked.originClientX,
-          e.clientY - blocked.originClientY,
-        );
-        const threshold = blocked.intent === "move" ? 4 : 2;
-        if (!blocked.started && distance < threshold) return;
-        if (!blocked.started) {
-          blocked.started = true;
-          blockedClipRef.current = blocked;
-          suppressClickRef.current = true;
-          setShowPopover(false);
-          setRangeSelectionRef.current?.(null);
-          onBlockedEditAttemptRef.current?.(blocked.element, blocked.intent);
-        }
-        return;
-      }
-
-      if (!drag) return;
+    const handleDragPointerMove = (e: PointerEvent, drag: DraggedClipState) => {
       const distance = Math.hypot(e.clientX - drag.originClientX, e.clientY - drag.originClientY);
       if (!drag.started && distance < 4) return;
 
@@ -540,62 +306,59 @@ export function useTimelineClipDrag({
       syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
     };
 
-    const handleWindowPointerUp = () => {
-      stopClipDragAutoScrollRef.current();
-
+    const handleWindowPointerMove = (e: PointerEvent) => {
       const resize = resizingClipRef.current;
-      if (resize) {
-        resizingClipRef.current = null;
-        setResizingClip(null);
-        if (!resize.started) return;
+      if (resize) return handleResizePointerMove(e, resize);
+      const blocked = blockedClipRef.current;
+      if (blocked) return handleBlockedPointerMove(e, blocked);
+      const drag = draggedClipRef.current;
+      if (drag) handleDragPointerMove(e, drag);
+    };
 
-        suppressClickRef.current = true;
-        clearSuppressedClick();
+    /* ── pointerup commit handlers (dispatched by drag/resize/blocked) ──── */
+    const commitResizePointerUp = (resize: ResizingClipState) => {
+      resizingClipRef.current = null;
+      setResizingClip(null);
+      if (!resize.started) return;
 
-        const hasChanged =
-          resize.previewStart !== resize.element.start ||
-          resize.previewDuration !== resize.element.duration ||
-          resize.previewPlaybackStart !== resize.element.playbackStart;
-        if (!hasChanged) return;
+      suppressClickRef.current = true;
+      clearSuppressedClick();
 
-        updateElement(resize.element.key ?? resize.element.id, {
+      const hasChanged =
+        resize.previewStart !== resize.element.start ||
+        resize.previewDuration !== resize.element.duration ||
+        resize.previewPlaybackStart !== resize.element.playbackStart;
+      if (!hasChanged) return;
+
+      updateElement(resize.element.key ?? resize.element.id, {
+        start: resize.previewStart,
+        duration: resize.previewDuration,
+        playbackStart: resize.previewPlaybackStart,
+      });
+
+      Promise.resolve(
+        onResizeElementRef.current?.(resize.element, {
           start: resize.previewStart,
           duration: resize.previewDuration,
           playbackStart: resize.previewPlaybackStart,
+        }),
+      ).catch((error) => {
+        updateElement(resize.element.key ?? resize.element.id, {
+          start: resize.element.start,
+          duration: resize.element.duration,
+          playbackStart: resize.element.playbackStart,
         });
+        console.error("[Timeline] Failed to persist clip resize", error);
+      });
+    };
 
-        Promise.resolve(
-          onResizeElementRef.current?.(resize.element, {
-            start: resize.previewStart,
-            duration: resize.previewDuration,
-            playbackStart: resize.previewPlaybackStart,
-          }),
-        ).catch((error) => {
-          updateElement(resize.element.key ?? resize.element.id, {
-            start: resize.element.start,
-            duration: resize.element.duration,
-            playbackStart: resize.element.playbackStart,
-          });
-          console.error("[Timeline] Failed to persist clip resize", error);
-        });
-        return;
-      }
+    const finishBlockedPointerUp = (blocked: BlockedClipState) => {
+      blockedClipRef.current = null;
+      if (!blocked.started) return;
+      clearSuppressedClick();
+    };
 
-      const blocked = blockedClipRef.current;
-      if (blocked) {
-        blockedClipRef.current = null;
-        if (!blocked.started) return;
-        clearSuppressedClick();
-        return;
-      }
-
-      const drag = draggedClipRef.current;
-      if (!drag) {
-        // Escape-cancel leaves the click suppressor armed so the click this
-        // pointerup generates can't act on the clip; disarm it right after.
-        if (suppressClickRef.current) clearSuppressedClick();
-        return;
-      }
+    const commitDragPointerUp = (drag: DraggedClipState) => {
       draggedClipRef.current = null;
       setDraggedClip(null);
       if (!drag.started) return;
@@ -618,6 +381,25 @@ export function useTimelineClipDrag({
         readZIndex: readZIndexRef.current,
         onStackingPatches: onStackingPatchesRef.current,
       });
+    };
+
+    const handleWindowPointerUp = () => {
+      stopClipDragAutoScrollRef.current();
+
+      const resize = resizingClipRef.current;
+      if (resize) return commitResizePointerUp(resize);
+
+      const blocked = blockedClipRef.current;
+      if (blocked) return finishBlockedPointerUp(blocked);
+
+      const drag = draggedClipRef.current;
+      if (!drag) {
+        // Escape-cancel leaves the click suppressor armed so the click this
+        // pointerup generates can't act on the clip; disarm it right after.
+        if (suppressClickRef.current) clearSuppressedClick();
+        return;
+      }
+      commitDragPointerUp(drag);
     };
 
     // Escape cancels the in-progress gesture: no commit, no undo entry. The

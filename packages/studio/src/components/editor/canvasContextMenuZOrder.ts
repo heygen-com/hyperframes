@@ -157,6 +157,27 @@ function toRenderOrder(entries: RenderEntry[]): RenderEntry[] {
 }
 
 /**
+ * A z that lands the target strictly between `below` and `above` in render order,
+ * or null when no such value exists (a tie-prone gap, or no room below the floor)
+ * and the caller must renumber. Equal-z ties break by DOM order, so a plain
+ * equality can flip order unpredictably; require a strict gap and clamp at 0.
+ */
+function computeBetweenZ(
+  below: RenderEntry | undefined,
+  above: RenderEntry | undefined,
+): number | null {
+  if (below && above) {
+    return above.zIndex - below.zIndex >= 2 ? below.zIndex + 1 : null;
+  }
+  if (below) return below.zIndex + 1; // move to top
+  if (above) {
+    const candidate = Math.max(0, above.zIndex - 1); // move to bottom
+    return candidate >= above.zIndex ? null : candidate; // no room below → renumber
+  }
+  return null;
+}
+
+/**
  * Realize a desired render order (bottom→top) into z-index patches for the
  * given family, emitting patches ONLY for elements whose z actually changes.
  *
@@ -182,20 +203,7 @@ function realizeOrder(
   const zValues = currentOrder.map((e) => e.zIndex);
   const hasDupes = zValues.some((v, i) => zValues.indexOf(v) !== i);
   if (!hasDupes) {
-    const below = desiredOrder[targetPos - 1];
-    const above = desiredOrder[targetPos + 1];
-    // Compute a z that lands the target between `below` and `above` in render
-    // order. Equal-z ties break by DOM order, so a plain equality can flip the
-    // order unpredictably; require a strict gap and clamp at 0.
-    let candidate: number | null = null;
-    if (below && above) {
-      if (above.zIndex - below.zIndex >= 2) candidate = below.zIndex + 1;
-    } else if (below && !above) {
-      candidate = below.zIndex + 1; // move to top
-    } else if (!below && above) {
-      candidate = Math.max(0, above.zIndex - 1); // move to bottom
-      if (candidate >= above.zIndex) candidate = null; // no room below → renumber
-    }
+    const candidate = computeBetweenZ(desiredOrder[targetPos - 1], desiredOrder[targetPos + 1]);
     if (candidate !== null) {
       if (candidate === targetZ) return null;
       return [{ element: target, zIndex: candidate }];

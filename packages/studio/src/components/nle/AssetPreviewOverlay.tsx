@@ -16,6 +16,65 @@ function basename(path: string): string {
   return path.split("/").pop() ?? path;
 }
 
+type AssetKind = "image" | "video" | "audio";
+
+function resolveAssetKind(path: string): AssetKind {
+  if (VIDEO_EXT.test(path)) return "video";
+  if (IMAGE_EXT.test(path)) return "image";
+  return "audio";
+}
+
+/** The media element for a previewed asset, chosen by kind. */
+function AssetPreviewMedia({
+  kind,
+  serveUrl,
+  name,
+}: {
+  kind: AssetKind;
+  serveUrl: string;
+  name: string;
+}) {
+  if (kind === "image") {
+    return (
+      <img
+        src={serveUrl}
+        alt={name}
+        className="max-w-full max-h-[70vh] rounded-md object-contain shadow-2xl"
+      />
+    );
+  }
+  if (kind === "video") {
+    return (
+      <video
+        src={serveUrl}
+        controls
+        autoPlay
+        muted
+        playsInline
+        className="max-w-full max-h-[70vh] rounded-md shadow-2xl"
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-4 px-6 py-8 rounded-xl bg-neutral-900 border border-neutral-800">
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="text-neutral-500"
+      >
+        <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+      </svg>
+      <audio src={serveUrl} controls className="w-64" />
+    </div>
+  );
+}
+
 export function AssetPreviewOverlay() {
   const previewAsset = useAssetPreviewStore((s) => s.previewAsset);
   const previewProjectId = useAssetPreviewStore((s) => s.previewProjectId);
@@ -39,9 +98,6 @@ export function AssetPreviewOverlay() {
   const encodedAsset = previewAsset.split("/").map(encodeURIComponent).join("/");
   const serveUrl = `/api/projects/${previewProjectId}/preview/${encodedAsset}`;
   const name = basename(previewAsset);
-  const isVideo = VIDEO_EXT.test(previewAsset);
-  const isImage = IMAGE_EXT.test(previewAsset);
-  const isAudio = !isVideo && !isImage;
 
   return (
     <div
@@ -79,41 +135,7 @@ export function AssetPreviewOverlay() {
         className="flex flex-col items-center gap-3 max-w-[90%] max-h-[85%]"
         onClick={(e) => e.stopPropagation()}
       >
-        {isImage && (
-          <img
-            src={serveUrl}
-            alt={name}
-            className="max-w-full max-h-[70vh] rounded-md object-contain shadow-2xl"
-          />
-        )}
-        {isVideo && (
-          <video
-            src={serveUrl}
-            controls
-            autoPlay
-            muted
-            playsInline
-            className="max-w-full max-h-[70vh] rounded-md shadow-2xl"
-          />
-        )}
-        {isAudio && (
-          <div className="flex flex-col items-center gap-4 px-6 py-8 rounded-xl bg-neutral-900 border border-neutral-800">
-            <svg
-              width="40"
-              height="40"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="text-neutral-500"
-            >
-              <path d="M9 18V5l12-2v13" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-            <audio src={serveUrl} controls className="w-64" />
-          </div>
-        )}
+        <AssetPreviewMedia kind={resolveAssetKind(previewAsset)} serveUrl={serveUrl} name={name} />
 
         {/* Filename label */}
         <span className="text-[12px] text-neutral-400 truncate max-w-full px-2 text-center">

@@ -140,6 +140,26 @@ interface OverlayRootScale {
   rootScaleY: number;
 }
 
+/** The composition root element inside the preview doc (or null when absent). */
+function findOverlayRootElement(doc: Document | null): HTMLElement | null {
+  return doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
+}
+
+/**
+ * The root's effective width/height for scaling: prefer the composition's
+ * declared dimensions (data-width/data-height), which stay fixed while GSAP
+ * transforms mutate the measured rect; fall back to the measured rect. Null when
+ * unmeasurable.
+ */
+function resolveRootDimensions(root: HTMLElement | null): { width: number; height: number } | null {
+  if (!root) return null;
+  const rootRect = root.getBoundingClientRect();
+  const width = readPositiveDimension(root.getAttribute("data-width")) ?? rootRect.width;
+  const height = readPositiveDimension(root.getAttribute("data-height")) ?? rootRect.height;
+  if (!width || !height) return null;
+  return { width, height };
+}
+
 /**
  * The iframe/overlay client rects and the iframe→root scale factors. Uses the
  * composition's declared dimensions (data-width/data-height) for the scale
@@ -155,19 +175,13 @@ function computeOverlayRootScale(
 ): OverlayRootScale | null {
   const iframeRect = iframe.getBoundingClientRect();
   const overlayRect = overlayEl.getBoundingClientRect();
-  const root =
-    doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
-  const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
-  const rootWidth = declaredWidth ?? rootRect?.width;
-  const rootHeight = declaredHeight ?? rootRect?.height;
-  if (!rootWidth || !rootHeight) return null;
+  const dims = resolveRootDimensions(findOverlayRootElement(doc));
+  if (!dims) return null;
   return {
     iframeRect,
     overlayRect,
-    rootScaleX: iframeRect.width / rootWidth,
-    rootScaleY: iframeRect.height / rootHeight,
+    rootScaleX: iframeRect.width / dims.width,
+    rootScaleY: iframeRect.height / dims.height,
   };
 }
 

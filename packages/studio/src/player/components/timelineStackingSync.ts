@@ -89,6 +89,11 @@ interface MutZ extends StackingElement {
   zIndex: number;
 }
 
+/** Reduce a neighbour set's z-indices to a single bound, or null when empty. */
+function boundaryZ(neighbours: MutZ[], reduce: (zs: number[]) => number): number | null {
+  return neighbours.length > 0 ? reduce(neighbours.map((o) => o.zIndex)) : null;
+}
+
 /**
  * Resolve `edited` so that, among the clips it OVERLAPS IN TIME, its paint order
  * matches its lane order (lower lane ⇒ paints on top). Records every z change
@@ -127,8 +132,8 @@ function resolveEditedZ(
     below.every((o) => paintsAbove(edited, o)) && above.every((o) => paintsAbove(o, edited));
   if (correct) return false;
 
-  const maxBelow = below.length > 0 ? Math.max(...below.map((o) => o.zIndex)) : null;
-  const minAbove = above.length > 0 ? Math.min(...above.map((o) => o.zIndex)) : null;
+  const maxBelow = boundaryZ(below, (zs) => Math.max(...zs));
+  const minAbove = boundaryZ(above, (zs) => Math.min(...zs));
 
   // ── Fast path: try to realise the order by moving only `edited`. ──────────────
   const single = trySingleZ(edited, maxBelow, minAbove);

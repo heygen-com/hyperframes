@@ -42,6 +42,34 @@ interface Lane {
 }
 
 /**
+ * Lowest lane index a clip may occupy: strictly above every already-placed lane
+ * holding a clip it overlaps in time (all of which out-stack it by the z-desc
+ * placement order).
+ */
+function lowestAllowedLane(lanes: Lane[], item: IndexedClip): number {
+  let minLane = 0;
+  for (let i = 0; i < lanes.length; i++) {
+    if (lanes[i].occupants.some((o) => overlaps(o.el, item.el))) minLane = i + 1;
+  }
+  return minLane;
+}
+
+/**
+ * First lane at index ≥ minLane that holds solely this clip's authored track and
+ * nothing overlapping (so sequential same-track clips share a lane); -1 when none
+ * qualifies and a fresh lane must open.
+ */
+function findReusableLane(lanes: Lane[], minLane: number, item: IndexedClip): number {
+  for (let i = minLane; i < lanes.length; i++) {
+    const lane = lanes[i];
+    if (lane.track !== item.el.track) continue;
+    if (lane.occupants.some((o) => overlaps(o.el, item.el))) continue;
+    return i;
+  }
+  return -1;
+}
+
+/**
  * Pack a WHOLE zone's clips onto display lanes with a single constrained pass so
  * that, for EVERY pair of time-overlapping clips, lane order (upper = lower index)
  * equals canvas stacking order. This replaces the old two-stage
@@ -76,23 +104,8 @@ function packZoneLanes(clips: IndexedClip[], base: number, laneOf: Map<string, n
   );
   const lanes: Lane[] = [];
   for (const item of ordered) {
-    // Lowest lane index this clip may occupy: strictly above every already-placed
-    // clip it overlaps in time (all of which out-stack it by the ordering above).
-    let minLane = 0;
-    for (let i = 0; i < lanes.length; i++) {
-      if (lanes[i].occupants.some((o) => overlaps(o.el, item.el))) minLane = i + 1;
-    }
-    // Reuse an existing lane at index ≥ minLane only if it holds solely this
-    // clip's authored track and nothing overlapping — keeps sequential same-track
-    // clips together, never collapses distinct authored tracks.
-    let placed = -1;
-    for (let i = minLane; i < lanes.length; i++) {
-      const lane = lanes[i];
-      if (lane.track !== item.el.track) continue;
-      if (lane.occupants.some((o) => overlaps(o.el, item.el))) continue;
-      placed = i;
-      break;
-    }
+    const minLane = lowestAllowedLane(lanes, item);
+    let placed = findReusableLane(lanes, minLane, item);
     if (placed === -1) {
       placed = lanes.length;
       lanes.push({ occupants: [], track: item.el.track });

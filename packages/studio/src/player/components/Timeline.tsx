@@ -5,40 +5,29 @@ import { remapBeatAnalysisToComposition } from "../../utils/beatEditActions";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useExpandedTimelineElements } from "../hooks/useExpandedTimelineElements";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { EditPopover } from "./EditModal";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelineRangeSelection } from "./useTimelineRangeSelection";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { type TrackVisualStyle, getTrackStyle } from "./timelineIcons";
-import { getTimelinePixelsPerSecond } from "./timelineZoom";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineCanvas } from "./TimelineCanvas";
-import {
-  KeyframeDiamondContextMenu,
-  type KeyframeDiamondContextMenuState,
-} from "./KeyframeDiamondContextMenu";
+import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
-import { ClipContextMenu } from "./ClipContextMenu";
-import { TimelineShortcutHint } from "./TimelineShortcutHint";
+import { TimelineOverlays } from "./TimelineOverlays";
+import { useTimelineEditPinning } from "./useTimelineEditPinning";
+import { useTimelineStackingSync } from "./useTimelineStackingSync";
+import { useTimelineGeometry } from "./useTimelineGeometry";
 import {
-  DRAG_EXTEND_MARGIN_PX,
   GUTTER,
   generateTicks,
   getTimelineCanvasHeight,
-  getTimelineDisplayContentWidth,
-  getTimelineFitPps,
   shouldShowTimelineShortcutHint,
 } from "./timelineLayout";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineProps } from "./TimelineTypes";
-import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
-import { useStudioShellContextOptional } from "../../contexts/StudioContext";
-import { findElementForSelection } from "../../components/editor/domEditingElement";
-import { readEffectiveZIndex } from "../../components/editor/canvasContextMenuZOrder";
-import type { StackingPatch } from "./timelineStackingSync";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -234,145 +223,30 @@ export const Timeline = memo(function Timeline({
   // Declared here (used before the fitPps derivation below) so the edit-pin
   // wrappers can close over it; `fitPpsRef.current` is refreshed each render.
   const fitPpsRef = useRef(100);
-  const pinTimelineZoom = usePlayerStore((s) => s.pinTimelineZoom);
-  // Pin the timeline zoom to the current on-screen scale on the FIRST edit, so a
-  // duration change from that edit (drops/moves/deletes recompute the fit basis)
-  // stops rescaling every clip — the blink-fix rescale symptom. `pinTimelineZoom`
-  // is a no-op once already pinned (or after a manual zoom), so the user's own zoom
-  // is never clobbered; Fit re-fits. Reads refs at call time for the latest scale.
-  const pinZoomBeforeEdit = useCallback(() => {
-    pinTimelineZoom(ppsRef.current, fitPpsRef.current);
-  }, [pinTimelineZoom]);
 
-  // Stable ref so useTimelineClipDrag can clear rangeSelection without circular dep
-  const setRangeSelectionRef = useRef<((sel: null) => void) | null>(null);
+  const {
+    pinZoomBeforeEdit,
+    setRangeSelectionRef,
+    pinnedOnMoveElement,
+    pinnedOnMoveElements,
+    pinnedOnResizeElement,
+    pinnedOnFileDrop,
+    pinnedOnAssetDrop,
+    pinnedOnBlockDrop,
+  } = useTimelineEditPinning({
+    ppsRef,
+    fitPpsRef,
+    onMoveElement,
+    onMoveElements,
+    onResizeElement,
+    onFileDrop,
+    onAssetDrop,
+    onBlockDrop,
+  });
 
-  // Pin the zoom right before every mutating edit commits, so the reload the edit
-  // triggers keeps the current scale. Each wrapper forwards its args unchanged and
-  // preserves the original's absence (unset callback stays unset → the timeline's
-  // own fallbacks kick in).
-  const pinnedOnMoveElement = useMemo(
-    () =>
-      onMoveElement &&
-      ((...args: Parameters<typeof onMoveElement>) => {
-        pinZoomBeforeEdit();
-        return onMoveElement(...args);
-      }),
-    [onMoveElement, pinZoomBeforeEdit],
-  );
-  const pinnedOnMoveElements = useMemo(
-    () =>
-      onMoveElements &&
-      ((...args: Parameters<typeof onMoveElements>) => {
-        pinZoomBeforeEdit();
-        return onMoveElements(...args);
-      }),
-    [onMoveElements, pinZoomBeforeEdit],
-  );
-  const pinnedOnResizeElement = useMemo(
-    () =>
-      onResizeElement &&
-      ((...args: Parameters<typeof onResizeElement>) => {
-        pinZoomBeforeEdit();
-        return onResizeElement(...args);
-      }),
-    [onResizeElement, pinZoomBeforeEdit],
-  );
-  const pinnedOnFileDrop = useMemo(
-    () =>
-      onFileDrop &&
-      ((...args: Parameters<typeof onFileDrop>) => {
-        pinZoomBeforeEdit();
-        return onFileDrop(...args);
-      }),
-    [onFileDrop, pinZoomBeforeEdit],
-  );
-  const pinnedOnAssetDrop = useMemo(
-    () =>
-      onAssetDrop &&
-      ((...args: Parameters<typeof onAssetDrop>) => {
-        pinZoomBeforeEdit();
-        return onAssetDrop(...args);
-      }),
-    [onAssetDrop, pinZoomBeforeEdit],
-  );
-  const pinnedOnBlockDrop = useMemo(
-    () =>
-      onBlockDrop &&
-      ((...args: Parameters<typeof onBlockDrop>) => {
-        pinZoomBeforeEdit();
-        return onBlockDrop(...args);
-      }),
-    [onBlockDrop, pinZoomBeforeEdit],
-  );
-
-  // Lane ↔ stacking unification (research/STAGE3-NEEDED-WIRING.md). Provision the
-  // two deps commitDraggedClipMove accepts so a lane-change drag also patches the
-  // edited clip's z-index. Both read the SAME preview iframe + z-order persist path
-  // the canvas right-click menu / LayersPanel use, so a timeline lane move and a
-  // menu z-edit produce one shared inline-style commit shape. Optional contexts:
-  // outside the NLE (standalone <Timeline>) these are null ⇒ deps undefined ⇒ the
-  // commit's z-sync is a no-op (backward compatible).
-  const domEditActions = useDomEditActionsContextOptional();
-  const shell = useStudioShellContextOptional();
-  const zSyncPreviewIframeRef = domEditActions?.previewIframeRef ?? null;
-  const handleDomZIndexReorderCommit = domEditActions?.handleDomZIndexReorderCommit;
-  const zSyncActiveCompPath = shell?.activeCompPath ?? null;
-
-  // Resolve a TimelineElement to its live iframe HTMLElement via the same
-  // hfId ?? id ?? selector[selectorIndex] resolver the timeline's DOM patches use.
-  const resolveIframeElement = useCallback(
-    (el: TimelineElement): HTMLElement | null => {
-      const doc = zSyncPreviewIframeRef?.current?.contentDocument ?? null;
-      if (!doc) return null;
-      return findElementForSelection(
-        doc,
-        {
-          hfId: el.hfId,
-          id: el.domId ?? el.id,
-          selector: el.selector,
-          selectorIndex: el.selectorIndex,
-          sourceFile: el.sourceFile,
-        },
-        zSyncActiveCompPath,
-      );
-    },
-    [zSyncPreviewIframeRef, zSyncActiveCompPath],
-  );
-
-  const readClipZIndex = useCallback(
-    (el: TimelineElement): number => {
-      const node = resolveIframeElement(el);
-      return node ? readEffectiveZIndex(node) : 0;
-    },
-    [resolveIframeElement],
-  );
-
-  const applyStackingPatches = useCallback(
-    (patches: StackingPatch[]) => {
-      if (!handleDomZIndexReorderCommit) return;
-      const entries = patches.flatMap((p) => {
-        const el = expandedElementsRef.current.find((e) => (e.key ?? e.id) === p.key);
-        const node = el && resolveIframeElement(el);
-        if (!el || !node) return [];
-        return [
-          {
-            element: node,
-            zIndex: p.zIndex,
-            id: el.domId ?? el.id,
-            selector: el.selector,
-            selectorIndex: el.selectorIndex,
-            sourceFile: el.sourceFile ?? zSyncActiveCompPath ?? "index.html",
-          },
-        ];
-      });
-      if (entries.length) handleDomZIndexReorderCommit(entries);
-    },
-    [handleDomZIndexReorderCommit, resolveIframeElement, zSyncActiveCompPath],
-  );
-
-  // Engage the z-sync only when the persist path is present (inside the NLE).
-  const zSyncEnabled = Boolean(handleDomZIndexReorderCommit && zSyncPreviewIframeRef);
+  const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
+    expandedElementsRef,
+  });
 
   const {
     draggedClip,
@@ -426,74 +300,28 @@ export const Timeline = memo(function Timeline({
   const selectedElementRef = useRef<TimelineElement | null>(selectedElement);
   selectedElementRef.current = selectedElement;
 
-  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
-  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
-  const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration);
-  const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
-  ppsRef.current = pps;
-  const trackContentWidth = Math.max(0, effectiveDuration * pps);
-  // Drag-to-extend: while a clip is dragged, keep the rendered extent a margin
-  // past the ghost's end. Holding the pointer in the right edge zone then keeps
-  // auto-scroll stepping (scrollWidth grows with the ghost), so the timeline
-  // extends at auto-scroll pace — placing a clip farther than the timeline
-  // currently shows. Growth is bounded per frame by AUTO_SCROLL_MAX_SPEED (no
-  // fling); leaving the edge zone stops it; the extra width collapses when the
-  // drag ends (the composition itself only grows on commit, content-driven).
-  const dragGhostEndPx = draggedClip?.started
-    ? (draggedClip.previewStart + draggedClip.element.duration) * pps + DRAG_EXTEND_MARGIN_PX
-    : 0;
-  // Trim-to-extend: same mechanic for a right-edge RESIZE — the rendered extent
-  // tracks the trim preview's end so the edge auto-scroll zone always has room
-  // to keep stepping while the trim grows past the current timeline width.
-  const resizeGhostEndPx = resizingClip?.started
-    ? (resizingClip.previewStart + resizingClip.previewDuration) * pps + DRAG_EXTEND_MARGIN_PX
-    : 0;
-  // The timeline canvas always fills at least the viewport width AND the
-  // MIN_TIMELINE_EXTENT_S floor: the ruler + empty track lanes keep going into
-  // the space instead of leaving dead black — CapCut-style. Only the RENDERED
-  // extent grows; clip positions/durations are untouched.
-  const displayContentWidth = getTimelineDisplayContentWidth({
-    trackContentWidth,
-    viewportWidth,
+  const {
     pps,
-    dragGhostEndPx,
-    resizeGhostEndPx,
+    fitPps,
+    displayContentWidth,
+    displayDuration,
+    clipStateVersion,
+    zoomModeRef,
+    manualZoomPercentRef,
+  } = useTimelineGeometry({
+    viewportWidth,
+    effectiveDuration,
+    zoomMode,
+    manualZoomPercent,
+    ppsRef,
+    fitPpsRef,
+    draggedClip,
+    resizingClip,
+    expandedElements,
+    isDragging,
+    scrollRef,
+    lastScrollLeftRef,
   });
-  const displayDuration = pps > 0 ? displayContentWidth / pps : effectiveDuration;
-  const clipStateVersion = useMemo(
-    () =>
-      expandedElements
-        .map((el) => `${el.key ?? el.id}:${el.start}:${el.duration}:${el.track}`)
-        .join("|"),
-    [expandedElements],
-  );
-  const zoomModeRef = useRef(zoomMode);
-  zoomModeRef.current = zoomMode;
-  const manualZoomPercentRef = useRef(manualZoomPercent);
-  manualZoomPercentRef.current = manualZoomPercent;
-  fitPpsRef.current = fitPps;
-
-  // Restore the horizontal scroll offset after an edit re-derives the elements
-  // (clipStateVersion changes) so the reload doesn't jump the view. Only in manual
-  // (pinned) mode — fit mode hides the x-scrollbar (scrollLeft is always 0) — and
-  // never mid-drag (auto-scroll owns the offset then). rAF waits for the new layout
-  // so the clamp reads the post-resync scrollWidth. zoomMode is a legitimate dep:
-  // re-running on a mode flip is a no-op thanks to the guard.
-  useEffect(() => {
-    if (zoomMode !== "manual" || isDragging.current) return;
-    const el = scrollRef.current;
-    const target = lastScrollLeftRef.current;
-    if (!el || target <= 0) return;
-    const raf = requestAnimationFrame(() => {
-      const max = Math.max(0, el.scrollWidth - el.clientWidth);
-      const next = Math.min(target, max);
-      if (Math.abs(el.scrollLeft - next) > 0.5) el.scrollLeft = next;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [clipStateVersion, zoomMode]);
-  // Publish the live scale so edit handlers OUTSIDE <Timeline> (the keyboard-delete
-  // path) can pin the zoom via pinTimelineZoomToCurrent without threading geometry.
-  usePlayerStore.getState().setTimelineScale(pps, fitPps);
 
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({
     playheadRef,
@@ -741,59 +569,27 @@ export const Timeline = memo(function Timeline({
         )}
       </div>
 
-      {showShortcutHint && !showPopover && !rangeSelection && (
-        <TimelineShortcutHint theme={theme} />
-      )}
-
-      {showPopover && rangeSelection && (
-        <EditPopover
-          rangeStart={rangeSelection.start}
-          rangeEnd={rangeSelection.end}
-          anchorX={rangeSelection.anchorX}
-          anchorY={rangeSelection.anchorY}
-          onClose={() => {
-            setShowPopover(false);
-            setRangeSelection(null);
-          }}
-        />
-      )}
-
-      {kfContextMenu && (
-        <KeyframeDiamondContextMenu
-          state={kfContextMenu}
-          onClose={() => setKfContextMenu(null)}
-          onDelete={(elId, pct) => onDeleteKeyframe?.(elId, pct)}
-          onDeleteAll={(elId) => onDeleteAllKeyframes?.(elId)}
-          onChangeEase={(elId, pct, ease) => onChangeKeyframeEase?.(elId, pct, ease)}
-          onMoveToPlayhead={
-            onMoveKeyframeToPlayhead
-              ? (elId, pct) => onMoveKeyframeToPlayhead(elId, pct)
-              : undefined
-          }
-          onCopyProperties={(elId, pct) => {
-            const kfData = keyframeCache.get(elId);
-            const kf = kfData?.keyframes.find((k) => k.percentage === pct);
-            if (kf) {
-              void navigator.clipboard.writeText(JSON.stringify(kf.properties, null, 2));
-            }
-          }}
-        />
-      )}
-
-      {clipContextMenu && (
-        <ClipContextMenu
-          x={clipContextMenu.x}
-          y={clipContextMenu.y}
-          element={clipContextMenu.element}
-          currentTime={currentTime}
-          onClose={() => setClipContextMenu(null)}
-          onSplit={(el, time) => onSplitElement?.(el, time)}
-          onDelete={(el) => {
-            pinZoomBeforeEdit();
-            _onDeleteElement?.(el);
-          }}
-        />
-      )}
+      <TimelineOverlays
+        theme={theme}
+        showShortcutHint={showShortcutHint}
+        showPopover={showPopover}
+        rangeSelection={rangeSelection}
+        setShowPopover={setShowPopover}
+        setRangeSelection={setRangeSelection}
+        kfContextMenu={kfContextMenu}
+        setKfContextMenu={setKfContextMenu}
+        onDeleteKeyframe={onDeleteKeyframe}
+        onDeleteAllKeyframes={onDeleteAllKeyframes}
+        onChangeKeyframeEase={onChangeKeyframeEase}
+        onMoveKeyframeToPlayhead={onMoveKeyframeToPlayhead}
+        keyframeCache={keyframeCache}
+        clipContextMenu={clipContextMenu}
+        setClipContextMenu={setClipContextMenu}
+        currentTime={currentTime}
+        onSplitElement={onSplitElement}
+        pinZoomBeforeEdit={pinZoomBeforeEdit}
+        onDeleteElement={_onDeleteElement}
+      />
     </div>
   );
 });

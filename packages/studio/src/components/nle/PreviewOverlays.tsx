@@ -16,7 +16,7 @@ import {
   useDomEditSelectionContext,
 } from "../../contexts/DomEditContext";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { readHfId } from "../editor/domEditing";
+import { readHfId, type DomEditSelection } from "../editor/domEditing";
 import { buildStableSelector } from "../editor/domEditingDom";
 import type { BlockPreviewInfo } from "../sidebar/BlocksTab";
 import type { GestureRecordingState } from "../editor/GestureRecordControl";
@@ -29,6 +29,53 @@ export interface PreviewOverlaysProps {
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
   gestureOverlay?: ReactNode;
+}
+
+type ZIndexReorderEntry = {
+  element: HTMLElement;
+  zIndex: number;
+  id?: string;
+  selector?: string;
+  selectorIndex?: number;
+  sourceFile: string;
+};
+
+/** Can this element be robustly re-targeted for a persisted z change? */
+function canTargetZIndexElement(
+  element: HTMLElement,
+  id: string | undefined,
+  selector: string | undefined,
+): boolean {
+  return Boolean(id || selector || readHfId(element));
+}
+
+/** The selected element carries its full selection identity. */
+function selectedZIndexEntry(sel: DomEditSelection, zIndex: number): ZIndexReorderEntry {
+  return {
+    element: sel.element,
+    zIndex,
+    id: sel.id ?? undefined,
+    selector: sel.selector,
+    selectorIndex: sel.selectorIndex,
+    sourceFile: sel.sourceFile,
+  };
+}
+
+/**
+ * Sibling elements are raw iframe DOM nodes with no selection object: derive a
+ * PatchTarget from the node itself (siblings live in the same document, so they
+ * share the selection's sourceFile). Null when it cannot be robustly targeted
+ * (no id and no selector) — its z stays live-only.
+ */
+function siblingZIndexEntry(
+  element: HTMLElement,
+  zIndex: number,
+  sourceFile: string,
+): ZIndexReorderEntry | null {
+  const id = element.id || undefined;
+  const selector = buildStableSelector(element);
+  if (!canTargetZIndexElement(element, id, selector)) return null;
+  return { element, zIndex, id, selector, selectorIndex: undefined, sourceFile };
 }
 
 // fallow-ignore-next-line complexity
@@ -130,35 +177,11 @@ export function PreviewOverlays({
         onDeleteSelection={handleDomEditElementDelete}
         onApplyZIndex={(sel, patches) => {
           const entries = patches
-            .map((patch) => {
-              // The selected element carries its full selection identity.
-              if (patch.element === sel.element) {
-                return {
-                  element: sel.element,
-                  zIndex: patch.zIndex,
-                  id: sel.id ?? undefined,
-                  selector: sel.selector,
-                  selectorIndex: sel.selectorIndex,
-                  sourceFile: sel.sourceFile,
-                };
-              }
-              // Sibling elements are raw iframe DOM nodes with no selection
-              // object. Derive a PatchTarget from the node itself; siblings live
-              // in the same document, so they share the selection's sourceFile.
-              const id = patch.element.id || undefined;
-              const selector = buildStableSelector(patch.element);
-              // Skip a sibling we cannot robustly target (no id and no selector);
-              // its z stays live-only. The repro (all clips have ids) is unaffected.
-              if (!id && !selector && !readHfId(patch.element)) return null;
-              return {
-                element: patch.element,
-                zIndex: patch.zIndex,
-                id,
-                selector,
-                selectorIndex: undefined,
-                sourceFile: sel.sourceFile,
-              };
-            })
+            .map((patch) =>
+              patch.element === sel.element
+                ? selectedZIndexEntry(sel, patch.zIndex)
+                : siblingZIndexEntry(patch.element, patch.zIndex, sel.sourceFile),
+            )
             .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
           if (entries.length > 0) handleDomZIndexReorderCommit(entries);
         }}

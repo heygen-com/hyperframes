@@ -55,6 +55,23 @@ function edgeHandlePlacement(
 
 const EDGES: CropEdge[] = ["top", "right", "bottom", "left"];
 
+/** Hit-strip + pill dimensions for an edge handle, keyed on its orientation. */
+function edgeHandleMetrics(vertical: boolean): {
+  hitWidth: number;
+  hitHeight: number;
+  cursor: string;
+  pillWidth: number;
+  pillHeight: number;
+} {
+  return {
+    hitWidth: vertical ? EDGE_HIT_THICKNESS : EDGE_HIT_LENGTH,
+    hitHeight: vertical ? EDGE_HIT_LENGTH : EDGE_HIT_THICKNESS,
+    cursor: vertical ? "ew-resize" : "ns-resize",
+    pillWidth: vertical ? 4 : 24,
+    pillHeight: vertical ? 24 : 4,
+  };
+}
+
 /**
  * Always-on crop, integrated with the selection (no crop "mode"): while a
  * croppable element is selected its clip is lifted so the FULL content shows and
@@ -291,6 +308,7 @@ export function DomEditCropHandles({
         const vertical = edge === "left" || edge === "right";
         const place = edgeHandlePlacement(edge, cropRect);
         const revealed = dragging || hasCrop || hotEdge === edge;
+        const m = edgeHandleMetrics(vertical);
         return (
           <button
             key={edge}
@@ -302,10 +320,10 @@ export function DomEditCropHandles({
             style={{
               left: place.left,
               top: place.top,
-              width: vertical ? EDGE_HIT_THICKNESS : EDGE_HIT_LENGTH,
-              height: vertical ? EDGE_HIT_LENGTH : EDGE_HIT_THICKNESS,
+              width: m.hitWidth,
+              height: m.hitHeight,
               transform: place.transform,
-              cursor: vertical ? "ew-resize" : "ns-resize",
+              cursor: m.cursor,
               touchAction: "none",
             }}
             onPointerEnter={() => setHotEdge(edge)}
@@ -318,8 +336,8 @@ export function DomEditCropHandles({
             <span
               className="pointer-events-none rounded-full bg-studio-accent/90 shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-opacity duration-100"
               style={{
-                width: vertical ? 4 : 24,
-                height: vertical ? 24 : 4,
+                width: m.pillWidth,
+                height: m.pillHeight,
                 opacity: revealed ? 1 : 0,
               }}
             />

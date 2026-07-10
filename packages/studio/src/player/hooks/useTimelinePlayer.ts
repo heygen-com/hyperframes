@@ -3,6 +3,7 @@ import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerS
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
@@ -212,49 +213,14 @@ export function useTimelinePlayer() {
     }
   }, []);
 
-  const stopReverseLoop = useCallback(() => {
-    cancelAnimationFrame(reverseRafRef.current);
-  }, []);
+  const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
+    rafRef,
+    reverseRafRef,
+    getAdapter,
+    setCurrentTime,
+    setIsPlaying,
+  });
 
-  const startRAFLoop = useCallback(() => {
-    // fallow-ignore-next-line complexity
-    const tick = () => {
-      const adapter = getAdapter();
-      if (adapter) {
-        const rawTime = adapter.getTime();
-        const dur = adapter.getDuration();
-        const time = dur > 0 ? Math.min(rawTime, dur) : rawTime;
-        liveTime.notify(time); // direct DOM updates, no React re-render
-        const { inPoint, outPoint } = usePlayerStore.getState();
-        const rawLoopEnd = outPoint !== null ? Math.min(outPoint, dur) : dur;
-        const rawLoopStart = inPoint !== null ? inPoint : 0;
-        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
-        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
-        if (time >= loopEnd) {
-          if (usePlayerStore.getState().loopEnabled && dur > 0) {
-            // keepPlaying skips the adapter's implicit pause; play() below is then a no-op.
-            adapter.seek(loopStart, { keepPlaying: true });
-            liveTime.notify(loopStart);
-            adapter.play();
-            setIsPlaying(true);
-            rafRef.current = requestAnimationFrame(tick);
-            return;
-          }
-          if (adapter.isPlaying()) adapter.pause();
-          setCurrentTime(time); // sync Zustand once at end
-          setIsPlaying(false);
-          cancelAnimationFrame(rafRef.current);
-          return;
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, [getAdapter, setCurrentTime, setIsPlaying]);
-
-  const stopRAFLoop = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-  }, []);
   const applyPlaybackRate = useCallback((rate: number) => {
     const iframe = iframeRef.current;
     if (!iframe) return;

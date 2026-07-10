@@ -61,6 +61,31 @@ function toMarqueeClips(elements: TimelineElement[]): MarqueeClipInput[] {
   }));
 }
 
+/**
+ * Compute the live selection for a marquee rect and commit it to the store.
+ * Shift held mid-drag (or cmd/ctrl at pointerdown) unions the new hits with the
+ * pre-drag selection (marquee.baseIds / basePrimary).
+ */
+function commitMarqueeSelection(
+  rect: Rect,
+  additive: boolean,
+  marquee: MarqueeDragState,
+  elements: TimelineElement[],
+  trackOrder: number[],
+  pps: number,
+): void {
+  const { ids, primaryId } = computeMarqueeSelection({
+    clips: toMarqueeClips(elements),
+    trackOrder,
+    pps,
+    marquee: rect,
+    baseSelection: additive ? marquee.baseIds : undefined,
+  });
+  const store = usePlayerStore.getState();
+  store.setSelectedElementIds(ids);
+  store.setSelectedElementId(primaryId ?? (additive ? marquee.basePrimary : null));
+}
+
 export function useTimelineRangeSelection({
   scrollRef,
   ppsRef,
@@ -135,16 +160,14 @@ export function useTimelineRangeSelection({
       // Live selection: every clip the box currently covers. Shift held
       // mid-drag (or cmd/ctrl at pointerdown) adds to the prior selection.
       const additive = marquee.additive || shiftKey;
-      const { ids, primaryId } = computeMarqueeSelection({
-        clips: toMarqueeClips(elementsRef.current ?? []),
-        trackOrder: trackOrderRef.current ?? [],
-        pps: ppsRef.current,
-        marquee: rect,
-        baseSelection: additive ? marquee.baseIds : undefined,
-      });
-      const store = usePlayerStore.getState();
-      store.setSelectedElementIds(ids);
-      store.setSelectedElementId(primaryId ?? (additive ? marquee.basePrimary : null));
+      commitMarqueeSelection(
+        rect,
+        additive,
+        marquee,
+        elementsRef.current ?? [],
+        trackOrderRef.current ?? [],
+        ppsRef.current,
+      );
     },
     [toContentPoint, elementsRef, trackOrderRef, ppsRef],
   );
@@ -195,20 +218,28 @@ export function useTimelineRangeSelection({
     [scrollRef, stepMarqueeAutoScroll],
   );
 
+  // Shift-press → start a time-range selection anchored at the pressed x.
+  const beginRangeSelection = useCallback(
+    (e: React.PointerEvent) => {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      isRangeSelecting.current = true;
+      setShowPopover(false);
+      const rect = scrollRef.current?.getBoundingClientRect();
+      if (rect) {
+        const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
+        const time = Math.max(0, x / pps);
+        rangeAnchorTime.current = time;
+        setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
+      }
+    },
+    [scrollRef, pps, setShowPopover],
+  );
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       if (e.shiftKey) {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        isRangeSelecting.current = true;
-        setShowPopover(false);
-        const rect = scrollRef.current?.getBoundingClientRect();
-        if (rect) {
-          const x = e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER;
-          const time = Math.max(0, x / pps);
-          rangeAnchorTime.current = time;
-          setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
-        }
+        beginRangeSelection(e);
         return;
       }
       shiftClickClipRef.current = null;
@@ -240,7 +271,35 @@ export function useTimelineRangeSelection({
         active: false,
       };
     },
-    [seekFromX, pps, scrollRef, isDragging, setShowPopover, toContentPoint],
+    [beginRangeSelection, seekFromX, scrollRef, isDragging, setShowPopover, toContentPoint],
+  );
+
+  // Scrub-drag update: live playhead feedback (liveTime) + RAF-throttled seek.
+  const updateScrubDrag = useCallback(
+    (clientX: number) => {
+      pendingClientXRef.current = clientX;
+      // Update the playhead visual immediately via liveTime for smooth feedback,
+      // then RAF-throttle the full seek (adapter + React state sync).
+      const el = scrollRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const x = clientX - rect.left + el.scrollLeft - GUTTER;
+        if (x >= 0) {
+          const dur = el.scrollWidth / pps;
+          liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
+        }
+      }
+      if (!seekRafRef.current) {
+        seekRafRef.current = requestAnimationFrame(() => {
+          seekRafRef.current = 0;
+          if (isDragging.current) {
+            seekFromX(pendingClientXRef.current);
+            autoScrollDuringDrag(pendingClientXRef.current);
+          }
+        });
+      }
+    },
+    [scrollRef, pps, seekFromX, autoScrollDuringDrag, isDragging],
   );
 
   const handlePointerMove = useCallback(
@@ -266,59 +325,34 @@ export function useTimelineRangeSelection({
         return;
       }
       if (!isDragging.current) return;
-      pendingClientXRef.current = e.clientX;
-      // Update the playhead visual immediately via liveTime for smooth feedback,
-      // then RAF-throttle the full seek (adapter + React state sync).
-      const el = scrollRef.current;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left + el.scrollLeft - GUTTER;
-        if (x >= 0) {
-          const dur = el.scrollWidth / pps;
-          liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
-        }
-      }
-      if (!seekRafRef.current) {
-        seekRafRef.current = requestAnimationFrame(() => {
-          seekRafRef.current = 0;
-          if (isDragging.current) {
-            seekFromX(pendingClientXRef.current);
-            autoScrollDuringDrag(pendingClientXRef.current);
-          }
-        });
-      }
+      updateScrubDrag(e.clientX);
     },
-    [
-      seekFromX,
-      autoScrollDuringDrag,
-      pps,
-      scrollRef,
-      isDragging,
-      applyMarqueeAtClient,
-      syncMarqueeAutoScroll,
-    ],
+    [pps, scrollRef, isDragging, applyMarqueeAtClient, syncMarqueeAutoScroll, updateScrubDrag],
   );
 
-  const handlePointerUp = useCallback(() => {
-    if (isRangeSelecting.current) {
-      isRangeSelecting.current = false;
-      const pendingShiftClick = shiftClickClipRef.current;
-      shiftClickClipRef.current = null;
-      setRangeSelection((prev) => {
-        if (prev && pendingShiftClick && Math.abs(prev.end - prev.start) <= 0.2) {
-          setShowPopover(true);
-          return buildClipRangeSelection(pendingShiftClick.element, pendingShiftClick);
-        }
-        if (prev && Math.abs(prev.end - prev.start) > 0.2) {
-          setShowPopover(true);
-          return prev;
-        }
-        return null;
-      });
-      return;
-    }
-    const marquee = marqueeRef.current;
-    if (marquee) {
+  // Release of a shift time-range gesture: keep a real range (or a shift-click
+  // clip range), otherwise clear it.
+  const finishRangeSelection = useCallback(() => {
+    isRangeSelecting.current = false;
+    const pendingShiftClick = shiftClickClipRef.current;
+    shiftClickClipRef.current = null;
+    setRangeSelection((prev) => {
+      if (prev && pendingShiftClick && Math.abs(prev.end - prev.start) <= 0.2) {
+        setShowPopover(true);
+        return buildClipRangeSelection(pendingShiftClick.element, pendingShiftClick);
+      }
+      if (prev && Math.abs(prev.end - prev.start) > 0.2) {
+        setShowPopover(true);
+        return prev;
+      }
+      return null;
+    });
+  }, [setShowPopover]);
+
+  // Release of a marquee gesture: plain click deselects; a real drag keeps the
+  // live selection and notifies the primary element.
+  const finishMarquee = useCallback(
+    (marquee: MarqueeDragState) => {
       marqueeRef.current = null;
       stopMarqueeAutoScroll();
       setMarqueeRect(null);
@@ -330,11 +364,22 @@ export function useTimelineRangeSelection({
         onSelectElement?.(null);
         return;
       }
-      // Drag released: keep the live selection, notify the primary element.
       const primaryKey = store.selectedElementId;
       const primary =
         (elementsRef.current ?? []).find((el) => (el.key ?? el.id) === primaryKey) ?? null;
       onSelectElement?.(primary);
+    },
+    [stopMarqueeAutoScroll, elementsRef, onSelectElement],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    if (isRangeSelecting.current) {
+      finishRangeSelection();
+      return;
+    }
+    const marquee = marqueeRef.current;
+    if (marquee) {
+      finishMarquee(marquee);
       return;
     }
     if (!isDragging.current) return;
@@ -346,15 +391,7 @@ export function useTimelineRangeSelection({
     isDragging.current = false;
     setIsScrubbing(false);
     cancelAnimationFrame(dragScrollRaf.current);
-  }, [
-    isDragging,
-    dragScrollRaf,
-    setShowPopover,
-    seekFromX,
-    elementsRef,
-    onSelectElement,
-    stopMarqueeAutoScroll,
-  ]);
+  }, [isDragging, dragScrollRaf, seekFromX, finishRangeSelection, finishMarquee]);
 
   // Escape: cancel an in-flight marquee (restores the pre-drag selection);
   // otherwise clear any lingering multi-selection.
