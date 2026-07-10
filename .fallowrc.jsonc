@@ -260,12 +260,6 @@
       "file": "packages/core/src/figma/manifest.ts",
       "exports": ["mediaDir", "typeDirPath", "isFigmaManifestRecord"],
     },
-    // DEFAULT_DROP_PREVIEW_DURATION: exported constant consumed by Task 6
-    // (timelineDropPreviewUI). Not yet imported by current code in this codebase.
-    {
-      "file": "packages/studio/src/player/components/timelineDropPreview.ts",
-      "exports": ["DEFAULT_DROP_PREVIEW_DURATION"],
-    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
