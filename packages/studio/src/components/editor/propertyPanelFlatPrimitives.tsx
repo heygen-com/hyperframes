@@ -161,7 +161,7 @@ export function FlatGroup({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className="flex min-h-10 w-full items-center justify-between gap-2 border-b border-panel-hairline px-4 text-left"
+        className="sticky top-0 bottom-0 z-10 flex min-h-10 w-full items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left"
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
@@ -186,7 +186,7 @@ export function FlatGroup({
 
   return (
     <div className="border-b border-panel-hairline px-4 py-3" data-flat-group-open="true">
-      <div className="mb-2.5 flex items-center justify-between">
+      <div className="sticky top-0 bottom-0 z-10 -mx-4 mb-2.5 flex items-center justify-between bg-panel-bg px-4">
         <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
         <span className="flex items-center gap-2.5 text-panel-text-5">
           {accessory}
@@ -467,7 +467,7 @@ export function PinnedGroupRow({
 }) {
   return (
     <div className="border-b border-panel-hairline px-4 py-3" data-pinned-group="true">
-      <div className="mb-2.5 flex items-center justify-between">
+      <div className="sticky top-0 bottom-0 z-10 -mx-4 mb-2.5 flex items-center justify-between bg-panel-bg px-4">
         <span className="flex items-center gap-1.5">
           <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-panel-accent">
             Pinned

@@ -125,6 +125,11 @@ describe("FlatGroup", () => {
       </FlatGroup>,
     );
     expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
+    const header = host.querySelector('[data-flat-group-open="true"] > div');
+    expect(header?.className).toContain("sticky");
+    expect(header?.className).toContain("top-0");
+    expect(header?.className).toContain("bottom-0");
+    expect(header?.className).toContain("bg-panel-bg");
     const pin = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
     act(() => pin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onTogglePin).toHaveBeenCalledTimes(1);
@@ -148,6 +153,10 @@ describe("FlatGroup", () => {
     expect(host.querySelector('[data-testid="body"]')).toBeNull();
     expect(host.textContent).toContain("fill none · 100%");
     const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
+    expect(row?.className).toContain("sticky");
+    expect(row?.className).toContain("top-0");
+    expect(row?.className).toContain("bottom-0");
+    expect(row?.className).toContain("bg-panel-bg");
     act(() => row?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onToggleOpen).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
@@ -469,6 +478,11 @@ describe("PinnedGroupRow", () => {
     expect(host.textContent).toContain("Pinned");
     expect(host.textContent).toContain("Motion");
     expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
+    const header = host.querySelector('[data-pinned-group="true"] > div');
+    expect(header?.className).toContain("sticky");
+    expect(header?.className).toContain("top-0");
+    expect(header?.className).toContain("bottom-0");
+    expect(header?.className).toContain("bg-panel-bg");
     const unpin = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
     act(() => unpin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onUnpin).toHaveBeenCalledTimes(1);
