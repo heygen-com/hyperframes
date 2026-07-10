@@ -72,6 +72,8 @@ function classifyHeygenErrorResult(err) {
     lower.includes("rate limit") ||
     lower.includes("quota") ||
     lower.includes("insufficient credit") ||
+    lower.includes("too many requests") ||
+    lower.includes("throttled") ||
     /\b429\b/.test(lower)
   ) {
     return { code: "rate_limited", message: detail };

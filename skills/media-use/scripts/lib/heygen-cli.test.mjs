@@ -110,6 +110,21 @@ test("classifies quota and insufficient-credit errors as rate limited", () => {
   }
 });
 
+test("classifies the literal 429 reason phrase and throttling language as rate limited", () => {
+  for (const detail of ["Too Many Requests", "Error: throttled by upstream, retry later"]) {
+    assert.equal(classifyHeygenErrorCode({ stderr: Buffer.from(detail) }), "rate_limited");
+  }
+});
+
+test("does not misclassify unrelated errors that share a word with the new phrasing", () => {
+  // Shares "too many" with "too many requests" but is a distinct failure (fd
+  // exhaustion, not a rate limit) — the match must require the full phrase.
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("Too many open file descriptors") }),
+    "other",
+  );
+});
+
 test("classifies a bare 429 as rate limited without matching request IDs", () => {
   assert.equal(
     classifyHeygenErrorCode({ stderr: Buffer.from("HTTP 429 Too Many Requests") }),
