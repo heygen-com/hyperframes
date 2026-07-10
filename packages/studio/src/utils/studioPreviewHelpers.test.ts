@@ -25,6 +25,15 @@ function stubRect(el: Element, rect: DOMRect): void {
   el.getBoundingClientRect = () => rect;
 }
 
+/** Create and attach a preview iframe, returning it with its (asserted) document. */
+function createPreviewIframe(): { iframe: HTMLIFrameElement; doc: Document } {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error("Expected iframe document");
+  return { iframe, doc };
+}
+
 describe("coversComposition (full-bleed canvas-pick exclusion)", () => {
   const viewport = { width: 1920, height: 1080 };
 
@@ -106,10 +115,7 @@ describe("pauseStudioPreviewPlayback", () => {
 
 describe("getPreviewTargetFromPointer", () => {
   it("skips candidates hidden from author hit-testing by inherited pointer-events:none", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
+    const { iframe, doc } = createPreviewIframe();
 
     doc.body.innerHTML = `
       <main id="scene" data-composition-id="scene">
@@ -141,10 +147,7 @@ describe("getPreviewTargetFromPointer", () => {
   });
 
   it("honors a CSS-class pointer-events:auto opt-in under a pointer-events:none ancestor", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
+    const { iframe, doc } = createPreviewIframe();
 
     doc.head.innerHTML = `<style>.clickable { pointer-events: auto; }</style>`;
     doc.body.innerHTML = `
@@ -174,10 +177,7 @@ describe("getPreviewTargetFromPointer", () => {
   });
 
   it("selects a full-bleed <video> instead of skipping to the element behind it", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
+    const { iframe, doc } = createPreviewIframe();
 
     doc.body.innerHTML = `
       <main id="scene" data-composition-id="scene">
@@ -206,10 +206,7 @@ describe("getPreviewTargetFromPointer", () => {
   });
 
   it("still excludes a full-bleed non-media container so clicks reach inner content", () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("Expected iframe document");
+    const { iframe, doc } = createPreviewIframe();
 
     doc.body.innerHTML = `
       <main id="scene" data-composition-id="scene">

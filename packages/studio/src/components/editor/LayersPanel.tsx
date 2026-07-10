@@ -49,6 +49,34 @@ function isCompositionHost(el: HTMLElement): boolean {
   return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
 }
 
+/**
+ * A trailing-rAF + cooldown throttle: `invoke` runs `run` at most once per
+ * animation frame and no more often than `throttleMs`. `cancel` clears any
+ * pending frame (call on cleanup). Extracted so the throttle can be exercised
+ * directly in tests instead of being reconstructed there.
+ */
+export function createRafThrottle(
+  run: () => void,
+  throttleMs = 100,
+): { invoke: () => void; cancel: () => void } {
+  let rafId: number | null = null;
+  let lastFired = 0;
+  return {
+    invoke: () => {
+      const now = performance.now();
+      if (rafId !== null || now - lastFired < throttleMs) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        lastFired = performance.now();
+        run();
+      });
+    },
+    cancel: () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    },
+  };
+}
+
 interface CollapsedState {
   [key: string]: boolean;
 }
@@ -128,23 +156,11 @@ export const LayersPanel = memo(function LayersPanel() {
   // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
   // avoid a collectLayers call on every animation frame.
   useEffect(() => {
-    let rafId: number | null = null;
-    let lastFired = 0;
-    const THROTTLE_MS = 100;
-
-    const unsubscribe = liveTime.subscribe(() => {
-      const now = performance.now();
-      if (rafId !== null || now - lastFired < THROTTLE_MS) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        lastFired = performance.now();
-        collectLayers();
-      });
-    });
-
+    const throttle = createRafThrottle(collectLayers, 100);
+    const unsubscribe = liveTime.subscribe(throttle.invoke);
     return () => {
       unsubscribe();
-      if (rafId !== null) cancelAnimationFrame(rafId);
+      throttle.cancel();
     };
   }, [collectLayers]);
 

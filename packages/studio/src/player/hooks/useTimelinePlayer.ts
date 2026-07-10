@@ -15,7 +15,6 @@ export {
   parseTimelineFromDOM,
   readTimelineDurationFromDocument,
   resolveStandaloneRootCompositionSrc,
-  resolveIframe,
 } from "../lib/timelineDOM";
 export {
   shouldIgnorePlaybackShortcutEvent,

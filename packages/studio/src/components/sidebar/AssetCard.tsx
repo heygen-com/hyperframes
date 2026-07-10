@@ -10,8 +10,24 @@ import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
-import { basename, ext } from "./assetHelpers";
-import { truncateMiddle, formatDuration } from "./AssetsTab";
+import { basename, ext, truncateMiddle, formatDuration } from "./assetHelpers";
+
+/** Drag payload writer shared by the asset tile and the font row: copy effect
+ *  plus the timeline-asset MIME and a plain-text path fallback. */
+function writeAssetDragData(e: React.DragEvent, asset: string): void {
+  e.dataTransfer.effectAllowed = "copy";
+  e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
+  e.dataTransfer.setData("text/plain", asset);
+}
+
+/** Open the row/tile context menu at the pointer, shared by asset tile + font row. */
+function openAssetContextMenu(
+  e: React.MouseEvent,
+  setContextMenu: (menu: { x: number; y: number }) => void,
+): void {
+  e.preventDefault();
+  setContextMenu({ x: e.clientX, y: e.clientY });
+}
 
 /**
  * Lazily probe a video/audio URL for its duration via a hidden HTMLVideoElement
@@ -19,7 +35,7 @@ import { truncateMiddle, formatDuration } from "./AssetsTab";
  * assets in assets/ have no manifest entry — this fills the gap.
  * Returns `undefined` until the probe completes; `null` if it failed.
  */
-export function useProbedDuration(src: string, skip: boolean): number | null | undefined {
+function useProbedDuration(src: string, skip: boolean): number | null | undefined {
   const [duration, setDuration] = useState<number | null | undefined>(undefined);
   useEffect(() => {
     if (skip) return;
@@ -140,15 +156,8 @@ export function AssetCard({
         draggable
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "copy";
-          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
-          e.dataTransfer.setData("text/plain", asset);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
+        onDragStart={(e) => writeAssetDragData(e, asset)}
+        onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
         className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors ${
@@ -262,15 +271,8 @@ export function FontRow({
       <div
         draggable
         onClick={() => onCopy(asset)}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "copy";
-          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
-          e.dataTransfer.setData("text/plain", asset);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
+        onDragStart={(e) => writeAssetDragData(e, asset)}
+        onContextMenu={(e) => openAssetContextMenu(e, setContextMenu)}
         className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors ${
           isCopied
             ? "bg-studio-accent/10 border-l-2 border-studio-accent"

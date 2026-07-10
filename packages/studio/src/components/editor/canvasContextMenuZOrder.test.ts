@@ -47,6 +47,14 @@ function makeFamily(
   return { target, parent, byId };
 }
 
+/** Resolve a z-order change and assert it produced patches (fails otherwise). */
+function resolveZOrderPatches(target: HTMLElement, action: ZOrderAction): ZOrderPatch[] {
+  const patches = resolveZOrderChange(target, action);
+  expect(patches).not.toBeNull();
+  if (!patches) throw new Error("expected z-order patches");
+  return patches;
+}
+
 /** Look up a patch for a given element id in a patch list. */
 function patchFor(patches: ZOrderPatch[], byId: Record<string, HTMLElement>, id: string) {
   return patches.find((p) => p.element === byId[id]);
@@ -95,9 +103,7 @@ describe("resolveZOrderChange – distinct z values (fast path)", () => {
       ["b", "5"],
       ["c", "3"],
     ]);
-    const patches = resolveZOrderChange(target, "bring-to-front");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "bring-to-front");
     expect(patches).toHaveLength(1);
     expect(patchFor(patches, byId, "target")?.zIndex).toBe(6);
   });
@@ -117,9 +123,7 @@ describe("resolveZOrderChange – distinct z values (fast path)", () => {
       ["b", "5"],
       ["c", "2"],
     ]);
-    const patches = resolveZOrderChange(target, "send-to-back");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-to-back");
     // target must end up strictly below the current min (1) in render order.
     expect(renderOrderIds(parent, byId, patches)[0]).toBe("target");
   });
@@ -140,9 +144,7 @@ describe("resolveZOrderChange – distinct z values (fast path)", () => {
       ["c", "7"],
     ]);
     // render order bottom→top: a(1), target(2), b(4), c(7). forward → above b.
-    const patches = resolveZOrderChange(target, "bring-forward");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "bring-forward");
     expect(renderOrderIds(parent, byId, patches)).toEqual(["a", "b", "target", "c"]);
   });
 
@@ -153,9 +155,7 @@ describe("resolveZOrderChange – distinct z values (fast path)", () => {
       ["c", "8"],
     ]);
     // bottom→top: a(1), b(3), target(5), c(8). backward → below b.
-    const patches = resolveZOrderChange(target, "send-backward");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-backward");
     expect(renderOrderIds(parent, byId, patches)).toEqual(["a", "target", "b", "c"]);
   });
 
@@ -198,9 +198,7 @@ describe("resolveZOrderChange – DOM-order ties (repro: equal z)", () => {
     // img#a (z=0, earlier in DOM) then video#target (z=0, later) → video paints
     // on top. send-backward must put target below the image.
     const { target, byId, parent } = makeFamily("0", [["a", "0"]], { targetLast: true });
-    const patches = resolveZOrderChange(target, "send-backward");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-backward");
     expect(renderOrderIds(parent, byId, patches)).toEqual(["target", "a"]);
     // target ends strictly below the image.
     const tz = patchFor(patches, byId, "target")?.zIndex ?? 0;
@@ -209,9 +207,7 @@ describe("resolveZOrderChange – DOM-order ties (repro: equal z)", () => {
 
   it("send-to-back: tied target LATER in DOM goes to the very back", () => {
     const { target, byId, parent } = makeFamily("0", [["a", "0"]], { targetLast: true });
-    const patches = resolveZOrderChange(target, "send-to-back");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-to-back");
     expect(renderOrderIds(parent, byId, patches)[0]).toBe("target");
   });
 
@@ -219,17 +215,13 @@ describe("resolveZOrderChange – DOM-order ties (repro: equal z)", () => {
     // target#target (z=0, earlier) then #a (z=0, later) → a paints on top.
     // bring-forward on target must lift it above a.
     const { target, byId, parent } = makeFamily("0", [["a", "0"]]);
-    const patches = resolveZOrderChange(target, "bring-forward");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "bring-forward");
     expect(renderOrderIds(parent, byId, patches)).toEqual(["a", "target"]);
   });
 
   it("bring-to-front: tied target EARLIER in DOM goes to the very front", () => {
     const { target, byId, parent } = makeFamily("0", [["a", "0"]]);
-    const patches = resolveZOrderChange(target, "bring-to-front");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "bring-to-front");
     const order = renderOrderIds(parent, byId, patches);
     expect(order[order.length - 1]).toBe("target");
   });
@@ -257,9 +249,7 @@ describe("resolveZOrderChange – DOM-order ties (repro: equal z)", () => {
     const b = makeEl("b", "0");
     parent.append(a, target, b);
     // render order bottom→top by (z, dom): a, target, b. send-backward → below a.
-    const patches = resolveZOrderChange(target, "send-backward");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-backward");
     for (const p of patches) p.element.style.zIndex = String(p.zIndex);
     const order = renderOrderIds(parent, { a, target, b }, []);
     expect(order).toEqual(["target", "a", "b"]);
@@ -287,9 +277,7 @@ describe("resolveZOrderChange – excludes non-painting siblings", () => {
 
     // target is later in DOM than a, tied at z=0 → paints on top. send-to-back
     // must put it below a. If audio (z=2) were counted, the renumber would differ.
-    const patches = resolveZOrderChange(target, "send-to-back");
-    expect(patches).not.toBeNull();
-    if (!patches) return;
+    const patches = resolveZOrderPatches(target, "send-to-back");
     // No patch may target the audio/script/style elements.
     for (const p of patches) {
       expect(p.element).not.toBe(audio);

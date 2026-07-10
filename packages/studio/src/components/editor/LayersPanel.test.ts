@@ -3,7 +3,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { Window } from "happy-dom";
 import type { DomEditLayerItem } from "./domEditingTypes";
-import { sortLayersByZIndex } from "./LayersPanel";
+import { createRafThrottle, sortLayersByZIndex } from "./LayersPanel";
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
 
@@ -178,19 +178,8 @@ describe("liveTime subscribe / unsubscribe (LayersPanel scrub contract)", () => 
 
   it("queuing a rAF on liveTime notify then flushing calls the refresh exactly once", () => {
     const refresh = vi.fn();
-    let rafId: number | null = null;
-    const THROTTLE_MS = 100;
-    let lastFired = 0;
-
-    const unsubscribe = liveTime.subscribe(() => {
-      const now = performance.now();
-      if (rafId !== null || now - lastFired < THROTTLE_MS) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        lastFired = performance.now();
-        refresh();
-      });
-    });
+    const throttle = createRafThrottle(refresh, 100);
+    const unsubscribe = liveTime.subscribe(throttle.invoke);
 
     // First notify enqueues one rAF
     liveTime.notify(0.1);

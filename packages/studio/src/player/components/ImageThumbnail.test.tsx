@@ -93,6 +93,13 @@ function lastProbe(): MockImage {
   return probe!;
 }
 
+/** Assert at least one tile rendered and the first tile serves `expectedSrc`. */
+function expectFirstTileSrc(expectedSrc: string): void {
+  const imgs = [...host.querySelectorAll("img")];
+  expect(imgs.length).toBeGreaterThanOrEqual(1);
+  expect(imgs[0].getAttribute("src")).toBe(expectedSrc);
+}
+
 describe("ImageThumbnail", () => {
   it("shows the loading shimmer before the image resolves", () => {
     render({ imageSrc: "/api/projects/p/preview/assets/pic.png" });
@@ -136,9 +143,7 @@ describe("ImageThumbnail", () => {
       probe.onload?.();
     });
 
-    const imgs = [...host.querySelectorAll("img")];
-    expect(imgs.length).toBeGreaterThanOrEqual(1);
-    expect(imgs[0].getAttribute("src")).toBe("/api/projects/p/preview/assets/logo.svg");
+    expectFirstTileSrc("/api/projects/p/preview/assets/logo.svg");
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 
@@ -149,9 +154,7 @@ describe("ImageThumbnail", () => {
 
     act(() => lastProbe().onerror?.());
 
-    const imgs = [...host.querySelectorAll("img")];
-    expect(imgs.length).toBeGreaterThanOrEqual(1);
-    expect(imgs[0].getAttribute("src")).toBe("/api/projects/p/preview/assets/icon.svg");
+    expectFirstTileSrc("/api/projects/p/preview/assets/icon.svg");
     expect(host.querySelector(".animate-pulse")).toBeNull();
   });
 

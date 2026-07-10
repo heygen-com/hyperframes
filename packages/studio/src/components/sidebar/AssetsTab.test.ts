@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  filterByUsage,
-  countUsage,
-  deriveUsedPaths,
-  truncateMiddle,
-  formatDuration,
-} from "./AssetsTab";
+import { filterByUsage, countUsage, deriveUsedPaths } from "./AssetsTab";
+import { truncateMiddle, formatDuration } from "./assetHelpers";
 import { globalAssetRows } from "./GlobalAssetsView";
 
 const assets = ["bgm.mp3", "logo.png", "orphan.wav"];

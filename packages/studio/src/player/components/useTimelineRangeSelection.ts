@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import {
   buildClipRangeSelection,
-  resolveTimelineAutoScroll,
+  applyTimelineAutoScrollStep,
+  resolveTimelineAutoScrollLoopAction,
   type TimelineRangeSelection,
 } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
@@ -167,19 +168,8 @@ export function useTimelineRangeSelection({
     const pointer = marqueePointerRef.current;
     const scroll = scrollRef.current;
     if (!marquee || !pointer || !scroll) return;
+    if (!applyTimelineAutoScrollStep(scroll, pointer.clientX, pointer.clientY)) return;
 
-    const rect = scroll.getBoundingClientRect();
-    const delta = resolveTimelineAutoScroll(rect, pointer.clientX, pointer.clientY);
-    if (delta.x === 0 && delta.y === 0) return;
-
-    const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, scroll.scrollLeft + delta.x));
-    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, scroll.scrollTop + delta.y));
-    if (nextScrollLeft === scroll.scrollLeft && nextScrollTop === scroll.scrollTop) return;
-
-    scroll.scrollLeft = nextScrollLeft;
-    scroll.scrollTop = nextScrollTop;
     // Re-run at the SAME client point: toContentPoint folds in the new scroll, so
     // the marquee's moving corner tracks the revealed content.
     applyMarqueeAtClient(pointer.clientX, pointer.clientY, pointer.shiftKey);
@@ -189,18 +179,16 @@ export function useTimelineRangeSelection({
   const syncMarqueeAutoScroll = useCallback(
     (clientX: number, clientY: number, shiftKey: boolean) => {
       marqueePointerRef.current = { clientX, clientY, shiftKey };
-      const scroll = scrollRef.current;
-      if (!scroll) return;
-      const rect = scroll.getBoundingClientRect();
-      const delta = resolveTimelineAutoScroll(rect, clientX, clientY);
-      if (delta.x === 0 && delta.y === 0) {
-        if (marqueeScrollRaf.current) {
-          cancelAnimationFrame(marqueeScrollRaf.current);
-          marqueeScrollRaf.current = 0;
-        }
-        return;
-      }
-      if (!marqueeScrollRaf.current) {
+      const action = resolveTimelineAutoScrollLoopAction(
+        scrollRef.current,
+        clientX,
+        clientY,
+        marqueeScrollRaf.current !== 0,
+      );
+      if (action === "stop") {
+        cancelAnimationFrame(marqueeScrollRaf.current);
+        marqueeScrollRaf.current = 0;
+      } else if (action === "start") {
         marqueeScrollRaf.current = requestAnimationFrame(stepMarqueeAutoScroll);
       }
     },

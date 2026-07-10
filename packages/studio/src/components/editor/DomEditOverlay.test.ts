@@ -142,6 +142,103 @@ function createOverlayProps(args: {
   };
 }
 
+/**
+ * Stub element-level getBoundingClientRect to a fixed 800×450 rect (happy-dom
+ * returns all-zeros for unlaid-out elements, which gates the RAF compRect
+ * update). Returns a restore function to call in teardown.
+ */
+function stubViewportRect(): () => void {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (): DOMRect {
+    return {
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 450,
+      width: 800,
+      height: 450,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
+  };
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+  };
+}
+
+/**
+ * Flush the mount's RAF ticks so the compRect update lands. Two animation-frame
+ * ticks: the first scheduled by useMountEffect's update(), the second by
+ * update()'s tail recursion.
+ */
+async function flushOverlayRaf(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  });
+}
+
+/** A fully-populated DomEditSelection with per-test overrides (capabilities are
+ *  merged so a test can flip a single flag without restating the whole set). */
+function makeDomEditSelection(
+  overrides: Partial<DomEditSelection> = {},
+  capabilityOverrides: Partial<DomEditSelection["capabilities"]> = {},
+): DomEditSelection {
+  const base: DomEditSelection = {
+    element: document.createElement("div"),
+    id: "hero-title",
+    selector: ".hero-title",
+    selectorIndex: 0,
+    sourceFile: "index.html",
+    tagName: "div",
+    label: "Hero Title",
+    textContent: "Hello",
+    textFields: [],
+    capabilities: {
+      canEditText: true,
+      canEditLayout: true,
+      canMove: true,
+      canApplyManualOffset: true,
+      canApplyManualSize: false,
+      canApplyManualRotation: false,
+      canAdjustOpacity: true,
+      canAdjustFill: true,
+      canAdjustBorderRadius: true,
+      canAdjustStroke: true,
+      canAdjustShadow: true,
+      canAdjustZIndex: true,
+    },
+    computedStyle: {
+      display: "block",
+      position: "absolute",
+    },
+  };
+  return {
+    ...base,
+    ...overrides,
+    capabilities: { ...base.capabilities, ...capabilityOverrides },
+  };
+}
+
+/** Query the composition-canvas overlay and assert it mounted. */
+function getOverlay(host: HTMLElement): HTMLDivElement {
+  const overlay = host.querySelector<HTMLDivElement>('[aria-label="Composition canvas"]');
+  expect(overlay).toBeTruthy();
+  if (!overlay) throw new Error("Expected composition canvas overlay");
+  return overlay;
+}
+
+/** Dispatch a left-button pointerdown at (clientX, clientY) inside act(). */
+function dispatchOverlayPointerDown(target: Element, clientX = 120, clientY = 80): void {
+  act(() => {
+    target.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX, clientY }),
+    );
+  });
+}
+
 describe("focusDomEditOverlayElement", () => {
   it("focuses the canvas overlay without scrolling", () => {
     const calls: Array<FocusOptions | undefined> = [];
@@ -171,20 +268,7 @@ describe("DomEditOverlay", () => {
     // marquee swallowed the selecting onMouseDown, so nothing selected until the
     // SECOND click. With a synchronous pointer hit-test finding an element, the
     // marquee must NOT start and onCanvasMouseDown must fire on the first click.
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function (): DOMRect {
-      return {
-        left: 0,
-        top: 0,
-        right: 800,
-        bottom: 450,
-        width: 800,
-        height: 450,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      };
-    };
+    const restoreRect = stubViewportRect();
     const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
     HTMLDivElement.prototype.setPointerCapture = () => {};
 
@@ -214,14 +298,9 @@ describe("DomEditOverlay", () => {
     act(() => {
       root.render(React.createElement(Harness));
     });
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-    });
+    await flushOverlayRaf();
 
-    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
-    expect(overlay).toBeTruthy();
+    const overlay = getOverlay(host);
 
     act(() => {
       overlay.dispatchEvent(
@@ -240,7 +319,7 @@ describe("DomEditOverlay", () => {
       root.unmount();
     });
     HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
-    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    restoreRect();
     host.remove();
   });
 
@@ -248,35 +327,14 @@ describe("DomEditOverlay", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const selection: DomEditSelection = {
-      element: document.createElement("div"),
+    const selection = makeDomEditSelection({
       id: "cta-label",
       selector: ".cta-label",
-      selectorIndex: 0,
-      sourceFile: "index.html",
       tagName: "span",
       label: "CTA Label",
       textContent: "Add to basket",
-      textFields: [],
-      capabilities: {
-        canEditText: true,
-        canEditLayout: true,
-        canMove: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: false,
-        canApplyManualRotation: false,
-        canAdjustOpacity: true,
-        canAdjustFill: true,
-        canAdjustBorderRadius: true,
-        canAdjustStroke: true,
-        canAdjustShadow: true,
-        canAdjustZIndex: true,
-      },
-      computedStyle: {
-        display: "inline",
-        position: "static",
-      },
-    };
+      computedStyle: { display: "inline", position: "static" },
+    });
 
     let currentSelection: DomEditSelection | null = null;
     const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
@@ -300,19 +358,9 @@ describe("DomEditOverlay", () => {
       root.render(React.createElement(Harness));
     });
 
-    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
-    expect(overlay).toBeTruthy();
+    const overlay = getOverlay(host);
 
-    act(() => {
-      overlay.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          bubbles: true,
-          button: 0,
-          clientX: 120,
-          clientY: 80,
-        }),
-      );
-    });
+    dispatchOverlayPointerDown(overlay);
 
     expect(gestureSpies.startGesture).not.toHaveBeenCalled();
     expect(currentSelection).toBe(null);
@@ -331,53 +379,12 @@ describe("DomEditOverlay", () => {
     // box (and other bounded UI) behind `compRect.width > 0` (added in the
     // keyframes PR a468550f). Stub element-level getBoundingClientRect for
     // the test so the RAF compRect update produces a real width.
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function (): DOMRect {
-      return {
-        left: 0,
-        top: 0,
-        right: 800,
-        bottom: 450,
-        width: 800,
-        height: 450,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      };
-    };
+    const restoreRect = stubViewportRect();
 
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const selection: DomEditSelection = {
-      element: document.createElement("div"),
-      id: "hero-title",
-      selector: ".hero-title",
-      selectorIndex: 0,
-      sourceFile: "index.html",
-      tagName: "div",
-      label: "Hero Title",
-      textContent: "Hello",
-      textFields: [],
-      capabilities: {
-        canEditText: true,
-        canEditLayout: true,
-        canMove: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: false,
-        canApplyManualRotation: false,
-        canAdjustOpacity: true,
-        canAdjustFill: true,
-        canAdjustBorderRadius: true,
-        canAdjustStroke: true,
-        canAdjustShadow: true,
-        canAdjustZIndex: true,
-      },
-      computedStyle: {
-        display: "block",
-        position: "absolute",
-      },
-    };
+    const selection = makeDomEditSelection();
 
     let currentSelection: DomEditSelection | null = selection;
     const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
@@ -405,30 +412,16 @@ describe("DomEditOverlay", () => {
     // Flush the mount's RAF tick so the compRect update lands before the
     // pointer-down. Two animation-frame ticks: the first scheduled by
     // useMountEffect's update(), the second by update()'s tail recursion.
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-    });
+    await flushOverlayRaf();
 
-    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
-    expect(overlay).toBeTruthy();
+    getOverlay(host);
 
     const selectionBox = host.querySelector(
       '[data-dom-edit-selection-box="true"]',
     ) as HTMLDivElement;
     expect(selectionBox).toBeTruthy();
 
-    act(() => {
-      selectionBox.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          bubbles: true,
-          button: 0,
-          clientX: 120,
-          clientY: 80,
-        }),
-      );
-    });
+    dispatchOverlayPointerDown(selectionBox);
 
     expect(currentSelection).toBe(selection);
     expect(gestureSpies.startGesture).toHaveBeenCalledWith(
@@ -440,58 +433,17 @@ describe("DomEditOverlay", () => {
       root.unmount();
     });
     HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
-    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    restoreRect();
     host.remove();
   });
 
   it("passes the tracked hover selection when clicking the existing selection box", async () => {
-    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function (): DOMRect {
-      return {
-        left: 0,
-        top: 0,
-        right: 800,
-        bottom: 450,
-        width: 800,
-        height: 450,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      };
-    };
+    const restoreRect = stubViewportRect();
 
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const selection: DomEditSelection = {
-      element: document.createElement("div"),
-      id: "hero-title",
-      selector: ".hero-title",
-      selectorIndex: 0,
-      sourceFile: "index.html",
-      tagName: "div",
-      label: "Hero Title",
-      textContent: "Hello",
-      textFields: [],
-      capabilities: {
-        canEditText: true,
-        canEditLayout: true,
-        canMove: false,
-        canApplyManualOffset: false,
-        canApplyManualSize: false,
-        canApplyManualRotation: false,
-        canAdjustOpacity: true,
-        canAdjustFill: true,
-        canAdjustBorderRadius: true,
-        canAdjustStroke: true,
-        canAdjustShadow: true,
-        canAdjustZIndex: true,
-      },
-      computedStyle: {
-        display: "block",
-        position: "absolute",
-      },
-    };
+    const selection = makeDomEditSelection({}, { canMove: false, canApplyManualOffset: false });
     const hoverSelection: DomEditSelection = { ...selection, id: "hovered-sibling" };
     const onCanvasMouseDown = vi.fn();
     const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
@@ -512,11 +464,7 @@ describe("DomEditOverlay", () => {
       root.render(React.createElement(Harness));
     });
 
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-    });
+    await flushOverlayRaf();
 
     const selectionBox = host.querySelector(
       '[data-dom-edit-selection-box="true"]',
@@ -535,7 +483,7 @@ describe("DomEditOverlay", () => {
     act(() => {
       root.unmount();
     });
-    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    restoreRect();
     host.remove();
   });
 });

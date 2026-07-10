@@ -56,37 +56,6 @@ export const DRAG_EXTEND_MARGIN_PX = 160;
  */
 export const MIN_TIMELINE_EXTENT_S = 60;
 
-/* ── Timeline duration ─────────────────────────────────────────────── */
-
-// Committed timeline length: root duration or the furthest committed clip end,
-// with NO live drag/resize preview. This drives the zoom (fit-to-width pps) so
-// the pixels-per-second mapping stays fixed while you drag — otherwise a clip
-// dragged past the end grows the duration, shrinks pps, and jumps under the
-// pointer (a positive-feedback loop). The zoom re-fits once on drop.
-export function computeTimelineBasisDuration(
-  rootDuration: number,
-  clipEnds: readonly number[],
-): number {
-  const safeDur = Number.isFinite(rootDuration) ? rootDuration : 0;
-  if (clipEnds.length === 0) return safeDur;
-  const maxEnd = Math.max(safeDur, ...clipEnds);
-  return Number.isFinite(maxEnd) ? maxEnd : safeDur;
-}
-
-// Displayed length: the basis plus any active drag/resize preview end, so the
-// ruler and track width grow to follow a clip dragged past the current end
-// (with the zoom held fixed, the extra length becomes scrollable content).
-export function computeTimelineEffectiveDuration(
-  basisDuration: number,
-  previewEnds: readonly (number | null)[],
-): number {
-  let maxEnd = basisDuration;
-  for (const end of previewEnds) {
-    if (end != null && Number.isFinite(end)) maxEnd = Math.max(maxEnd, end);
-  }
-  return maxEnd;
-}
-
 /* ── Tick generation ──────────────────────────────────────────────── */
 function getMajorTickInterval(duration: number, pixelsPerSecond?: number): number {
   const zoomIntervals = [0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
@@ -134,22 +103,6 @@ export function generateTicks(
     }
   }
   return { major, minor };
-}
-
-/**
- * Ticks spanning the full visible ruler width, not just the composition, so a
- * zoomed-out ruler stays filled with labels instead of ending mid-panel. The
- * major/minor interval is driven by pixelsPerSecond (pixel spacing), so widening
- * the range keeps spacing identical — it only adds ticks past the content end.
- */
-export function generateVisibleTicks(
-  effectiveDuration: number,
-  pixelsPerSecond: number,
-  viewportWidth: number,
-  gutter: number,
-): { major: number[]; minor: number[] } {
-  const visible = viewportWidth > gutter ? (viewportWidth - gutter) / pixelsPerSecond : 0;
-  return generateTicks(Math.max(effectiveDuration, visible), pixelsPerSecond);
 }
 
 export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number) {

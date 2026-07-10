@@ -3,7 +3,8 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import {
   resolveTimelineMove,
   resolveTimelineResize,
-  resolveTimelineAutoScroll,
+  applyTimelineAutoScrollStep,
+  resolveTimelineAutoScrollLoopAction,
   resolveTimelineDragEscape,
   type BlockedTimelineEditIntent,
 } from "./timelineEditing";
@@ -441,19 +442,8 @@ export function useTimelineClipDrag({
     const pointer = clipDragPointerRef.current;
     const scroll = scrollRef.current;
     if ((!drag && !resize) || !pointer || !scroll) return;
+    if (!applyTimelineAutoScrollStep(scroll, pointer.clientX, pointer.clientY)) return;
 
-    const rect = scroll.getBoundingClientRect();
-    const delta = resolveTimelineAutoScroll(rect, pointer.clientX, pointer.clientY);
-    if (delta.x === 0 && delta.y === 0) return;
-
-    const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-    const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
-    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, scroll.scrollLeft + delta.x));
-    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, scroll.scrollTop + delta.y));
-    if (nextScrollLeft === scroll.scrollLeft && nextScrollTop === scroll.scrollTop) return;
-
-    scroll.scrollLeft = nextScrollLeft;
-    scroll.scrollTop = nextScrollTop;
     if (drag) {
       setDraggedClip((prev) =>
         prev ? updateDraggedClipPreview(prev, pointer.clientX, pointer.clientY) : prev,
@@ -469,18 +459,16 @@ export function useTimelineClipDrag({
   const syncClipDragAutoScroll = useCallback(
     (clientX: number, clientY: number) => {
       clipDragPointerRef.current = { clientX, clientY };
-      const scroll = scrollRef.current;
-      if (!scroll) return;
-      const rect = scroll.getBoundingClientRect();
-      const delta = resolveTimelineAutoScroll(rect, clientX, clientY);
-      if (delta.x === 0 && delta.y === 0) {
-        if (clipDragScrollRaf.current) {
-          cancelAnimationFrame(clipDragScrollRaf.current);
-          clipDragScrollRaf.current = 0;
-        }
-        return;
-      }
-      if (!clipDragScrollRaf.current) {
+      const action = resolveTimelineAutoScrollLoopAction(
+        scrollRef.current,
+        clientX,
+        clientY,
+        clipDragScrollRaf.current !== 0,
+      );
+      if (action === "stop") {
+        cancelAnimationFrame(clipDragScrollRaf.current);
+        clipDragScrollRaf.current = 0;
+      } else if (action === "start") {
         clipDragScrollRaf.current = requestAnimationFrame(stepClipDragAutoScroll);
       }
     },

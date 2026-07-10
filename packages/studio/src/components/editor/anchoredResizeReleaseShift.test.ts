@@ -39,6 +39,20 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/** The fix's per-frame anchor accumulator: add the residual center correction
+ *  onto the previously-applied anchor (converges instead of oscillating). */
+function accumulateResizeAnchor(
+  prev: { dx: number; dy: number } | undefined,
+  fixedStart: { x: number; y: number },
+  centerNow: { x: number; y: number },
+): { dx: number; dy: number } {
+  const base = prev ?? { dx: 0, dy: 0 };
+  return {
+    dx: base.dx + (fixedStart.x - centerNow.x),
+    dy: base.dy + (fixedStart.y - centerNow.y),
+  };
+}
+
 /** Apply a built PatchOperation[] to a live element, mirroring sourcePatcher's
  * inline-style / attribute application — i.e. what the persisted source carries
  * when it is re-parsed into the DOM on the next preview load. */
@@ -98,11 +112,7 @@ describe("center-anchored corner resize — no shift after release", () => {
         y: fixedStart.y - trueAnchor.dy + appliedOffset.y,
       };
       // ── The fixed logic (accumulate residual onto the previous anchor) ──
-      const prev = lastResizeAnchor ?? { dx: 0, dy: 0 };
-      const anchor = {
-        dx: prev.dx + (fixedStart.x - centerNow.x),
-        dy: prev.dy + (fixedStart.y - centerNow.y),
-      };
+      const anchor = accumulateResizeAnchor(lastResizeAnchor, fixedStart, centerNow);
       lastResizeAnchor = anchor;
       anchorsSeen.push(anchor);
       // applyManualOffsetDragDraft sets the absolute offset (scale 1) = anchor.
@@ -148,11 +158,7 @@ describe("center-anchored corner resize — no shift after release", () => {
             x: fixedStart.x + rawShift.dx + appliedOffset.x,
             y: fixedStart.y + rawShift.dy + appliedOffset.y,
           };
-          const prev = lastResizeAnchor ?? { dx: 0, dy: 0 };
-          const anchor = {
-            dx: prev.dx + (fixedStart.x - centerNow.x),
-            dy: prev.dy + (fixedStart.y - centerNow.y),
-          };
+          const anchor = accumulateResizeAnchor(lastResizeAnchor, fixedStart, centerNow);
           lastResizeAnchor = anchor;
           appliedOffset = { x: anchor.dx, y: anchor.dy };
         }

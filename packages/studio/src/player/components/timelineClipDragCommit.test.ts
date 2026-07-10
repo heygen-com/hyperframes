@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
-import { commitDraggedClipMove, type TimelineMoveEdit } from "./timelineClipDragCommit";
+import {
+  commitDraggedClipMove,
+  type DragCommitDeps,
+  type TimelineMoveEdit,
+} from "./timelineClipDragCommit";
 
 function el(
   id: string,
@@ -43,19 +47,41 @@ function editMap(edits: TimelineMoveEdit[]): Record<string, { start: number; tra
   return out;
 }
 
+/**
+ * Run a drag commit with fresh spies for the three persist callbacks, returning
+ * them so a test can assert on whichever path it exercised. Any other dep
+ * (trackOrder, selectedKeys, readZIndex, onStackingPatches, …) is passed through.
+ */
+function runClipMove(
+  dragState: DraggedClipState,
+  deps: Omit<DragCommitDeps, "onMoveElement" | "onMoveElements" | "updateElement">,
+): { updateElement: Mock; onMoveElement: Mock; onMoveElements: Mock } {
+  const updateElement = vi.fn();
+  const onMoveElement = vi.fn();
+  const onMoveElements = vi.fn();
+  commitDraggedClipMove(dragState, { ...deps, updateElement, onMoveElement, onMoveElements });
+  return { updateElement, onMoveElement, onMoveElements };
+}
+
+/** Assert a lane change persisted atomically (single onMoveElements, no single
+ *  onMoveElement) and return the resulting id → {start, track} edit map. */
+function expectAtomicMoveMap(spies: {
+  onMoveElement: Mock;
+  onMoveElements: Mock;
+}): Record<string, { start: number; track: number }> {
+  expect(spies.onMoveElement).not.toHaveBeenCalled();
+  expect(spies.onMoveElements).toHaveBeenCalledTimes(1);
+  return editMap(spies.onMoveElements.mock.calls[0][0]);
+}
+
 describe("commitDraggedClipMove", () => {
   it("pure time-move (same lane) persists just the dragged clip (single, SDK-aware)", () => {
     const elements = [el("v1", 1, 0, 5)];
-    const onMoveElement = vi.fn();
-    const onMoveElements = vi.fn();
     // previewTrack === element.track → no topology change → single move.
-    commitDraggedClipMove(drag(elements[0], { previewStart: 6, previewTrack: 1 }), {
-      elements,
-      trackOrder: [1],
-      updateElement: vi.fn(),
-      onMoveElement,
-      onMoveElements,
-    });
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 6, previewTrack: 1 }),
+      { elements, trackOrder: [1] },
+    );
     expect(onMoveElements).not.toHaveBeenCalled();
     expect(onMoveElement).toHaveBeenCalledTimes(1);
     expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 1 });
@@ -64,39 +90,24 @@ describe("commitDraggedClipMove", () => {
   it("a lane change re-normalizes and persists EVERY clip atomically (fixes raw-vs-normalized collision)", () => {
     // Move 'a' from lane 0 down onto lane 1 (b's lane) at a non-overlapping time.
     const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3)];
-    const onMoveElement = vi.fn();
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(drag(elements[0], { previewStart: 20, previewTrack: 1 }), {
-      elements,
-      trackOrder: [0, 1],
-      updateElement: vi.fn(),
-      onMoveElement,
-      onMoveElements,
-    });
-    expect(onMoveElement).not.toHaveBeenCalled();
-    expect(onMoveElements).toHaveBeenCalledTimes(1);
-    // BOTH clips are persisted with consistent normalized tracks (both visual → lane 0).
-    const map = editMap(onMoveElements.mock.calls[0][0]);
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 20, previewTrack: 1 }),
+      { elements, trackOrder: [0, 1] },
+    );
+    // BOTH clips persist atomically with consistent normalized tracks (both visual → lane 0).
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
     expect(map.a).toEqual({ start: 20, track: 0 });
     expect(map.b).toEqual({ start: 10, track: 0 });
   });
 
   it("multi-selection time-move shifts EVERY selected clip by the drag delta (atomic)", () => {
     const elements = [el("a", 0, 2, 3), el("b", 1, 10, 3), el("c", 2, 20, 3)];
-    const onMoveElement = vi.fn();
-    const onMoveElements = vi.fn();
     // Drag 'a' +5s on its own lane while {a, b} are marquee-selected.
-    commitDraggedClipMove(drag(elements[0], { previewStart: 7, previewTrack: 0 }), {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement,
-      onMoveElements,
-      selectedKeys: new Set(["a", "b"]),
-    });
-    expect(onMoveElement).not.toHaveBeenCalled();
-    expect(onMoveElements).toHaveBeenCalledTimes(1);
-    const map = editMap(onMoveElements.mock.calls[0][0]);
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 7, previewTrack: 0 }),
+      { elements, trackOrder: [0, 1, 2], selectedKeys: new Set(["a", "b"]) },
+    );
+    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
     expect(map.a).toEqual({ start: 7, track: 0 });
     expect(map.b).toEqual({ start: 15, track: 1 }); // same +5 delta, keeps its lane
     expect(map.c).toBeUndefined(); // unselected clips untouched
@@ -104,16 +115,11 @@ describe("commitDraggedClipMove", () => {
 
   it("multi-selection move clamps shifted clips at 0 and applies the store update optimistically", () => {
     const elements = [el("a", 0, 6, 3), el("b", 1, 2, 3)];
-    const updateElement = vi.fn();
-    const onMoveElements = vi.fn();
     // Drag 'a' −5s: b would land at −3 → clamps to 0.
-    commitDraggedClipMove(drag(elements[0], { previewStart: 1, previewTrack: 0 }), {
-      elements,
-      trackOrder: [0, 1],
-      updateElement,
-      onMoveElements,
-      selectedKeys: new Set(["a", "b"]),
-    });
+    const { updateElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 1, previewTrack: 0 }),
+      { elements, trackOrder: [0, 1], selectedKeys: new Set(["a", "b"]) },
+    );
     const map = editMap(onMoveElements.mock.calls[0][0]);
     expect(map.a).toEqual({ start: 1, track: 0 });
     expect(map.b).toEqual({ start: 0, track: 1 });
@@ -123,16 +129,10 @@ describe("commitDraggedClipMove", () => {
 
   it("a multi-selection that does NOT include the dragged clip moves only the dragged clip", () => {
     const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3)];
-    const onMoveElement = vi.fn();
-    const onMoveElements = vi.fn();
-    commitDraggedClipMove(drag(elements[0], { previewStart: 6, previewTrack: 0 }), {
-      elements,
-      trackOrder: [0, 1],
-      updateElement: vi.fn(),
-      onMoveElement,
-      onMoveElements,
-      selectedKeys: new Set(["b", "x"]),
-    });
+    const { onMoveElement, onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 6, previewTrack: 0 }),
+      { elements, trackOrder: [0, 1], selectedKeys: new Set(["b", "x"]) },
+    );
     expect(onMoveElements).not.toHaveBeenCalled();
     expect(onMoveElement).toHaveBeenCalledTimes(1);
     expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 0 });
@@ -140,15 +140,11 @@ describe("commitDraggedClipMove", () => {
 
   it("multi-selection lane change: dragged clip changes track, the rest of the selection shifts in time only", () => {
     const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3), el("c", 2, 20, 3)];
-    const onMoveElements = vi.fn();
     // Drag 'a' +4s down onto lane 1 (non-overlapping with b) while {a, c} selected.
-    commitDraggedClipMove(drag(elements[0], { previewStart: 4, previewTrack: 1 }), {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElements,
-      selectedKeys: new Set(["a", "c"]),
-    });
+    const { onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 4, previewTrack: 1 }),
+      { elements, trackOrder: [0, 1, 2], selectedKeys: new Set(["a", "c"]) },
+    );
     const map = editMap(onMoveElements.mock.calls[0][0]);
     expect(map.a.start).toBe(4); // dragged: new time + new (normalized) lane
     expect(map.c.start).toBe(24); // selected passenger: same +4 delta
@@ -166,16 +162,11 @@ describe("commitDraggedClipMove", () => {
     // instead, and lanes reflect true canvas paint order.) Contiguous 0..2, one
     // atomic persist for all three.
     const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
-    const onMoveElement = vi.fn();
-    const onMoveElements = vi.fn();
     // insert a new lane at row 1 (between a and b) with c.
-    commitDraggedClipMove(drag(elements[2], { previewStart: 0, previewTrack: 2, insertRow: 1 }), {
-      elements,
-      trackOrder: [0, 1, 2],
-      updateElement: vi.fn(),
-      onMoveElement,
-      onMoveElements,
-    });
+    const { onMoveElements } = runClipMove(
+      drag(elements[2], { previewStart: 0, previewTrack: 2, insertRow: 1 }),
+      { elements, trackOrder: [0, 1, 2] },
+    );
     expect(onMoveElements).toHaveBeenCalledTimes(1);
     const map = editMap(onMoveElements.mock.calls[0][0]);
     // Lanes are contiguous and distinct (no two overlapping clips share a lane).
@@ -202,11 +193,9 @@ describe("commitDraggedClipMove", () => {
       const z: Record<string, number> = { a: 1, b: 5 };
       const onStackingPatches = vi.fn();
       // Insert a new lane at row 0 (above the top lane) with a → a lands above b.
-      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 1, insertRow: 0 }), {
+      runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 1, insertRow: 0 }), {
         elements,
         trackOrder: [0, 1],
-        updateElement: vi.fn(),
-        onMoveElements: vi.fn(),
         readZIndex: (e) => z[e.key ?? e.id] ?? 0,
         onStackingPatches,
       });
@@ -218,11 +207,9 @@ describe("commitDraggedClipMove", () => {
     it("no z-sync deps → no stacking side-effects (pure time-move path safe)", () => {
       const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
       // No readZIndex/onStackingPatches supplied → must not throw, no patches.
-      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+      runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
         elements,
         trackOrder: [0, 1],
-        updateElement: vi.fn(),
-        onMoveElements: vi.fn(),
       });
       // (nothing to assert beyond "did not throw")
     });
@@ -230,11 +217,9 @@ describe("commitDraggedClipMove", () => {
     it("no time overlap → no stacking patch even on a lane change", () => {
       const elements = [el("a", 1, 0, 5), el("b", 0, 10, 5)];
       const onStackingPatches = vi.fn();
-      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+      runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
         elements,
         trackOrder: [0, 1],
-        updateElement: vi.fn(),
-        onMoveElements: vi.fn(),
         readZIndex: () => 0,
         onStackingPatches,
       });
@@ -245,11 +230,9 @@ describe("commitDraggedClipMove", () => {
       const elements = [el("a", 0, 0, 10), el("b", 0, 0, 10)];
       const onStackingPatches = vi.fn();
       // same track → not a topology change → z-sync branch not reached.
-      commitDraggedClipMove(drag(elements[0], { previewStart: 3, previewTrack: 0 }), {
+      runClipMove(drag(elements[0], { previewStart: 3, previewTrack: 0 }), {
         elements,
         trackOrder: [0],
-        updateElement: vi.fn(),
-        onMoveElement: vi.fn(),
         readZIndex: () => 0,
         onStackingPatches,
       });

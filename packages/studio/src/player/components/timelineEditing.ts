@@ -74,6 +74,48 @@ export function resolveTimelineAutoScroll(
   };
 }
 
+/**
+ * Apply one edge auto-scroll step: scroll `scroll` toward the edge zone the
+ * pointer is in, clamped to the scrollable range. Returns true when the
+ * container actually moved (the caller keeps its RAF running and re-runs its
+ * live preview), false when the pointer is outside the edge zones or the scroll
+ * is already clamped (the caller stops).
+ */
+export function applyTimelineAutoScrollStep(
+  scroll: HTMLElement,
+  clientX: number,
+  clientY: number,
+): boolean {
+  const delta = resolveTimelineAutoScroll(scroll.getBoundingClientRect(), clientX, clientY);
+  if (delta.x === 0 && delta.y === 0) return false;
+  const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, scroll.scrollLeft + delta.x));
+  const nextScrollTop = Math.max(0, Math.min(maxScrollTop, scroll.scrollTop + delta.y));
+  if (nextScrollLeft === scroll.scrollLeft && nextScrollTop === scroll.scrollTop) return false;
+  scroll.scrollLeft = nextScrollLeft;
+  scroll.scrollTop = nextScrollTop;
+  return true;
+}
+
+/**
+ * Decide whether an edge auto-scroll RAF loop should start, stop, or stay as-is
+ * for the current pointer: "start" when the pointer is in an edge zone and no
+ * loop is running, "stop" when it left the zones while a loop is running,
+ * "none" otherwise.
+ */
+export function resolveTimelineAutoScrollLoopAction(
+  scroll: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+  rafActive: boolean,
+): "start" | "stop" | "none" {
+  if (!scroll) return "none";
+  const delta = resolveTimelineAutoScroll(scroll.getBoundingClientRect(), clientX, clientY);
+  if (delta.x === 0 && delta.y === 0) return rafActive ? "stop" : "none";
+  return rafActive ? "none" : "start";
+}
+
 export interface TimelineDragEscapeInput {
   key: string;
   drag: { started: boolean } | null;

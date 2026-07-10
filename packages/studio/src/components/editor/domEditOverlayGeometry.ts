@@ -113,10 +113,7 @@ export function toVisibleOverlayRect(
  * Returns 0 when the transform is "none" or unmeasurable — callers treat 0 as
  * axis-aligned. Skew is ignored (does not affect atan2(b, a)).
  */
-export function readElementRotationDegrees(
-  iframe: HTMLIFrameElement,
-  element: HTMLElement,
-): number {
+function readElementRotationDegrees(iframe: HTMLIFrameElement, element: HTMLElement): number {
   const win = iframe.contentWindow;
   if (!win) return 0;
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
@@ -135,31 +132,55 @@ export function readElementRotationDegrees(
   return Number.isFinite(deg) ? deg : 0;
 }
 
-export function toOverlayRect(
+/** iframe→overlay mapping basis shared by every overlay-geometry function. */
+interface OverlayRootScale {
+  iframeRect: DOMRect;
+  overlayRect: DOMRect;
+  rootScaleX: number;
+  rootScaleY: number;
+}
+
+/**
+ * The iframe/overlay client rects and the iframe→root scale factors. Uses the
+ * composition's declared dimensions (data-width/data-height) for the scale
+ * instead of rootRect.width/height: when GSAP applies transforms (scale,
+ * translate) to the root, rootRect dimensions change but the composition's
+ * canonical size stays fixed, and using rootRect misaligns the overlay during
+ * animated playback. Returns null when the geometry is unmeasurable.
+ */
+function computeOverlayRootScale(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
-  element: HTMLElement,
-): OverlayRect | null {
+  doc: Document | null,
+): OverlayRootScale | null {
   const iframeRect = iframe.getBoundingClientRect();
   const overlayRect = overlayEl.getBoundingClientRect();
-  const doc = iframe.contentDocument;
   const root =
     doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement ?? null;
   const rootRect = root?.getBoundingClientRect();
-  // Use the composition's declared dimensions (data-width/data-height) for scale
-  // calculation instead of rootRect.width/height. When GSAP applies transforms
-  // (scale, translate) to the root element, rootRect dimensions change but the
-  // composition's canonical size stays the same. Using rootRect causes overlay
-  // misalignment during animated playback.
   const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
   const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
   const rootWidth = declaredWidth ?? rootRect?.width;
   const rootHeight = declaredHeight ?? rootRect?.height;
-  if (!rootWidth || !rootHeight || !rootRect) return null;
+  if (!rootWidth || !rootHeight) return null;
+  return {
+    iframeRect,
+    overlayRect,
+    rootScaleX: iframeRect.width / rootWidth,
+    rootScaleY: iframeRect.height / rootHeight,
+  };
+}
+
+function toOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  if (!scale) return null;
+  const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
   const elementRect = element.getBoundingClientRect();
-  const rootScaleX = iframeRect.width / rootWidth;
-  const rootScaleY = iframeRect.height / rootHeight;
   const sourceBoundary = findSourceBoundary(element);
   const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
@@ -220,18 +241,9 @@ export function elementCornerOverlayPoints(
   const DOMPointCtor = (win as Window & typeof globalThis).DOMPoint;
   if (!DOMMatrixCtor || !DOMPointCtor) return null;
 
-  const iframeRect = iframe.getBoundingClientRect();
-  const overlayRect = overlayEl.getBoundingClientRect();
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootRect = root?.getBoundingClientRect();
-  const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
-  const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
-  const rootWidth = declaredWidth ?? rootRect?.width;
-  const rootHeight = declaredHeight ?? rootRect?.height;
-  if (!rootWidth || !rootHeight) return null;
-  const rootScaleX = iframeRect.width / rootWidth;
-  const rootScaleY = iframeRect.height / rootHeight;
+  const scale = computeOverlayRootScale(overlayEl, iframe, doc);
+  if (!scale) return null;
+  const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
   // The element's local border box maps to viewport coords by the SAME transform
   // matrix the browser used for its BCR. We recover the transform's screen-space

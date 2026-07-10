@@ -22,6 +22,23 @@ function trackOf(els: TimelineElement[], id: string): number {
   return els.find((e) => e.id === id)!.track;
 }
 
+/** Assert normalizeToZones is idempotent: re-zoning keeps every clip's lane. */
+function expectZoningIdempotent(input: TimelineElement[]): void {
+  const once = normalizeToZones(input);
+  const twice = normalizeToZones(once);
+  for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
+}
+
+/** The exact qa-clean live repro (array order = DOM order); fresh objects per call. */
+function qaCleanRepro(): TimelineElement[] {
+  return [
+    zClip("blue-logo", 6.37, 3, 0, 3, "img"),
+    zClip("ralu", 6.37, 3, 0, 0, "img"),
+    zClip("black-logo", 11.92, 3, 1, 1, "img"),
+    zClip("video", 0.84, 20, 3, 2, "video"),
+  ];
+}
+
 describe("classifyZone", () => {
   it("audio → audio; video / image / everything else → visual", () => {
     expect(classifyZone(el("m", "audio", 3))).toBe("audio");
@@ -86,9 +103,7 @@ describe("normalizeToZones", () => {
       el("a1", "audio", 2),
       el("a2", "audio", 6),
     ];
-    const once = normalizeToZones(input);
-    const twice = normalizeToZones(once);
-    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
+    expectZoningIdempotent(input);
   });
 
   it("splits time-overlapping clips on one track onto separate lanes (no visible overlap)", () => {
@@ -187,9 +202,7 @@ describe("normalizeToZones — reverse z→lane mapping", () => {
       zClip("seq", 12, 4, 0, 7),
       zClip("music", 0, 16, 1, 3, "audio"),
     ];
-    const once = normalizeToZones(input);
-    const twice = normalizeToZones(once);
-    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
+    expectZoningIdempotent(input);
   });
 
   it("reload simulation: re-deriving lanes from the SAME z values yields identical lanes", () => {
@@ -274,15 +287,9 @@ describe("normalizeToZones — EXACT qa-clean repro (per-clip constrained pack)"
   // Canvas truth: video (z=2) covers ralu (z=0). The OLD whole-track packer
   // ordered track 0 by its MAX z (3, from blue-logo), so ralu rode above the
   // z=2 video — the timeline↔canvas contradiction. Array order below = DOM order.
-  const repro = (): TimelineElement[] => [
-    zClip("blue-logo", 6.37, 3, 0, 3, "img"),
-    zClip("ralu", 6.37, 3, 0, 0, "img"),
-    zClip("black-logo", 11.92, 3, 1, 1, "img"),
-    zClip("video", 0.84, 20, 3, 2, "video"),
-  ];
 
   it("ACCEPTANCE: lane order top→bottom is blue-logo, video, black-logo, ralu", () => {
-    const out = normalizeToZones(repro());
+    const out = normalizeToZones(qaCleanRepro());
     expect(trackOf(out, "blue-logo")).toBe(0); // z=3 → top
     expect(trackOf(out, "video")).toBe(1); // z=2, overlaps blue-logo → below it
     expect(trackOf(out, "black-logo")).toBe(2); // z=1, overlaps video (11.92–14.92 ∩ 0.84–20.84)
@@ -290,7 +297,7 @@ describe("normalizeToZones — EXACT qa-clean repro (per-clip constrained pack)"
   });
 
   it("REGRESSION: a low-z clip must not ride its authored trackmate's high z above a clip that covers it", () => {
-    const out = normalizeToZones(repro());
+    const out = normalizeToZones(qaCleanRepro());
     // ralu (z=0) shares authored track 0 with blue-logo (z=3) but must sink BELOW
     // the video (z=2) that overlaps and paints over it — the whole-track bug.
     expect(trackOf(out, "ralu")).toBeGreaterThan(trackOf(out, "video"));
@@ -299,7 +306,7 @@ describe("normalizeToZones — EXACT qa-clean repro (per-clip constrained pack)"
   });
 
   it("FIXED POINT: running the NEW pack on its own output changes nothing", () => {
-    const once = normalizeToZones(repro());
+    const once = normalizeToZones(qaCleanRepro());
     const twice = normalizeToZones(once);
     for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
     // And a third pass, to be sure convergence is genuine.
@@ -361,13 +368,7 @@ describe("z ↔ lane round-trip convergence (both directions agree)", () => {
 
   it("qa-clean: drag video BELOW ralu → z patch → re-pack keeps it below, no oscillation", () => {
     // EXACT repro fixture (array order = DOM order).
-    const repro: TimelineElement[] = [
-      zClip("blue-logo", 6.37, 3, 0, 3, "img"),
-      zClip("ralu", 6.37, 3, 0, 0, "img"),
-      zClip("black-logo", 11.92, 3, 1, 1, "img"),
-      zClip("video", 0.84, 20, 3, 2, "video"),
-    ];
-    const normalized = normalizeToZones(repro);
+    const normalized = normalizeToZones(qaCleanRepro());
     // Baseline lanes: blue-logo 0, video 1, black-logo 2, ralu 3.
     expect(trackOf(normalized, "video")).toBe(1);
     expect(trackOf(normalized, "ralu")).toBe(3);

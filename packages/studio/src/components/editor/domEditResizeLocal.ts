@@ -18,7 +18,7 @@ import type { ResizeHandle } from "./domEditOverlayGestures";
 
 /** Minimum element edge in LOCAL px — mirrors the old MIN_RESIZE_EDGE_PX clamp
  *  (no flip-through-zero: clamp, never mirror). */
-export const MIN_RESIZE_LOCAL_PX = 1;
+const MIN_RESIZE_LOCAL_PX = 1;
 
 /**
  * Below this pointer-to-center distance (overlay px) the gesture started at (or
