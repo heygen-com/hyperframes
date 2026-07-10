@@ -29,6 +29,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
+import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -406,8 +407,25 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    // Start marquee if clicking on empty canvas (no element under pointer)
-    if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
+    // Start marquee only when clicking genuinely-empty canvas. Root-cause of the
+    // "needs two clicks to select" bug: this used to gate on hoverSelectionRef,
+    // but that ref is populated ASYNCHRONOUSLY by the RAF hover loop. On a true
+    // first click over an element the pointer hasn't produced a resolved hover
+    // yet, so the ref reads null — the click was misread as empty canvas, a
+    // marquee started, stopPropagation + suppressNextOverlayMouseDown swallowed
+    // the onMouseDown selection, and pointer-up (no drag) cleared everything.
+    // Only the SECOND click (hover now populated) selected. Hit-test the iframe
+    // SYNCHRONOUSLY instead so an element under the pointer never starts a marquee.
+    const iframeEl = iframeRef.current;
+    const elementUnderPointer =
+      iframeEl &&
+      getPreviewTargetFromPointer(
+        iframeEl,
+        event.clientX,
+        event.clientY,
+        activeCompositionPathRef.current,
+      );
+    if (!elementUnderPointer && onMarqueeSelectRef.current && compRect.width > 0) {
       const overlayEl = overlayRef.current;
       if (overlayEl) {
         const oRect = overlayEl.getBoundingClientRect();

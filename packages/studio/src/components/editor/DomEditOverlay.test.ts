@@ -85,6 +85,20 @@ vi.mock("./useDomEditOverlayRects", async () => {
   };
 });
 
+const previewHelperSpies = vi.hoisted(() => ({
+  getPreviewTargetFromPointer: vi.fn<() => HTMLElement | null>(() => null),
+}));
+
+vi.mock("../../utils/studioPreviewHelpers", async () => {
+  const actual = await vi.importActual<typeof import("../../utils/studioPreviewHelpers")>(
+    "../../utils/studioPreviewHelpers",
+  );
+  return {
+    ...actual,
+    getPreviewTargetFromPointer: previewHelperSpies.getPreviewTargetFromPointer,
+  };
+});
+
 vi.mock("./domEditOverlayGeometry", async () => {
   const actual = await vi.importActual<typeof import("./domEditOverlayGeometry")>(
     "./domEditOverlayGeometry",
@@ -145,6 +159,88 @@ describe("DomEditOverlay", () => {
     gestureSpies.onPointerMove.mockClear();
     gestureSpies.onPointerUp.mockClear();
     gestureSpies.clearPointerState.mockClear();
+    previewHelperSpies.getPreviewTargetFromPointer.mockReset();
+    previewHelperSpies.getPreviewTargetFromPointer.mockReturnValue(null);
+  });
+
+  it("selects on the first click over an element even before a hover is resolved", async () => {
+    // Regression: this used to start a marquee whenever hoverSelectionRef was null.
+    // The RAF hover loop populates that ref ASYNCHRONOUSLY, so a genuine first
+    // click over an element read null and was misread as empty canvas — the
+    // marquee swallowed the selecting onMouseDown, so nothing selected until the
+    // SECOND click. With a synchronous pointer hit-test finding an element, the
+    // marquee must NOT start and onCanvasMouseDown must fire on the first click.
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      return {
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 450,
+        width: 800,
+        height: 450,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    };
+    const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
+    HTMLDivElement.prototype.setPointerCapture = () => {};
+
+    // An element IS under the pointer, but no hover has been resolved yet.
+    previewHelperSpies.getPreviewTargetFromPointer.mockReturnValue(document.createElement("div"));
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const onCanvasMouseDown = vi.fn();
+    const onMarqueeSelect = vi.fn();
+
+    function Harness() {
+      return React.createElement(DomEditOverlay, {
+        ...createOverlayProps({
+          iframeRef,
+          selection: null,
+          hoverSelection: null,
+          onSelectionChange: () => {},
+        }),
+        onCanvasMouseDown,
+        onMarqueeSelect,
+      });
+    }
+
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
+    const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLDivElement;
+    expect(overlay).toBeTruthy();
+
+    act(() => {
+      overlay.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }),
+      );
+      overlay.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }),
+      );
+    });
+
+    // No marquee started; the click reached the selecting mouse-down handler.
+    expect(onMarqueeSelect).not.toHaveBeenCalled();
+    expect(onCanvasMouseDown).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      root.unmount();
+    });
+    HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
+    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    host.remove();
   });
 
   it("does not start a drag from a stale hover target on canvas pointer-down", () => {
