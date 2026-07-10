@@ -1,7 +1,11 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
-import { sdkTimingBatchPersist } from "../utils/sdkCutover";
+import {
+  cutoverCommittedOrThrow,
+  sdkTimingBatchPersist,
+  type PublishSdkSession,
+} from "../utils/sdkCutover";
 import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
@@ -20,6 +24,7 @@ import {
   shiftGsapPositions,
   syncPreviewContentDuration,
 } from "./timelineTimingSync";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
 export interface TimelineGroupMoveChange {
   element: TimelineElement;
@@ -53,6 +58,7 @@ interface UseTimelineGroupEditingOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   sdkSession?: Composition | null;
+  publishSdkSession?: PublishSdkSession;
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
 }
@@ -108,6 +114,7 @@ export function useTimelineGroupEditing({
   recordEdit,
   reloadPreview,
   sdkSession,
+  publishSdkSession,
   showToast,
   writeProjectFile,
 }: UseTimelineGroupEditingOptions) {
@@ -189,7 +196,7 @@ export function useTimelineGroupEditing({
         input.eligible &&
         input.sdkChanges.every((change) => change !== null);
       if (!canUseSdk) return false;
-      return sdkTimingBatchPersist(
+      const result = await sdkTimingBatchPersist(
         input.sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
         sharedPath,
         sdkSession,
@@ -200,14 +207,17 @@ export function useTimelineGroupEditing({
           domEditSaveTimestampRef,
           compositionPath: activeCompPath,
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+          publishSession: publishSdkSession,
         },
         { label: input.label, coalesceKey: input.coalesceKey, coalesceMs: input.coalesceMs },
       );
+      return cutoverCommittedOrThrow(result);
     },
     [
       activeCompPath,
       domEditSaveTimestampRef,
       projectIdRef,
+      publishSdkSession,
       recordEdit,
       reloadPreview,
       sdkSession,
@@ -313,6 +323,7 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
+        showToast(getStudioSaveErrorMessage(error), "error");
         throw error;
       });
     },
@@ -324,6 +335,7 @@ export function useTimelineGroupEditing({
       recordEdit,
       reloadPreview,
       trySdkBatchPersist,
+      showToast,
     ],
   );
 
@@ -419,6 +431,7 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
+        showToast(getStudioSaveErrorMessage(error), "error");
         throw error;
       });
     },
@@ -430,6 +443,7 @@ export function useTimelineGroupEditing({
       recordEdit,
       reloadPreview,
       trySdkBatchPersist,
+      showToast,
     ],
   );
 

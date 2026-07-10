@@ -7,7 +7,7 @@ import type { RightPanelTab } from "../utils/studioHelpers";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import type { SidebarTab } from "../components/sidebar/LeftSidebar";
 import type { Composition } from "@hyperframes/sdk";
-import { sdkCutoverPersist, sdkDeletePersist } from "../utils/sdkCutover";
+import { sdkCutoverPersist, sdkDeletePersist, type PublishSdkSession } from "../utils/sdkCutover";
 import { runResolverShadow, recordResolverParity } from "../utils/sdkResolverShadow";
 import { useAskAgentModal } from "./useAskAgentModal";
 import { useDomSelection } from "./useDomSelection";
@@ -67,6 +67,7 @@ export interface UseDomEditSessionParams {
   selectSidebarTab?: (tab: SidebarTab) => void;
   getSidebarTab?: () => SidebarTab;
   sdkSession?: Composition | null;
+  publishSdkSession?: PublishSdkSession;
   forceReloadSdkSession?: () => void;
 }
 
@@ -108,10 +109,10 @@ export function useDomEditSession({
   selectSidebarTab,
   getSidebarTab,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-
   // ── Selection ──
 
   const {
@@ -178,7 +179,6 @@ export function useDomEditSession({
     previewDocumentVersion,
     refreshDomEditSelectionFromPreview,
   });
-
   // ── GSAP cache (hoisted so both useGsapScriptCommits and useDomEditWiring share the same instance) ──
 
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
@@ -217,6 +217,7 @@ export function useDomEditSession({
     onFileContentChanged: updateEditingFileContent,
     showToast,
     sdkSession,
+    publishSdkSession,
     writeProjectFile,
     forceReloadSdkSession,
   });
@@ -280,6 +281,8 @@ export function useDomEditSession({
               reloadPreview,
               domEditSaveTimestampRef,
               compositionPath: activeCompPath,
+              readProjectFile,
+              publishSession: publishSdkSession,
             },
             options,
           );
@@ -293,6 +296,8 @@ export function useDomEditSession({
             reloadPreview,
             domEditSaveTimestampRef,
             compositionPath: activeCompPath,
+            readProjectFile,
+            publishSession: publishSdkSession,
           })
       : undefined,
     // Resolver shadow for the z-index reorder edit: it takes the server path (no

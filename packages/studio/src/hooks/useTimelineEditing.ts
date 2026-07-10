@@ -32,8 +32,9 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
-import { sdkTimingPersist } from "../utils/sdkCutover";
+import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
+import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
 type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
   stackingReorder?: TimelineStackingReorderIntent | null;
@@ -53,6 +54,7 @@ export function useTimelineEditing({
   uploadProjectFiles,
   isRecordingRef,
   sdkSession,
+  publishSdkSession,
   forceReloadSdkSession,
   handleDomZIndexReorderCommitRef,
 }: UseTimelineEditingOptions) {
@@ -121,10 +123,10 @@ export function useTimelineEditing({
     recordEdit,
     reloadPreview,
     sdkSession,
+    publishSdkSession,
     showToast,
     writeProjectFile,
   });
-
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
     (element: TimelineElement, updates: TimelineMoveUpdates) => {
@@ -215,10 +217,11 @@ export function useTimelineEditing({
                   // Capture on-disk bytes as the undo `before` so undoing a timing move
                   // restores the file verbatim, not a normalized full-DOM re-emit.
                   readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+                  publishSession: publishSdkSession,
                 },
                 { label: "Move timeline clip", coalesceKey },
-              ).then((handled) => {
-                if (!handled) return moveFallback();
+              ).then((result) => {
+                if (!cutoverCommittedOrThrow(result)) return moveFallback();
               });
             }
             return moveFallback();
@@ -226,6 +229,7 @@ export function useTimelineEditing({
           .catch((error) => {
             // Failed persist: revert the optimistic duration readout + live root.
             rollbackDuration();
+            showToast(getStudioSaveErrorMessage(error), "error");
             throw error;
           });
       };
@@ -236,12 +240,14 @@ export function useTimelineEditing({
       enqueueEdit,
       activeCompPath,
       sdkSession,
+      publishSdkSession,
       recordEdit,
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
       timelineElements,
       handleDomZIndexReorderCommitRef,
+      showToast,
     ],
   );
 
@@ -255,9 +261,6 @@ export function useTimelineEditing({
         ["data-start", formatTimelineAttributeNumber(updates.start)],
         ["data-duration", formatTimelineAttributeNumber(updates.duration)],
       ];
-      // Patch the live playback-start/media-start attr too, or a resize that
-      // trims the playback start leaves the preview showing the old in-point
-      // until the next reload (the persisted patch handles it via pbs below).
       if (updates.playbackStart != null) {
         const liveAttr =
           element.playbackStartAttr === "playback-start"
@@ -319,15 +322,17 @@ export function useTimelineEditing({
                 // Capture on-disk bytes as the undo `before` so undoing a timing
                 // resize restores the file verbatim, not a normalized full-DOM re-emit.
                 readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+                publishSession: publishSdkSession,
               },
               { label: "Resize timeline clip", coalesceKey },
-            ).then((handled) => {
-              if (!handled) return resizeFallback();
+            ).then((result) => {
+              if (!cutoverCommittedOrThrow(result)) return resizeFallback();
             })
           : resizeFallback();
       return persistDone.catch((error) => {
         // Failed persist: revert the optimistic duration readout + live root.
         rollbackDuration();
+        showToast(getStudioSaveErrorMessage(error), "error");
         throw error;
       });
     },
@@ -336,10 +341,12 @@ export function useTimelineEditing({
       enqueueEdit,
       activeCompPath,
       sdkSession,
+      publishSdkSession,
       recordEdit,
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
+      showToast,
     ],
   );
 

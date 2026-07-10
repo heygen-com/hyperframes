@@ -6,6 +6,7 @@ import type {
   VariableValidationIssue,
 } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../../utils/editHistory";
+import type { PublishSdkSession } from "../../utils/sdkCutover";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
@@ -32,6 +33,7 @@ function shellSingleQuote(value: string): string {
 
 interface VariablesPanelProps {
   sdkSession: Composition | null;
+  publishSdkSession: PublishSdkSession;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -247,6 +249,7 @@ const EMPTY_STATE = (
 // fallow-ignore-next-line complexity
 export const VariablesPanel = memo(function VariablesPanel({
   sdkSession,
+  publishSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
@@ -285,6 +288,7 @@ export const VariablesPanel = memo(function VariablesPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
   });
 
   const declarations = useMemo(

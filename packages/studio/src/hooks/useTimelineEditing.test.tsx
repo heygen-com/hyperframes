@@ -1108,6 +1108,7 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     stubProjectFetch(ROLLBACK_SOURCE);
     usePlayerStore.getState().setDuration(4);
     vi.spyOn(console, "error").mockImplementation(() => {});
+    const showToast = vi.fn();
     const hook = renderTimelineEditingHook({
       timelineElements: [clip],
       iframe,
@@ -1116,8 +1117,9 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
       writeProjectFile,
       recordEdit: vi.fn(async () => {}),
       reloadPreview: vi.fn(),
+      showToast,
     });
-    return { iframe, clip, hook, writeError };
+    return { iframe, clip, hook, showToast, writeError };
   }
 
   /**
@@ -1137,6 +1139,7 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
       await flushAsyncWork();
     });
     expect(rejection).toBe(ctx.writeError);
+    expect(ctx.showToast).toHaveBeenCalledWith("write failed", "error");
     expect(usePlayerStore.getState().duration).toBe(4);
     expect(rootDurationAttr(ctx.iframe)).toBe("4");
   }

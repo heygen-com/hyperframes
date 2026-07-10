@@ -32,7 +32,7 @@ import {
   patchElementBatches,
   readErrorResponseBody,
 } from "./useDomEditCommitsHelpers";
-
+import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -71,16 +71,20 @@ export interface UseDomEditCommitsParams {
    * path, whose session is already current) so a later SDK edit doesn't
    * serialize the pre-write doc and revert the server's change. */
   forceReloadSdkSession?: () => void;
-  /** Stage 7 Step 3c: called before the server-side patch path; returns true if SDK handled it. */
+  /** Stage 7 Step 3c: called before the server-side patch path. */
   onTrySdkPersist?: (
     selection: DomEditSelection,
     operations: PatchOperation[],
     originalContent: string,
     targetPath: string,
     options?: { label?: string; coalesceKey?: string; skipRefresh?: boolean },
-  ) => Promise<boolean>;
-  /** Stage 7 §3.1: called before the server-side delete path; returns true if SDK handled it. */
-  onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
+  ) => Promise<CutoverResult>;
+  /** Stage 7 §3.1: called before the server-side delete path. */
+  onTrySdkDelete?: (
+    hfId: string,
+    originalContent: string,
+    targetPath: string,
+  ) => Promise<CutoverResult>;
   /** Resolver-shadow tripwire for z-index reorder targets (telemetry-only, decoupled from cutover). */
   onReorderShadow?: (targets: string[]) => void;
 }
@@ -175,18 +179,17 @@ export function useDomEditCommits({
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
-      if (
-        onTrySdkPersist &&
-        !options?.prepareContent &&
-        (await onTrySdkPersist(selection, operations, originalContent, targetPath, {
+      if (onTrySdkPersist && !options?.prepareContent) {
+        const cutover = await onTrySdkPersist(selection, operations, originalContent, targetPath, {
           label: options?.label,
           coalesceKey: options?.coalesceKey,
           skipRefresh: options?.skipRefresh,
-        }))
-      ) {
-        // SDK handled it — its in-memory doc is already current, so do NOT
-        // forceReload (that would echo-reload the session we just wrote).
-        return;
+        });
+        if (cutoverCommittedOrThrow(cutover)) {
+          // SDK handled it — its in-memory doc is already current, so do NOT
+          // forceReload (that would echo-reload the session we just wrote).
+          return;
+        }
       }
 
       // Mark the save timestamp before the file write so the SSE file-change

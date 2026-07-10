@@ -1,81 +1,32 @@
-import type { MutableRefObject } from "react";
 import type { Composition, GsapTweenSpec } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { EditHistoryKind } from "./editHistory";
 import type { PatchOperation } from "./sourcePatcher";
 import { STUDIO_SDK_CUTOVER_ENABLED } from "../components/editor/manualEditingAvailability";
 import { trackStudioEvent } from "./studioTelemetry";
-import { markSelfWrite } from "../hooks/sdkSelfWriteRegistry";
 import { patchOpsToSdkEditOps } from "./sdkOpMapping";
 import { recordResolverParity, recordAnimationResolverParity } from "./sdkResolverShadow";
 import { shouldDeclineTextCutoverForTarget, shouldUseSdkCutover } from "./sdkCutoverEligibility";
+import {
+  asCutoverError,
+  declinedCutover,
+  persistSdkCandidateMutation,
+  type CutoverDeps,
+  type CutoverOptions,
+  type CutoverResult,
+} from "./sdkEditTransaction";
 
 export { shouldUseSdkCutover } from "./sdkCutoverEligibility";
-
-export interface CutoverDeps {
-  editHistory: {
-    recordEdit: (entry: {
-      label: string;
-      kind: EditHistoryKind;
-      coalesceKey?: string;
-      coalesceMs?: number;
-      files: Record<string, { before: string; after: string }>;
-    }) => Promise<void>;
-  };
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  reloadPreview: () => void;
-  domEditSaveTimestampRef: MutableRefObject<number>;
-  /**
-   * Optional post-write refresh. When provided, it REPLACES the default
-   * reloadPreview() — the GSAP path passes one that soft-reloads (preserving
-   * the playhead) and invalidates the keyframe/gsap panel cache. Receives the
-   * serialized document just written.
-   */
-  refresh?: (after: string) => void;
-  /**
-   * Path of the composition the SDK session was opened for. The session models
-   * ONLY this file (serialize() emits the whole active composition), so any edit
-   * whose targetPath differs (a sub-composition file) must take the server path
-   * — otherwise we'd write the full active-comp serialization into that file.
-   */
-  compositionPath?: string | null;
-  /**
-   * Optional per-key task serializer (the same `gsap-file:${file}` serializer the
-   * legacy `commitMutation` uses). When provided, every GSAP-op persist routes its
-   * read-serialize → dispatch → serialize → write through it so two concurrent
-   * same-file flushes can't interleave their read-modify-write and lose an edit.
-   * Absent (e.g. in unit tests) → ops run unserialized as before.
-   */
-  serialize?: <T>(key: string, task: () => Promise<T>) => Promise<T>;
-  /**
-   * Optional reader for the on-disk content of targetPath. Timing/GSAP persists
-   * use it to capture the EXACT prior bytes as the undo-history `before`, so undo
-   * restores the file verbatim instead of a normalized SDK re-emit (which would
-   * reformat the whole file). The style/delete paths already thread originalContent
-   * in explicitly; this gives timing/GSAP parity without touching every call site.
-   * Absent → falls back to the SDK's pre-edit serialize() (the prior behavior).
-   */
-  readProjectFile?: (path: string) => Promise<string>;
-}
-
-/**
- * Capture the undo-history `before` baseline for timing/GSAP persists: the exact
- * on-disk bytes when a reader is available (so undo restores them verbatim),
- * falling back to the SDK's pre-edit serialization when it isn't. Never throws —
- * a failed read degrades to the serialized fallback rather than aborting the edit.
- */
-async function captureOnDiskBefore(
-  deps: CutoverDeps,
-  targetPath: string,
-  serializedFallback: string,
-): Promise<string> {
-  if (!deps.readProjectFile) return serializedFallback;
-  try {
-    return await deps.readProjectFile(targetPath);
-  } catch {
-    return serializedFallback;
-  }
-}
+export {
+  cutoverCommittedOrThrow,
+  persistSdkCandidateMutation,
+  persistSdkSerialize,
+} from "./sdkEditTransaction";
+export type {
+  CutoverDeps,
+  CutoverOptions,
+  CutoverResult,
+  PublishSdkSession,
+} from "./sdkEditTransaction";
 
 /** True when targetPath isn't the composition the SDK session models. */
 function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
@@ -95,45 +46,6 @@ function gsapReadSource(
   const read = deps.readProjectFile;
   return read ? () => read(targetPath) : undefined;
 }
-
-interface CutoverOptions {
-  label?: string;
-  coalesceKey?: string;
-  /** Coalesce window (ms); Infinity folds across a slow round-trip. */
-  coalesceMs?: number;
-  /** Skip the preview reload (mirrors the server path's skipRefresh). */
-  skipRefresh?: boolean;
-}
-
-// ponytail: exported for setSlideshowManifest (third caller — island write bypasses
-// the SDK dispatch path since <script> nodes are not in the element tree).
-// `after` is serialized once by the caller (which also did the no-op check
-// against its pre-dispatch snapshot), so this never re-serializes.
-export async function persistSdkSerialize(
-  after: string,
-  targetPath: string,
-  originalContent: string,
-  deps: CutoverDeps,
-  options?: CutoverOptions,
-): Promise<void> {
-  deps.domEditSaveTimestampRef.current = Date.now();
-  // Tag this write with the exact content (by hash) so the file-change
-  // reload-suppression can recognize its own echo by IDENTITY, not just a 2 s
-  // clock — an undo write (different bytes, not registered here) then always
-  // reloads instead of being swallowed by the time window.
-  markSelfWrite(targetPath, after);
-  await deps.writeProjectFile(targetPath, after);
-  await deps.editHistory.recordEdit({
-    label: options?.label ?? "Edit layer",
-    kind: "manual",
-    ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
-    ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
-    files: { [targetPath]: { before: originalContent, after } },
-  });
-  if (deps.refresh) deps.refresh(after);
-  else if (!options?.skipRefresh) deps.reloadPreview();
-}
-
 export async function sdkCutoverPersist(
   selection: DomEditSelection,
   ops: PatchOperation[],
@@ -142,35 +54,33 @@ export async function sdkCutoverPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   if (!shouldUseSdkCutover(STUDIO_SDK_CUTOVER_ENABLED, !!sdkSession, selection.hfId, ops))
-    return false;
-  if (!sdkSession) return false;
+    return declinedCutover("ineligible_operation");
+  if (!sdkSession) return declinedCutover("session_unavailable");
   const hfId = selection.hfId;
-  if (!hfId) return false;
+  if (!hfId) return declinedCutover("target_unaddressable");
   const target = sdkSession.getElement(hfId);
-  if (!target) return false;
-  if (shouldDeclineTextCutoverForTarget(target, ops)) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
-  try {
-    const before = sdkSession.serialize();
-    sdkSession.batch(() => {
-      for (const editOp of patchOpsToSdkEditOps(hfId, ops)) {
-        sdkSession.dispatch(editOp);
-      }
-    });
-    const after = sdkSession.serialize();
-    if (after === before) return false;
-    await persistSdkSerialize(after, targetPath, originalContent, deps, options);
+  if (!target) return declinedCutover("target_not_found");
+  if (shouldDeclineTextCutoverForTarget(target, ops))
+    return declinedCutover("unsupported_text_target");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
+  const result = await persistSdkCandidateMutation(
+    sdkSession,
+    targetPath,
+    originalContent,
+    deps,
+    (session) => {
+      for (const editOp of patchOpsToSdkEditOps(hfId, ops)) session.dispatch(editOp);
+    },
+    options,
+  );
+  if (result.status === "committed") {
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: ops.length });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", {
-      hfId: selection.hfId ?? null,
-      error: String(err),
-    });
-    return false;
+  } else if (result.status === "failed") {
+    trackStudioEvent("sdk_cutover_failed", { hfId, error: result.error.message });
   }
+  return result;
 }
 
 export async function sdkTimingPersist(
@@ -180,7 +90,7 @@ export async function sdkTimingPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
   // the SDK can't resolve a target the server timing path is addressing.
   const timingSrc = deps.readProjectFile;
@@ -194,24 +104,31 @@ export async function sdkTimingPersist(
   // Dark-launch gate: without this, timing cutover runs whenever an SDK session
   // exists (it always does, for shadow/selection) — flipping the flag OFF would
   // NOT disable it. Gate here so flag-off routes back to the legacy server path.
-  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
-  if (!sdkSession || !sdkSession.getElement(hfId)) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (!sdkSession.getElement(hfId)) return declinedCutover("target_not_found");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   try {
     const serializedBefore = sdkSession.serialize();
-    sdkSession.batch(() => sdkSession.setTiming(hfId, timingUpdate));
-    const after = sdkSession.serialize();
-    if (after === serializedBefore) return false;
-    // Undo baseline = exact on-disk bytes (matching the style/delete paths), so
-    // undoing a timing edit restores the file verbatim instead of a normalized
-    // full-DOM re-emit. Falls back to serializedBefore when no reader is wired.
-    const undoBefore = await captureOnDiskBefore(deps, targetPath, serializedBefore);
-    await persistSdkSerialize(after, targetPath, undoBefore, deps, options);
-    trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
-    return false;
+    const result = await persistSdkCandidateMutation(
+      sdkSession,
+      targetPath,
+      serializedBefore,
+      deps,
+      (session) => session.setTiming(hfId, timingUpdate),
+      options,
+      serializedBefore,
+    );
+    if (result.status === "committed") {
+      trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
+    } else if (result.status === "failed") {
+      trackStudioEvent("sdk_cutover_failed", { hfId, error: result.error.message });
+    }
+    return result;
+  } catch (error) {
+    const failed = { status: "failed", error: asCutoverError(error) } as const;
+    trackStudioEvent("sdk_cutover_failed", { hfId, error: failed.error.message });
+    return failed;
   }
 }
 
@@ -224,7 +141,7 @@ export async function sdkTimingBatchPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   const timingSrc = deps.readProjectFile;
   for (const change of changes) {
     void recordResolverParity(
@@ -235,29 +152,43 @@ export async function sdkTimingBatchPersist(
       { targetPath, compositionPath: deps.compositionPath },
     );
   }
-  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
-  if (!sdkSession || wrongCompositionFile(deps, targetPath)) return false;
-  if (changes.some((change) => !sdkSession.getElement(change.hfId))) return false;
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
+  if (changes.some((change) => !sdkSession.getElement(change.hfId)))
+    return declinedCutover("target_not_found");
   try {
     const serializedBefore = sdkSession.serialize();
-    sdkSession.batch(() => {
-      for (const change of changes) sdkSession.setTiming(change.hfId, change.timingUpdate);
-    });
-    const after = sdkSession.serialize();
-    if (after === serializedBefore) return false;
-    const undoBefore = await captureOnDiskBefore(deps, targetPath, serializedBefore);
-    await persistSdkSerialize(after, targetPath, undoBefore, deps, options);
+    const result = await persistSdkCandidateMutation(
+      sdkSession,
+      targetPath,
+      serializedBefore,
+      deps,
+      (session) => {
+        for (const change of changes) session.setTiming(change.hfId, change.timingUpdate);
+      },
+      options,
+      serializedBefore,
+    );
+    if (result.status === "failed") {
+      trackStudioEvent("sdk_cutover_failed", {
+        hfId: changes[0]?.hfId ?? null,
+        error: result.error.message,
+      });
+      return result;
+    }
     trackStudioEvent("sdk_cutover_success", {
       hfId: changes[0]?.hfId ?? null,
       opCount: changes.length,
     });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", {
+    return result;
+  } catch (error) {
+    const failed = { status: "failed", error: asCutoverError(error) } as const;
+    trackStudioEvent("sdk_cutover_failed", {
       hfId: changes[0]?.hfId ?? null,
-      error: String(err),
+      error: failed.error.message,
     });
-    return false;
+    return failed;
   }
 }
 
@@ -272,7 +203,7 @@ export function sdkGsapTweenPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   // Resolver tripwire — runs BEFORE this function's own cutover gate (decoupled).
   // add targets an element (element-resolution parity); set/remove target an
   // animationId (animation-resolution parity). Done here, not via
@@ -298,10 +229,10 @@ export function sdkGsapTweenPersist(
   }
   // Leading dark-launch gate so flag-off does no SDK touch (getElement) at all —
   // matches the other three chokepoints' discipline.
-  if (!STUDIO_SDK_CUTOVER_ENABLED) return Promise.resolve(false);
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return Promise.resolve(declinedCutover("feature_disabled"));
   if (op.kind === "add" && sdkSession && !sdkSession.getElement(op.target))
-    return Promise.resolve(false);
-  // dispatchGsapOpAndPersist returns false on before===after — that catches stale
+    return Promise.resolve(declinedCutover("target_not_found"));
+  // dispatchGsapOpAndPersist declines on before===after — that catches stale
   // animationIds and unsupported shapes (e.g. from-prop on a plain tween), falling
   // back to the server path. This subsumes explicit existence guards for set/remove.
   return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) => {
@@ -324,7 +255,7 @@ async function dispatchGsapOpAndPersist(
   options: CutoverOptions | undefined,
   dispatch: (s: Composition) => void,
   resolverTarget?: { animationId: string; opLabel: string },
-): Promise<boolean> {
+): Promise<CutoverResult> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled): records when
   // the SDK can't resolve the animationId the server GSAP path is addressing.
   if (resolverTarget) {
@@ -337,34 +268,35 @@ async function dispatchGsapOpAndPersist(
     );
   }
   // Dark-launch gate (shared chokepoint for every GSAP-op cutover persist):
-  // flag OFF → return false → caller falls back to the legacy server path.
-  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
-  if (!sdkSession) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
+  // flag OFF → explicit decline → caller falls back to the legacy server path.
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
   const session = sdkSession;
-  // Route the whole read-serialize → dispatch → serialize → write through the
-  // per-file serializer (when provided) so overlapping same-file flushes can't
-  // interleave their read-modify-write and drop an edit, matching the legacy
-  // commitMutation path's `gsap-file:${file}` serialization.
-  const run = async (): Promise<boolean> => {
-    try {
-      const serializedBefore = session.serialize();
-      dispatch(session);
-      const after = session.serialize();
-      if (after === serializedBefore) return false;
-      // Undo baseline = exact on-disk bytes (matching the style/delete paths), so
-      // undoing a GSAP edit restores the file verbatim instead of a normalized
-      // full-DOM re-emit. Falls back to serializedBefore when no reader is wired.
-      const undoBefore = await captureOnDiskBefore(deps, targetPath, serializedBefore);
-      await persistSdkSerialize(after, targetPath, undoBefore, deps, options);
+  // persistSdkCandidateMutation owns the shared per-project/file transaction
+  // coordinator used by both SDK and legacy GSAP writes.
+  try {
+    const serializedBefore = session.serialize();
+    const result = await persistSdkCandidateMutation(
+      session,
+      targetPath,
+      serializedBefore,
+      deps,
+      dispatch,
+      options,
+      serializedBefore,
+    );
+    if (result.status === "committed") {
       trackStudioEvent("sdk_cutover_success", { opCount: 1 });
-      return true;
-    } catch (err) {
-      trackStudioEvent("sdk_cutover_fallback", { error: String(err) });
-      return false;
+    } else if (result.status === "failed") {
+      trackStudioEvent("sdk_cutover_failed", { error: result.error.message });
     }
-  };
-  return deps.serialize ? deps.serialize(`gsap-file:${targetPath}`, run) : run();
+    return result;
+  } catch (error) {
+    const failed = { status: "failed", error: asCutoverError(error) } as const;
+    trackStudioEvent("sdk_cutover_failed", { error: failed.error.message });
+    return failed;
+  }
 }
 
 export function sdkGsapKeyframePersist(
@@ -375,7 +307,7 @@ export function sdkGsapKeyframePersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,
@@ -393,7 +325,7 @@ export function sdkGsapRemoveKeyframePersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,
@@ -412,7 +344,7 @@ export function sdkGsapRemovePropertyPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,
@@ -429,7 +361,7 @@ export function sdkGsapDeleteAllForSelectorPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(targetPath, sdkSession, deps, options, (s) =>
     s.dispatch({ type: "deleteAllForSelector", selector }),
   );
@@ -441,7 +373,7 @@ export function sdkGsapRemoveAllKeyframesPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,
@@ -459,7 +391,7 @@ export function sdkGsapConvertToKeyframesPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   return dispatchGsapOpAndPersist(
     targetPath,
     sdkSession,
@@ -508,7 +440,7 @@ export function sdkAddWithKeyframesPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   const payload: KeyframesPayload = {
     targetSelector,
     position,
@@ -532,7 +464,7 @@ export function sdkReplaceWithKeyframesPersist(
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
   options?: CutoverOptions,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   const payload: KeyframesPayload = {
     targetSelector,
     position,
@@ -556,7 +488,7 @@ export async function sdkDeletePersist(
   targetPath: string,
   sdkSession: Composition | null | undefined,
   deps: CutoverDeps,
-): Promise<boolean> {
+): Promise<CutoverResult> {
   // Resolver tripwire — runs BEFORE the cutover gate (decoupled).
   void recordResolverParity(
     sdkSession,
@@ -566,21 +498,22 @@ export async function sdkDeletePersist(
     { targetPath, compositionPath: deps.compositionPath },
   );
   // Dark-launch gate: flag OFF → legacy server delete path.
-  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
-  if (!sdkSession || !sdkSession.getElement(hfId)) return false;
-  if (wrongCompositionFile(deps, targetPath)) return false;
-  try {
-    const before = sdkSession.serialize();
-    sdkSession.batch(() => sdkSession.removeElement(hfId));
-    const after = sdkSession.serialize();
-    if (after === before) return false;
-    await persistSdkSerialize(after, targetPath, originalContent, deps, {
-      label: "Delete element",
-    });
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return declinedCutover("feature_disabled");
+  if (!sdkSession) return declinedCutover("session_unavailable");
+  if (!sdkSession.getElement(hfId)) return declinedCutover("target_not_found");
+  if (wrongCompositionFile(deps, targetPath)) return declinedCutover("wrong_composition_file");
+  const result = await persistSdkCandidateMutation(
+    sdkSession,
+    targetPath,
+    originalContent,
+    deps,
+    (session) => session.removeElement(hfId),
+    { label: "Delete element" },
+  );
+  if (result.status === "committed") {
     trackStudioEvent("sdk_cutover_success", { hfId, opCount: 1 });
-    return true;
-  } catch (err) {
-    trackStudioEvent("sdk_cutover_fallback", { hfId, error: String(err) });
-    return false;
+  } else if (result.status === "failed") {
+    trackStudioEvent("sdk_cutover_failed", { hfId, error: result.error.message });
   }
+  return result;
 }

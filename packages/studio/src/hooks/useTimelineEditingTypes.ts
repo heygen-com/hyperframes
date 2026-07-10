@@ -2,6 +2,7 @@ import type { MutableRefObject, RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
 import type { EditHistoryKind } from "../utils/editHistory";
+import type { PublishSdkSession } from "../utils/sdkCutover";
 
 interface RecordEditInput {
   label: string;
@@ -40,6 +41,8 @@ export interface UseTimelineEditingOptions {
   isRecordingRef?: RefObject<boolean>;
   /** Stage 7 §3.2: SDK session for routing timing ops through setTiming. */
   sdkSession?: Composition | null;
+  /** Publish a fully persisted candidate SDK session. */
+  publishSdkSession?: PublishSdkSession;
   /** Resync the SDK session after a server-authoritative timeline write. */
   forceReloadSdkSession?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;

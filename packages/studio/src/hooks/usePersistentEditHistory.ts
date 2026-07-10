@@ -30,6 +30,7 @@ interface RecordEditInput {
 interface ApplyCallbacks {
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, content: string) => Promise<void>;
+  serialize?: <T>(paths: readonly string[], task: () => Promise<T>) => Promise<T>;
 }
 
 interface UsePersistentEditHistoryOptions {
@@ -167,31 +168,32 @@ async function applyHistoryStep(
   if (!entry) {
     return { state: currentState, result: { ok: false, reason: "empty" } };
   }
-  const { currentFiles, currentHashes } = await readCurrentFileHashes(
-    Object.keys(entry.files),
-    callbacks.readFile,
-  );
-  const result = transition(currentState, currentHashes, now());
-  if (!result.ok) {
+  const paths = Object.keys(entry.files);
+  const apply = async (): Promise<{ state: EditHistoryState; result: ApplyResult }> => {
+    const { currentFiles, currentHashes } = await readCurrentFileHashes(paths, callbacks.readFile);
+    const result = transition(currentState, currentHashes, now());
+    if (!result.ok) {
+      return {
+        state: currentState,
+        result: { ok: false, reason: result.reason },
+      };
+    }
+    await writeFilesWithRollback({
+      files: result.filesToWrite,
+      rollbackFiles: currentFiles,
+      writeFile: callbacks.writeFile,
+    });
     return {
-      state: currentState,
-      result: { ok: false, reason: result.reason },
+      state: result.state,
+      result: {
+        ok: true,
+        label: result.entry.label,
+        paths: Object.keys(result.entry.files),
+        files: restoredFilesMap(result.filesToWrite, currentFiles),
+      },
     };
-  }
-  await writeFilesWithRollback({
-    files: result.filesToWrite,
-    rollbackFiles: currentFiles,
-    writeFile: callbacks.writeFile,
-  });
-  return {
-    state: result.state,
-    result: {
-      ok: true,
-      label: result.entry.label,
-      paths: Object.keys(result.entry.files),
-      files: restoredFilesMap(result.filesToWrite, currentFiles),
-    },
   };
+  return callbacks.serialize ? callbacks.serialize(paths, apply) : apply();
 }
 
 export function createPersistentEditHistoryStore({
@@ -305,11 +307,15 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
   const [loaded, setLoaded] = useState(false);
   const projectId = options.projectId;
   const storeRef = useRef<ReturnType<typeof createPersistentEditHistoryStore> | null>(null);
+  const storeProjectIdRef = useRef<string | null>(null);
+  const activeProjectIdRef = useRef(projectId);
+  activeProjectIdRef.current = projectId;
 
   useEffect(() => {
     let cancelled = false;
     const emptyState = createEmptyEditHistory();
     storeRef.current = null;
+    storeProjectIdRef.current = null;
     setState(emptyState);
     setLoaded(false);
     if (!projectId) {
@@ -327,6 +333,7 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
           now,
           onChange: setState,
         });
+        storeProjectIdRef.current = projectId;
         setState(loadedState);
       })
       .catch(() => {
@@ -338,6 +345,7 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
           now,
           onChange: setState,
         });
+        storeProjectIdRef.current = projectId;
         setState(emptyState);
       })
       .finally(() => {
@@ -349,17 +357,49 @@ export function usePersistentEditHistory(options: UsePersistentEditHistoryOption
     };
   }, [now, projectId, storage]);
 
-  const recordEdit = useCallback(async (input: RecordEditInput) => {
-    await storeRef.current?.recordEdit(input);
-  }, []);
+  const recordEdit = useCallback(
+    async (input: RecordEditInput) => {
+      if (!projectId) return;
+      if (activeProjectIdRef.current !== projectId) {
+        throw new Error(`Cannot record an edit for inactive project ${projectId}`);
+      }
+      const store = storeRef.current;
+      if (!store) return;
+      if (storeProjectIdRef.current !== projectId) {
+        throw new Error(`Edit history store does not belong to project ${projectId}`);
+      }
+      await store.recordEdit(input);
+    },
+    [projectId],
+  );
 
-  const undo = useCallback(async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
-    return storeRef.current?.undo(callbacks) ?? { ok: false, reason: "empty" };
-  }, []);
+  const undo = useCallback(
+    async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
+      if (
+        !projectId ||
+        activeProjectIdRef.current !== projectId ||
+        storeProjectIdRef.current !== projectId
+      ) {
+        return { ok: false, reason: "empty" };
+      }
+      return storeRef.current?.undo(callbacks) ?? { ok: false, reason: "empty" };
+    },
+    [projectId],
+  );
 
-  const redo = useCallback(async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
-    return storeRef.current?.redo(callbacks) ?? { ok: false, reason: "empty" };
-  }, []);
+  const redo = useCallback(
+    async (callbacks: ApplyCallbacks): Promise<ApplyResult> => {
+      if (
+        !projectId ||
+        activeProjectIdRef.current !== projectId ||
+        storeProjectIdRef.current !== projectId
+      ) {
+        return { ok: false, reason: "empty" };
+      }
+      return storeRef.current?.redo(callbacks) ?? { ok: false, reason: "empty" };
+    },
+    [projectId],
+  );
 
   return {
     loaded,

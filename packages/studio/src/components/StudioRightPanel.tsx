@@ -15,7 +15,7 @@ import type { IframeWindow } from "../player/lib/playbackTypes";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
+import { useSlideshowPersist, type UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
@@ -47,6 +47,7 @@ export interface StudioRightPanelProps {
   onToggleRecording?: () => void;
   /** Dependencies for the Slideshow persist callback, threaded from App.tsx. */
   sdkSession: Composition | null;
+  publishSdkSession: NonNullable<UseSlideshowPersistParams["publishSdkSession"]>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   recordEdit: (entry: {
@@ -66,6 +67,7 @@ export function StudioRightPanel({
   recordingDuration,
   onToggleRecording,
   sdkSession,
+  publishSdkSession,
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
@@ -160,6 +162,7 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
   });
 
   // Notes path: persists are debounced in SlideshowPanel; coalesceKey ensures
@@ -172,6 +175,7 @@ export function StudioRightPanel({
     recordEdit,
     reloadPreview,
     domEditSaveTimestampRef,
+    publishSdkSession,
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
 
@@ -305,7 +309,6 @@ export function StudioRightPanel({
     },
     [projectId, refreshFileTree, showToast],
   );
-
   const handleHideAllSelected = () => {
     const { elements } = usePlayerStore.getState();
     const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
@@ -316,6 +319,7 @@ export function StudioRightPanel({
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
       projectId={projectId}
       activeCompPath={activeCompPath}
+      showToast={showToast}
       readProjectFile={readProjectFile}
       writeProjectFile={writeProjectFile}
       recordEdit={recordEdit}
@@ -507,6 +511,7 @@ export function StudioRightPanel({
               ) : rightPanelTab === "variables" ? (
                 <VariablesPanel
                   sdkSession={sdkSession}
+                  publishSdkSession={publishSdkSession}
                   reloadPreview={reloadPreview}
                   domEditSaveTimestampRef={domEditSaveTimestampRef}
                   recordEdit={recordEdit}

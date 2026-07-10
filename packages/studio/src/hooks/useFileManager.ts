@@ -66,38 +66,48 @@ export function useFileManager({
 
   // ── Core file I/O ──
 
-  const readProjectFile = useCallback(async (path: string): Promise<string> => {
-    const pid = projectIdRef.current;
-    if (!pid) throw new Error("No active project");
-    const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-    if (!response.ok) throw new Error(`Failed to read ${path}`);
-    const data = (await response.json()) as { content?: string };
-    if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-    return data.content;
-  }, []);
+  const readProjectFile = useCallback(
+    async (path: string): Promise<string> => {
+      if (!projectId) throw new Error("No active project");
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}`,
+      );
+      if (!response.ok) throw new Error(`Failed to read ${path}`);
+      const data = (await response.json()) as { content?: string };
+      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
+      return data.content;
+    },
+    [projectId],
+  );
 
-  const writeProjectFile = useCallback(async (path: string, content: string): Promise<void> => {
-    const pid = projectIdRef.current;
-    if (!pid) throw new Error("No active project");
-    await retryStudioSave(async () => {
-      let response: Response;
-      try {
-        response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "text/plain" },
-          body: content,
-        });
-      } catch (error) {
-        throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
-          cause: error,
-        });
+  const writeProjectFile = useCallback(
+    async (path: string, content: string): Promise<void> => {
+      if (!projectId) throw new Error("No active project");
+      const writeProjectId = projectId;
+      await retryStudioSave(async () => {
+        let response: Response;
+        try {
+          response = await fetch(
+            `/api/projects/${encodeURIComponent(writeProjectId)}/files/${encodeURIComponent(path)}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "text/plain" },
+              body: content,
+            },
+          );
+        } catch (error) {
+          throw new StudioSaveNetworkError(`Failed to save ${path}: network error`, {
+            cause: error,
+          });
+        }
+        if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
+      });
+      if (projectIdRef.current === writeProjectId && editingPathRef.current === path) {
+        setEditingFile({ path, content });
       }
-      if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
-    });
-    if (editingPathRef.current === path) {
-      setEditingFile({ path, content });
-    }
-  }, []);
+    },
+    [projectId],
+  );
 
   const updateEditingFileContent = useCallback((path: string, content: string) => {
     if (editingPathRef.current === path) {
@@ -105,16 +115,18 @@ export function useFileManager({
     }
   }, []);
 
-  const readOptionalProjectFile = useCallback(async (path: string): Promise<string> => {
-    const pid = projectIdRef.current;
-    if (!pid) throw new Error("No active project");
-    const response = await fetch(
-      `/api/projects/${pid}/files/${encodeURIComponent(path)}?optional=1`,
-    );
-    if (!response.ok) throw new Error(`Failed to read ${path}`);
-    const data = (await response.json()) as { content?: string };
-    return typeof data.content === "string" ? data.content : "";
-  }, []);
+  const readOptionalProjectFile = useCallback(
+    async (path: string): Promise<string> => {
+      if (!projectId) throw new Error("No active project");
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}?optional=1`,
+      );
+      if (!response.ok) throw new Error(`Failed to read ${path}`);
+      const data = (await response.json()) as { content?: string };
+      return typeof data.content === "string" ? data.content : "";
+    },
+    [projectId],
+  );
 
   // ── Editor save (debounced content change) ──
 
@@ -146,7 +158,7 @@ export function useFileManager({
         setEditingFile({ path, content: null });
         return;
       }
-      fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`)
+      fetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`)
         .then((r) => {
           if (!r.ok) throw new Error(`Failed to load ${path} (${r.status})`);
           return r.json();
@@ -179,7 +191,7 @@ export function useFileManager({
       const requestId = ++revealRequestIdRef.current;
       const controller = new AbortController();
       revealAbortRef.current = controller;
-      fetch(`/api/projects/${pid}/files/${encodeURIComponent(sourceFile)}`, {
+      fetch(`/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(sourceFile)}`, {
         signal: controller.signal,
       })
         .then((r) => r.json())
@@ -211,7 +223,7 @@ export function useFileManager({
 
       const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
       try {
-        const res = await fetch(`/api/projects/${pid}/upload${qs}`, {
+        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/upload${qs}`, {
           method: "POST",
           body: formData,
         });
@@ -251,11 +263,14 @@ export function useFileManager({
         content =
           '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="UTF-8">\n</head>\n<body>\n\n</body>\n</html>\n';
       }
-      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: content,
-      });
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: content,
+        },
+      );
       if (res.ok) {
         await refreshFileTree();
         handleFileSelect(path);
@@ -273,7 +288,7 @@ export function useFileManager({
       const pid = projectIdRef.current;
       if (!pid) return;
       const res = await fetch(
-        `/api/projects/${pid}/files/${encodeURIComponent(path + "/.gitkeep")}`,
+        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path + "/.gitkeep")}`,
         {
           method: "POST",
           headers: { "Content-Type": "text/plain" },
@@ -295,9 +310,12 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(path)}`,
+        {
+          method: "DELETE",
+        },
+      );
       if (res.ok) {
         if (editingPathRef.current === path) setEditingFile(null);
         await refreshFileTree();
@@ -314,11 +332,14 @@ export function useFileManager({
     async (oldPath: string, newPath: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(oldPath)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newPath }),
-      });
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(pid)}/files/${encodeURIComponent(oldPath)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newPath }),
+        },
+      );
       if (res.ok) {
         if (editingPathRef.current === oldPath) {
           handleFileSelect(newPath);
@@ -338,7 +359,7 @@ export function useFileManager({
     async (path: string) => {
       const pid = projectIdRef.current;
       if (!pid) return;
-      const res = await fetch(`/api/projects/${pid}/duplicate-file`, {
+      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/duplicate-file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),
@@ -367,17 +388,18 @@ export function useFileManager({
 
   const handleImportFonts = useCallback(
     async (files: FileList | File[]): Promise<ImportedFontAsset[]> => {
+      const pid = projectIdRef.current;
+      if (!pid) return [];
       const uploaded = await uploadProjectFiles(
         Array.from(files).filter((file) => FONT_EXT.test(file.name)),
         "assets/fonts",
       );
-      const pid = projectIdRef.current;
       const imported = uploaded
         .filter((asset) => FONT_EXT.test(asset))
         .map((asset) => ({
           family: fontFamilyFromAssetPath(asset),
           path: asset,
-          url: `/api/projects/${pid}/preview/${asset}`,
+          url: `/api/projects/${encodeURIComponent(pid)}/preview/${asset}`,
         }));
       importedFontAssetsRef.current = [
         ...imported,

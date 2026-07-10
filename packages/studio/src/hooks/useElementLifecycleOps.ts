@@ -20,10 +20,15 @@ import {
   type LayerRevealCommitOwnership,
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
+import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
-  /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
-  onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
+  /** Route delete through SDK when session resolves the hf-id. */
+  onTrySdkDelete?: (
+    hfId: string,
+    originalContent: string,
+    targetPath: string,
+  ) => Promise<CutoverResult>;
   /** Resolver-shadow tripwire for the reordered targets (telemetry-only, decoupled from cutover). */
   onReorderShadow?: (targets: string[]) => void;
   /** Resync the SDK session after a server-fallback delete. */
@@ -97,7 +102,7 @@ export function useElementLifecycleOps({
 
         if (onTrySdkDelete && selection.hfId) {
           const handled = await onTrySdkDelete(selection.hfId, originalContent, targetPath);
-          if (handled) {
+          if (cutoverCommittedOrThrow(handled)) {
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
             showToast(`Deleted ${label}. Use Undo to restore it.`, "info");

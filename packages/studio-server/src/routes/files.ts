@@ -227,8 +227,10 @@ function foldElementPatches(
 /**
  * The single commit owner for element patch batches. All files are resolved,
  * read, and folded before the first write; any unmatched target refuses the
- * whole request. The final snapshots/writes are synchronous, so another route
- * cannot interleave once the commit section begins.
+ * whole request. Studio Server is intentionally single-process; within that
+ * process the final snapshots/writes are synchronous, so another route cannot
+ * interleave once the commit section begins. A multi-process deployment must
+ * replace this process-local guarantee with a shared per-project file lock.
  */
 export function commitElementPatchBatches(
   projectDir: string,

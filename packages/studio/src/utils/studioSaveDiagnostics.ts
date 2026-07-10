@@ -71,6 +71,23 @@ export function getStudioSaveErrorMessage(error: unknown): string {
   return "Unknown save failure";
 }
 
+export function markStudioSaveErrorAlreadyToasted<T>(error: T): T {
+  if (!error || typeof error !== "object") return error;
+  try {
+    Object.defineProperty(error, "alreadyToasted", { value: true, configurable: true });
+  } catch {
+    // Best effort: failure reporting must not replace the original save error.
+  }
+  return error;
+}
+
+export function isStudioSaveErrorAlreadyToasted(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if ((error as { alreadyToasted?: unknown }).alreadyToasted === true) return true;
+  const cause = (error as { cause?: unknown }).cause;
+  return cause !== error && isStudioSaveErrorAlreadyToasted(cause);
+}
+
 export function getStudioSaveStatusCode(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const direct =
