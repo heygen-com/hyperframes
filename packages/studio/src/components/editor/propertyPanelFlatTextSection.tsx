@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Plus, X } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -16,7 +17,6 @@ import {
   getTextFieldColor,
   getTextStyleValue,
   TextAreaField,
-  TextSection,
   WEIGHT_LABELS,
 } from "./propertyPanelSections";
 
@@ -201,27 +201,47 @@ export function FlatTextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
+    element.textFields[0]?.key ?? null,
+  );
+
+  useEffect(() => {
+    const nextFields = element.textFields;
+    setActiveFieldKey((current) => {
+      if (current && nextFields.some((field) => field.key === current)) return current;
+      return nextFields[0]?.key ?? null;
+    });
+  }, [element.id, element.selector, element.textFields]);
+
   if (!isTextEditableSelection(element)) return null;
   const textFields = element.textFields;
-  const activeField = textFields[0];
+  const activeField = textFields.find((field) => field.key === activeFieldKey) ?? textFields[0];
   if (!activeField) return null;
 
   if (textFields.length > 1) {
-    // The parent FlatGroup (PropertyPanelFlat) already renders a "Text"
-    // heading around this section — suppress TextSection's own internal
-    // heading so the flat panel doesn't show "Text" twice in a row.
     return (
-      <TextSection
-        element={element}
-        styles={styles}
-        fontAssets={fontAssets}
-        onImportFonts={onImportFonts}
-        onSetText={onSetText}
-        onSetTextFieldStyle={onSetTextFieldStyle}
-        onAddTextField={onAddTextField}
-        onRemoveTextField={onRemoveTextField}
-        hideOwnHeading
-      />
+      <div className="space-y-1.5">
+        <FlatTextLayerList
+          fields={textFields}
+          activeFieldKey={activeField.key}
+          styles={styles}
+          onSelect={setActiveFieldKey}
+          onAdd={() =>
+            void Promise.resolve(onAddTextField(activeField.key)).then((nextKey) => {
+              if (nextKey) setActiveFieldKey(nextKey);
+            })
+          }
+          onRemove={onRemoveTextField}
+        />
+        <FlatTextFieldEditor
+          field={activeField}
+          styles={styles}
+          fontAssets={fontAssets}
+          onImportFonts={onImportFonts}
+          onSetText={onSetText}
+          onSetTextFieldStyle={onSetTextFieldStyle}
+        />
+      </div>
     );
   }
 
