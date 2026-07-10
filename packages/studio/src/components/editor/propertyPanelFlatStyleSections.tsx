@@ -237,7 +237,7 @@ function FlatStrokeRow({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Flat Radius row — uniform case; legacy fallback otherwise          */
+/*  Flat Radius row — always delegates to BorderRadiusEditor            */
 /* ------------------------------------------------------------------ */
 
 // fallow-ignore-next-line complexity
