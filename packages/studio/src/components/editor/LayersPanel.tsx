@@ -7,7 +7,7 @@ import {
 } from "./domEditing";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
-import { usePlayerStore } from "../../player";
+import { usePlayerStore, liveTime } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
@@ -121,6 +121,32 @@ export const LayersPanel = memo(function LayersPanel() {
       return () => clearTimeout(timer);
     }
   }, [compositionLoading, collectLayers]);
+
+  // Subscribe to liveTime so the panel refreshes during scrubbing.
+  // liveTime bypasses React state (no re-renders per frame), so a plain
+  // usePlayerStore(s => s.currentTime) subscription never fires while the
+  // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
+  // avoid a collectLayers call on every animation frame.
+  useEffect(() => {
+    let rafId: number | null = null;
+    let lastFired = 0;
+    const THROTTLE_MS = 100;
+
+    const unsubscribe = liveTime.subscribe(() => {
+      const now = performance.now();
+      if (rafId !== null || now - lastFired < THROTTLE_MS) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        lastFired = performance.now();
+        collectLayers();
+      });
+    });
+
+    return () => {
+      unsubscribe();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [collectLayers]);
 
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) => {
