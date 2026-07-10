@@ -27,10 +27,13 @@ import {
   cpSync,
   rmSync,
   writeFileSync,
+  mkdtempSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadUiPrimitiveScope } from "./lib/ui-primitives/scope.js";
 // Import from source — bun workspace linking doesn't resolve for scripts outside packages/.
 import {
   createFileServer,
@@ -67,8 +70,23 @@ interface CatalogItem {
   entryFile: string;
 }
 
+interface CliOptions {
+  only: string | null;
+  type: ItemKind | null;
+  skipVideo: boolean;
+  allowlist: string | null;
+  prepareOnly: string | null;
+  keepWorkspace: boolean;
+}
+
+interface PrepareOptions {
+  destination?: string;
+  operatorBlack: boolean;
+}
+
 // ── Discovery ──────────────────────────────────────────────────────────────
 
+// fallow-ignore-next-line complexity
 function discoverItems(kindFilter: ItemKind | null, nameFilter: string | null): CatalogItem[] {
   const items: CatalogItem[] = [];
 
@@ -123,9 +141,42 @@ function outputDir(kind: ItemKind): string {
   return resolve(repoRoot, "docs/images/catalog", typeDir);
 }
 
-function prepareProjectDir(item: CatalogItem): string {
-  const tmpDir = join(tmpdir(), `hf-catalog-${item.name}-${Date.now()}`);
+function verifyPinnedGsap(): void {
+  const lockPath = resolve(registryDir, "ui-primitives/visual-test-image.lock.json");
+  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+  const gsapPath = resolve(repoRoot, lock.gsap.path);
+  const digest = createHash("sha256").update(readFileSync(gsapPath)).digest("hex");
+  if (digest !== lock.gsap.sha256) throw new Error("Pinned Operator Black GSAP checksum mismatch");
+}
+
+// fallow-ignore-next-line complexity
+export function prepareProjectDir(item: CatalogItem, options: PrepareOptions): string {
+  const tmpDir = options.destination
+    ? resolve(options.destination)
+    : mkdtempSync(join(tmpdir(), `hf-catalog-${item.name}-`));
+  if (options.destination && existsSync(tmpDir)) {
+    throw new Error(`Prepared workspace already exists: ${tmpDir}`);
+  }
   mkdirSync(tmpDir, { recursive: true });
+
+  if (options.operatorBlack) {
+    verifyPinnedGsap();
+    const componentDir = resolve(tmpDir, "registry/components", item.name);
+    const vendorDir = resolve(tmpDir, "registry/ui-primitives/vendor");
+    mkdirSync(dirname(componentDir), { recursive: true });
+    mkdirSync(dirname(vendorDir), { recursive: true });
+    cpSync(item.sourceDir, componentDir, { recursive: true });
+    cpSync(resolve(registryDir, "ui-primitives/vendor"), vendorDir, { recursive: true });
+    const entryPath = resolve(componentDir, item.entryFile);
+    let content = readFileSync(entryPath, "utf8");
+    content = content.replace(
+      /<head(\s[^>]*)?>/i,
+      (opening) => `${opening}\n    <base href="./registry/components/${item.name}/" />`,
+    );
+    writeFileSync(resolve(tmpDir, "index.html"), content);
+    return tmpDir;
+  }
+
   cpSync(item.sourceDir, tmpDir, { recursive: true });
 
   // The HyperFrames producer navigates to index.html at the project root.
@@ -290,60 +341,122 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
-function parseArgs(): { only: string | null; type: ItemKind | null; skipVideo: boolean } {
+// fallow-ignore-next-line complexity
+export function parseArgs(args = process.argv.slice(2)): CliOptions {
   let only: string | null = null;
   let type: ItemKind | null = null;
   let skipVideo = false;
+  let allowlist: string | null = null;
+  let prepareOnly: string | null = null;
+  let keepWorkspace = false;
 
-  for (let i = 2; i < process.argv.length; i++) {
-    const arg = process.argv[i];
-    if (arg === "--only" && process.argv[i + 1]) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--only" && args[i + 1]) {
       i++;
-      only = process.argv[i] ?? null;
+      if (only) throw new Error("--only may be supplied only once");
+      only = args[i] ?? null;
+      continue;
     }
-    if (arg === "--type" && process.argv[i + 1]) {
+    if (arg === "--type" && args[i + 1]) {
       i++;
-      const val = process.argv[i];
+      const val = args[i];
       if (val === "block" || val === "component") {
         type = val;
       } else {
-        console.error(`Invalid --type: "${val}". Must be block or component.`);
-        process.exit(1);
+        throw new Error(`Invalid --type: "${val}". Must be block or component.`);
       }
+      continue;
     }
-    if (arg === "--skip-video") skipVideo = true;
+    if (arg === "--allowlist" && args[i + 1]) {
+      i++;
+      if (allowlist) throw new Error("--allowlist may be supplied only once");
+      allowlist = args[i] ?? null;
+      continue;
+    }
+    if (arg === "--prepare-only" && args[i + 1]) {
+      i++;
+      if (prepareOnly) throw new Error("--prepare-only may be supplied only once");
+      prepareOnly = args[i] ?? null;
+      continue;
+    }
+    if (arg === "--skip-video") {
+      skipVideo = true;
+      continue;
+    }
+    if (arg === "--keep-workspace") {
+      keepWorkspace = true;
+      continue;
+    }
+    throw new Error(`Unknown or incomplete argument: ${arg ?? ""}`);
   }
 
-  return { only, type, skipVideo };
+  if (allowlist && type === "block") throw new Error("--allowlist is component-only");
+  return { only, type, skipVideo, allowlist, prepareOnly, keepWorkspace };
 }
 
+// fallow-ignore-next-line complexity
 async function main(): Promise<void> {
-  const { only, type, skipVideo } = parseArgs();
-  const items = discoverItems(type, only);
+  const cli = parseArgs();
+  let items = discoverItems(cli.allowlist ? "component" : cli.type, cli.only);
+  let operatorBlack = false;
+  if (cli.allowlist) {
+    const scope = loadUiPrimitiveScope(resolve(cli.allowlist));
+    const allowed = new Set(scope.items);
+    if (cli.only && !allowed.has(cli.only)) {
+      throw new Error(`--only ${cli.only} is outside the supplied allowlist`);
+    }
+    items = items.filter((item) => allowed.has(item.name));
+    if (!cli.only && items.length !== scope.items.length) {
+      throw new Error(
+        `Allowlist selected ${scope.items.length} items but discovered ${items.length}`,
+      );
+    }
+    operatorBlack = true;
+  }
+  if (cli.prepareOnly) mkdirSync(resolve(cli.prepareOnly), { recursive: true });
 
   console.log(
-    `Generating catalog previews for ${items.length} item(s)${skipVideo ? " (thumbnails only)" : " + videos"}...\n`,
+    `Generating catalog previews for ${items.length} item(s)${cli.prepareOnly ? " (prepare only)" : cli.skipVideo ? " (thumbnails only)" : " + videos"}...\n`,
   );
 
+  let failures = 0;
   for (const item of items) {
     console.log(`[${item.kind}] ${item.name}`);
-    const projectDir = prepareProjectDir(item);
+    let projectDir: string | null = null;
     try {
+      projectDir = prepareProjectDir(item, {
+        operatorBlack,
+        destination: cli.prepareOnly ? resolve(cli.prepareOnly, item.name) : undefined,
+      });
+      if (cli.prepareOnly) {
+        console.log(`  ✓ prepared ${projectDir}`);
+        continue;
+      }
       await generateThumbnail(item, projectDir);
-      if (!skipVideo) {
+      if (!cli.skipVideo) {
         await generateVideo(item, projectDir);
       }
     } catch (err) {
+      failures += 1;
       console.error(`  ✗ ${item.name}: ${err instanceof Error ? err.message : err}`);
     } finally {
-      rmSync(projectDir, { recursive: true, force: true });
+      if (projectDir && !cli.prepareOnly && !cli.keepWorkspace) {
+        rmSync(projectDir, { recursive: true, force: true });
+      } else if (projectDir && cli.keepWorkspace) {
+        console.log(`  workspace: ${projectDir}`);
+      }
     }
   }
 
-  console.log("\nDone.");
+  console.log(`\nDone: ${items.length - failures} succeeded, ${failures} failed.`);
+  if (failures > 0) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const entry = process.argv[1];
+if (entry && import.meta.url === pathToFileURL(entry).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

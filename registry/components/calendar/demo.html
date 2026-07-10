@@ -3,12 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Calendar - Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <title>Calendar — Operator Black</title>
+    <script src="../../ui-primitives/vendor/gsap-3.14.2.min.js"></script>
     <style>
-      * {
-        box-sizing: border-box;
-      }
       html,
       body {
         margin: 0;
@@ -16,121 +13,260 @@
         height: 1080px;
         overflow: hidden;
       }
-      #demo {
+      body {
+        background: #0a0a0a;
+      }
+      .hf-ui-demo-canvas {
         width: 1920px;
         height: 1080px;
+        box-sizing: border-box;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        place-items: center;
+        padding: 96px;
+        background: #0a0a0a;
+        color: #e5e5e5;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-stage {
         display: grid;
         place-items: center;
-        background: #f7f7f8;
-        font-family: Inter, system-ui, sans-serif;
+        min-width: 0;
+        max-width: 100%;
       }
-      /* ponytail: scale on .demo-frame — GSAP only touches .hf-ui-calendar-grid > * */
-      .demo-frame {
-        display: grid;
-        place-items: center;
-        transform: scale(1.4);
-        transform-origin: center center;
-      }
-      .hf-ui-calendar {
-        display: grid;
-        gap: 16px;
-        width: 320px;
-        padding: 20px;
-        border: 1px solid #e4e4e7;
-        border-radius: 16px;
-        background: #fff;
-        color: #18181b;
-        font-family: Inter, system-ui, sans-serif;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.10);
-      }
-      .hf-ui-calendar header {
-        font-size: 16px;
-        font-weight: 700;
-        color: #18181b;
-        letter-spacing: -0.01em;
-      }
-      .hf-ui-calendar-daynames {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 6px;
-        margin-bottom: -4px;
-      }
-      .hf-ui-calendar-daynames span {
-        display: grid;
-        place-items: center;
-        height: 28px;
-        font-size: 11px;
-        font-weight: 500;
-        color: #71717a;
-      }
-      .hf-ui-calendar-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 6px;
-      }
-      .hf-ui-calendar-grid :is(span, strong) {
-        display: grid;
-        place-items: center;
-        height: 36px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 400;
-        color: #18181b;
-      }
-      .hf-ui-calendar-grid span:hover {
-        background: #f4f4f5;
-      }
-      .hf-ui-calendar-grid .day-muted {
-        color: #d4d4d8;
-      }
-      .hf-ui-calendar-grid .day-range {
-        background: #f4f4f5;
-      }
-      .hf-ui-calendar-grid strong {
-        background: #18181b;
-        color: #fff;
-        font-weight: 600;
-        border-radius: 10px;
+      .hf-ui-demo-caption {
+        justify-self: start;
+        color: #929292;
+        font:
+          500 18px/1.4 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          Consolas,
+          monospace;
+        letter-spacing: 0.01em;
       }
     </style>
   </head>
   <body>
-    <div
-      id="demo"
+    <main
+      class="hf-ui-demo-canvas"
       data-composition-id="calendar-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="5"
+      data-duration="4"
+      data-hf-rendering="true"
+      data-hf-theme="dark"
     >
-      <div class="demo-frame">
-        <div class="hf-ui-calendar">
-          <header>June 2026</header>
-          <div class="hf-ui-calendar-daynames">
-            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-          </div>
-          <div class="hf-ui-calendar-grid">
-            <span class="day-muted">1</span><span class="day-muted">2</span><span class="day-muted">3</span><span class="day-muted">4</span><span class="day-muted">5</span><span class="day-muted">6</span><span class="day-muted">7</span>
-            <span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
-            <span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span>
-            <span>22</span><span>23</span><strong>24</strong><span class="day-range">25</span><span class="day-range">26</span><span class="day-range">27</span><span>28</span>
-            <span>29</span><span>30</span><span class="day-muted">1</span><span class="day-muted">2</span><span class="day-muted">3</span><span class="day-muted">4</span><span class="day-muted">5</span>
-          </div>
-        </div>
-      </div>
+      <!-- prettier-ignore -->
+      <section class="hf-ui-demo-stage" aria-label="Calendar specimen" inert>
+        <!-- hf-ui:canonical:start -->
+<!--
+  Calendar - remocn-inspired UI primitive for HyperFrames.
+
+  Paste the markup and CSS into a composition. Animate the CSS variables
+  from a paused GSAP timeline for deterministic video renders.
+-->
+
+<div data-hf-ui-root class="hf-ui-calendar">
+  <header>June 2026</header>
+  <div class="hf-ui-calendar-grid">
+    <span>22</span><span>23</span><strong>24</strong><span>25</span><span>26</span><span>27</span
+    ><span>28</span>
+  </div>
+</div>
+
+<style>
+  /* hf-ui:tokens:start */
+  /* prettier-ignore */
+  [data-hf-ui-root] {
+    --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
+    --_hf-ui-action: var(--hf-ui-action, #eeeeee);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
+    --_hf-ui-border: var(--hf-ui-border, #2a2a2a);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #383838);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #0a0a0a);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #686868);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #777777);
+    --_hf-ui-control-height: var(--hf-ui-control-height, 40px);
+    --_hf-ui-danger: var(--hf-ui-danger, #ff7878);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #3ce6ac);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #63a5ff);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #e9ab55);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #a78bfa);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #ff8a75);
+    --_hf-ui-duration-drawer-enter: var(--hf-ui-duration-drawer-enter, 360ms);
+    --_hf-ui-duration-drawer-exit: var(--hf-ui-duration-drawer-exit, 240ms);
+    --_hf-ui-duration-modal-enter: var(--hf-ui-duration-modal-enter, 280ms);
+    --_hf-ui-duration-modal-exit: var(--hf-ui-duration-modal-exit, 180ms);
+    --_hf-ui-duration-overlay-enter: var(--hf-ui-duration-overlay-enter, 210ms);
+    --_hf-ui-duration-overlay-exit: var(--hf-ui-duration-overlay-exit, 140ms);
+    --_hf-ui-duration-press: var(--hf-ui-duration-press, 120ms);
+    --_hf-ui-duration-state: var(--hf-ui-duration-state, 160ms);
+    --_hf-ui-ease-enter: var(--hf-ui-ease-enter, cubic-bezier(0.32, 0.72, 0, 1));
+    --_hf-ui-ease-exit: var(--hf-ui-ease-exit, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-ease-response: var(--hf-ui-ease-response, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-font-mono: var(--hf-ui-font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    --_hf-ui-font-sans: var(--hf-ui-font-sans, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+    --_hf-ui-hit-target: var(--hf-ui-hit-target, 44px);
+    --_hf-ui-radius-control: var(--hf-ui-radius-control, 5px);
+    --_hf-ui-radius-overlay: var(--hf-ui-radius-overlay, 10px);
+    --_hf-ui-radius-surface: var(--hf-ui-radius-surface, 7px);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 8px 18px rgba(0, 0, 0, 0.38));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.035));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(0, 0, 0, 0.52));
+    --_hf-ui-space-1: var(--hf-ui-space-1, 4px);
+    --_hf-ui-space-12: var(--hf-ui-space-12, 48px);
+    --_hf-ui-space-16: var(--hf-ui-space-16, 64px);
+    --_hf-ui-space-2: var(--hf-ui-space-2, 8px);
+    --_hf-ui-space-3: var(--hf-ui-space-3, 12px);
+    --_hf-ui-space-4: var(--hf-ui-space-4, 16px);
+    --_hf-ui-space-6: var(--hf-ui-space-6, 24px);
+    --_hf-ui-space-8: var(--hf-ui-space-8, 32px);
+    --_hf-ui-surface: var(--hf-ui-surface, #141414);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #101010);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #1a1a1a);
+    --_hf-ui-text: var(--hf-ui-text, #e5e5e5);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #7e7e7e);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #929292);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #f3f3f3);
+    --_hf-ui-warning: var(--hf-ui-warning, #e9ab55);
+    --_hf-ui-weight-medium: var(--hf-ui-weight-medium, 500);
+    --_hf-ui-weight-regular: var(--hf-ui-weight-regular, 400);
+    --_hf-ui-weight-semibold: var(--hf-ui-weight-semibold, 600);
+    box-sizing: border-box;
+    color-scheme: dark;
+    font-family: var(--_hf-ui-font-sans);
+  }
+  /* prettier-ignore */
+  [data-hf-ui-root] *,
+  [data-hf-ui-root] *::before,
+  [data-hf-ui-root] *::after {
+    box-sizing: border-box;
+  }
+  /* prettier-ignore */
+  [data-hf-theme="light"] [data-hf-ui-root],
+  [data-hf-ui-root][data-hf-theme="light"] {
+    --_hf-ui-accent: var(--hf-ui-accent, #087a57);
+    --_hf-ui-action: var(--hf-ui-action, #171717);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #ffffff);
+    --_hf-ui-border: var(--hf-ui-border, #e0dfdb);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #cbc9c3);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #f6f5f1);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #888888);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #6f6e68);
+    --_hf-ui-danger: var(--hf-ui-danger, #a61b1b);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #087a57);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #245ea8);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #8a4b00);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #6d3fc0);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #a83d2d);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 7px 16px rgba(26, 24, 20, 0.13));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.78));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(26, 24, 20, 0.18));
+    --_hf-ui-surface: var(--hf-ui-surface, #ffffff);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #f0efeb);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #ffffff);
+    --_hf-ui-text: var(--hf-ui-text, #171717);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #6f6e68);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #5f5f5a);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #0a0a0a);
+    --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
+    color-scheme: light;
+  }
+  /* prettier-ignore */
+  [data-hf-ui-root]:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  /* prettier-ignore */
+  [data-hf-rendering="true"][data-hf-ui-root],
+  [data-hf-rendering="true"] [data-hf-ui-root],
+  [data-hf-rendering="true"][data-hf-ui-root] *,
+  [data-hf-rendering="true"] [data-hf-ui-root] *,
+  [data-hf-rendering="true"][data-hf-ui-root]::before,
+  [data-hf-rendering="true"][data-hf-ui-root]::after,
+  [data-hf-rendering="true"] [data-hf-ui-root]::before,
+  [data-hf-rendering="true"] [data-hf-ui-root]::after,
+  [data-hf-rendering="true"][data-hf-ui-root] *::before,
+  [data-hf-rendering="true"][data-hf-ui-root] *::after,
+  [data-hf-rendering="true"] [data-hf-ui-root] *::before,
+  [data-hf-rendering="true"] [data-hf-ui-root] *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+  /* prettier-ignore */
+  @media (prefers-reduced-motion: reduce) {
+    [data-hf-ui-root],
+    [data-hf-ui-root] *,
+    [data-hf-ui-root] *::before,
+    [data-hf-ui-root] *::after {
+      animation-duration: 0s !important;
+      animation-delay: 0s !important;
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  /* hf-ui:tokens:end */
+  .hf-ui-calendar {
+    display: grid;
+    gap: 14px;
+    width: 300px;
+    padding: 18px;
+    border: 1px solid #e4e4e7;
+    border-radius: 14px;
+    background: #fff;
+    color: #18181b;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .hf-ui-calendar header {
+    font-size: 18px;
+    font-weight: 900;
+  }
+  .hf-ui-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+  .hf-ui-calendar-grid :is(span, strong) {
+    display: grid;
+    place-items: center;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 13px;
+  }
+  .hf-ui-calendar-grid strong {
+    background: #18181b;
+    color: #fff;
+  }
+</style>
+
+<!--
+  Timeline integration:
+  tl.fromTo('.hf-ui-calendar-grid > *', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.18, stagger: 0.03, ease: 'back.out(1.6)' }, startTime);
+-->
+<!-- hf-ui:canonical:end -->
+      </section>
+      <p class="hf-ui-demo-caption">Calendar</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        const startTime = 0.45;
         tl.fromTo(
-          ".hf-ui-calendar-grid > *",
-          { opacity: 0, scale: 0.8 },
-          { opacity: 1, scale: 1, duration: 0.18, stagger: 0.03, ease: "back.out(1.6)" },
-          startTime,
+          ".hf-ui-demo-stage",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.21, ease: "power3.out" },
+          0,
         );
-        tl.set({}, {}, 5);
         window.__timelines = window.__timelines || {};
         window.__timelines["calendar-demo"] = tl;
       </script>
-    </div>
+    </main>
   </body>
 </html>

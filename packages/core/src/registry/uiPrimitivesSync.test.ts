@@ -62,8 +62,8 @@ describe("Operator Black sync sources", () => {
   it("strictly validates and renders public-overridable private token fallbacks", () => {
     const tokens = loadOperatorBlackTokens(tokenPath);
     const block = renderOperatorBlackTokenBlock(tokens);
-    expect(block.startsWith(TOKEN_START)).toBe(true);
-    expect(block.endsWith(TOKEN_END)).toBe(true);
+    expect(block.trimStart().startsWith(TOKEN_START)).toBe(true);
+    expect(block.trimEnd().endsWith(TOKEN_END)).toBe(true);
     expect(block).toContain("--_hf-ui-surface: var(--hf-ui-surface, #141414)");
     expect(block).toContain(
       "--_hf-ui-duration-overlay-enter: var(--hf-ui-duration-overlay-enter, 210ms)",

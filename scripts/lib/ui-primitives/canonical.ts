@@ -149,7 +149,10 @@ export function injectOperatorBlackTokens(
     assertMarkerPair(canonical, TOKEN_START, TOKEN_END, source);
     const start = canonical.indexOf(TOKEN_START);
     const end = canonical.indexOf(TOKEN_END) + TOKEN_END.length;
-    canonical = `${canonical.slice(0, start)}${tokenBlock}${canonical.slice(end)}`;
+    const lineStart = canonical.lastIndexOf("\n", start) + 1;
+    const lineEndIndex = canonical.indexOf("\n", end);
+    const lineEnd = lineEndIndex < 0 ? canonical.length : lineEndIndex + 1;
+    canonical = `${canonical.slice(0, lineStart)}${tokenBlock}\n${canonical.slice(lineEnd)}`;
   }
 
   return normalizeUiPrimitiveText(canonical);
@@ -214,6 +217,7 @@ export function buildUiPrimitiveDemo(id: string, canonicalInput: string): string
       data-hf-rendering="true"
       data-hf-theme="dark"
     >
+      <!-- prettier-ignore -->
       <section class="hf-ui-demo-stage" aria-label="${title} specimen" inert>
 ${CANONICAL_START}
 ${canonical}
@@ -242,11 +246,18 @@ export function replaceCanonicalRegion(
   id: string,
   source = "demo",
 ): string {
-  const demo = normalizeUiPrimitiveText(demoInput);
+  let demo = normalizeUiPrimitiveText(demoInput);
   const canonical = normalizeUiPrimitiveText(canonicalInput).trimEnd();
   const starts = occurrenceCount(demo, CANONICAL_START);
   const ends = occurrenceCount(demo, CANONICAL_END);
   if (starts === 0 && ends === 0) return buildUiPrimitiveDemo(id, canonical);
+  demo = demo.replace("<!-- oxfmt-ignore -->", "<!-- prettier-ignore -->");
+  if (!demo.includes("<!-- prettier-ignore -->")) {
+    demo = demo.replace(
+      /(\s*)(<section class="hf-ui-demo-stage")/,
+      "$1<!-- prettier-ignore -->$1$2",
+    );
+  }
   assertMarkerPair(demo, CANONICAL_START, CANONICAL_END, source);
   const start = demo.indexOf(CANONICAL_START) + CANONICAL_START.length;
   const end = demo.indexOf(CANONICAL_END);

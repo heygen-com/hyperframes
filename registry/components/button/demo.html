@@ -3,12 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
-    <title>Button - Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <title>Button — Operator Black</title>
+    <script src="../../ui-primitives/vendor/gsap-3.14.2.min.js"></script>
     <style>
-      * {
-        box-sizing: border-box;
-      }
       html,
       body {
         margin: 0;
@@ -16,116 +13,309 @@
         height: 1080px;
         overflow: hidden;
       }
-      #demo {
+      body {
+        background: #0a0a0a;
+      }
+      .hf-ui-demo-canvas {
         width: 1920px;
         height: 1080px;
+        box-sizing: border-box;
+        display: grid;
+        grid-template-rows: 1fr auto;
+        place-items: center;
+        padding: 96px;
+        background: #0a0a0a;
+        color: #e5e5e5;
+        font-family:
+          ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      .hf-ui-demo-stage {
         display: grid;
         place-items: center;
-        background: #fafafa;
-        font-family: Inter, system-ui, sans-serif;
+        min-width: 0;
+        max-width: 100%;
       }
-      .panel {
-        display: grid;
-        gap: 56px;
-        justify-items: center;
-        /* ponytail: scale non-GSAP wrapper; GSAP targets .hf-ui-button directly */
-        transform: scale(3);
-      }
-      .caption {
-        color: #71717a;
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-      .hf-ui-button {
-        --hf-button-bg: #18181b;
-        --hf-button-fg: #fff;
-        --hf-button-scale: 1;
-        --hf-button-y: 0px;
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        min-width: 160px;
-        height: 44px;
-        padding: 0 24px;
-        border: 0;
-        border-radius: 10px;
-        background: var(--hf-button-bg);
-        color: var(--hf-button-fg);
+      .hf-ui-demo-caption {
+        justify-self: start;
+        color: #929292;
         font:
-          600 15px/1 Inter,
-          system-ui,
-          sans-serif;
-        transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
-        cursor: pointer;
-      }
-      .hf-ui-button-spinner,
-      .hf-ui-button-check {
-        position: absolute;
-        opacity: 0;
-      }
-      .hf-ui-button-spinner {
-        width: 18px;
-        height: 18px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-top-color: white;
-        border-radius: 999px;
-      }
-      .hf-ui-button-check {
-        width: 20px;
-        height: 20px;
-        fill: none;
-        stroke: white;
-        stroke-width: 2.5;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-      .hf-ui-button[data-state="loading"] .hf-ui-button-label,
-      .hf-ui-button[data-state="success"] .hf-ui-button-label {
-        opacity: 0;
-      }
-      .hf-ui-button[data-state="loading"] .hf-ui-button-spinner,
-      .hf-ui-button[data-state="success"] .hf-ui-button-check {
-        opacity: 1;
+          500 18px/1.4 ui-monospace,
+          "SFMono-Regular",
+          Menlo,
+          Consolas,
+          monospace;
+        letter-spacing: 0.01em;
       }
     </style>
   </head>
   <body>
-    <div
-      id="demo"
+    <main
+      class="hf-ui-demo-canvas"
       data-composition-id="button-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="5"
+      data-duration="4"
+      data-hf-rendering="true"
+      data-hf-theme="dark"
     >
-      <div class="panel">
-        <div class="caption">Button</div>
-        <button class="hf-ui-button" data-state="idle" type="button">
-          <span class="hf-ui-button-label">Generate</span>
-          <span class="hf-ui-button-spinner" aria-hidden="true"></span>
-          <svg class="hf-ui-button-check" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 12.5l4.5 4.5L19 7" />
-          </svg>
-        </button>
-      </div>
+      <!-- prettier-ignore -->
+      <section class="hf-ui-demo-stage" aria-label="Button specimen" inert>
+        <!-- hf-ui:canonical:start -->
+<!--
+  Button - shadcn-style UI primitive for HyperFrames.
+
+  States:
+    idle | hover | press | loading | success
+
+  Add data-state and data-variant to the .hf-ui-button element, or animate the
+  CSS variables from a paused GSAP timeline.
+-->
+
+<button data-hf-ui-root class="hf-ui-button" data-variant="default" data-state="idle" type="button">
+  <span class="hf-ui-button-label">Continue</span>
+  <span class="hf-ui-button-spinner" aria-hidden="true"></span>
+  <svg class="hf-ui-button-check" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M5 12.5l4.5 4.5L19 7" />
+  </svg>
+</button>
+
+<style>
+  /* hf-ui:tokens:start */
+  /* prettier-ignore */
+  [data-hf-ui-root] {
+    --_hf-ui-accent: var(--hf-ui-accent, #3ce6ac);
+    --_hf-ui-action: var(--hf-ui-action, #eeeeee);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #111111);
+    --_hf-ui-border: var(--hf-ui-border, #2a2a2a);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #383838);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #0a0a0a);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #686868);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #777777);
+    --_hf-ui-control-height: var(--hf-ui-control-height, 40px);
+    --_hf-ui-danger: var(--hf-ui-danger, #ff7878);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #3ce6ac);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #63a5ff);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #e9ab55);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #a78bfa);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #ff8a75);
+    --_hf-ui-duration-drawer-enter: var(--hf-ui-duration-drawer-enter, 360ms);
+    --_hf-ui-duration-drawer-exit: var(--hf-ui-duration-drawer-exit, 240ms);
+    --_hf-ui-duration-modal-enter: var(--hf-ui-duration-modal-enter, 280ms);
+    --_hf-ui-duration-modal-exit: var(--hf-ui-duration-modal-exit, 180ms);
+    --_hf-ui-duration-overlay-enter: var(--hf-ui-duration-overlay-enter, 210ms);
+    --_hf-ui-duration-overlay-exit: var(--hf-ui-duration-overlay-exit, 140ms);
+    --_hf-ui-duration-press: var(--hf-ui-duration-press, 120ms);
+    --_hf-ui-duration-state: var(--hf-ui-duration-state, 160ms);
+    --_hf-ui-ease-enter: var(--hf-ui-ease-enter, cubic-bezier(0.32, 0.72, 0, 1));
+    --_hf-ui-ease-exit: var(--hf-ui-ease-exit, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-ease-response: var(--hf-ui-ease-response, cubic-bezier(0.23, 1, 0.32, 1));
+    --_hf-ui-font-mono: var(--hf-ui-font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+    --_hf-ui-font-sans: var(--hf-ui-font-sans, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+    --_hf-ui-hit-target: var(--hf-ui-hit-target, 44px);
+    --_hf-ui-radius-control: var(--hf-ui-radius-control, 5px);
+    --_hf-ui-radius-overlay: var(--hf-ui-radius-overlay, 10px);
+    --_hf-ui-radius-surface: var(--hf-ui-radius-surface, 7px);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 8px 18px rgba(0, 0, 0, 0.38));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.035));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(0, 0, 0, 0.52));
+    --_hf-ui-space-1: var(--hf-ui-space-1, 4px);
+    --_hf-ui-space-12: var(--hf-ui-space-12, 48px);
+    --_hf-ui-space-16: var(--hf-ui-space-16, 64px);
+    --_hf-ui-space-2: var(--hf-ui-space-2, 8px);
+    --_hf-ui-space-3: var(--hf-ui-space-3, 12px);
+    --_hf-ui-space-4: var(--hf-ui-space-4, 16px);
+    --_hf-ui-space-6: var(--hf-ui-space-6, 24px);
+    --_hf-ui-space-8: var(--hf-ui-space-8, 32px);
+    --_hf-ui-surface: var(--hf-ui-surface, #141414);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #101010);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #1a1a1a);
+    --_hf-ui-text: var(--hf-ui-text, #e5e5e5);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #7e7e7e);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #929292);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #f3f3f3);
+    --_hf-ui-warning: var(--hf-ui-warning, #e9ab55);
+    --_hf-ui-weight-medium: var(--hf-ui-weight-medium, 500);
+    --_hf-ui-weight-regular: var(--hf-ui-weight-regular, 400);
+    --_hf-ui-weight-semibold: var(--hf-ui-weight-semibold, 600);
+    box-sizing: border-box;
+    color-scheme: dark;
+    font-family: var(--_hf-ui-font-sans);
+  }
+  /* prettier-ignore */
+  [data-hf-ui-root] *,
+  [data-hf-ui-root] *::before,
+  [data-hf-ui-root] *::after {
+    box-sizing: border-box;
+  }
+  /* prettier-ignore */
+  [data-hf-theme="light"] [data-hf-ui-root],
+  [data-hf-ui-root][data-hf-theme="light"] {
+    --_hf-ui-accent: var(--hf-ui-accent, #087a57);
+    --_hf-ui-action: var(--hf-ui-action, #171717);
+    --_hf-ui-action-contrast: var(--hf-ui-action-contrast, #ffffff);
+    --_hf-ui-border: var(--hf-ui-border, #e0dfdb);
+    --_hf-ui-border-strong: var(--hf-ui-border-strong, #cbc9c3);
+    --_hf-ui-canvas: var(--hf-ui-canvas, #f6f5f1);
+    --_hf-ui-control-border: var(--hf-ui-control-border, #888888);
+    --_hf-ui-control-border-hover: var(--hf-ui-control-border-hover, #6f6e68);
+    --_hf-ui-danger: var(--hf-ui-danger, #a61b1b);
+    --_hf-ui-data-1: var(--hf-ui-data-1, #087a57);
+    --_hf-ui-data-2: var(--hf-ui-data-2, #245ea8);
+    --_hf-ui-data-3: var(--hf-ui-data-3, #8a4b00);
+    --_hf-ui-data-4: var(--hf-ui-data-4, #6d3fc0);
+    --_hf-ui-data-5: var(--hf-ui-data-5, #a83d2d);
+    --_hf-ui-shadow-contact: var(--hf-ui-shadow-contact, 0 7px 16px rgba(26, 24, 20, 0.13));
+    --_hf-ui-shadow-inset: var(--hf-ui-shadow-inset, inset 0 1px 0 rgba(255, 255, 255, 0.78));
+    --_hf-ui-shadow-modal: var(--hf-ui-shadow-modal, 0 18px 46px rgba(26, 24, 20, 0.18));
+    --_hf-ui-surface: var(--hf-ui-surface, #ffffff);
+    --_hf-ui-surface-inset: var(--hf-ui-surface-inset, #f0efeb);
+    --_hf-ui-surface-raised: var(--hf-ui-surface-raised, #ffffff);
+    --_hf-ui-text: var(--hf-ui-text, #171717);
+    --_hf-ui-text-faint: var(--hf-ui-text-faint, #6f6e68);
+    --_hf-ui-text-muted: var(--hf-ui-text-muted, #5f5f5a);
+    --_hf-ui-text-strong: var(--hf-ui-text-strong, #0a0a0a);
+    --_hf-ui-warning: var(--hf-ui-warning, #8a4b00);
+    color-scheme: light;
+  }
+  /* prettier-ignore */
+  [data-hf-ui-root]:focus-visible {
+    outline: 2px solid var(--_hf-ui-accent);
+    outline-offset: 3px;
+  }
+  /* prettier-ignore */
+  [data-hf-rendering="true"][data-hf-ui-root],
+  [data-hf-rendering="true"] [data-hf-ui-root],
+  [data-hf-rendering="true"][data-hf-ui-root] *,
+  [data-hf-rendering="true"] [data-hf-ui-root] *,
+  [data-hf-rendering="true"][data-hf-ui-root]::before,
+  [data-hf-rendering="true"][data-hf-ui-root]::after,
+  [data-hf-rendering="true"] [data-hf-ui-root]::before,
+  [data-hf-rendering="true"] [data-hf-ui-root]::after,
+  [data-hf-rendering="true"][data-hf-ui-root] *::before,
+  [data-hf-rendering="true"][data-hf-ui-root] *::after,
+  [data-hf-rendering="true"] [data-hf-ui-root] *::before,
+  [data-hf-rendering="true"] [data-hf-ui-root] *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+  /* prettier-ignore */
+  @media (prefers-reduced-motion: reduce) {
+    [data-hf-ui-root],
+    [data-hf-ui-root] *,
+    [data-hf-ui-root] *::before,
+    [data-hf-ui-root] *::after {
+      animation-duration: 0s !important;
+      animation-delay: 0s !important;
+      transition-duration: 0s !important;
+      transition-delay: 0s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  /* hf-ui:tokens:end */
+  .hf-ui-button {
+    --hf-button-bg: #171717;
+    --hf-button-fg: #ffffff;
+    --hf-button-border: transparent;
+    --hf-button-scale: 1;
+    --hf-button-y: 0px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 148px;
+    height: 44px;
+    padding: 0 22px;
+    border: 1px solid var(--hf-button-border);
+    border-radius: 10px;
+    background: var(--hf-button-bg);
+    color: var(--hf-button-fg);
+    font:
+      700 15px/1 Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: 0;
+    transform: translateY(var(--hf-button-y)) scale(var(--hf-button-scale));
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+    will-change: transform, background, color;
+  }
+  .hf-ui-button[data-variant="secondary"] {
+    --hf-button-bg: #f3f4f6;
+    --hf-button-fg: #171717;
+  }
+  .hf-ui-button[data-variant="outline"] {
+    --hf-button-bg: #ffffff;
+    --hf-button-fg: #171717;
+    --hf-button-border: #d4d4d8;
+    box-shadow: none;
+  }
+  .hf-ui-button[data-state="hover"] {
+    --hf-button-y: -1px;
+  }
+  .hf-ui-button[data-state="press"] {
+    --hf-button-y: 1px;
+    --hf-button-scale: 0.97;
+  }
+  .hf-ui-button-spinner,
+  .hf-ui-button-check {
+    position: absolute;
+    opacity: 0;
+  }
+  .hf-ui-button-spinner {
+    width: 17px;
+    height: 17px;
+    border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
+    border-radius: 999px;
+  }
+  .hf-ui-button-check {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .hf-ui-button[data-state="loading"] .hf-ui-button-label,
+  .hf-ui-button[data-state="success"] .hf-ui-button-label {
+    opacity: 0;
+  }
+  .hf-ui-button[data-state="loading"] .hf-ui-button-spinner,
+  .hf-ui-button[data-state="success"] .hf-ui-button-check {
+    opacity: 1;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  tl.to(".hf-ui-button", { "--hf-button-y": "-1px", duration: 0.18, ease: "power2.out" }, startTime);
+  tl.set(".hf-ui-button", { attr: { "data-state": "loading" } }, startTime + 0.2);
+  tl.to(".hf-ui-button-spinner", { rotate: 360, duration: 0.8, ease: "none" }, startTime + 0.2);
+  tl.set(".hf-ui-button", { attr: { "data-state": "success" } }, startTime + 1.1);
+-->
+<!-- hf-ui:canonical:end -->
+      </section>
+      <p class="hf-ui-demo-caption">Button</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.to(
-          ".hf-ui-button",
-          { "--hf-button-y": "-2px", duration: 0.25, ease: "power2.out" },
-          0.4,
+        tl.fromTo(
+          ".hf-ui-demo-stage",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.21, ease: "power3.out" },
+          0,
         );
-        tl.set(".hf-ui-button", { attr: { "data-state": "loading" } }, 1.0);
-        tl.to(".hf-ui-button-spinner", { rotate: 720, duration: 1.2, ease: "none" }, 1.0);
-        tl.set(".hf-ui-button", { attr: { "data-state": "success" } }, 2.25);
         window.__timelines = window.__timelines || {};
         window.__timelines["button-demo"] = tl;
       </script>
-    </div>
+    </main>
   </body>
 </html>

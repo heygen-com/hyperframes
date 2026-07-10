@@ -96,26 +96,31 @@ export function renderOperatorBlackTokenBlock(tokens: OperatorBlackTokens): stri
   const darkAndShared = { ...tokens.shared, ...tokens.themes.dark };
   const lines = [
     TOKEN_START,
+    "/* prettier-ignore */",
     "[data-hf-ui-root] {",
     ...renderAssignments(darkAndShared, "  "),
     "  box-sizing: border-box;",
     "  color-scheme: dark;",
     "  font-family: var(--_hf-ui-font-sans);",
     "}",
+    "/* prettier-ignore */",
     "[data-hf-ui-root] *,",
     "[data-hf-ui-root] *::before,",
     "[data-hf-ui-root] *::after {",
     "  box-sizing: border-box;",
     "}",
+    "/* prettier-ignore */",
     '[data-hf-theme="light"] [data-hf-ui-root],',
     '[data-hf-ui-root][data-hf-theme="light"] {',
     ...renderAssignments(tokens.themes.light, "  "),
     "  color-scheme: light;",
     "}",
+    "/* prettier-ignore */",
     "[data-hf-ui-root]:focus-visible {",
     "  outline: 2px solid var(--_hf-ui-accent);",
     "  outline-offset: 3px;",
     "}",
+    "/* prettier-ignore */",
     '[data-hf-rendering="true"][data-hf-ui-root],',
     '[data-hf-rendering="true"] [data-hf-ui-root],',
     '[data-hf-rendering="true"][data-hf-ui-root] *,',
@@ -133,6 +138,7 @@ export function renderOperatorBlackTokenBlock(tokens: OperatorBlackTokens): stri
     "  transition-duration: 0s !important;",
     "  transition-delay: 0s !important;",
     "}",
+    "/* prettier-ignore */",
     "@media (prefers-reduced-motion: reduce) {",
     "  [data-hf-ui-root],",
     "  [data-hf-ui-root] *,",
@@ -147,5 +153,5 @@ export function renderOperatorBlackTokenBlock(tokens: OperatorBlackTokens): stri
     "}",
     TOKEN_END,
   ];
-  return lines.join("\n");
+  return lines.map((line) => `  ${line}`).join("\n");
 }
