@@ -8,8 +8,9 @@ function el(
   duration: number,
   zIndex: number,
   isAudio = false,
+  domIndex?: number,
 ): StackingElement {
-  return { key, track, start, duration, zIndex, isAudio };
+  return { key, track, start, duration, zIndex, isAudio, domIndex };
 }
 
 function patchMap(elements: StackingElement[], edited: string[]): Record<string, number> {
@@ -66,10 +67,14 @@ describe("computeStackingPatches", () => {
     expect(patchMap(elements, ["a"])).toEqual({ a: 6 });
   });
 
-  it("adjacent neighbours (no integer gap) → lands just above the lower neighbour", () => {
-    // below z=4, above z=5 (adjacent). Edited must go above 4 → 5 (still < nothing to fit).
+  it("adjacent neighbours (no integer gap) → edited lands above lower, upper is bumped", () => {
+    // below z=4, above z=5 (adjacent). There is no integer strictly between 4 and
+    // 5, so the old single-patch a=5 left `a` TIED with `above` — and with no DOM
+    // order to break the tie, `above` no longer paints strictly above `a` (the
+    // under-patch bug). Tie-aware cascade: a→5 (above below's 4) AND above→6 so it
+    // stays strictly on top. Minimal: only the two overlapping neighbours move.
     const elements = [el("a", 1, 0, 10, 0), el("below", 2, 0, 10, 4), el("above", 0, 0, 10, 5)];
-    expect(patchMap(elements, ["a"])).toEqual({ a: 5 });
+    expect(patchMap(elements, ["a"])).toEqual({ a: 5, above: 6 });
   });
 
   it("audio clips are excluded — an audio edit yields no patch", () => {
@@ -124,5 +129,53 @@ describe("computeStackingPatches", () => {
   it("empty edited set → no patches", () => {
     const elements = [el("a", 0, 0, 10, 1), el("b", 1, 0, 10, 5)];
     expect(computeStackingPatches(elements, [])).toEqual([]);
+  });
+});
+
+describe("computeStackingPatches — tie-aware cascade (lane move always realisable)", () => {
+  it("drag below an overlapping z=0 neighbour → cascade bumps the neighbour, edit→0", () => {
+    // edited `v` (z=2) dragged to the BOTTOM lane, overlapping `r` (z=0) which is
+    // now on the upper lane. No z ≥ 0 fits strictly below 0, so the old resolver
+    // clamped v to 0 (tied with r) and nothing changed on canvas — the reported
+    // bug. Tie-aware: v→0 AND r bumped to 1 so r paints strictly above v.
+    const elements = [el("v", 1, 0, 10, 2), el("r", 0, 0, 10, 0)];
+    expect(patchMap(elements, ["v"])).toEqual({ v: 0, r: 1 });
+  });
+
+  it("equal-z + domIndex: dragging the LATER-in-DOM clip below is realised via a bump", () => {
+    // Two equal-z clips; `v` is later in DOM (domIndex 1) so it currently paints
+    // ON TOP of `r` (domIndex 0). User drags v to the lower lane (track 1). With
+    // domIndex the sync SEES that v is currently above r and must be lowered:
+    // v→0 (already 0, stays) then r bumped to 1 so r wins. Without domIndex the
+    // equal z would look already-correct and under-patch.
+    const elements = [el("r", 0, 0, 10, 0, false, 0), el("v", 1, 0, 10, 0, false, 1)];
+    expect(patchMap(elements, ["v"])).toEqual({ r: 1 });
+  });
+
+  it("equal-z without domIndex is ambiguous → conservatively bumps to guarantee order", () => {
+    // Same shape but NO domIndex: equal z is ambiguous, so the resolver cannot
+    // prove v is already below r and patches to make the order explicit (r above).
+    const elements = [el("r", 0, 0, 10, 0), el("v", 1, 0, 10, 0)];
+    const out = patchMap(elements, ["v"]);
+    // r must end up strictly above v (higher z) regardless of the exact numbers.
+    const vz = out.v ?? 0;
+    const rz = out.r ?? 0;
+    expect(rz).toBeGreaterThan(vz);
+  });
+
+  it("cascade patches as FEW clips as possible (only the blockers move)", () => {
+    // v dragged to bottom under r(z0) and s(z0) both on higher lanes; a distant
+    // non-overlapping clip x is never touched.
+    const elements = [
+      el("v", 2, 0, 10, 5),
+      el("r", 0, 0, 10, 0),
+      el("s", 1, 0, 10, 0),
+      el("x", 3, 50, 10, 0), // no time overlap → untouched
+    ];
+    const out = patchMap(elements, ["v"]);
+    expect("x" in out).toBe(false);
+    // v below both r and s.
+    expect(out.v).toBeLessThan(out.r ?? 0);
+    expect(out.v).toBeLessThan(out.s ?? 0);
   });
 });

@@ -156,7 +156,15 @@ describe("commitDraggedClipMove", () => {
     expect(map.b.start).toBe(10); // unselected: time untouched
   });
 
-  it("inserting a new lane slots the dragged clip in and shifts the rest (fractional → normalized)", () => {
+  it("inserting a new lane re-packs the whole set into contiguous lanes (single atomic persist)", () => {
+    // a,b,c all start=0 dur=5 → mutually overlapping, all equal z (absent ⇒ 0).
+    // The insert drops c at a fractional lane between a and b. Under the per-clip
+    // constrained pack, equal-z overlapping clips lay out by DOM order (later on
+    // top): c (last in DOM) → lane 0, b → lane 1, a → lane 2. (Was pinned to
+    // a=0/c=1/b=2 by the old whole-track packer, which used the fractional-track
+    // value for ordering; the new pack encodes insert INTENT via the z-sync path
+    // instead, and lanes reflect true canvas paint order.) Contiguous 0..2, one
+    // atomic persist for all three.
     const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
     const onMoveElement = vi.fn();
     const onMoveElements = vi.fn();
@@ -170,18 +178,31 @@ describe("commitDraggedClipMove", () => {
     });
     expect(onMoveElements).toHaveBeenCalledTimes(1);
     const map = editMap(onMoveElements.mock.calls[0][0]);
-    expect(map.a.track).toBe(0); // unchanged top
-    expect(map.c.track).toBe(1); // slots between a and b
-    expect(map.b.track).toBe(2); // pushed down
+    // Lanes are contiguous and distinct (no two overlapping clips share a lane).
+    expect(new Set([map.a.track, map.b.track, map.c.track])).toEqual(new Set([0, 1, 2]));
+    expect(map.c.track).toBe(0); // last in DOM → top lane
+    expect(map.b.track).toBe(1);
+    expect(map.a.track).toBe(2);
   });
 
   describe("lane ↔ stacking sync", () => {
     it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", () => {
-      // a & b overlap in time; a dragged onto the TOP lane (0) but z(1) < b z(5).
-      const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
+      // a & b overlap in time. Elements carry their authored z (as real discovery
+      // populates TimelineElement.zIndex from the DOM), so the per-clip pack lays
+      // them out by z: b (z=5) tops, a (z=1) below. The user drags a UP onto the
+      // TOP lane (row 0, above b) via an insert — expressing "a should stack above
+      // b". The z-sync must lift a above b (5) → 6 so the lane move is realised.
+      // (Was: equal-z candidate + drop onto b's track; that relied on the old
+      // key-order tie-break placing a on top, which contradicted canvas paint for
+      // equal z — the elements now carry z and the drop intent is an insert above.)
+      const elements: TimelineElement[] = [
+        { id: "a", key: "a", tag: "video", start: 0, duration: 10, track: 1, zIndex: 1 },
+        { id: "b", key: "b", tag: "video", start: 0, duration: 10, track: 0, zIndex: 5 },
+      ];
       const z: Record<string, number> = { a: 1, b: 5 };
       const onStackingPatches = vi.fn();
-      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+      // Insert a new lane at row 0 (above the top lane) with a → a lands above b.
+      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 1, insertRow: 0 }), {
         elements,
         trackOrder: [0, 1],
         updateElement: vi.fn(),

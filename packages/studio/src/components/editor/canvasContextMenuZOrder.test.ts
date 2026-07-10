@@ -268,6 +268,56 @@ describe("resolveZOrderChange – DOM-order ties (repro: equal z)", () => {
   });
 });
 
+// ── non-painting sibling hygiene ───────────────────────────────────────────────
+
+describe("resolveZOrderChange – excludes non-painting siblings", () => {
+  it("ignores <audio>/<script>/<style> siblings in the family", () => {
+    // Parent holds: img#a (z0), <audio> (a prior renumber wrote z=2 onto it),
+    // video#target (z0, later in DOM), plus a <script> and <style>. Only the two
+    // painting elements should form the family — the audio's z=2 must NOT pad the
+    // renumber or count as a sibling above the target.
+    const parent = document.createElement("div");
+    const a = makeEl("a", "0");
+    const audio = document.createElement("audio");
+    audio.style.zIndex = "2";
+    const script = document.createElement("script");
+    const style = document.createElement("style");
+    const target = makeEl("target", "0");
+    parent.append(a, audio, script, style, target);
+
+    // target is later in DOM than a, tied at z=0 → paints on top. send-to-back
+    // must put it below a. If audio (z=2) were counted, the renumber would differ.
+    const patches = resolveZOrderChange(target, "send-to-back");
+    expect(patches).not.toBeNull();
+    if (!patches) return;
+    // No patch may target the audio/script/style elements.
+    for (const p of patches) {
+      expect(p.element).not.toBe(audio);
+      expect(p.element).not.toBe(script);
+      expect(p.element).not.toBe(style);
+    }
+    // Order among the painting pair: target below a.
+    const order = renderOrderIds(parent, { a, target }, patches);
+    expect(order.indexOf("target")).toBeLessThan(order.indexOf("a"));
+  });
+
+  it("a lone painting element beside only non-painting siblings has no family → null", () => {
+    const parent = document.createElement("div");
+    const target = makeEl("target", "1");
+    const audio = document.createElement("audio");
+    parent.append(target, audio);
+    // Only sibling is <audio> (excluded) → family size 1 → every action is a no-op.
+    for (const action of [
+      "bring-forward",
+      "send-backward",
+      "bring-to-front",
+      "send-to-back",
+    ] as ZOrderAction[]) {
+      expect(resolveZOrderChange(target, action)).toBeNull();
+    }
+  });
+});
+
 // ── isZOrderActionEnabled ─────────────────────────────────────────────────────
 
 describe("isZOrderActionEnabled", () => {

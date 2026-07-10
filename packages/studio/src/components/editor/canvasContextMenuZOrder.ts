@@ -76,8 +76,24 @@ function isElementNode(node: Node): node is HTMLElement {
 }
 
 /**
- * Collect the target plus every HTMLElement sibling (same parent), tagged with
- * DOM document position. Returns the target's own index within the result.
+ * Tags that never paint pixels and so must be excluded from z-order siblings.
+ * `<audio>` is the real offender here: a prior renumber wrote a meaningless
+ * z-index onto the qa-clean audio element, and counting it as a sibling skews the
+ * renumber for the visible elements. `<script>/<style>/<link>/<meta>` are also
+ * non-painting and could otherwise pad the family / eat a z slot.
+ */
+const NON_PAINTING_TAGS = new Set(["AUDIO", "SCRIPT", "STYLE", "LINK", "META"]);
+
+/** A painting element: an element node whose tag actually renders pixels. */
+function isPaintingElement(node: Node): node is HTMLElement {
+  return isElementNode(node) && !NON_PAINTING_TAGS.has(node.tagName);
+}
+
+/**
+ * Collect the target plus every PAINTING HTMLElement sibling (same parent),
+ * tagged with DOM document position. Non-painting siblings (audio/script/style/
+ * link/meta) are skipped so they neither pad the family nor consume a z slot in
+ * the renumber path. Returns the target's own index within the result.
  */
 function getFamily(target: HTMLElement): { entries: RenderEntry[]; targetIndex: number } {
   const parent = target.parentElement;
@@ -86,6 +102,8 @@ function getFamily(target: HTMLElement): { entries: RenderEntry[]; targetIndex: 
   let targetIndex = -1;
   let domIndex = 0;
   for (const child of Array.from(parent.children)) {
+    // The target is always retained even if its own tag is non-painting.
+    if (child !== target && !isPaintingElement(child)) continue;
     if (!isElementNode(child)) continue;
     if (child === target) targetIndex = entries.length;
     entries.push({ element: child, zIndex: readEffectiveZIndex(child), domIndex });

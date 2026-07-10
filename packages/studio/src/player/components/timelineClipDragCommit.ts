@@ -142,22 +142,27 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
   }
   persistMoveEdits(edits, deps);
 
-  // Lane ↔ stacking: after the lane change is applied, patch the edited clip(s)'
-  // z-index so it matches lane order relative to time-overlapping clips. Only the
-  // edited clip(s) change; untouched clips' authored z is sacred.
-  syncStackingForEdit(normalized, edits, dragKey, multiKeys, deps);
+  // Lane ↔ stacking: patch the edited clip(s)' z-index so their stacking matches
+  // the user's DROP-INTENT lane order relative to time-overlapping clips. We must
+  // reason on `candidate` (the drop-intent tracks) — NOT `normalized` — because
+  // normalizeToZones is purely z/DOM-driven and re-packs a lane-drag that
+  // contradicts z straight back down; reading the post-normalize lane would make
+  // the sync see the reverted layout and never realise the user's move. The
+  // fractional drop track (e.g. −0.5 for "above the top lane") preserves the drop
+  // order against the other clips' tracks. Only the edited clip(s) change; the
+  // untouched clips' authored z stays sacred (unless a cascade is unavoidable).
+  syncStackingForEdit(candidate, dragKey, multiKeys, deps);
 }
 
 /**
  * Compute + apply z-index patches for the edited clip(s) after a lane change.
- * Projects the post-edit (normalized) element set onto StackingElement using the
- * NEW lanes/times and the caller-supplied live z-index reader, then delegates the
- * minimal-z resolution to computeStackingPatches. No-op unless both z-sync deps
- * are present.
+ * Projects the DROP-INTENT element set (`candidate`: edited clip at its dropped
+ * fractional track, others at their current tracks) onto StackingElement using
+ * the caller-supplied live z-index reader, then delegates the minimal-z
+ * resolution to computeStackingPatches. No-op unless both z-sync deps are present.
  */
 function syncStackingForEdit(
-  normalized: TimelineElement[],
-  edits: TimelineMoveEdit[],
+  candidate: TimelineElement[],
   dragKey: string,
   multiKeys: ReadonlySet<string> | null,
   deps: DragCommitDeps,
@@ -165,18 +170,19 @@ function syncStackingForEdit(
   const { readZIndex, onStackingPatches } = deps;
   if (!readZIndex || !onStackingPatches) return;
 
-  const editByKey = new Map(edits.map((e) => [keyOf(e.element), e.updates]));
-  const stackingEls = normalized.map((el) => {
-    const patched = editByKey.get(keyOf(el));
-    return {
-      key: keyOf(el),
-      start: patched?.start ?? el.start,
-      duration: el.duration,
-      track: patched?.track ?? el.track,
-      zIndex: readZIndex(el),
-      isAudio: classifyZone(el) === "audio",
-    };
-  });
+  // `candidate` is in discovery order, so its array index IS the DOM document
+  // position. Equal-z clips paint by DOM order, so the sync needs it to decide
+  // "is A above B" (see StackingElement.domIndex) — without it a bottom-lane drag
+  // over an equal-z neighbour could no-op on canvas.
+  const stackingEls = candidate.map((el, domIndex) => ({
+    key: keyOf(el),
+    start: el.start,
+    duration: el.duration,
+    track: el.track,
+    zIndex: readZIndex(el),
+    isAudio: classifyZone(el) === "audio",
+    domIndex,
+  }));
 
   const editedKeys = [dragKey];
   if (multiKeys) for (const k of multiKeys) if (k !== dragKey) editedKeys.push(k);
