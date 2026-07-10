@@ -10,9 +10,9 @@ PR #214. If a translation passes T3, the skill correctly handles:
 - Custom React subcomponents reused with different props across scenes
 - A nested data structure (`stats[]`) materialized as repeated HTML with
   per-instance attributes
-- A frame-driven count-up animation (`AnimatedNumber` → GSAP `onUpdate`)
-- Two different `spring` configs translated to two different `back.out` overshoots
-- Per-instance delays via component props (`delayInFrames` → GSAP timeline offsets)
+- A frame-driven count-up animation (`AnimatedNumber` → anime.js `onUpdate`)
+- Two different `spring` configs translated to two different `outBack` overshoots
+- Per-instance delays via component props (`delayInFrames` → anime.js timeline offsets)
 
 ## Composition shape
 
@@ -35,16 +35,16 @@ value from `useCurrentFrame()` + a manual `1 - (1 - t)^3` ease.
 
 ## The lossy parts (and why threshold = 0.90)
 
-1. **`spring → back.out(N)`**: two different spring configs in this composition.
-   - `{ damping: 12, stiffness: 100, mass: 1 }` (title) → `back.out(1.4)`
-   - `{ damping: 14, stiffness: 90, mass: 1 }` (stat card) → `back.out(1.2)`
+1. **`spring → outBack(N)`**: two different spring configs in this composition.
+   - `{ damping: 12, stiffness: 100, mass: 1 }` (title) → `outBack(1.4)`
+   - `{ damping: 14, stiffness: 90, mass: 1 }` (stat card) → `outBack(1.2)`
 
    Overshoot ratio (1.4 vs 1.2) approximates the damping difference. The
-   late-tail curve of GSAP's back ease and Remotion's spring don't match
+   late-tail curve of anime.js's back ease and Remotion's spring don't match
    exactly — costs ~0.03 mean SSIM per spring instance.
 
 2. **Count-up easing**: `AnimatedNumber` uses `1 - (1 - t)^3` (cubic ease-out)
-   manually computed in the component. GSAP's `power3.out` is the same curve
+   manually computed in the component. anime.js's `outCubic` is the same curve
    shape — should match closely. The displayed integer is rounded each frame
    in both renderers; minor mismatches occur when the rounded value flips
    between two numbers on a sub-frame timing difference.
@@ -60,16 +60,16 @@ Remotion @ 4.0 with PNG/BT.709 output is 0.953.
 
 ## Translation walk-through (skill cheat sheet)
 
-| Remotion                                                                    | HyperFrames                                                                           |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `<Composition schema={z.object({...})} defaultProps={...} />`               | data-\* attributes on root `#stage` div                                               |
-| nested array prop (`stats[]`)                                               | repeated HTML markup with per-instance `data-*` attrs                                 |
-| custom React subcomponent                                                   | inline repeated HTML using the component's prop interface as the template             |
-| `<AnimatedNumber from={0} to={value} dur={45} />` (cubic ease-out count-up) | tween on `{ v: 0 }` object with `onUpdate` rewriting `textContent`, ease `power3.out` |
-| `spring({damping:12, stiffness:100})`                                       | `back.out(1.4)` over ~0.7 s                                                           |
-| `spring({damping:14, stiffness:90})`                                        | `back.out(1.2)` over ~0.7 s                                                           |
-| `delayInFrames={i * 12}` (per-instance)                                     | GSAP timeline offset `(i * 0.4)` s                                                    |
-| `useVideoConfig()` to get `fps`                                             | dropped — composition fps is in `data-fps` on `#stage`                                |
+| Remotion                                                                    | HyperFrames                                                                         |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `<Composition schema={z.object({...})} defaultProps={...} />`               | data-\* attributes on root `#stage` div                                             |
+| nested array prop (`stats[]`)                                               | repeated HTML markup with per-instance `data-*` attrs                               |
+| custom React subcomponent                                                   | inline repeated HTML using the component's prop interface as the template           |
+| `<AnimatedNumber from={0} to={value} dur={45} />` (cubic ease-out count-up) | tween on `{ v: 0 }` object with `onUpdate` rewriting `textContent`, ease `outCubic` |
+| `spring({damping:12, stiffness:100})`                                       | `outBack(1.4)` over ~0.7 s                                                          |
+| `spring({damping:14, stiffness:90})`                                        | `outBack(1.2)` over ~0.7 s                                                          |
+| `delayInFrames={i * 12}` (per-instance)                                     | anime.js timeline offset `(i * 400)` ms                                             |
+| `useVideoConfig()` to get `fps`                                             | dropped — composition fps is in `data-fps` on `#stage`                              |
 
 ## How to render and evaluate
 

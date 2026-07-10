@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>tier-3-data-driven</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -189,7 +189,9 @@
         //   - 3 scene divs with data-start/data-duration in seconds (frames/fps)
         //   - Custom React subcomponents inline as repeated HTML; their per-instance
         //     props become data-* attributes on the markup
-        //   - Animation lives in a single paused GSAP timeline keyed by composition seconds
+        //   - Animation lives in a single paused anime.js timeline keyed by
+        //     composition milliseconds (anime.js `.add()` position/duration
+        //     are ms; comments below keep the source seconds for reference)
         //
         // Frame → time:
         //   Sequence(0,90)    → 0s..3s        (title)
@@ -198,48 +200,47 @@
         //   Stagger(i*12)     → i*0.4s        (12 frames at 30fps)
         // ────────────────────────────────────────────────────────────────────
 
-        const tl = gsap.timeline({ paused: true });
+        const tl = anime.createTimeline({ autoplay: false });
 
         // ─── Scene 1: Title ─────────────────────────────────────────────────
         const scene1 = document.querySelector("#scene-1");
         const title = scene1.querySelector(".title");
         const subtitle = scene1.querySelector(".subtitle");
 
-        tl.set(scene1, { opacity: 1 }, 0);
-        // spring({damping:12, stiffness:100, mass:1}) → back.out(1.4) ~0.7s
-        tl.to(title, { scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 0);
+        tl.add(scene1, { opacity: 1, duration: 0 }, 0);
+        // spring({damping:12, stiffness:100, mass:1}) → outBack(1.4) ~0.7s
+        tl.add(title, { scale: 1, duration: 700, ease: "outBack(1.4)" }, 0);
         // interpolate(frame, [20,40], [0,1]) at fps=30 → 0.667s..1.333s linear
-        tl.fromTo(subtitle, { opacity: 0 }, { opacity: 1, duration: 0.667, ease: "none" }, 0.667);
-        tl.set(scene1, { opacity: 0 }, 3);
+        tl.add(subtitle, { opacity: [0, 1], duration: 667, ease: "linear" }, 667);
+        tl.add(scene1, { opacity: 0, duration: 0 }, 3000);
 
         // ─── Scene 2: Stats ─────────────────────────────────────────────────
         const scene2 = document.querySelector("#scene-2");
         const cards = scene2.querySelectorAll(".stat-card");
 
-        tl.set(scene2, { opacity: 1 }, 3);
+        tl.add(scene2, { opacity: 1, duration: 0 }, 3000);
 
         cards.forEach((card, i) => {
-          const stagger = i * 0.4; // i * 12 frames at 30 fps
-          const start = 3 + stagger;
+          const stagger = i * 400; // i * 12 frames at 30 fps, in ms
+          const start = 3000 + stagger;
           const value = Number(card.dataset.statValue);
           const numberEl = card.querySelector(".number");
 
           // StatCard entrance:
-          //   spring({damping:14, stiffness:90, mass:1}) → back.out(1.2) ~0.7s
+          //   spring({damping:14, stiffness:90, mass:1}) → outBack(1.2) ~0.7s
           //   interpolate(local, [0,12], [0,1]) → 0s..0.4s linear opacity
-          tl.to(card, { scale: 1, duration: 0.7, ease: "back.out(1.2)" }, start);
-          tl.to(card, { opacity: 1, duration: 0.4, ease: "none" }, start);
+          tl.add(card, { scale: 1, duration: 700, ease: "outBack(1.2)" }, start);
+          tl.add(card, { opacity: 1, duration: 400, ease: "linear" }, start);
 
           // AnimatedNumber: count from 0 → value with easeOutCubic over 45 frames (1.5s).
-          // GSAP equivalent: a tween on a counter object with onUpdate rewriting textContent.
-          // power3.out is GSAP's name for cubic easeOut.
+          // outCubic is anime.js's name for cubic easeOut (GSAP's power3.out).
           const counter = { v: 0 };
-          tl.to(
+          tl.add(
             counter,
             {
               v: value,
-              duration: 1.5,
-              ease: "power3.out",
+              duration: 1500,
+              ease: "outCubic",
               onUpdate: () => {
                 numberEl.textContent = Math.round(counter.v).toLocaleString();
               },
@@ -248,21 +249,20 @@
           );
         });
 
-        tl.set(scene2, { opacity: 0 }, 7);
+        tl.add(scene2, { opacity: 0, duration: 0 }, 7000);
 
         // ─── Scene 3: Outro ─────────────────────────────────────────────────
         const scene3 = document.querySelector("#scene-3");
         const outroWrap = scene3.querySelector(".outro-wrap");
         const underline = scene3.querySelector(".outro-underline");
 
-        tl.set(scene3, { opacity: 1 }, 7);
+        tl.add(scene3, { opacity: 1, duration: 0 }, 7000);
         // interpolate(frame, [0,12], [0,1]) → 0s..0.4s linear opacity
-        tl.to(outroWrap, { opacity: 1, duration: 0.4, ease: "none" }, 7);
+        tl.add(outroWrap, { opacity: 1, duration: 400, ease: "linear" }, 7000);
         // interpolate(frame, [10,40], [0,1]) for underline → starts at 7+0.333s, dur 1s
-        tl.to(underline, { scaleX: 1, duration: 1.0, ease: "none" }, 7.333);
+        tl.add(underline, { scaleX: 1, duration: 1000, ease: "linear" }, 7333);
 
-        window.__timelines = window.__timelines || {};
-        window.__timelines["tier-3-data-driven"] = tl;
+        hyperframesAnime.register("tier-3-data-driven", tl);
       </script>
     </div>
   </body>
