@@ -165,6 +165,22 @@ function inferredMotionElement() {
 // A single "to" tween running from t=2 to t=5 (position 2, duration 3), with
 // keyframes on "x" at 0/50/100% — enough to drive both FlatTimingRow's
 // inference and the Layout "x" row's keyframe-seek gutter.
+// Six-group fixture (sticky-header-stack worked example): tagName "img" turns
+// on both Media and Grade (resolveEditingSections), on top of baseElement()'s
+// text-editable + style-editable + timing-eligible (data-start) defaults —
+// yielding all six groups in the same order as the brief's worked example:
+// [text, style, layout, motion, grade, media].
+function sixGroupElement() {
+  return {
+    ...baseElement(),
+    id: "six-group",
+    selector: "#six-group",
+    label: "Six Group",
+    tagName: "img",
+    dataAttributes: { start: "0", duration: "4" },
+  };
+}
+
 const INFERRED_TIMING_ANIMATION = {
   id: "a1",
   targetSelector: "#inferred-anim",
@@ -832,6 +848,104 @@ describe("PropertyPanel — pinning", () => {
       const unpinButton = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
       act(() => unpinButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(host.querySelector('[data-pinned-group="true"]')).toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+// design_handoff sticky-header-stack: collapsed headers above the open group
+// stack from the panel's top edge in list order; collapsed headers below it
+// stack from the bottom edge in list order; the open group's own header
+// sticks just below the top stack. Worked example from the brief: 6 groups
+// [text, style, layout, motion, grade, media], motion open (index 3) ->
+// text/style/layout top-stack at 0/40/80, motion's own header sticks at top
+// 120 (below the 3 collapsed-above headers), grade/media bottom-stack at
+// 40/0 (media flush to the very bottom).
+describe("PropertyPanel — sticky header stack (Plan 9)", () => {
+  it(
+    "stacks collapsed headers top-above / bottom-below the open group, in list order",
+    async () => {
+      const { host, root } = await renderPanel(true, sixGroupElement());
+      // sixGroupElement() opens Text by default; open Motion (index 3) to
+      // match the brief's worked example.
+      openFlatGroup(host, "Motion");
+      expect(openGroupText(host)).toContain("Motion");
+
+      const collapsedRows = Array.from(
+        host.querySelectorAll<HTMLButtonElement>('[data-flat-group-collapsed="true"]'),
+      );
+      const byTitle = (title: string) => {
+        const row = collapsedRows.find((el) => el.textContent?.includes(title));
+        if (!row) throw new Error(`expected a collapsed ${title} row`);
+        return row;
+      };
+
+      const text = byTitle("Text");
+      expect(text.style.position).toBe("sticky");
+      expect(text.style.top).toBe("0px");
+      expect(text.style.bottom).toBe("");
+
+      const style = byTitle("Style");
+      expect(style.style.top).toBe("40px");
+
+      const layout = byTitle("Layout");
+      expect(layout.style.top).toBe("80px");
+
+      const grade = byTitle("Grade");
+      expect(grade.style.position).toBe("sticky");
+      expect(grade.style.bottom).toBe("40px");
+      expect(grade.style.top).toBe("");
+
+      const media = byTitle("Media");
+      expect(media.style.bottom).toBe("0px");
+
+      // The open Motion group's own title bar sticks at top: 120 (below the
+      // 3 collapsed-above headers: text/style/layout at 40px each).
+      const openGroup = host.querySelector('[data-flat-group-open="true"]');
+      const titleBar = openGroup?.firstElementChild as HTMLElement | null;
+      expect(titleBar?.style.position).toBe("sticky");
+      expect(titleBar?.style.top).toBe("120px");
+      expect(titleBar?.style.bottom).toBe("");
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "falls back to top-stacking every header in list order when no group is open",
+    async () => {
+      const { host, root } = await renderPanel(true, sixGroupElement());
+      // Collapse the default-open Text group so openGroupId becomes "".
+      const collapseButton = host.querySelector<HTMLButtonElement>(
+        '[data-flat-group-open="true"] button[title="Collapse"]',
+      );
+      act(() => collapseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(host.querySelector('[data-flat-group-open="true"]')).toBeNull();
+
+      const collapsedRows = Array.from(
+        host.querySelectorAll<HTMLButtonElement>('[data-flat-group-collapsed="true"]'),
+      );
+      const byTitle = (title: string) => {
+        const row = collapsedRows.find((el) => el.textContent?.includes(title));
+        if (!row) throw new Error(`expected a collapsed ${title} row`);
+        return row;
+      };
+
+      const expectedOffsets: Array<[string, number]> = [
+        ["Text", 0],
+        ["Style", 40],
+        ["Layout", 80],
+        ["Motion", 120],
+        ["Grade", 160],
+        ["Media", 200],
+      ];
+      for (const [title, offsetPx] of expectedOffsets) {
+        const row = byTitle(title);
+        expect(row.style.position).toBe("sticky");
+        expect(row.style.top).toBe(`${offsetPx}px`);
+        expect(row.style.bottom).toBe("");
+      }
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

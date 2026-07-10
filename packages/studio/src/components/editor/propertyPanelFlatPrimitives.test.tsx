@@ -118,6 +118,8 @@ describe("FlatGroup", () => {
         title="Text"
         isOpen
         isPinned={false}
+        stackSide="top"
+        stackOffsetPx={0}
         onToggleOpen={onToggleOpen}
         onTogglePin={onTogglePin}
       >
@@ -138,6 +140,8 @@ describe("FlatGroup", () => {
         title="Style"
         isOpen={false}
         isPinned={false}
+        stackSide="top"
+        stackOffsetPx={0}
         onToggleOpen={onToggleOpen}
         onTogglePin={vi.fn()}
         summary="fill none · 100%"
@@ -150,6 +154,68 @@ describe("FlatGroup", () => {
     const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
     act(() => row?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onToggleOpen).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("sticks a collapsed header to the top at its offset", () => {
+    const { host, root } = renderInto(
+      <FlatGroup
+        title="Layout"
+        isOpen={false}
+        isPinned={false}
+        stackSide="top"
+        stackOffsetPx={80}
+        onToggleOpen={vi.fn()}
+        onTogglePin={vi.fn()}
+      >
+        <div data-testid="body">body</div>
+      </FlatGroup>,
+    );
+    const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
+    expect(row?.style.position).toBe("sticky");
+    expect(row?.style.top).toBe("80px");
+    act(() => root.unmount());
+  });
+
+  it("sticks a collapsed header to the bottom at its offset, with top unset", () => {
+    const { host, root } = renderInto(
+      <FlatGroup
+        title="Grade"
+        isOpen={false}
+        isPinned={false}
+        stackSide="bottom"
+        stackOffsetPx={80}
+        onToggleOpen={vi.fn()}
+        onTogglePin={vi.fn()}
+      >
+        <div data-testid="body">body</div>
+      </FlatGroup>,
+    );
+    const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
+    expect(row?.style.position).toBe("sticky");
+    expect(row?.style.bottom).toBe("80px");
+    expect(row?.style.top).toBe("");
+    act(() => root.unmount());
+  });
+
+  it("sticks the open group's title bar too, not just the collapsed button", () => {
+    const { host, root } = renderInto(
+      <FlatGroup
+        title="Motion"
+        isOpen
+        isPinned={false}
+        stackSide="top"
+        stackOffsetPx={120}
+        onToggleOpen={vi.fn()}
+        onTogglePin={vi.fn()}
+      >
+        <div data-testid="body">body</div>
+      </FlatGroup>,
+    );
+    const openGroup = host.querySelector('[data-flat-group-open="true"]');
+    const titleBar = openGroup?.firstElementChild as HTMLElement | null;
+    expect(titleBar?.style.position).toBe("sticky");
+    expect(titleBar?.style.top).toBe("120px");
     act(() => root.unmount());
   });
 });

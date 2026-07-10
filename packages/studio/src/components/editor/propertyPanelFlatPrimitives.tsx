@@ -140,6 +140,8 @@ export function FlatGroup({
   title,
   isOpen,
   isPinned,
+  stackSide,
+  stackOffsetPx,
   onToggleOpen,
   onTogglePin,
   accessory,
@@ -149,6 +151,10 @@ export function FlatGroup({
   title: string;
   isOpen: boolean;
   isPinned: boolean;
+  /** Which panel edge this group's header sticks to while stacked. */
+  stackSide: "top" | "bottom";
+  /** Pixel offset from `stackSide`, so multiple stacked headers stand in order. */
+  stackOffsetPx: number;
   onToggleOpen: () => void;
   onTogglePin: () => void;
   accessory?: ReactNode;
@@ -161,7 +167,11 @@ export function FlatGroup({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className="flex min-h-10 w-full items-center justify-between gap-2 border-b border-panel-hairline px-4 text-left"
+        style={{
+          position: "sticky",
+          [stackSide]: stackOffsetPx,
+        }}
+        className="z-10 flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left"
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
@@ -186,7 +196,10 @@ export function FlatGroup({
 
   return (
     <div className="border-b border-panel-hairline px-4 py-3" data-flat-group-open="true">
-      <div className="mb-2.5 flex items-center justify-between">
+      <div
+        style={{ position: "sticky", [stackSide]: stackOffsetPx }}
+        className="z-10 -mx-4 mb-2.5 flex min-h-10 items-center justify-between bg-panel-bg px-4"
+      >
         <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
         <span className="flex items-center gap-2.5 text-panel-text-5">
           {accessory}

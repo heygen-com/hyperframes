@@ -33,6 +33,10 @@ type FlatGroupDescriptor = {
   content: ReactNode;
 };
 
+// Header height for the sticky stacking math below — matches FlatGroup's
+// collapsed `min-h-10` (2.5rem) and the open title bar's matching `min-h-10`.
+const HEADER_HEIGHT_PX = 40;
+
 // Type-only fallback for the Motion effect-card callbacks. Used solely to
 // satisfy FlatMotionSection's required-callback shape when the effect list is
 // gated off (showEffects === false, so none of these are ever invoked). Keeps
@@ -456,6 +460,24 @@ export function PropertyPanelFlat({
   const pinned = groups.filter((g) => pinnedGroupIds.includes(g.id));
   const unpinned = groups.filter((g) => !pinnedGroupIds.includes(g.id));
 
+  // Per-group sticky stacking offsets (design_handoff sticky-header-stack):
+  // collapsed headers above the open group stack from the panel's top edge in
+  // order; collapsed headers below it stack from the bottom edge in order;
+  // the open group's own header sticks just below the top stack. When no
+  // group is open, every header stacks from the top in list order.
+  const openIndex = unpinned.findIndex((g) => g.id === openGroupId);
+  const unpinnedWithOffsets = unpinned.map((g, index) => {
+    if (openIndex === -1 || index <= openIndex) {
+      return { ...g, stackSide: "top" as const, stackOffsetPx: index * HEADER_HEIGHT_PX };
+    }
+    const distanceFromEnd = unpinned.length - 1 - index;
+    return {
+      ...g,
+      stackSide: "bottom" as const,
+      stackOffsetPx: distanceFromEnd * HEADER_HEIGHT_PX,
+    };
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <PropertyPanelFlatHeader
@@ -486,12 +508,14 @@ export function PropertyPanelFlat({
           </PinnedGroupRow>
         ))}
         {pinned.length > 0 && unpinned.length > 0 && <PinnedZoneDivider />}
-        {unpinned.map((g) => (
+        {unpinnedWithOffsets.map((g) => (
           <FlatGroup
             key={g.id}
             title={g.title}
             isOpen={openGroupId === g.id}
             isPinned={false}
+            stackSide={g.stackSide}
+            stackOffsetPx={g.stackOffsetPx}
             onToggleOpen={() => toggleOpen(g.id)}
             onTogglePin={() => togglePin(g.id)}
             summary={g.summary}
