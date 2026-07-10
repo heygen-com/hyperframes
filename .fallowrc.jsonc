@@ -337,6 +337,16 @@
       "file": "packages/studio/src/components/editor/propertyPanelSections.tsx",
       "exports": ["TextAreaField"],
     },
+    // Link: its only consumer was FlatRadiusRow's uniform-only fallback row in
+    // propertyPanelFlatStyleSections.tsx, deleted by the Style parity fix
+    // (p8-task-style-parity) — that row was unreachable from a uniform radius
+    // and is now replaced by BorderRadiusEditor's own unlink toggle. Kept in
+    // the icon set for future reuse rather than deleted from a file outside
+    // this fix's scope.
+    {
+      "file": "packages/studio/src/icons/SystemIcons.tsx",
+      "exports": ["Link"],
+    },
   ],
   "ignoreDependencies": [
     // Runtime/dynamic deps not visible to static analysis: tsup `external`,
