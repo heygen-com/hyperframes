@@ -21,6 +21,16 @@
  *   don't strictly need the runtime; the adapter can drive them directly.
  *   We give the adapter path first shot (a 5-tick grace period) and only
  *   inject the runtime as a fallback if no adapter emerges.
+ *
+ *   Anime (hyperframesAnime.register) — this *late* injection path (appending
+ *   a `<script>` after the document has already loaded) can never help an
+ *   anime composition: `hyperframesAnime.register(...)` runs synchronously
+ *   during initial parse, so by the time this loop observes the iframe the
+ *   call has either already succeeded (a registry is present — nothing to
+ *   inject) or already thrown (too late — only the pre-parse path in
+ *   composition-probe.ts, driven by needsPreParseRuntime in
+ *   runtime-injection.ts, can fix that). Either way this function must never
+ *   fire the late path for these compositions.
  */
 export interface ProbeState {
   hasRuntime: boolean;
@@ -28,10 +38,13 @@ export interface ProbeState {
   hasNestedCompositions: boolean;
   runtimeInjected: boolean;
   attempts: number;
+  /** A `hyperframesAnime`/`__hfAnime` registry with at least one entry. Optional
+   *  so existing GSAP-only callers/tests are unaffected. */
+  hasAnimeRegistrations?: boolean;
 }
 
 export function shouldInjectRuntime(state: ProbeState): boolean {
-  if (state.hasRuntime || state.runtimeInjected) return false;
+  if (state.hasRuntime || state.runtimeInjected || state.hasAnimeRegistrations) return false;
   if (state.hasNestedCompositions) return true;
   if (state.hasTimelines && state.attempts >= 5) return true;
   return false;

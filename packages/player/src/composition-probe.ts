@@ -10,11 +10,13 @@
  * `stop()` on disconnect or src change.
  */
 
+import { needsPreParseRuntime, injectRuntimeIntoHtml } from "./runtime-injection.js";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
   type DirectTimelineAdapter,
   type PlaybackDurationAdapter,
   buildAnimeDirectTimelineAdapter,
+  isAnimeRegistryLike,
   isDirectTimelineAdapter,
   isObjectRecord,
   isRuntimeDurationAdapter,
@@ -35,6 +37,12 @@ export interface ProbeCallbacks {
   onError: (message: string) => void;
   /** Called when runtime is successfully injected (informational). */
   onRuntimeInjected?: () => void;
+  /**
+   * Returns the runtime URL to use in place of the published CDN default —
+   * backs the `runtime-src` element attribute. Return a falsy value to keep
+   * the default.
+   */
+  getRuntimeUrl?: () => string | null | undefined;
 }
 
 /**
@@ -66,6 +74,15 @@ export function readCompositionSizeFromDocument(
 export class CompositionProbe {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _runtimeInjected = false;
+  /**
+   * The `src` value pre-parse injection has already been attempted for, or
+   * `null` before any attempt. Deliberately NOT reset by `start()`: our own
+   * `srcdoc` reload (see `_injectRuntimePreParse`) calls `start()` again with
+   * the original `src` attribute still in place, and re-attempting would loop
+   * forever. A genuinely new `src` naturally compares unequal and is free to
+   * try again.
+   */
+  private _preParseAttemptedSrc: string | null = null;
 
   constructor(
     private readonly _iframe: HTMLIFrameElement,
@@ -91,19 +108,28 @@ export class CompositionProbe {
           __player?: { getDuration: () => number };
           __timelines?: Record<string, { duration: () => number }>;
           __hf?: unknown;
+          hyperframesAnime?: unknown;
+          __hfAnime?: unknown;
         };
         if (!win) return;
 
         const hasRuntime = !!(win.__hf || win.__player);
         const hasTimelines = !!(win.__timelines && Object.keys(win.__timelines).length > 0);
+        const hasAnimeRegistrations =
+          isAnimeRegistryLike(win.hyperframesAnime) || isAnimeRegistryLike(win.__hfAnime);
         const hasNestedCompositions =
           !!this._iframe.contentDocument?.querySelector("[data-composition-src]");
+
+        if (this._maybeInjectPreParseRuntime(hasRuntime, hasTimelines, hasAnimeRegistrations)) {
+          return;
+        }
 
         if (
           shouldInjectRuntime({
             hasRuntime,
             hasTimelines,
             hasNestedCompositions,
+            hasAnimeRegistrations,
             runtimeInjected: this._runtimeInjected,
             attempts,
           })
@@ -167,17 +193,95 @@ export class CompositionProbe {
 
   // ── Private ──────────────────────────────────────────────────────────────
 
+  /**
+   * Resolves against the *parent* page's location (not the composition's),
+   * matching how the `runtime-src`/`src` attributes are authored on
+   * `<hyperframes-player>` itself. This matters most for pre-parse injection:
+   * the rewritten HTML gets its own `<base>` pointing at the composition's
+   * directory, so an unresolved relative runtime URL would otherwise be
+   * silently reinterpreted against the wrong base once embedded.
+   */
+  private _runtimeUrl(): string {
+    const raw = this._callbacks.getRuntimeUrl?.() || RUNTIME_CDN_URL;
+    try {
+      return new URL(raw, this._iframe.ownerDocument?.baseURI ?? location.href).toString();
+    } catch {
+      return raw;
+    }
+  }
+
   private _injectRuntime(): void {
     this._runtimeInjected = true;
     try {
       const doc = this._iframe.contentDocument;
       if (!doc) return;
       const script = doc.createElement("script");
-      script.src = RUNTIME_CDN_URL;
+      script.src = this._runtimeUrl();
       (doc.head || doc.documentElement).appendChild(script);
       this._callbacks.onRuntimeInjected?.();
     } catch {
       /* cross-origin — can't inject */
+    }
+  }
+
+  /**
+   * Same-origin standalone anime compositions need the runtime installed
+   * *before* their own inline scripts run (see runtime-injection.ts for why).
+   * When `needsPreParseRuntime` says so, fetch the original `src`, rewrite it,
+   * and reload the iframe from the rewritten copy via `srcdoc`.
+   *
+   * Returns true when this tick was consumed by (starting) that attempt, so
+   * the caller skips the rest of its normal decision-making for this tick.
+   */
+  private _maybeInjectPreParseRuntime(
+    hasRuntime: boolean,
+    hasTimelines: boolean,
+    hasAnimeRegistrations: boolean,
+  ): boolean {
+    const src = this._iframe.getAttribute("src");
+    if (!src) return false;
+
+    const shouldInject = needsPreParseRuntime({
+      hasRuntime,
+      hasTimelines,
+      hasAnimeRegistrations,
+      referencesHyperframesAnime: this._docReferencesHyperframesAnime(),
+      alreadyAttempted: src === this._preParseAttemptedSrc,
+    });
+    if (!shouldInject) return false;
+
+    this._preParseAttemptedSrc = src;
+    void this._injectRuntimePreParse(src);
+    return true;
+  }
+
+  private _docReferencesHyperframesAnime(): boolean {
+    const doc = this._iframe.contentDocument;
+    if (!doc) return false;
+    for (const script of doc.querySelectorAll("script:not([src])")) {
+      if (script.textContent?.includes("hyperframesAnime")) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fetches `src`, injects the runtime `<script>` (plus a `<base>` so
+   * relative assets keep resolving) ahead of the composition's own scripts,
+   * and reloads the iframe from the rewritten HTML via `srcdoc`. On any
+   * failure (network, CORS, non-2xx) this is a no-op: the normal polling
+   * loop continues and eventually surfaces the existing 8s `onError` timeout.
+   */
+  private async _injectRuntimePreParse(src: string): Promise<void> {
+    try {
+      const resolvedUrl = new URL(src, this._iframe.ownerDocument?.baseURI ?? location.href);
+      const response = await fetch(resolvedUrl.toString());
+      if (!response.ok) throw new Error(`fetch failed with status ${response.status}`);
+      const html = await response.text();
+      const baseHref = new URL(".", resolvedUrl).toString();
+      this._iframe.srcdoc = injectRuntimeIntoHtml(html, this._runtimeUrl(), baseHref);
+      this._callbacks.onRuntimeInjected?.();
+    } catch {
+      /* fetch/CORS failure — fall back to the existing onError timeout path */
     }
   }
 

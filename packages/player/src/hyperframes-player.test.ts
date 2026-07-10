@@ -171,6 +171,13 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(Ctor.observedAttributes).toContain("audio-src");
   });
 
+  it("includes runtime-src in observedAttributes", () => {
+    const Ctor = player.constructor as typeof HTMLElement & {
+      observedAttributes: string[];
+    };
+    expect(Ctor.observedAttributes).toContain("runtime-src");
+  });
+
   it("creates Audio and starts preloading when audio-src is set", () => {
     player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
     document.body.appendChild(player);
