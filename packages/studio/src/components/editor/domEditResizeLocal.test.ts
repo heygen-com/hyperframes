@@ -93,23 +93,26 @@ describe("resolveLocalResizeSize — rotation 0 matches the legacy screen-space 
     ).toEqual({ width: 500, height: 240 });
   });
 
-  it("uniform: locks the current aspect ratio (dominant axis wins)", () => {
-    expect(
-      resolveLocalResizeSize({
-        baseWidth: 240,
-        baseHeight: 120,
-        rotation: 0,
-        displayScaleX: 1,
-        displayScaleY: 1,
-        handle: "se",
-        dxScreen: 30,
-        dyScreen: 12,
-        uniform: true,
-      }),
-    ).toEqual({ width: 270, height: 135 });
+  it("uniform: locks the aspect ratio via diagonal projection", () => {
+    // scale = 1 + (dw*W + dh*H)/(W^2 + H^2) = 1 + (30*240 + 12*120)/72000 = 1.12
+    const out = resolveLocalResizeSize({
+      baseWidth: 240,
+      baseHeight: 120,
+      rotation: 0,
+      displayScaleX: 1,
+      displayScaleY: 1,
+      handle: "se",
+      dxScreen: 30,
+      dyScreen: 12,
+      uniform: true,
+    });
+    expect(out.width).toBeCloseTo(268.8, 6);
+    expect(out.height).toBeCloseTo(134.4, 6);
+    expect(out.width / out.height).toBeCloseTo(2, 9);
   });
 
-  it("uniform shrink: dominant (vertical) delta drives the size, aspect preserved", () => {
+  it("uniform shrink: inward diagonal component shrinks, aspect preserved", () => {
+    // scale = 1 + (8*300 - 40*180)/(300^2 + 180^2) = 1 - 4800/122400
     const out = resolveLocalResizeSize({
       baseWidth: 300,
       baseHeight: 180,
@@ -121,8 +124,59 @@ describe("resolveLocalResizeSize — rotation 0 matches the legacy screen-space 
       dyScreen: -40,
       uniform: true,
     });
-    expect(out.width).toBeCloseTo(700 / 3, 6);
-    expect(out.height).toBeCloseTo(140, 6);
+    const scale = 1 - 4800 / 122400;
+    expect(out.width).toBeCloseTo(300 * scale, 6);
+    expect(out.height).toBeCloseTo(180 * scale, 6);
+    expect(out.width / out.height).toBeCloseTo(300 / 180, 9);
+  });
+
+  it("uniform: the dragged corner tracks the pointer's diagonal component exactly", () => {
+    // The corner (relative to the fixed anchor) is (W*s, H*s); its projection onto
+    // the diagonal must equal the pointer target's projection — the CapCut feel.
+    const baseWidth = 400;
+    const baseHeight = 100;
+    const dx = 37;
+    const dy = -18;
+    const out = resolveLocalResizeSize({
+      baseWidth,
+      baseHeight,
+      rotation: 0,
+      displayScaleX: 1,
+      displayScaleY: 1,
+      handle: "se",
+      dxScreen: dx,
+      dyScreen: dy,
+      uniform: true,
+    });
+    const diagLen = Math.hypot(baseWidth, baseHeight);
+    const cornerProj = (out.width * baseWidth + out.height * baseHeight) / diagLen;
+    const pointerProj =
+      ((baseWidth + dx) * baseWidth + (baseHeight + dy) * baseHeight) / diagLen;
+    expect(cornerProj).toBeCloseTo(pointerProj, 6);
+  });
+
+  it("uniform is CONTINUOUS across the 45-degree pointer direction (no size jump)", () => {
+    // Regression: the dominant-axis formulation (if |dw| >= |dh| drive from width,
+    // else from height) is discontinuous for non-square elements — crossing the
+    // |dw| == |dh| boundary teleported the size (400x100 base: width 450 -> 600
+    // for a 0.002px pointer move), felt as a hiccup/jump on every resize whose
+    // pointer path wobbled across the diagonal.
+    const probe = (dy: number) =>
+      resolveLocalResizeSize({
+        baseWidth: 400,
+        baseHeight: 100,
+        rotation: 0,
+        displayScaleX: 1,
+        displayScaleY: 1,
+        handle: "se",
+        dxScreen: 50,
+        dyScreen: dy,
+        uniform: true,
+      });
+    const before = probe(49.999);
+    const after = probe(50.001);
+    expect(Math.abs(after.width - before.width)).toBeLessThan(0.01);
+    expect(Math.abs(after.height - before.height)).toBeLessThan(0.01);
   });
 
   it("clamps at the local minimum, never mirroring through zero", () => {

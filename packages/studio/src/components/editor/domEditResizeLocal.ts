@@ -81,9 +81,9 @@ function rotateVector(v: { x: number; y: number }, theta: number): { x: number; 
  * live rotation and divided by the display scale to get the LOCAL-axis size deltas
  * toward the dragged corner, then added to the base local size.
  *
- * `uniform` preserves the exact Shift aspect-lock semantics of the old
- * `resolveDomEditResizeGesture` uniform branch (dominant axis wins, the other is
- * derived from the CURRENT ratio baseHeight/baseWidth).
+ * `uniform` locks the aspect ratio by projecting the local pointer delta onto the
+ * anchor→corner diagonal: one linear scale factor, so the dragged corner tracks
+ * the pointer's diagonal component and the mapping is continuous everywhere.
  *
  * At rotation 0 with equal display scale this returns the same width/height as the
  * old screen-space path, so unrotated behavior is unchanged.
@@ -115,19 +115,19 @@ export function resolveLocalResizeSize(input: {
   const deltaH = sign.y * localDelta.y;
 
   if (input.uniform) {
+    // Aspect-locked scale via DIAGONAL PROJECTION (the CapCut/Canva feel): the
+    // dragged corner tracks the pointer's component along the anchor→corner
+    // diagonal, so scale is one LINEAR function of the pointer delta —
+    // continuous everywhere. (A dominant-axis branch — "if |dw| >= |dh| drive
+    // from width, else height" — is discontinuous for non-square elements and
+    // teleported the size whenever the pointer crossed the 45° line.)
     const baseWidth = Math.max(input.baseWidth, 1);
     const baseHeight = Math.max(input.baseHeight, 1);
-    const ratio = baseHeight / baseWidth;
-    let width: number;
-    let height: number;
-    if (Math.abs(deltaW) >= Math.abs(deltaH)) {
-      width = Math.max(MIN_RESIZE_LOCAL_PX, baseWidth + deltaW);
-      height = Math.max(MIN_RESIZE_LOCAL_PX, width * ratio);
-    } else {
-      height = Math.max(MIN_RESIZE_LOCAL_PX, baseHeight + deltaH);
-      width = Math.max(MIN_RESIZE_LOCAL_PX, height / ratio);
-    }
-    return { width, height };
+    const scale =
+      1 + (deltaW * baseWidth + deltaH * baseHeight) / (baseWidth ** 2 + baseHeight ** 2);
+    const minScale = MIN_RESIZE_LOCAL_PX / Math.min(baseWidth, baseHeight);
+    const clamped = Math.max(minScale, scale);
+    return { width: baseWidth * clamped, height: baseHeight * clamped };
   }
 
   return {
