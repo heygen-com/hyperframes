@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeThumbnailStrip,
+  encodePreviewPath,
   resolveMediaPreviewUrl,
   THUMBNAIL_CLIP_HEIGHT,
 } from "./thumbnailUtils";
@@ -86,5 +87,41 @@ describe("resolveMediaPreviewUrl", () => {
     expect(resolveMediaPreviewUrl("assets/logo.svg", "proj-1")).toBe(
       "/api/projects/proj-1/preview/assets/logo.svg",
     );
+  });
+
+  it("percent-encodes a U+202F narrow no-break space (macOS screenshot artifact)", () => {
+    // "Screenshot … 2.16.30 PM.png" — the char between the time and PM is a
+    // narrow no-break space; it must encode to %E2%80%AF, not route raw (404).
+    expect(resolveMediaPreviewUrl("assets/Screenshot 2.16.30 PM.png", "proj-1")).toBe(
+      "/api/projects/proj-1/preview/assets/Screenshot%202.16.30%E2%80%AFPM.png",
+    );
+  });
+
+  it("passes data: URIs through untouched (never routes them through preview → HTTP 431)", () => {
+    const svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+    expect(resolveMediaPreviewUrl(svg, "proj-1")).toBe(svg);
+  });
+
+  it("passes blob: URLs through untouched", () => {
+    const blob = "blob:http://localhost:5190/2b3c-4d5e";
+    expect(resolveMediaPreviewUrl(blob, "proj-1")).toBe(blob);
+  });
+});
+
+// The shared encoder used by every timeline media-URL builder (filmstrip, audio
+// waveform, sub-composition preview) — must match the assets panel's per-segment
+// encoding so those paths stop 404ing on non-ASCII filenames.
+describe("encodePreviewPath", () => {
+  it("encodes spaces and parentheses per segment, preserving slashes", () => {
+    expect(encodePreviewPath("sub dir/file (v2).mp3")).toBe("sub%20dir/file%20(v2).mp3");
+  });
+
+  it("encodes a U+202F narrow no-break space to %E2%80%AF", () => {
+    expect(encodePreviewPath("assets/clip 2.mp3")).toBe("assets/clip%202.mp3");
+    expect(encodePreviewPath(`assets/clip${" "}2.mp3`)).toBe("assets/clip%E2%80%AF2.mp3");
+  });
+
+  it("leaves a plain path unchanged", () => {
+    expect(encodePreviewPath("assets/music.mp3")).toBe("assets/music.mp3");
   });
 });

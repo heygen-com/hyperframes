@@ -25,18 +25,30 @@ export function computeThumbnailStrip(
 }
 
 /**
+ * Percent-encode each segment of a composition-relative media path so filenames
+ * containing spaces, parentheses, a U+202F narrow no-break space (the macOS
+ * screenshot artifact), or any other non-ASCII / URL-unsafe character yield a
+ * valid URL instead of a 404. Slashes are preserved as separators.
+ *
+ * Shared by every timeline media-URL builder (filmstrip thumbnails, audio
+ * waveform, sub-composition preview) so they encode identically to the assets
+ * panel — a raw segment 404s on the exact filenames the assets panel loads fine.
+ */
+export function encodePreviewPath(relativePath: string): string {
+  return relativePath.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
  * Resolve a timeline element's media src to a URL loadable from the studio
  * (parent) document. Composition-relative paths (e.g. "assets/image.png") are
- * only servable through the project preview endpoint; absolute http(s) URLs
- * pass through untouched.
+ * routed through the project preview endpoint with each segment encoded.
  *
- * Each path segment is percent-encoded so filenames containing spaces,
- * parentheses, or other URL-unsafe characters (e.g.
- * "assets/heygen-symbol-blue-logo (2).svg") yield a valid URL instead of a
- * 404. Slashes are preserved as separators.
+ * Already-loadable URLs pass through untouched: absolute http(s) URLs, plus
+ * `data:` and `blob:` URLs. Routing a `data:`/`blob:` URL through the preview
+ * endpoint would percent-encode the whole thing into a multi-KB path segment
+ * that the server rejects with HTTP 431 (Request Header Fields Too Large).
  */
 export function resolveMediaPreviewUrl(src: string, projectId: string): string {
-  if (src.startsWith("http")) return src;
-  const encodedSrc = src.split("/").map(encodeURIComponent).join("/");
-  return `/api/projects/${projectId}/preview/${encodedSrc}`;
+  if (/^(?:https?:|data:|blob:)/i.test(src)) return src;
+  return `/api/projects/${projectId}/preview/${encodePreviewPath(src)}`;
 }
