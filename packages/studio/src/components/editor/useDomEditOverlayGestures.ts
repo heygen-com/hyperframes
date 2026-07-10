@@ -297,42 +297,63 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
 
+      // Measure the element's REAL rendered size right after applying the size
+      // draft, BEFORE the anchor translate. applyStudioBoxSizeDraft rounds and
+      // clamps width/height (and GSAP scale + a centered transform-origin can
+      // make the visual size diverge further from the CSS size), so the math
+      // `nextSize.overlay{Width,Height}` is NOT what the element actually renders.
+      // Anchoring off the math value (the old code) trailed the true edge by the
+      // rounding/scale residual every frame — the opposite edge wobbled while the
+      // box hugged the real rect, leaving the gap (fix B) and the per-frame
+      // anchor drift on NW/NE/SW (fix C). Anchor off the measured size instead so
+      // the fixed edge stays glued and the offset write is frame-synchronous with
+      // the size write (same synchronous pass as SE's size-only path).
+      const overlayEl = opts.overlayRef.current;
+      const iframe = opts.iframeRef.current;
+      const sizedRect = overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
+      const measuredWidth = sizedRect ? sizedRect.width : nextSize.overlayWidth;
+      const measuredHeight = sizedRect ? sizedRect.height : nextSize.overlayHeight;
+
       // West/north handles keep the opposite corner visually fixed by
       // translating the element through the same manual-offset channel a
       // drag uses (member created at gesture start).
+      let overlayLeft: number;
+      let overlayTop: number;
       if (g.pathOffsetMember) {
         const anchor = resolveResizeAnchorOffset({
           originWidth: g.originWidth,
           originHeight: g.originHeight,
-          overlayWidth: nextSize.overlayWidth,
-          overlayHeight: nextSize.overlayHeight,
+          overlayWidth: measuredWidth,
+          overlayHeight: measuredHeight,
           anchorX: deltas.anchorX,
           anchorY: deltas.anchorY,
         });
         g.lastResizeAnchor = anchor;
         applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
+        // Box geometry is exact by construction from the measured size + the anchor
+        // we just applied: the opposite corner is fixed at origin, so the moving
+        // top-left is origin + anchor. This tracks the element's REAL bounds every
+        // frame WITHOUT a second BCR read, which would reflect the transform one
+        // frame late and make the anchored corners lag/jump (fix C) while leaving
+        // the box detached from the element (fix B).
+        overlayLeft = g.originLeft + anchor.dx;
+        overlayTop = g.originTop + anchor.dy;
+      } else {
+        // SE (anchorless): no translate, so the element's own top-left is the
+        // source of truth. A GSAP scale + centered transform-origin drifts it as
+        // the box grows, so read it from the just-measured rect.
+        overlayLeft = sizedRect ? sizedRect.left : g.originLeft;
+        overlayTop = sizedRect ? sizedRect.top : g.originTop;
       }
-
-      // Re-read BCR after applying dimensions. For elements with a GSAP
-      // scale transform and centered transform-origin the visual top-left
-      // drifts and the visual size diverges from the raw CSS size, so BCR
-      // is the only accurate source for both.
-      const overlayEl = opts.overlayRef.current;
-      const iframe = opts.iframeRef.current;
-      const refreshed = overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
-      const overlayLeft = refreshed ? refreshed.left : g.originLeft;
-      const overlayTop = refreshed ? refreshed.top : g.originTop;
-      const overlayWidth = refreshed ? refreshed.width : nextSize.overlayWidth;
-      const overlayHeight = refreshed ? refreshed.height : nextSize.overlayHeight;
       box.style.left = `${overlayLeft}px`;
       box.style.top = `${overlayTop}px`;
-      box.style.width = `${overlayWidth}px`;
-      box.style.height = `${overlayHeight}px`;
+      box.style.width = `${measuredWidth}px`;
+      box.style.height = `${measuredHeight}px`;
       setDraftOverlayRect({
         left: overlayLeft,
         top: overlayTop,
-        width: overlayWidth,
-        height: overlayHeight,
+        width: measuredWidth,
+        height: measuredHeight,
         editScaleX: g.editScaleX,
         editScaleY: g.editScaleY,
       });
