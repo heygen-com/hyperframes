@@ -1,7 +1,7 @@
 # Sequencing translation: Sequence, Series, Composition root
 
 How Remotion's nested `Sequence` tree maps to HF's flat `data-start` /
-`data-duration` markup with a single paused GSAP timeline.
+`data-duration` markup with a single paused anime.js timeline.
 
 ## The core idea
 
@@ -127,20 +127,20 @@ with `data-start` accumulating:
 
 Remotion `<Sequence>` shows/hides at hard boundaries by default. HF does
 the same — but if your composition needs a smooth fade between scenes,
-you have to drive opacity explicitly with GSAP at the boundary:
+you have to drive opacity explicitly with anime.js at the boundary:
 
 ```js
-const tl = gsap.timeline({ paused: true });
-tl.set(scene1, { opacity: 1 }, 0);
-tl.set(scene1, { opacity: 0 }, 2); // hard cut at 2s
-tl.set(scene2, { opacity: 1 }, 2);
+const tl = anime.createTimeline({ autoplay: false });
+tl.add(scene1, { opacity: 1, duration: 0 }, 0);
+tl.add(scene1, { opacity: 0, duration: 0 }, 2000); // hard cut at 2s
+tl.add(scene2, { opacity: 1, duration: 0 }, 2000);
 ```
 
 For a 0.5 s crossfade:
 
 ```js
-tl.to(scene1, { opacity: 0, duration: 0.5 }, 1.5);
-tl.to(scene2, { opacity: 1, duration: 0.5 }, 1.5);
+tl.add(scene1, { opacity: 0, duration: 500 }, 1500);
+tl.add(scene2, { opacity: 1, duration: 500 }, 1500);
 ```
 
 For Remotion `<TransitionSeries>` translations see [transitions.md](transitions.md).
@@ -153,20 +153,19 @@ For Remotion `<TransitionSeries>` translations see [transitions.md](transitions.
 </Loop>
 ```
 
-HF doesn't have a `<Loop>` primitive. Translate to a GSAP timeline with
-`repeat: -1`:
+HF doesn't have a `<Loop>` primitive. Translate to a finite anime.js `loop`
+count on the tween itself, embedded directly in the main composition
+timeline at the right offset:
 
 ```js
-const spinTl = gsap.timeline({ paused: true, repeat: -1, repeatRefresh: false });
-spinTl.to(spinner, { rotate: 360, duration: 1.0, ease: "none" });
-// Embed in the main composition timeline at the right offset:
-mainTl.add(spinTl, 3);
+tl.add(spinner, { rotate: 360, duration: 1000, ease: "linear", loop: true }, 3000);
 ```
 
-This is fragile — Remotion's `<Loop>` resets internal state every iteration,
-which GSAP repeat does too, but if the looped child has its own animation,
-you need to be careful that GSAP's `repeatRefresh` is on or off as needed.
-For most simple "spin forever" cases this is fine.
+An infinite `loop: true` is only safe because the root composition already
+carries an explicit `data-duration` — HF has no other way to infer a finite
+render length from an unbounded loop. Prefer a finite `loop: N` count sized
+to the slot duration when you can compute it; reach for `loop: true` only
+when the spin genuinely needs to fill the remainder of the composition.
 
 ## `<Freeze>`
 
@@ -178,7 +177,7 @@ For most simple "spin forever" cases this is fine.
 
 Drop the wrapper. `<Freeze>` pins `useCurrentFrame()` at a constant for
 the children — but in HF, the children's animation is already driven by
-explicit GSAP tweens, so freeze translates to "don't tween this element".
+explicit anime.js tweens, so freeze translates to "don't tween this element".
 
 ## Multiple parallel tracks
 

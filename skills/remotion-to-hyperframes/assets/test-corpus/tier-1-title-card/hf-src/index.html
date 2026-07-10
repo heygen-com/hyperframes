@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>tier-1-title-card</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -46,15 +46,13 @@
       <script>
         // Translation of Remotion's
         //   interpolate(frame, [0, 15, 75, 90], [0, 1, 1, 0]) at fps=30
-        // into a paused GSAP timeline keyed in seconds.
+        // into a paused anime.js timeline keyed in milliseconds.
         // Frame ranges → time ranges:  0/30=0,  15/30=0.5,  75/30=2.5,  90/30=3.0
-        const tl = gsap.timeline({ paused: true });
-        const target = document.querySelector("#title .title");
-        tl.to(target, { opacity: 1, duration: 0.5, ease: "none" }, 0);
-        tl.to(target, { opacity: 1, duration: 2.0, ease: "none" }, 0.5);
-        tl.to(target, { opacity: 0, duration: 0.5, ease: "none" }, 2.5);
-        window.__timelines = window.__timelines || {};
-        window.__timelines["tier-1-title-card"] = tl;
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add("#title .title", { opacity: 1, duration: 500, ease: "linear" }, 0);
+        tl.add("#title .title", { opacity: [1, 1], duration: 2000, ease: "linear" }, 500);
+        tl.add("#title .title", { opacity: [1, 0], duration: 500, ease: "linear" }, 2500);
+        hyperframesAnime.register("tier-1-title-card", tl);
       </script>
     </div>
   </body>

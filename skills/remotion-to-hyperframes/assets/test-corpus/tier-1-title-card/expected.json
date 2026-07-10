@@ -9,16 +9,16 @@
   "height": 720,
   "ssim_threshold": 0.95,
   "validation": {
-    "measured_mean_ssim": 0.974,
-    "measured_min_ssim": 0.972,
-    "measured_p05_ssim": 0.972,
-    "measured_p95_ssim": 0.983,
-    "measured_at": "2026-04-27",
-    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.4.15-alpha.1"
+    "measured_mean_ssim": 0.975073,
+    "measured_min_ssim": 0.973645,
+    "measured_p05_ssim": 0.973646,
+    "measured_p95_ssim": 0.983701,
+    "measured_at": "2026-07-10",
+    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.7.42 (anime.js first-party runtime)"
   },
   "translation_notes": [
     "Remotion: AbsoluteFill → HF: position:absolute;inset:0 div",
-    "Remotion: interpolate(frame, [0,15,75,90], [0,1,1,0]) at fps=30 → HF: paused GSAP timeline with three keyframed tweens at 0s, 0.5s, 2.5s with ease:'none' (linear matches Remotion's default linear interpolation)",
+    "Remotion: interpolate(frame, [0,15,75,90], [0,1,1,0]) at fps=30 → HF: paused anime.js timeline with three keyframed `.add()` tweens at 0ms, 500ms, 2500ms with ease:'linear' (matches Remotion's default linear interpolation)",
     "No fonts loaded; both renderers use system Helvetica/Arial fallback. The Linux fallback diverges between Remotion's bundled Chromium and HyperFrames' chrome-headless-shell — same fontWeight:800 renders perceptibly bolder in HF. This costs ~0.025 mean SSIM and is the dominant non-translation noise floor.",
     "Remotion config must use setVideoImageFormat('png') + setColorSpace('bt709'); the JPEG default writes yuvj420p (full-range) which costs ~0.05 SSIM vs HF's yuv420p (limited-range)."
   ],

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>tier-2-multi-scene</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
     <style>
       html,
       body {
@@ -79,39 +79,25 @@
         //
         // Scene 1 (0-2s): TitleScene — spring scale on "Welcome".
         //   Remotion: spring({frame, fps, config: {damping:12, stiffness:100, mass:1}})
-        //   GSAP equivalent: back.out(1.4) over ~0.7s. Spring → ease translation
+        //   anime.js equivalent: outBack(1.4) over ~0.7s. Spring → ease translation
         //   is approximate; expect minor differences in the tail of the curve.
         //
         // Scene 2 (2-4s): ImageScene — opacity 0→1 over 0-0.5s + scale 0.8→1.0 over 0-2.0s.
-        //   Both Remotion interpolates use linear (default), match with ease:"none".
+        //   Both Remotion interpolates use linear (default), match with ease:"linear".
         //
         // Scene 3 (4-6s): OutroScene — opacity 0→1 over 4-5s, linear.
 
-        const tl = gsap.timeline({ paused: true });
-
-        // Scene 1 setup: opacity flick on so scene becomes visible at start
-        const scene1 = document.querySelector("#scene-1");
-        const title = scene1.querySelector(".title");
-        tl.set(scene1, { opacity: 1 }, 0);
-        tl.to(title, { scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 0);
-        tl.set(scene1, { opacity: 0 }, 2);
-
-        // Scene 2
-        const scene2 = document.querySelector("#scene-2");
-        const square = scene2.querySelector(".square");
-        tl.set(scene2, { opacity: 1 }, 2);
-        tl.to(square, { opacity: 1, duration: 0.5, ease: "none" }, 2);
-        tl.to(square, { scale: 1.0, duration: 2.0, ease: "none" }, 2);
-        tl.set(scene2, { opacity: 0 }, 4);
-
-        // Scene 3
-        const scene3 = document.querySelector("#scene-3");
-        const outro = scene3.querySelector(".outro");
-        tl.set(scene3, { opacity: 1 }, 4);
-        tl.fromTo(outro, { opacity: 0 }, { opacity: 1, duration: 1.0, ease: "none" }, 4);
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines["tier-2-multi-scene"] = tl;
+        const tl = anime.createTimeline({ autoplay: false });
+        tl.add("#scene-1", { opacity: 1, duration: 0 }, 0);
+        tl.add(".title", { scale: 1, duration: 700, ease: "outBack(1.4)" }, 0);
+        tl.add("#scene-1", { opacity: 0, duration: 0 }, 2000);
+        tl.add("#scene-2", { opacity: 1, duration: 0 }, 2000);
+        tl.add(".square", { opacity: 1, duration: 500, ease: "linear" }, 2000);
+        tl.add(".square", { scale: 1, duration: 2000, ease: "linear" }, 2000);
+        tl.add("#scene-2", { opacity: 0, duration: 0 }, 4000);
+        tl.add("#scene-3", { opacity: 1, duration: 0 }, 4000);
+        tl.add(".outro", { opacity: [0, 1], duration: 1000, ease: "linear" }, 4000);
+        hyperframesAnime.register("tier-2-multi-scene", tl);
       </script>
     </div>
   </body>
