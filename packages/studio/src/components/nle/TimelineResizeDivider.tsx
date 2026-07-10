@@ -73,6 +73,9 @@ export function TimelineResizeDivider({
   );
 
   return (
+    // Horizontal resize divider: 1px visible seam (h-px), 8px pointer-capture
+    // zone via the absolutely-positioned inner hit area so the layout gap stays
+    // at 1px while draggability is preserved over the full 8px band.
     <div
       role="separator"
       aria-orientation="horizontal"
@@ -83,7 +86,7 @@ export function TimelineResizeDivider({
         (containerRef.current?.getBoundingClientRect().height ?? 600) - MIN_PREVIEW_H,
       )}
       tabIndex={0}
-      className="group h-2 flex-shrink-0 cursor-row-resize flex items-center justify-center z-10 outline-none focus-visible:bg-studio-accent/20"
+      className="group relative h-px flex-shrink-0 cursor-row-resize z-10 outline-none focus-visible:bg-studio-accent/20"
       style={{ touchAction: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -91,9 +94,9 @@ export function TimelineResizeDivider({
       onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
     >
-      {/* Invisible at rest — the shell gap alone separates the rows. A subtle
-          wash appears only on hover/drag/focus so the resize affordance is
-          discoverable without drawing a permanent hairline. */}
+      {/* Expanded hit zone: 8px tall, centered on the 1px seam */}
+      <div className="absolute inset-x-0 -top-[3.5px] h-2" />
+      {/* Visible hairline — invisible at rest, subtle wash on hover/drag/focus */}
       <div className="h-px w-full bg-transparent transition-colors group-hover:bg-white/12 group-active:bg-white/18 group-focus-visible:bg-studio-accent/60" />
     </div>
   );
