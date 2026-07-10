@@ -31,7 +31,8 @@ export interface UseTimelineEditingOptions {
   activeCompPath: string | null;
   timelineElements: TimelineElement[];
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
+  observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: MutableRefObject<number>;
   reloadPreview: () => void;

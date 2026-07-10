@@ -262,7 +262,7 @@ export interface PersistTimelineEditInput {
   activeCompPath: string | null;
   label: string;
   buildPatches: (original: string, target: PatchTarget) => string;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
@@ -308,7 +308,7 @@ export interface PersistTimelineBatchEditInput {
   activeCompPath: string | null;
   label: string;
   changes: PersistTimelineBatchChange[];
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;

@@ -46,7 +46,7 @@ export interface UseDomEditCommitsParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   queueDomEditSave: <T>(save: () => Promise<T>) => Promise<T>;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   fileTree: string[];
@@ -245,7 +245,7 @@ export function useDomEditCommits({
         const preparedContent = options.prepareContent(patchedContent, targetPath);
         if (preparedContent !== patchedContent) {
           try {
-            await writeProjectFile(targetPath, preparedContent);
+            await writeProjectFile(targetPath, preparedContent, patchedContent);
             finalContent = preparedContent;
           } catch (error) {
             // The patch above already landed on disk — only the prepareContent

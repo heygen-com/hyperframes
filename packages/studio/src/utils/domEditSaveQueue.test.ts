@@ -114,4 +114,23 @@ describe("dom edit save queue", () => {
     expect(onOpen).not.toHaveBeenCalled();
     queue.destroy();
   });
+
+  it("pauses immediately on a file conflict instead of retrying stale work", async () => {
+    const onOpen = vi.fn();
+    const queue = createDomEditSaveQueue({ failureThreshold: 5, onOpen });
+
+    await expect(
+      queue.enqueue(async () => {
+        throw new StudioSaveHttpError("File changed elsewhere", 409);
+      }),
+    ).rejects.toThrow("File changed elsewhere");
+
+    expect(onOpen).toHaveBeenCalledWith({
+      consecutiveFailures: 1,
+      errorMessage: "File changed elsewhere",
+      statusCode: 409,
+    });
+    await expect(queue.enqueue(async () => {})).rejects.toThrow("Auto-save is paused");
+    queue.destroy();
+  });
 });

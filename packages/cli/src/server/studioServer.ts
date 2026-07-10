@@ -24,6 +24,7 @@ import {
   createStudioApi,
   createProjectSignature,
   createBackgroundRemovalJob,
+  consumeFileWriteReceipt,
   getMimeType,
   type StudioApiAdapter,
   type ResolvedProject,
@@ -637,7 +638,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/api/events", (c) => {
     return streamSSE(c, async (stream) => {
       const listener = (path: string) => {
-        stream.writeSSE({ event: "file-change", data: JSON.stringify({ path }) }).catch(() => {});
+        const receipt = consumeFileWriteReceipt(resolve(projectDir, path));
+        stream
+          .writeSSE({ event: "file-change", data: JSON.stringify(receipt ?? { path }) })
+          .catch(() => {});
       };
       watcher.addListener(listener);
       while (true) {

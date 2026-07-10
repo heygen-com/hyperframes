@@ -14,13 +14,15 @@ export interface RecordEditInput {
 export interface DomEditCommitBaseParams {
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: ProjectFileWriter;
   domEditSaveTimestampRef: MutableRefObject<number>;
   editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
   projectIdRef: MutableRefObject<string | null>;
   reloadPreview: () => void;
   clearDomSelection: () => void;
 }
+
+type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
@@ -30,7 +32,7 @@ interface SaveProjectFilesWithHistoryInput {
   coalesceMs?: number;
   files: Record<string, string>;
   readFile: (path: string) => Promise<string>;
-  writeFile: (path: string, content: string) => Promise<void>;
+  writeFile: ProjectFileWriter;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
 }
 
@@ -71,7 +73,7 @@ export async function saveProjectFilesWithHistory({
     const writtenPaths: string[] = [];
     try {
       for (const path of changedPaths) {
-        await writeFile(path, snapshots[path].after);
+        await writeFile(path, snapshots[path].after, snapshots[path].before);
         writtenPaths.push(path);
       }
 
@@ -79,7 +81,7 @@ export async function saveProjectFilesWithHistory({
     } catch (error) {
       try {
         for (const path of writtenPaths.reverse()) {
-          await writeFile(path, snapshots[path].before);
+          await writeFile(path, snapshots[path].before, snapshots[path].after);
         }
       } catch (rollbackError) {
         throw new AggregateError(

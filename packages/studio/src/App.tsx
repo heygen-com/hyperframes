@@ -64,7 +64,6 @@ import {
 } from "./utils/studioUrlState";
 import { trackStudioSessionStart } from "./telemetry/events";
 import { hasFiredSessionStart, markSessionStartFired } from "./telemetry/config";
-
 type CanvasRect = { left: number; top: number; width: number; height: number };
 // fallow-ignore-next-line complexity
 export function StudioApp() {
@@ -166,6 +165,7 @@ export function StudioApp() {
     timelineElements,
     showToast,
     writeProjectFile: fileManager.writeProjectFile,
+    observeProjectFileVersion: fileManager.observeProjectFileVersion,
     recordEdit: editHistory.recordEdit,
     domEditSaveTimestampRef,
     reloadPreview,

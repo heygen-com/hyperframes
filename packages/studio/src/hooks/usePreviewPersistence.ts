@@ -133,7 +133,10 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message = "Auto-save is paused. Check your connection.";
+        const message =
+          event.statusCode === 409
+            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+            : "Auto-save is paused. Check your connection.";
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
         trackStudioEvent("save_queue_paused", {

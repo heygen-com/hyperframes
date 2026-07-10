@@ -37,7 +37,7 @@ export interface CutoverDeps {
    * Must be bound to one project. Its identity plus path scopes the shared
    * mutation queue used by every whole-file writer in that project.
    */
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   reloadPreview: () => void;
   domEditSaveTimestampRef: MutableRefObject<number>;
   refresh?: (after: string) => void;
@@ -148,13 +148,14 @@ function isCutoverResult(value: CandidateEdit | CutoverResult): value is Cutover
 async function rollbackWrite(
   targetPath: string,
   originalContent: string,
+  expectedCurrentContent: string,
   deps: CutoverDeps,
   cause: Error,
 ): Promise<Error> {
   try {
     deps.domEditSaveTimestampRef.current = Date.now();
     markSelfWrite(targetPath, originalContent);
-    await deps.writeProjectFile(targetPath, originalContent);
+    await deps.writeProjectFile(targetPath, originalContent, expectedCurrentContent);
     return cause;
   } catch (rollbackError) {
     return new AggregateError(
@@ -174,7 +175,7 @@ async function writeAndRecord(
   deps.domEditSaveTimestampRef.current = Date.now();
   markSelfWrite(targetPath, after);
   try {
-    await deps.writeProjectFile(targetPath, after);
+    await deps.writeProjectFile(targetPath, after, originalContent);
   } catch (error) {
     return asCutoverError(error);
   }
@@ -188,7 +189,7 @@ async function writeAndRecord(
     });
     return null;
   } catch (error) {
-    return rollbackWrite(targetPath, originalContent, deps, asCutoverError(error));
+    return rollbackWrite(targetPath, originalContent, after, deps, asCutoverError(error));
   }
 }
 

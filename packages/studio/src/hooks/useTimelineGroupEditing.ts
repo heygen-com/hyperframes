@@ -60,7 +60,7 @@ interface UseTimelineGroupEditingOptions {
   sdkSession?: Composition | null;
   publishSdkSession?: PublishSdkSession;
   showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
+  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
 }
 
 function targetPathFor(element: TimelineElement, activeCompPath: string | null): string {

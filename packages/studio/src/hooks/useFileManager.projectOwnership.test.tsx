@@ -42,10 +42,10 @@ describe("useFileManager project ownership", () => {
       if (!init?.method) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ content: "PROJECT_B" }),
+          json: async () => ({ content: "PROJECT_B", version: "b-v1" }),
         } as Response);
       }
-      return Promise.resolve({ ok: true } as Response);
+      return Promise.resolve({ ok: true, json: async () => ({ version: "a-v2" }) } as Response);
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -74,7 +74,7 @@ describe("useFileManager project ownership", () => {
 
     resolveProjectARead?.({
       ok: true,
-      json: async () => ({ content: "PROJECT_A" }),
+      json: async () => ({ content: "PROJECT_A", version: "a-v1" }),
     } as Response);
     await expect(delayedRead).resolves.toBe("PROJECT_A");
     await managerA.writeProjectFile("index.html", "A_AFTER");

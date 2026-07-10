@@ -59,7 +59,8 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
       return result;
     } catch (error) {
       consecutiveFailures += 1;
-      if (consecutiveFailures >= failureThreshold) open(error);
+      if (getStudioSaveStatusCode(error) === 409 || consecutiveFailures >= failureThreshold)
+        open(error);
       throw error;
     }
   };

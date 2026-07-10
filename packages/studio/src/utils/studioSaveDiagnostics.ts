@@ -35,6 +35,27 @@ export class StudioSaveNetworkError extends Error {
   }
 }
 
+export class StudioFileConflictError extends StudioSaveHttpError {
+  readonly filePath: string;
+  readonly currentVersion: string | null;
+  readonly currentContent: string | null;
+  readonly attemptedContent: string;
+
+  constructor(input: {
+    filePath: string;
+    currentVersion: string | null;
+    currentContent: string | null;
+    attemptedContent: string;
+  }) {
+    super(`Save conflict: ${input.filePath} changed outside this Studio session`, 409);
+    this.name = "StudioFileConflictError";
+    this.filePath = input.filePath;
+    this.currentVersion = input.currentVersion;
+    this.currentContent = input.currentContent;
+    this.attemptedContent = input.attemptedContent;
+  }
+}
+
 function readNumericProperty(value: object, key: string): number | undefined {
   const record = value as Record<string, unknown>;
   const property = record[key];
