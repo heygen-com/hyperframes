@@ -529,14 +529,18 @@ export function trackRenderFeedback(props: {
   renderDurationMs?: number;
   comment?: string;
   doctorSummary?: string;
-}): void {
+  feedbackId?: string;
+}): string {
+  const feedbackId = props.feedbackId ?? globalThis.crypto.randomUUID();
   trackEvent("survey sent", {
     $survey_id: "render_satisfaction",
     $survey_response: props.rating,
+    feedback_id: feedbackId,
     ...(props.comment ? { $survey_response_2: props.comment } : {}),
     ...(props.renderDurationMs !== undefined ? { render_duration_ms: props.renderDurationMs } : {}),
     ...(props.doctorSummary ? { doctor_summary: props.doctorSummary } : {}),
   });
+  return feedbackId;
 }
 
 export function trackCommandResult(props: {

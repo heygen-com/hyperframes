@@ -140,6 +140,30 @@ describe("trackRenderFeedback", () => {
       expect.objectContaining({ render_duration_ms: 6000 }),
     );
   });
+
+  it("uses an injected feedback id for deterministic correlation", () => {
+    expect(trackRenderFeedback({ rating: 5, feedbackId: "feedback-test-123" })).toBe(
+      "feedback-test-123",
+    );
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "survey sent",
+      expect.objectContaining({ feedback_id: "feedback-test-123" }),
+    );
+  });
+
+  it("generates a submission-scoped UUID when no id is injected", () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "generated-feedback-id" as `${string}-${string}-${string}-${string}-${string}`,
+    );
+
+    expect(trackRenderFeedback({ rating: 4 })).toBe("generated-feedback-id");
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "survey sent",
+      expect.objectContaining({ feedback_id: "generated-feedback-id" }),
+    );
+  });
 });
 
 describe("trackCliError", () => {

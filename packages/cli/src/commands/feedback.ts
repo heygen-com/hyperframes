@@ -162,12 +162,12 @@ export default defineCommand({
 
     // The standalone command runs separately from `render`, so it has no real
     // elapsed time to report. Omit it rather than recording a fake duration.
-    trackRenderFeedback({ rating, comment, doctorSummary });
+    const feedbackId = trackRenderFeedback({ rating, comment, doctorSummary });
 
     await flush();
     // Ack first so the user isn't kept waiting on the best-effort forward (which
     // is bounded to a few seconds and never surfaces an error either way).
-    console.log(c.dim("Thanks for the feedback!"));
+    console.log(c.dim(`Thanks for the feedback! (Feedback ID: ${feedbackId})`));
     await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
 
     if (args["file-issue"] === true) {
