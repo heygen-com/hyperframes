@@ -166,7 +166,13 @@
         var totalWordDur = words.length * stepDur;
 
         function applyMorph(T) {
-          var t = T % totalWordDur;
+          // anime.js's registration-time priming dance (seek to the end, then
+          // back to 0) can hand this onUpdate callback a T that is a hair
+          // below 0 (floating-point rounding on the return seek), and JS's `%`
+          // keeps the sign of its left operand -- a tiny negative T here would
+          // floor to stepIdx -1 and silently land on the LAST word instead of
+          // the first. Normalize into [0, totalWordDur) before deriving the step.
+          var t = ((T % totalWordDur) + totalWordDur) % totalWordDur;
           var stepIdx = Math.floor(t / stepDur);
           var stepT = t - stepIdx * stepDur;
           var frac = Math.min(stepT / morphSpeed, 1);
@@ -234,6 +240,17 @@
         tl.seek(0);
 
         hyperframesAnime.register("morph-text", tl, {});
+
+        // hyperframesAnime.register() primes every timeline by seeking to its
+        // end and back to 0 so anime.js engages children added at position >
+        // 0 (see runtime/adapters/animejs.ts). Here `duration` (15s) is not an
+        // exact multiple of totalWordDur (words.length * stepDur = 12.5s), so
+        // the priming seek to the end lands mid-word (T=15 -> stepIdx 1, not
+        // 0) and drives this onUpdate's manual DOM writes; unlike a tracked
+        // CSS property, anime.js has nothing to "restore" here on the return
+        // seek to 0, so the mid-word text can stick. Re-assert the true t=0
+        // state explicitly, after priming, as a deterministic source of truth.
+        applyMorph(0);
       })();
     </script>
   </body>
