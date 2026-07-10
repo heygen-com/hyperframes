@@ -11,7 +11,6 @@ import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { beginDragSession, endDragSession } from "../../utils/dragSession";
 export interface BlockPreviewInfo {
   videoUrl?: string;
   posterUrl?: string;
@@ -390,16 +389,8 @@ function BlockCard({
         e.dataTransfer.effectAllowed = "copy";
         e.dataTransfer.setData(TIMELINE_BLOCK_MIME, JSON.stringify({ name }));
         e.dataTransfer.setData("text/plain", name);
-        beginDragSession({
-          source: "block",
-          blockName: name,
-          kind: "block",
-          durationSec: duration ?? null,
-          label: title,
-        });
         handleLeave(); // cancel the hover-preview timer so it doesn't fire mid-drag
       }}
-      onDragEnd={endDragSession}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >

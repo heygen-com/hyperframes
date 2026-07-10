@@ -523,7 +523,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
       // Anchored corner resize (NW/NE/SW) also moved the element to keep the
-      // opposite corner fixed. Land the size AND the anchor offset in a SINGLE
+      // center planted. Land the size AND the anchor offset in a SINGLE
       // box-size commit (one persist, one undo entry). The prior two-commit
       // sequence re-stamped the element from source after the size-only persist
       // but before the offset persist landed — that one frame (new size, old

@@ -1,38 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  decomposeMatrix2D,
   resolveCenterResizeScale,
   resolveCenterResizeSize,
   resolveRotatedResizeCursor,
 } from "./domEditResizeLocal";
 
 const DEG = Math.PI / 180;
-
-describe("decomposeMatrix2D", () => {
-  it("recovers rotation and scale from a rotation+scale matrix", () => {
-    // rotate 30deg then scale 2x,3y: matrix = R(30) * S(2,3)
-    const t = 30 * DEG;
-    const cos = Math.cos(t);
-    const sin = Math.sin(t);
-    const m = { a: cos * 2, b: sin * 2, c: -sin * 3, d: cos * 3 };
-    const out = decomposeMatrix2D(m);
-    expect(out.rotation).toBeCloseTo(t, 6);
-    expect(out.scaleX).toBeCloseTo(2, 6);
-    expect(out.scaleY).toBeCloseTo(3, 6);
-  });
-
-  it("returns identity for a NaN-poisoned matrix (no NaN out)", () => {
-    const out = decomposeMatrix2D({ a: NaN, b: NaN, c: NaN, d: NaN });
-    expect(Number.isFinite(out.rotation)).toBe(true);
-    expect(Number.isFinite(out.scaleX)).toBe(true);
-    expect(Number.isFinite(out.scaleY)).toBe(true);
-  });
-
-  it("detects a vertical flip via the determinant sign", () => {
-    const out = decomposeMatrix2D({ a: 1, b: 0, c: 0, d: -1 });
-    expect(out.scaleY).toBeLessThan(0);
-  });
-});
 
 describe("resolveCenterResizeScale — radial distance from the center", () => {
   it("scale is the ratio of pointer-to-center distances", () => {

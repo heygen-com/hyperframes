@@ -47,8 +47,8 @@ export {
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
 // Corner resize handles, Canva-style: one per corner, diagonal cursors.
-// Non-SE corners anchor the opposite corner by translating the element, so
-// they need the manual-offset capability in addition to manual-size.
+// Corners scale about the element center; the translate keeps the center
+// planted, so they need the manual-offset capability in addition to manual-size.
 const RESIZE_HANDLE_DEFS: Array<{
   handle: ResizeHandle;
   cursor: string;

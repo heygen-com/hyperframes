@@ -6,7 +6,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
-import { beginDragSession, endDragSession } from "../../utils/dragSession";
 import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
@@ -145,15 +144,7 @@ export function AssetCard({
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
           e.dataTransfer.setData("text/plain", asset);
-          beginDragSession({
-            source: "asset",
-            path: asset,
-            kind: isVideo ? "video" : "image",
-            durationSec: duration ?? null,
-            label: name,
-          });
         }}
-        onDragEnd={endDragSession}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });
@@ -275,15 +266,7 @@ export function FontRow({
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
           e.dataTransfer.setData("text/plain", asset);
-          beginDragSession({
-            source: "asset",
-            path: asset,
-            kind: "image",
-            durationSec: null,
-            label: name,
-          });
         }}
-        onDragEnd={endDragSession}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY });

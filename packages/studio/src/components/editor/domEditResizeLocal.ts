@@ -80,30 +80,6 @@ export function resolveCenterResizeSize(input: {
 }
 
 /**
- * Decompose a 2D transform matrix into rotation (radians) and per-axis scale.
- * `atan2(b, a)` recovers the rotation; `hypot` recovers the scales. Skew is
- * ignored (treated as 0) but the guards below keep the result finite. Matches the
- * CSS `matrix(a, b, c, d, e, f)` element order.
- */
-export function decomposeMatrix2D(m: { a: number; b: number; c: number; d: number }): {
-  rotation: number;
-  scaleX: number;
-  scaleY: number;
-} {
-  const a = Number.isFinite(m.a) ? m.a : 1;
-  const b = Number.isFinite(m.b) ? m.b : 0;
-  const c = Number.isFinite(m.c) ? m.c : 0;
-  const d = Number.isFinite(m.d) ? m.d : 1;
-  const scaleX = Math.hypot(a, b) || 1;
-  // Signed Y scale: the determinant sign catches a vertical flip.
-  const det = a * d - b * c;
-  const rawScaleY = Math.hypot(c, d) || 1;
-  const scaleY = det < 0 ? -rawScaleY : rawScaleY;
-  const rotation = Math.atan2(b, a);
-  return { rotation, scaleX, scaleY };
-}
-
-/**
  * The eight CSS resize cursors, rotated with the object. A corner's base pointing
  * direction (the diagonal it lives on) plus the element rotation, bucketed into
  * 45° slots. So a 90°-rotated NW corner reads as a NE-diagonal cursor, etc.

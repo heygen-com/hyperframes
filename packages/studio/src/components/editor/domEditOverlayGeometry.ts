@@ -203,11 +203,10 @@ export function overlayCornersCentroid(corners: Record<FixedCorner, { x: number;
 /**
  * The element's border-box corners in OVERLAY coordinates, honoring its live
  * transform (rotation/skew/scale) — NOT the axis-aligned getBoundingClientRect.
- * A rotated element's four visual corners are the transformed local box corners;
- * anchoring a corner-resize off the AABB (BCR) width/height only holds the
- * opposite corner still when the element is unrotated. Uses the same
- * iframe→overlay root scale as toOverlayRect so the returned points share that
- * function's coordinate space. Returns null when the geometry is unmeasurable.
+ * A rotated element's four visual corners are the transformed local box corners.
+ * Uses the same iframe→overlay root scale as toOverlayRect so the returned
+ * points share that function's coordinate space. Returns null when the
+ * geometry is unmeasurable.
  */
 export function elementCornerOverlayPoints(
   overlayEl: HTMLDivElement,
