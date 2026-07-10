@@ -156,6 +156,24 @@ const STROKE_STYLES = {
   "border-color": "rgba(255,255,255,.12)",
 };
 
+function getMetricFieldInput(host: HTMLElement, label: string): HTMLInputElement {
+  const spans = Array.from(host.querySelectorAll("span")).filter((el) => el.textContent === label);
+  for (const span of spans) {
+    const input = span.parentElement?.querySelector<HTMLInputElement>("input");
+    if (input) return input;
+  }
+  throw new Error(`expected a metric field input for "${label}"`);
+}
+
+function setInputValue(input: HTMLInputElement, nextValue: string) {
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  nativeInputValueSetter?.call(input, nextValue);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 describe("FlatStyleSection — Stroke and Radius", () => {
   it("renders the combined stroke row and commits width+style together on blur", () => {
     const { host, root } = renderSection(STROKE_STYLES);
@@ -172,18 +190,74 @@ describe("FlatStyleSection — Stroke and Radius", () => {
     act(() => root.unmount());
   });
 
-  it("renders a single Radius value with a Linked indicator when corners are uniform", () => {
-    const { host, root } = renderSection({ "border-radius": "12px" });
-    expect(host.textContent).toContain("Radius");
-    expect(getFlatRowInput(host, "Radius").value).toBe("12px");
-    expect(host.textContent).toContain("Linked");
+  it("clamps an out-of-range stroke width commit to 200px (fix 2)", async () => {
+    const { host, root, onSetStyle } = renderSection(STROKE_STYLES);
+    await commitFlatRowInput(host, "Stroke", "9999px solid");
+    expect(onSetStyle).toHaveBeenCalledWith("border-width", "200px");
     act(() => root.unmount());
   });
 
-  it("commits the radius row's new value to border-radius on blur when corners are uniform", async () => {
+  it("rejects a stroke commit whose style token is not a valid border-style (fix 2)", async () => {
+    const { host, root, onSetStyle } = renderSection(STROKE_STYLES);
+    await commitFlatRowInput(host, "Stroke", "12px bogus");
+    expect(onSetStyle).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("commits a stroke style change through the discoverable Stroke style select (fix 2)", () => {
+    const { host, root, onSetStyle } = renderSection(STROKE_STYLES);
+    changeFlatSelectRow(host, "Stroke style", "dashed");
+    expect(onSetStyle).toHaveBeenCalledWith("border-style", "dashed");
+    act(() => root.unmount());
+  });
+
+  it("commits a new stroke color through the flat ColorField (fix 1)", () => {
+    const { host, root, onSetStyle } = renderSection({
+      "border-width": "1px",
+      "border-style": "solid",
+      "border-color": "rgb(10, 20, 30)",
+    });
+    const trigger = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('[data-flat-color-trigger="true"]'),
+    ).find((btn) => btn.getAttribute("aria-label") === "Pick stroke color color");
+    if (!trigger) throw new Error("expected the stroke color trigger");
+    act(() => trigger.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const hexInput = Array.from(document.querySelectorAll<HTMLInputElement>("input")).find(
+      (input) => !host.contains(input),
+    );
+    if (!hexInput) throw new Error("expected the color picker's hex input");
+    act(() => setInputValue(hexInput, "#112233"));
+    expect(onSetStyle).toHaveBeenCalledWith("border-color", "rgb(17, 34, 51)");
+    act(() => root.unmount());
+  });
+
+  it("uses BorderRadiusEditor for radius, linked by default, even when corners are uniform (fix 3)", () => {
+    const { host, root } = renderSection({ "border-radius": "12px" });
+    const unlinkButton = host.querySelector<HTMLButtonElement>('button[title="Unlink corners"]');
+    expect(unlinkButton).not.toBeNull();
+    expect(getMetricFieldInput(host, "All").value).toBe("12");
+    act(() => root.unmount());
+  });
+
+  it("commits a uniform radius value through BorderRadiusEditor's linked All field", () => {
     const { host, root, onSetStyle } = renderSection({ "border-radius": "12px" });
-    await commitFlatRowInput(host, "Radius", "20px");
+    const allInput = getMetricFieldInput(host, "All");
+    act(() => setInputValue(allInput, "20"));
+    act(() => allInput.dispatchEvent(new Event("focusout", { bubbles: true })));
     expect(onSetStyle).toHaveBeenCalledWith("border-radius", "20px");
+    act(() => root.unmount());
+  });
+
+  it("commits a single-corner radius update after unlinking a uniform radius (fix 3)", () => {
+    const { host, root, onSetStyle } = renderSection({ "border-radius": "12px" });
+    const unlinkButton = host.querySelector<HTMLButtonElement>('button[title="Unlink corners"]');
+    if (!unlinkButton) throw new Error("expected the unlink toggle button");
+    act(() => unlinkButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const trInput = getMetricFieldInput(host, "TR");
+    act(() => setInputValue(trInput, "18"));
+    act(() => trInput.dispatchEvent(new Event("focusout", { bubbles: true })));
+    expect(onSetStyle).toHaveBeenCalledWith("border-top-right-radius", "18px");
+    expect(onSetStyle).not.toHaveBeenCalledWith("border-radius", expect.anything());
     act(() => root.unmount());
   });
 
@@ -199,14 +273,7 @@ describe("FlatStyleSection — Stroke and Radius", () => {
       (el) => el.value === "12",
     );
     if (!trInput) throw new Error("expected the TR corner input");
-    act(() => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      )?.set;
-      nativeInputValueSetter?.call(trInput, "18");
-      trInput.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    act(() => setInputValue(trInput, "18"));
     act(() => {
       trInput.dispatchEvent(new Event("focusout", { bubbles: true }));
     });
@@ -470,6 +537,25 @@ describe("FlatStyleSection — Overflow and Mask", () => {
     const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
     await commitInsetSideInput(host, "B", "5");
     expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(8px 8px 5px 8px round 4px)");
+    act(() => root.unmount());
+  });
+
+  it("renders a uniform Mask inset slider and commits clip-path via buildInsetClipPathValue (fix 4)", () => {
+    const { host, root, onSetStyle } = renderSection({ "clip-path": "inset(8px round 4px)" });
+    expect(host.textContent).toContain("Mask inset");
+    const tracks = host.querySelectorAll('[data-flat-slider-track="true"]');
+    // Track order: Layer blur, Backdrop, Mask inset, Opacity.
+    const maskInsetTrack = tracks[2];
+    Object.defineProperty(maskInsetTrack, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+    });
+    act(() => {
+      maskInsetTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+    });
+    // clipInsetValue=8 -> max=Math.max(120, 8)=120; clientX=50 of width 100 -> ratio 0.5 -> 60px.
+    // border-radius is unset here, so the clip-path's own `round 4px` is not reused — radiusValue
+    // (read from the `border-radius` style, matching legacy) is 0.
+    expect(onSetStyle).toHaveBeenCalledWith("clip-path", "inset(60px round 0px)");
     act(() => root.unmount());
   });
 });

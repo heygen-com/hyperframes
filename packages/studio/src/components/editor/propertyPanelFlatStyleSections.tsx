@@ -2,13 +2,17 @@
 import { useEffect, useState } from "react";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import { buildDefaultGradientModel, serializeGradient } from "./gradientValue";
-import { Link as LinkIcon } from "../../icons/SystemIcons";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
-import { formatStrokeSummary, parseStrokeSummary } from "./propertyPanelFlatStyleHelpers";
+import {
+  formatStrokeSummary,
+  parseStrokeSummary,
+  STROKE_STYLE_OPTIONS,
+} from "./propertyPanelFlatStyleHelpers";
 import {
   buildBoxShadowPresetValue,
   buildClipPathValue,
   buildInsetClipPathSides,
+  buildInsetClipPathValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
   extractBackgroundImageUrl,
@@ -170,37 +174,65 @@ function FlatStrokeRow({
   );
 
   return (
-    <FlatRow
-      label="Stroke"
-      value={summary}
-      tier={tier}
-      disabled={disabled}
-      onCommit={async (next) => {
-        const parsed = parseStrokeSummary(next);
-        if (!parsed) return;
-        for (const [property, value] of buildStrokeWidthStyleUpdates(
-          formatPxMetricValue(parsed.widthPx),
-          parsed.style,
-        )) {
-          await onSetStyle(property, value);
+    <>
+      <FlatRow
+        label="Stroke"
+        value={summary}
+        tier={tier}
+        disabled={disabled}
+        onCommit={async (next) => {
+          const parsed = parseStrokeSummary(next);
+          if (!parsed) return;
+          if (!STROKE_STYLE_OPTIONS.includes(parsed.style)) return;
+          const normalizedWidth = normalizePanelPxValue(`${parsed.widthPx}px`, {
+            min: 0,
+            max: 200,
+            fallback: borderWidthValue,
+          });
+          if (!normalizedWidth) return;
+          for (const [property, value] of buildStrokeWidthStyleUpdates(
+            normalizedWidth,
+            parsed.style,
+          )) {
+            await onSetStyle(property, value);
+          }
+          for (const [property, value] of buildStrokeStyleUpdates(parsed.style, normalizedWidth)) {
+            await onSetStyle(property, value);
+          }
+        }}
+        suffix={
+          <>
+            <span
+              className="h-4 w-4 flex-shrink-0 rounded border border-panel-border-input"
+              style={{ backgroundColor: borderColorValue }}
+            />
+            <span className="font-mono text-[10px] text-panel-text-3">{borderColorValue}</span>
+          </>
         }
-        for (const [property, value] of buildStrokeStyleUpdates(
-          parsed.style,
-          formatPxMetricValue(parsed.widthPx),
-        )) {
-          await onSetStyle(property, value);
-        }
-      }}
-      suffix={
-        <>
-          <span
-            className="h-4 w-4 flex-shrink-0 rounded border border-panel-border-input"
-            style={{ backgroundColor: borderColorValue }}
-          />
-          <span className="font-mono text-[10px] text-panel-text-3">{borderColorValue}</span>
-        </>
-      }
-    />
+      />
+      <FlatSelectRow
+        label="Stroke style"
+        value={borderStyleValue}
+        options={STROKE_STYLE_OPTIONS}
+        tier={resolveValueTier(styles["border-style"], "none")}
+        disabled={disabled}
+        onChange={async (next) => {
+          for (const [property, value] of buildStrokeStyleUpdates(
+            next,
+            formatPxMetricValue(borderWidthValue),
+          )) {
+            await onSetStyle(property, value);
+          }
+        }}
+      />
+      <ColorField
+        flat
+        label="Stroke color"
+        value={borderColorValue}
+        disabled={disabled}
+        onCommit={(next) => onSetStyle("border-color", next)}
+      />
+    </>
   );
 }
 
@@ -229,7 +261,6 @@ function FlatRadiusRow({
     gsapBorderRadius?.br ?? parseNumericValue(styles["border-bottom-right-radius"]) ?? radiusValue;
   const radiusBL =
     gsapBorderRadius?.bl ?? parseNumericValue(styles["border-bottom-left-radius"]) ?? radiusValue;
-  const uniform = radiusTL === radiusTR && radiusTR === radiusBR && radiusBR === radiusBL;
 
   const commit = (corner: "all" | "tl" | "tr" | "br" | "bl", value: number) => {
     const px = `${formatNumericValue(value)}px`;
@@ -246,41 +277,14 @@ function FlatRadiusRow({
     void onSetStyle(prop, px);
   };
 
-  if (!uniform) {
-    return (
-      <BorderRadiusEditor
-        tl={radiusTL}
-        tr={radiusTR}
-        br={radiusBR}
-        bl={radiusBL}
-        disabled={disabled}
-        onCommit={commit}
-      />
-    );
-  }
-
   return (
-    <FlatRow
-      label="Radius"
-      value={`${formatNumericValue(radiusTL)}px`}
-      tier={resolveValueTier(styles["border-radius"], "0px")}
+    <BorderRadiusEditor
+      tl={radiusTL}
+      tr={radiusTR}
+      br={radiusBR}
+      bl={radiusBL}
       disabled={disabled}
-      onCommit={(next) => {
-        const parsed = parsePxMetricValue(next.endsWith("px") ? next : `${next}px`);
-        if (parsed == null) return;
-        const normalized = normalizePanelPxValue(`${parsed}px`, {
-          min: 0,
-          max: 400,
-          fallback: radiusTL,
-        });
-        commit("all", normalized != null ? (parsePxMetricValue(normalized) ?? radiusTL) : radiusTL);
-      }}
-      suffix={
-        <span className="flex items-center gap-1 text-[10px] text-panel-text-4">
-          <LinkIcon size={10} />
-          Linked
-        </span>
-      }
+      onCommit={commit}
     />
   );
 }
@@ -380,10 +384,7 @@ function FlatBlurSliders({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Flat Overflow + Mask rows (+ inset sides)                          */
-/* ------------------------------------------------------------------ */
-
+// Flat Overflow + Mask rows (+ inset sides).
 function FlatOverflowMaskRows({
   styles,
   disabled,
@@ -395,6 +396,55 @@ function FlatOverflowMaskRows({
 }) {
   const radiusValue = parseNumericValue(styles["border-radius"]) ?? 0;
   const clipPathValue = styles["clip-path"] || "none";
+  const clipPathPreset = inferClipPathPreset(clipPathValue);
+
+  return (
+    <>
+      <FlatSelectRow
+        label="Overflow"
+        value={styles.overflow || "visible"}
+        options={["visible", "hidden", "clip", "auto", "scroll"]}
+        tier={resolveValueTier(styles.overflow, "visible")}
+        disabled={disabled}
+        onChange={(next) => void onSetStyle("overflow", next)}
+        onReset={() => void onSetStyle("overflow", "visible")}
+      />
+      <FlatSelectRow
+        label="Mask"
+        value={clipPathPreset === "custom" ? "none" : clipPathPreset}
+        options={["none", "inset", "circle"]}
+        tier={resolveValueTier(clipPathPreset === "none" ? undefined : clipPathPreset, "none")}
+        disabled={disabled}
+        onChange={(next) => {
+          void onSetStyle(
+            "clip-path",
+            buildClipPathValue(next as "none" | "inset" | "circle", radiusValue, clipPathValue),
+          );
+        }}
+        onReset={() => void onSetStyle("clip-path", "none")}
+      />
+      <FlatMaskInsetRows
+        clipPathValue={clipPathValue}
+        radiusValue={radiusValue}
+        disabled={disabled}
+        onSetStyle={onSetStyle}
+      />
+    </>
+  );
+}
+
+// Flat Mask inset — uniform slider + per-side fields.
+function FlatMaskInsetRows({
+  clipPathValue,
+  radiusValue,
+  disabled,
+  onSetStyle,
+}: {
+  clipPathValue: string;
+  radiusValue: number;
+  disabled: boolean;
+  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+}) {
   const clipPathPreset = inferClipPathPreset(clipPathValue);
   const parsedClipInsets = parseInsetClipPathSides(clipPathValue);
   const clipInsetValue = getClipPathInsetPx(clipPathValue);
@@ -422,28 +472,18 @@ function FlatOverflowMaskRows({
 
   return (
     <>
-      <FlatSelectRow
-        label="Overflow"
-        value={styles.overflow || "visible"}
-        options={["visible", "hidden", "clip", "auto", "scroll"]}
-        tier={resolveValueTier(styles.overflow, "visible")}
+      <FlatSlider
+        label="Mask inset"
+        value={clipInsetValue}
+        min={0}
+        max={Math.max(120, Math.ceil(clipInsetValue))}
+        step={1}
+        tier={clipInsetValue > 0 ? "explicitCustom" : "default"}
+        displayValue={`${formatNumericValue(clipInsetValue)}px`}
         disabled={disabled}
-        onChange={(next) => void onSetStyle("overflow", next)}
-        onReset={() => void onSetStyle("overflow", "visible")}
-      />
-      <FlatSelectRow
-        label="Mask"
-        value={clipPathPreset === "custom" ? "none" : clipPathPreset}
-        options={["none", "inset", "circle"]}
-        tier={resolveValueTier(clipPathPreset === "none" ? undefined : clipPathPreset, "none")}
-        disabled={disabled}
-        onChange={(next) => {
-          void onSetStyle(
-            "clip-path",
-            buildClipPathValue(next as "none" | "inset" | "circle", radiusValue, clipPathValue),
-          );
-        }}
-        onReset={() => void onSetStyle("clip-path", "none")}
+        onCommit={(next) =>
+          void onSetStyle("clip-path", buildInsetClipPathValue(next, radiusValue))
+        }
       />
       {showClipInsetSides && (
         <div className="grid grid-cols-4 gap-2">
