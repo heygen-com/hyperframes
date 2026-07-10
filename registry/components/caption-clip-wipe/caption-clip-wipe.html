@@ -247,17 +247,24 @@
             );
           });
 
+          /* Exit wipe. One staggered multi-target add (delay: anime.stagger(40))
+             makes anime bake a duplicate exit tween node into any word whose
+             reveal overlaps the exit window (last words of a group), with the
+             implicit "from" resolved to the pre-reveal hidden state -- that
+             node clobbers the reveal and the word never appears. A per-word
+             loop with explicit positions produces correctly chained tweens. */
           var wordEls = grp.querySelectorAll(".wp-word");
-          tl.add(
-            wordEls,
-            {
-              clipPath: "inset(0 0% 0 100%)",
-              duration: 250,
-              delay: anime.stagger(40),
-              ease: "inCubic",
-            },
-            toMs(g.end - 0.2),
-          );
+          for (var xi = 0; xi < wordEls.length; xi++) {
+            tl.add(
+              wordEls[xi],
+              {
+                clipPath: "inset(0 0% 0 100%)",
+                duration: 250,
+                ease: "inCubic",
+              },
+              toMs(g.end - 0.2) + xi * 40,
+            );
+          }
           tl.add(
             grp,
             {
