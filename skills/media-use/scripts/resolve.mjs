@@ -169,6 +169,31 @@ if (args.from) {
   process.exit(0);
 }
 
+// Recipes: folder-based named bundles resolved by entity name — no providers,
+// no content hashing (an evolving versioned bundle, not an immutable file).
+// Delegates to lib/recipe-store.mjs the way grade/lut delegate to resolveColor;
+// freeze/list live in scripts/recipe.mjs.
+if (type === "recipe") {
+  const { useRecipe } = await import("./lib/recipe-store.mjs");
+  const name = (entity || intent || "").trim();
+  if (!name) exitError("--type recipe needs --entity <name> (or --intent <name>)", 2);
+  try {
+    const used = useRecipe({ projectDir, name });
+    if (args.json) {
+      console.log(JSON.stringify({ ok: true, ...used }));
+    } else {
+      console.log(
+        `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+      );
+      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
+      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
+    }
+    process.exit(0);
+  } catch (err) {
+    exitError(err.message, 1);
+  }
+}
+
 if (args.params !== undefined) {
   if (type !== "lut" && type !== "grade") {
     exitError(
