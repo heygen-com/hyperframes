@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file
 import { memo, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { resolveGuideLineRect, type SnapGuide, type SpacingGuide } from "./snapEngine";

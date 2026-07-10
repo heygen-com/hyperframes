@@ -52,7 +52,7 @@ function persistMoveEdits(edits: TimelineMoveEdit[], deps: DragCommitDeps): void
  * `trackOrder` (0 = above the top, `length` = below the bottom). normalizeToZones
  * then compacts it to a distinct integer lane between its neighbours.
  */
-export function insertTrackValue(trackOrder: number[], insertRow: number): number {
+function insertTrackValue(trackOrder: number[], insertRow: number): number {
   if (trackOrder.length === 0) return 0;
   if (insertRow <= 0) return trackOrder[0] - 0.5;
   if (insertRow >= trackOrder.length) return trackOrder[trackOrder.length - 1] + 0.5;

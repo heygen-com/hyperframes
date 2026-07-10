@@ -11,7 +11,7 @@
  * front/back operate across all siblings.
  */
 
-export interface SiblingZEntry {
+interface SiblingZEntry {
   element: HTMLElement;
   zIndex: number;
 }
