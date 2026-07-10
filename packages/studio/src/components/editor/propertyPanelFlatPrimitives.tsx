@@ -449,3 +449,47 @@ export function FlatToggle({
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  PinnedGroupRow — always-open pinned group (design_handoff #8a)     */
+/* ------------------------------------------------------------------ */
+
+export function PinnedGroupRow({
+  title,
+  accessory,
+  onUnpin,
+  children,
+}: {
+  title: string;
+  accessory?: ReactNode;
+  onUnpin: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="border-b border-panel-hairline px-4 py-3" data-pinned-group="true">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="flex items-center gap-1.5">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-panel-accent">
+            Pinned
+          </span>
+          <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
+        </span>
+        <span className="flex items-center gap-2.5 text-panel-text-5">
+          {accessory}
+          <button
+            type="button"
+            data-pinned-group-unpin="true"
+            title="Unpin — returns to the stack"
+            onClick={onUnpin}
+            className="text-panel-accent"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
+            </svg>
+          </button>
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
