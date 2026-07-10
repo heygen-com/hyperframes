@@ -57,6 +57,53 @@ interface AssetsTabProps {
 }
 
 /**
+ * Lazily probe a video/audio URL for its duration via a hidden HTMLVideoElement
+ * (`preload="metadata"`). The manifest only covers ~/.media assets, so project
+ * assets in assets/ have no manifest entry — this fills the gap.
+ * Returns `undefined` until the probe completes; `null` if it failed.
+ * Pure side-effect: creates one hidden element per call, cleaned up on unmount.
+ */
+function useProbedDuration(src: string, skip: boolean): number | null | undefined {
+  const [duration, setDuration] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (skip) return;
+    let cancelled = false;
+
+    function probe(attempt: number) {
+      if (cancelled) return;
+      const vid = document.createElement("video");
+      vid.preload = "metadata";
+      vid.muted = true;
+      vid.onloadedmetadata = () => {
+        const d = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : null;
+        if (!cancelled) setDuration(d);
+        vid.onloadedmetadata = null;
+        vid.onerror = null;
+        vid.src = "";
+      };
+      vid.onerror = () => {
+        vid.onloadedmetadata = null;
+        vid.onerror = null;
+        vid.src = "";
+        if (!cancelled) {
+          // Retry once after a short delay — React 18 StrictMode's synchronous
+          // cleanup can abort the first attempt; a second attempt succeeds.
+          if (attempt < 1) setTimeout(() => probe(attempt + 1), 50);
+          else setDuration(null);
+        }
+      };
+      vid.src = src;
+    }
+
+    probe(0);
+    return () => {
+      cancelled = true;
+    };
+  }, [src, skip]);
+  return duration;
+}
+
+/**
  * Thumbnail card for images and video assets. Renders in a 2-col grid.
  * Layout:
  *   - Rounded thumbnail that fills the card; video previews show a poster
@@ -95,7 +142,11 @@ function AssetCard({
   const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
-  const durationLabel = formatDuration(duration ?? 0);
+  // Lazily probe video duration when the manifest didn't supply one.
+  // Skip for images (no duration) and when the manifest already provided it.
+  const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);
+  const resolvedDuration = duration ?? probedDuration ?? undefined;
+  const durationLabel = formatDuration(resolvedDuration ?? 0);
 
   return (
     <>
@@ -317,20 +368,48 @@ export function countUsage(
 /**
  * Project-relative asset paths referenced by composition elements — the set the
  * "in use" badge, used-first sort, and usage filter all key on. Element src is
- * the raw authored value (timelineElementHelpers sets entry.src =
- * getAttribute("src")), so it can be a relative path ("assets/x.png"), a
- * "./"-prefixed path, the served "/api/projects/<id>/preview/assets/x.png" form,
- * or carry a ?query — normalize all of them to the bare project path so they
- * match the asset-list entries. Pure — unit-tested.
+ * populated from the core runtime's `resolveNodeAssetUrl` which calls
+ * `new URL(raw, document.baseURI).toString()`, turning authored relative paths
+ * into fully-absolute URLs with percent-encoded characters, e.g.
+ *   "assets/my file (1).mp4"
+ *   → "http://localhost:3012/api/projects/demo/preview/assets/my%20file%20(1).mp4"
+ *
+ * This function normalizes every src shape to the bare project-relative path so
+ * it matches the asset-list entries:
+ *   - Absolute URL  → strip origin + /api/projects/<id>/preview/ prefix, decode %XX
+ *   - Server-relative /api/…preview/… → same strip + decode
+ *   - Relative "./"-prefixed or bare → strip leading ./ or /
+ *   - ?query / #hash → dropped
+ *
+ * Pure — unit-tested.
  */
 export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> {
   const paths = new Set<string>();
   for (const el of elements) {
     if (!el.src) continue;
-    const s = el.src
+    let s = el.src;
+
+    // Strip absolute origin if present (http://host/path → /path)
+    try {
+      const u = new URL(s);
+      s = u.pathname + (u.search ? u.search : "") + (u.hash ? u.hash : "");
+    } catch {
+      // Not a valid absolute URL — leave as-is (relative path)
+    }
+
+    s = s
       .replace(/^\/api\/projects\/[^/]+\/preview\//, "") // strip the dev serve prefix
       .replace(/^\.?\//, "") // strip leading ./ or /
       .split(/[?#]/)[0]; // drop query / hash
+
+    // Decode percent-encoded characters (spaces, parens, etc.) so the path
+    // matches the plain-text asset-list entries the server returns.
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      // Malformed encoding — use as-is
+    }
+
     if (s) paths.add(s);
   }
   return paths;

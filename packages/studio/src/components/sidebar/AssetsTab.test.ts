@@ -53,6 +53,39 @@ describe("deriveUsedPaths", () => {
       "assets/logo.png",
     ]);
   });
+
+  it("handles fully-absolute URLs produced by the core runtime (toAbsoluteAssetUrl)", () => {
+    // The runtime calls new URL(raw, document.baseURI).toString() which produces
+    // "http://localhost:3012/api/projects/demo/preview/assets/clip.mp4"
+    const used = deriveUsedPaths([
+      { src: "http://localhost:3012/api/projects/demo/preview/assets/clip.mp4" },
+      { src: "http://localhost:3012/api/projects/abc123/preview/assets/logo.png" },
+    ]);
+    expect(used.has("assets/clip.mp4")).toBe(true);
+    expect(used.has("assets/logo.png")).toBe(true);
+    expect(used.size).toBe(2);
+  });
+
+  it("decodes percent-encoded filenames (spaces, parens) so they match the asset list", () => {
+    // Files with spaces/parens: "assets/my file (1).mp4" authored in HTML
+    // → runtime resolves to "http://…/assets/my%20file%20(1).mp4"
+    const used = deriveUsedPaths([
+      { src: "http://localhost:3012/api/projects/p/preview/assets/my%20file%20(1).mp4" },
+      { src: "/api/projects/p/preview/assets/track%20one.mp3" },
+    ]);
+    expect(used.has("assets/my file (1).mp4")).toBe(true);
+    expect(used.has("assets/track one.mp3")).toBe(true);
+    expect(used.size).toBe(2);
+  });
+
+  it("round-trips: absolute URL with spaces matches filterByUsage against plain asset list", () => {
+    const used = deriveUsedPaths([
+      { src: "http://localhost:3012/api/projects/demo/preview/assets/my%20video.mp4" },
+    ]);
+    expect(filterByUsage(["assets/my video.mp4", "assets/other.png"], used, "used")).toEqual([
+      "assets/my video.mp4",
+    ]);
+  });
 });
 
 describe("countUsage", () => {
