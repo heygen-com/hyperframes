@@ -31,6 +31,7 @@ import {
   HEYGEN_MIN_VERSION,
   HEYGEN_UPDATE_COMMAND,
   firstSemver,
+  flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
 
@@ -349,6 +350,14 @@ async function run() {
       // generate failed too
     }
   }
+
+  // A search/generate attempt against heygen may have fired a fire-and-forget
+  // media_use_provider_error track (reportHeygenFailure — heygen-search.mjs /
+  // voice-provider.mjs are sync call sites several layers below here and can't
+  // await it themselves). Join it now, before any process.exit() below can
+  // race it: both it and the miss/success telemetry below are separate,
+  // non-keepalive HTTP connections with no ordering guarantee otherwise.
+  await flushHeygenFailureTracking();
 
   if (!searchResult) {
     await track("media_use_resolve_miss", {

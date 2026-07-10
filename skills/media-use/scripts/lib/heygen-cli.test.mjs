@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   classifyHeygenError,
   classifyHeygenErrorCode,
+  flushHeygenFailureTracking,
   HEYGEN_NOT_AUTHENTICATED_MESSAGE,
   HEYGEN_NOT_FOUND_MESSAGE,
   HEYGEN_OUTDATED_MESSAGE,
@@ -222,4 +223,45 @@ test("does not leave rejected tracking promises unhandled", () => {
   assert.equal(child.signal, null);
   assert.equal(child.status, 0, child.stderr);
   assert.equal(child.stderr, "media-use: `heygen asset search` failed: provider unavailable\n");
+});
+
+test("flushHeygenFailureTracking waits for a pending report before resolving", async () => {
+  const events = [];
+  let releaseTrack;
+  const gate = new Promise((resolve) => {
+    releaseTrack = resolve;
+  });
+
+  // Mirrors the real call sites (voice-provider.mjs, heygen-search.mjs):
+  // fire-and-forget, the return value is never awaited by the caller.
+  reportHeygenFailure({ code: "ENOENT" }, "heygen voice speech", () =>
+    gate.then(() => {
+      events.push("track-settled");
+    }),
+  );
+
+  const flushed = flushHeygenFailureTracking().then(() => {
+    events.push("flush-resolved");
+  });
+
+  // Let several pending microtasks drain before releasing the gate, so this
+  // proves flush is genuinely still waiting on the tracked promise -- not
+  // merely that it hasn't had a tick yet.
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(events, [], "flush must not resolve while the tracked promise is still pending");
+
+  releaseTrack();
+  await flushed;
+
+  assert.deepEqual(
+    events,
+    ["track-settled", "flush-resolved"],
+    "flush must resolve only after the pending track settles, in that order",
+  );
+});
+
+test("flushHeygenFailureTracking resolves immediately when nothing is pending", async () => {
+  await flushHeygenFailureTracking();
 });

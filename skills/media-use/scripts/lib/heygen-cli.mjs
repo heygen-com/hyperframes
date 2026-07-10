@@ -82,6 +82,14 @@ function classifyHeygenErrorResult(err) {
   return { code: "other", message: detail };
 }
 
+// reportHeygenFailure's callers (voice-provider.mjs, heygen-search.mjs) are
+// synchronous and several layers below the CLI's process.exit() calls, so
+// they can't await this tracking call themselves. Stash each attempt's
+// promise here so a caller closer to exit (resolve.mjs) can join it first —
+// same "awaited so a short-lived run flushes it" discipline telemetry.mjs's
+// track() already documents, just reachable from a sync call site.
+const pendingFailureTracking = new Set();
+
 export function reportHeygenFailure(err, context, trackEvent = track) {
   const { code, message } = classifyHeygenErrorResult(err);
   if (ACTIONABLE_MESSAGES.has(message)) {
@@ -90,12 +98,25 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
     console.error(`media-use: \`${context}\` failed: ${message}`);
   }
   try {
-    void Promise.resolve(
+    const tracked = Promise.resolve(
       trackEvent("media_use_provider_error", { provider: "heygen", reason: code }),
     ).catch(() => {});
+    pendingFailureTracking.add(tracked);
+    void tracked.finally(() => pendingFailureTracking.delete(tracked));
+    return tracked;
   } catch {
     // Telemetry must never affect the provider failure path.
+    return Promise.resolve();
   }
+}
+
+// Awaits every provider-error track fired since the last flush, so a caller
+// about to process.exit() doesn't orphan one mid-request (both are separate,
+// non-keepalive HTTP connections with no ordering guarantee otherwise).
+// Never rejects: each tracked promise already swallows its own failure.
+export async function flushHeygenFailureTracking() {
+  if (pendingFailureTracking.size === 0) return;
+  await Promise.all(pendingFailureTracking);
 }
 
 export function firstSemver(text) {
