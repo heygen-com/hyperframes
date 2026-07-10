@@ -1294,31 +1294,41 @@
           { time: 9.3, id: "prob-item1" },
           { time: 9.6, id: "prob-item2" }
         ];
-        var probRevealed = [false, false];
 
         var lastActiveId = null;
 
-        function fireEntrance(sceneEl) {
-          var animEls = sceneEl.querySelectorAll("[data-anim]");
-          if (!animEls.length) return;
-          anime.animate(animEls, {
-            opacity: [0, 1],
-            translateY: [28, 0],
-            duration: 400,
-            delay: anime.stagger(70),
-            ease: "outCubic"
-          });
+        // Entrances are computed as a pure function of composition time.
+        // The port originally fired wall-clock anime.animate() calls on
+        // scene entry, but autoplaying animations run on anime's own rAF
+        // engine, which does not advance under the seek-driven render
+        // pipeline -- slides rendered with their content stuck at opacity 0
+        // (or mid-fade). Deriving progress from t keeps the exact same
+        // motion (400ms, 70ms stagger, outCubic; fragments 350ms) and is
+        // deterministic under seeking in both directions.
+        function outCubic(p) {
+          return 1 - Math.pow(1 - p, 3);
+        }
+        function clamp01(v) {
+          return v < 0 ? 0 : v > 1 ? 1 : v;
         }
 
-        function revealProblem(id) {
-          var el = document.getElementById(id);
-          if (!el) return;
-          anime.animate(el, {
-            opacity: [0, 1],
-            translateX: [-24, 0],
-            duration: 350,
-            ease: "outCubic"
-          });
+        function applyEntrance(sceneEl, dt) {
+          var animEls = sceneEl.querySelectorAll("[data-anim]");
+          for (var i = 0; i < animEls.length; i++) {
+            var e = outCubic(clamp01((dt - i * 0.07) / 0.4));
+            animEls[i].style.opacity = e;
+            animEls[i].style.transform = "translateY(" + 28 * (1 - e) + "px)";
+          }
+        }
+
+        function applyProblemFragments(t) {
+          for (var f = 0; f < probFragments.length; f++) {
+            var pEl = document.getElementById(probFragments[f].id);
+            if (!pEl) continue;
+            var e = outCubic(clamp01((t - probFragments[f].time) / 0.35));
+            pEl.style.opacity = e;
+            pEl.style.transform = "translateX(" + -24 * (1 - e) + "px)";
+          }
         }
 
         function updateVisibility(t) {
@@ -1330,30 +1340,17 @@
             el.style.opacity = active ? "1" : "0";
             el.style.pointerEvents = active ? "auto" : "none";
 
-            if (active && lastActiveId !== s.id) {
-              // Update Three.js mood
-              if (window.__threeApplyMood) window.__threeApplyMood(s.sceneKey);
-
-              if (s.id === "scene-problem") {
-                // Reset problem items on re-entry
-                probRevealed = [false, false];
-                probFragments.forEach(function (f) {
-                  var pEl = document.getElementById(f.id);
-                  if (pEl) anime.utils.set(pEl, { opacity: 0, translateX: 0 });
-                });
+            if (active) {
+              if (lastActiveId !== s.id) {
+                // Update Three.js mood
+                if (window.__threeApplyMood) window.__threeApplyMood(s.sceneKey);
+                lastActiveId = s.id;
               }
-              lastActiveId = s.id;
-              fireEntrance(el);
+              applyEntrance(el, t - s.start);
             }
           }
 
-          // Reveal problem fragments
-          for (var f = 0; f < probFragments.length; f++) {
-            if (!probRevealed[f] && t >= probFragments[f].time) {
-              probRevealed[f] = true;
-              revealProblem(probFragments[f].id);
-            }
-          }
+          applyProblemFragments(t);
         }
 
         window.__hfSetTime = updateVisibility;

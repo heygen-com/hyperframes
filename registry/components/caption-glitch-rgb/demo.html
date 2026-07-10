@@ -95,7 +95,12 @@
         display: inline-block;
         letter-spacing: 0.03em;
         line-height: 0.96;
-        text-shadow: 0 5px 18px rgba(0, 0, 0, 0.52);
+        --glitch-off: 0;
+        --glitch-alpha: 0;
+        text-shadow:
+          calc(var(--glitch-off) * 1px) 0 rgba(255, 0, 60, var(--glitch-alpha)),
+          calc(var(--glitch-off) * -1px) 0 rgba(0, 229, 255, var(--glitch-alpha)),
+          0 5px 18px rgba(0, 0, 0, 0.52);
         will-change: transform, text-shadow;
       }
     </style>
@@ -222,6 +227,13 @@
           return { wordStart: ws, wordEnd: we, start: TRANSCRIPT[ws].start, end: end };
         });
 
+        // anime.js v4.5.0 cannot correctly interpolate the multi-layer text-shadow
+        // string directly: tweening between a shorter/differently-shaped shadow
+        // list and the 3-layer red/cyan glitch shadow silently freezes at the
+        // glitch's peak (and can scramble color channels) instead of animating
+        // back. Drive the glitch through two plain numeric CSS custom properties
+        // instead (--glitch-off, --glitch-alpha), which anime.js tweens correctly
+        // like any other number, and let CSS calc() reconstruct the shadow.
         var BASE_FONT = 88;
         var container = document.getElementById("gl-container");
         var tl = anime.createTimeline({ autoplay: false });
@@ -280,7 +292,6 @@
             var rng = mulberry32(wi * 777 + 13);
             var travel = -(8 + rng() * 8);
             var shadowMag = 5 + rng() * 7;
-            var sm = shadowMag.toFixed(1);
             var nextWord = TRANSCRIPT[wi + 1];
             var nextStart = nextWord ? nextWord.start : g.end;
             var aftershockEnd = Math.min(g.end - 0.08, nextStart - 0.04);
@@ -289,8 +300,8 @@
               wordEl,
               {
                 translateX: travel,
-                textShadow:
-                  sm + "px 0 #ff003c, -" + sm + "px 0 #00e5ff, 0 5px 18px rgba(0,0,0,0.52)",
+                "--glitch-off": shadowMag,
+                "--glitch-alpha": 1,
                 duration: toMs(plan.d1),
                 ease: "linear",
               },
@@ -300,7 +311,8 @@
               wordEl,
               {
                 translateX: 0,
-                textShadow: "0 5px 18px rgba(0,0,0,0.52)",
+                "--glitch-off": 0,
+                "--glitch-alpha": 0,
                 duration: toMs(plan.d2),
                 ease: "outQuart",
               },
@@ -312,16 +324,13 @@
               var pulseIndex = 0;
               while (pulseStart + 0.1 < aftershockEnd) {
                 var pulseTravel = -(3 + rng() * 5);
-                var pulseShadow = (3 + rng() * 5).toFixed(1);
+                var pulseShadowMag = 3 + rng() * 5;
                 tl.add(
                   wordEl,
                   {
                     translateX: pulseTravel,
-                    textShadow:
-                      pulseShadow +
-                      "px 0 #ff003c, -" +
-                      pulseShadow +
-                      "px 0 #00e5ff, 0 5px 18px rgba(0,0,0,0.52)",
+                    "--glitch-off": pulseShadowMag,
+                    "--glitch-alpha": 1,
                     duration: 45,
                     ease: "linear",
                   },
@@ -331,7 +340,8 @@
                   wordEl,
                   {
                     translateX: 0,
-                    textShadow: "0 5px 18px rgba(0,0,0,0.52)",
+                    "--glitch-off": 0,
+                    "--glitch-alpha": 0,
                     duration: 75,
                     ease: "outQuart",
                   },

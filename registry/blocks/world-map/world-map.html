@@ -355,13 +355,35 @@
             400,
           );
 
-          /* 1.0s: Countries stagger reveal */
+          /* 1.0s: Countries stagger reveal.
+             GSAP's stagger { each, from: "center" } assigns every element a
+             UNIQUE 20ms slot, ordered center-out (total span = each * (n-1)).
+             anime.stagger(20, { from: "center" }) instead scales delay by
+             DISTANCE from center, so equidistant pairs share a slot and the
+             whole reveal finishes in half the time (measured: 177 countries
+             done by t=2.93s vs the GSAP baseline's t=4.7s). Precompute the
+             GSAP rank order (sort by distance, ties lower-index-first) and
+             hand anime explicit per-element delays. */
+          var countryEls = document.querySelectorAll("#world-map .country-path");
+          var nCountries = countryEls.length;
+          var centerIdx = (nCountries - 1) / 2;
+          var order = [];
+          for (var ci = 0; ci < nCountries; ci++) order.push(ci);
+          order.sort(function (a, b) {
+            var da = Math.abs(a - centerIdx);
+            var db = Math.abs(b - centerIdx);
+            return da === db ? a - b : da - db;
+          });
+          var countryRank = new Array(nCountries);
+          for (var ri = 0; ri < nCountries; ri++) countryRank[order[ri]] = ri;
           tl.add(
             "#world-map .country-path",
             {
               opacity: 1,
               duration: 300,
-              delay: anime.stagger(20, { from: "center" }),
+              delay: function (target, i) {
+                return countryRank[i] * 20;
+              },
               ease: "outQuad",
             },
             1000,

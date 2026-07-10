@@ -883,7 +883,12 @@
         if (isSupported()) {
           capturePanels();
         }
-        tl.seek(0);
+        // hyperframesAnime.register() already primed the timeline (seek to the
+        // end, then back to 0), so tl.currentTime is 0 here and tl.seek(0) is a
+        // no-op that never fires onUpdate -- the WebGL canvas would stay black
+        // until the first nonzero seek. Paint frame 0 directly instead of going
+        // through the timeline.
+        renderPortal(0);
       }, 0);
     </script>
   </body>

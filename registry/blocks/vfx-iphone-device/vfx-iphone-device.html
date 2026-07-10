@@ -618,7 +618,14 @@
           requestAnimationFrame(function () {
             paintReady = true;
             captureScreens();
-            tl.seek(tl.currentTime || 0);
+            // Register only now, after both GLTF models are loaded and the
+            // screens are captured -- mirroring the GSAP original, which
+            // assigned window.__timelines here. Registering at script-parse
+            // time let the render pipeline treat the composition as ready and
+            // capture frame 0 before the models existed (empty pedestal).
+            // register() also primes the timeline, so frame 0 paints from a
+            // fully-loaded scene.
+            hyperframesAnime.register("devices-canvas", tl, { labels: {} });
             render();
           });
         });
@@ -848,7 +855,7 @@
       addTo(S, { scroll: 0.8, duration: 3, ease: breatheEase }, 9.5);
       addTo(S, { scroll: 0.3, duration: 2, ease: driftEase }, 13);
 
-      hyperframesAnime.register("devices-canvas", tl, { labels: {} });
+      // Registration happens in onReady() above, after the GLTF models load.
     </script>
   </body>
 </html>
