@@ -77,6 +77,14 @@
         display: inline-block;
         letter-spacing: 0.04em;
         line-height: 1;
+        --glow-r: 0;
+        --glow-g: 255;
+        --glow-b: 240;
+        --glow-alpha: 0;
+        text-shadow:
+          0 0 10px rgba(var(--glow-r), var(--glow-g), var(--glow-b), var(--glow-alpha)),
+          0 0 35px rgba(var(--glow-r), var(--glow-g), var(--glow-b), var(--glow-alpha)),
+          0 0 90px rgba(var(--glow-r), var(--glow-g), var(--glow-b), var(--glow-alpha));
       }
     </style>
   </head>
@@ -229,17 +237,20 @@
             var el = document.getElementById("ne-w-" + wi);
             var isKW = KEYWORDS.has(wi);
             var activeColor = isKW ? "#FF0099" : "#00FFF0";
+            // anime.js v4.5.0 cannot interpolate a text-shadow tween whose "from"
+            // and "to" values have a different shape (here: idle "none" vs. the
+            // 3-layer glow) -- the tween silently never applies at all instead of
+            // fading in/out. --glow-r/-g/-b are set once (not tweened) and only
+            // the plain numeric --glow-alpha is animated; CSS rgba() + calc()-free
+            // var() substitution reconstructs the glow every frame.
+            el.style.setProperty("--glow-r", isKW ? 255 : 0);
+            el.style.setProperty("--glow-g", isKW ? 0 : 255);
+            el.style.setProperty("--glow-b", isKW ? 153 : 240);
             tl.add(
               el,
               {
                 color: activeColor,
-                textShadow:
-                  "0 0 10px " +
-                  activeColor +
-                  ", 0 0 35px " +
-                  activeColor +
-                  ", 0 0 90px " +
-                  activeColor,
+                "--glow-alpha": 1,
                 duration: 60,
               },
               toMs(w.start),
@@ -248,7 +259,7 @@
               el,
               {
                 color: "rgba(0,255,240,0.14)",
-                textShadow: "none",
+                "--glow-alpha": 0,
                 duration: 60,
               },
               toMs(w.end),
