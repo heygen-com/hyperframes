@@ -37,7 +37,8 @@ import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { isMusicTrack } from "../../utils/timelineInspector";
+import { isAudioTimelineElement, isMusicTrack } from "../../utils/timelineInspector";
+import { Music } from "../../icons/SystemIcons";
 import type { Rect } from "../../utils/marqueeGeometry";
 
 function ClipLintDot({ element }: { element: TimelineElement }) {
@@ -263,6 +264,7 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               ? els.some((e) => (e.key ?? e.id) === selectedElementId)
               : els.some(isMusicTrack));
           const isTrackHidden = els.length > 0 && els.every((element) => element.hidden === true);
+          const isAudioTrack = els.length > 0 && els.some(isAudioTimelineElement);
           return (
             <div
               key={trackNum}
@@ -274,13 +276,16 @@ export const TimelineCanvas = memo(function TimelineCanvas({
               }}
             >
               <div
-                className="sticky left-0 z-[12] flex-shrink-0 flex items-center justify-center"
+                className="sticky left-0 z-[12] flex-shrink-0 flex flex-col items-center justify-center gap-0.5"
                 style={{
                   width: GUTTER,
                   background: theme.gutterBackground,
                   borderRight: `1px solid ${theme.gutterBorder}`,
                 }}
               >
+                {isAudioTrack && (
+                  <Music size={12} weight="fill" aria-hidden="true" className="text-white/35" />
+                )}
                 <button
                   type="button"
                   aria-label={isTrackHidden ? `Show track ${trackNum}` : `Hide track ${trackNum}`}
