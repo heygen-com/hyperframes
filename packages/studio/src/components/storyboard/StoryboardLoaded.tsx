@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoryboardResponse } from "../../hooks/useStoryboard";
+import { Button } from "../ui/Button";
 import { StoryboardDirection } from "./StoryboardDirection";
 import { StoryboardGrid } from "./StoryboardGrid";
 import { StoryboardStatusLegend } from "./StoryboardStatusLegend";
 import { StoryboardScriptPanel } from "./StoryboardScriptPanel";
 import { StoryboardSourceEditor, type SourceFile } from "./StoryboardSourceEditor";
 import { StoryboardFrameFocus } from "./StoryboardFrameFocus";
+import { useFrameComments, type CommentsSubmitState } from "./useFrameComments";
 
 type SubView = "board" | "source";
 
@@ -33,6 +35,14 @@ export function StoryboardLoaded({
   const [subView, setSubView] = useState<SubView>("board");
   const [sourceDirty, setSourceDirty] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const comments = useFrameComments(data.frames);
+  // When the board refreshes off a project change (agent revised frames), the
+  // agent has likely consumed the comments file too — re-check so the pending
+  // banner clears the moment revisions land, not on the next window focus.
+  const { refreshPending } = comments;
+  useEffect(() => {
+    void refreshPending();
+  }, [data.signature, refreshPending]);
   const sourceFiles = useMemo<SourceFile[]>(() => {
     const files: SourceFile[] = [{ path: data.path, label: data.path }];
     if (data.script?.exists) files.push({ path: data.script.path, label: data.script.path });
@@ -72,14 +82,23 @@ export function StoryboardLoaded({
         }
         onSaved={reload}
         onSelectComposition={onSelectComposition}
+        posterVersion={data.signature}
       />
     );
   }
 
   return (
     <div className="flex flex-1 min-h-0 flex-col bg-neutral-950 text-neutral-200">
-      <div className="flex items-center border-b border-neutral-800 px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
         <SubViewToggle value={subView} onChange={changeSubView} />
+        {subView === "board" && (
+          <CommentsSubmitBar
+            draftCount={comments.draftCount}
+            pendingCount={comments.pending?.length ?? 0}
+            submitState={comments.submitState}
+            onSubmit={() => void comments.submit()}
+          />
+        )}
       </div>
       {subView === "board" ? (
         <div className="flex-1 min-h-0 overflow-auto">
@@ -92,6 +111,10 @@ export function StoryboardLoaded({
               projectId={projectId}
               frames={data.frames}
               onOpenFrame={setFocusedIndex}
+              commentDrafts={comments.drafts}
+              onCommentDraftChange={comments.setDraft}
+              pendingComments={comments.pending}
+              posterVersion={data.signature}
             />
             {data.script && <StoryboardScriptPanel script={data.script} />}
           </div>
@@ -103,6 +126,39 @@ export function StoryboardLoaded({
           onDirtyChange={setSourceDirty}
         />
       )}
+    </div>
+  );
+}
+
+/** Batch-submit the per-frame comment drafts to `.hyperframes/frame-comments.json`. */
+function CommentsSubmitBar({
+  draftCount,
+  pendingCount,
+  submitState,
+  onSubmit,
+}: {
+  draftCount: number;
+  pendingCount: number;
+  submitState: CommentsSubmitState;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="ml-auto flex items-center gap-3">
+      {pendingCount > 0 && (
+        <span className="text-xs text-sky-300">
+          {pendingCount} comment{pendingCount > 1 ? "s" : ""} pending — reply anything in your agent
+          chat and it will apply them.
+        </span>
+      )}
+      <Button
+        variant="primary"
+        size="sm"
+        loading={submitState === "saving"}
+        disabled={draftCount === 0 || submitState === "saving"}
+        onClick={onSubmit}
+      >
+        {draftCount > 0 ? `Submit comments (${draftCount})` : "Submit comments"}
+      </Button>
     </div>
   );
 }
