@@ -579,6 +579,7 @@
       var searchLabel = document.getElementById("search-label");
       var sliderPct = document.getElementById("slider-pct");
       var sliderValue = { value: 34 };
+      var searchPhase = { step: 0 };
 
       // Glass panels live inside <canvas layoutsubtree> (html-in-canvas): the canvas lib
       // reads their sub-pixel computed top/left, so animating layout props on them does
@@ -593,6 +594,38 @@
       tl.add(tsl, { translateY: 544, opacity: 1, duration: 0 }, 0);
       tl.add("#sound-wave span", { height: 7, duration: 0 }, 0);
 
+      // onUpdate on a plain JS-object tween target only re-fires while the
+      // seek position is inside that specific tween's own [start, start+
+      // duration] window (unlike tracked inline-style properties, which the
+      // core adapter's priming/restore logic re-derives for any seek). Without
+      // an explicit hold at t=0, a cold seek to any time before these tweens'
+      // real start reads back whatever onUpdate last computed during
+      // primeAnimeInstance's seek(duration) pass (the final value), not the
+      // authored initial text. Seed both with a duration:0 identity set at 0
+      // so their onUpdate fires again on any seek back to the opening frames.
+      tl.add(
+        sliderValue,
+        {
+          value: 34,
+          duration: 0,
+          onUpdate: function () {
+            sliderPct.textContent = Math.round(sliderValue.value) + "%";
+          },
+        },
+        0,
+      );
+      tl.add(
+        searchPhase,
+        {
+          step: 0,
+          duration: 0,
+          onUpdate: function () {
+            searchLabel.textContent = "Search";
+          },
+        },
+        0,
+      );
+
       tl.add(gs, { top: 300, duration: 480, ease: "outQuart" }, 120);
       tl.add(ts, { translateY: 0, duration: 480, ease: "outQuart" }, 120);
       tl.add(gt, { top: 390, duration: 440, ease: "outQuart" }, 220);
@@ -602,17 +635,43 @@
       tl.add(gsl, { top: 616, duration: 460, ease: "outQuart" }, 420);
       tl.add(tsl, { translateY: 0, duration: 460, ease: "outQuart" }, 420);
 
-      tl.call(function () {
-        searchLabel.textContent = "Search Music";
-      }, 900);
+      // tl.call() side-effects don't participate in anime's seek/priming
+      // lifecycle the way tracked tween properties do: primeAnimeInstance's
+      // seek(duration) -> seek(0) dance fires every call() once on the way to
+      // duration, and a plain textContent mutation has no tracked "from"
+      // value to revert to on the way back to 0, so it stays stranded at
+      // whatever it was last set to. Model the label as an explicit-from/to
+      // numeric phase tween instead so a cold seek to any time before 900ms
+      // correctly reads back "Search".
+      tl.add(
+        searchPhase,
+        {
+          step: [0, 1],
+          duration: 10,
+          ease: "linear",
+          onUpdate: function () {
+            searchLabel.textContent = searchPhase.step >= 0.5 ? "Search Music" : "Search";
+          },
+        },
+        900,
+      );
       tl.add(
         "#search-caret",
         { opacity: 1, duration: 100, alternate: true, loop: 5, ease: "linear" },
         940,
       );
-      tl.call(function () {
-        searchLabel.textContent = "Midnight Drive";
-      }, 1550);
+      tl.add(
+        searchPhase,
+        {
+          step: [1, 2],
+          duration: 10,
+          ease: "linear",
+          onUpdate: function () {
+            searchLabel.textContent = searchPhase.step >= 1.5 ? "Midnight Drive" : "Search Music";
+          },
+        },
+        1550,
+      );
       tl.add("#toggle-pill", { translateX: 209, duration: 240, ease: "outCubic" }, 1820);
       tl.add(
         ".play-btn",
@@ -635,7 +694,7 @@
       tl.add(
         sliderValue,
         {
-          value: 82,
+          value: [34, 82],
           duration: 4400,
           ease: "linear",
           onUpdate: function () {
