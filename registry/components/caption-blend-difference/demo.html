@@ -1,3 +1,5 @@
+<!DOCTYPE html>
+<html lang="en">
 <!--
   Blend Difference — auto-inverting captions via mix-blend-mode.
 
@@ -24,7 +26,8 @@
   - .blend-difference-soft    → exclusion mode, less harsh contrast
   - .blend-difference-screen  → text glows on dark, fades on light
 -->
-
+<head>
+<meta charset="UTF-8" />
 <style>
   .blend-difference {
     mix-blend-mode: var(--blend-mode, difference);
@@ -43,7 +46,96 @@
     color: var(--blend-caption-color, white);
     pointer-events: none;
   }
+
+  /* Demo-only styles below: a sliding light/dark field so the per-pixel
+     inversion is visible without any video asset. */
+  #demo-root {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    isolation: isolate;
+    background: #101014;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+  }
+  .field {
+    position: absolute;
+    top: -10%;
+    height: 120%;
+    width: 55%;
+  }
+  #field-light {
+    left: -60%;
+    background: linear-gradient(105deg, #f4f1ea 0%, #ffd166 100%);
+  }
+  #field-teal {
+    left: 105%;
+    background: linear-gradient(105deg, #0e7c66 0%, #66d9c2 100%);
+  }
+  .caption-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .caption-layer span {
+    font-size: 150px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
 </style>
+</head>
+<body>
+
+<div
+  id="demo-root"
+  data-composition-id="caption-blend-difference-demo"
+  data-width="1920"
+  data-height="1080"
+  data-start="0"
+  data-duration="6"
+>
+  <div id="background-fields" class="clip" data-start="0" data-duration="6" data-track-index="0">
+    <div id="field-light" class="field"></div>
+    <div id="field-teal" class="field"></div>
+  </div>
+  <div id="caption-layer" class="clip caption-layer blend-difference" data-start="0" data-duration="6" data-track-index="1">
+    <span id="caption">Blend Difference</span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/animejs@4.5.0/dist/bundles/anime.umd.min.js"></script>
+<script>
+  const tl = anime.createTimeline({ autoplay: false });
+
+  // Caption reveals first, then the bright panels sweep behind it so the
+  // text visibly inverts (white on dark, black on the light panel).
+  tl.add(
+    "#caption",
+    { opacity: [0, 1], translateY: [50, 0], duration: 600, ease: "outExpo" },
+    200,
+  );
+  tl.add(
+    "#field-light",
+    { translateX: [0, 2400], duration: 3200, ease: "inOutSine" },
+    900,
+  );
+  tl.add(
+    "#field-teal",
+    { translateX: [0, -2400], duration: 3200, ease: "inOutSine" },
+    1700,
+  );
+  tl.add(
+    "#caption",
+    { letterSpacing: ["0.04em", "0.12em"], duration: 4500, ease: "linear" },
+    900,
+  );
+
+  hyperframesAnime.register("caption-blend-difference-demo", tl, { labels: {} });
+</script>
 
 <!--
   Composition setup example:
@@ -79,3 +171,6 @@
     of white and black = white). The effect is most visible when
     the background has varied luminance or color.
 -->
+
+</body>
+</html>
