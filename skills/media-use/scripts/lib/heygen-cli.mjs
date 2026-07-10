@@ -1,3 +1,5 @@
+import { track } from "./telemetry.mjs";
+
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
 // ("heygen-cli can't use OAuth yet"), and OAuth is what the free-usage path
 // needs — so anything below this can't authenticate for free usage at all.
@@ -20,6 +22,14 @@ const ACTIONABLE_MESSAGES = new Set([
 ]);
 
 export function classifyHeygenError(err) {
+  return classifyHeygenErrorResult(err).message;
+}
+
+export function classifyHeygenErrorCode(err) {
+  return classifyHeygenErrorResult(err).code;
+}
+
+function classifyHeygenErrorResult(err) {
   const detail = heygenErrorDetail(err);
   const text = [err?.stderr, err?.stdout, err?.message, detail]
     .map((value) => textOf(value))
@@ -33,7 +43,7 @@ export function classifyHeygenError(err) {
   // embeds the `heygen ...` command line — sending users to reinstall a CLI they
   // just ran successfully. Keep this narrow.
   if (err?.code === "ENOENT" || lower.includes("command not found")) {
-    return HEYGEN_NOT_FOUND_MESSAGE;
+    return { code: "not_found", message: HEYGEN_NOT_FOUND_MESSAGE };
   }
 
   if (
@@ -50,23 +60,39 @@ export function classifyHeygenError(err) {
     lower.includes("auth required") ||
     lower.includes("authentication required")
   ) {
-    return HEYGEN_NOT_AUTHENTICATED_MESSAGE;
+    return { code: "not_authenticated", message: HEYGEN_NOT_AUTHENTICATED_MESSAGE };
   }
 
   const version = firstSemver(text);
   if (version && versionLessThan(version, HEYGEN_MIN_VERSION)) {
-    return HEYGEN_OUTDATED_MESSAGE;
+    return { code: "outdated", message: HEYGEN_OUTDATED_MESSAGE };
   }
 
-  return detail;
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("quota") ||
+    lower.includes("insufficient credit") ||
+    /\b429\b/.test(lower)
+  ) {
+    return { code: "rate_limited", message: detail };
+  }
+
+  return { code: "other", message: detail };
 }
 
-export function reportHeygenFailure(err, context) {
-  const message = classifyHeygenError(err);
+export function reportHeygenFailure(err, context, trackEvent = track) {
+  const { code, message } = classifyHeygenErrorResult(err);
   if (ACTIONABLE_MESSAGES.has(message)) {
     console.error(message);
   } else {
     console.error(`media-use: \`${context}\` failed: ${message}`);
+  }
+  try {
+    void Promise.resolve(
+      trackEvent("media_use_provider_error", { provider: "heygen", reason: code }),
+    ).catch(() => {});
+  } catch {
+    // Telemetry must never affect the provider failure path.
   }
 }
 

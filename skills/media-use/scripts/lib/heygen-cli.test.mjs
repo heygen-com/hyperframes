@@ -1,11 +1,30 @@
 import { strict as assert } from "node:assert";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import {
   classifyHeygenError,
+  classifyHeygenErrorCode,
   HEYGEN_NOT_AUTHENTICATED_MESSAGE,
   HEYGEN_NOT_FOUND_MESSAGE,
   HEYGEN_OUTDATED_MESSAGE,
+  reportHeygenFailure,
 } from "./heygen-cli.mjs";
+
+function captureFailureReport(err, context, trackEvent) {
+  const originalError = console.error;
+  const stderrCalls = [];
+  console.error = (...args) => stderrCalls.push(args);
+  try {
+    if (trackEvent) {
+      reportHeygenFailure(err, context, trackEvent);
+    } else {
+      reportHeygenFailure(err, context);
+    }
+  } finally {
+    console.error = originalError;
+  }
+  return stderrCalls;
+}
 
 test("classifies ENOENT-style missing heygen errors with install instructions", () => {
   const message = classifyHeygenError({ code: "ENOENT", message: "spawn heygen ENOENT" });
@@ -63,4 +82,129 @@ test("passes through unrelated errors", () => {
   });
 
   assert.equal(message, "rate limit exceeded");
+});
+
+test("classifies existing HeyGen failures with stable reason codes", () => {
+  assert.equal(classifyHeygenErrorCode({ code: "ENOENT" }), "not_found");
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("HTTP 401 Unauthorized") }),
+    "not_authenticated",
+  );
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("heygen v0.1.5 is unsupported") }),
+    "outdated",
+  );
+  assert.equal(classifyHeygenErrorCode({ stderr: Buffer.from("provider unavailable") }), "other");
+});
+
+test("classifies rate-limit text case-insensitively", () => {
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("RATE LIMIT exceeded") }),
+    "rate_limited",
+  );
+});
+
+test("classifies quota and insufficient-credit errors as rate limited", () => {
+  for (const detail of ["Quota exhausted", "INSUFFICIENT CREDIT remaining"]) {
+    assert.equal(classifyHeygenErrorCode({ stderr: Buffer.from(detail) }), "rate_limited");
+  }
+});
+
+test("classifies a bare 429 as rate limited without matching request IDs", () => {
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("HTTP 429 Too Many Requests") }),
+    "rate_limited",
+  );
+  assert.equal(
+    classifyHeygenErrorCode({ stderr: Buffer.from("request req-429abc failed") }),
+    "other",
+  );
+});
+
+test("tracks not-found failures without changing actionable output", () => {
+  const trackingCalls = [];
+  const stderrCalls = captureFailureReport({ code: "ENOENT" }, "heygen asset search", (...args) =>
+    trackingCalls.push(args),
+  );
+
+  assert.deepEqual(stderrCalls, [[HEYGEN_NOT_FOUND_MESSAGE]]);
+  assert.deepEqual(trackingCalls, [
+    ["media_use_provider_error", { provider: "heygen", reason: "not_found" }],
+  ]);
+});
+
+test("tracks generic failures without including raw detail", () => {
+  const trackingCalls = [];
+  const stderrCalls = captureFailureReport(
+    { stderr: Buffer.from("private provider detail") },
+    "heygen asset search",
+    (...args) => trackingCalls.push(args),
+  );
+
+  assert.deepEqual(stderrCalls, [
+    ["media-use: `heygen asset search` failed: private provider detail"],
+  ]);
+  assert.deepEqual(trackingCalls, [
+    ["media_use_provider_error", { provider: "heygen", reason: "other" }],
+  ]);
+});
+
+test("keeps failure output observable when telemetry is opted out", () => {
+  const previousOptOut = process.env.HYPERFRAMES_NO_TELEMETRY;
+  process.env.HYPERFRAMES_NO_TELEMETRY = "1";
+  try {
+    const stderrCalls = captureFailureReport({ code: "ENOENT" }, "heygen asset search");
+
+    assert.deepEqual(stderrCalls, [[HEYGEN_NOT_FOUND_MESSAGE]]);
+  } finally {
+    if (previousOptOut === undefined) {
+      delete process.env.HYPERFRAMES_NO_TELEMETRY;
+    } else {
+      process.env.HYPERFRAMES_NO_TELEMETRY = previousOptOut;
+    }
+  }
+});
+
+test("keeps failure output observable when tracking throws synchronously", () => {
+  const originalError = console.error;
+  const stderrCalls = [];
+  let thrown;
+  console.error = (...args) => stderrCalls.push(args);
+  try {
+    try {
+      reportHeygenFailure({ code: "ENOENT" }, "heygen asset search", () => {
+        throw new Error("tracking failed");
+      });
+    } catch (err) {
+      thrown = err;
+    }
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.deepEqual(stderrCalls, [[HEYGEN_NOT_FOUND_MESSAGE]]);
+  assert.equal(thrown, undefined);
+});
+
+test("does not leave rejected tracking promises unhandled", () => {
+  const moduleUrl = new URL("./heygen-cli.mjs", import.meta.url).href;
+  const script = `
+    import { reportHeygenFailure } from ${JSON.stringify(moduleUrl)};
+    reportHeygenFailure(
+      { stderr: "provider unavailable" },
+      "heygen asset search",
+      () => Promise.reject(new Error("tracking failed")),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+  `;
+  const child = spawnSync(
+    process.execPath,
+    ["--unhandled-rejections=strict", "--input-type=module", "--eval", script],
+    { encoding: "utf8", timeout: 5000 },
+  );
+
+  assert.equal(child.error, undefined);
+  assert.equal(child.signal, null);
+  assert.equal(child.status, 0, child.stderr);
+  assert.equal(child.stderr, "media-use: `heygen asset search` failed: provider unavailable\n");
 });
