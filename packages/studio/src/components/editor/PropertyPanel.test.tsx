@@ -783,7 +783,7 @@ describe("PropertyPanel — pinning", () => {
   );
 
   it(
-    "unpinning returns the group to its normal stack position and it closes",
+    "unpinning returns the group to its normal accordion stack position",
     async () => {
       const { host, root } = await renderPanel(true);
       const pinButton = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
