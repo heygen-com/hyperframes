@@ -17,9 +17,16 @@ export type GestureKind = "drag" | "resize" | "rotate";
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
-const MIN_RESIZE_EDGE_PX = 20;
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
+/**
+ * Above this rotation, resize/move edge-snapping is bypassed. Industry editors
+ * (tldraw/Figma) don't edge-snap rotated boxes — the snap targets are axis-aligned
+ * AABBs, so snapping a rotated box's AABB to them shifts the box in a way the user
+ * can't predict; a wrong snap is worse than none. Rotation ~0 keeps snapping exactly
+ * as before.
+ */
+export const ROTATED_SNAP_BYPASS_DEGREES = 0.5;
 
 export interface GestureState {
   kind: GestureKind;
@@ -100,84 +107,28 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
   element?.focus({ preventScroll: true });
 }
 
-export function resolveDomEditResizeGesture(input: {
-  originWidth: number;
-  originHeight: number;
-  actualWidth: number;
-  actualHeight: number;
-  scaleX: number;
-  scaleY: number;
-  dx: number;
-  dy: number;
-  uniform: boolean;
-}): { overlayWidth: number; overlayHeight: number; width: number; height: number } {
-  const scaleX = input.scaleX > 0 ? input.scaleX : 1;
-  const scaleY = input.scaleY > 0 ? input.scaleY : 1;
-
-  if (input.uniform) {
-    // Aspect-ratio lock (industry Shift semantics): follow the dominant pointer
-    // axis and derive the other from the element's CURRENT aspect ratio.
-    const deltaX = input.dx / scaleX;
-    const deltaY = input.dy / scaleY;
-    const baseWidth = Math.max(input.actualWidth, 1);
-    const baseHeight = Math.max(input.actualHeight, 1);
-    const ratio = baseHeight / baseWidth;
-    let width: number;
-    let height: number;
-    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
-      width = Math.max(1, baseWidth + deltaX);
-      height = Math.max(1, width * ratio);
-    } else {
-      height = Math.max(1, baseHeight + deltaY);
-      width = Math.max(1, height / ratio);
-    }
-    return {
-      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, width * scaleX),
-      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, height * scaleY),
-      width,
-      height,
-    };
-  }
-
-  return {
-    overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, input.originWidth + input.dx),
-    overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, input.originHeight + input.dy),
-    width: Math.max(1, input.actualWidth + input.dx / scaleX),
-    height: Math.max(1, input.actualHeight + input.dy / scaleY),
-  };
-}
-
-/**
- * Map a raw pointer delta to size deltas for the grabbed corner. West/north
- * corners grow the box when the pointer moves left/up, and anchor the opposite
- * edge (the element must translate to keep that edge visually fixed).
- */
-export function resolveResizeHandleDeltas(
-  handle: ResizeHandle,
-  dx: number,
-  dy: number,
-): { sizeDx: number; sizeDy: number; anchorX: boolean; anchorY: boolean } {
-  const anchorX = handle === "nw" || handle === "sw";
-  const anchorY = handle === "nw" || handle === "ne";
-  return { sizeDx: anchorX ? -dx : dx, sizeDy: anchorY ? -dy : dy, anchorX, anchorY };
-}
-
 /**
  * Overlay-px translation that keeps the opposite corner fixed while a west or
  * north handle resizes: the element's visual origin shifts by exactly the size
- * change on the anchored axis.
+ * change on the anchored axis. This is the UNROTATED (AABB) fallback used only
+ * when the element's real transformed corners can't be measured — the primary
+ * anchor path pins the measured corner (rotation-safe) in useDomEditOverlayGestures.
+ * Which axes translate is derived from the handle here (was resolveResizeHandleDeltas).
  */
 export function resolveResizeAnchorOffset(input: {
   originWidth: number;
   originHeight: number;
   overlayWidth: number;
   overlayHeight: number;
-  anchorX: boolean;
-  anchorY: boolean;
+  handle: ResizeHandle;
 }): { dx: number; dy: number } {
+  // West/north handles anchor the opposite (east/south) edge, so the element's
+  // top-left must shift by the size change on that axis to hold it fixed.
+  const anchorX = input.handle === "nw" || input.handle === "sw";
+  const anchorY = input.handle === "nw" || input.handle === "ne";
   return {
-    dx: input.anchorX ? input.originWidth - input.overlayWidth : 0,
-    dy: input.anchorY ? input.originHeight - input.overlayHeight : 0,
+    dx: anchorX ? input.originWidth - input.overlayWidth : 0,
+    dy: anchorY ? input.originHeight - input.overlayHeight : 0,
   };
 }
 

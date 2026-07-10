@@ -23,6 +23,7 @@ import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
 import { hugRectForElement } from "./domEditOverlayCrop";
+import { resolveRotatedResizeCursor } from "./domEditResizeLocal";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
@@ -41,7 +42,6 @@ export {
 export {
   focusDomEditOverlayElement,
   hasDomEditRotationChanged,
-  resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
@@ -572,7 +572,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         </>
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
-        <>
+        // Oriented selection chrome: a rotation wrapper spanning the overlay,
+        // rotated by the element's live angle about the selection box CENTER. Its
+        // children (border box, corner dots, rotate handle, crop pills) keep their
+        // existing overlay-absolute positions — rotating the whole plane about the
+        // box center lands them on the element's real transformed corners for free.
+        // At angle 0 the transform is a no-op, so the chrome is pixel-identical.
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            transformOrigin: `${overlayRect.left + overlayRect.width / 2}px ${overlayRect.top + overlayRect.height / 2}px`,
+            transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
+          }}
+        >
           {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
             <DomEditRotateHandle
               overlayRect={overlayRect}
@@ -640,8 +652,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
                 <div
                   key={def.handle}
-                  className="absolute flex h-4 w-4 items-center justify-center"
-                  style={resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined)}
+                  className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
+                  style={{
+                    ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
+                    // Cursor rotates with the object: bucket the corner's base
+                    // diagonal + element rotation into the 8 CSS resize cursors.
+                    cursor: resolveRotatedResizeCursor(def.handle, overlayRect.angle ?? 0),
+                  }}
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     gestures.startGesture("resize", e, { resizeHandle: def.handle });
@@ -658,7 +675,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               onStyleCommit={onStyleCommitRef.current}
             />
           )}
-        </>
+        </div>
       )}
       {childRects.length > 0 &&
         compRect.width > 0 &&

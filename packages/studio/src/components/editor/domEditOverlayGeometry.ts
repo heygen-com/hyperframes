@@ -9,6 +9,14 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
+  /**
+   * The element's live transform rotation in DEGREES (screen/CSS convention, CW
+   * positive), decomposed from its computed transform matrix. Present so the
+   * selection chrome can render as an oriented bounding box (OBB) that co-rotates
+   * with the element. Omitted (treated as 0) for group/union rects and when the
+   * transform is unmeasurable — those render axis-aligned exactly as before.
+   */
+  angle?: number;
 }
 
 export interface GroupOverlayItem {
@@ -96,6 +104,35 @@ export function toVisibleOverlayRect(
 ): OverlayRect | null {
   const rect = toOverlayRect(overlayEl, iframe, element);
   return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
+}
+
+/**
+ * The element's live transform rotation, in DEGREES (screen/CSS convention, CW
+ * positive), decomposed from its computed transform matrix (rotation = atan2(b, a)).
+ * GSAP folds rotation and scale into the same matrix; this reads rotation only.
+ * Returns 0 when the transform is "none" or unmeasurable — callers treat 0 as
+ * axis-aligned. Skew is ignored (does not affect atan2(b, a)).
+ */
+export function readElementRotationDegrees(
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): number {
+  const win = iframe.contentWindow;
+  if (!win) return 0;
+  const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
+  if (!DOMMatrixCtor) return 0;
+  const transform = win.getComputedStyle(element).transform;
+  if (!transform || transform === "none") return 0;
+  let matrix: DOMMatrix;
+  try {
+    matrix = new DOMMatrixCtor(transform);
+  } catch {
+    return 0;
+  }
+  const a = Number.isFinite(matrix.a) ? matrix.a : 1;
+  const b = Number.isFinite(matrix.b) ? matrix.b : 0;
+  const deg = (Math.atan2(b, a) * 180) / Math.PI;
+  return Number.isFinite(deg) ? deg : 0;
 }
 
 export function toOverlayRect(
@@ -230,7 +267,52 @@ export function elementCornerOverlayPoints(
   };
 }
 
+/**
+ * The selection chrome's ORIENTED bounding box: the element's UNROTATED border box
+ * expressed in overlay coordinates (center-anchored left/top/width/height) plus the
+ * live rotation angle. Rendering that rect with `transform: rotate(angle)` about its
+ * center reproduces the element's real transformed corners exactly, so the border,
+ * corner dots, rotate handle, and crop pills all co-rotate with the object.
+ *
+ * Built from `elementCornerOverlayPoints` (the real transformed corners): the OBB
+ * center is the corner centroid, the unrotated width/height are the edge lengths, and
+ * left/top place the unrotated box so that rotating it about its center lands the
+ * corners back on the measured points. At angle 0 this equals `toOverlayRect` (the
+ * AABB and OBB coincide), so unrotated chrome is pixel-identical to today.
+ *
+ * Returns the plain AABB rect (angle 0) when the corner geometry can't be measured.
+ */
+export function orientedOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const base = toOverlayRect(overlayEl, iframe, element);
+  if (!base) return null;
+  const corners = elementCornerOverlayPoints(overlayEl, iframe, element);
+  if (!corners) return base;
+  const angle = readElementRotationDegrees(iframe, element);
+  // Unrotated edge lengths (in overlay px): nw→ne is the width, nw→sw the height.
+  const width = Math.hypot(corners.ne.x - corners.nw.x, corners.ne.y - corners.nw.y);
+  const height = Math.hypot(corners.sw.x - corners.nw.x, corners.sw.y - corners.nw.y);
+  const centerX = (corners.nw.x + corners.se.x) / 2;
+  const centerY = (corners.nw.y + corners.se.y) / 2;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return base;
+  }
+  return {
+    left: centerX - width / 2,
+    top: centerY - height / 2,
+    width,
+    height,
+    editScaleX: base.editScaleX,
+    editScaleY: base.editScaleY,
+    angle,
+  };
+}
+
 const OVERLAY_RECT_EPSILON_PX = 0.5;
+const OVERLAY_RECT_ANGLE_EPSILON_DEG = 0.1;
 
 export function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
   if (a === b) return true;
@@ -241,7 +323,8 @@ export function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolea
     Math.abs(a.width - b.width) < OVERLAY_RECT_EPSILON_PX &&
     Math.abs(a.height - b.height) < OVERLAY_RECT_EPSILON_PX &&
     Math.abs(a.editScaleX - b.editScaleX) < 0.001 &&
-    Math.abs(a.editScaleY - b.editScaleY) < 0.001
+    Math.abs(a.editScaleY - b.editScaleY) < 0.001 &&
+    Math.abs((a.angle ?? 0) - (b.angle ?? 0)) < OVERLAY_RECT_ANGLE_EPSILON_DEG
   );
 }
 

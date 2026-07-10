@@ -30,8 +30,8 @@ import {
   type GroupOverlayItem,
   type OverlayRect,
   elementCornerOverlayPoints,
+  orientedOverlayRect,
   resolveDomEditGroupOverlayRect,
-  toOverlayRect,
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
@@ -40,13 +40,13 @@ import {
   type GroupGestureState,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
+  ROTATED_SNAP_BYPASS_DEGREES,
   anchorCornerForHandle,
   hasDomEditRotationChanged,
-  resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
   resolveResizeAnchorOffset,
-  resolveResizeHandleDeltas,
 } from "./domEditOverlayGestures";
+import { resolveLocalResizeSize } from "./domEditResizeLocal";
 import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
@@ -192,7 +192,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag") {
       const sc = g.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
+      // Bypass edge-snapping for rotated elements — the snap targets and the
+      // snapped rect are axis-aligned, so snapping a rotated box's AABB shifts it
+      // unpredictably. Rotation ~0 keeps snapping exactly as before.
+      const dragRotated = Math.abs(g.actualRotation) >= ROTATED_SNAP_BYPASS_DEGREES;
+      if (!dragRotated && sc?.snapEnabled && sc.targets.length > 0) {
         // Snap the element's VISIBLE (crop-hugged) edges, not the full bounds.
         const movingRect = hugRectForElement(
           {
@@ -256,8 +260,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       if (!box) return;
 
       const handle = g.resizeHandle ?? "se";
+      // Rotation-correct resize: snapping is bypassed for rotated elements (the
+      // snap targets are axis-aligned; snapping a rotated box's AABB to them is
+      // unpredictable). Rotation ~0 keeps snapping exactly as before.
+      const rotated = Math.abs(g.actualRotation) >= ROTATED_SNAP_BYPASS_DEGREES;
       const sc = g.snapContext;
-      if (sc?.snapEnabled && sc.targets.length > 0) {
+      if (!rotated && sc?.snapEnabled && sc.targets.length > 0) {
         const movingRect = {
           left: g.originLeft,
           top: g.originTop,
@@ -285,49 +293,40 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides: [] };
       }
 
-      const deltas = resolveResizeHandleDeltas(handle, dx, dy);
-      const nextSize = resolveDomEditResizeGesture({
-        originWidth: g.originWidth,
-        originHeight: g.originHeight,
-        actualWidth: g.actualWidth,
-        actualHeight: g.actualHeight,
-        scaleX: g.editScaleX,
-        scaleY: g.editScaleY,
-        dx: deltas.sizeDx,
-        dy: deltas.sizeDy,
+      // LOCAL-SPACE size (industry OBB model): inverse-rotate the screen pointer
+      // delta into the element's local frame so a rotated element grows along its
+      // OWN axes, not the screen axes. Base size is the element-local px size at
+      // gesture start (actualWidth/Height, GSAP-scale-aware). Shift keeps the
+      // exact aspect-lock semantics of the old uniform branch.
+      const nextSize = resolveLocalResizeSize({
+        baseWidth: g.actualWidth,
+        baseHeight: g.actualHeight,
+        rotation: (g.actualRotation * Math.PI) / 180,
+        displayScaleX: g.editScaleX,
+        displayScaleY: g.editScaleY,
+        handle,
+        dxScreen: dx,
+        dyScreen: dy,
         uniform: e.shiftKey,
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
 
-      // Measure the element's REAL rendered size right after applying the size
-      // draft, BEFORE the anchor translate. applyStudioBoxSizeDraft rounds and
-      // clamps width/height (and GSAP scale + a centered transform-origin can
-      // make the visual size diverge further from the CSS size), so the math
-      // `nextSize.overlay{Width,Height}` is NOT what the element actually renders.
+      // Re-measure the element's oriented box AFTER the size write. The size draft
+      // rounds/clamps and (with a centered transform-origin + GSAP scale) the real
+      // rendered size diverges from the CSS size, so measure rather than trust math.
       const overlayEl = opts.overlayRef.current;
       const iframe = opts.iframeRef.current;
-      const sizedRect = overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
-      const measuredWidth = sizedRect ? sizedRect.width : nextSize.overlayWidth;
-      const measuredHeight = sizedRect ? sizedRect.height : nextSize.overlayHeight;
+      const sizedRect =
+        overlayEl && iframe ? orientedOverlayRect(overlayEl, iframe, sel.element) : null;
 
       // West/north handles keep the OPPOSITE corner visually fixed by translating
-      // the element through the same manual-offset channel a drag uses (member
-      // created at gesture start).
-      let overlayLeft: number;
-      let overlayTop: number;
+      // the element through the manual-offset channel (member created at gesture
+      // start). Pin the corner by measuring its real transformed position after
+      // the size write and translating it back to its gesture-start position —
+      // rotation-safe by construction for any transform-origin. SE is anchorless
+      // (memberless) exactly as before: no translate, the box follows the element.
+      let draftRect: OverlayRect;
       if (g.pathOffsetMember) {
-        // Corner-based anchor (rotation-safe). The old code translated by the
-        // AABB width/height delta (originWidth − measuredWidth). That only keeps
-        // the opposite corner still when the element is UNROTATED: a rotated
-        // element grows about its transform-origin in its LOCAL frame, so its
-        // real (rotated) corners move along the rotated axes, not the screen
-        // axes — the AABB delta then slid the fixed corner every frame (the
-        // "jump/lag" and the box gap the user saw). GSAP x/y is a screen-space
-        // translation (it writes matrix e/f directly), so pin the fixed corner by
-        // measuring where it landed after the size write and translating it back
-        // to its gesture-start position. This holds for any rotation/skew and any
-        // transform-origin, because it corrects the actual corner rather than a
-        // bounding-box proxy.
         const cornersAfterSize =
           overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, sel.element) : null;
         const fixedStart = g.resizeFixedCornerStart;
@@ -340,41 +339,42 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           anchor = resolveResizeAnchorOffset({
             originWidth: g.originWidth,
             originHeight: g.originHeight,
-            overlayWidth: measuredWidth,
-            overlayHeight: measuredHeight,
-            anchorX: deltas.anchorX,
-            anchorY: deltas.anchorY,
+            overlayWidth: sizedRect ? sizedRect.width : g.originWidth,
+            overlayHeight: sizedRect ? sizedRect.height : g.originHeight,
+            handle,
           });
         }
         g.lastResizeAnchor = anchor;
         applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
-        // Re-measure the element's AABB AFTER the anchor translate so the box
-        // hugs the element's true rendered bounds every frame (the corner-anchor
-        // moved the element, so the pre-anchor sizedRect is stale). One extra BCR
-        // read inside the same synchronous pointermove pass — no async lag.
+        // Re-measure the oriented box AFTER the anchor translate so it hugs the
+        // element's true rendered bounds every frame.
         const anchoredRect =
-          overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
-        overlayLeft = anchoredRect ? anchoredRect.left : g.originLeft + anchor.dx;
-        overlayTop = anchoredRect ? anchoredRect.top : g.originTop + anchor.dy;
+          overlayEl && iframe ? orientedOverlayRect(overlayEl, iframe, sel.element) : null;
+        draftRect = anchoredRect ?? {
+          left: g.originLeft + anchor.dx,
+          top: g.originTop + anchor.dy,
+          width: sizedRect ? sizedRect.width : g.originWidth,
+          height: sizedRect ? sizedRect.height : g.originHeight,
+          editScaleX: g.editScaleX,
+          editScaleY: g.editScaleY,
+          angle: g.actualRotation,
+        };
       } else {
-        // SE (anchorless): no translate, so the element's own top-left is the
-        // source of truth. A GSAP scale + centered transform-origin drifts it as
-        // the box grows, so read it from the just-measured rect.
-        overlayLeft = sizedRect ? sizedRect.left : g.originLeft;
-        overlayTop = sizedRect ? sizedRect.top : g.originTop;
+        draftRect = sizedRect ?? {
+          left: g.originLeft,
+          top: g.originTop,
+          width: g.originWidth,
+          height: g.originHeight,
+          editScaleX: g.editScaleX,
+          editScaleY: g.editScaleY,
+          angle: g.actualRotation,
+        };
       }
-      box.style.left = `${overlayLeft}px`;
-      box.style.top = `${overlayTop}px`;
-      box.style.width = `${measuredWidth}px`;
-      box.style.height = `${measuredHeight}px`;
-      setDraftOverlayRect({
-        left: overlayLeft,
-        top: overlayTop,
-        width: measuredWidth,
-        height: measuredHeight,
-        editScaleX: g.editScaleX,
-        editScaleY: g.editScaleY,
-      });
+      box.style.left = `${draftRect.left}px`;
+      box.style.top = `${draftRect.top}px`;
+      box.style.width = `${draftRect.width}px`;
+      box.style.height = `${draftRect.height}px`;
+      setDraftOverlayRect(draftRect);
     }
   };
 

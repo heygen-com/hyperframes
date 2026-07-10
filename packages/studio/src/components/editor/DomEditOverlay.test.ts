@@ -11,11 +11,10 @@ import {
   hasDomEditRotationChanged,
   resolveDomEditCoordinateScale,
   resolveDomEditGroupOverlayRect,
-  resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
 import type { DomEditSelection } from "./domEditing";
-import { resolveResizeAnchorOffset, resolveResizeHandleDeltas } from "./domEditOverlayGestures";
+import { resolveResizeAnchorOffset } from "./domEditOverlayGestures";
 
 // React 19 warns unless the test environment opts into act().
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -104,16 +103,18 @@ vi.mock("./domEditOverlayGeometry", async () => {
     "./domEditOverlayGeometry",
   );
 
+  const stubRect = {
+    left: 24,
+    top: 36,
+    width: 180,
+    height: 72,
+    editScaleX: 1,
+    editScaleY: 1,
+  };
   return {
     ...actual,
-    toOverlayRect: () => ({
-      left: 24,
-      top: 36,
-      width: 180,
-      height: 72,
-      editScaleX: 1,
-      editScaleY: 1,
-    }),
+    toOverlayRect: () => stubRect,
+    orientedOverlayRect: () => stubRect,
   };
 });
 
@@ -610,89 +611,10 @@ describe("filterNestedDomEditGroupItems", () => {
   });
 });
 
-describe("resolveDomEditResizeGesture", () => {
-  it("resizes width and height independently by default", () => {
-    expect(
-      resolveDomEditResizeGesture({
-        originWidth: 240,
-        originHeight: 120,
-        actualWidth: 240,
-        actualHeight: 120,
-        scaleX: 1,
-        scaleY: 1,
-        dx: 30,
-        dy: 12,
-        uniform: false,
-      }),
-    ).toEqual({
-      overlayWidth: 270,
-      overlayHeight: 132,
-      width: 270,
-      height: 132,
-    });
-  });
-
-  it("locks the current aspect ratio when Shift is held", () => {
-    expect(
-      resolveDomEditResizeGesture({
-        originWidth: 240,
-        originHeight: 120,
-        actualWidth: 240,
-        actualHeight: 120,
-        scaleX: 1,
-        scaleY: 1,
-        dx: 30,
-        dy: 12,
-        uniform: true,
-      }),
-    ).toEqual({
-      overlayWidth: 270,
-      overlayHeight: 135,
-      width: 270,
-      height: 135,
-    });
-  });
-
-  it("uses the dominant pointer delta for uniform shrink, preserving aspect", () => {
-    expect(
-      resolveDomEditResizeGesture({
-        originWidth: 300,
-        originHeight: 180,
-        actualWidth: 300,
-        actualHeight: 180,
-        scaleX: 1,
-        scaleY: 1,
-        dx: 8,
-        dy: -40,
-        uniform: true,
-      }),
-    ).toMatchObject({
-      width: 700 / 3,
-      height: 140,
-    });
-  });
-
-  it("writes source-local dimensions when the edited source is scaled down in master view", () => {
-    expect(
-      resolveDomEditResizeGesture({
-        originWidth: 100,
-        originHeight: 50,
-        actualWidth: 400,
-        actualHeight: 200,
-        scaleX: 0.25,
-        scaleY: 0.25,
-        dx: 25,
-        dy: 10,
-        uniform: false,
-      }),
-    ).toEqual({
-      overlayWidth: 125,
-      overlayHeight: 60,
-      width: 500,
-      height: 240,
-    });
-  });
-});
+// Note: the resize SIZE math moved from the AABB screen-space
+// resolveDomEditResizeGesture (removed) to the local-space (OBB) model in
+// domEditResizeLocal.ts — see domEditResizeLocal.test.ts, which re-covers the
+// independent-axis, aspect-lock, and scaled-master-view cases plus rotated axes.
 
 describe("resolveDomEditRotationGesture", () => {
   it("rotates by the pointer angle around the element center", () => {
@@ -758,81 +680,55 @@ describe("resolveDomEditRotationGesture", () => {
   });
 });
 
-describe("resolveResizeHandleDeltas", () => {
-  it("se: pointer deltas map directly to size deltas, no anchoring", () => {
-    expect(resolveResizeHandleDeltas("se", 30, 12)).toEqual({
-      sizeDx: 30,
-      sizeDy: 12,
-      anchorX: false,
-      anchorY: false,
-    });
-  });
-
-  it("nw: moving the pointer up-left grows the box and anchors both axes", () => {
-    expect(resolveResizeHandleDeltas("nw", -30, -12)).toEqual({
-      sizeDx: 30,
-      sizeDy: 12,
-      anchorX: true,
-      anchorY: true,
-    });
-  });
-
-  it("ne: x follows the pointer, y is inverted and anchored", () => {
-    expect(resolveResizeHandleDeltas("ne", 30, -12)).toEqual({
-      sizeDx: 30,
-      sizeDy: 12,
-      anchorX: false,
-      anchorY: true,
-    });
-  });
-
-  it("sw: x is inverted and anchored, y follows the pointer", () => {
-    expect(resolveResizeHandleDeltas("sw", -30, 12)).toEqual({
-      sizeDx: 30,
-      sizeDy: 12,
-      anchorX: true,
-      anchorY: false,
-    });
-  });
-});
-
+// resolveResizeAnchorOffset is now the UNROTATED (AABB) fallback used only when
+// the element's real transformed corners can't be measured; it derives which axes
+// translate from the handle (was resolveResizeHandleDeltas, removed).
 describe("resolveResizeAnchorOffset", () => {
-  it("translates by the size change only on anchored axes", () => {
+  it("nw: translates by the size change on both anchored axes", () => {
     expect(
       resolveResizeAnchorOffset({
         originWidth: 200,
         originHeight: 100,
         overlayWidth: 230,
         overlayHeight: 112,
-        anchorX: true,
-        anchorY: true,
+        handle: "nw",
       }),
     ).toEqual({ dx: -30, dy: -12 });
   });
 
-  it("returns zero offset when nothing is anchored (se handle)", () => {
+  it("se: returns zero offset (anchorless handle)", () => {
     expect(
       resolveResizeAnchorOffset({
         originWidth: 200,
         originHeight: 100,
         overlayWidth: 230,
         overlayHeight: 112,
-        anchorX: false,
-        anchorY: false,
+        handle: "se",
       }),
     ).toEqual({ dx: 0, dy: 0 });
   });
 
-  it("mixed anchoring (ne): only the y axis translates", () => {
+  it("ne: only the y axis translates", () => {
     expect(
       resolveResizeAnchorOffset({
         originWidth: 200,
         originHeight: 100,
         overlayWidth: 230,
         overlayHeight: 88,
-        anchorX: false,
-        anchorY: true,
+        handle: "ne",
       }),
     ).toEqual({ dx: 0, dy: 12 });
+  });
+
+  it("sw: only the x axis translates", () => {
+    expect(
+      resolveResizeAnchorOffset({
+        originWidth: 200,
+        originHeight: 100,
+        overlayWidth: 230,
+        overlayHeight: 112,
+        handle: "sw",
+      }),
+    ).toEqual({ dx: -30, dy: 0 });
   });
 });

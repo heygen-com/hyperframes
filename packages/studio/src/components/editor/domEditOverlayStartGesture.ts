@@ -21,6 +21,7 @@ import {
   type OverlayRect,
   elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
+  readElementRotationDegrees,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
@@ -28,6 +29,7 @@ import {
   type GestureState,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
+  ROTATED_SNAP_BYPASS_DEGREES,
   anchorCornerForHandle,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
@@ -150,12 +152,23 @@ export function startGesture(
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    // Corner resize from a west/north handle anchors the opposite corner by
-    // translating the element while it resizes — that translation goes through
-    // the same manual-offset channel as a drag, so create a member for it.
+    // Corner resize anchors the OPPOSITE corner world-fixed by translating the
+    // element through the same manual-offset channel a drag uses (member below).
+    // Unrotated: only west/north handles need this (east/south grow from the
+    // layout top-left, which is already fixed) — SE stays memberless, byte-for-byte
+    // as before. Rotated: EVERY corner (including SE) needs the pin, because the
+    // element grows in its LOCAL frame and the whole box rotates about its center,
+    // so the layout top-left no longer maps to a world-fixed screen point.
+    const iframeForRot = opts.iframeRef.current;
+    const isRotated =
+      iframeForRot != null &&
+      Math.abs(readElementRotationDegrees(iframeForRot, sel.element)) >=
+        ROTATED_SNAP_BYPASS_DEGREES;
     const resizeHandle = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
     const needsAnchorOffset =
-      resizeHandle !== undefined && resizeHandle !== "se" && sel.capabilities.canApplyManualOffset;
+      resizeHandle !== undefined &&
+      (resizeHandle !== "se" || isRotated) &&
+      sel.capabilities.canApplyManualOffset;
     if (needsAnchorOffset) {
       const result = createManualOffsetDragMember({
         key: selectionCacheKey(sel),
@@ -184,16 +197,11 @@ export function startGesture(
   // For an anchored corner resize, capture the FIXED corner's real (rotation-aware)
   // overlay position now, so per-frame anchoring can pin that exact point instead of
   // an axis-aligned width/height delta (which slides the fixed corner on a rotated
-  // element — the resize jump/gap bug).
+  // element — the resize jump/gap bug). Present whenever an anchor member exists
+  // (all corners when rotated, west/north corners otherwise).
   const resizeHandleForAnchor = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
   let resizeFixedCornerStart: { x: number; y: number } | undefined;
-  if (
-    resizeHandleForAnchor !== undefined &&
-    resizeHandleForAnchor !== "se" &&
-    pathOffsetMember &&
-    overlayEl &&
-    iframe
-  ) {
+  if (resizeHandleForAnchor !== undefined && pathOffsetMember && overlayEl && iframe) {
     const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
     if (corners) resizeFixedCornerStart = corners[anchorCornerForHandle(resizeHandleForAnchor)];
   }
