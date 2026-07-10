@@ -254,6 +254,7 @@
         "@hyperframes/aws-lambda": "workspace:*",
         "@types/node": "^25.0.10",
         "@webgpu/types": "^0.1.69",
+        "axe-core": "4.10.3",
         "esbuild": "^0.25.12",
         "tsx": "^4.21.0",
         "typescript": "^5.7.2",
@@ -1220,6 +1221,8 @@
     "autoprefixer": ["autoprefixer@10.5.0", "", { "dependencies": { "browserslist": "^4.28.2", "caniuse-lite": "^1.0.30001787", "fraction.js": "^5.3.4", "picocolors": "^1.1.1", "postcss-value-parser": "^4.2.0" }, "peerDependencies": { "postcss": "^8.1.0" }, "bin": { "autoprefixer": "bin/autoprefixer" } }, "sha512-FMhOoZV4+qR6aTUALKX2rEqGG+oyATvwBt9IIzVR5rMa2HRWPkxf+P+PAJLD1I/H5/II+HuZcBJYEFBpq39ong=="],
 
     "aws-cdk-lib": ["aws-cdk-lib@2.254.0", "", { "dependencies": { "@aws-cdk/asset-awscli-v1": "2.2.273", "@aws-cdk/asset-node-proxy-agent-v6": "^2.1.1", "@aws-cdk/cloud-assembly-api": "^2.2.3", "@aws-cdk/cloud-assembly-schema": "^53.21.0", "@balena/dockerignore": "^1.0.2", "case": "1.6.3", "fs-extra": "^11.3.3", "ignore": "^5.3.2", "jsonschema": "^1.5.0", "mime-types": "^2.1.35", "minimatch": "^10.2.3", "punycode": "^2.3.1", "semver": "^7.7.4", "table": "^6.9.0", "yaml": "1.10.3" }, "peerDependencies": { "constructs": "^10.5.0" } }, "sha512-O7fn6fu1FXb0BgoO/+WeiBXZ16H/q6z4fOndjdG62c9bPU7Z/UeW5gz7qBiwLm4ERvTObobLCqv7wjd8bp+v3A=="],
+
+    "axe-core": ["axe-core@4.10.3", "", {}, "sha512-Xm7bpRXnDSX2YE2YFfBk2FnF0ep6tmG7xPh8iHee8MIcrgq762Nkce856dYtJYLkuIoYZvGfTs/PbZhideTcEg=="],
 
     "b4a": ["b4a@1.8.1", "", { "peerDependencies": { "react-native-b4a": "*" }, "optionalPeers": ["react-native-b4a"] }, "sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw=="],
 

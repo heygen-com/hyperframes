@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "selection": "declared-plus-midpoint-final-frame",
+  "sequentialPasses": 3,
+  "shuffledPasses": 1,
+  "includeMidpoint": true,
+  "includeFinalFrame": true,
+  "fps": 30,
+  "theme": "dark",
+  "viewport": "desktop-1440"
+}
