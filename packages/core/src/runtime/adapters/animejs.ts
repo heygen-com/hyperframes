@@ -141,6 +141,7 @@ export function installHyperframesAnimeApi(): RuntimeAnimeApi {
   };
 
   ensureAnimeRegistry();
+  installAnimeNoneClipPathGuard();
   win.hyperframesAnime = api;
   if (win.__hyperframes) {
     win.__hyperframes.hyperframesAnime = api;
@@ -311,6 +312,95 @@ const TRANSFORM_DECOMPOSED_PROPERTIES = new Set([
 ]);
 
 type TransformDecomposition = Partial<Record<string, number>>;
+
+const lastKnownCircleClipPathByElement = new WeakMap<Element, string>();
+const CIRCLE_CLIP_PATH_CENTER_PATTERN = /circle\(\s*[\d.]+%\s+at\s+([\d.]+%\s+[\d.]+%)\s*\)/i;
+
+// anime.js v4.5.0 cannot correctly resolve a literal "none" target for
+// clip-path when a preceding tween on the same target used a structured
+// circle() shape: it silently re-templates "none" as a zeroed copy of the
+// prior shape (confirmed via internal tween inspection: `_toNumbers` become
+// `[0, 0, 0]` reusing the prior circle() string template), rendering a
+// near-fully-clipped black/empty box instead of a fully revealed one. Patch
+// every timeline's `.add` to rewrite a literal "none" into an equivalent
+// fully-open circle BEFORE anime.js ever parses it, sidestepping the bug
+// with a value anime already interpolates correctly.
+function installAnimeNoneClipPathGuard(): void {
+  const win: AnimeWindow = window;
+  const animeGlobal = win.anime as
+    | (AnimeGlobal & { __hfNoneClipPathGuardInstalled?: boolean })
+    | undefined;
+  if (!animeGlobal || typeof animeGlobal.createTimeline !== "function") return;
+  if (animeGlobal.__hfNoneClipPathGuardInstalled) return;
+  animeGlobal.__hfNoneClipPathGuardInstalled = true;
+
+  const realCreateTimeline = animeGlobal.createTimeline.bind(animeGlobal);
+  animeGlobal.createTimeline = (...args: unknown[]) => {
+    const timeline = realCreateTimeline(...args);
+    if (isRecord(timeline)) patchTimelineAddForNoneClipPath(timeline);
+    return timeline;
+  };
+}
+
+function patchTimelineAddForNoneClipPath(timeline: Record<string, unknown>): void {
+  const realAdd = timeline.add;
+  if (typeof realAdd !== "function") return;
+  timeline.add = function patchedAdd(
+    this: Record<string, unknown>,
+    targets: unknown,
+    params: unknown,
+    position?: unknown,
+  ) {
+    rewriteNoneClipPathParams(targets, params);
+    return (realAdd as (...args: unknown[]) => unknown).call(this, targets, params, position);
+  };
+}
+
+function rewriteNoneClipPathParams(targets: unknown, params: unknown): void {
+  if (!isRecord(params)) return;
+  const key = "clipPath" in params ? "clipPath" : "clip-path" in params ? "clip-path" : null;
+  if (!key) return;
+  const value = Reflect.get(params, key);
+  if (typeof value !== "string") return;
+
+  for (const element of resolveAnimeTargetElements(targets)) {
+    if (value.trim().toLowerCase() === "none") {
+      const priorShape = lastKnownCircleClipPathByElement.get(element);
+      const rewritten = rewriteNoneClipPathValue(priorShape);
+      if (rewritten) {
+        Reflect.set(params, key, rewritten);
+        lastKnownCircleClipPathByElement.set(element, rewritten);
+      }
+    } else {
+      lastKnownCircleClipPathByElement.set(element, value);
+    }
+  }
+}
+
+function rewriteNoneClipPathValue(priorShape: string | undefined): string | null {
+  if (!priorShape) return null;
+  const match = CIRCLE_CLIP_PATH_CENTER_PATTERN.exec(priorShape);
+  if (!match) return null;
+  return `circle(150% at ${match[1]})`;
+}
+
+function resolveAnimeTargetElements(targets: unknown): Element[] {
+  if (targets instanceof Element) return [targets];
+  if (typeof targets === "string") {
+    try {
+      return Array.from(document.querySelectorAll(targets));
+    } catch (err) {
+      swallow("runtime.adapters.animejs.site6", err);
+      return [];
+    }
+  }
+  if (Array.isArray(targets) || targets instanceof NodeList) {
+    return Array.from(targets as ArrayLike<unknown>).filter(
+      (item): item is Element => item instanceof Element,
+    );
+  }
+  return [];
+}
 
 // anime.js v4.5.0's implicit "from" resolution for decomposed transform
 // sub-properties (translateX/Y, scale, rotate, ...) authored without an

@@ -11,9 +11,13 @@ type TestAnimeInstance = {
   totalDuration?: number | (() => number);
 };
 
+type TestAnimeTimeline = {
+  add?: ReturnType<typeof vi.fn>;
+};
+
 type TestAnimeWindow = Window & {
   anime?: {
-    createTimeline?: () => unknown;
+    createTimeline?: () => TestAnimeTimeline;
     animate?: () => unknown;
     running?: unknown[];
   };
@@ -447,6 +451,43 @@ describe("animejs adapter", () => {
       const adapter = createAnimeJsAdapter();
       expect(() => adapter.revert?.()).not.toThrow();
     });
+  });
+
+  it("rewrites clip-path none only after a circle tween on the same target", () => {
+    const fakeAdd = vi.fn();
+    const fakeTimeline: TestAnimeTimeline = { add: fakeAdd };
+    fakeAdd.mockReturnValue(fakeTimeline);
+    animeWindow.anime = { createTimeline: () => fakeTimeline };
+
+    installHyperframesAnimeApi();
+    const timeline = animeWindow.anime.createTimeline?.();
+    expect(timeline?.add).toBeTypeOf("function");
+    if (!timeline?.add) return;
+
+    const element = document.createElement("div");
+    element.id = "the-id";
+    const freshElement = document.createElement("div");
+    freshElement.id = "fresh-id";
+    document.body.append(element, freshElement);
+
+    const circleParams = { clipPath: "circle(75% at 50% 50%)" };
+    timeline.add("#the-id", circleParams, 0);
+    expect(fakeAdd).toHaveBeenNthCalledWith(1, "#the-id", circleParams, 0);
+    expect(circleParams).toEqual({ clipPath: "circle(75% at 50% 50%)" });
+
+    timeline.add("#the-id", { clipPath: "none", duration: 0 }, 100);
+    expect(fakeAdd).toHaveBeenNthCalledWith(
+      2,
+      "#the-id",
+      { clipPath: "circle(150% at 50% 50%)", duration: 0 },
+      100,
+    );
+
+    timeline.add("#fresh-id", { clipPath: "none" }, 0);
+    expect(fakeAdd).toHaveBeenNthCalledWith(3, "#fresh-id", { clipPath: "none" }, 0);
+
+    element.remove();
+    freshElement.remove();
   });
 
   // jsdom does not provide DOMMatrixReadOnly, so browser transform decomposition is unavailable.
