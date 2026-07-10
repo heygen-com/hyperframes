@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +44,22 @@ const INSTALL_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.lock");
 const INSTALL_RECLAIM_LOCK_DIR = join(CACHE_ROOT_DIR, ".chrome.install.reclaim.lock");
 const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
 const INSTALL_LOCK_POLL_MS = 200;
+// The reclaim check above only looks at the lock dir's mtime, which used to be
+// set once at acquire time and never touched again. On a slow or throttled
+// connection a real (non-crashed) download+extract of the ~115-160MB archive
+// can easily exceed INSTALL_LOCK_TIMEOUT_MS, so a concurrent waiter would
+// reclaim the "stale" lock out from under the still-running holder and start
+// a second install into the same target directory — recreating the exact
+// concurrent-extraction race #1866 added this lock to prevent, just gated by
+// a timer instead of by "no cache miss yet". Touching the lock's mtime while
+// the holder is actively running keeps it looking fresh so only a genuinely
+// dead holder (crashed/killed, no more heartbeats) is ever reclaimed.
+const INSTALL_LOCK_HEARTBEAT_MS = 15_000;
+// While a caller is blocked waiting on someone else's lock, print an
+// occasional notice so a long wait (e.g. 16 processes racing the same
+// download in a fleet/batch run) reads as "waiting", not "hung" — reported as
+// a silent ~10 minute stall with no output at all.
+const INSTALL_LOCK_WAIT_NOTICE_MS = 10_000;
 
 function isErrno(err: unknown, code: string): boolean {
   return (err as NodeJS.ErrnoException).code === code;
@@ -80,19 +96,36 @@ function reclaimStaleInstallLock(timeoutMs: number): void {
   }
 }
 
-// timeoutMs/pollMs are parameters (not just the module constants) so tests can
-// exercise the reclaim-on-timeout branch with real but tiny waits instead of
-// mocking Date.now()/setTimeout through the full ensureBrowser call graph.
+/** Refresh the lock dir's mtime so an active holder is never mistaken for a
+ * crashed one just because its install is taking a while. Best-effort: if the
+ * lock dir is somehow already gone, there's nothing to touch. */
+function touchInstallLock(): void {
+  try {
+    const now = new Date();
+    utimesSync(INSTALL_LOCK_DIR, now, now);
+  } catch (err) {
+    if (!isErrno(err, "ENOENT")) throw err;
+  }
+}
+
+// timeoutMs/pollMs/heartbeatMs are parameters (not just the module constants)
+// so tests can exercise the reclaim-on-timeout and heartbeat-keeps-it-alive
+// branches with real but tiny waits instead of mocking Date.now()/setTimeout
+// through the full ensureBrowser call graph.
 export async function withInstallLock<T>(
   fn: () => Promise<T>,
   timeoutMs = INSTALL_LOCK_TIMEOUT_MS,
   pollMs = INSTALL_LOCK_POLL_MS,
+  heartbeatMs = INSTALL_LOCK_HEARTBEAT_MS,
+  waitNoticeMs = INSTALL_LOCK_WAIT_NOTICE_MS,
 ): Promise<T> {
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
   // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
   // delete another installer's in-flight lock.
   if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
   let deadline = Date.now() + timeoutMs;
+  const waitStart = Date.now();
+  let lastNoticeMs = 0;
   for (;;) {
     if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
       await sleep(pollMs);
@@ -101,6 +134,16 @@ export async function withInstallLock<T>(
     if (tryAcquireDirLock(INSTALL_LOCK_DIR)) {
       rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
       break;
+    }
+    // Contended: someone else holds the lock. Report progress periodically so
+    // a long wait (a fleet of processes racing the same first-run download)
+    // reads as "waiting on another install", not a silent hang.
+    const waitedMs = Date.now() - waitStart;
+    if (waitedMs - lastNoticeMs >= waitNoticeMs) {
+      lastNoticeMs = waitedMs;
+      console.warn(
+        `[browser] Waiting for another hyperframes process to finish installing chrome-headless-shell (${Math.round(waitedMs / 1000)}s elapsed)...`,
+      );
     }
     if (Date.now() > deadline) {
       // The reclaim gate matters when multiple waiters cross the timeout at
@@ -114,9 +157,15 @@ export async function withInstallLock<T>(
     }
     await sleep(pollMs);
   }
+  // Keep the lock's mtime fresh for as long as fn() is actually running, so
+  // reclaimStaleInstallLock only ever reclaims a holder that's stopped
+  // heartbeating (crashed/killed) — not one that's simply slow.
+  const heartbeat = setInterval(touchInstallLock, heartbeatMs);
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
   }
 }

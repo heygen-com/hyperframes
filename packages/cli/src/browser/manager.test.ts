@@ -97,6 +97,14 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
       }
       return { mtimeMs: mtimes.get(p) ?? 0 };
     },
+    utimesSync: (p: string, _atime: Date, mtime: Date) => {
+      if (!paths.has(p)) {
+        const err = new Error(`ENOENT: no such file or directory, utimes '${p}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      mtimes.set(p, mtime.getTime());
+    },
   }));
   vi.doMock("node:os", () => ({
     homedir: () => FAKE_HOME,
@@ -359,6 +367,65 @@ describe("findBrowser — cache resolution", () => {
     await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
     expect(paths.has(HF_LOCK)).toBe(false);
     expect(paths.has(HF_RECLAIM_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock does not let a second caller run concurrently with a slow-but-alive holder", async () => {
+    // Bug: the timeout-reclaim check only ever looked at the lock dir's
+    // mtime, which used to be set once at acquire time and never touched
+    // again. A real (non-crashed) download+extract that runs *longer* than
+    // timeoutMs — plausible on a slow/throttled connection downloading the
+    // ~115-160MB chrome-headless-shell archive — looks indistinguishable
+    // from a crashed holder, so a concurrent waiter reclaims the lock and
+    // starts its own install while the first is still running. That
+    // recreates the exact concurrent-extraction race #1866 added this lock
+    // to prevent (feedback: a 100%-download loop on a Linux daemon, and a
+    // fleet of processes racing the same shared cache path).
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT]) });
+
+    const { withInstallLock } = await import("./manager.js");
+
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    const trackConcurrency = async (label: string, durationMs: number) => {
+      concurrent += 1;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      concurrent -= 1;
+      return label;
+    };
+
+    // timeoutMs=10 is far shorter than the first caller's 40ms "install" —
+    // without a heartbeat keeping the lock's mtime fresh, the second caller
+    // would reclaim it well before the first finishes.
+    const first = withInstallLock(() => trackConcurrency("first", 40), 10, 5, 5);
+    await new Promise((resolve) => setTimeout(resolve, 2)); // let `first` acquire the lock
+    const second = withInstallLock(() => trackConcurrency("second", 5), 10, 5, 5);
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
+    expect(maxConcurrent).toBe(1);
+    expect(paths.has(HF_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock reports progress while waiting instead of staying silent", async () => {
+    // Feedback: ~16 concurrent processes racing the same shared install lock
+    // saw completely silent output for ~10 minutes while waiting — indistin-
+    // guishable from a genuine hang. The lock itself was working correctly
+    // (no corruption), but nothing told the user a wait was in progress.
+    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { withInstallLock } = await import("./manager.js");
+    // The lock in `paths` is never released by anyone else, so this caller
+    // waits out its own timeout (10ms) and reclaims it — but only after
+    // polling long enough to cross at least one wait-notice interval (5ms).
+    await withInstallLock(async () => "done", 10, 5, 1_000, 5);
+
+    expect(paths.has(HF_LOCK)).toBe(false);
+    expect(
+      warnSpy.mock.calls.some(([msg]) =>
+        String(msg).includes("Waiting for another hyperframes process"),
+      ),
+    ).toBe(true);
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {
