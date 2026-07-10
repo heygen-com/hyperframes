@@ -133,7 +133,7 @@ describe("FlatTextSection", () => {
     act(() => root.unmount());
   });
 
-  it("suppresses TextSection's own heading when falling back for a multi-field element", () => {
+  it("renders the flat layer list (not the legacy TextSection) for a multi-field element", () => {
     const { host, root } = renderSection({
       textFields: [
         makeElement().textFields[0],
@@ -149,12 +149,12 @@ describe("FlatTextSection", () => {
         },
       ],
     });
-    // TextSection's own Section wrapper (data-panel-section="text") must not
-    // render here — the caller (PropertyPanelFlat's FlatGroup) already shows
-    // a "Text" heading, so a second one from the legacy component would be a
-    // doubled heading.
+    // Legacy TextSection's own Section wrapper (data-panel-section="text")
+    // must never render here — multi-field elements now go through the flat
+    // FlatTextLayerList + FlatTextFieldEditor path end to end, not a
+    // delegation to the legacy component.
     expect(host.querySelector('[data-panel-section="text"]')).toBeNull();
-    // The multi-field fallback's own content must still render.
+    // The flat layer list's own content must render.
     expect(host.textContent).toContain("Text layers");
     act(() => root.unmount());
   });

@@ -81,9 +81,10 @@ function nonTextElement() {
   };
 }
 
-// Bug 2 fixture: 2+ text fields, which routes FlatTextSection to the legacy
-// multi-field <TextSection> fallback — must not double-render the "Text"
-// heading (FlatGroup's own heading + TextSection's internal Section heading).
+// Bug 2 fixture: 2+ text fields, which routes FlatTextSection to its own
+// flat multi-field layer list (FlatTextLayerList + FlatTextFieldEditor) —
+// must not double-render the "Text" heading (FlatGroup's own heading; this
+// component never renders one of its own).
 function multiFieldTextElement() {
   const base = baseElement();
   return {
@@ -312,10 +313,11 @@ describe("PropertyPanel — STUDIO_FLAT_INSPECTOR_ENABLED on", () => {
       const { host, root } = await renderPanel(true, multiFieldTextElement());
       // The FlatGroup's own "Text" heading is the only one that should exist —
       // the legacy TextSection's internal Section heading (data-panel-section
-      // ="text") must be suppressed when it's used as the flat fallback.
+      // ="text") must never appear, since the flat multi-field path no longer
+      // delegates to that component at all.
       expect(host.querySelector('[data-flat-group-open="true"]')).not.toBeNull();
       expect(host.querySelector('[data-panel-section="text"]')).toBeNull();
-      // Content from the legacy multi-field fallback must still render.
+      // Content from the flat multi-field layer list must render.
       expect(host.textContent).toContain("Text layers");
       act(() => root.unmount());
     },
