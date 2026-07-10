@@ -682,7 +682,9 @@ function linkProjectIntoStudioData(
       }
     }
     if (!existsSync(symlinkPath)) {
-      symlinkSync(dir, symlinkPath, "dir");
+      // Windows: "dir" symlinks need Developer Mode or elevation (EPERM otherwise);
+      // NTFS junctions are unprivileged and keep the live write-back the studio needs.
+      symlinkSync(dir, symlinkPath, process.platform === "win32" ? "junction" : "dir");
       createdSymlink = true;
     }
   }
