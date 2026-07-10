@@ -6,12 +6,10 @@
  * Videos are replaced with <img> elements during capture.
  */
 
-import { spawn } from "child_process";
 import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
-import { trackChildProcess } from "../utils/processTracker.js";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
@@ -20,7 +18,7 @@ import {
   type HdrTransfer,
 } from "../utils/hdr.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
-import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -328,78 +326,51 @@ export async function extractVideoFramesRange(
   if (format === "png") args.push("-compression_level", "1");
   args.push("-y", outputPattern);
 
-  return new Promise((resolve, reject) => {
-    const ffmpeg = spawn(getFfmpegBinary(), args);
-    trackChildProcess(ffmpeg);
-    let stderr = "";
-    const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
-    };
-    if (signal) {
-      if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
+  const processResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  if (processResult.terminationReason === "abort") {
+    throw new Error("Video frame extraction cancelled");
+  }
+  if (processResult.terminationReason === "spawn_error") {
+    if ((processResult.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      throw new Error("[FFmpeg] ffmpeg not found");
     }
+    throw processResult.error ?? new Error(processResult.stderr);
+  }
+  if (!processResult.success) {
+    // With the SDR-to-HDR remap folded into this pass, a filter failure
+    // (e.g. an ffmpeg built without the colorspace filter) would otherwise
+    // surface as a generic extract error and the operator has to grep the
+    // filter chain to learn it was the HDR conversion. Attribute it.
+    const hdrPrefix = options.sdrToHdrTransfer
+      ? `SDR→HDR conversion failed (colorspace filter in extract pass, target ${options.sdrToHdrTransfer}): `
+      : "";
+    const timeoutSuffix =
+      processResult.terminationReason === "deadline"
+        ? ` (timed out after ${ffmpegProcessTimeout} ms)`
+        : "";
+    throw new Error(
+      `${hdrPrefix}FFmpeg exited with code ${processResult.exitCode}${timeoutSuffix}: ${processResult.stderr.slice(-500)}`,
+    );
+  }
 
-    const timer = setTimeout(() => {
-      ffmpeg.kill("SIGTERM");
-    }, ffmpegProcessTimeout);
-
-    ffmpeg.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    ffmpeg.on("close", (code) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      if (signal?.aborted) {
-        reject(new Error("Video frame extraction cancelled"));
-        return;
-      }
-      if (code !== 0) {
-        // With the SDR-to-HDR remap folded into this pass, a filter failure
-        // (e.g. an ffmpeg built without the colorspace filter) would otherwise
-        // surface as a generic extract error and the operator has to grep the
-        // filter chain to learn it was the HDR conversion. Attribute it.
-        const hdrPrefix = options.sdrToHdrTransfer
-          ? `SDR→HDR conversion failed (colorspace filter in extract pass, target ${options.sdrToHdrTransfer}): `
-          : "";
-        reject(new Error(`${hdrPrefix}FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
-        return;
-      }
-
-      const framePaths = new Map<number, string>();
-      const files = readdirSync(videoOutputDir)
-        .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${format}`))
-        .sort();
-      files.forEach((file, index) => {
-        framePaths.set(index, join(videoOutputDir, file));
-      });
-
-      resolve({
-        videoId,
-        srcPath: videoPath,
-        outputDir: videoOutputDir,
-        framePattern,
-        fps,
-        totalFrames: framePaths.size,
-        metadata,
-        framePaths,
-      });
-    });
-
-    ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("[FFmpeg] ffmpeg not found"));
-      } else {
-        reject(err);
-      }
-    });
+  const framePaths = new Map<number, string>();
+  const files = readdirSync(videoOutputDir)
+    .filter((f) => f.startsWith(FRAME_FILENAME_PREFIX) && f.endsWith(`.${format}`))
+    .sort();
+  files.forEach((file, index) => {
+    framePaths.set(index, join(videoOutputDir, file));
   });
+
+  return {
+    videoId,
+    srcPath: videoPath,
+    outputDir: videoOutputDir,
+    framePattern,
+    fps,
+    totalFrames: framePaths.size,
+    metadata,
+    framePaths,
+  };
 }
 
 /**

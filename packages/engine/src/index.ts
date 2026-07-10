@@ -243,6 +243,12 @@ export {
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
 export {
+  ManagedChildProcess,
+  type ManagedChildProcessOptions,
+  type ManagedChildProcessOutcome,
+  type ManagedProcessTerminationReason,
+} from "./utils/managedChildProcess.js";
+export {
   assertConfiguredFfmpegBinariesExist,
   getFfmpegBinary,
   getFfprobeBinary,

@@ -13,7 +13,7 @@
  * No real ffmpeg/ffprobe runs in these tests.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import {
   buildPadTrimAudioArgs,
   buildPadTrimAudioPlan,
@@ -197,6 +197,24 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     };
     return { input, captured };
   }
+
+  it("passes the render abort signal to the audio metadata probe", async () => {
+    const controller = new AbortController();
+    const probeVideoFrameInfo = mock(async () => ({ frameCount: 30, fpsNum: 30, fpsDen: 1 }));
+    const probeAudioInfo = mock(async () => ({ durationSeconds: 1 }));
+
+    await padOrTrimAudioToVideoFrameCount({
+      videoPath: "/tmp/v.mp4",
+      audioPath: "/tmp/a.aac",
+      outputPath: "/tmp/o.aac",
+      signal: controller.signal,
+      probeVideoFrameInfo,
+      probeAudioInfo,
+      runFfmpeg: mock(async () => ({ success: true })),
+    });
+
+    expect(probeAudioInfo).toHaveBeenCalledWith("/tmp/a.aac", controller.signal);
+  });
 
   it("pads a video of N=180 frames at 30/1 fps with shorter audio", async () => {
     const { input, captured } = harness({

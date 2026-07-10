@@ -3,42 +3,40 @@ import { spawn } from "child_process";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
+import { ManagedChildProcess } from "./managedChildProcess.js";
+import { trackChildProcess } from "./processTracker.js";
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
-function runFfprobe(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const command = getFfprobeBinary();
-    const proc = spawn(command, args);
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-    proc.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`[FFmpeg] ffprobe exited with code ${code}: ${stderr}`));
-      } else {
-        resolve(stdout);
-      }
-    });
-    proc.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        const configured = process.env[FFPROBE_PATH_ENV]?.trim();
-        reject(
-          new Error(
-            configured
-              ? `[FFmpeg] ffprobe not found at ${FFPROBE_PATH_ENV}="${configured}". Please install FFmpeg.`
-              : "[FFmpeg] ffprobe not found. Please install FFmpeg.",
-          ),
-        );
-      } else {
-        reject(err);
-      }
-    });
+async function runFfprobe(args: string[], signal?: AbortSignal): Promise<string> {
+  const command = getFfprobeBinary();
+  const proc = spawn(command, args);
+  trackChildProcess(proc);
+  let stdout = "";
+  proc.stdout.on("data", (data) => {
+    stdout += data.toString();
   });
+  const managed = new ManagedChildProcess(proc, {
+    signal,
+    deadlineAtMs: Date.now() + 30_000,
+  });
+  const outcome = await managed.wait();
+  if (outcome.reason === "spawn_error") {
+    if ((outcome.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      const configured = process.env[FFPROBE_PATH_ENV]?.trim();
+      throw new Error(
+        configured
+          ? `[FFmpeg] ffprobe not found at ${FFPROBE_PATH_ENV}="${configured}". Please install FFmpeg.`
+          : "[FFmpeg] ffprobe not found. Please install FFmpeg.",
+      );
+    }
+    throw outcome.error ?? new Error(outcome.stderr);
+  }
+  if (outcome.reason !== "exit" || outcome.exitCode !== 0) {
+    throw new Error(
+      `[FFmpeg] ffprobe ${outcome.reason} with code ${outcome.exitCode}: ${outcome.stderr}`,
+    );
+  }
+  return stdout;
 }
 
 function parseProbeJson(stdout: string): FFProbeOutput {
@@ -351,20 +349,21 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
  */
 export const extractVideoMetadata = extractMediaMetadata;
 
-export async function extractAudioMetadata(filePath: string): Promise<AudioMetadata> {
-  const cached = audioMetadataCache.get(filePath);
+export async function extractAudioMetadata(
+  filePath: string,
+  options?: { signal?: AbortSignal },
+): Promise<AudioMetadata> {
+  // A caller-owned abort signal cannot safely share a cached in-flight probe:
+  // cancelling one consumer would also cancel unrelated consumers. Signal-bound
+  // probes therefore bypass the process-promise cache.
+  const cached = options?.signal ? undefined : audioMetadataCache.get(filePath);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<AudioMetadata> => {
-    const stdout = await runFfprobe([
-      "-v",
-      "quiet",
-      "-print_format",
-      "json",
-      "-show_format",
-      "-show_streams",
-      filePath,
-    ]);
+    const stdout = await runFfprobe(
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
+      options?.signal,
+    );
     const output = parseProbeJson(stdout);
     const audioStream = output.streams.find((s) => s.codec_type === "audio");
     if (!audioStream) throw new Error("[FFmpeg] No audio stream found");
@@ -403,6 +402,7 @@ export async function extractAudioMetadata(filePath: string): Promise<AudioMetad
     };
   })();
 
+  if (options?.signal) return probePromise;
   audioMetadataCache.set(filePath, probePromise);
   probePromise.catch(() => {
     if (audioMetadataCache.get(filePath) === probePromise) {

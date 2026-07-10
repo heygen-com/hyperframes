@@ -24,7 +24,9 @@ import {
   extractAudioMetadata,
   formatFfmpegError,
   getFfprobeBinary,
+  ManagedChildProcess,
   runFfmpeg,
+  trackChildProcess,
   type AudioMetadata,
 } from "@hyperframes/engine";
 
@@ -62,12 +64,13 @@ export interface PadTrimAudioInput {
   audioPath: string;
   /** Path the helper writes the duration-corrected audio to. */
   outputPath: string;
+  signal?: AbortSignal;
   /**
    * Optional injectables for unit tests. Production callers omit them and
    * get the real `ffprobe`/`ffmpeg`-backed implementations.
    */
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
-  probeAudioInfo?: (audioPath: string) => Promise<AudioProbeInfo>;
+  probeAudioInfo?: (audioPath: string, signal?: AbortSignal) => Promise<AudioProbeInfo>;
   runFfmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
 }
 
@@ -265,15 +268,17 @@ function concatFileLine(path: string): string {
 export async function padOrTrimAudioToVideoFrameCount(
   input: PadTrimAudioInput,
 ): Promise<PadTrimAudioResult> {
-  const probeVideo = input.probeVideoFrameInfo ?? defaultProbeVideoFrameInfo;
+  const probeVideo =
+    input.probeVideoFrameInfo ??
+    ((videoPath: string) => defaultProbeVideoFrameInfo(videoPath, input.signal));
   const probeAudio = input.probeAudioInfo ?? defaultProbeAudioInfo;
-  const runner = input.runFfmpeg ?? defaultRunFfmpeg;
+  const runner = input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, input.signal));
 
   // Probe video and audio in parallel — the two ffprobe invocations are
   // independent and account for most of this function's wall-clock time.
   const [videoResult, audioResult] = await Promise.allSettled([
     probeVideo(input.videoPath),
-    probeAudio(input.audioPath),
+    probeAudio(input.audioPath, input.signal),
   ]);
 
   if (videoResult.status === "rejected") {
@@ -393,39 +398,48 @@ interface FfprobeOutput {
   streams?: FfprobeStreamInfo[];
 }
 
-async function defaultProbeVideoFrameInfo(videoPath: string): Promise<ProbeVideoFrameInfo> {
+async function defaultProbeVideoFrameInfo(
+  videoPath: string,
+  signal?: AbortSignal,
+): Promise<ProbeVideoFrameInfo> {
   // Try the container header (`nb_frames`) first — single moov atom read,
   // no decode. Closed-GOP, B-frame-free streams (the only ones we'll ever
   // ask to pad/trim) reliably set it. Fall back to `-count_packets` which
   // walks the packet stream when the header doesn't carry the count.
-  const fastInfo = await runFfprobeJson<FfprobeOutput>([
-    "-v",
-    "error",
-    "-select_streams",
-    "v:0",
-    "-show_entries",
-    "stream=nb_frames,r_frame_rate",
-    "-of",
-    "json",
-    videoPath,
-  ]);
+  const fastInfo = await runFfprobeJson<FfprobeOutput>(
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=nb_frames,r_frame_rate",
+      "-of",
+      "json",
+      videoPath,
+    ],
+    signal,
+  );
   let stream = fastInfo.streams?.[0];
   const fastCount = Number(stream?.nb_frames);
   if (stream && Number.isFinite(fastCount) && fastCount > 0) {
     return { frameCount: fastCount, ...parseFrameRate(stream.r_frame_rate ?? "") };
   }
-  const slowInfo = await runFfprobeJson<FfprobeOutput>([
-    "-v",
-    "error",
-    "-select_streams",
-    "v:0",
-    "-count_packets",
-    "-show_entries",
-    "stream=nb_read_packets,r_frame_rate",
-    "-of",
-    "json",
-    videoPath,
-  ]);
+  const slowInfo = await runFfprobeJson<FfprobeOutput>(
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-count_packets",
+      "-show_entries",
+      "stream=nb_read_packets,r_frame_rate",
+      "-of",
+      "json",
+      videoPath,
+    ],
+    signal,
+  );
   stream = slowInfo.streams?.[0];
   if (!stream) throw new Error(`ffprobe found no video stream in ${videoPath}`);
   const slowCount = Number(stream.nb_read_packets);
@@ -445,10 +459,13 @@ function parseFrameRate(rate: string): { fpsNum: number; fpsDen: number } {
   return { fpsNum, fpsDen };
 }
 
-async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo> {
+async function defaultProbeAudioInfo(
+  audioPath: string,
+  signal?: AbortSignal,
+): Promise<AudioProbeInfo> {
   // The shared ffprobe wrapper derives AAC-LC duration from packet count so
-  // every consumer sees the same VBR-safe metadata.
-  const metadata: AudioMetadata = await extractAudioMetadata(audioPath);
+  // every consumer sees the same VBR-safe metadata while preserving cancellation.
+  const metadata: AudioMetadata = await extractAudioMetadata(audioPath, { signal });
   return {
     durationSeconds: metadata.durationSeconds,
     sampleRate: metadata.sampleRate,
@@ -457,8 +474,11 @@ async function defaultProbeAudioInfo(audioPath: string): Promise<AudioProbeInfo>
   };
 }
 
-async function defaultRunFfmpeg(args: string[]): Promise<{ success: boolean; error?: string }> {
-  const result = await runFfmpeg(args);
+async function defaultRunFfmpeg(
+  args: string[],
+  signal?: AbortSignal,
+): Promise<{ success: boolean; error?: string }> {
+  const result = await runFfmpeg(args, { signal });
   if (result.success) return { success: true };
   return {
     success: false,
@@ -468,34 +488,30 @@ async function defaultRunFfmpeg(args: string[]): Promise<{ success: boolean; err
 
 // ── ffprobe JSON runner (shared between fast/slow video probe paths) ─────
 
-function runFfprobeJson<T>(args: string[]): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(getFfprobeBinary(), args);
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-    proc.stderr.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-    proc.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(new Error("[audioPadTrim] ffprobe not found. Please install FFmpeg."));
-      } else {
-        reject(err);
-      }
-    });
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`ffprobe exited ${code}: ${stderr}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout) as T);
-      } catch (err) {
-        reject(new Error(`Failed to parse ffprobe output: ${(err as Error).message}`));
-      }
-    });
+async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): Promise<T> {
+  const proc = spawn(getFfprobeBinary(), args);
+  trackChildProcess(proc);
+  let stdout = "";
+  proc.stdout.on("data", (data: Buffer) => {
+    stdout += data.toString();
   });
+  const managed = new ManagedChildProcess(proc, {
+    signal,
+    deadlineAtMs: Date.now() + 30_000,
+  });
+  const outcome = await managed.wait();
+  if (outcome.reason === "spawn_error") {
+    if ((outcome.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      throw new Error("[audioPadTrim] ffprobe not found. Please install FFmpeg.");
+    }
+    throw outcome.error ?? new Error(outcome.stderr);
+  }
+  if (outcome.reason !== "exit" || outcome.exitCode !== 0) {
+    throw new Error(`ffprobe ${outcome.reason}: ${outcome.stderr}`);
+  }
+  try {
+    return JSON.parse(stdout) as T;
+  } catch (err) {
+    throw new Error(`Failed to parse ffprobe output: ${(err as Error).message}`);
+  }
 }

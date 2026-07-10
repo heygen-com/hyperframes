@@ -819,7 +819,7 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     await expect(resolveWithin(writePromise)).resolves.toBe(false);
     expect(encoder.getExitStatus()).toBe("error");
     expect(proc.stdin.listenerCount("drain")).toBe(0);
-    expect(proc.listenerCount("close")).toBe(baselineCloseListeners);
+    expect(proc.listenerCount("close")).toBeLessThanOrEqual(baselineCloseListeners);
 
     const result = await encoder.close();
     expect(result.success).toBe(false);

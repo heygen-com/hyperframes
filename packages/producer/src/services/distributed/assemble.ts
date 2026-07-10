@@ -296,6 +296,7 @@ export async function assemble(
         videoPath: postConcatPath,
         audioPath,
         outputPath: paddedAudioPath,
+        signal: abortSignal,
       });
       if (!padTrimResult.success) {
         throw new Error(`[assemble] audio pad/trim failed: ${padTrimResult.error}`);

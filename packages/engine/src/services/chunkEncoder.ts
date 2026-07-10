@@ -6,10 +6,8 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
-import { spawn } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, dirname, extname } from "path";
-import { trackChildProcess } from "../utils/processTracker.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
@@ -20,7 +18,6 @@ import {
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
 import { formatFfmpegError, runFfmpeg } from "../utils/runFfmpeg.js";
-import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg } from "@hyperframes/core";
 import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
@@ -484,82 +481,40 @@ export async function encodeFramesFromDir(
   const inputPath = join(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
   const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
-
-  return new Promise((resolve) => {
-    const ffmpeg = spawn(getFfmpegBinary(), args);
-    trackChildProcess(ffmpeg);
-    let stderr = "";
-    const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const result = await runFfmpeg(args, { signal, timeout: encodeTimeout });
+  if (result.terminationReason === "abort") {
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: "FFmpeg encode cancelled",
     };
-    if (signal) {
-      if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    }
-
-    const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      ffmpeg.kill("SIGTERM");
-    }, encodeTimeout);
-
-    ffmpeg.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    ffmpeg.on("close", (code) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      const durationMs = Date.now() - startTime;
-      if (signal?.aborted && !timedOut) {
-        resolve({
-          success: false,
-          outputPath,
-          durationMs,
-          framesEncoded: 0,
-          fileSize: 0,
-          error: "FFmpeg encode cancelled",
-        });
-        return;
-      }
-
-      if (code !== 0 || timedOut) {
-        resolve({
-          success: false,
-          outputPath,
-          durationMs,
-          framesEncoded: 0,
-          fileSize: 0,
-          error: appendEncodeTimeoutMessage(
-            formatFfmpegError(code, stderr),
-            timedOut,
-            encodeTimeout,
-          ),
-        });
-        return;
-      }
-
-      const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
-      resolve({ success: true, outputPath, durationMs, framesEncoded: frameCount, fileSize });
-    });
-
-    ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({
-        success: false,
-        outputPath,
-        durationMs: Date.now() - startTime,
-        framesEncoded: 0,
-        fileSize: 0,
-        error: appendEncodeTimeoutMessage(`[FFmpeg] ${err.message}`, timedOut, encodeTimeout),
-      });
-    });
-  });
+  }
+  if (!result.success) {
+    return {
+      success: false,
+      outputPath,
+      durationMs: result.durationMs,
+      framesEncoded: 0,
+      fileSize: 0,
+      error: appendEncodeTimeoutMessage(
+        formatFfmpegError(result.exitCode, result.stderr),
+        result.terminationReason === "deadline",
+        encodeTimeout,
+      ),
+    };
+  }
+  const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;
+  return {
+    success: true,
+    outputPath,
+    durationMs: Date.now() - startTime,
+    framesEncoded: frameCount,
+    fileSize,
+  };
 }
 
 export async function encodeFramesChunkedConcat(
@@ -624,45 +579,18 @@ export async function encodeFramesChunkedConcat(
     let gpuEncoder: GpuEncoder = null;
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
     const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
-    const chunkResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-      const ffmpeg = spawn(getFfmpegBinary(), args);
-      trackChildProcess(ffmpeg);
-      let stderr = "";
-      const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        ffmpeg.kill("SIGTERM");
-      }, encodeTimeout);
-      ffmpeg.stderr.on("data", (d) => {
-        stderr += d.toString();
-      });
-      ffmpeg.on("close", (code) => {
-        clearTimeout(timer);
-        if (code === 0 && !timedOut) resolve({ success: true });
-        else {
-          resolve({
-            success: false,
-            error: appendEncodeTimeoutMessage(
-              `Chunk ${i} encode failed: ${stderr.slice(-400)}`,
-              timedOut,
-              encodeTimeout,
-            ),
-          });
-        }
-      });
-      ffmpeg.on("error", (err) => {
-        clearTimeout(timer);
-        resolve({
-          success: false,
-          error: appendEncodeTimeoutMessage(
-            `Chunk ${i} encode error: ${err.message}`,
-            timedOut,
+    const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+    const processResult = await runFfmpeg(args, { signal, timeout: encodeTimeout });
+    const chunkResult = {
+      success: processResult.success,
+      error: processResult.success
+        ? undefined
+        : appendEncodeTimeoutMessage(
+            `Chunk ${i} encode failed: ${processResult.stderr.slice(-400)}`,
+            processResult.terminationReason === "deadline",
             encodeTimeout,
           ),
-        });
-      });
-    });
+    };
     if (!chunkResult.success) {
       return {
         success: false,
@@ -692,45 +620,18 @@ export async function encodeFramesChunkedConcat(
     "-y",
     outputPath,
   ];
-  const concatResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
-    const ffmpeg = spawn(getFfmpegBinary(), concatArgs);
-    trackChildProcess(ffmpeg);
-    let stderr = "";
-    const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      ffmpeg.kill("SIGTERM");
-    }, encodeTimeout);
-    ffmpeg.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-    ffmpeg.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0 && !timedOut) resolve({ success: true });
-      else {
-        resolve({
-          success: false,
-          error: appendEncodeTimeoutMessage(
-            `Chunk concat failed: ${stderr.slice(-400)}`,
-            timedOut,
-            encodeTimeout,
-          ),
-        });
-      }
-    });
-    ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({
-        success: false,
-        error: appendEncodeTimeoutMessage(
-          `Chunk concat error: ${err.message}`,
-          timedOut,
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
+  const concatResult = {
+    success: concatProcessResult.success,
+    error: concatProcessResult.success
+      ? undefined
+      : appendEncodeTimeoutMessage(
+          `Chunk concat failed: ${concatProcessResult.stderr.slice(-400)}`,
+          concatProcessResult.terminationReason === "deadline",
           encodeTimeout,
         ),
-      });
-    });
-  });
+  };
 
   if (!concatResult.success) {
     return {

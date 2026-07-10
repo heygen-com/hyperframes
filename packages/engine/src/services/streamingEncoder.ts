@@ -16,6 +16,10 @@
 import { spawn, type ChildProcess } from "child_process";
 import { once } from "events";
 import { trackChildProcess } from "../utils/processTracker.js";
+import {
+  ManagedChildProcess,
+  type ManagedProcessTerminationReason,
+} from "../utils/managedChildProcess.js";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { dirname } from "path";
 
@@ -447,7 +451,6 @@ export async function spawnStreamingEncoder(
 
   const args = buildStreamingArgs(options, outputPath, gpuEncoder);
 
-  const startTime = Date.now();
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -456,42 +459,10 @@ export async function spawnStreamingEncoder(
   let exitStatus: "running" | "success" | "error" = "running";
   let stderr = "";
   let exitCode: number | null = null;
-  let exitPromiseResolve: ((value: void) => void) | null = null;
-  const exitPromise = new Promise<void>((resolve) => (exitPromiseResolve = resolve));
-
-  // Track stderr for progress and error messages
-  ffmpeg.stderr?.on("data", (data: Buffer) => {
-    stderr += data.toString();
-  });
-
-  ffmpeg.on("close", (code: number | null) => {
-    exitCode = code;
-    exitStatus = code === 0 ? "success" : "error";
-    exitPromiseResolve?.();
-  });
-
-  ffmpeg.on("error", (err: Error) => {
-    exitStatus = "error";
-    stderr += `\nProcess error: ${err.message}`;
-    exitPromiseResolve?.();
-  });
+  let terminationReason: ManagedProcessTerminationReason = "exit";
 
   ffmpeg.stdin?.on("error", () => {});
   ffmpeg.stdout?.on("error", () => {});
-
-  // Handle abort signal
-  const onAbort = () => {
-    if (exitStatus === "running") {
-      ffmpeg.kill("SIGTERM");
-    }
-  };
-  if (signal) {
-    if (signal.aborted) {
-      ffmpeg.kill("SIGTERM");
-    } else {
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
-  }
 
   // Inactivity timeout: fires only when no frame has been written for
   // `ffmpegStreamingTimeout` ms. A slow-but-progressing capture (e.g. a CI
@@ -503,16 +474,17 @@ export async function spawnStreamingEncoder(
   // libx264 printed its summary and exited 255, observable as
   // "Streaming encode failed: FFmpeg exited with code 255" with audio:0kB).
   const streamingTimeout = config?.ffmpegStreamingTimeout ?? DEFAULT_CONFIG.ffmpegStreamingTimeout;
-  let timer: NodeJS.Timeout | null = null;
-  const resetTimer = () => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (exitStatus === "running") {
-        ffmpeg.kill("SIGTERM");
-      }
-    }, streamingTimeout);
-  };
-  resetTimer();
+  const managed = new ManagedChildProcess(ffmpeg, {
+    signal,
+    inactivityTimeoutMs: streamingTimeout,
+  });
+  const exitPromise = managed.wait().then((outcome) => {
+    exitCode = outcome.exitCode;
+    stderr = outcome.stderr;
+    terminationReason = outcome.reason;
+    exitStatus = outcome.reason === "exit" && outcome.exitCode === 0 ? "success" : "error";
+    return outcome;
+  });
 
   const waitForDrainOrExit = async (
     stdin: NonNullable<ChildProcess["stdin"]>,
@@ -539,7 +511,7 @@ export async function spawnStreamingEncoder(
         throw err;
       });
 
-      if (exitStatus !== "running") {
+      if (managed.isSettled || exitStatus !== "running") {
         return "exit";
       }
 
@@ -573,7 +545,7 @@ export async function spawnStreamingEncoder(
       // before draining, waitForDrainOrExit returns "exit", removes its
       // one-shot listeners, and callers see `false` instead of hanging.
       if (accepted) {
-        resetTimer();
+        managed.markActivity();
         return true;
       }
 
@@ -581,7 +553,7 @@ export async function spawnStreamingEncoder(
       if (drainResult !== "drain" || exitStatus !== "running") {
         return false;
       }
-      resetTimer();
+      managed.markActivity();
       return true;
     },
 
@@ -590,9 +562,6 @@ export async function spawnStreamingEncoder(
       // path tracks an `encoderClosed` flag and may still re-call close() in
       // the outer finally if the inner cleanup raised before the flag flipped.
       // Each step here must be safe to repeat:
-      //   - clearTimeout: safe to call on an already-cleared/fired timer
-      //   - removeEventListener: no-op if the listener was already removed
-      //     (and {once: true} would have removed it on the first abort anyway)
       //   - stdin.end gated on !destroyed: skipped on the second call
       //   - exitPromise: a single shared Promise; awaiting an already-resolved
       //     Promise resolves immediately with the same captured exitCode
@@ -600,12 +569,6 @@ export async function spawnStreamingEncoder(
       // repeated calls. If you change this method, preserve idempotency or
       // a regression here will silently double-close ffmpeg and produce
       // harder-to-trace errors at the orchestrator layer.
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      if (signal) signal.removeEventListener("abort", onAbort);
-
       const stdin = ffmpeg.stdin;
       if (stdin && !stdin.destroyed) {
         await new Promise<void>((resolve) => {
@@ -613,11 +576,10 @@ export async function spawnStreamingEncoder(
         });
       }
 
-      await exitPromise;
+      const outcome = await exitPromise;
+      const durationMs = outcome.durationMs;
 
-      const durationMs = Date.now() - startTime;
-
-      if (signal?.aborted) {
+      if (terminationReason === "abort") {
         return {
           success: false,
           durationMs,
@@ -627,11 +589,15 @@ export async function spawnStreamingEncoder(
       }
 
       if (exitCode !== 0) {
+        const inactivitySuffix =
+          terminationReason === "inactivity"
+            ? `\nFFmpeg stopped after ${streamingTimeout} ms without consuming a frame.`
+            : "";
         return {
           success: false,
           durationMs,
           fileSize: 0,
-          error: formatFfmpegError(exitCode, stderr),
+          error: `${formatFfmpegError(exitCode, stderr)}${inactivitySuffix}`,
         };
       }
 

@@ -94,6 +94,12 @@ async function flushMuxCodecResolution(): Promise<void> {
   await Promise.resolve();
 }
 
+async function flushManagedProcessResolution(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe("ENCODER_PRESETS", () => {
   it("has draft, standard, and high presets", () => {
     expect(ENCODER_PRESETS).toHaveProperty("draft");
@@ -310,7 +316,7 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
 
     expect(calls).toHaveLength(1);
     emitClose(calls[0]!.proc, 0);
-    await Promise.resolve();
+    await flushManagedProcessResolution();
 
     expect(calls).toHaveLength(2);
     const concatProc = calls[1]!.proc;
@@ -353,7 +359,7 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
     expect(chunkProc.kill).not.toHaveBeenCalled();
 
     emitClose(chunkProc, 0);
-    await Promise.resolve();
+    await flushManagedProcessResolution();
 
     expect(calls).toHaveLength(2);
     const concatProc = calls[1]!.proc;

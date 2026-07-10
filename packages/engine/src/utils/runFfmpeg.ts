@@ -9,6 +9,10 @@
 import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
+import {
+  ManagedChildProcess,
+  type ManagedProcessTerminationReason,
+} from "./managedChildProcess.js";
 
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
@@ -21,6 +25,8 @@ export interface RunFfmpegResult {
   exitCode: number | null;
   stderr: string;
   durationMs: number;
+  terminationReason: ManagedProcessTerminationReason;
+  error?: Error;
 }
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -85,60 +91,21 @@ export function formatFfmpegError(
 }
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  const startMs = Date.now();
-  const signal = opts?.signal;
   const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
-  const onStderr = opts?.onStderr;
-
-  return new Promise<RunFfmpegResult>((resolve) => {
-    const ffmpeg = spawn(getFfmpegBinary(), args);
-    trackChildProcess(ffmpeg);
-    let stderr = "";
-
-    const onAbort = () => {
-      ffmpeg.kill("SIGTERM");
-    };
-
-    if (signal) {
-      if (signal.aborted) {
-        ffmpeg.kill("SIGTERM");
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-    }
-
-    const timer = setTimeout(() => {
-      ffmpeg.kill("SIGTERM");
-    }, timeout);
-
-    ffmpeg.stderr.on("data", (data: Buffer) => {
-      const chunk = data.toString();
-      stderr += chunk;
-      if (onStderr) {
-        onStderr(chunk);
-      }
-    });
-
-    ffmpeg.on("close", (code) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({
-        success: !signal?.aborted && code === 0,
-        exitCode: code,
-        stderr,
-        durationMs: Date.now() - startMs,
-      });
-    });
-
-    ffmpeg.on("error", (err) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      resolve({
-        success: false,
-        exitCode: null,
-        stderr: err.message,
-        durationMs: Date.now() - startMs,
-      });
-    });
+  const ffmpeg = spawn(getFfmpegBinary(), args);
+  trackChildProcess(ffmpeg);
+  const managed = new ManagedChildProcess(ffmpeg, {
+    signal: opts?.signal,
+    deadlineAtMs: Date.now() + timeout,
+    onStderr: opts?.onStderr,
   });
+  const outcome = await managed.wait();
+  return {
+    success: outcome.reason === "exit" && outcome.exitCode === 0,
+    exitCode: outcome.exitCode,
+    stderr: outcome.stderr,
+    durationMs: outcome.durationMs,
+    terminationReason: outcome.reason,
+    error: outcome.error,
+  };
 }
