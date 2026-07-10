@@ -12,6 +12,8 @@ packages/**/__goldens__/
 # vendored third-party bundles inside skills — never reformat
 skills/**/assets/vendor/
 skills/**/*.min.js
+# Pinned third-party runtime bytes; checksum is part of the UI primitive contract.
+registry/ui-primitives/vendor/
 # reference snippets with intentional pseudo-markup (literal "..." attributes)
 skills/talking-head-recut/references/frames/polaroid.html
 

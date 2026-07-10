@@ -226,12 +226,7 @@ ${CANONICAL_END}
       <p class="hf-ui-demo-caption">${title}</p>
       <script>
         const tl = gsap.timeline({ paused: true });
-        tl.fromTo(
-          ".hf-ui-demo-stage",
-          { opacity: 0 },
-          { opacity: 1, duration: 0.21, ease: "power3.out" },
-          0,
-        );
+        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);
         window.__timelines = window.__timelines || {};
         window.__timelines["${id}-demo"] = tl;
       </script>
@@ -247,6 +242,10 @@ export function replaceCanonicalRegion(
   source = "demo",
 ): string {
   let demo = normalizeUiPrimitiveText(demoInput);
+  demo = demo.replace(
+    /\s*tl\.fromTo\(\s*"\.hf-ui-demo-stage",\s*\{ opacity: 0 \},\s*\{ opacity: 1, duration: 0\.21, ease: "power3\.out" \},\s*0,\s*\);/,
+    '\n        tl.set(".hf-ui-demo-stage", { opacity: 1 }, 0);',
+  );
   const canonical = normalizeUiPrimitiveText(canonicalInput).trimEnd();
   const starts = occurrenceCount(demo, CANONICAL_START);
   const ends = occurrenceCount(demo, CANONICAL_END);

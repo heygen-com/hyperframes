@@ -163,15 +163,17 @@ export function prepareProjectDir(item: CatalogItem, options: PrepareOptions): s
     verifyPinnedGsap();
     const componentDir = resolve(tmpDir, "registry/components", item.name);
     const vendorDir = resolve(tmpDir, "registry/ui-primitives/vendor");
+    const sourceEntryPath = resolve(item.sourceDir, item.entryFile);
     mkdirSync(dirname(componentDir), { recursive: true });
     mkdirSync(dirname(vendorDir), { recursive: true });
-    cpSync(item.sourceDir, componentDir, { recursive: true });
+    cpSync(item.sourceDir, componentDir, {
+      recursive: true,
+      filter: (source) => resolve(source) !== sourceEntryPath,
+    });
     cpSync(resolve(registryDir, "ui-primitives/vendor"), vendorDir, { recursive: true });
-    const entryPath = resolve(componentDir, item.entryFile);
-    let content = readFileSync(entryPath, "utf8");
-    content = content.replace(
-      /<head(\s[^>]*)?>/i,
-      (opening) => `${opening}\n    <base href="./registry/components/${item.name}/" />`,
+    const content = readFileSync(sourceEntryPath, "utf8").replaceAll(
+      "../../ui-primitives/vendor/gsap-3.14.2.min.js",
+      "registry/ui-primitives/vendor/gsap-3.14.2.min.js",
     );
     writeFileSync(resolve(tmpDir, "index.html"), content);
     return tmpDir;
