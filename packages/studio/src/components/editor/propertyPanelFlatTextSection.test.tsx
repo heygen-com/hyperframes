@@ -79,6 +79,10 @@ describe("FlatTextLayerList", () => {
     );
     act(() => removeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onRemove).toHaveBeenCalledWith("a");
+    // stopPropagation on the remove button must prevent the row's own onClick
+    // from also firing onSelect for the removed field's key.
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalledWith("a");
     act(() => root.unmount());
   });
 });
