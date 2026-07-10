@@ -1,18 +1,18 @@
 /**
- * Rotation-correct corner-resize math (the industry OBB model shared by tldraw
- * `Resizing.ts`, Fabric.js `wrapWithFixedAnchor.ts`, Konva `Transformer.ts`).
+ * Center-anchored corner-resize math (the CapCut model): the element scales
+ * proportionally about its CENTER, the center stays planted, and all four corners
+ * behave identically.
  *
- * The old screen-space path (`resolveDomEditResizeGesture` + `resolveResizeHandleDeltas`)
- * added the raw pointer dx/dy to width/height along SCREEN axes, which is only correct
- * when the element is unrotated. Here the pointer delta is projected into the element's
- * LOCAL frame (inverse-rotated by the element's live rotation, divided by the display
- * scale) before it becomes a width/height change, so a rotated element grows along its
- * own axes. The anchor corner (opposite the grabbed handle) stays world-fixed BY
- * CONSTRUCTION when the caller repositions the element to the returned local size.
+ * The scale factor is the RADIAL distance from the element's center: how far the
+ * pointer is from the center now, divided by how far it was at gesture start. This
+ * is inherently proportional, continuous everywhere, and rotation-invariant — a
+ * distance is a distance regardless of the element's angle, so there is no per-axis
+ * projection and no dominant-axis branch to jump across. Which corner was grabbed
+ * is irrelevant to the size (it only picks the resize cursor).
  *
  * All math here is pure and unit-tested; the live wiring (measuring the element's
- * transform, feeding the anchor translate through the manual-offset channel) lives in
- * useDomEditOverlayGestures.ts.
+ * rendered center, feeding the center-pin translate through the manual-offset
+ * channel) lives in useDomEditOverlayGestures.ts.
  */
 import type { ResizeHandle } from "./domEditOverlayGestures";
 
@@ -20,26 +20,63 @@ import type { ResizeHandle } from "./domEditOverlayGestures";
  *  (no flip-through-zero: clamp, never mirror). */
 export const MIN_RESIZE_LOCAL_PX = 1;
 
-/** Local-frame unit corners (sign relative to the element center). */
-const CORNER_SIGNS: Record<ResizeHandle, { x: -1 | 1; y: -1 | 1 }> = {
-  nw: { x: -1, y: -1 },
-  ne: { x: 1, y: -1 },
-  se: { x: 1, y: 1 },
-  sw: { x: -1, y: 1 },
-};
+/**
+ * Below this pointer-to-center distance (overlay px) the gesture started at (or
+ * effectively at) the center, so the ratio is degenerate (division by ~0). Bail to
+ * scale 1 rather than blow up.
+ */
+const DEGENERATE_START_DIST_PX = 3;
 
-/** The corner a handle keeps FIXED: opposite the grabbed corner. */
-export function oppositeCorner(handle: ResizeHandle): ResizeHandle {
-  switch (handle) {
-    case "nw":
-      return "se";
-    case "ne":
-      return "sw";
-    case "sw":
-      return "ne";
-    case "se":
-      return "nw";
-  }
+/**
+ * The proportional scale factor for a center-anchored resize: the ratio of the
+ * pointer's radial distance from the element center now to its distance at gesture
+ * start. Rotation-invariant (a radial distance ignores the element's angle) and
+ * continuous. Never negative — dragging through the center just shrinks toward the
+ * clamp; the caller clamps the resulting size, this returns the raw ratio (guarded
+ * against a degenerate start-at-center gesture, which returns 1).
+ */
+export function resolveCenterResizeScale(input: {
+  pointer: { x: number; y: number };
+  pointerStart: { x: number; y: number };
+  centerStart: { x: number; y: number };
+}): number {
+  const startDist = Math.hypot(
+    input.pointerStart.x - input.centerStart.x,
+    input.pointerStart.y - input.centerStart.y,
+  );
+  if (!Number.isFinite(startDist) || startDist < DEGENERATE_START_DIST_PX) return 1;
+  const nowDist = Math.hypot(
+    input.pointer.x - input.centerStart.x,
+    input.pointer.y - input.centerStart.y,
+  );
+  return nowDist / startDist;
+}
+
+/**
+ * The element's new LOCAL size for a center-anchored corner resize: base size
+ * scaled by `resolveCenterResizeScale`, clamped so the smaller edge never drops
+ * below MIN_RESIZE_LOCAL_PX (clamp small, never mirror through zero). The scale is
+ * a dimensionless ratio, so the base local size and the screen-space pointer
+ * distances live in different frames without any display-scale conversion — the
+ * ratio cancels the scale.
+ */
+export function resolveCenterResizeSize(input: {
+  baseWidth: number;
+  baseHeight: number;
+  pointer: { x: number; y: number };
+  pointerStart: { x: number; y: number };
+  centerStart: { x: number; y: number };
+}): { width: number; height: number } {
+  const baseWidth = Math.max(input.baseWidth, MIN_RESIZE_LOCAL_PX);
+  const baseHeight = Math.max(input.baseHeight, MIN_RESIZE_LOCAL_PX);
+  const rawScale = resolveCenterResizeScale({
+    pointer: input.pointer,
+    pointerStart: input.pointerStart,
+    centerStart: input.centerStart,
+  });
+  const minScale = MIN_RESIZE_LOCAL_PX / Math.min(baseWidth, baseHeight);
+  const scale = Math.max(minScale, rawScale);
+  return { width: baseWidth * scale, height: baseHeight * scale };
 }
 
 /**
@@ -64,76 +101,6 @@ export function decomposeMatrix2D(m: { a: number; b: number; c: number; d: numbe
   const scaleY = det < 0 ? -rawScaleY : rawScaleY;
   const rotation = Math.atan2(b, a);
   return { rotation, scaleX, scaleY };
-}
-
-/** Rotate a vector by `theta` radians (screen/CSS convention: +y down, CW positive). */
-function rotateVector(v: { x: number; y: number }, theta: number): { x: number; y: number } {
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  return { x: cos * v.x - sin * v.y, y: sin * v.x + cos * v.y };
-}
-
-/**
- * The element's new LOCAL size (element-local px) for a corner resize.
- *
- * `dxScreen/dyScreen` is the pointer's screen-space movement since gesture start
- * (the grabbed corner tracks the pointer). It is inverse-rotated by the element's
- * live rotation and divided by the display scale to get the LOCAL-axis size deltas
- * toward the dragged corner, then added to the base local size.
- *
- * `uniform` locks the aspect ratio by projecting the local pointer delta onto the
- * anchor→corner diagonal: one linear scale factor, so the dragged corner tracks
- * the pointer's diagonal component and the mapping is continuous everywhere.
- *
- * At rotation 0 with equal display scale this returns the same width/height as the
- * old screen-space path, so unrotated behavior is unchanged.
- */
-export function resolveLocalResizeSize(input: {
-  baseWidth: number;
-  baseHeight: number;
-  rotation: number;
-  displayScaleX: number;
-  displayScaleY: number;
-  handle: ResizeHandle;
-  dxScreen: number;
-  dyScreen: number;
-  uniform: boolean;
-}): { width: number; height: number } {
-  const sx = input.displayScaleX > 0 ? input.displayScaleX : 1;
-  const sy = input.displayScaleY > 0 ? input.displayScaleY : 1;
-  const sign = CORNER_SIGNS[input.handle];
-
-  // Screen delta → local-axis delta: undo the display scale per screen axis, then
-  // inverse-rotate into the element's local frame. Display scale is aspect-preserving
-  // in the studio preview (editScaleX ≈ editScaleY); the per-axis divide keeps the
-  // common equal-scale case exact and degrades gracefully otherwise.
-  const localDelta = rotateVector(
-    { x: input.dxScreen / sx, y: input.dyScreen / sy },
-    -input.rotation,
-  );
-  const deltaW = sign.x * localDelta.x;
-  const deltaH = sign.y * localDelta.y;
-
-  if (input.uniform) {
-    // Aspect-locked scale via DIAGONAL PROJECTION (the CapCut/Canva feel): the
-    // dragged corner tracks the pointer's component along the anchor→corner
-    // diagonal, so scale is one LINEAR function of the pointer delta —
-    // continuous everywhere. (A dominant-axis branch — "if |dw| >= |dh| drive
-    // from width, else height" — is discontinuous for non-square elements and
-    // teleported the size whenever the pointer crossed the 45° line.)
-    const baseWidth = Math.max(input.baseWidth, 1);
-    const baseHeight = Math.max(input.baseHeight, 1);
-    const scale =
-      1 + (deltaW * baseWidth + deltaH * baseHeight) / (baseWidth ** 2 + baseHeight ** 2);
-    const minScale = MIN_RESIZE_LOCAL_PX / Math.min(baseWidth, baseHeight);
-    const clamped = Math.max(minScale, scale);
-    return { width: baseWidth * clamped, height: baseHeight * clamped };
-  }
-
-  return {
-    width: Math.max(MIN_RESIZE_LOCAL_PX, input.baseWidth + deltaW),
-    height: Math.max(MIN_RESIZE_LOCAL_PX, input.baseHeight + deltaH),
-  };
 }
 
 /**

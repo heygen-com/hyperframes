@@ -21,7 +21,7 @@ import {
   type OverlayRect,
   elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
-  readElementRotationDegrees,
+  overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
@@ -29,8 +29,6 @@ import {
   type GestureState,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
-  ROTATED_SNAP_BYPASS_DEGREES,
-  anchorCornerForHandle,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
 
@@ -152,23 +150,12 @@ export function startGesture(
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    // Corner resize anchors the OPPOSITE corner world-fixed by translating the
-    // element through the same manual-offset channel a drag uses (member below).
-    // Unrotated: only west/north handles need this (east/south grow from the
-    // layout top-left, which is already fixed) — SE stays memberless, byte-for-byte
-    // as before. Rotated: EVERY corner (including SE) needs the pin, because the
-    // element grows in its LOCAL frame and the whole box rotates about its center,
-    // so the layout top-left no longer maps to a world-fixed screen point.
-    const iframeForRot = opts.iframeRef.current;
-    const isRotated =
-      iframeForRot != null &&
-      Math.abs(readElementRotationDegrees(iframeForRot, sel.element)) >=
-        ROTATED_SNAP_BYPASS_DEGREES;
-    const resizeHandle = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
-    const needsAnchorOffset =
-      resizeHandle !== undefined &&
-      (resizeHandle !== "se" || isRotated) &&
-      sel.capabilities.canApplyManualOffset;
+    // Center-anchored corner resize (CapCut model): the element scales about its
+    // CENTER, which stays planted. All four corners behave identically, so EVERY
+    // corner needs the manual-offset member that translates the element to re-pin
+    // its center per frame (the memberless else-branch is only a defensive fallback
+    // if member creation fails, e.g. the element can't take a manual offset).
+    const needsAnchorOffset = kind === "resize" && sel.capabilities.canApplyManualOffset;
     if (needsAnchorOffset) {
       const result = createManualOffsetDragMember({
         key: selectionCacheKey(sel),
@@ -194,16 +181,15 @@ export function startGesture(
 
   const iframe = opts.iframeRef.current;
 
-  // For an anchored corner resize, capture the FIXED corner's real (rotation-aware)
-  // overlay position now, so per-frame anchoring can pin that exact point instead of
-  // an axis-aligned width/height delta (which slides the fixed corner on a rotated
-  // element — the resize jump/gap bug). Present whenever an anchor member exists
-  // (all corners when rotated, west/north corners otherwise).
-  const resizeHandleForAnchor = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
-  let resizeFixedCornerStart: { x: number; y: number } | undefined;
-  if (resizeHandleForAnchor !== undefined && pathOffsetMember && overlayEl && iframe) {
+  // For a center-anchored corner resize, capture the element's rendered CENTER (the
+  // centroid of its four real, rotation-aware corners) now, so per-frame anchoring
+  // can pin that exact point instead of an axis-aligned width/height delta (which
+  // only holds the center still when the element grows symmetrically from an
+  // unrotated layout box). Present whenever an anchor member exists (all corners).
+  let resizeFixedCenterStart: { x: number; y: number } | undefined;
+  if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
     const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
-    if (corners) resizeFixedCornerStart = corners[anchorCornerForHandle(resizeHandleForAnchor)];
+    if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
   }
   const snapContext =
     (kind === "drag" || kind === "resize") && overlayEl && iframe
@@ -241,7 +227,7 @@ export function startGesture(
     manualEditDragToken,
     snapContext,
     resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
-    resizeFixedCornerStart,
+    resizeFixedCenterStart,
   };
   return true;
 }

@@ -31,6 +31,7 @@ import {
   type OverlayRect,
   elementCornerOverlayPoints,
   orientedOverlayRect,
+  overlayCornersCentroid,
   resolveDomEditGroupOverlayRect,
 } from "./domEditOverlayGeometry";
 import {
@@ -41,23 +42,17 @@ import {
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
   ROTATED_SNAP_BYPASS_DEGREES,
-  anchorCornerForHandle,
   hasDomEditRotationChanged,
   resolveDomEditRotationGesture,
-  resolveResizeAnchorOffset,
+  resolveResizeCenterAnchorOffset,
 } from "./domEditOverlayGestures";
-import { resolveLocalResizeSize } from "./domEditResizeLocal";
+import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import {
-  resolveSnapAdjustment,
-  resolveResizeSnapAdjustment,
-  resolveEquidistanceGuides,
-  SNAP_THRESHOLD_PX,
-} from "./snapEngine";
+import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
     opts.setOverlayRect(next);
@@ -264,56 +259,22 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     } else {
       if (!box) return;
 
-      const handle = g.resizeHandle ?? "se";
-      // Rotation-correct resize: snapping is bypassed for rotated elements (the
-      // snap targets are axis-aligned; snapping a rotated box's AABB to them is
-      // unpredictable). Rotation ~0 keeps snapping exactly as before.
-      const rotated = Math.abs(g.actualRotation) >= ROTATED_SNAP_BYPASS_DEGREES;
-      const sc = g.snapContext;
-      if (!rotated && sc?.snapEnabled && sc.targets.length > 0) {
-        const movingRect = {
-          left: g.originLeft,
-          top: g.originTop,
-          width: g.originWidth,
-          height: g.originHeight,
-        };
-        const allTargets = sc.compositionTarget
-          ? [...sc.targets, sc.compositionTarget]
-          : sc.targets;
-        const snap = resolveResizeSnapAdjustment({
-          movingRect,
-          proposedDx: dx,
-          proposedDy: dy,
-          targets: allTargets,
-          gridEdges: sc.gridEdges ?? undefined,
-          threshold: SNAP_THRESHOLD_PX,
-          disabled: e.altKey,
-          edges: {
-            x: handle === "nw" || handle === "sw" ? "left" : "right",
-            y: handle === "nw" || handle === "ne" ? "top" : "bottom",
-          },
-        });
-        dx = snap.dx;
-        dy = snap.dy;
-        opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides: [] };
-      }
-
-      // LOCAL-SPACE size (industry OBB model): inverse-rotate the screen pointer
-      // delta into the element's local frame so a rotated element grows along its
-      // OWN axes, not the screen axes. Base size is the element-local px size at
-      // gesture start (actualWidth/Height, GSAP-scale-aware). Corner drag is
-      // ALWAYS proportional (CapCut/Canva model: corners only scale, never
-      // stretch — user product choice); there is no free-form stretch gesture.
-      const nextSize = resolveLocalResizeSize({
+      // CENTER-ANCHORED size (CapCut model): the element scales proportionally
+      // about its CENTER — the scale is the pointer's RADIAL distance from the
+      // element center now over its distance at gesture start. Rotation-invariant
+      // (a distance ignores the angle) and continuous, so all four corners behave
+      // identically and there is no per-axis projection or edge-snapping. Base size
+      // is the element-local px size at gesture start (actualWidth/Height,
+      // GSAP-scale-aware). Corner drag is ALWAYS proportional; there is no
+      // free-form stretch gesture. Edge-snapping is intentionally NOT applied:
+      // with center anchoring both edges move symmetrically, so the corner-anchored
+      // snap math no longer holds — CapCut does not edge-snap during scale either.
+      const nextSize = resolveCenterResizeSize({
         baseWidth: g.actualWidth,
         baseHeight: g.actualHeight,
-        rotation: (g.actualRotation * Math.PI) / 180,
-        displayScaleX: g.editScaleX,
-        displayScaleY: g.editScaleY,
-        handle,
-        dxScreen: dx,
-        dyScreen: dy,
-        uniform: true,
+        pointer: { x: e.clientX, y: e.clientY },
+        pointerStart: { x: g.startX, y: g.startY },
+        centerStart: { x: g.centerX, y: g.centerY },
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
 
@@ -325,44 +286,43 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const sizedRect =
         overlayEl && iframe ? orientedOverlayRect(overlayEl, iframe, sel.element) : null;
 
-      // West/north handles keep the OPPOSITE corner visually fixed by translating
-      // the element through the manual-offset channel (member created at gesture
-      // start). Pin the corner by measuring its real transformed position after
-      // the size write and translating it back to its gesture-start position —
-      // rotation-safe by construction for any transform-origin. SE is anchorless
-      // (memberless) exactly as before: no translate, the box follows the element.
+      // Keep the element's CENTER visually planted by translating it through the
+      // manual-offset channel (member created at gesture start, on every corner).
+      // Pin the center by measuring the centroid of its real transformed corners
+      // after the size write and translating it back to its gesture-start center —
+      // rotation-safe by construction for any transform-origin. The memberless
+      // branch is a defensive fallback only (member creation failed).
       let draftRect: OverlayRect;
       if (g.pathOffsetMember) {
         const cornersAfterSize =
           overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, sel.element) : null;
-        const fixedStart = g.resizeFixedCornerStart;
+        const fixedStart = g.resizeFixedCenterStart;
         let anchor: { dx: number; dy: number };
         if (cornersAfterSize && fixedStart) {
-          // `fixedNow` is measured on the LIVE element, which already carries the
+          // `centerNow` is measured on the LIVE element, which already carries the
           // offset applied on the PREVIOUS frame. `applyManualOffsetDragDraft`
           // treats its argument as the ABSOLUTE offset (from initialOffset 0), so
-          // `fixedStart - fixedNow` is only the RESIDUAL correction — it must be
+          // `fixedStart - centerNow` is only the RESIDUAL correction — it must be
           // ADDED to the offset already in flight, not used as the absolute value.
           // Using it absolutely makes the anchor oscillate between the correct
-          // value and zero every frame (measure moves the corner back to
-          // fixedStart → residual 0 → offset dropped → corner un-pins → repeat).
+          // value and zero every frame (measure moves the center back to
+          // fixedStart → residual 0 → offset dropped → center un-pins → repeat).
           // Release then commits whichever parity the last pointermove landed on,
-          // so anchored corners "shift a bit" after release; SE is memberless and
-          // never enters this loop. Accumulate onto the previous anchor to fix.
+          // so the element "shifts a bit" after release. Accumulate onto the
+          // previous anchor to converge (fa4f39168).
           const prev = g.lastResizeAnchor ?? { dx: 0, dy: 0 };
-          const fixedNow = cornersAfterSize[anchorCornerForHandle(handle)];
+          const centerNow = overlayCornersCentroid(cornersAfterSize);
           anchor = {
-            dx: prev.dx + (fixedStart.x - fixedNow.x),
-            dy: prev.dy + (fixedStart.y - fixedNow.y),
+            dx: prev.dx + (fixedStart.x - centerNow.x),
+            dy: prev.dy + (fixedStart.y - centerNow.y),
           };
         } else {
-          // Geometry unmeasurable (no live DOM) — fall back to the AABB delta.
-          anchor = resolveResizeAnchorOffset({
+          // Geometry unmeasurable (no live DOM) — fall back to the AABB half-delta.
+          anchor = resolveResizeCenterAnchorOffset({
             originWidth: g.originWidth,
             originHeight: g.originHeight,
             overlayWidth: sizedRect ? sizedRect.width : g.originWidth,
             overlayHeight: sizedRect ? sizedRect.height : g.originHeight,
-            handle,
           });
         }
         g.lastResizeAnchor = anchor;

@@ -58,28 +58,14 @@ export interface GestureState {
   /** Last anchoring translation applied during a corner resize (overlay px). */
   lastResizeAnchor?: { dx: number; dy: number };
   /**
-   * The FIXED corner's overlay position at gesture start (the corner opposite the
-   * grabbed handle, in the element's real — possibly rotated — geometry). A corner
-   * resize keeps this point pinned; the per-frame anchor translation is computed as
-   * the shift of this exact corner, not an AABB width/height delta (which only holds
-   * the corner still when the element is unrotated). Undefined for SE (no anchor)
-   * and when the corner geometry can't be measured.
+   * The element's rendered CENTER in overlay px at gesture start (the centroid of
+   * its four real — possibly rotated — corners). A center-anchored resize keeps this
+   * point pinned; the per-frame anchor translation is computed as the shift of this
+   * exact center, not an AABB width/height delta (which only holds the center still
+   * when the element grows symmetrically from an unrotated layout box). Undefined
+   * when the corner geometry can't be measured (member creation still succeeded).
    */
-  resizeFixedCornerStart?: { x: number; y: number };
-}
-
-/** The element corner a handle keeps FIXED: opposite the grabbed corner. */
-export function anchorCornerForHandle(handle: ResizeHandle): "nw" | "ne" | "sw" | "se" {
-  switch (handle) {
-    case "nw":
-      return "se";
-    case "ne":
-      return "sw";
-    case "sw":
-      return "ne";
-    case "se":
-      return "nw";
-  }
+  resizeFixedCenterStart?: { x: number; y: number };
 }
 
 export interface GroupGestureState {
@@ -108,27 +94,22 @@ export function focusDomEditOverlayElement(element: FocusableDomEditOverlay | nu
 }
 
 /**
- * Overlay-px translation that keeps the opposite corner fixed while a west or
- * north handle resizes: the element's visual origin shifts by exactly the size
- * change on the anchored axis. This is the UNROTATED (AABB) fallback used only
- * when the element's real transformed corners can't be measured — the primary
- * anchor path pins the measured corner (rotation-safe) in useDomEditOverlayGestures.
- * Which axes translate is derived from the handle here (was resolveResizeHandleDeltas).
+ * Overlay-px translation that keeps the element's CENTER fixed while a corner
+ * resizes: a CSS width/height change grows the layout box from its top-left, so
+ * the center drifts by half the size change on each axis; translating back by that
+ * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
+ * when the element's real transformed corners can't be measured — the primary path
+ * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
  */
-export function resolveResizeAnchorOffset(input: {
+export function resolveResizeCenterAnchorOffset(input: {
   originWidth: number;
   originHeight: number;
   overlayWidth: number;
   overlayHeight: number;
-  handle: ResizeHandle;
 }): { dx: number; dy: number } {
-  // West/north handles anchor the opposite (east/south) edge, so the element's
-  // top-left must shift by the size change on that axis to hold it fixed.
-  const anchorX = input.handle === "nw" || input.handle === "sw";
-  const anchorY = input.handle === "nw" || input.handle === "ne";
   return {
-    dx: anchorX ? input.originWidth - input.overlayWidth : 0,
-    dy: anchorY ? input.originHeight - input.overlayHeight : 0,
+    dx: (input.originWidth - input.overlayWidth) / 2,
+    dy: (input.originHeight - input.overlayHeight) / 2,
   };
 }
 

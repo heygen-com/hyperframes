@@ -14,7 +14,7 @@ import {
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
 import type { DomEditSelection } from "./domEditing";
-import { resolveResizeAnchorOffset } from "./domEditOverlayGestures";
+import { resolveResizeCenterAnchorOffset } from "./domEditOverlayGestures";
 
 // React 19 warns unless the test environment opts into act().
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -680,55 +680,42 @@ describe("resolveDomEditRotationGesture", () => {
   });
 });
 
-// resolveResizeAnchorOffset is now the UNROTATED (AABB) fallback used only when
-// the element's real transformed corners can't be measured; it derives which axes
-// translate from the handle (was resolveResizeHandleDeltas, removed).
-describe("resolveResizeAnchorOffset", () => {
-  it("nw: translates by the size change on both anchored axes", () => {
+// resolveResizeCenterAnchorOffset is the UNROTATED (AABB) fallback used only when
+// the element's real transformed corners can't be measured. Center-anchored: a
+// width/height change grows the box from its top-left, drifting the center by half
+// the size change per axis, so the pin translates back by that half-delta. It is
+// handle-independent — all four corners scale about the same center.
+describe("resolveResizeCenterAnchorOffset", () => {
+  it("grow: translates back by half the size change on both axes", () => {
     expect(
-      resolveResizeAnchorOffset({
+      resolveResizeCenterAnchorOffset({
         originWidth: 200,
         originHeight: 100,
         overlayWidth: 230,
         overlayHeight: 112,
-        handle: "nw",
       }),
-    ).toEqual({ dx: -30, dy: -12 });
+    ).toEqual({ dx: -15, dy: -6 });
   });
 
-  it("se: returns zero offset (anchorless handle)", () => {
+  it("shrink: translates forward by half the (positive) size change", () => {
     expect(
-      resolveResizeAnchorOffset({
+      resolveResizeCenterAnchorOffset({
         originWidth: 200,
         originHeight: 100,
-        overlayWidth: 230,
-        overlayHeight: 112,
-        handle: "se",
+        overlayWidth: 160,
+        overlayHeight: 80,
+      }),
+    ).toEqual({ dx: 20, dy: 10 });
+  });
+
+  it("no size change: zero offset", () => {
+    expect(
+      resolveResizeCenterAnchorOffset({
+        originWidth: 200,
+        originHeight: 100,
+        overlayWidth: 200,
+        overlayHeight: 100,
       }),
     ).toEqual({ dx: 0, dy: 0 });
-  });
-
-  it("ne: only the y axis translates", () => {
-    expect(
-      resolveResizeAnchorOffset({
-        originWidth: 200,
-        originHeight: 100,
-        overlayWidth: 230,
-        overlayHeight: 88,
-        handle: "ne",
-      }),
-    ).toEqual({ dx: 0, dy: 12 });
-  });
-
-  it("sw: only the x axis translates", () => {
-    expect(
-      resolveResizeAnchorOffset({
-        originWidth: 200,
-        originHeight: 100,
-        overlayWidth: 230,
-        overlayHeight: 112,
-        handle: "sw",
-      }),
-    ).toEqual({ dx: -30, dy: 0 });
   });
 });
