@@ -215,7 +215,19 @@ if (!isHelp && command !== "telemetry" && command !== "events" && command !== "u
 
 // `events` skips the update check too — a skill-usage beacon must not add
 // network latency or trigger a background self-upgrade on the calling skill.
-if (!isHelp && !hasJsonFlag && command !== "upgrade" && command !== "events") {
+// `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
+// excluded from the self-update notice: a command that is itself actively
+// checking/reconciling skills (`skills check`, `skills update`) must not also
+// tell the user to go run `skills update` — that's either redundant (it just
+// did) or, worse, misleading (it printed a stale nudge count from the last
+// cached check while reporting fresh results of its own).
+if (
+  !isHelp &&
+  !hasJsonFlag &&
+  command !== "upgrade" &&
+  command !== "events" &&
+  command !== "skills"
+) {
   // Report any completed auto-install from the previous run first, before
   // kicking off the next check — so the user sees "updated to vX" once and
   // we don't over-print.

@@ -63,6 +63,8 @@ export interface HyperframesConfig {
   skillsOutdatedCount?: number;
   /** How many skills were missing (not installed) at the last check. */
   skillsMissingCount?: number;
+  /** How many installed skills were flagged removed-upstream at the last check. */
+  skillsRemovedCount?: number;
 }
 
 const DEFAULT_CONFIG: HyperframesConfig = {
@@ -108,6 +110,7 @@ export function readConfig(): HyperframesConfig {
       skillsUpdateAvailable: parsed.skillsUpdateAvailable,
       skillsOutdatedCount: parsed.skillsOutdatedCount,
       skillsMissingCount: parsed.skillsMissingCount,
+      skillsRemovedCount: parsed.skillsRemovedCount,
     };
 
     cachedConfig = config;
