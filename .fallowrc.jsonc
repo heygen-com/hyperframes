@@ -53,6 +53,9 @@
     "packages/studio/src/hooks/gsapTargetCache.ts",
     // Preview helper consumed dynamically from the studio iframe bridge.
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
+    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
+    // consumers land in studio-dnd/pr07-nle-integration-wiring, which removes this block.
+    "packages/studio/src/components/editor/CanvasContextMenu.tsx",
   ],
   "ignorePatterns": [
     "docs/**",
@@ -90,6 +93,16 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
+    // TEMP(studio-dnd): consumed by studio-dnd/pr07-nle-integration-wiring, which removes this block.
+    {
+      "file": "packages/studio/src/components/editor/domEditNudge.ts",
+      "exports": ["CANVAS_NUDGE_COMMIT_DEBOUNCE_MS"]
+    },
+    // TEMP(studio-dnd): consumed by studio-dnd/pr07-nle-integration-wiring, which removes this block.
+    {
+      "file": "packages/studio/src/components/editor/canvasContextMenuZOrder.ts",
+      "exports": ["readEffectiveZIndex"]
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -433,6 +446,11 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // TEMP(studio-dnd): mid-stack CRAP re-flags — line-shifted inherited
+      // complexity (useTimelineSyncCallbacks) and coverage-reachability absent
+      // until the wiring lands; studio-dnd/pr07-nle-integration-wiring removes this.
+      "packages/studio/src/player/hooks/useTimelineSyncCallbacks.ts",
+      "packages/studio/src/components/editor/CanvasContextMenu.tsx",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited
