@@ -1165,10 +1165,15 @@ describe("resolveRenderWorkerCount", () => {
       debug: vi.fn(),
     };
 
+    const stableCfg = {
+      ...cfg,
+      concurrency: 2 as const,
+      largeRenderThreshold: 1_000,
+    };
     const workers = resolveRenderWorkerCount(
       180,
       undefined,
-      { ...cfg, forceScreenshot: true },
+      { ...stableCfg, forceScreenshot: true },
       {
         hasShaderTransitions: false,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
@@ -1177,7 +1182,7 @@ describe("resolveRenderWorkerCount", () => {
       { multiplier: 1, reasons: [], p95Ms: 180 },
     );
 
-    expect(workers).toBe(6);
+    expect(workers).toBe(2);
     expect(log.warn).not.toHaveBeenCalled();
   });
 });

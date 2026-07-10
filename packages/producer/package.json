@@ -43,8 +43,16 @@
     "check:runtime-conformance": "tsx src/runtime-conformance.ts",
     "benchmark": "tsx src/benchmark.ts",
     "bench:hdr": "tsx src/benchmark.ts --tags hdr",
-    "test": "tsx src/regression-harness.ts --exclude-tags transparency",
-    "test:update": "tsx src/regression-harness.ts --update --exclude-tags transparency",
+    "test": "bun run test:unit",
+    "test:classification": "node --test scripts/test-classification.test.mjs && node scripts/check-test-classification.mjs",
+    "test:unit": "bun run test:classification && node scripts/run-test-lane.mjs unit",
+    "test:unit:bun": "node scripts/run-test-lane.mjs unit bun",
+    "test:unit:vitest": "node scripts/run-test-lane.mjs unit vitest",
+    "test:integration": "bun run test:classification && node scripts/run-test-lane.mjs integration",
+    "test:integration:bun": "node scripts/run-test-lane.mjs integration bun",
+    "test:integration:vitest": "node scripts/run-test-lane.mjs integration vitest",
+    "test:regression": "tsx src/regression-harness.ts --exclude-tags transparency",
+    "test:regression:update": "tsx src/regression-harness.ts --update --exclude-tags transparency",
     "test:distributed": "tsx src/regression-harness.ts --exclude-tags transparency --mode=distributed-simulated",
     "test:transparency": "tsx src/transparency-test.ts",
     "docker:build:test": "docker build -f ../../Dockerfile.test -t hyperframes-producer:test ../..",
@@ -93,7 +101,8 @@
     "@webgpu/types": "^0.1.69",
     "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=22"
