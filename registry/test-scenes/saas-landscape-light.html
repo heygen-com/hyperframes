@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>SaaS Landscape (test scene, light)</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /*
+        Shared test scene for primitive screening (ADR-0008).
+        Same skeleton as saas-landscape.html, light-theme token values only, so
+        a primitive that only reads correctly on dark gets caught here. See
+        registry/test-scenes/README.md for how to screen a primitive.
+      */
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        /* 17-token theme contract. Scenes ARE the host, so scenes define these
+           values; primitives only ever consume them via var(--token). */
+        --bg: #f6f4ef;
+        --fg: #12161c;
+        --muted: #5c6570;
+        --surface: #ffffff;
+        --border: rgba(18, 22, 28, 0.12);
+        --brand: #c04a18;
+        --accent: #0e7c92;
+        --font-display:
+          -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+        --font-body:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 16px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+        --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+      }
+
+      /* ---- Scene chrome: quiet, exists to compete for attention realistically ---- */
+
+      #headline {
+        position: absolute;
+        left: 120px;
+        top: 140px;
+        width: 660px;
+        height: 300px;
+      }
+
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--brand);
+        margin-bottom: var(--space-2);
+      }
+
+      .headline-text {
+        font-family: var(--font-display);
+        font-size: 64px;
+        font-weight: 600;
+        line-height: 1.08;
+        letter-spacing: -0.01em;
+        color: var(--fg);
+        max-width: 620px;
+      }
+
+      .subhead {
+        margin-top: var(--space-2);
+        font-size: 22px;
+        line-height: 1.5;
+        color: var(--muted);
+        max-width: 540px;
+      }
+
+      #ui-panel {
+        position: absolute;
+        left: 860px;
+        top: 260px;
+        width: 1000px;
+        height: 760px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+
+      .ui-panel-titlebar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        height: 56px;
+        padding: 0 var(--space-2);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .ui-panel-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--border);
+      }
+
+      .ui-panel-body {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        height: calc(100% - 56px);
+      }
+
+      .ui-panel-sidebar {
+        border-right: 1px solid var(--border);
+        padding: var(--space-3) var(--space-2);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+
+      .ui-panel-sidebar-item {
+        height: 16px;
+        border-radius: 4px;
+        background: var(--border);
+      }
+
+      .ui-panel-sidebar-item:nth-child(1) {
+        width: 70%;
+      }
+      .ui-panel-sidebar-item:nth-child(2) {
+        width: 50%;
+      }
+      .ui-panel-sidebar-item:nth-child(3) {
+        width: 60%;
+      }
+      .ui-panel-sidebar-item:nth-child(4) {
+        width: 40%;
+      }
+
+      .ui-panel-content {
+        padding: var(--space-3);
+      }
+
+      /* ---- Slots: positioned mounts for the sub-composition under test ---- */
+
+      .slot {
+        position: absolute;
+        container-type: inline-size;
+        isolation: isolate;
+      }
+
+      #slot-emphasize {
+        left: 120px;
+        top: 500px;
+        width: 640px;
+        height: 160px;
+      }
+
+      #slot-demonstrate {
+        left: 880px;
+        top: 370px;
+        width: 960px;
+        height: 540px;
+      }
+
+      #slot-reveal {
+        left: 120px;
+        top: 760px;
+        width: 520px;
+        height: 260px;
+      }
+
+      #slot-payoff {
+        left: 1620px;
+        top: 80px;
+        width: 220px;
+        height: 140px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="saas-landscape-light"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="8"
+    >
+      <!-- Chrome: headline zone -->
+      <div id="headline" class="clip" data-start="0" data-duration="8" data-track-index="0">
+        <div class="eyebrow">Launching today</div>
+        <div class="headline-text">Ship faster<br />with less noise.</div>
+        <div class="subhead">The platform teams choose when the stakes are real.</div>
+      </div>
+
+      <!-- Chrome: fake UI panel (product stage) -->
+      <div id="ui-panel" class="clip" data-start="0" data-duration="8" data-track-index="1">
+        <div class="ui-panel-titlebar">
+          <div class="ui-panel-dot"></div>
+          <div class="ui-panel-dot"></div>
+          <div class="ui-panel-dot"></div>
+        </div>
+        <div class="ui-panel-body">
+          <div class="ui-panel-sidebar">
+            <div class="ui-panel-sidebar-item"></div>
+            <div class="ui-panel-sidebar-item"></div>
+            <div class="ui-panel-sidebar-item"></div>
+            <div class="ui-panel-sidebar-item"></div>
+          </div>
+          <div class="ui-panel-content"></div>
+        </div>
+      </div>
+
+      <!--
+        SLOT: emphasize (headline zone, small). Enters first, right after the
+        headline settles, so an emphasis-job primitive is screened against a
+        just-arrived headline directly above it.
+
+        To screen a primitive against this slot: change data-composition-src to
+        the primitive's demo file, and change data-composition-id on THIS div to
+        match that file's internal data-composition-id (the host id is the
+        window.__timelines lookup key; it must equal the loaded file's own id,
+        not stay "empty-slot"). Leave data-start / data-duration / data-width /
+        data-height as-is unless the primitive needs a different window.
+      -->
+      <div
+        id="slot-emphasize"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="0.4"
+        data-duration="7.6"
+        data-track-index="2"
+        data-width="640"
+        data-height="160"
+      ></div>
+
+      <!--
+        SLOT: demonstrate (large, over the UI panel, ~50% frame width). The
+        primary hero slot. Enters second.
+
+        To screen a primitive: same swap as above (data-composition-src +
+        data-composition-id), on THIS div.
+      -->
+      <div
+        id="slot-demonstrate"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="1.0"
+        data-duration="7.0"
+        data-track-index="3"
+        data-width="960"
+        data-height="540"
+      ></div>
+
+      <!--
+        SLOT: reveal (mid-stage, lower-left). Enters third, while demonstrate
+        is still settling, so a reveal-job primitive is screened for whether it
+        steals focus from a hero that hasn't finished landing yet.
+
+        To screen a primitive: same swap as above, on THIS div.
+      -->
+      <div
+        id="slot-reveal"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="1.8"
+        data-duration="6.2"
+        data-track-index="4"
+        data-width="520"
+        data-height="260"
+      ></div>
+
+      <!--
+        SLOT: payoff (upper-right corner, small). Enters last, after every
+        other slot has landed, so a payoff-job primitive is screened at the
+        moment the frame is already busiest.
+
+        To screen a primitive: same swap as above, on THIS div.
+      -->
+      <div
+        id="slot-payoff"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="2.6"
+        data-duration="5.4"
+        data-track-index="5"
+        data-width="220"
+        data-height="140"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Chrome settles in first, quietly, before any slot enters.
+      tl.fromTo(
+        "#headline",
+        { opacity: 0, y: 24 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+        0,
+      );
+      tl.fromTo(
+        "#ui-panel",
+        { opacity: 0, y: 16 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" },
+        0.1,
+      );
+
+      // Slot entrances are staggered across the first 3s (0.4 / 1.0 / 1.8 / 2.6)
+      // by each slot clip's own data-start above, so two filled slots never
+      // land in the same frame. Slots hold, then exit in the last 1.5s.
+      tl.to("#slot-emphasize", { opacity: 0, duration: 0.4, ease: "power1.in" }, 6.6);
+      tl.to("#slot-demonstrate", { opacity: 0, duration: 0.4, ease: "power1.in" }, 6.8);
+      tl.to("#slot-reveal", { opacity: 0, duration: 0.4, ease: "power1.in" }, 7.0);
+      tl.to("#slot-payoff", { opacity: 0, duration: 0.4, ease: "power1.in" }, 7.2);
+
+      window.__timelines["saas-landscape-light"] = tl;
+    </script>
+  </body>
+</html>

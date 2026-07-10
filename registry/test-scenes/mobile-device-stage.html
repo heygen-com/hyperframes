@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Mobile Device Stage (test scene, dark)</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      /*
+        Shared test scene for primitive screening (ADR-0008), phone-shaped variant.
+        Same idea as saas-landscape.html: a believable stage with empty, job-labeled
+        slots. The centerpiece here is a portrait phone placeholder instead of a
+        desktop UI panel, so primitives are also screened at a narrower, taller
+        container. See registry/test-scenes/README.md.
+      */
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #root {
+        /* 17-token theme contract, same dark values as saas-landscape.html. */
+        --bg: #06080b;
+        --fg: #f4f6f8;
+        --muted: #8b95a4;
+        --surface: #12161d;
+        --border: rgba(244, 246, 248, 0.1);
+        --brand: #ff7a33;
+        --accent: #22d3ee;
+        --font-display:
+          -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+        --font-body:
+          -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --radius: 16px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 32px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+        --ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+      }
+
+      /* ---- Scene chrome: quiet phone placeholder, 9/19.5 portrait, centered ---- */
+
+      #device {
+        position: absolute;
+        left: 776px;
+        top: 220px;
+        width: 369px;
+        height: 800px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 56px;
+        box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45);
+      }
+
+      #device-home-indicator {
+        position: absolute;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 5px;
+        border-radius: 3px;
+        background: var(--border);
+      }
+
+      /* ---- Slots: positioned mounts for the sub-composition under test ---- */
+
+      .slot {
+        position: absolute;
+        container-type: inline-size;
+        isolation: isolate;
+      }
+
+      #slot-demonstrate {
+        left: 796px;
+        top: 240px;
+        width: 329px;
+        height: 760px;
+        border-radius: 40px;
+        overflow: hidden;
+      }
+
+      #slot-emphasize {
+        left: 1225px;
+        top: 440px;
+        width: 600px;
+        height: 360px;
+      }
+
+      #slot-payoff {
+        left: 731px;
+        top: 40px;
+        width: 460px;
+        height: 140px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="mobile-device-stage"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="8"
+    >
+      <!-- Chrome: phone bezel placeholder -->
+      <div id="device" class="clip" data-start="0" data-duration="8" data-track-index="0">
+        <div id="device-home-indicator"></div>
+      </div>
+
+      <!--
+        SLOT: demonstrate (the phone's screen area). Enters first, right after
+        the device settles, since the screen is the natural focal point.
+
+        To screen a primitive against this slot: change data-composition-src to
+        the primitive's demo file, and change data-composition-id on THIS div to
+        match that file's internal data-composition-id (the host id is the
+        window.__timelines lookup key). Leave data-start / data-duration /
+        data-width / data-height as-is unless the primitive needs a different
+        window. Note the container is narrow and tall (329x760): a primitive
+        that only reads at 16:9 will show its failure mode here.
+      -->
+      <div
+        id="slot-demonstrate"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="0.6"
+        data-duration="7.4"
+        data-track-index="2"
+        data-width="329"
+        data-height="760"
+      ></div>
+
+      <!--
+        SLOT: emphasize (beside the device, right side). Enters second, while
+        the screen is still settling.
+
+        To screen a primitive: same swap as above, on THIS div.
+      -->
+      <div
+        id="slot-emphasize"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="1.4"
+        data-duration="6.6"
+        data-track-index="3"
+        data-width="600"
+        data-height="360"
+      ></div>
+
+      <!--
+        SLOT: payoff (above the device). Enters last, after the screen and the
+        beside-device slot have both landed, so a payoff-job primitive is
+        screened at the moment the frame is already busiest.
+
+        To screen a primitive: same swap as above, on THIS div.
+      -->
+      <div
+        id="slot-payoff"
+        class="clip slot"
+        data-composition-id="empty-slot"
+        data-composition-src="./slots/empty.html"
+        data-start="2.2"
+        data-duration="5.8"
+        data-track-index="4"
+        data-width="460"
+        data-height="140"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      // Chrome settles in first, quietly, before any slot enters.
+      tl.fromTo(
+        "#device",
+        { opacity: 0, y: 24, scale: 0.98 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.6, ease: "power2.out" },
+        0,
+      );
+
+      // Slot entrances are staggered across the first 3s (0.6 / 1.4 / 2.2) by
+      // each slot clip's own data-start above. Slots hold, then exit in the
+      // last 1.5s.
+      tl.to("#slot-demonstrate", { opacity: 0, duration: 0.4, ease: "power1.in" }, 6.6);
+      tl.to("#slot-emphasize", { opacity: 0, duration: 0.4, ease: "power1.in" }, 6.9);
+      tl.to("#slot-payoff", { opacity: 0, duration: 0.4, ease: "power1.in" }, 7.2);
+
+      window.__timelines["mobile-device-stage"] = tl;
+    </script>
+  </body>
+</html>

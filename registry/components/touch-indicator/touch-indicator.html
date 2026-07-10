@@ -1,0 +1,225 @@
+<!--
+  Touch Indicator - the mobile gesture actor for HyperFrames.
+
+  CONCEPT: a translucent contact-circle that represents a fingertip touching
+  glass. It never hovers: every appearance resolves into a touch-down, every
+  touch causes a same-frame response on its target, every gesture ends with
+  a physical lift. One mechanic (tap or swipe, picked by a variable at
+  setup), one file. This is the mobile counterpart to an oversized cursor,
+  but it obeys touch physics, not pointer physics.
+
+  COMPILED FROM: hyperframes-corpus-data/mobile/gesture-actor-spec.md (the
+  contact-never-hover law, contact-circle sizing, tap anatomy, swipe law,
+  lift/exit law, same-frame target-reaction contract) with supporting
+  constants cross-checked against gesture-physics-recipes.md. Evidence
+  status: spec ready, no rendered corpus clips yet.
+
+  USE WHEN: a mobile UI scene needs a visible tap or swipe to cause the next
+  animation beat (button press, list scroll, card swipe, sheet reveal).
+  Skip it for cursor/pointer UI (use a cursor primitive) and for gestures
+  whose drawn path is itself the subject (use a trail primitive instead).
+
+  VARIABLES (declared below via data-composition-variables):
+    - gesture   enum "tap" | "swipe", default "tap"
+    - polarity  enum "light" | "dark", default "light"
+    - targetX   number 0-100 (percent of host width), default 50
+    - targetY   number 0-100 (percent of host height), default 55
+
+  ENVELOPE (seconds, 60fps frame-quantized, gesture = "tap"):
+    IN   0.000 - 0.167  approach (0.083) + touch-down compress (0.083)
+    HOLD 0.167 - 0.183  elastic dwell at compressed scale (stretch here only)
+    OUT  0.183 - 0.467  release (0.167) + lift (0.117), lift starts the
+                        instant release ends (0s gap, within the spec's
+                        <=0.04s allowance)
+
+  ENVELOPE (seconds, 60fps frame-quantized, gesture = "swipe"):
+    IN   0.000 - 0.167  approach (0.083) + touch-down compress (0.083)
+    HOLD 0.167 - 0.500  elastic travel: accelerate 41% / decelerate 59% of
+                        the stretchable swipe duration (default 0.333)
+    OUT  0.500 - 0.617  lift only (0.117); a swiping finger does not settle
+                        back to rest scale, it leaves mid-motion
+
+  SOUND CUES (fixed offsets, never inside the elastic HOLD):
+    touch-down  IN + 0.083s   -> soft fingertip contact
+    lift-off    tap:   OUT + 0.167s -> physical release tick
+                swipe: OUT + 0s     -> physical release tick (no bounce)
+
+  Paste the markup and CSS into a composition. Build the timeline with
+  buildTouchIndicator() below, from a paused GSAP timeline you already own.
+  See demo.html for a full worked example (a mobile UI card that reacts to
+  the tap on the exact touch-down frame).
+-->
+
+<div
+  class="hf-touch-indicator"
+  data-composition-variables='[
+    {"id":"gesture","type":"enum","label":"Gesture","default":"tap","options":[{"value":"tap","label":"Tap"},{"value":"swipe","label":"Swipe"}]},
+    {"id":"polarity","type":"enum","label":"Polarity","default":"light","options":[{"value":"light","label":"Light (on dark UI)"},{"value":"dark","label":"Dark (on light UI)"}]},
+    {"id":"targetX","type":"number","label":"Target X","default":50,"min":0,"max":100,"unit":"%"},
+    {"id":"targetY","type":"number","label":"Target Y","default":55,"min":0,"max":100,"unit":"%"}
+  ]'
+>
+  <div class="hf-touch-indicator__actor">
+    <div class="hf-touch-indicator__contact"></div>
+    <div class="hf-touch-indicator__core"></div>
+  </div>
+</div>
+
+<style>
+  .hf-touch-indicator {
+    /* INVARIANT: fills the host's box, never a fixed stage size (position-blind). */
+    position: absolute;
+    inset: 0;
+    container-type: inline-size;
+    isolation: isolate;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 30;
+  }
+
+  .hf-touch-indicator__actor {
+    /* EDIT ZONE: sizing law from the spec. Default below is the "inside a
+       device screen" law (13% of screen width, clamp 46-68px). For a
+       full-frame host (indicator IS the composition, not nested in a phone
+       mock), swap to the full-frame law: clamp(88px, 5cqw, 111px). */
+    --hf-gesture-size: clamp(46px, 13cqw, 68px);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--hf-gesture-size);
+    height: var(--hf-gesture-size);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  .hf-touch-indicator__core {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    /* INVARIANT: circle geometry, hardcoded 50%, not var(--radius) - that
+       token is for rectangular UI corners, not this actor's fixed disc. */
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--bg, #ffffff) 68%, transparent);
+    border: 2px solid color-mix(in srgb, var(--fg, #14181f) 72%, transparent);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--fg, #14181f) 22%, transparent);
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  .hf-touch-indicator--dark .hf-touch-indicator__core {
+    background: color-mix(in srgb, var(--fg, #14181f) 64%, transparent);
+    border-color: color-mix(in srgb, var(--bg, #ffffff) 86%, transparent);
+  }
+
+  .hf-touch-indicator__contact {
+    position: absolute;
+    left: 50%;
+    top: 54%;
+    width: 62%;
+    height: 22%;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--fg, #14181f) 32%, transparent);
+    filter: blur(5px);
+    opacity: 0;
+    /* INVARIANT: centering (xPercent/yPercent -50) and scaleX are set by
+       the FIRST GSAP tween below, not here - GSAP overwrites the whole
+       transform, so a static translate()+scaleX() here would be discarded
+       the instant the timeline renders (gsap_css_transform_conflict). */
+    transform-origin: 50% 50%;
+    will-change: transform, opacity;
+  }
+</style>
+
+<!--
+  Timeline integration:
+
+  Coordinate law from the spec: the actor wrapper owns x/y (absolute
+  position), the core owns press scale and the depth/lift offset, the
+  contact shadow owns only its own opacity and scaleX. Never tween two
+  meanings on one transform channel.
+
+  const FPS = 60;
+  const q = (s) => Math.max(1, Math.round(s * FPS)) / FPS;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  function buildTouchIndicator(tl, root, { at = 0, elasticity = 1 } = {}) {
+    const defaults = { gesture: "tap", polarity: "light", targetX: 50, targetY: 55 };
+    const vars = Object.assign({}, defaults, window.__hfVariables || {});
+    const actor = root.querySelector(".hf-touch-indicator__actor");
+    const core = root.querySelector(".hf-touch-indicator__core");
+    const contact = root.querySelector(".hf-touch-indicator__contact");
+    if (vars.polarity === "dark") root.classList.add("hf-touch-indicator--dark");
+
+    // Compute layout geometry once at setup, never inside an ease/callback.
+    const hostW = root.clientWidth || 1;
+    const hostH = root.clientHeight || 1;
+    const x0 = (vars.targetX / 100) * hostW;
+    const y0 = (vars.targetY / 100) * hostH;
+
+    // --- IN: fixed, never stretched. ---
+    const approach = q(0.09);
+    const down = q(0.08);
+    tl.fromTo(actor,
+      { x: x0, y: y0, xPercent: -50, yPercent: -50, autoAlpha: 0 },
+      { x: x0, y: y0, xPercent: -50, yPercent: -50, autoAlpha: 1, duration: approach, ease: "power2.out", immediateRender: false },
+      at);
+    tl.fromTo(core, { y: -10, scale: 0.72 },
+      { y: 0, scale: 1, duration: approach, ease: "power2.out", immediateRender: false }, at);
+
+    const touchDown = at + approach; // sync point: fixed +0.083s into IN
+    const coreDownScale = vars.gesture === "swipe" ? 0.86 : 0.82;
+    tl.fromTo(core, { scale: 1 },
+      { scale: coreDownScale, duration: down, ease: "power2.in", immediateRender: false }, touchDown);
+    tl.fromTo(contact, { autoAlpha: 0, scaleX: 0.62, xPercent: -50, yPercent: -50 },
+      { autoAlpha: 0.34, scaleX: 1, xPercent: -50, yPercent: -50, duration: down, ease: "power2.in", immediateRender: false }, touchDown);
+
+    const inEnd = at + approach + down;
+
+    // --- HOLD: the only elastic phase. Stretch it, never gsap.timeScale(). ---
+    let holdEnd;
+    if (vars.gesture === "swipe") {
+      // RETIME RANGE: 0.28s - 0.52s per the swipe law. elasticity scales pacing.
+      const swipeDuration = q(clamp(0.34 * elasticity, 0.28, 0.52));
+      const travel = hostH * 0.4; // vertical scroll, 40% of host height (32-68% allowed)
+      const accel = q(swipeDuration * 0.41);
+      const decel = swipeDuration - accel;
+      const bendY = y0 - travel * 0.41;
+      const endY = y0 - travel;
+      tl.fromTo(actor, { x: x0, y: y0 },
+        { x: x0, y: bendY, duration: accel, ease: "power2.in", immediateRender: false }, inEnd);
+      tl.to(actor, { x: x0, y: endY, duration: decel, ease: "power3.out" }, inEnd + accel);
+      holdEnd = inEnd + swipeDuration;
+    } else {
+      // RETIME RANGE: 0.02s - 0.10s. A brief contact dwell, never a long-press
+      // (long-press is a distinct gesture with its own progress-ring recognizer).
+      const holdDuration = q(clamp(0.02 * elasticity, 0.02, 0.1));
+      holdEnd = inEnd + holdDuration;
+    }
+
+    // --- OUT: fixed, never stretched. ---
+    if (vars.gesture === "swipe") {
+      const liftDuration = q(0.12);
+      tl.to(contact, { autoAlpha: 0, duration: q(0.08), ease: "power2.out" }, holdEnd);
+      tl.to(core, { y: -10, scale: 0.74, duration: liftDuration, ease: "power2.in" }, holdEnd);
+      tl.to(actor, { autoAlpha: 0, duration: liftDuration, ease: "power2.in" }, holdEnd);
+      return { touchDown, holdStart: inEnd, holdEnd, settle: holdEnd + liftDuration };
+    }
+
+    const release = q(0.16);
+    tl.to(core, { scale: 1, duration: release, ease: "power2.out" }, holdEnd);
+    tl.to(contact, { autoAlpha: 0, scaleX: 0.72, duration: q(0.12), ease: "power2.out" }, holdEnd);
+    const liftStart = holdEnd + release; // 0s gap, within the spec's <=0.04s allowance
+    const liftDuration = q(0.12);
+    tl.to(core, { y: -10, scale: 0.74, duration: liftDuration, ease: "power2.in" }, liftStart);
+    tl.to(actor, { autoAlpha: 0, duration: liftDuration, ease: "power2.in" }, liftStart);
+    return { touchDown, holdStart: inEnd, holdEnd, settle: liftStart + liftDuration };
+  }
+
+  // Wire the target's same-frame reaction (and, for a swipe, the scrolled
+  // content) at the returned touchDown / holdStart timestamps, not at an
+  // arbitrary later time - the target must react on the exact touch-down
+  // frame, and the ignited beat (navigation, scroll, toggle) starts on the
+  // gesture's first movement frame, never "whenever the indicator settles".
+-->

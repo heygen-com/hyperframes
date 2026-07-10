@@ -716,6 +716,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "device-frame-stage",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "device-mockup-zoom",
       "type": "hyperframes:component"
     },
@@ -925,6 +929,10 @@
     },
     {
       "name": "orbital-feature-path",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "oversized-cursor",
       "type": "hyperframes:component"
     },
     {
@@ -1188,6 +1196,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "toggle-flip",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "toggle-group",
       "type": "hyperframes:component"
     },
@@ -1201,6 +1213,10 @@
     },
     {
       "name": "top-down-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "touch-indicator",
       "type": "hyperframes:component"
     },
     {

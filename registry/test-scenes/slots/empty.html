@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Empty Slot (test-scenes placeholder)</title>
+    <!-- This file is the DEFAULT placeholder for every unfilled slot in registry/test-scenes/.
+         The runtime only clones <template> contents (everything in <head> is discarded), so all
+         markup, styles, and the timeline registration live inside <template> below. See
+         skills/hyperframes-core/references/sub-compositions.md. -->
+  </head>
+  <body>
+    <template>
+      <style>
+        /* Root is styled by #root, never by a class: the compositor scopes CSS to
+           [data-composition-id="empty-slot"] as a descendant selector, so a rule keyed
+           on the root's own class would never match the root itself.
+
+           Colors are fixed (not derived from the host's --fg/--bg tokens): this box is
+           fully opaque, so it reads identically and passes WCAG contrast regardless of
+           whether the host scene is the dark or the light theme. */
+        #root {
+          position: absolute;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          box-sizing: border-box;
+          border: 2px dashed rgba(255, 255, 255, 0.3);
+          border-radius: 8px;
+          background: #14161b;
+        }
+
+        .empty-slot-label {
+          font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+          font-size: 16px;
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: #c7ccd4;
+        }
+      </style>
+
+      <!--
+        No data-width/data-height here on purpose: this placeholder is reused at whatever size
+        each host slot gives it (220x140 up to 960x540 across the test scenes), so a fixed
+        declared size would be wrong for most mounts. #root fills its host box via inset:0
+        instead. A primitive that replaces this file should declare its own true data-width /
+        data-height, since it does have one correct size for a given demo.
+
+        data-layout-ignore: this label is set dressing, not copy anyone reads, and every slot
+        fades it out via its own host-timeline exit tween. Near the end of that fade its fixed
+        colors necessarily wash toward the page background (any fading text does), which the
+        WCAG contrast sampler catches as a fleeting failure. Marking it ignored is the documented
+        use of this attribute (see contrast-audit's own comment: "set dressing, not copy a viewer
+        must read"). A primitive that replaces this file is audited normally.
+      -->
+      <div id="root" data-composition-id="empty-slot" data-layout-ignore>
+        <span class="empty-slot-label">empty slot</span>
+      </div>
+
+      <script>
+        // No motion: an unfilled slot must stay quiet, never compete with whatever
+        // fills the neighboring slots. The timeline is registered but empty; the
+        // host clip's own data-duration controls how long the slot stays visible.
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines["empty-slot"] = tl;
+      </script>
+    </template>
+  </body>
+</html>

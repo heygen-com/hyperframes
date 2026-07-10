@@ -1,0 +1,61 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "oversized-cursor",
+  "type": "hyperframes:component",
+  "title": "Oversized Cursor",
+  "description": "A deliberately oversized macOS-style pointer that enters off-screen, travels to a target, clicks to ignite a visible response, then exits",
+  "tags": ["motion-primitive", "actor", "cursor", "pointer", "interaction"],
+  "files": [
+    {
+      "path": "oversized-cursor.html",
+      "target": "compositions/components/oversized-cursor.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "evidence": "spec ready (oversized-cursor SKILL.md); actor file mechanics compose",
+  "variables": [
+    {
+      "id": "cursor_variant",
+      "type": "enum",
+      "role": "style",
+      "label": "Cursor fill",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light (white body)" },
+        { "value": "dark", "label": "Dark (near-black body)" }
+      ]
+    },
+    {
+      "id": "target_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Target X",
+      "default": 55,
+      "min": 15,
+      "max": 85,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "target_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Target Y",
+      "default": 55,
+      "min": 15,
+      "max": 85,
+      "step": 1,
+      "unit": "%"
+    },
+    {
+      "id": "click_label",
+      "type": "string",
+      "role": "content",
+      "label": "Click label",
+      "default": "Generate"
+    }
+  ]
+}

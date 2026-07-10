@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Touch Indicator - Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      /*
+        Host declares the 17-token theme contract. touch-indicator.html
+        consumes these via var(--token, fallback); it never redeclares them.
+      */
+      #demo {
+        width: 1920px;
+        height: 1080px;
+        display: grid;
+        place-items: center;
+        background: #05060a;
+
+        --bg: #0b0c10;
+        --fg: #f5f6f8;
+        --muted: #8b8f9a;
+        --surface: #16181d;
+        --border: #262931;
+        --brand: #6366f1;
+        --accent: #ff5470;
+        --font-display: Inter, system-ui, sans-serif;
+        --font-body: Inter, system-ui, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        --radius: 20px;
+        --space-1: 8px;
+        --space-2: 16px;
+        --space-3: 24px;
+        --dur-beat: 0.4s;
+        --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+        --ease-emphasis: cubic-bezier(0.05, 0.7, 0.1, 1);
+      }
+
+      .demo-frame {
+        display: grid;
+        place-items: center;
+        padding: 56px;
+        transform: scale(1.3); /* ponytail: scale wrapper only, GSAP targets stay untouched */
+        transform-origin: center;
+      }
+
+      .phone {
+        position: relative;
+        width: 380px;
+        height: 760px;
+        border-radius: 44px;
+        background: var(--bg, #0b0c10);
+        border: 1px solid color-mix(in srgb, var(--fg, #fff) 12%, transparent);
+        box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        font-family: var(--font-body, sans-serif);
+        color: var(--fg, #f5f6f8);
+      }
+
+      .phone__header {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        padding: 0 var(--space-3, 24px);
+        font-family: var(--font-display, sans-serif);
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: -0.01em;
+      }
+
+      .phone__media {
+        height: 380px;
+        margin: 0 var(--space-2, 16px);
+        border-radius: var(--radius, 20px);
+        background: linear-gradient(
+          145deg,
+          color-mix(in srgb, var(--brand, #6366f1) 85%, transparent),
+          color-mix(in srgb, var(--accent, #ff5470) 70%, transparent)
+        );
+      }
+
+      .phone__row {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2, 16px);
+        padding: 0 var(--space-3, 24px);
+      }
+
+      .like-btn {
+        position: relative;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 0;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--surface, #16181d) 100%, transparent);
+        color: var(--muted, #8b8f9a);
+        padding: 0;
+        overflow: visible;
+        will-change: transform;
+      }
+
+      .like-btn__icon {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        position: relative;
+        z-index: 2;
+      }
+
+      .like-btn__ripple {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--accent, #ff5470) 55%, transparent);
+        opacity: 0;
+        transform: scale(0.2);
+        z-index: 1;
+        pointer-events: none;
+      }
+
+      .like-count {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+        font-family: var(--font-mono, monospace);
+        font-size: 15px;
+        color: var(--muted, #8b8f9a);
+      }
+      .like-count span {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      .like-count__new {
+        opacity: 0;
+        color: var(--accent, #ff5470);
+      }
+
+      .phone__list {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 508px;
+        bottom: 0;
+        padding: var(--space-2, 16px);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1, 8px);
+      }
+      .phone__list-row {
+        height: 56px;
+        border-radius: calc(var(--radius, 20px) * 0.6);
+        background: var(--surface, #16181d);
+        border: 1px solid var(--border, #262931);
+      }
+
+      /* touch-indicator.html, inlined verbatim (the demo-html convention:
+         "all CSS and JS from the snippet is inlined"). */
+      .hf-touch-indicator {
+        position: absolute;
+        inset: 0;
+        container-type: inline-size;
+        isolation: isolate;
+        pointer-events: none;
+        overflow: visible;
+        z-index: 30;
+      }
+
+      .hf-touch-indicator__actor {
+        --hf-gesture-size: clamp(46px, 13cqw, 68px);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: var(--hf-gesture-size);
+        height: var(--hf-gesture-size);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        will-change: transform, opacity;
+      }
+
+      .hf-touch-indicator__core {
+        position: absolute;
+        inset: 0;
+        box-sizing: border-box;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--bg, #ffffff) 68%, transparent);
+        border: 2px solid color-mix(in srgb, var(--fg, #14181f) 72%, transparent);
+        box-shadow: 0 4px 12px color-mix(in srgb, var(--fg, #14181f) 22%, transparent);
+        transform-origin: 50% 50%;
+        will-change: transform;
+      }
+
+      .hf-touch-indicator--dark .hf-touch-indicator__core {
+        background: color-mix(in srgb, var(--fg, #14181f) 64%, transparent);
+        border-color: color-mix(in srgb, var(--bg, #ffffff) 86%, transparent);
+      }
+
+      .hf-touch-indicator__contact {
+        position: absolute;
+        left: 50%;
+        top: 54%;
+        width: 62%;
+        height: 22%;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--fg, #14181f) 32%, transparent);
+        filter: blur(5px);
+        opacity: 0;
+        /* centering + scaleX come from the first GSAP tween, not CSS */
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="demo"
+      data-composition-id="touch-indicator-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3"
+    >
+      <div class="demo-frame">
+        <div class="phone">
+          <div class="phone__header">Feed</div>
+          <div class="phone__media"></div>
+          <div class="phone__row">
+            <button class="like-btn" id="like-btn" type="button" aria-label="Like">
+              <span class="like-btn__ripple" id="like-ripple"></span>
+              <svg class="like-btn__icon" id="like-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 21s-7.5-4.6-10-9.1C.6 8.6 2 5 5.6 5c2 0 3.4 1 4.4 2.6C11 6 12.4 5 14.4 5 18 5 19.4 8.6 22 11.9 19.5 16.4 12 21 12 21z"
+                />
+              </svg>
+            </button>
+            <span class="like-count" id="like-count" data-layout-allow-overlap>
+              <span class="like-count__old">128</span>
+              <span class="like-count__new">129</span>
+            </span>
+          </div>
+          <div class="phone__list" id="phone-list">
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+            <div class="phone__list-row"></div>
+          </div>
+
+          <!-- touch-indicator.html, pasted and re-defaulted to this card's
+               like-button position (targetX/Y). Copy-and-own: a host
+               customizes its own pasted copy's defaults rather than asking
+               the primitive for a config option. -->
+          <div
+            class="hf-touch-indicator"
+            data-composition-variables='[
+              {"id":"gesture","type":"enum","label":"Gesture","default":"tap","options":[{"value":"tap","label":"Tap"},{"value":"swipe","label":"Swipe"}]},
+              {"id":"polarity","type":"enum","label":"Polarity","default":"light","options":[{"value":"light","label":"Light (on dark UI)"},{"value":"dark","label":"Dark (on light UI)"}]},
+              {"id":"targetX","type":"number","label":"Target X","default":12,"min":0,"max":100,"unit":"%"},
+              {"id":"targetY","type":"number","label":"Target Y","default":63,"min":0,"max":100,"unit":"%"}
+            ]'
+          >
+            <div class="hf-touch-indicator__actor">
+              <div class="hf-touch-indicator__contact"></div>
+              <div class="hf-touch-indicator__core"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const FPS = 60;
+        const q = (s) => Math.max(1, Math.round(s * FPS)) / FPS;
+        const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+        function buildTouchIndicator(tl, root, { at = 0, elasticity = 1 } = {}) {
+          const defaults = { gesture: "tap", polarity: "light", targetX: 12, targetY: 63 };
+          const vars = Object.assign({}, defaults, window.__hfVariables || {});
+          const actor = root.querySelector(".hf-touch-indicator__actor");
+          const core = root.querySelector(".hf-touch-indicator__core");
+          const contact = root.querySelector(".hf-touch-indicator__contact");
+          if (vars.polarity === "dark") root.classList.add("hf-touch-indicator--dark");
+
+          const hostW = root.clientWidth || 1;
+          const hostH = root.clientHeight || 1;
+          const x0 = (vars.targetX / 100) * hostW;
+          const y0 = (vars.targetY / 100) * hostH;
+
+          const approach = q(0.09);
+          const down = q(0.08);
+          tl.fromTo(
+            actor,
+            { x: x0, y: y0, xPercent: -50, yPercent: -50, autoAlpha: 0 },
+            {
+              x: x0,
+              y: y0,
+              xPercent: -50,
+              yPercent: -50,
+              autoAlpha: 1,
+              duration: approach,
+              ease: "power2.out",
+              immediateRender: false,
+            },
+            at,
+          );
+          tl.fromTo(
+            core,
+            { y: -10, scale: 0.72 },
+            { y: 0, scale: 1, duration: approach, ease: "power2.out", immediateRender: false },
+            at,
+          );
+
+          const touchDown = at + approach;
+          const coreDownScale = vars.gesture === "swipe" ? 0.86 : 0.82;
+          tl.fromTo(
+            core,
+            { scale: 1 },
+            { scale: coreDownScale, duration: down, ease: "power2.in", immediateRender: false },
+            touchDown,
+          );
+          tl.fromTo(
+            contact,
+            { autoAlpha: 0, scaleX: 0.62, xPercent: -50, yPercent: -50 },
+            {
+              autoAlpha: 0.34,
+              scaleX: 1,
+              xPercent: -50,
+              yPercent: -50,
+              duration: down,
+              ease: "power2.in",
+              immediateRender: false,
+            },
+            touchDown,
+          );
+
+          const inEnd = at + approach + down;
+
+          let holdEnd;
+          let swipeMeta = null;
+          if (vars.gesture === "swipe") {
+            const swipeDuration = q(clamp(0.34 * elasticity, 0.28, 0.52));
+            const travel = hostH * 0.4;
+            const accel = q(swipeDuration * 0.41);
+            const decel = swipeDuration - accel;
+            const bendY = y0 - travel * 0.41;
+            const endY = y0 - travel;
+            tl.fromTo(
+              actor,
+              { x: x0, y: y0 },
+              { x: x0, y: bendY, duration: accel, ease: "power2.in", immediateRender: false },
+              inEnd,
+            );
+            tl.to(actor, { x: x0, y: endY, duration: decel, ease: "power3.out" }, inEnd + accel);
+            holdEnd = inEnd + swipeDuration;
+            swipeMeta = { travel };
+          } else {
+            const holdDuration = q(clamp(0.02 * elasticity, 0.02, 0.1));
+            holdEnd = inEnd + holdDuration;
+          }
+
+          if (vars.gesture === "swipe") {
+            const liftDuration = q(0.12);
+            tl.to(contact, { autoAlpha: 0, duration: q(0.08), ease: "power2.out" }, holdEnd);
+            tl.to(core, { y: -10, scale: 0.74, duration: liftDuration, ease: "power2.in" }, holdEnd);
+            tl.to(actor, { autoAlpha: 0, duration: liftDuration, ease: "power2.in" }, holdEnd);
+            return {
+              gesture: vars.gesture,
+              touchDown,
+              holdStart: inEnd,
+              holdEnd,
+              settle: holdEnd + liftDuration,
+              swipeMeta,
+            };
+          }
+
+          const release = q(0.16);
+          tl.to(core, { scale: 1, duration: release, ease: "power2.out" }, holdEnd);
+          tl.to(contact, { autoAlpha: 0, scaleX: 0.72, duration: q(0.12), ease: "power2.out" }, holdEnd);
+          const liftStart = holdEnd + release;
+          const liftDuration = q(0.12);
+          tl.to(core, { y: -10, scale: 0.74, duration: liftDuration, ease: "power2.in" }, liftStart);
+          tl.to(actor, { autoAlpha: 0, duration: liftDuration, ease: "power2.in" }, liftStart);
+          return {
+            gesture: vars.gesture,
+            touchDown,
+            holdStart: inEnd,
+            holdEnd,
+            settle: liftStart + liftDuration,
+          };
+        }
+
+        const root = document.querySelector("[data-composition-id]");
+        const compositionId = root.dataset.compositionId;
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        window.__timelines[compositionId] = tl;
+
+        const indicatorRoot = document.querySelector(".hf-touch-indicator");
+        const sync = buildTouchIndicator(tl, indicatorRoot, { at: 0.4 });
+
+        // Same-frame target-reaction contract: the target reacts on the
+        // exact touch-down frame, the ignited beat starts on the gesture's
+        // first movement frame. Both are wired at sync's returned
+        // timestamps, never at an arbitrary later time.
+        if (sync.gesture === "swipe") {
+          const travel = sync.swipeMeta ? sync.swipeMeta.travel : 300;
+          tl.fromTo(
+            "#phone-list",
+            { y: 0 },
+            { y: -travel, duration: sync.holdEnd - sync.holdStart, ease: "power2.inOut", immediateRender: false },
+            sync.holdStart,
+          );
+        } else {
+          const down = q(0.08);
+          const release = q(0.16);
+          tl.fromTo(
+            "#like-btn",
+            { scale: 1 },
+            { scale: 0.88, duration: down, ease: "power2.in", immediateRender: false },
+            sync.touchDown,
+          );
+          tl.to("#like-btn", { scale: 1, duration: release, ease: "power2.out" }, sync.holdEnd);
+          tl.fromTo(
+            "#like-ripple",
+            { autoAlpha: 0.42, scale: 0.2 },
+            { autoAlpha: 0, scale: 1.7, duration: 0.32, ease: "power2.out", immediateRender: false },
+            sync.touchDown,
+          );
+          tl.fromTo(
+            "#like-icon",
+            { color: "var(--muted, #8b8f9a)", scale: 1 },
+            { color: "var(--accent, #ff5470)", scale: 1.18, duration: down, ease: "power2.in", immediateRender: false },
+            sync.touchDown,
+          );
+          tl.to("#like-icon", { scale: 1, duration: release, ease: "power2.out" }, sync.holdEnd);
+          tl.fromTo(
+            ".like-count__old",
+            { autoAlpha: 1, y: 0 },
+            { autoAlpha: 0, y: -6, duration: 0.14, ease: "power2.out", immediateRender: false },
+            sync.touchDown,
+          );
+          tl.fromTo(
+            ".like-count__new",
+            { autoAlpha: 0, y: 6 },
+            { autoAlpha: 1, y: 0, duration: 0.14, ease: "power2.out", immediateRender: false },
+            sync.touchDown,
+          );
+        }
+
+        tl.set({}, {}, 3);
+      </script>
+    </div>
+  </body>
+</html>

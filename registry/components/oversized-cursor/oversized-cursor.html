@@ -1,0 +1,375 @@
+<!doctype html>
+<!--
+  Oversized Cursor (actor primitive)
+
+  concept: a deliberately oversized macOS-style pointer that enters the frame
+  from off-screen, travels in one continuous glide to a target, taps it (the
+  click ignites a visible reaction on the target itself), drifts aside during
+  the dwell, then exits off-screen. One mechanic: a pointer-driven click that
+  visibly causes something. Family: pointers. Profile: interaction.
+
+  compiled-from: spec ready (oversized-cursor SKILL.md, ~/Downloads/oversized-cursor);
+  actor file mechanics compose (size/look, entry law, tip-targeting, click-ignition,
+  exit law).
+
+  use-when: kicking off a UI scene, igniting a morph/transition/typing run with a
+  causal click, or carrying the eye across a scene that would otherwise read as
+  static or stale.
+
+  variables:
+    cursor_variant (enum light|dark)  pointer fill/stroke pairing, pick per scene contrast
+    target_x, target_y (number, percent of stage)  the tip's landing point
+    click_label (string)  label on the target the cursor clicks
+
+  envelope (of data-composition-duration, default 4.2s):
+    IN   0.00s to 1.17s (fixed)     off-screen entry glide (0.85s) then click tap (0.32s)
+    HOLD 1.17s to D-0.60s (elastic) click ignition plays, cursor drifts aside, then dwells
+    OUT  D-0.60s to D (fixed)       cursor accelerates off-screen
+
+  sound: one click tap SFX (soft UI click) fires at the click moment, the fixed
+  offset into IN documented below as SYNC POINT. This file never plays audio: it
+  only marks the cue's timing for the mix stage to pick up.
+-->
+<html
+  lang="en"
+  data-composition-id="oversized-cursor"
+  data-composition-duration="4.2"
+  data-composition-variables='[
+    { "id": "cursor_variant", "type": "enum", "role": "style", "label": "Cursor fill", "default": "light", "options": [ { "value": "light", "label": "Light (white body)" }, { "value": "dark", "label": "Dark (near-black body)" } ] },
+    { "id": "target_x", "type": "number", "role": "layout", "label": "Target X", "default": 55, "min": 15, "max": 85, "step": 1, "unit": "%" },
+    { "id": "target_y", "type": "number", "role": "layout", "label": "Target Y", "default": 55, "min": 15, "max": 85, "step": 1, "unit": "%" },
+    { "id": "click_label", "type": "string", "role": "content", "label": "Click label", "default": "Generate" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Oversized Cursor</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* Position-blind: fills whatever box the host gives it, owns its own
+         stacking context, no position:fixed anywhere in this file. */
+      #oversized-cursor {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        isolation: isolate;
+        container-type: size;
+        container-name: oc-stage;
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
+      }
+
+      .oc-stage {
+        position: absolute;
+        inset: 0;
+        /* Transparent by design: this actor overlays whatever scene it is
+           dropped into. demo.html supplies its own backdrop around it. */
+      }
+
+      /* EDIT ZONE: target look. Safe to retheme via tokens; keep it a simple,
+         legible UI surface so the click reaction reads clearly. */
+      .oc-target {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        display: flex;
+        align-items: center;
+        gap: var(--space-1, 0.6cqw);
+        padding: var(--space-2, 1.5cqw) var(--space-3, 2.4cqw);
+        border-radius: var(--radius, 999px);
+        border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+        background: color-mix(
+          in srgb,
+          var(--surface, #f8fafc) calc((1 - var(--oc-ignite, 0)) * 100%),
+          var(--brand, #2563eb) calc(var(--oc-ignite, 0) * 100%)
+        );
+        box-shadow: 0 1.2cqw 3.2cqw rgba(2, 6, 23, 0.24);
+        --oc-ignite: 0;
+        z-index: 10;
+      }
+
+      .oc-target-check {
+        width: 1.8cqw;
+        height: 1.8cqw;
+        min-width: 14px;
+        min-height: 14px;
+        flex: none;
+        fill: none;
+        stroke: #ffffff;
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: clamp(0, var(--oc-ignite, 0), 1);
+        transform: scale(calc(0.5 + var(--oc-ignite, 0) * 0.5));
+      }
+
+      .oc-target-label {
+        font-size: clamp(12px, 1.7cqw, 30px);
+        font-weight: 650;
+        line-height: 1;
+        white-space: nowrap;
+        color: color-mix(
+          in srgb,
+          var(--fg, #0f172a) calc((1 - var(--oc-ignite, 0)) * 100%),
+          #ffffff calc(var(--oc-ignite, 0) * 100%)
+        );
+      }
+
+      /* INVARIANT: cursor size floor is 7cqw for full-frame scenes (house
+         convention). Never go smaller; an actual-size cursor disappears at
+         video scale. */
+      .oc-cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 7cqw;
+        height: 7cqw;
+        min-width: 34px;
+        min-height: 34px;
+        pointer-events: none;
+        will-change: transform;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+        z-index: 20;
+      }
+
+      .oc-cursor-svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+
+      /* EDIT ZONE: the two house-convention fill pairings. Pick per scene
+         contrast, keep it constant per film. */
+      .oc-cursor[data-variant="light"] .oc-cursor-svg {
+        fill: #ffffff;
+        stroke: #141414;
+        stroke-width: 1.4;
+      }
+      .oc-cursor[data-variant="dark"] .oc-cursor-svg {
+        fill: #1c1c1c;
+        stroke: #ffffff;
+        stroke-width: 1.4;
+      }
+
+      /* INVARIANT: ripple anchors to the arrow's tip point (21%, 14% of the
+         cursor box), the same point transformOrigin pivots the click tap on. */
+      .oc-ripple {
+        position: absolute;
+        left: 21%;
+        top: 14%;
+        width: 2.6cqw;
+        height: 2.6cqw;
+        min-width: 12px;
+        min-height: 12px;
+        border-radius: 999px;
+        border: 0.24cqw solid var(--accent, #22c55e);
+        transform: translate(-50%, -50%);
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="oversized-cursor"
+      data-composition-id="oversized-cursor"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="4.2"
+      data-fps="30"
+    >
+      <div class="oc-stage">
+        <div class="oc-target" id="oc-target">
+          <svg class="oc-target-check" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          <span class="oc-target-label" id="oc-target-label"></span>
+        </div>
+        <div class="oc-cursor" id="oc-cursor" data-variant="light" aria-hidden="true">
+          <div class="oc-ripple"></div>
+          <svg class="oc-cursor-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var html = document.documentElement;
+        var root = document.getElementById("oversized-cursor");
+        var cursor = document.getElementById("oc-cursor");
+        var ripple = cursor.querySelector(".oc-ripple");
+        var target = document.getElementById("oc-target");
+        var targetLabel = document.getElementById("oc-target-label");
+
+        // Declared defaults, then the render/preview engine's override object.
+        var DEFAULTS = {};
+        try {
+          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+            function (variable) {
+              DEFAULTS[variable.id] = variable.default;
+            },
+          );
+        } catch (error) {
+          /* malformed declaration falls back to hardcoded defaults below */
+        }
+        var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {});
+
+        function clampPercent(value, fallback) {
+          var n = Number(value);
+          if (!isFinite(n)) n = fallback;
+          return Math.max(0, Math.min(100, n));
+        }
+
+        var compositionId =
+          html.getAttribute("data-composition-id") || root.getAttribute("data-composition-id");
+        var duration = Math.max(
+          0.001,
+          parseFloat(
+            root.dataset.duration || html.getAttribute("data-composition-duration") || "4.2",
+          ),
+        );
+        var variant = vars.cursor_variant === "dark" ? "dark" : "light";
+        var targetX = clampPercent(vars.target_x, 55);
+        var targetY = clampPercent(vars.target_y, 55);
+        var clickLabel = String(vars.click_label || "Generate");
+
+        cursor.setAttribute("data-variant", variant);
+        targetLabel.textContent = clickLabel;
+        target.style.left = targetX + "%";
+        target.style.top = targetY + "%";
+
+        // Motion runs on transforms only (x/y px), never left/top: layout
+        // props snap to integer device pixels under the seek-by-frame
+        // capture engine and stutter on slow/eased motion. Stage size is
+        // read once, synchronously, at load (deterministic: fixed viewport
+        // per render, no resize mid-render) to convert the percent-based
+        // target/off-screen positions into the px x/y GSAP needs.
+        var stageW = root.clientWidth || 1920;
+        var stageH = root.clientHeight || 1080;
+        function xAt(percent) {
+          return (percent / 100) * stageW;
+        }
+        function yAt(percent) {
+          return (percent / 100) * stageH;
+        }
+
+        // Tip-targeting: the arrow's visual tip sits at (21%, 14%) inside the
+        // cursor's own box. Anchor the box by that offset once, up front, so
+        // every later x/y tween places the TIP (not the box corner) at the
+        // given stage position. Never tween xPercent/yPercent.
+        gsap.set(cursor, { xPercent: -21, yPercent: -14 });
+        gsap.set(target, { xPercent: -50, yPercent: -50, scale: 1 });
+
+        // RETIME RANGE: IN/OUT are fixed durations (house convention: entry
+        // glide 0.4-0.92s + click tap 0.32s). They only shrink, proportionally,
+        // if the composition duration is too short to hold IN + OUT at all.
+        var IN_BASE = 1.17; // 0.85s glide + 0.1s compress + 0.22s expand
+        var OUT_BASE = 0.6;
+        var totalBase = IN_BASE + OUT_BASE;
+        var IN = IN_BASE;
+        var OUT = OUT_BASE;
+        if (duration < totalBase) {
+          var shrink = duration / totalBase;
+          IN = IN_BASE * shrink;
+          OUT = OUT_BASE * shrink;
+        }
+        var HOLD = Math.max(0, duration - (IN + OUT));
+        var OUT_AT = IN + HOLD;
+        var shrinkFactor = IN / IN_BASE;
+
+        var glideDur = 0.85 * shrinkFactor;
+        var clickInDur = 0.1 * shrinkFactor;
+        var clickOutDur = 0.22 * shrinkFactor;
+        // SYNC POINT: click moment (entry settle), a fixed offset into IN,
+        // never inside the elastic HOLD.
+        var CLICK_AT = glideDur;
+
+        var offX = xAt(48);
+        var offY = yAt(116); // resting pose IS off-screen, below the stage
+
+        var tl = gsap.timeline({ paused: true });
+
+        // ---- IN: off-screen entry, one continuous vector, then the tap ----
+        tl.set(cursor, { scale: 1 });
+        tl.set(ripple, { opacity: 0, scale: 0.4 });
+        tl.set(target, { "--oc-ignite": 0 });
+        tl.fromTo(
+          cursor,
+          { x: offX, y: offY },
+          { x: xAt(targetX), y: yAt(targetY), duration: glideDur, ease: "power3.out" },
+          0,
+        );
+        tl.to(
+          cursor,
+          { scale: 0.84, duration: clickInDur, ease: "power2.in", transformOrigin: "21% 14%" },
+          CLICK_AT,
+        );
+        tl.to(
+          cursor,
+          { scale: 1, duration: clickOutDur, ease: "power2.out", transformOrigin: "21% 14%" },
+          CLICK_AT + clickInDur,
+        );
+
+        // ---- the click ignites the target: parallel reaction, same frame ----
+        tl.to(target, { scale: 0.94, duration: clickInDur, ease: "power2.in" }, CLICK_AT);
+        tl.to(
+          target,
+          { scale: 1, duration: clickOutDur, ease: "power2.out" },
+          CLICK_AT + clickInDur,
+        );
+        tl.fromTo(
+          ripple,
+          { opacity: 0.85, scale: 0.4 },
+          { opacity: 0, scale: 2.4, duration: 0.42, ease: "power2.out" },
+          CLICK_AT + clickInDur,
+        );
+        tl.to(
+          target,
+          { "--oc-ignite": 1, duration: 0.34, ease: "back.out(2.2)" },
+          CLICK_AT + clickInDur,
+        );
+
+        // ---- HOLD (elastic): drift aside once, then dwell, never wobble ----
+        var driftDelay = Math.min(0.22, HOLD * 0.3);
+        var driftDur = Math.max(0, Math.min(0.7, HOLD - driftDelay));
+        if (driftDur > 0.05) {
+          var asideX = clampPercent(targetX + (targetX < 50 ? 16 : -16), targetX);
+          var asideY = clampPercent(targetY + 10, targetY);
+          tl.to(
+            cursor,
+            { x: xAt(asideX), y: yAt(asideY), duration: driftDur, ease: "power2.out", overwrite: "auto" },
+            IN + driftDelay,
+          );
+        }
+
+        // ---- OUT: leave the frame, physically, never a fade-in-place ----
+        tl.to(cursor, { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" }, OUT_AT);
+
+        tl.seek(0);
+        window.__timelines = window.__timelines || {};
+        window.__timelines[compositionId] = tl;
+      })();
+    </script>
+  </body>
+</html>
