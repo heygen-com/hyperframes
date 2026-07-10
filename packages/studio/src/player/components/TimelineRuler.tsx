@@ -19,7 +19,7 @@ interface TimelineRulerProps {
 
 export const TimelineRuler = memo(function TimelineRuler({
   major,
-  minor: _minor,
+  minor,
   pps,
   trackContentWidth,
   totalH,
@@ -41,27 +41,13 @@ export const TimelineRuler = memo(function TimelineRuler({
 
   return (
     <>
-      {/* Grid lines (major ticks + beat lines) — behind the tracks (background).
-          Opaque track rows hide them; only the beat dots show on tracks. */}
+      {/* Background SVG — beat lines only; major-tick gridlines removed so only
+          the ruler's own small ticks mark intervals (no full-height lines). */}
       <svg
         className="absolute pointer-events-none"
         style={{ left: GUTTER, width: trackContentWidth, zIndex: 0 }}
         height={totalH}
       >
-        {major.map((t) => {
-          const x = t * pps;
-          return (
-            <line
-              key={`g-${t}`}
-              x1={x}
-              y1={RULER_H}
-              x2={x}
-              y2={totalH}
-              stroke={theme.tickMinor}
-              strokeWidth="1"
-            />
-          );
-        })}
         {showBeats &&
           beatTimes.map((t, i) => {
             const x = t * pps;
@@ -109,7 +95,11 @@ export const TimelineRuler = memo(function TimelineRuler({
             background: theme.shellBackground,
           }}
         >
-          {/* Minor tick lines removed — CapCut-style clean ruler (labels only). */}
+          {minor.map((t) => (
+            <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
+              <div className="w-px h-2" style={{ background: theme.tickMinor }} />
+            </div>
+          ))}
 
           {major.map((t) => (
             <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
@@ -126,7 +116,7 @@ export const TimelineRuler = memo(function TimelineRuler({
                   ? secondsToFrame(t)
                   : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
               </span>
-              {/* Major tick line removed — labels only. */}
+              <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
             </div>
           ))}
         </div>

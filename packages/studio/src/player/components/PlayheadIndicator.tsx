@@ -64,14 +64,16 @@ export function PlayheadIndicator({
         }}
       />
       {/* Head chip — sticky so it pins to the ruler while tracks scroll.
-          Centered exactly on the playhead x via negative half-width offset. */}
+          Centering logic: wrapper width = HEAD_W (chip forces it). The line sits
+          at wrapper.left + HEAD_W/2 (left:"50%" of wrapper). The sticky element's
+          natural flow position is wrapper.left; so placing it there with no
+          horizontal translate puts its LEFT edge at wrapper.left and its CENTER
+          at wrapper.left + HEAD_W/2 — exactly on the line. */}
       <div
         className={stickyHead ? "sticky" : "absolute"}
         style={{
-          left: "50%",
+          left: 0,
           top: stickyHead ? 0 : 1,
-          // Center the chip exactly on the line: shift left by half its width.
-          transform: `translateX(-${HEAD_W / 2}px)`,
           // Zero height keeps it from covering rows (sticky strip trick).
           height: stickyHead ? 0 : undefined,
         }}

@@ -159,6 +159,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   <Scissors size={16} />
                 </button>
               </Tooltip>
+              {/* Divider: tool-mode | editing-actions */}
+              <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
             </>
           )}
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
