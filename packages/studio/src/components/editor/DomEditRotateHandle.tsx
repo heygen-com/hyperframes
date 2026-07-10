@@ -31,6 +31,7 @@ export function DomEditRotateHandle({
         height: 22,
         transform: "translateX(-50%)",
         touchAction: "none",
+        cursor: "default",
       }}
       title="Rotate"
       aria-label="Rotate selection"

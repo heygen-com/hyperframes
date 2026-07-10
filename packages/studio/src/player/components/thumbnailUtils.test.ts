@@ -57,4 +57,34 @@ describe("resolveMediaPreviewUrl", () => {
       "https://cdn.example.com/a.png",
     );
   });
+
+  it("percent-encodes spaces in filenames", () => {
+    expect(resolveMediaPreviewUrl("assets/my logo.png", "proj-1")).toBe(
+      "/api/projects/proj-1/preview/assets/my%20logo.png",
+    );
+  });
+
+  it("percent-encodes parentheses in filenames", () => {
+    expect(resolveMediaPreviewUrl("assets/heygen-symbol-blue-logo (2).svg", "proj-1")).toBe(
+      "/api/projects/proj-1/preview/assets/heygen-symbol-blue-logo%20(2).svg",
+    );
+  });
+
+  it("preserves slashes as path separators while encoding each segment", () => {
+    expect(resolveMediaPreviewUrl("sub dir/file (v2).mp4", "proj-2")).toBe(
+      "/api/projects/proj-2/preview/sub%20dir/file%20(v2).mp4",
+    );
+  });
+
+  it("percent-encodes unicode characters in filenames", () => {
+    expect(resolveMediaPreviewUrl("assets/café logo.png", "proj-1")).toBe(
+      "/api/projects/proj-1/preview/assets/caf%C3%A9%20logo.png",
+    );
+  });
+
+  it("leaves paths with no special characters unchanged", () => {
+    expect(resolveMediaPreviewUrl("assets/logo.svg", "proj-1")).toBe(
+      "/api/projects/proj-1/preview/assets/logo.svg",
+    );
+  });
 });

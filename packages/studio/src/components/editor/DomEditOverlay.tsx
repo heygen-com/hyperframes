@@ -181,7 +181,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const rafPausedRef = useRef(false);
 
   // Context menu state: position of the right-click that opened it.
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // contextMenuSelection is the element the menu targets — captured at right-click
+  // time so the menu can open even before the React selection state settles.
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    sel: DomEditSelection;
+  } | null>(null);
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -441,23 +447,26 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
       // If no element is selected yet, resolve it from the pointer position first.
       const currentSel = selectionRef.current;
+      let activeSel: DomEditSelection | null = currentSel;
       if (!currentSel) {
         const pointerEvent = event as unknown as React.PointerEvent<HTMLDivElement>;
         const resolved = await onCanvasPointerMoveRef.current(pointerEvent);
-        if (resolved) {
-          onSelectionChangeRef.current(resolved, { revealPanel: true });
-        }
-        // If still nothing resolved, skip menu.
-        if (!selectionRef.current) return;
+        if (!resolved) return; // Nothing under the cursor — skip menu.
+        onSelectionChangeRef.current(resolved, { revealPanel: true });
+        // Use `resolved` directly: React state (and therefore selectionRef) won't
+        // update synchronously after onSelectionChange — we'd be reading stale null.
+        activeSel = resolved;
       } else {
         // Check if the user right-clicked on an unselected element (hover target).
         const hover = hoverSelectionRef.current;
         if (hover && hover.element !== currentSel.element) {
           onSelectionChangeRef.current(hover, { revealPanel: true });
+          activeSel = hover;
         }
       }
 
-      setContextMenu({ x: event.clientX, y: event.clientY });
+      if (!activeSel) return;
+      setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -640,11 +649,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         onSelectionChangeRef={onSelectionChangeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
-      {contextMenu && selection && (
+      {contextMenu && (
         <CanvasContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          selection={selection}
+          selection={contextMenu.sel}
           onClose={() => setContextMenu(null)}
           onDelete={(sel) => {
             setContextMenu(null);
@@ -653,7 +662,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           onApplyZIndex={
             onApplyZIndex
               ? (zIndex) => {
-                  onApplyZIndex(selection, zIndex);
+                  onApplyZIndex(contextMenu.sel, zIndex);
                 }
               : undefined
           }

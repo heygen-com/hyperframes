@@ -29,8 +29,14 @@ export function computeThumbnailStrip(
  * (parent) document. Composition-relative paths (e.g. "assets/image.png") are
  * only servable through the project preview endpoint; absolute http(s) URLs
  * pass through untouched.
+ *
+ * Each path segment is percent-encoded so filenames containing spaces,
+ * parentheses, or other URL-unsafe characters (e.g.
+ * "assets/heygen-symbol-blue-logo (2).svg") yield a valid URL instead of a
+ * 404. Slashes are preserved as separators.
  */
 export function resolveMediaPreviewUrl(src: string, projectId: string): string {
   if (src.startsWith("http")) return src;
-  return `/api/projects/${projectId}/preview/${src}`;
+  const encodedSrc = src.split("/").map(encodeURIComponent).join("/");
+  return `/api/projects/${projectId}/preview/${encodedSrc}`;
 }
