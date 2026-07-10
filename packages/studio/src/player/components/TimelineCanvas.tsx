@@ -252,8 +252,8 @@ export const TimelineCanvas = memo(function TimelineCanvas({
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
-          const rowBackground =
-            displayTrackOrder.indexOf(trackNum) % 2 === 0 ? theme.rowBackground : "#0D0E12";
+          // All lanes use the same uniform color — no alternating stripes.
+          const rowBackground = theme.rowBackground;
           // The beat-dot strip occupies the top of this track's lane (active track,
           // or the music track when nothing is selected). When shown, keyframe
           // diamonds shrink + drop to the bottom half so they don't collide with it.

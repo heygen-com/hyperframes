@@ -17,7 +17,7 @@ export const CLIP_HANDLE_W = 18;
  * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
  *   enough to comfortably drag a clip into the void to create a new bottom lane.
  */
-export const TRACKS_TOP_PAD = Math.round(TRACK_H / 2);
+export const TRACKS_TOP_PAD = 72;
 export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
 
 /**

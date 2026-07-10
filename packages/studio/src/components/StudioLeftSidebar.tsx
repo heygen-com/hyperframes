@@ -71,7 +71,7 @@ export function StudioLeftSidebar({
 
   if (leftCollapsed) {
     return (
-      <div className="mr-1.5 flex w-10 flex-shrink-0 flex-col items-center rounded-lg border border-neutral-800/50 bg-neutral-950 pt-1">
+      <div className="mr-1 flex w-10 flex-shrink-0 flex-col items-center rounded-lg border border-neutral-800/50 bg-neutral-950 pt-1">
         <button
           type="button"
           onClick={toggleLeftSidebar}

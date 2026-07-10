@@ -19,7 +19,7 @@ interface TimelineRulerProps {
 
 export const TimelineRuler = memo(function TimelineRuler({
   major,
-  minor,
+  minor: _minor,
   pps,
   trackContentWidth,
   totalH,
@@ -94,8 +94,8 @@ export const TimelineRuler = memo(function TimelineRuler({
           className="sticky left-0 z-[12] flex-shrink-0"
           style={{
             width: GUTTER,
-            background: theme.gutterBackground,
-            borderBottom: `1px solid ${theme.rulerBorder}`,
+            // Ruler corner uses the panel surface — same as the ruler strip itself.
+            background: theme.shellBackground,
             borderRight: `1px solid ${theme.gutterBorder}`,
           }}
         />
@@ -104,15 +104,12 @@ export const TimelineRuler = memo(function TimelineRuler({
           style={{
             height: RULER_H,
             width: trackContentWidth,
-            background: theme.gutterBackground,
-            borderBottom: `1px solid ${theme.rulerBorder}`,
+            // Ruler background = panel surface (#0A0A0B) — no bottom border,
+            // no tick lines (CapCut-style clean ruler, labels only).
+            background: theme.shellBackground,
           }}
         >
-          {minor.map((t) => (
-            <div key={`m-${t}`} className="absolute bottom-0" style={{ left: t * pps }}>
-              <div className="w-px h-2" style={{ background: theme.tickMinor }} />
-            </div>
-          ))}
+          {/* Minor tick lines removed — CapCut-style clean ruler (labels only). */}
 
           {major.map((t) => (
             <div key={`M-${t}`} className="absolute top-0" style={{ left: t * pps }}>
@@ -129,7 +126,7 @@ export const TimelineRuler = memo(function TimelineRuler({
                   ? secondsToFrame(t)
                   : formatTimelineTickLabel(t, effectiveDuration, majorTickInterval)}
               </span>
-              <div className="w-px" style={{ height: RULER_H, background: theme.tickMajor }} />
+              {/* Major tick line removed — labels only. */}
             </div>
           ))}
         </div>

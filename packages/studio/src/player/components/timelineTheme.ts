@@ -49,7 +49,9 @@ export const defaultTimelineTheme: TimelineTheme = {
   shellBackground: "#0A0A0B",
   shellBorder: "rgba(255,255,255,0.05)",
   rulerBorder: "rgba(255,255,255,0.16)",
-  rowBackground: "#0B0C0F",
+  // All track lanes use a single uniform color — one step lighter than the panel
+  // surface (#0A0A0B) so lanes are visibly distinct from the ruler/shell.
+  rowBackground: "#101014",
   rowBorder: "rgba(255,255,255,0.06)",
   gutterBackground: "#0E0F12",
   gutterBorder: "rgba(255,255,255,0.10)",
