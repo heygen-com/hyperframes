@@ -35,6 +35,7 @@ const CASE_OPTIONS = [
   { key: "none", node: "–" },
   { key: "uppercase", node: "AG" },
   { key: "lowercase", node: "ag" },
+  { key: "capitalize", node: "Ag" },
 ];
 
 function FlatTextFieldEditor({
@@ -44,6 +45,7 @@ function FlatTextFieldEditor({
   onImportFonts,
   onSetText,
   onSetTextFieldStyle,
+  autoFocus = false,
 }: {
   field: DomEditSelection["textFields"][number];
   styles: Record<string, string>;
@@ -51,6 +53,7 @@ function FlatTextFieldEditor({
   onImportFonts?: (files: FileList | File[]) => Promise<ImportedFontAsset[]>;
   onSetText: (value: string, fieldKey?: string) => void;
   onSetTextFieldStyle: (fieldKey: string, property: string, value: string) => void;
+  autoFocus?: boolean;
 }) {
   const weight = getTextStyleValue(field, styles, "font-weight", "400");
   const weightOptions = detectAvailableWeights(
@@ -66,6 +69,7 @@ function FlatTextFieldEditor({
         flat
         label="Content"
         value={field.value}
+        autoFocus={autoFocus}
         onCommit={(next) => onSetText(next, field.key)}
       />
       <FontFamilyField
@@ -79,6 +83,7 @@ function FlatTextFieldEditor({
         label="Size"
         value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
         tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
+        liveCommit
         onCommit={(next) => onSetTextFieldStyle(field.key, "font-size", next)}
       />
       <div className="flex min-h-[30px] items-center justify-between">
@@ -148,7 +153,10 @@ function FlatTextFieldEditor({
         options={ALIGN_OPTIONS.map((option) => ({
           key: option.key,
           node: option.node,
-          active: align === option.key || (option.key === "left" && align === "start"),
+          active:
+            align === option.key ||
+            (option.key === "left" && align === "start") ||
+            (option.key === "right" && align === "end"),
         }))}
         onChange={(next) => onSetTextFieldStyle(field.key, "text-align", next)}
       />
@@ -234,12 +242,14 @@ export function FlatTextSection({
           onRemove={onRemoveTextField}
         />
         <FlatTextFieldEditor
+          key={activeField.key}
           field={activeField}
           styles={styles}
           fontAssets={fontAssets}
           onImportFonts={onImportFonts}
           onSetText={onSetText}
           onSetTextFieldStyle={onSetTextFieldStyle}
+          autoFocus
         />
       </div>
     );
@@ -296,7 +306,7 @@ export function FlatTextLayerList({
         Text layers
       </div>
       <div className="space-y-1">
-        {fields.map((field) => {
+        {fields.map((field, index) => {
           const active = field.key === activeFieldKey;
           return (
             <div
@@ -313,7 +323,7 @@ export function FlatTextLayerList({
                 style={{ backgroundColor: getTextFieldColor(field, styles) }}
               />
               <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
-                {formatTextFieldPreview(field.value) || "Text"}
+                {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
               </span>
               <span className="flex-shrink-0 font-mono text-[9px] text-panel-text-4">
                 {field.tagName}
