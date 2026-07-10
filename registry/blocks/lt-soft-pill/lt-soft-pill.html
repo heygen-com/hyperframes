@@ -102,8 +102,22 @@
         100,
       );
       tl.add("#lt-dot", { scale: [0, 1], duration: 400, ease: "outBack(3)" }, 400);
-      tl.add("#lt-name", { opacity: 1, translateX: 0, duration: 450, ease: "outQuart" }, 420);
-      tl.add("#lt-role", { opacity: 1, translateX: 0, duration: 450, ease: "outQuart" }, 500);
+      // #lt-name/#lt-role have no CSS rule hiding them and no earlier keyframe,
+      // so an implicit-from {opacity: 1, translateX: 0} tween has nothing to
+      // read a hidden "from" state from and is a no-op (text visible from
+      // frame 0). The pre-port source seeds this with an explicit initial
+      // set (opacity 0, x -10) before the timeline; mirror that with
+      // explicit from/to arrays here.
+      tl.add(
+        "#lt-name",
+        { opacity: [0, 1], translateX: [-10, 0], duration: 450, ease: "outQuart" },
+        420,
+      );
+      tl.add(
+        "#lt-role",
+        { opacity: [0, 1], translateX: [-10, 0], duration: 450, ease: "outQuart" },
+        500,
+      );
       tl.add(
         "#lt-pill",
         { scale: [1, 0.94], translateY: [0, 14], opacity: [1, 0], duration: 350, ease: "inCubic" },
