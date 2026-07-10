@@ -62,7 +62,7 @@
   tl.add("#grid-pixelate-overlay .grid-cell", {
     scale: [0, 1],
     duration: 600,
-    delay: anime.stagger([0, 600], { grid: [16, 9], from: "center" }),
+    delay: anime.stagger([0, 600], { from: "center" }),
     ease: "inOutCubic",
   }, 3000);
 
@@ -74,7 +74,7 @@
   tl.add("#grid-pixelate-overlay .grid-cell", {
     scale: [1, 0],
     duration: 600,
-    delay: anime.stagger([0, 600], { grid: [16, 9], from: "edges" }),
+    delay: anime.stagger([0, 600], { from: "edges" }),
     ease: "inOutCubic",
   }, 3600);
 -->
