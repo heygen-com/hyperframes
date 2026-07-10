@@ -21,6 +21,15 @@ const POSTHOG_HOST = "https://us.i.posthog.com";
 const TIMEOUT_MS = 1500;
 let identifiedAccount = false;
 
+// Test-only interception seam: a real HTTP destination a test can point at,
+// so a spawned-child test (resolve.test.mjs) can prove track() never reaches
+// production rather than trusting DO_NOT_TRACK alone (a future call site or
+// test could forget to set that env var). Falls back to the real production
+// host whenever unset — production behavior is unchanged.
+function posthogHost() {
+  return process.env.MEDIA_USE_TELEMETRY_HOST || POSTHOG_HOST;
+}
+
 /** True when telemetry must NOT be sent (opt-out envs, CI, dev). */
 export function optedOut() {
   return (
@@ -131,7 +140,7 @@ function showTelemetryNotice() {
 
 async function postBatch(batch) {
   try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
+    await fetch(`${posthogHost()}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Connection: "close" },
       body: JSON.stringify({ api_key: POSTHOG_API_KEY, batch }),

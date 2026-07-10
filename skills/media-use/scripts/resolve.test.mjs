@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createServer } from "node:http";
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
@@ -685,6 +686,81 @@ test("identical grade resolve hits the project cache without re-freezing", () =>
   assert.equal(second.path, first.path);
   assert.equal(readManifest(tmp).length, 1);
   cleanup();
+});
+
+// --- telemetry isolation (U7) ---
+
+// Every other test relies on runResolve/spawnResolve's default DO_NOT_TRACK:
+// "1" to keep track() a no-op. That default is fragile on its own (a future
+// call site or test could forget to set it), so telemetry.mjs also exposes a
+// MEDIA_USE_TELEMETRY_HOST override read at the point the POST URL is built.
+// This test proves that seam actually intercepts a real event end to end: a
+// resolve that reaches track("media_use_resolve", ...) with tracking allowed
+// posts to a local HTTP server instead of production, and the server actually
+// receives it (not just "nothing happened because nothing was listening").
+test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
+  setup();
+  const received = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        received.push(JSON.parse(body));
+      } catch {
+        // ignore malformed body; assertions below fail on empty `received`
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const sandboxHome = mkdtempSync(join(tmpdir(), "mu-resolve-telemetry-home-"));
+
+  try {
+    const record = makeRecord({
+      provenance: { prompt: "telemetry seam test", provider: "test" },
+    });
+    appendRecord(tmp, record);
+    const filePath = join(tmp, record.path);
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, "telemetry seam audio");
+
+    // Override this one invocation's env only: allow tracking (DO_NOT_TRACK
+    // default flipped off), sandbox HOME so anonymousId()/showTelemetryNotice()
+    // never touch the real developer machine, and point the host at the local
+    // server. Every other test in this file keeps its untouched default env.
+    runResolve(["--type", "bgm", "--intent", "telemetry seam test", "--project", tmp, "--json"], {
+      env: {
+        DO_NOT_TRACK: "0",
+        HYPERFRAMES_NO_TELEMETRY: "0",
+        CI: "",
+        NODE_ENV: "test",
+        HOME: sandboxHome,
+        MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
+      },
+    });
+
+    // runResolve blocks synchronously (execFileSync) until the child exits, which
+    // pauses this process's own event loop for that whole span — the child's
+    // request to our local server sits accepted-but-unprocessed in the kernel
+    // backlog until control returns here. Poll briefly to let the event loop
+    // drain it rather than asserting before the server has had a turn to run.
+    for (let i = 0; i < 100 && received.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(sandboxHome, { recursive: true, force: true });
+    cleanup();
+  }
+
+  assert.ok(received.length > 0, "expected the local telemetry server to receive a POST");
+  const resolveEvent = received[0].batch.find((event) => event.event === "media_use_resolve");
+  assert.ok(resolveEvent, "expected a media_use_resolve event in the intercepted batch");
+  assert.equal(resolveEvent.properties.provider, "test");
+  assert.equal(resolveEvent.properties.type, "bgm");
 });
 
 // --- run ---
