@@ -168,6 +168,22 @@ describe("compileTimingAttrs", () => {
     expect(compiled).toContain('id="hf-video-0"');
     expect(compiled).toContain('data-end="2"');
   });
+
+  it("preserves inert regions when compiled output is compiled again", () => {
+    const html = [
+      '<style>.hero::after { content: "$& $$ $` $\' <video>"; }</style>',
+      '<script>const markup = "$& $$ $` $\' <audio>";</script>',
+      '<video class="hero" src="a.mp4" data-start="0" data-duration="2">',
+    ].join("\n");
+
+    const first = compileTimingAttrs(html).html;
+    const second = compileTimingAttrs(first).html;
+
+    expect(second).toContain('<style>.hero::after { content: "$& $$ $` $\' <video>"; }</style>');
+    expect(second).toContain('<script>const markup = "$& $$ $` $\' <audio>";</script>');
+    expect(second).toContain('data-end="2"');
+    expect(second).not.toContain("HFMASK");
+  });
 });
 
 describe("injectDurations", () => {
