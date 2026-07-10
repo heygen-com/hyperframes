@@ -95,8 +95,8 @@ function touchInstallLock(): void {
   try {
     const now = new Date();
     utimesSync(INSTALL_LOCK_DIR, now, now);
-  } catch (err) {
-    if (!isErrno(err, "ENOENT")) throw err;
+  } catch {
+    // ponytail: heartbeat is best-effort; stale-lock reclaim remains the fallback.
   }
 }
 

@@ -51,9 +51,9 @@ const HF_BINARY = join(
 );
 const SYSTEM_CHROME = "/usr/bin/google-chrome";
 const TEST_LOCK_TIMINGS = {
-  staleMs: 10,
+  staleMs: 50,
   pollMs: 5,
-  heartbeatMs: 5,
+  heartbeatMs: 10,
   waitNoticeMs: 1_000,
 };
 
@@ -61,9 +61,10 @@ interface FsMockOptions {
   existing: ReadonlySet<string>;
   /** map of dir path -> entries returned by readdirSync */
   dirs?: Record<string, string[]>;
+  touchError?: Error;
 }
 
-function installFsMocks({ existing, dirs }: FsMockOptions) {
+function installFsMocks({ existing, dirs, touchError }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
@@ -104,6 +105,7 @@ function installFsMocks({ existing, dirs }: FsMockOptions) {
       return { mtimeMs: mtimes.get(p) ?? 0 };
     },
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
+      if (touchError) throw touchError;
       if (!paths.has(p)) {
         const err = new Error(`ENOENT: no such file or directory, utimes '${p}'`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
@@ -380,9 +382,9 @@ describe("findBrowser — cache resolution", () => {
       return label;
     };
 
-    const first = withInstallLock(() => trackConcurrency("first", 40), TEST_LOCK_TIMINGS);
-    await new Promise((resolve) => setTimeout(resolve, 2)); // let `first` acquire the lock
-    const second = withInstallLock(() => trackConcurrency("second", 5), TEST_LOCK_TIMINGS);
+    const first = withInstallLock(() => trackConcurrency("first", 120), TEST_LOCK_TIMINGS);
+    await new Promise((resolve) => setTimeout(resolve, 5)); // let `first` acquire the lock
+    const second = withInstallLock(() => trackConcurrency("second", 10), TEST_LOCK_TIMINGS);
 
     await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
     expect(maxConcurrent).toBe(1);
@@ -394,7 +396,7 @@ describe("findBrowser — cache resolution", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const { withInstallLock } = await import("./manager.js");
-    await withInstallLock(async () => "done", { ...TEST_LOCK_TIMINGS, waitNoticeMs: 5 });
+    await withInstallLock(async () => "done", { ...TEST_LOCK_TIMINGS, waitNoticeMs: 20 });
 
     expect(paths.has(HF_LOCK)).toBe(false);
     expect(
@@ -402,6 +404,21 @@ describe("findBrowser — cache resolution", () => {
         String(msg).includes("Waiting for another hyperframes process"),
       ),
     ).toBe(true);
+  });
+
+  it("keeps the holder running when a heartbeat cannot touch the lock", async () => {
+    installFsMocks({
+      existing: new Set([CACHE_ROOT]),
+      touchError: Object.assign(new Error("EACCES"), { code: "EACCES" }),
+    });
+
+    const { withInstallLock } = await import("./manager.js");
+    await expect(
+      withInstallLock(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return "done";
+      }, TEST_LOCK_TIMINGS),
+    ).resolves.toBe("done");
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {
