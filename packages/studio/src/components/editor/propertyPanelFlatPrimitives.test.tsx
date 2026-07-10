@@ -280,6 +280,82 @@ describe("FlatSlider", () => {
     expect(onCommit).toHaveBeenCalledWith(10);
     act(() => root.unmount());
   });
+
+  it("commits continuously while dragging, not just on the initial pointerdown", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={50}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="50%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(10);
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(80);
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(50);
+    act(() => {
+      track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
+    });
+    act(() => root.unmount());
+  });
+
+  it("ignores pointermove once a drag has ended (pointer capture released)", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={50}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="50%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+      );
+      track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
+    });
+    onCommit.mockClear();
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
 });
 
 describe("FlatSlider — Grade extensions", () => {

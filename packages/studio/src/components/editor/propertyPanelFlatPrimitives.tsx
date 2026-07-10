@@ -262,7 +262,17 @@ export function FlatSlider({
         className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
         onPointerDown={(e) => {
           if (disabled) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
           commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+        }}
+        onPointerMove={(e) => {
+          if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
+          commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+        }}
+        onPointerUp={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
         }}
       >
         <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
