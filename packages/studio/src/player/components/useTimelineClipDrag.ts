@@ -22,6 +22,7 @@ import {
 } from "./timelineSnapping";
 import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
+import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 
 const EMPTY_BEAT_TIMES: number[] = [];
 
@@ -231,6 +232,24 @@ export function useTimelineClipDrag({
         // rendered extent (see dragMaxStart) — the composition grows on commit.
         dragMaxStart + drag.element.duration,
       );
+      // Rigid group move: when the grabbed clip is part of a multi-selection, the
+      // WHOLE formation shifts by its delta on commit (see timelineClipDragCommit).
+      // Clamp that delta here — against every selected member's start — so the
+      // grabbed clip can't out-run the group: it STOPS the instant any member
+      // would cross 0, exactly as it lands on commit. Without this the ghost
+      // leads freely while a passenger clamps at 0, deforming the formation
+      // (main keeps it rigid — clampTimelineGroupMoveDelta). Lane changes still
+      // apply to the grabbed clip only, so only the start (x) is constrained.
+      const dragKey = drag.element.key ?? drag.element.id;
+      const selectedKeys = usePlayerStore.getState().selectedElementIds;
+      let previewStart = snap.start;
+      if (selectedKeys.size > 1 && selectedKeys.has(dragKey)) {
+        const memberStarts = elementsRef.current
+          .filter((e) => selectedKeys.has(e.key ?? e.id))
+          .map((e) => e.start);
+        const clampedDelta = clampGroupMoveDelta(snap.start - drag.element.start, memberStarts);
+        previewStart = drag.element.start + clampedDelta;
+      }
       // rowFloat = the pointer's position in track-heights from the top lane; a
       // near-boundary hover requests a deliberate new-track insert. Uses the
       // shared row→y inverse so the top breathing pad is subtracted consistently.
@@ -249,9 +268,9 @@ export function useTimelineClipDrag({
         elements: elementsRef.current,
         desiredTrack: nextMove.track,
         deliberateInsertRow: rawInsertRow,
-        start: snap.start,
+        start: previewStart,
         duration: drag.element.duration,
-        dragKey: drag.element.key ?? drag.element.id,
+        dragKey,
         isAudio: isAudioTimelineElement(drag.element),
       });
       return {
@@ -259,7 +278,7 @@ export function useTimelineClipDrag({
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: snap.start,
+        previewStart,
         previewTrack,
         insertRow,
         snapTime: snap.snapTime,

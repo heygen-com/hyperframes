@@ -174,4 +174,65 @@ describe("commitDraggedClipMove", () => {
     expect(map.c.track).toBe(1); // slots between a and b
     expect(map.b.track).toBe(2); // pushed down
   });
+
+  describe("lane ↔ stacking sync", () => {
+    it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", () => {
+      // a & b overlap in time; a dragged onto the TOP lane (0) but z(1) < b z(5).
+      const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
+      const z: Record<string, number> = { a: 1, b: 5 };
+      const onStackingPatches = vi.fn();
+      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+        updateElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+        onStackingPatches,
+      });
+      // Only `a` (the edited clip) is patched, lifted above b(5) → 6.
+      expect(onStackingPatches).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 6 }]);
+    });
+
+    it("no z-sync deps → no stacking side-effects (pure time-move path safe)", () => {
+      const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
+      // No readZIndex/onStackingPatches supplied → must not throw, no patches.
+      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+        updateElement: vi.fn(),
+        onMoveElements: vi.fn(),
+      });
+      // (nothing to assert beyond "did not throw")
+    });
+
+    it("no time overlap → no stacking patch even on a lane change", () => {
+      const elements = [el("a", 1, 0, 5), el("b", 0, 10, 5)];
+      const onStackingPatches = vi.fn();
+      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+        updateElement: vi.fn(),
+        onMoveElements: vi.fn(),
+        readZIndex: () => 0,
+        onStackingPatches,
+      });
+      expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+
+    it("pure time-move (no lane change) never triggers a stacking patch", () => {
+      const elements = [el("a", 0, 0, 10), el("b", 0, 0, 10)];
+      const onStackingPatches = vi.fn();
+      // same track → not a topology change → z-sync branch not reached.
+      commitDraggedClipMove(drag(elements[0], { previewStart: 3, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        readZIndex: () => 0,
+        onStackingPatches,
+      });
+      expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+  });
 });

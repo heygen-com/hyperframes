@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./useTimelineClipDrag";
-import { normalizeToZones } from "./timelineZones";
+import { classifyZone, normalizeToZones } from "./timelineZones";
+import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -23,6 +24,22 @@ export interface DragCommitDeps {
    * apply to the dragged clip only; the others keep their lanes.
    */
   selectedKeys?: ReadonlySet<string> | null;
+  /**
+   * Lane ↔ stacking unification. When a lane change happens, the edited clip(s)
+   * get z-index patches so their stacking matches lane order (higher lane = on
+   * top) relative to time-overlapping clips — see timelineStackingSync. Both
+   * deps must be supplied to engage; if either is absent the z-sync is skipped
+   * (pure time-moves never restack). `readZIndex` returns the clip's current
+   * z-index (from the live DOM inline style / computed; "auto" ⇒ 0).
+   */
+  readZIndex?: (element: TimelineElement) => number;
+  /**
+   * Apply the computed z-index patches. Wiring (in the drag hook, which owns the
+   * DOM/persist plumbing) forwards these to the SAME atomic style-patch persist
+   * the canvas z-order commit uses (handleDomZIndexReorderCommit). Documented in
+   * research/STAGE3-NEEDED-WIRING.md.
+   */
+  onStackingPatches?: (patches: StackingPatch[]) => void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
@@ -124,4 +141,46 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     edits.push({ element: src, updates: { start, track: norm.track } });
   }
   persistMoveEdits(edits, deps);
+
+  // Lane ↔ stacking: after the lane change is applied, patch the edited clip(s)'
+  // z-index so it matches lane order relative to time-overlapping clips. Only the
+  // edited clip(s) change; untouched clips' authored z is sacred.
+  syncStackingForEdit(normalized, edits, dragKey, multiKeys, deps);
+}
+
+/**
+ * Compute + apply z-index patches for the edited clip(s) after a lane change.
+ * Projects the post-edit (normalized) element set onto StackingElement using the
+ * NEW lanes/times and the caller-supplied live z-index reader, then delegates the
+ * minimal-z resolution to computeStackingPatches. No-op unless both z-sync deps
+ * are present.
+ */
+function syncStackingForEdit(
+  normalized: TimelineElement[],
+  edits: TimelineMoveEdit[],
+  dragKey: string,
+  multiKeys: ReadonlySet<string> | null,
+  deps: DragCommitDeps,
+): void {
+  const { readZIndex, onStackingPatches } = deps;
+  if (!readZIndex || !onStackingPatches) return;
+
+  const editByKey = new Map(edits.map((e) => [keyOf(e.element), e.updates]));
+  const stackingEls = normalized.map((el) => {
+    const patched = editByKey.get(keyOf(el));
+    return {
+      key: keyOf(el),
+      start: patched?.start ?? el.start,
+      duration: el.duration,
+      track: patched?.track ?? el.track,
+      zIndex: readZIndex(el),
+      isAudio: classifyZone(el) === "audio",
+    };
+  });
+
+  const editedKeys = [dragKey];
+  if (multiKeys) for (const k of multiKeys) if (k !== dragKey) editedKeys.push(k);
+
+  const patches = computeStackingPatches(stackingEls, editedKeys);
+  if (patches.length > 0) onStackingPatches(patches);
 }
