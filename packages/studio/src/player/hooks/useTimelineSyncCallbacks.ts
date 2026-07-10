@@ -41,6 +41,43 @@ interface UseTimelineSyncCallbacksParams {
   applyPreviewAudioState: () => void;
 }
 
+/**
+ * Where should the player seek when the preview (re)loads?
+ * Priority: explicit pending seek (saved by refreshPlayer right before a
+ * reload) → store-level seek request (deep-link `?t=` hydration) → the store's
+ * last known playhead. The last fallback makes the playhead RELOAD-INVARIANT:
+ * edits persist + reload the preview, sometimes more than once (App's
+ * refreshPreviewDocumentVersion staggers extra bumps at 80/300ms), and the
+ * consume-once pendingSeekRef meant any reload after the first found the slot
+ * empty and reset the playhead to 0 — the "dropped a file and the playhead
+ * jumped to 0" bug. Falling back to the store's playhead means every reload
+ * restores position; a fresh project load still starts at 0 because the store
+ * resets currentTime on project switch. Invariant: an edit NEVER moves the
+ * playhead (the clamp below is the one sanctioned move — content shrank past it).
+ */
+/**
+ * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
+ * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
+ * completion + failure path funnels through here so the preview can never get
+ * stuck invisible.
+ */
+export function revealIframe(iframe: HTMLIFrameElement | null): void {
+  if (iframe && iframe.style.visibility === "hidden") {
+    iframe.style.visibility = "";
+  }
+}
+
+export function resolveReloadSeekTime(input: {
+  pendingSeek: number | null;
+  requestedSeek: number | null;
+  storeCurrentTime: number;
+  duration: number;
+}): number {
+  const target = input.pendingSeek ?? input.requestedSeek ?? input.storeCurrentTime;
+  if (!Number.isFinite(target) || target <= 0) return 0;
+  return Math.min(target, input.duration);
+}
+
 export function useTimelineSyncCallbacks({
   iframeRef,
   probeIntervalRef,
@@ -218,12 +255,32 @@ export function useTimelineSyncCallbacks({
     // never reaches pendingSeekRef). Reconciling with the store here is what makes a
     // deep-linked `?t=` land instead of starting at 0.
     const storeSeek = usePlayerStore.getState().requestedSeekTime;
-    const seekTo = pendingSeekRef.current ?? storeSeek;
+    const startTime = resolveReloadSeekTime({
+      pendingSeek: pendingSeekRef.current,
+      requestedSeek: storeSeek,
+      storeCurrentTime: usePlayerStore.getState().currentTime,
+      duration: adapter.getDuration(),
+    });
     pendingSeekRef.current = null;
     if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-    const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
+    // Force a REAL render at startTime, not a no-op. After a post-edit reload the
+    // freshly rebuilt GSAP timeline can already report being at `startTime`
+    // internally (the reload restores the same playhead), so a single
+    // `adapter.seek(startTime)` is a GSAP no-op — `tl.seek(t)` at the current time
+    // doesn't re-evaluate. That's why a just-dropped clip stayed invisible until
+    // the user nudged the playhead: its element's state was never applied at the
+    // restore position. Seeking to a DIFFERENT guard value first (a hair off, or 0
+    // when startTime is already ~0) guarantees the follow-up seek to `startTime`
+    // crosses a time boundary and re-renders every clip — including the new one.
+    const guardTime = startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001;
+    adapter.seek(guardTime);
     adapter.seek(startTime);
+    // The correct frame is now rendered — reveal the iframe that refreshPlayer hid
+    // for the reload, so the user sees the restored frame directly (never the raw
+    // all-clips DOM). Cleared unconditionally: any later failure path must not leave
+    // the preview stuck invisible.
+    revealIframe(iframeRef.current);
     // Keep non-React listeners such as the capture link and time display in sync
     // with the initial adapter seek on iframe load.
     liveTime.notify(startTime);
@@ -332,6 +389,9 @@ export function useTimelineSyncCallbacks({
         trySettle();
       }
       window.removeEventListener("message", onMessage);
+      // Never leave the preview stuck invisible if the runtime never settled
+      // (initializeAdapter reveals on success; this covers the give-up case).
+      revealIframe(iframeRef.current);
     }, 5000) as unknown as ReturnType<typeof setInterval>;
   }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
 
