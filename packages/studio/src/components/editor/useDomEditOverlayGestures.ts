@@ -296,8 +296,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       // LOCAL-SPACE size (industry OBB model): inverse-rotate the screen pointer
       // delta into the element's local frame so a rotated element grows along its
       // OWN axes, not the screen axes. Base size is the element-local px size at
-      // gesture start (actualWidth/Height, GSAP-scale-aware). Shift keeps the
-      // exact aspect-lock semantics of the old uniform branch.
+      // gesture start (actualWidth/Height, GSAP-scale-aware). Corner drag is
+      // ALWAYS proportional (CapCut/Canva model: corners only scale, never
+      // stretch — user product choice); there is no free-form stretch gesture.
       const nextSize = resolveLocalResizeSize({
         baseWidth: g.actualWidth,
         baseHeight: g.actualHeight,
@@ -307,7 +308,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         handle,
         dxScreen: dx,
         dyScreen: dy,
-        uniform: e.shiftKey,
+        uniform: true,
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
 
