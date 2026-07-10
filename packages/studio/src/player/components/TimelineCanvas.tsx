@@ -28,6 +28,11 @@ import {
   type KeyframeCacheEntry,
 } from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
+import {
+  isMultiDragPassenger,
+  multiDragPassengerOffsetPx,
+  type MultiDragPreviewInput,
+} from "./timelineMultiDragPreview";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
@@ -179,11 +184,23 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   // which flips at the MAGNETIC_TRACK_THRESHOLD point; the clip drops into it.
   const draggedRowIndex =
     draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
-  // Multi-selection drag: the GRABBED clip follows the cursor freely (rendered
-  // as the free ghost below); its co-selected "passengers" stay VISUALLY STILL
-  // on their lanes — they carry only the selected-highlight, so the group reads
-  // as selected. On drop the commit shifts every member by the same group-clamped
-  // delta (rigid formation) — see timelineMultiDragPreview + commit.
+  // Live multi-selection drag: while a selected clip is dragged, ALL selected
+  // clips move together as one rigid formation. The GRABBED clip is the free
+  // ghost below; its co-selected "passengers" slide by the SAME group-clamped
+  // delta (cheap translateX, no re-layout) — the delta is derived from the
+  // grabbed clip's ALREADY-clamped previewStart, so the whole formation stops at
+  // the wall together and never deforms. Matches what the commit will do — see
+  // timelineMultiDragPreview + commit.
+  const multiDragPreview: MultiDragPreviewInput | null =
+    draggedClip?.started === true && draggedElement
+      ? {
+          dragStarted: true,
+          draggedKey: draggedElement.key ?? draggedElement.id,
+          draggedOriginStart: draggedElement.start,
+          draggedPreviewStart: draggedClip.previewStart,
+          selectedKeys: selectedElementIds,
+        }
+      : null;
   const activeDraggedPosition =
     draggedClip?.started === true && activeDraggedElement && scrollRef.current
       ? {
@@ -359,10 +376,16 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                       (draggedElement?.key ?? draggedElement?.id) === elementKey;
                     if (isDraggingClip) return null;
                     const previewElement = getPreviewElement(el);
-                    // A co-selected member of a live multi-drag stays visually
-                    // still — it keeps its lane and its selected-highlight (via
-                    // isSelected), and moves only on drop by the group-clamped
-                    // delta the commit applies. No live preview transform.
+                    // Passenger of a live multi-drag: slide by the SAME formation
+                    // delta (the grabbed clip's group-clamped delta) via a
+                    // compositor transform on a same-geometry wrapper (absolute
+                    // inset-0 → identical offset parent, so the clip's own
+                    // left/top are preserved), plus the ghost's elevated z/opacity.
+                    const isPassenger =
+                      multiDragPreview != null && isMultiDragPassenger(clipKey, multiDragPreview);
+                    const passengerOffsetPx = isPassenger
+                      ? multiDragPassengerOffsetPx(clipKey, pps, multiDragPreview)
+                      : 0;
                     const clip = (
                       <TimelineClip
                         key={clipKey}
@@ -528,7 +551,21 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                         )}
                       </TimelineClip>
                     );
-                    return clip;
+                    if (!isPassenger) return clip;
+                    return (
+                      <div
+                        key={clipKey}
+                        className="absolute inset-0"
+                        style={{
+                          transform: `translateX(${passengerOffsetPx}px)`,
+                          opacity: 0.85,
+                          zIndex: 20,
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {clip}
+                      </div>
+                    );
                   })
                 }
               </div>
