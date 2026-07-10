@@ -1341,6 +1341,16 @@ function placeholderEnvironment(
   };
 }
 
+export function browserLaunchArgs(requireLockedEnvironment: boolean, locale = "en-US"): string[] {
+  return [
+    "--disable-dev-shm-usage",
+    "--disable-partial-raster",
+    "--font-render-hinting=none",
+    `--lang=${locale}`,
+    ...(requireLockedEnvironment ? [] : ["--no-sandbox", "--disable-setuid-sandbox"]),
+  ];
+}
+
 export async function runCli(args = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(args);
   if (options.updateFrameHashes && options.only !== null) {
@@ -1397,14 +1407,10 @@ export async function runCli(args = process.argv.slice(2)): Promise<number> {
   );
   const browser = await puppeteer.launch({
     headless: true,
-    args: [
-      "--disable-dev-shm-usage",
-      "--font-render-hinting=none",
-      `--lang=${imageLock.environment.locale}`,
-      ...(process.env.HF_UI_REQUIRE_LOCKED_ENV === "1"
-        ? []
-        : ["--no-sandbox", "--disable-setuid-sandbox"]),
-    ],
+    args: browserLaunchArgs(
+      process.env.HF_UI_REQUIRE_LOCKED_ENV === "1",
+      imageLock.environment.locale,
+    ),
   });
   let totalChecks = 0;
   const passes: FrameHashPass[] = [];

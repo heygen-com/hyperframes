@@ -3,7 +3,11 @@ import { describe, expect, it } from "bun:test";
 const loadSubject = () => import("./semantic-fixtures.js");
 
 const canonical = `<button data-hf-ui-root type="button">Continue</button>
-<style>[data-hf-ui-root] { min-height: 40px; }</style>`;
+<style>
+  [data-hf-ui-root] { min-height: 40px; }
+  [data-hf-theme="dark"] [data-hf-ui-root] { color: white; }
+  [data-hf-theme="light"] [data-hf-ui-root] { color: black; }
+</style>`;
 
 const demo = `<!doctype html>
 <html>
@@ -124,6 +128,8 @@ describe("Operator Black semantic fixtures", () => {
     expect(fixture).toContain("100vw !important");
     expect(fixture).toContain("100vh !important");
     expect(fixture).not.toMatch(/<script[^>]+src=/);
+    expect(fixture.match(/data-hf-theme="dark"/g)).toHaveLength(2);
+    expect(fixture.match(/data-hf-theme="light"/g)).toHaveLength(1);
   });
 
   it("parses literal named checkpoints and rejects ambiguous labels", async () => {

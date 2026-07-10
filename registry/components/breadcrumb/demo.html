@@ -271,6 +271,10 @@
     }
   }
   @media (pointer: coarse) {
+    .hf-ui-breadcrumb a {
+      justify-content: center;
+      min-width: var(--_hf-ui-hit-target);
+    }
     .hf-ui-breadcrumb a::before {
       position: absolute;
       inset-block: calc((var(--_hf-ui-control-height) - var(--_hf-ui-hit-target)) / 2);

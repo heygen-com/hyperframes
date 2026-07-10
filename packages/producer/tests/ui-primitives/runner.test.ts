@@ -3,6 +3,20 @@ import { describe, expect, it } from "bun:test";
 const loadSubject = () => import("./runner.js");
 
 describe("Operator Black browser runner", () => {
+  it("disables partial raster while retaining locked-container sandboxing", async () => {
+    const { browserLaunchArgs } = await loadSubject();
+
+    expect(browserLaunchArgs(true)).toContain("--disable-partial-raster");
+    expect(browserLaunchArgs(true)).not.toContain("--no-sandbox");
+    expect(browserLaunchArgs(false)).toEqual(
+      expect.arrayContaining([
+        "--disable-partial-raster",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+      ]),
+    );
+  });
+
   it("pins the complete dark/light responsive matrix and its single axe viewport", async () => {
     const { VIEWPORTS, THEMES } = await loadSubject();
 

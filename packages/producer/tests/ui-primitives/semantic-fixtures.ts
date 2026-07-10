@@ -238,9 +238,18 @@ export function createDemoFixture(demoHtml: string, options: DemoFixtureOptions)
     `<script data-hf-verifier-gsap>${escapeInlineScript(options.gsapSource)}</script>`,
   );
   fixture = fixture.replace(/<html\b/, '<html data-hf-verifier-fixture="demo"');
+  const themedElements =
+    fixture.match(/<[a-z][^>]*\bdata-hf-theme=["'](?:dark|light)["'][^>]*>/gi) ?? [];
+  if (themedElements.length !== 1) {
+    throw new Error(`demo must contain exactly one themed element, found ${themedElements.length}`);
+  }
+  const themedElement = themedElements[0];
   fixture = fixture.replace(
-    /data-hf-theme=["'](?:dark|light)["']/g,
-    `data-hf-theme="${options.theme}"`,
+    themedElement,
+    themedElement.replace(
+      /data-hf-theme=["'](?:dark|light)["']/i,
+      `data-hf-theme="${options.theme}"`,
+    ),
   );
   fixture = fixture.replace(
     "</head>",
