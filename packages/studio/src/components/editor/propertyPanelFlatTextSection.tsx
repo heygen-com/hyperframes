@@ -1,4 +1,4 @@
-import { Plus } from "../../icons/SystemIcons";
+import { Plus, X } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
 import { normalizeTextMetricValue } from "./propertyPanelHelpers";
@@ -12,6 +12,7 @@ import {
 } from "./propertyPanelValueTier";
 import {
   detectAvailableWeights,
+  formatTextFieldPreview,
   getTextFieldColor,
   getTextStyleValue,
   TextAreaField,
@@ -238,6 +239,88 @@ export function FlatTextSection({
         type="button"
         onClick={() => void onAddTextField(activeField.key)}
         className="mt-0.5 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
+      >
+        <Plus size={10} />
+        Add text field
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Multi-field layer list (design_handoff_studio_inspector, #10a —     */
+/*  no mock exists for this row; layout originated by this plan,        */
+/*  following the "left-rule nested content" convention established     */
+/*  by Text's own content block, Motion's effect cards, and Media's     */
+/*  cutout block. Flag for design review.)                              */
+/* ------------------------------------------------------------------ */
+
+export function FlatTextLayerList({
+  fields,
+  activeFieldKey,
+  styles,
+  onSelect,
+  onAdd,
+  onRemove,
+}: {
+  fields: DomEditSelection["textFields"];
+  activeFieldKey: string;
+  styles: Record<string, string>;
+  onSelect: (fieldKey: string) => void;
+  onAdd: () => void;
+  onRemove: (fieldKey: string) => void;
+}) {
+  return (
+    <div className="mb-2 border-l-2 border-panel-border-input py-0.5 pl-[10px]">
+      <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-panel-text-5">
+        Text layers
+      </div>
+      <div className="space-y-1">
+        {fields.map((field) => {
+          const active = field.key === activeFieldKey;
+          return (
+            <div
+              key={field.key}
+              data-flat-text-layer-row="true"
+              data-active={active}
+              onClick={() => onSelect(field.key)}
+              className={`flex min-h-[26px] cursor-pointer items-center gap-2 rounded px-1 ${
+                active ? "bg-panel-accent/10" : "hover:bg-panel-hover"
+              }`}
+            >
+              <span
+                className="h-3 w-3 flex-shrink-0 rounded-sm"
+                style={{ backgroundColor: getTextFieldColor(field, styles) }}
+              />
+              <span className="min-w-0 flex-1 truncate text-[11px] text-panel-text-1">
+                {formatTextFieldPreview(field.value) || "Text"}
+              </span>
+              <span className="flex-shrink-0 font-mono text-[9px] text-panel-text-4">
+                {field.tagName}
+              </span>
+              {fields.length > 1 && (
+                <button
+                  type="button"
+                  data-flat-text-layer-remove="true"
+                  aria-label="Remove text field"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(field.key);
+                  }}
+                  className="flex-shrink-0 text-panel-text-4 hover:text-panel-text-1"
+                >
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        data-flat-text-layer-add="true"
+        onClick={onAdd}
+        className="mt-1 flex items-center gap-[5px] text-[10px] text-panel-text-4 hover:text-panel-text-2"
       >
         <Plus size={10} />
         Add text field
