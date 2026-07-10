@@ -15,6 +15,31 @@ import { isFinitePositive } from "./playbackAdapter";
 // Duration attribute helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Read a host element's effective CSS stacking order for the timeline's reverse
+ * z→lane mapping. Prefers the inline `style.zIndex` (what the canvas context
+ * menu and LayersPanel z-edits write via handleDomZIndexReorderCommit), falls
+ * back to computed style; "auto" / empty / unparseable ⇒ 0. Works with a
+ * detached parse Document (no defaultView) as well as a live iframe. Mirrors
+ * canvasContextMenuZOrder.parseZIndex semantics so the two directions agree.
+ */
+export function readTimelineElementZIndex(el: Element): number {
+  const html = el as HTMLElement;
+  const parseZ = (value: string | null | undefined): number | null => {
+    if (value == null || value === "" || value === "auto") return null;
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? n : null;
+  };
+  const fromInline = parseZ(html.style?.zIndex);
+  if (fromInline != null) return fromInline;
+  const view = el.ownerDocument?.defaultView;
+  if (view?.getComputedStyle) {
+    const fromComputed = parseZ(view.getComputedStyle(html).zIndex);
+    if (fromComputed != null) return fromComputed;
+  }
+  return 0;
+}
+
 function readDurationAttribute(el: Element | null | undefined): number {
   if (!el) return 0;
   const duration =

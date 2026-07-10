@@ -23,6 +23,7 @@ import {
   buildTimelineElementIdentity,
   getTimelineElementIdentity,
   isTimelineIgnoredElement,
+  readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
 // Re-export helpers that were previously public from this module so that
@@ -124,6 +125,7 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
   if (clip.kind === "composition" && clip.compositionId) {
@@ -209,6 +211,7 @@ export function createImplicitTimelineLayersFromDOM(
     layers.push({
       domId: child.id || undefined,
       hfId: child.getAttribute("data-hf-id") || undefined,
+      zIndex: readTimelineElementZIndex(child),
       duration: rootDuration,
       id: identity.id,
       key: identity.key,
@@ -292,6 +295,7 @@ export function parseTimelineFromDOM(doc: Document, rootDuration: number): Timel
       selectorIndex,
       sourceFile,
       timingSource: "authored",
+      zIndex: readTimelineElementZIndex(el),
     };
 
     const mediaEl = resolveMediaElement(el);

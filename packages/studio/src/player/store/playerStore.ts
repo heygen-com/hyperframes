@@ -55,6 +55,14 @@ export interface TimelineElement {
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
   /**
+   * Live CSS stacking order read from the host element during discovery
+   * (inline/computed z-index; "auto" ⇒ 0). Drives the reverse z→lane mapping in
+   * normalizeToZones: among time-overlapping same-zone clips a HIGHER z takes a
+   * HIGHER (upper) lane, converging with the lane→z forward mapping in
+   * timelineStackingSync (lower lane ⇒ higher z). Absent ⇒ treated as 0.
+   */
+  zIndex?: number;
+  /**
    * Set by useExpandedTimelineElements on an inline-expanded sub-composition
    * child: the absolute master-timeline start of the sub-comp host the child
    * lives in. Presence marks the element as expanded; edits subtract it to get
