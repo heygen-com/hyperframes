@@ -10,6 +10,7 @@ import {
   FlatSelectRow,
   FlatSlider,
   FlatToggle,
+  PinnedGroupRow,
   PinnedZoneDivider,
 } from "./propertyPanelFlatPrimitives";
 
@@ -453,6 +454,24 @@ describe("FlatToggle", () => {
     expect(pill?.disabled).toBe(true);
     act(() => pill?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onChange).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("PinnedGroupRow", () => {
+  it("renders a 'Pinned' badge, filled pin icon, and always shows children", () => {
+    const onUnpin = vi.fn();
+    const { host, root } = renderInto(
+      <PinnedGroupRow title="Motion" onUnpin={onUnpin}>
+        <div data-testid="body">body</div>
+      </PinnedGroupRow>,
+    );
+    expect(host.textContent).toContain("Pinned");
+    expect(host.textContent).toContain("Motion");
+    expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
+    const unpin = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
+    act(() => unpin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onUnpin).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 });
