@@ -64,11 +64,15 @@ vi.mock("../utils/studioFileHistory", () => ({
   }),
 }));
 
+const readFileContentMock = vi.hoisted(() =>
+  vi.fn(async (_projectId: string, _path: string): Promise<string> => ""),
+);
+
 vi.mock("./timelineEditingHelpers", async (importActual) => {
   const actual = await importActual<typeof import("./timelineEditingHelpers")>();
   return {
     ...actual,
-    readFileContent: vi.fn(async () => h.source),
+    readFileContent: readFileContentMock,
     patchIframeDomTiming: vi.fn(),
     shiftGsapPositionsBatch: vi.fn(async () => {}),
   };
@@ -85,6 +89,8 @@ function move(
 describe("persistTimelineElementsMove — writes source-derived duration", () => {
   beforeEach(() => {
     h.savedFiles.length = 0;
+    readFileContentMock.mockReset();
+    readFileContentMock.mockImplementation(async () => h.source);
   });
 
   it("grows the root duration to the moved audio's real 8s end (not the stale 15.18)", async () => {
@@ -107,5 +113,45 @@ describe("persistTimelineElementsMove — writes source-derived duration", () =>
     expect(saved).toContain('data-start="11.53"'); // audio moved
     expect(saved).toContain('data-duration="19.53"'); // grown to the raw 8s end
     expect(saved).not.toContain('data-duration="15.18"'); // stale root gone
+  });
+
+  // PORT 2 — group-move rollback discipline. A move whose clips span two source
+  // files (e.g. a sub-comp) must land as ONE atomic save with ONE history entry,
+  // not one write-per-file. saveProjectFilesWithHistory already writes-all /
+  // records-one / rolls-back-all, so passing every file in a single call gives
+  // all-or-nothing on disk that matches the caller's all-or-nothing store rollback.
+  it("folds clips from two source files into ONE atomic save (single history entry)", async () => {
+    // Distinct source per path; a single move edit touches each file.
+    const perPath: Record<string, string> = {
+      "index.html": bed(15.18, 7.18),
+      "scenes/intro.html": bed(15.18, 2),
+    };
+    readFileContentMock.mockImplementation(async (_pid: string, path: string) => perPath[path]);
+
+    const rootMusic = el({ id: "hf-music", hfId: "hf-music", start: 7.18, duration: 8, track: 2 });
+    const subMusic = el({
+      id: "hf-music",
+      hfId: "hf-music",
+      start: 2,
+      duration: 8,
+      track: 2,
+      sourceFile: "scenes/intro.html",
+    });
+
+    await persistTimelineElementsMove([move(rootMusic, 9), move(subMusic, 4)], {
+      projectId: "p",
+      activeCompPath: "index.html",
+      previewIframe: null,
+      writeProjectFile: async () => {},
+      recordEdit: async () => {},
+      reloadPreview: () => {},
+      domEditSaveTimestampRef: { current: 0 },
+    });
+
+    // ONE save call carrying BOTH files (not two per-file saves).
+    expect(h.savedFiles).toHaveLength(1);
+    expect(Object.keys(h.savedFiles[0]).sort()).toEqual(["index.html", "scenes/intro.html"]);
+    expect(h.savedFiles[0]["index.html"]).toContain('data-start="9"');
+    expect(h.savedFiles[0]["scenes/intro.html"]).toContain('data-start="4"');
   });
 });

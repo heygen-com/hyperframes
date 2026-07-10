@@ -46,8 +46,11 @@ export interface PersistTimelineElementsMoveDeps {
  * path fired one fire-and-forget `onMoveElement` per clip, each doing its own
  * source-write + GSAP shift + reload, and the concurrent GSAP round-trips
  * corrupted the file. Here every affected clip is folded into a single read →
- * patch-all → write → one batched GSAP shift → one reload, grouped per owning
- * source file. Mirrors the atomic pattern already used by delete / asset-drop.
+ * patch-all → write → one batched GSAP shift → one reload. Clips are grouped per
+ * owning source file for patching + preview sync, but ALL groups are written in a
+ * single atomic save with ONE history entry, so a multi-file move (clips spanning
+ * sub-comps) is all-or-nothing on disk and one undo step. Mirrors the atomic
+ * pattern already used by delete / asset-drop.
  *
  * Note: this always takes the server path. Single-clip moves keep their existing
  * SDK-cutover-aware handler; multi-clip ripple/insert is new behavior with no
@@ -92,6 +95,18 @@ export async function persistTimelineElementsMove(
     else groups.set(targetPath, [edit]);
   }
 
+  // Phase 1 — patch every group's source in memory. Nothing is written yet, so a
+  // patch failure here (or a no-op) cannot leave the disk half-updated. The
+  // per-group results (rewritten content + the `original` used for history) are
+  // collected so ALL files land in ONE atomic save below.
+  const groupResults: {
+    targetPath: string;
+    original: string;
+    patched: string;
+    groupEdits: TimelineElementMoveEdit[];
+  }[] = [];
+  const filesToSave: Record<string, string> = {};
+  const originals = new Map<string, string>();
   for (const [targetPath, groupEdits] of groups) {
     const original = await readFileContent(projectId, targetPath);
     let patched = original;
@@ -126,17 +141,37 @@ export async function persistTimelineElementsMove(
       usePlayerStore.getState().setDuration(contentEnd);
     }
 
-    domEditSaveTimestampRef.current = Date.now();
-    await saveProjectFilesWithHistory({
-      projectId,
-      label: edits.length > 1 ? "Move timeline clips" : "Move timeline clip",
-      kind: "timeline",
-      files: { [targetPath]: patched },
-      readFile: async () => original,
-      writeFile: writeProjectFile,
-      recordEdit,
-    });
+    groupResults.push({ targetPath, original, patched, groupEdits });
+    filesToSave[targetPath] = patched;
+    originals.set(targetPath, original);
+  }
 
+  if (groupResults.length === 0) return;
+
+  // Phase 2 — ONE atomic write of every affected file + ONE history entry.
+  // saveProjectFilesWithHistory writes all files then records a single edit,
+  // and rolls back every written file if any write fails. This is the fix for
+  // the per-group persist gap: a multi-file move (clips spanning sub-comps)
+  // previously did N writes + N history entries in this loop, so a partial
+  // failure left earlier files written + a stray history entry while the caller
+  // rolled the store all the way back. All-or-nothing on disk now matches the
+  // caller's all-or-nothing store rollback, and undo is a single step.
+  domEditSaveTimestampRef.current = Date.now();
+  await saveProjectFilesWithHistory({
+    projectId,
+    label: edits.length > 1 ? "Move timeline clips" : "Move timeline clip",
+    kind: "timeline",
+    files: filesToSave,
+    readFile: async (path) => originals.get(path) ?? "",
+    writeFile: writeProjectFile,
+    recordEdit,
+  });
+
+  // Phase 3 — post-save preview sync, per group. These are non-fatal cosmetic
+  // steps (GSAP shift misses re-sync on the next reload), so they run after the
+  // durable write and never throw back into the caller's rollback path.
+  forceReloadSdkSession?.();
+  for (const { targetPath, groupEdits } of groupResults) {
     // One batched GSAP position shift for every clip whose start changed.
     const shifts = groupEdits
       .filter((e) => e.element.domId && e.updates.start - e.element.start !== 0)
@@ -152,7 +187,6 @@ export async function persistTimelineElementsMove(
       });
     }
 
-    forceReloadSdkSession?.();
     // Soft-reload with the batch's rewritten script — a multi-clip move is
     // timing-only (DOM + store already patched), so swap the script in place to
     // avoid the all-clips flash; full reload is the fallback (see syncTimingEditPreview).
