@@ -142,7 +142,10 @@ describe("animejs adapter", () => {
       installHyperframesAnimeApi();
       animeWindow.hyperframesAnime?.register("main", instance);
 
-      expect(instance.seek.mock.calls).toEqual([[4000], [0]]);
+      expect(instance.seek.mock.calls).toEqual([
+        [4000, true],
+        [0, true],
+      ]);
     });
 
     it("does not double-prime registered instances when later collected", () => {
@@ -164,7 +167,7 @@ describe("animejs adapter", () => {
 
       adapter.seek({ time: 0 });
 
-      expect(legacy.seek.mock.calls).toEqual([[4400], [0], [0]]);
+      expect(legacy.seek.mock.calls).toEqual([[4400, true], [0, true], [0]]);
     });
 
     it("regresses the U3 gate backward-seek cold seek for late-position children", () => {
@@ -286,6 +289,51 @@ describe("animejs adapter", () => {
 
       expect(scene.style.opacity).toBe("");
       expect(scene.style.getPropertyValue("clip-path")).toBe("");
+    });
+
+    it("does not fire tl.call()/onComplete side effects during the priming seek, only on a real seek that reaches that position", () => {
+      let statusText = "pending";
+      const children: Array<{ position: number; onComplete?: () => void; fired: boolean }> = [];
+      const timelineImpl: Record<string, unknown> = {
+        add: vi.fn((_targets: unknown, params: unknown, position?: unknown) => {
+          const { onComplete } = params as { onComplete?: () => void };
+          children.push({ position: Number(position) || 0, onComplete, fired: false });
+          return timelineImpl;
+        }),
+        // Mirrors real anime.js: a muted seek (muteCallbacks=true) skips
+        // completion bookkeeping and callback firing entirely, so it neither
+        // fires the callback now nor blocks a later unmuted seek from firing
+        // it once the (still uncompleted) position is reached for real.
+        seek: vi.fn((timeMs: number, muteCallbacks?: boolean) => {
+          if (muteCallbacks) return;
+          for (const child of children) {
+            if (!child.fired && timeMs >= child.position) {
+              child.fired = true;
+              child.onComplete?.();
+            }
+          }
+        }),
+      };
+      animeWindow.anime = { createTimeline: () => timelineImpl as TestAnimeTimeline };
+
+      installHyperframesAnimeApi();
+      const timeline = animeWindow.anime.createTimeline?.() as unknown as {
+        add: (targets: unknown, params: unknown, position: unknown) => unknown;
+      };
+      // Sugar for tl.call(fn, 5.2s): a zero-duration tween whose onComplete
+      // mutates DOM state, exactly what liquid-glass-widgets' tl.call() and
+      // flowchart's addTimelineCall() helper both do.
+      timeline.add({}, { duration: 0, onComplete: () => (statusText = "Preview ready") }, 5200);
+
+      animeWindow.hyperframesAnime?.register("main", timelineImpl as unknown as TestAnimeInstance);
+
+      // Registration primes the timeline by seeking to its (fallback) full
+      // duration and back to 0; the callback must not fire as a side effect.
+      expect(statusText).toBe("pending");
+
+      // A real seek that reaches the callback's position still fires it.
+      createAnimeJsAdapter().seek({ time: 5.2 });
+      expect(statusText).toBe("Preview ready");
     });
   });
 

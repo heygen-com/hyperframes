@@ -231,7 +231,12 @@ export type RuntimeAnimeRegisterOptions = {
 };
 
 export type RuntimeAnimeInstance = {
-  seek?: (timeMs: number) => void;
+  // The optional second argument mirrors anime.js's own
+  // `Timer.prototype.seek(time, muteCallbacks)`: passing `true` seeks without
+  // firing onBegin/onComplete/onUpdate/onLoop/onRender for that tick, across
+  // the whole timeline tree. Duck-typed (non-anime.js) registrations that
+  // don't accept a second argument simply ignore it.
+  seek?: (timeMs: number, muteCallbacks?: boolean) => void;
   pause?: () => void;
   play?: () => void;
   duration?: number | (() => number);
