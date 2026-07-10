@@ -36,6 +36,20 @@ function readEffectiveZIndex(el: HTMLElement): number {
   return 0;
 }
 
+/**
+ * Realm-safe HTMLElement check. The target lives in the preview IFRAME's
+ * document, but this module runs in the top window, so `child instanceof
+ * HTMLElement` (top-window constructor) is ALWAYS false for iframe elements —
+ * which silently emptied the sibling list and left every z-order action
+ * permanently disabled. Compare against the element's own realm instead, with
+ * a nodeType fallback for detached / cross-realm edge cases.
+ */
+function isElementNode(node: Node): node is HTMLElement {
+  const view = node.ownerDocument?.defaultView;
+  if (view && node instanceof view.HTMLElement) return true;
+  return node.nodeType === 1;
+}
+
 /** Collect all HTMLElement siblings (same parent) except the target itself. */
 function getSiblingEntries(target: HTMLElement): SiblingZEntry[] {
   const parent = target.parentElement;
@@ -43,7 +57,7 @@ function getSiblingEntries(target: HTMLElement): SiblingZEntry[] {
   const entries: SiblingZEntry[] = [];
   for (const child of Array.from(parent.children)) {
     if (child === target) continue;
-    if (!(child instanceof HTMLElement)) continue;
+    if (!isElementNode(child)) continue;
     entries.push({ element: child, zIndex: readEffectiveZIndex(child) });
   }
   return entries;

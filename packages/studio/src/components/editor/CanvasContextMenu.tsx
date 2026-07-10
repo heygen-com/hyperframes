@@ -108,11 +108,33 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     onClose();
   }
 
+  // The menu is portaled to document.body, but in the React tree it is still a
+  // child of the DomEditOverlay <div>. React synthetic events bubble through the
+  // REACT tree (not the DOM tree), so a click on any menu control would otherwise
+  // bubble into the overlay's onPointerDown / onMouseDown handlers — which
+  // preventDefault() to start a marquee and re-resolve the selection. That
+  // preventDefault cancels the button's own click and the item action never runs.
+  //
+  // Stop pointer/mouse propagation at the menu root so overlay gesture handlers
+  // never see these events, and drive the item actions on pointerDown (which
+  // fires before any outside-click / dismiss logic can unmount the menu).
+  const stopBubble = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
   return createPortal(
     <div
       ref={menuRef}
       className="fixed z-50 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
+      onPointerDown={stopBubble}
+      onMouseDown={stopBubble}
+      onClick={stopBubble}
+      onContextMenu={(e) => {
+        // Keep a right-click on the menu itself from re-opening / bubbling.
+        e.preventDefault();
+        e.stopPropagation();
+      }}
     >
       {Z_ACTIONS.map(({ action, label }) => {
         const enabled = isZOrderActionEnabled(el, action);
@@ -126,7 +148,14 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
                 : "text-neutral-600 cursor-not-allowed"
             }`}
             disabled={!enabled}
-            onClick={() => {
+            // Act on pointerDown, not click: a pointerDown that reaches the
+            // overlay/document would otherwise re-select or dismiss the menu
+            // before the trailing click fires. Running here guarantees the
+            // action lands. Guard `button === 0` so a right-press is ignored.
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              e.stopPropagation();
               if (enabled) handleZAction(action);
             }}
           >
@@ -140,7 +169,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
       <button
         type="button"
         className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
-        onClick={handleDelete}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          handleDelete();
+        }}
       >
         <span>Delete</span>
         <span className="text-neutral-500 text-[10px] ml-3">⌫</span>
