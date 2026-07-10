@@ -1,12 +1,24 @@
 # Transition Registry: machine source of truth
 
 Single source of truth for **PLV scene-to-scene transitions**. The deterministic
-injector (`product-launch-video/scripts/inject-transitions.mjs`) reads the JSON
-block below and stamps the matching `gsap_template` onto the master timeline.
-The planner (`product-launch-video/agents/visual-design.md`) names a transition
-by its `name`; everything else is harness.
+injector (`transitions.mjs`, vendored identically into `product-launch-video/scripts/`,
+`pr-to-video/scripts/`, and `faceless-explainer/scripts/`) reads the JSON block
+below and stamps the matching template onto the master timeline: `gsap_template`
+for a GSAP target composition, `anime_template` for anime.js (the anime-first
+default — see "Runtime selection" below). The planner (`product-launch-video/agents/visual-design.md`)
+names a transition by its `name`; everything else is harness.
 
-> This registry intentionally still emits GSAP templates because `skills/product-launch-video/scripts/inject-transitions.mjs` is out of scope for this port. Anime.js support for that injector is follow-up work, not part of U11 batch 2.
+## Runtime selection
+
+The injector detects the target composition's runtime from index.html (a
+whole-file classifier consistent with `@hyperframes/parsers`'
+`classifyAnimationRuntime`, vendored rather than imported because skill scripts
+ship standalone under plain node) and picks the template family accordingly:
+`gsap` stamps `gsap_template*`; anything else (`animejs`, `mixed`, `none`)
+defaults to `anime_template*`, per the anime-first contract. Anime templates
+stamp onto `hyperframesAnime.get("main").instance` (registered via the
+createTimeline+register anchor from `packages/core/src/runtime/adapters/animejs.ts`),
+never `window.__timelines`, since `window.__timelines` is itself a GSAP signal.
 
 This file is **not** the catalog of all transitions: that is `catalog.md` +
 `css-*.md` (≈40 CSS + shader). This registry is the curated subset that is
@@ -27,7 +39,9 @@ injector:
 3. Reassigns **all** clip `data-track-index` as a 0/1 ping-pong so the two
    overlapping wrappers never share a track (same-track overlap is illegal -
    `core/src/lint/rules/composition.ts`). Higher track composites on top.
-4. Stamps the `gsap_template` into `window.__timelines["main"]` at `T = overlap-start`.
+4. Stamps the matching template — `gsap_template` into `window.__timelines["main"]`,
+   or `anime_template` into `hyperframesAnime.get("main").instance` — at
+   `T = overlap-start`.
 
 Verified by prototype render (2026-05-31): the master-timeline wrapper tween is
 seeked and rendered (no double-seek with the sub-comp's own paused timeline -
@@ -37,22 +51,36 @@ the outgoing one.
 
 ## Template placeholders
 
-The injector substitutes these tokens in each `gsap_template` line:
+The injector substitutes these tokens. `gsap_template*` lines use the seconds
+tokens (`__T__`/`__DUR__`); `anime_template*` lines use the milliseconds tokens
+(`__T_MS__`/`__DUR_MS__` — anime.js's native time unit) instead. `__DX__`/`__DY__`
+are shared as-is (px) since anime's `translateX`/`translateY` are px-equivalent
+to GSAP's `x`/`y`.
 
-| Token                              | Meaning                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| `__OLD__`                          | `"#el-<from>"`, outgoing clip wrapper selector (quoted)                  |
-| `__NEW__`                          | `"#el-<to>"`, incoming clip wrapper selector (quoted)                    |
-| `__T__`                            | overlap-start time in seconds (master clock)                             |
-| `__DUR__`                          | `duration_s` for this boundary                                           |
-| `__DX__`                           | horizontal travel for directional types: `-1920` (LEFT) / `1920` (RIGHT) |
-| `__DY__`                           | vertical travel: `-1080` (UP) / `1080` (DOWN)                            |
-| `__ORIGIN_OUT__` / `__ORIGIN_IN__` | transformOrigin pair for `squeeze`                                       |
+| Token                    | Meaning                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `__OLD__`                | `"#el-<from>"`, outgoing clip wrapper selector (quoted)                  |
+| `__NEW__`                | `"#el-<to>"`, incoming clip wrapper selector (quoted)                    |
+| `__T__` / `__T_MS__`     | overlap-start time — seconds (GSAP) / milliseconds (anime)               |
+| `__DUR__` / `__DUR_MS__` | `duration_s` for this boundary — seconds (GSAP) / milliseconds (anime)   |
+| `__DX__`                 | horizontal travel for directional types: `-1920` (LEFT) / `1920` (RIGHT) |
+| `__DY__`                 | vertical travel: `-1080` (UP) / `1080` (DOWN)                            |
 
 `filter` / `scaleX` / `transformOrigin` are lint-clean on the master timeline
 (verified: `core/src/lint/rules/gsap.ts` has no per-property whitelist and scopes
 its checks to `data-composition-id` ranges; the x/y/scale/rotation/opacity
 whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
+
+`anime_template*` entries always use explicit `[from, to]` arrays (the boundary's
+start position can be > 0, so an implicit from-value is never safe under a cold
+seek), decomposed transform keys (`translateX`/`translateY`/`scale`/`scaleX`,
+never a CSS `transform` string), and `tl.set(...)` for immediate non-tweened
+writes instead of a zero-duration `tl.add(...)`. `squeeze`'s `transformOrigin`
+uses percentage pairs (`"0% 50%"` / `"100% 50%"`), never CSS keyword syntax
+(`"left center"`) — verified in real Chrome (anime.js 4.5.0) that keyword syntax
+silently resolves both endpoints to `(0,0)` instead of parsing the keywords.
+GSAP eases map to anime eases per `core/src/animation/easeMap.ts` (`power2` ->
+`Cubic`, `power3` -> `Quart` family).
 
 ## Registry
 
@@ -70,6 +98,10 @@ whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
       "gsap_template": [
         "tl.to(__OLD__, { opacity: 0, duration: __DUR__, ease: \"power2.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { opacity: 0 }, { opacity: 1, duration: __DUR__, ease: \"power2.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { opacity: [1, 0], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);",
+        "tl.add(__NEW__, { opacity: [0, 1], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);"
       ]
     },
     {
@@ -84,6 +116,10 @@ whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
       "gsap_template": [
         "tl.to(__OLD__, { filter: \"blur(10px)\", scale: 1.03, opacity: 0, duration: __DUR__, ease: \"power2.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { filter: \"blur(10px)\", scale: 0.97, opacity: 0 }, { filter: \"blur(0px)\", scale: 1, opacity: 1, duration: __DUR__, ease: \"power2.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { filter: [\"blur(0px)\", \"blur(10px)\"], scale: [1, 1.03], opacity: [1, 0], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);",
+        "tl.add(__NEW__, { filter: [\"blur(10px)\", \"blur(0px)\"], scale: [0.97, 1], opacity: [0, 1], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);"
       ]
     },
     {
@@ -103,6 +139,16 @@ whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
       "gsap_template_vertical": [
         "tl.to(__OLD__, { y: __DY__, duration: __DUR__, ease: \"power3.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { y: __DYIN__, opacity: 1 }, { y: 0, duration: __DUR__, ease: \"power3.inOut\" }, __T__);"
+      ],
+      "anime_template_horizontal": [
+        "tl.add(__OLD__, { translateX: [0, __DX__], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { translateX: [__DXIN__, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
+      ],
+      "anime_template_vertical": [
+        "tl.add(__OLD__, { translateY: [0, __DY__], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { translateY: [__DYIN__, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
       ]
     },
     {
@@ -116,6 +162,10 @@ whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
       "gsap_template": [
         "tl.to(__OLD__, { scale: 2.5, opacity: 0, filter: \"blur(8px)\", duration: __DUR__, ease: \"power3.in\" }, __T__);",
         "tl.fromTo(__NEW__, { scale: 0.5, opacity: 0, filter: \"blur(8px)\" }, { scale: 1, opacity: 1, filter: \"blur(0px)\", duration: __DUR__, ease: \"power3.out\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { scale: [1, 2.5], opacity: [1, 0], filter: [\"blur(0px)\", \"blur(8px)\"], duration: __DUR_MS__, ease: \"inQuart\" }, __T_MS__);",
+        "tl.add(__NEW__, { scale: [0.5, 1], opacity: [0, 1], filter: [\"blur(8px)\", \"blur(0px)\"], duration: __DUR_MS__, ease: \"outQuart\" }, __T_MS__);"
       ]
     },
     {
@@ -130,6 +180,12 @@ whitelist is a _scene-worker_ prompt rule only: it does not bind index.html).
       "gsap_template": [
         "tl.to(__OLD__, { scaleX: 0, transformOrigin: \"left center\", duration: __DUR__, ease: \"power3.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { scaleX: 0, transformOrigin: \"right center\", opacity: 1 }, { scaleX: 1, transformOrigin: \"right center\", duration: __DUR__, ease: \"power3.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.set(__OLD__, { transformOrigin: \"0% 50%\" }, __T_MS__);",
+        "tl.add(__OLD__, { scaleX: [1, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { transformOrigin: \"100% 50%\", opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { scaleX: [0, 1], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
       ]
     }
   ],
