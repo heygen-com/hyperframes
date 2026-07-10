@@ -11,6 +11,7 @@
 
 import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
+import { readClipTiming } from "@hyperframes/core/composition-contract";
 
 /** Minimum absolute drift before a currentTime correction is attempted. */
 const MIRROR_DRIFT_THRESHOLD_SECONDS = 0.05;
@@ -149,10 +150,10 @@ export class ParentMediaManager {
     // Guard against a malformed (non-numeric) attribute parsing to NaN: an NaN
     // duration makes every `relTime >= m.duration` window check false, so the
     // gate never closes and the proxy plays past its clip end.
-    const start = parseFloat(m.source.getAttribute("data-start") || "0");
-    m.start = Number.isFinite(start) ? start : 0;
-    const duration = parseFloat(m.source.getAttribute("data-duration") || "");
-    m.duration = Number.isFinite(duration) && duration > 0 ? duration : Number.POSITIVE_INFINITY;
+    const timing = readClipTiming(m.source);
+    m.start = timing.start ?? 0;
+    m.duration =
+      timing.duration != null && timing.duration > 0 ? timing.duration : Number.POSITIVE_INFINITY;
   }
 
   // Pause the proxy outside its clip window; resume it on re-entry during
@@ -382,8 +383,9 @@ export class ParentMediaManager {
     const src = this._resolveIframeMediaSrc(iframeEl);
     if (!src) return;
 
-    const start = parseFloat(iframeEl.getAttribute("data-start") || "0");
-    const duration = parseFloat(iframeEl.getAttribute("data-duration") || "Infinity");
+    const timing = readClipTiming(iframeEl);
+    const start = timing.start ?? 0;
+    const duration = timing.duration ?? Number.POSITIVE_INFINITY;
     const tag = iframeEl.tagName === "VIDEO" ? ("video" as const) : ("audio" as const);
 
     const created = this._createEntry(src, tag, start, duration, iframeEl);

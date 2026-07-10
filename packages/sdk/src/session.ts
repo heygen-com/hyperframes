@@ -38,7 +38,7 @@ import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
 import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
-import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
+import { readClipTiming, type ClipTiming } from "@hyperframes/core/composition-contract";
 import {
   readDeclaredDefaults,
   validateVariables,
@@ -358,63 +358,30 @@ class CompositionImpl implements Composition {
       this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
 
-    // Resolve a `data-start` that's a relative-timing REFERENCE ("intro", "intro + 2" —
-    // parseStartExpression's grammar) into an absolute second, recursively against the
-    // referenced element's own resolved start + duration. A plain numeric data-start keeps
-    // the old parseFloat path unchanged — this only touches the case that used to silently
-    // resolve to 0 (parseFloat("intro + 2") is NaN). Node-safe static counterpart of the
-    // runtime's own resolver (runtime/startResolver.ts): no live GSAP timeline to fall back
-    // on, so an unauthored sub-composition duration still resolves to 0, same as before.
-    //
-    // refId is always a BARE id (the reference grammar has no scope syntax), resolved via
-    // resolveScoped's bare-id rule: prefer the canonical top-level match, else document
-    // order. An element inside a sub-composition referencing a bare id that also exists at
-    // the top level resolves to the TOP-LEVEL one, not a same-scope sibling — this matches
-    // the runtime's own resolver (also a global, not scope-aware, lookup), so the two stay
-    // consistent, but it means a bare-id collision across scopes is a real footgun for
-    // authored content.
-    const startCache = new Map<Element, number>();
+    // refId remains a bare global id, matching runtime resolution. The shared
+    // contract owns parsing, canonical duration preference, clamping, and
+    // legacy data-end compatibility; this adapter only supplies document lookup.
+    const timingCache = new Map<Element, ClipTiming>();
     const visiting = new Set<Element>();
-    // Split out of resolveStart so its own branching stays low — this is the ONE
-    // path that recurses + calls resolveDuration, kept here so that's visible at a
-    // glance rather than buried inside resolveStart's try block.
-    const resolveReferenceStart = (refId: string, offset: number): number => {
-      const target = resolveScoped(this.parsed.document, refId);
-      if (!target) return 0;
-      return Math.max(0, resolveStart(target) + (resolveDuration(target) ?? 0) + offset);
-    };
-    const resolveStart = (el: Element): number => {
-      const cached = startCache.get(el);
-      if (cached !== undefined) return cached;
-      if (visiting.has(el)) return 0; // reference cycle — fail safe, don't loop
+    const resolveTiming = (el: Element): ClipTiming => {
+      const cached = timingCache.get(el);
+      if (cached) return cached;
+      if (visiting.has(el)) return readClipTiming(el);
       visiting.add(el);
-      let resolved: number;
       try {
-        const startStr = el.getAttribute("data-start");
-        const expr = parseStartExpression(startStr);
-        if (expr?.kind === "reference") {
-          resolved = resolveReferenceStart(expr.refId, expr.offset);
-        } else if (expr?.kind === "absolute") {
-          resolved = expr.value;
-        } else {
-          resolved = startStr !== null ? parseFloat(startStr) : 0;
-        }
+        const timing = readClipTiming(el, {
+          resolveReferenceEnd: (refId) => {
+            const target = resolveScoped(this.parsed.document, refId);
+            if (!target) return null;
+            const targetTiming = resolveTiming(target);
+            return targetTiming.end ?? targetTiming.start;
+          },
+        });
+        timingCache.set(el, timing);
+        return timing;
       } finally {
         visiting.delete(el);
       }
-      const finite = Number.isFinite(resolved) ? resolved : 0;
-      startCache.set(el, finite);
-      return finite;
-    };
-    // Same preference as handleSetTiming: prefer data-duration, fall back to end - start.
-    const resolveDuration = (el: Element): number | null => {
-      const durationStr = el.getAttribute("data-duration");
-      const durationAttr = durationStr !== null ? parseFloat(durationStr) : null;
-      if (durationAttr !== null && Number.isFinite(durationAttr)) return durationAttr;
-      const endStr = el.getAttribute("data-end");
-      const endAttr = endStr !== null ? parseFloat(endStr) : null;
-      if (endAttr !== null && Number.isFinite(endAttr)) return endAttr - resolveStart(el);
-      return null;
     };
 
     const result: Record<HfId, ElementTimingSnapshot> = {};
@@ -423,8 +390,9 @@ class CompositionImpl implements Composition {
       const domEl = resolveScoped(this.parsed.document, el.scopedId);
       if (!domEl) continue;
 
-      const enterAt = resolveStart(domEl);
-      const duration = resolveDuration(domEl);
+      const timing = resolveTiming(domEl);
+      const enterAt = timing.start ?? 0;
+      const duration = timing.duration;
       if (duration === null) continue; // no timing info — skip non-timed elements
 
       const exitAt = enterAt + duration;

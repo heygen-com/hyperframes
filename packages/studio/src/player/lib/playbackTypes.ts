@@ -50,9 +50,16 @@ export interface ClipManifestClip {
 }
 
 export interface ClipManifest {
+  protocolVersion?: number;
+  compositionContractVersion?: number;
+  capabilities?: readonly string[];
+  fps?: { numerator: number; denominator: number };
+  durationSeconds?: number;
   clips: ClipManifestClip[];
   scenes: Array<{ id: string; label: string; start: number; duration: number }>;
   durationInFrames: number;
+  compositionWidth?: number;
+  compositionHeight?: number;
 }
 
 export type IframeWindow = Window & {

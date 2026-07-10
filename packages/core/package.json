@@ -40,6 +40,12 @@
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
     },
+    "./composition-contract": {
+      "bun": "./src/compositionContract.ts",
+      "node": "./dist/compositionContract.js",
+      "import": "./src/compositionContract.ts",
+      "types": "./src/compositionContract.ts"
+    },
     "./editing": {
       "bun": "./src/editing/affordances.ts",
       "node": "./dist/editing/affordances.js",
@@ -269,6 +275,10 @@
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
+      },
+      "./composition-contract": {
+        "import": "./dist/compositionContract.js",
+        "types": "./dist/compositionContract.d.ts"
       },
       "./editing": {
         "import": "./dist/editing/affordances.js",

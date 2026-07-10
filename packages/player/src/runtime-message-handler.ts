@@ -120,12 +120,28 @@ export function handleRuntimeMessage(
   }
 
   if (data["type"] === "timeline" && (data["durationInFrames"] as number) > 0) {
-    if (Number.isFinite(data["durationInFrames"])) {
+    const declaredDuration = Number(data["durationSeconds"]);
+    const frameDuration = Number(data["durationInFrames"]);
+    const duration =
+      Number.isFinite(declaredDuration) && declaredDuration > 0
+        ? declaredDuration
+        : frameDuration / protocol.fps;
+    if (Number.isFinite(duration) && duration > 0) {
       const pb = callbacks.getPlaybackState();
-      const duration = (data["durationInFrames"] as number) / protocol.fps;
       callbacks.setPlaybackState({ ...pb, duration });
       callbacks.updateControlsTime(pb.currentTime, duration);
       callbacks.onRuntimeTimelineReady(duration);
+    }
+    if (
+      Number.isFinite(data["compositionWidth"]) &&
+      (data["compositionWidth"] as number) > 0 &&
+      Number.isFinite(data["compositionHeight"]) &&
+      (data["compositionHeight"] as number) > 0
+    ) {
+      callbacks.setCompositionSize(
+        data["compositionWidth"] as number,
+        data["compositionHeight"] as number,
+      );
     }
     callbacks.setScenes(extractScenes(data["scenes"]));
     return;

@@ -18,6 +18,12 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.durationInFrames).toBeGreaterThanOrEqual(1);
     expect(result.compositionWidth).toBe(1920);
     expect(result.compositionHeight).toBe(1080);
+    expect(result).toMatchObject({
+      protocolVersion: 1,
+      compositionContractVersion: 1,
+      durationSeconds: 1,
+      fps: { numerator: 30, denominator: 1 },
+    });
   });
 
   // Regression: id-less timed elements (root index.html children carry

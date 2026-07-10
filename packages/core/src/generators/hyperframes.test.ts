@@ -54,8 +54,10 @@ describe("generateHyperframesHtml", () => {
 
     expect(html).toContain('id="my-text"');
     expect(html).toContain('data-start="2"');
-    expect(html).toContain('data-end="5"');
-    expect(html).toContain('data-layer="1"');
+    expect(html).toContain('data-duration="3"');
+    expect(html).toContain('data-track-index="1"');
+    expect(html).not.toContain('data-end="');
+    expect(html).not.toContain('data-layer="');
   });
 
   it("includes GSAP CDN script tag when includeScripts is true", () => {

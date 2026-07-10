@@ -241,6 +241,20 @@ export {
   parseNumeric,
   type ReferenceExpression,
 } from "./runtime/startExpression.js";
+export {
+  COMPOSITION_CONTRACT_VERSION,
+  COMPOSITION_ATTRIBUTES,
+  CANONICAL_AUTHORED_TIMING_ATTRIBUTES,
+  DERIVED_TIMING_ATTRIBUTES,
+  LEGACY_TIMING_ATTRIBUTES,
+  readClipTiming,
+  writeClipTiming,
+  ClipTimingWriteError,
+  type ClipTiming,
+  type ClipTimingDiagnostic,
+  type ClipTimingDiagnosticCode,
+  type ClipTimingUpdate,
+} from "./compositionContract.js";
 
 // Variable validation (CLI / tooling-side)
 export {

@@ -198,11 +198,9 @@ describe("getElementTimings — relative data-start references", () => {
     `.trim();
     const comp = await openComposition(html);
     const timings = comp.getElementTimings();
-    // The cycle guard fires on the re-entrant call, contributing 0 for the
-    // self-reference's own start — the element's OWN duration (2) still applies on
-    // top of that, so enterAt=2, not 0. The guard's job is termination, not zeroing
-    // the whole chain.
-    expect(timings["hf-self"]).toMatchObject({ enterAt: 2, exitAt: 4 });
+    // Cyclic references are invalid. The shared contract leaves the reference
+    // unresolved and this snapshot adapter applies its documented zero fallback.
+    expect(timings["hf-self"]).toMatchObject({ enterAt: 0, exitAt: 2 });
     expect(Number.isFinite(timings["hf-self"]?.enterAt)).toBe(true);
   });
 
@@ -215,13 +213,10 @@ describe("getElementTimings — relative data-start references", () => {
     `.trim();
     const comp = await openComposition(html);
     const timings = comp.getElementTimings();
-    // Document order resolves hf-a first: it recurses into hf-b, which recurses back
-    // into hf-a — the guard fires there (returns 0), so hf-b's start = 0 + hf-a's
-    // duration (2) = 2. Back in hf-a's own resolution: start = hf-b's start (2) +
-    // hf-b's duration (3) = 5. Neither number is "correct" for a genuine cycle —
-    // the point is both are finite and the recursion terminates.
-    expect(timings["hf-a"]).toMatchObject({ enterAt: 5, exitAt: 7 });
-    expect(timings["hf-b"]).toMatchObject({ enterAt: 2, exitAt: 5 });
+    // Both invalid starts get the same deterministic fallback; results no
+    // longer depend on document traversal order.
+    expect(timings["hf-a"]).toMatchObject({ enterAt: 0, exitAt: 2 });
+    expect(timings["hf-b"]).toMatchObject({ enterAt: 0, exitAt: 3 });
     expect(Number.isFinite(timings["hf-a"]?.enterAt)).toBe(true);
     expect(Number.isFinite(timings["hf-b"]?.enterAt)).toBe(true);
   });

@@ -10,6 +10,7 @@ export type RuntimeJson =
 
 import type { HyperframeControlAction } from "../inline-scripts/runtimeContract.js";
 import type { HyperframePickerElementInfo } from "../inline-scripts/pickerApi.js";
+import type { RuntimeProtocolV1 } from "./protocol.js";
 
 export type RuntimeBridgeControlAction =
   | HyperframeControlAction
@@ -79,9 +80,11 @@ export type RuntimeTimelineScene = {
   avatarName: string | null;
 };
 
-export type RuntimeTimelineMessage = {
+export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
   source: "hf-preview";
   type: "timeline";
+  compositionContractVersion: 1;
+  durationSeconds: number;
   durationInFrames: number;
   clips: RuntimeTimelineClip[];
   scenes: RuntimeTimelineScene[];

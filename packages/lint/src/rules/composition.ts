@@ -9,6 +9,7 @@ import {
   WINDOW_TIMELINE_ASSIGN_PATTERN,
 } from "../utils";
 import { COMPOSITION_VARIABLE_TYPES } from "@hyperframes/parsers/composition";
+import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
@@ -65,6 +66,10 @@ const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
 // observed drift (worst ~2e-16s across every realistic decimal pair) and 4
 // below one 60fps frame (~16.67ms), so this only ever swallows float slop.
 const OVERLAP_EPSILON_SECONDS = 1e-6;
+
+function readTagTiming(rawTag: string) {
+  return readClipTiming({ getAttribute: (name) => readAttr(rawTag, name) });
+}
 
 function countPhysicalLines(source: string): number {
   if (source.length === 0) return 0;
@@ -389,7 +394,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       if (isCompositionRootOrMount(tag.raw)) continue;
       if (!readAttr(tag.raw, "data-start")) continue;
 
-      const track = readAttr(tag.raw, "data-track-index");
+      const track = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
       if (!track) continue;
       trackCounts.set(track, (trackCounts.get(track) ?? 0) + 1);
     }
@@ -446,7 +451,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const tag of tags) {
-      if (readAttr(tag.raw, "data-layer") && !readAttr(tag.raw, "data-track-index")) {
+      const timing = readTagTiming(tag.raw);
+      if (timing.diagnostics.some(({ code }) => code === "deprecated-layer")) {
         const elementId = readAttr(tag.raw, "id") || undefined;
         findings.push({
           code: "deprecated_data_layer",
@@ -457,7 +463,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
           snippet: truncateSnippet(tag.raw),
         });
       }
-      if (readAttr(tag.raw, "data-end") && !readAttr(tag.raw, "data-duration")) {
+      if (timing.diagnostics.some(({ code }) => code === "deprecated-end")) {
         const elementId = readAttr(tag.raw, "id") || undefined;
         findings.push({
           code: "deprecated_data_end",
@@ -568,17 +574,14 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const trackMap = new Map<string, ClipInfo[]>();
 
     for (const tag of tags) {
-      const startStr = readAttr(tag.raw, "data-start");
-      const durationStr = readAttr(tag.raw, "data-duration");
-      const trackStr = readAttr(tag.raw, "data-track-index");
-      if (!startStr || !durationStr || !trackStr) continue;
-
-      const start = Number(startStr);
-      const duration = Number(durationStr);
+      const trackStr = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
+      if (!trackStr) continue;
+      const timing = readTagTiming(tag.raw);
+      const { start, duration } = timing;
       const track = trackStr;
 
       // Skip non-numeric (relative timing references like "intro-comp")
-      if (Number.isNaN(start) || Number.isNaN(duration)) continue;
+      if (start == null || duration == null) continue;
 
       const clips = trackMap.get(track) || [];
       clips.push({

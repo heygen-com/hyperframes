@@ -14,7 +14,12 @@ describe("Studio runtime protocol", () => {
       type: "control",
       action: "seek",
       protocolVersion: 1,
-      capabilities: ["seconds-time", "rational-fps", "seek-keep-playing"],
+      capabilities: [
+        "seconds-time",
+        "rational-fps",
+        "seek-keep-playing",
+        "composition-manifest-v1",
+      ],
       fps: { numerator: 60, denominator: 1 },
       timeSeconds: 1.25,
     });

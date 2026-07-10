@@ -3,6 +3,7 @@ import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -239,30 +240,16 @@ export interface SplitElementResult {
 function resolveElementTiming(el: Element): {
   start: number;
   duration: number;
-  usesDataEnd: boolean;
 } {
-  const start = parseFloat(el.getAttribute("data-start") ?? "0") || 0;
-  const usesDataEnd = el.hasAttribute("data-end");
-  const duration = usesDataEnd
-    ? parseFloat(el.getAttribute("data-end") ?? "") - start || 0
-    : parseFloat(el.getAttribute("data-duration") ?? "0") || 0;
-  return { start, duration, usesDataEnd };
+  const timing = readClipTiming(el);
+  return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
-function setElementDuration(
-  el: Element,
-  start: number,
-  duration: number,
-  usesDataEnd: boolean,
-): void {
-  if (usesDataEnd) {
-    const endTime = String(Math.round((start + duration) * 1000) / 1000);
-    el.setAttribute("data-end", endTime);
-    el.removeAttribute("data-duration");
-  } else {
-    el.setAttribute("data-duration", String(Math.round(duration * 1000) / 1000));
-    el.removeAttribute("data-end");
-  }
+function setElementDuration(el: Element, start: number, duration: number): void {
+  writeClipTiming(el, {
+    start: Math.round(start * 1000) / 1000,
+    duration: Math.round(duration * 1000) / 1000,
+  });
 }
 
 // fallow-ignore-next-line complexity
@@ -278,7 +265,6 @@ export function splitElementInHtml(
   if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
 
   const timing = resolveElementTiming(el);
-  const { usesDataEnd } = timing;
   let { start, duration } = timing;
   // GSAP-animated elements carry their timing in the script, not in data-* attrs,
   // so the source has no authored duration. Fall back to the store's (GSAP-derived)
@@ -310,8 +296,7 @@ export function splitElementInHtml(
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
   for (const node of clone.querySelectorAll("[data-hf-id]")) node.removeAttribute("data-hf-id");
-  clone.setAttribute("data-start", String(Math.round(splitTime * 1000) / 1000));
-  setElementDuration(clone, splitTime, secondDuration, usesDataEnd);
+  setElementDuration(clone, splitTime, secondDuration);
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
@@ -340,8 +325,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  el.setAttribute("data-start", String(Math.round(start * 1000) / 1000));
-  setElementDuration(el, start, firstDuration, usesDataEnd);
+  setElementDuration(el, start, firstDuration);
 
   // Insert clone after original
   if (el.nextSibling) {

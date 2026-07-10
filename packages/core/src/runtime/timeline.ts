@@ -10,6 +10,8 @@ import { readElementPlaybackRate } from "./media";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
+import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
+import { runtimeProtocolMetadata } from "./protocol.js";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -630,8 +632,11 @@ export function collectRuntimeTimelinePayload(params: {
     ? Number.POSITIVE_INFINITY
     : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
+    ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",
     type: "timeline",
+    compositionContractVersion: COMPOSITION_CONTRACT_VERSION,
+    durationSeconds: shouldEmitNonDeterministicInf ? Number.POSITIVE_INFINITY : safeDuration,
     durationInFrames,
     clips,
     scenes,

@@ -237,7 +237,7 @@ window.__timelines = { t: tl };</script>
     expect(liveDocEl.getAttribute("data-composition-variables") ?? "").not.toContain("accent");
   });
 
-  it("mirrors setTiming onto the live element's data-start/data-end attributes", async () => {
+  it("mirrors canonical setTiming attributes onto the live element", async () => {
     const iframe = mountIframe(BASE_HTML);
     const comp = await openComposition(BASE_HTML);
     const adapter = createIframePreviewAdapter(iframe);
@@ -249,7 +249,8 @@ window.__timelines = { t: tl };</script>
       '[data-hf-id="hf-title"]',
     ) as HTMLElement;
     expect(liveTitle.getAttribute("data-start")).toBe("1");
-    expect(liveTitle.getAttribute("data-end")).toBe("3");
+    expect(liveTitle.getAttribute("data-duration")).toBe("2");
+    expect(liveTitle.getAttribute("data-end")).toBeNull();
   });
 });
 

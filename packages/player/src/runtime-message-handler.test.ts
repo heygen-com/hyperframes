@@ -151,6 +151,25 @@ describe("handleRuntimeMessage timeline ready", () => {
     );
   });
 
+  it("prefers exact manifest seconds and dimensions over derived probes", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+
+    handleRuntimeMessage(
+      timelineEvent(999, frameWindow, {
+        ...runtimeProtocolMetadata(60),
+        durationSeconds: 4.25,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+      }),
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4.25);
+    expect(callbacks.setCompositionSize).toHaveBeenCalledWith(1080, 1920);
+  });
+
   it("rejects unknown protocol majors with a public diagnostic event", () => {
     const frameWindow = {} as Window;
     const callbacks = makeCallbacks();

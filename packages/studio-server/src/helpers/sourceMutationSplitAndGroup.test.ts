@@ -32,6 +32,21 @@ describe("splitElementInHtml", () => {
     expect(result.html).toContain('data-duration="4"');
   });
 
+  it("canonicalizes legacy timing attributes on both split halves", () => {
+    const legacy = source.replace(
+      'data-start="1" data-duration="6"',
+      'data-start="1" data-end="7" data-layer="3"',
+    );
+    const result = splitElementInHtml(legacy, { id: "box" }, 3, "box-split");
+
+    expect(result.matched).toBe(true);
+    expect(result.html).not.toContain("data-end=");
+    expect(result.html).not.toContain("data-layer=");
+    expect(result.html.match(/data-track-index="3"/g)).toHaveLength(2);
+    expect(result.html).toContain('data-duration="2"');
+    expect(result.html).toContain('data-duration="4"');
+  });
+
   it("duplicates CSS rules for the new element ID", () => {
     const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
     expect(result.html).toContain("#box-split");

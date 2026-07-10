@@ -3,6 +3,33 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("composition rules", () => {
+  describe("canonical timing contract", () => {
+    it("rejects deprecated attributes even when canonical attributes are also present", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div class="clip" data-start="1" data-duration="2" data-end="9" data-track-index="1" data-layer="4"></div>
+        </div>
+      </body></html>`);
+
+      expect(result.findings.map(({ code }) => code)).toEqual(
+        expect.arrayContaining(["deprecated_data_end", "deprecated_data_layer"]),
+      );
+    });
+
+    it("uses canonical timing when deprecated attributes conflict", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div id="a" class="clip" data-start="0" data-duration="2" data-end="9" data-track-index="1"></div>
+          <div id="b" class="clip" data-start="2" data-duration="2" data-track-index="1"></div>
+        </div>
+      </body></html>`);
+
+      expect(
+        result.findings.find(({ code }) => code === "overlapping_clips_same_track"),
+      ).toBeUndefined();
+    });
+  });
+
   describe("subcomposition guidance", () => {
     it("warns when any HTML composition file is over 300 lines", async () => {
       const html = Array.from({ length: 301 }, (_, i) =>
