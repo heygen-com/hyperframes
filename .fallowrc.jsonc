@@ -211,7 +211,12 @@
     // Exported for render.test.ts (exported-for-tests pattern).
     {
       "file": "packages/cli/src/commands/render.ts",
-      "exports": ["resolveBrowserGpuForCli", "renderLocal", "checkRenderResolutionPreflight"],
+      "exports": [
+        "resolveBrowserGpuForCli",
+        "renderLocal",
+        "checkRenderResolutionPreflight",
+        "renderLintContinuationHint",
+      ],
     },
     // initThreeDProjectionInPage: passed to page.evaluate() for browser-side execution —
     // Puppeteer serializes it at runtime, not an import-graph consumer.

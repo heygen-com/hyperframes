@@ -50,6 +50,7 @@ import type {
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
+  CaptureWarning,
   SubTimelineWaitOutcome,
 } from "../types.js";
 
@@ -106,6 +107,8 @@ export interface CaptureSession {
   scriptLoadFailures: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /** Structured readiness warnings surfaced to the producer's render policy. */
+  warnings: CaptureWarning[];
   initTelemetry?: {
     initDurationMs: number;
     tweenCount: number;
@@ -946,6 +949,7 @@ export async function createCaptureSession(
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
+    warnings: [],
     capturePerf: {
       frames: 0,
       seekMs: 0,
@@ -1325,6 +1329,105 @@ export async function pollImagesReady(
   return check();
 }
 
+type MediaReadinessSnapshot = {
+  pendingImages: string[];
+  failedImages: string[];
+  pendingVideos: string[];
+  failedVideos: string[];
+};
+
+/** @internal exported for contract testing. */
+export async function collectMediaReadinessWarnings(
+  page: Page,
+  skipIds: readonly string[],
+  timeoutMs: number,
+): Promise<CaptureWarning[]> {
+  const snapshot = await page.evaluate((skipIdList: readonly string[]): MediaReadinessSnapshot => {
+    const skipped = new Set(skipIdList);
+    const result: MediaReadinessSnapshot = {
+      pendingImages: [],
+      failedImages: [],
+      pendingVideos: [],
+      failedVideos: [],
+    };
+
+    for (const img of document.querySelectorAll("img")) {
+      const src = img.getAttribute("src") || "";
+      if (!src || src.startsWith("data:")) continue;
+      if (!img.complete) result.pendingImages.push(img.src || src);
+      else if (img.naturalWidth <= 0) result.failedImages.push(img.src || src);
+    }
+
+    // Browser media readiness is a frame-capture requirement only for video.
+    // Audio is extracted and mixed out of band by the producer, so an idle
+    // DOM <audio> element can legitimately remain at HAVE_NOTHING here. The
+    // producer reports actual extraction/mix failures as audio_processing_failed.
+    for (const media of document.querySelectorAll("video")) {
+      const mediaElement = media as HTMLMediaElement;
+      if (skipped.has(mediaElement.id)) continue;
+      const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
+      const failed =
+        Boolean(mediaElement.error) ||
+        mediaElement.networkState === HTMLMediaElement.NETWORK_NO_SOURCE;
+      const pending = !failed && mediaElement.readyState < HTMLMediaElement.HAVE_CURRENT_DATA;
+      if (failed) result.failedVideos.push(src);
+      else if (pending) result.pendingVideos.push(src);
+    }
+    return result;
+  }, skipIds);
+
+  const warnings: CaptureWarning[] = [];
+  const append = (
+    code: CaptureWarning["code"],
+    mediaType: "image" | "video" | "audio",
+    sources: string[],
+  ) => {
+    if (sources.length === 0) return;
+    const timedOut = code === "media_readiness_timeout";
+    warnings.push({
+      code,
+      message: timedOut
+        ? `${mediaType} media did not become capture-ready within ${timeoutMs}ms`
+        : `${mediaType} media failed to load before capture`,
+      details: { mediaType, sources: [...new Set(sources)].sort(), timeoutMs },
+    });
+  };
+  append("media_readiness_timeout", "image", snapshot.pendingImages);
+  append("media_load_failed", "image", snapshot.failedImages);
+  append("media_readiness_timeout", "video", snapshot.pendingVideos);
+  append("media_load_failed", "video", snapshot.failedVideos);
+  return warnings;
+}
+
+function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
+  for (const warning of warnings) {
+    const key = `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
+    if (
+      session.warnings.some(
+        (existing) => `${existing.code}:${JSON.stringify(existing.details ?? {})}` === key,
+      )
+    ) {
+      continue;
+    }
+    session.warnings.push(warning);
+    console.warn(`[FrameCapture:${warning.code}] ${warning.message}`, warning.details ?? {});
+  }
+}
+
+function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
+  if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
+  const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
+  recordCaptureWarnings(session, [
+    {
+      code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
+      message: scriptFailure
+        ? "A sub-composition timeline script failed to load"
+        : `Sub-composition timelines did not become ready within ${timeoutMs}ms`,
+      details: { timeoutMs },
+    },
+  ]);
+}
+
 // Force every successfully-loaded `<img>` to be GPU-uploaded before the first
 // frame capture. `naturalWidth > 0` means the bitmap has been decoded into
 // CPU memory, but compositor-side GPU upload can still happen lazily on first
@@ -1553,6 +1656,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       () => session.scriptLoadFailures,
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+    recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
     logInitPhase("applyVideoMetadataHints complete");
@@ -1602,6 +1706,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           `Continuing render — affected videos will appear as blank/black frames.`,
       );
     }
+    recordCaptureWarnings(
+      session,
+      await collectMediaReadinessWarnings(page, skipVideoIds, pageReadyTimeout),
+    );
 
     await recordSessionInitTelemetry(session, initStart);
 
@@ -1693,6 +1801,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     () => session.scriptLoadFailures,
   );
   logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+  recordSubTimelineWarning(session, pageReadyTimeout);
 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
   logInitPhase("applyVideoMetadataHints complete");
@@ -1742,6 +1851,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
         `Continuing render — affected videos will appear as blank/black frames.`,
     );
   }
+  recordCaptureWarnings(
+    session,
+    await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout),
+  );
 
   await recordSessionInitTelemetry(session, initStart);
 
@@ -3232,6 +3345,15 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
     p50TotalMs: medianOf(session.capturePerf.frameMs),
     subTimelineWaitOutcome: session.subTimelineWaitOutcome,
+    warnings: session.warnings.map((warning) => ({
+      ...warning,
+      details: warning.details
+        ? {
+            ...warning.details,
+            sources: warning.details.sources ? [...warning.details.sources] : undefined,
+          }
+        : undefined,
+    })),
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
     // armed ⟺ a non-empty static set survived verification; predicted === its size.

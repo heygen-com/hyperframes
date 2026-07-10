@@ -80,7 +80,7 @@ vi.mock("../utils/producer.js", () => ({
     }),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
       producerState.createdJobs.push(config);
-      return { config, progress: 100 };
+      return { config, progress: 100, outcome: "completed", warnings: [] };
     }),
     executeRenderJob: vi.fn(async (job: Record<string, unknown>) => producerState.executeImpl(job)),
   })),
@@ -411,6 +411,35 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.debug).toBe(true);
+  });
+
+  it("defaults to best-effort readiness", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.strictness).toBe("best-effort");
+  });
+
+  it("forwards an explicit strict readiness opt-in", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      bestEffort: false,
+    });
+
+    expect(producerState.createdJobs[0]?.strictness).toBe("strict");
   });
 
   it("omits variables from createRenderJob when not provided", async () => {

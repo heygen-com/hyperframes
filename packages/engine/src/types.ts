@@ -13,6 +13,24 @@ import type { Fps } from "@hyperframes/core";
  */
 export type SubTimelineWaitOutcome = "ready" | "timeout" | "script_failure";
 
+export type CaptureWarningCode =
+  | "media_readiness_timeout"
+  | "media_load_failed"
+  | "audio_processing_failed"
+  | "sub_timeline_readiness_timeout"
+  | "sub_timeline_script_failure";
+
+/** Structured correctness warning produced while preparing a capture session. */
+export interface CaptureWarning {
+  code: CaptureWarningCode;
+  message: string;
+  details?: {
+    mediaType?: "image" | "video" | "audio";
+    sources?: string[];
+    timeoutMs?: number;
+  };
+}
+
 // ── Seek Protocol ──────────────────────────────────────────────────────────────
 
 /**
@@ -202,6 +220,8 @@ export interface CapturePerfSummary {
   p50TotalMs: number;
   /** Sub-composition timeline wait outcome (absent pre-init). */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /** Correctness warnings observed before or during capture. */
+  warnings?: CaptureWarning[];
   /**
    * Frames served from the static-dedup cache instead of a real seek+screenshot
    * (opt-out HF_STATIC_DEDUP=false). 0 when dedup was off or never armed. NOT counted

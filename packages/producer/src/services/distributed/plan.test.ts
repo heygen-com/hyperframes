@@ -19,7 +19,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
+import { RenderQualityError } from "../renderOrchestrator.js";
 import {
+  applyDistributedAudioWarningPolicy,
   buildChunkSlices,
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_PARALLEL_CHUNKS,
@@ -27,6 +29,7 @@ import {
   plan,
   resolveChunkPlan,
 } from "./plan.js";
+import { buildSyntheticRenderJob } from "./shared.js";
 
 // Composition the tests render. `data-duration="1"` keeps the probe stage's
 // `needsBrowser` gate `false` so plan() completes without launching Chrome.
@@ -52,6 +55,30 @@ beforeAll(() => {
 
 afterAll(() => {
   rmSync(runRoot, { recursive: true, force: true });
+});
+
+describe("distributed warning policy", () => {
+  const createJob = (strictness: "strict" | "best-effort") =>
+    buildSyntheticRenderJob({
+      fps: { num: 30, den: 1 },
+      format: "mp4",
+      quality: "high",
+      hdrMode: "force-sdr",
+      strictness,
+      entryFile: "index.html",
+    });
+
+  it("rejects distributed audio degradation in strict mode", () => {
+    const job = createJob("strict");
+    expect(() => applyDistributedAudioWarningPolicy(job, "mix failed")).toThrow(RenderQualityError);
+    expect(job.warnings.map((warning) => warning.code)).toEqual(["audio_processing_failed"]);
+  });
+
+  it("records distributed audio degradation in best-effort mode", () => {
+    const job = createJob("best-effort");
+    expect(() => applyDistributedAudioWarningPolicy(job, "mix failed")).not.toThrow();
+    expect(job.warnings.map((warning) => warning.code)).toEqual(["audio_processing_failed"]);
+  });
 });
 
 describe("resolveChunkPlan", () => {
