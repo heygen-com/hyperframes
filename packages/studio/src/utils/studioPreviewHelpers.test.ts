@@ -172,4 +172,64 @@ describe("getPreviewTargetFromPointer", () => {
 
     iframe.remove();
   });
+
+  it("selects a full-bleed <video> instead of skipping to the element behind it", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene">
+        <div id="backdrop"></div>
+        <video id="hero"></video>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const backdrop = doc.getElementById("backdrop");
+    const hero = doc.getElementById("hero");
+    if (!scene || !backdrop || !hero) throw new Error("Expected preview fixture elements");
+
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(backdrop, domRect(0, 0, 400, 300));
+    // Full-bleed hero video painted on top of a full-bleed backdrop.
+    stubRect(hero, domRect(0, 0, 400, 300));
+    doc.elementsFromPoint = () => [hero, backdrop, scene];
+
+    // Before the fix the video was full-bleed-excluded and the picker fell through
+    // to the backdrop (or null). It must now return the video itself.
+    expect(getPreviewTargetFromPointer(iframe, 200, 150, "index.html")).toBe(hero);
+
+    iframe.remove();
+  });
+
+  it("still excludes a full-bleed non-media container so clicks reach inner content", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene">
+        <div id="wrapper"><h1 id="headline">Title</h1></div>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const wrapper = doc.getElementById("wrapper");
+    const headline = doc.getElementById("headline");
+    if (!scene || !wrapper || !headline) throw new Error("Expected preview fixture elements");
+
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(wrapper, domRect(0, 0, 400, 300));
+    stubRect(headline, domRect(40, 40, 160, 48));
+    doc.elementsFromPoint = () => [headline, wrapper, scene];
+
+    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+
+    iframe.remove();
+  });
 });
