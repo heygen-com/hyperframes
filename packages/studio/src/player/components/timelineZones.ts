@@ -8,10 +8,6 @@ import { isAudioTimelineElement } from "../../utils/timelineInspector";
  */
 export type TrackZone = "visual" | "audio";
 
-function sortedDistinct(values: number[]): number[] {
-  return [...new Set(values)].sort((a, b) => a - b);
-}
-
 /** Which zone a clip belongs to: audio elements sink to the bottom, everything
  *  else (video / image / text / sub-comp) is a visual lane on top. */
 export function classifyZone(el: TimelineElement): TrackZone {
@@ -47,6 +43,11 @@ function overlaps(a: TimelineElement, b: TimelineElement): boolean {
  * meaningless without a time overlap. This converges with the lane→z forward
  * mapping (lower lane ⇒ higher z) to a fixed point. Equal/absent z degrades to
  * start-ordered packing (identical to the prior behavior).
+ *
+ * NOTE: this only orders clips WITHIN one authored track. Cross-track lane order
+ * is decided by `orderTrackBlocksByZ` (see normalizeToZones), which stacks the
+ * higher-z tracks on top — so a z=26 icon on its own authored track lands above a
+ * z=0 video on a different track, matching the canvas.
  */
 function packTrackLanes(
   clips: TimelineElement[],
@@ -74,11 +75,44 @@ function packTrackLanes(
 }
 
 /**
- * Assign display lanes for the timeline: visual lanes on top, audio lanes below,
- * and — within each authored track — split time-overlapping clips onto separate
- * lanes so the timeline NEVER shows two clips overlapping on one track (standard
- * NLE behavior). Sequential clips still share a lane; distinct authored tracks stay
- * distinct. Pure — returns a new array; unchanged clips keep their identity.
+ * Order a zone's authored tracks top → bottom so the HIGHER-z track sits on the
+ * upper (lower-index) lane, matching the canvas's CSS stacking. Each track's
+ * "representative z" is the MAX z among its clips (a track is as high as its
+ * top-most clip). Ties fall back to the ascending authored track index, so an
+ * all-equal-z composition keeps its original authored track order (the prior
+ * behavior). Returns groups of the same track's clips, in display order.
+ *
+ * Without this, lanes were laid out by ascending authored `data-track-index`
+ * alone, so a z=0 video on track 0 sat ABOVE a z=26 icon on track 1 — the
+ * timeline contradicted the canvas. z→lane within a track (packTrackLanes) never
+ * reached across tracks, which is exactly where the conflict is visible.
+ */
+function orderTrackBlocksByZ(zoneClips: TimelineElement[]): TimelineElement[][] {
+  const byTrack = new Map<number, TimelineElement[]>();
+  for (const el of zoneClips) {
+    const list = byTrack.get(el.track);
+    if (list) list.push(el);
+    else byTrack.set(el.track, [el]);
+  }
+  return [...byTrack.entries()]
+    .map(([track, clips]) => ({
+      track,
+      clips,
+      repZ: clips.reduce((max, c) => Math.max(max, zOf(c)), Number.NEGATIVE_INFINITY),
+    }))
+    .sort((a, b) => b.repZ - a.repZ || a.track - b.track)
+    .map((entry) => entry.clips);
+}
+
+/**
+ * Assign display lanes for the timeline: visual lanes on top, audio lanes below.
+ * Within each zone, authored tracks are stacked so the higher-z track is on the
+ * upper lane (see orderTrackBlocksByZ) — so the timeline's vertical order matches
+ * the canvas's CSS stacking. Within each authored track, time-overlapping clips
+ * split onto separate lanes so the timeline NEVER shows two clips overlapping on
+ * one track (standard NLE behavior); sequential clips still share a lane; distinct
+ * authored tracks stay distinct. Pure — returns a new array; unchanged clips keep
+ * their identity.
  *
  * Display-only (runs on discovery); it does not rewrite the source. Idempotent.
  */
@@ -89,8 +123,7 @@ export function normalizeToZones(elements: TimelineElement[]): TimelineElement[]
   let nextLane = 0;
   for (const zone of ["visual", "audio"] as const) {
     const zoneClips = elements.filter((el) => classifyZone(el) === zone);
-    for (const track of sortedDistinct(zoneClips.map((el) => el.track))) {
-      const trackClips = zoneClips.filter((el) => el.track === track);
+    for (const trackClips of orderTrackBlocksByZ(zoneClips)) {
       nextLane += packTrackLanes(trackClips, nextLane, laneOf);
     }
   }

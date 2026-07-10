@@ -184,6 +184,62 @@ describe("normalizeToZones — reverse z→lane mapping", () => {
   });
 });
 
+describe("normalizeToZones — cross-track z→lane (real qa-clean shape)", () => {
+  // Derived from /tmp/hf-dnd-qa/qa-clean: a full-length video on authored track 0
+  // (z=0), two logo SVGs on track 1 (z=26 and z=0), an icon on track 3 (z=5), and
+  // background music on track 2. In the canvas the z=26 / z=5 icons paint ON TOP of
+  // the z=0 video; the timeline must agree — the higher-z tracks sit on upper lanes.
+  const realProject = (): TimelineElement[] => [
+    zClip("ralu", 6.14, 3, 3, 5, "img"),
+    zClip("video", 1, 20, 0, 0, "video"),
+    zClip("blueLogo", 5.93, 3, 1, 26, "img"),
+    zClip("blackLogo", 1, 3, 1, 0, "img"),
+    zClip("music", 8.93, 8, 2, 0, "audio"),
+  ];
+
+  it("stacks a higher-z track ABOVE a lower-z track on a different authored track", () => {
+    const out = normalizeToZones(realProject());
+    // Track 1 (max z 26) tops the visual zone, then track 3 (z 5), then track 0 (z 0).
+    expect(trackOf(out, "blueLogo")).toBe(0);
+    expect(trackOf(out, "blackLogo")).toBe(0); // sequential to blueLogo → shares lane
+    expect(trackOf(out, "ralu")).toBe(1);
+    expect(trackOf(out, "video")).toBe(2);
+    // Audio stays at the very bottom regardless of its authored track index.
+    expect(trackOf(out, "music")).toBe(3);
+  });
+
+  it("the video (z=0) no longer sits above the z=26 / z=5 icons — canvas & timeline agree", () => {
+    const out = normalizeToZones(realProject());
+    expect(trackOf(out, "video")).toBeGreaterThan(trackOf(out, "blueLogo"));
+    expect(trackOf(out, "video")).toBeGreaterThan(trackOf(out, "ralu"));
+  });
+
+  it("is idempotent on the real-project shape (no lane drift on re-discovery)", () => {
+    const once = normalizeToZones(realProject());
+    const twice = normalizeToZones(once);
+    for (const e of once) expect(trackOf(twice, e.id)).toBe(e.track);
+  });
+
+  it("re-derives identical lanes from fresh objects carrying the same z (reload-stable)", () => {
+    const first = normalizeToZones(realProject());
+    const second = normalizeToZones(realProject());
+    for (const e of first) expect(trackOf(second, e.id)).toBe(e.track);
+  });
+
+  it("keeps ascending authored track order when all tracks share z (no reorder)", () => {
+    // Regression guard: equal representative-z must tie-break on the authored track
+    // index, so an all-z0 composition is unchanged from the prior behavior.
+    const out = normalizeToZones([
+      zClip("t0", 0, 2, 0, 0),
+      zClip("t1", 0, 2, 1, 0),
+      zClip("t3", 0, 2, 3, 0),
+    ]);
+    expect(trackOf(out, "t0")).toBe(0);
+    expect(trackOf(out, "t1")).toBe(1);
+    expect(trackOf(out, "t3")).toBe(2);
+  });
+});
+
 describe("z ↔ lane round-trip convergence (both directions agree)", () => {
   // Project a normalized TimelineElement onto the StackingElement view the
   // forward (lane→z) mapping reasons over.
