@@ -126,8 +126,8 @@ export function probeElementVolumeKeyframes(
 }
 
 export interface RuntimeTimelineRef {
-  totalTime?: ((t: number, suppressEvents?: boolean) => unknown) | undefined;
-  seek?: ((t: number, suppressEvents?: boolean) => unknown) | undefined;
+  totalTime?: ((t?: number, suppressEvents?: boolean) => unknown) | undefined;
+  seek?: ((t?: number, suppressEvents?: boolean) => unknown) | undefined;
 }
 
 /**
@@ -155,8 +155,17 @@ export function probeAndCacheElementVolume(
       // ignore seek failures during probe
     }
   };
-
+  // Sampling seeks the live timeline through the entire composition. Preserve
+  // its playhead so the probe cannot perturb the first rendered frame (or any
+  // user scrub in the preview).
+  const originalTime =
+    typeof timeline.totalTime === "function"
+      ? Number(timeline.totalTime())
+      : typeof timeline.seek === "function"
+        ? Number(timeline.seek())
+        : 0;
   const keyframes = probeElementVolumeKeyframes(mediaEl, seekFn, compositionDuration, 60);
+  if (Number.isFinite(originalTime)) seekFn(originalTime);
   if (keyframes) {
     cache.set(mediaEl, keyframes);
   }
