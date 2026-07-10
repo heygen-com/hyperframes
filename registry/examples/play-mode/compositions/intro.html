@@ -34,8 +34,14 @@
         padding: 20px;
         /* Layered offset shadow for depth without suffocating letterforms */
         filter: drop-shadow(8px 8px 0 #ffffff) drop-shadow(15px 15px 0 rgba(0, 0, 0, 0.1));
+        /* opacity 0 hides the title until the timeline reveals it. Do NOT
+           re-add the individual CSS `scale: 0` property here: anime.js
+           animates scale via its own inline `transform`, which multiplies
+           with (and never clears) the individual property -- the title
+           stayed at scale 0 for the whole clip. GSAP folded individual
+           transform properties into its transform management, which is why
+           the original authoring worked there. */
         opacity: 0;
-        scale: 0;
       }
     </style>
 
@@ -51,7 +57,7 @@
           '[data-composition-id="intro"] .title',
           {
             opacity: 1,
-            scale: 1.1,
+            scale: [0, 1.1],
             duration: 600,
             ease: "outBack(1.7)",
           },
@@ -66,11 +72,15 @@
             },
             1100,
           )
-          // Ambient motion
+          // Ambient motion. Explicit 0deg from: the pinned GSAP baseline
+          // renders the entrance UNTILTED (GSAP dropped the stylesheet's
+          // rotate(-5deg) when it took over the transform -- its known
+          // axis-loss behavior, reproduced here for parity), so the wobble
+          // starts from 0, not from the CSS cascade's -5deg.
           .add(
             '[data-composition-id="intro"] .title',
             {
-              rotate: "-3deg",
+              rotate: ["0deg", "-3deg"],
               duration: 1000,
               loop: 2,
               alternate: true,
