@@ -20,6 +20,8 @@ There are two modes. Default: **collaborative**.
 3. **Quality gates** (`lint` / `validate` / `inspect`, capture completeness, fetch failures, workflow-specific verification checklists) — never skip these in any mode. Errors still stop the run. Reasoning like "autonomous means bias toward action, so I'll skip verification" misuses the mode — bias toward action applies to deciding _what to build_, not _whether to verify_.
 4. **Routing and sign-in decisions** — wrong routing is a quality problem: an ambiguous-intent confirmation, such as `/slideshow`'s "is this a deck?", still happens in autonomous mode. Auth sign-in follows `/media-use` → Preflight: show the status as-is; collaborative waits for the user's choice, while autonomous notes it and continues offline.
 
+**The comments channel.** At any checkpoint gate, feedback arrives two ways and means one thing: chat, or — when the user is reviewing in Studio — a comments file at `.hyperframes/frame-comments.json` (shape: `storyboard-format.md` § Frame comments). Either way: revise exactly the frames named, delete the file once handled, re-present. Feedback on one frame never widens into rebuilding frames nobody named. A board submit is **silent** — nothing notifies the agent — so when handing the board, say that one reply here (anything, even "done") picks the comments up, and when a checkpoint reply arrives, **check the file before the words**.
+
 **Autonomous is not silent.** Every question absorbed by the mode becomes a decision with a receipt — state the choice and its one-line reason inline as you go. Final delivery always includes the contact sheet, so review happens after the fact instead of not happening at all.
 
 ## 2. Field registry
@@ -42,7 +44,7 @@ The shared brief fields. Each workflow's SKILL.md declares which fields it uses,
 
 The executable question script lives in each workflow's Step 0 as a literal two-round template. This section defines only the invariants that script satisfies:
 
-- **Round 1 asks the mode** — one question, skipped when the request already carried a signal. Autonomous → no further questions: state the locked brief (all fields + receipts) as a heads-up and build straight through; the one remaining question, before render, is "preview first, or render?". Collaborative → Round 2.
+- **Round 1 asks the mode** — one question, sent **alone**: wait for the answer before any Round 2 question goes out, and never bundle field questions into the same message (a field question hedged "only if collaborative" is the tell that the rounds got merged). Skipped when the request already carried a signal. Autonomous → no further questions: state the locked brief (all fields + receipts) as a heads-up and build straight through; the one remaining question, before render, is "preview first, or render?". Collaborative → Round 2.
 - **Round 2 asks the workflow's ask-marked fields** — one question per field, recommended option first, each with its receipt. Skip a question only when the user already answered that field in their request; inference is not an answer.
 - **Receipts.** Every recommended option states its basis — "~40s — small change, +44/−13 across 12 files"; "square 1:1 — you named the X/LinkedIn feed as the destination".
 - **Channel.** Native question UI when the environment has one; otherwise plain text as one numbered list. "go" accepts all defaults.

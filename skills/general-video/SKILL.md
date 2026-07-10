@@ -64,6 +64,8 @@ Before writing HTML, think at a high level:
 5. **Layout** — build the end state first (see below).
 6. **Animate** — then add motion via `hyperframes-animation`.
 
+**Plan on a board when there's a story to review.** For a multi-scene narrative piece in collaborative mode — or whenever the user asks for a storyboard — don't keep the plan in your head: write it as `STORYBOARD.md` (`hyperframes-core/references/storyboard-format.md`; one `## Frame N` per scene, `status: outline`, a declared `src`) and run the review loop (`hyperframes-core/references/review-loop.md`): the board opens itself, the plan is presented as a proposal, wireframe sketches are offered before the full build, and each scene is marked `built` as its sketch lands and `animated` as you finish it. The sketch pass is this skill's layout-before-animation with the user watching — the confirmed wireframe **is** the end state you then animate. Single-scene pieces, trivial edits, and autonomous runs skip the board and plan inline as above.
+
 ## Layout Before Animation
 
 Position every element where it sits at its **most visible moment** — fully entered, correctly placed, not yet exiting. Write that as static HTML + CSS first. **No GSAP yet.**

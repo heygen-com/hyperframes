@@ -22,6 +22,7 @@ This skill is the **technical contract** — how to build one hyperframes projec
 | `references/determinism-rules.md`    | build a seekable timeline; determinism bans; the animatable-property allowlist; layout / text fit                       |
 | `references/full-screen-motion.md`   | author full-frame motion with shared backgrounds                                                                        |
 | `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                   |
+| `references/review-loop.md`          | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow              |
 | `references/brief-contract.md`       | conduct a creation workflow's intake — interaction mode (collaborative / autonomous), shared brief fields, asking rules |
 | `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                        |
 | `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                      |

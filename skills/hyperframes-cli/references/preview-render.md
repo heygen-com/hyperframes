@@ -21,6 +21,10 @@ http://localhost:<port>/#project/<project-name>
 
 Use the actual port and project directory name; treat `index.html` as source-code context, not the preview surface. For example, after `npx hyperframes preview --port 3017` in `codex-openai-video`, report `http://localhost:3017/#project/codex-openai-video`.
 
+To land the user on the **Storyboard view** instead of the timeline, put `?view=storyboard` ahead of the hash: `http://localhost:<port>/?view=storyboard#project/<project-name>`. Hand this URL whenever the storyboard is the thing to review and nothing is assembled yet — before `index.html` exists, the timeline stage has nothing to show, so the bare project URL opens on an empty player.
+
+Two ways a handed URL turns out dead — check both before handing it back: the URL is missing its `#project/<project-name>` hash (Studio loads but has no project to open), or the server is not actually running. `preview` is a long-running process — start it from the project directory as a background task, and if that task reports it exited ("completed"), the server is down: restart it, don't hand out the link.
+
 ### Agent context from Studio selection
 
 `preview --context` and `preview --selection` are the agent bridge into a running Studio session. They do **not** start a new server; they find the active preview server for the current project, read agent-useful state from Studio, print it, and exit.

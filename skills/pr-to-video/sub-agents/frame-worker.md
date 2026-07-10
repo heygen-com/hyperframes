@@ -26,6 +26,10 @@
 
 **OUTPUT** — `compositions/frames/<frame_id>.html`, one self-contained sub-composition. Writing it (past the self-check below) is your **terminal action** — you do not edit `STORYBOARD.md`, mint audio, assemble the index, run the CLI, or report back. The orchestrator picks up the file and marks the frame's `status`.
 
+## When a confirmed sketch exists
+
+In collaborative runs the orchestrator wireframes the board first, so your target file may already exist as the frame's **user-confirmed wireframe** — your dispatch says whether it does (a file found on a retry is your own prior output, not a sketch). Read it first and **keep its composition**: the placement, hierarchy, and copy were approved — don't move or drop them. Everything else is yours to finish: the full `frame.md` treatment (the sketch is deliberately unstyled), the `code-*` block where the sketch held plain code, the finished invented visuals where it used plain blocks, and the motion — map each Scene onto a timeline phase, reveal each piece on its `voiceover` cue with `fromTo` entrances, adding DOM only where a phase needs it. The frame's landed state must still read as the approved wireframe, fully dressed.
+
 ## Mostly invented — you build the visual (except code blocks + the credits avatars)
 
 A PR video is **mostly invented**: there are **no screenshots and no captured UI**. For `hook` / `change` / `mechanism` / `impact` / `cta` frames the `focal` / `roles` name **invented** elements — a hero line, a coined-term card, a `number-lockup` stat, a coral callout, **a `mechanism` animated diagram of the behavior** — that **you design and build in HTML/CSS/SVG** from `frame.md`. Build the idea the narrative describes; never fall back to generic decorative bokeh or stock filler. Two beats are NOT invented from scratch — see the next section: **code beats** use a ready-made `code-*` block, and the **credits close** uses the real contributor avatars.
