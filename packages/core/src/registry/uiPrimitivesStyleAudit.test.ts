@@ -62,6 +62,81 @@ function styleRegions(source: string): StyleRegion[] {
   return regions;
 }
 
+function cssDeclarations(source: string, selector: string): string {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const declarations = [...source.matchAll(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "g"))]
+    .map((match) => match[1])
+    .filter((value): value is string => value !== undefined);
+  if (declarations.length === 0) throw new Error(`Missing CSS rule for ${selector}`);
+  return declarations.join(";\n");
+}
+
+function cssPropertyDeclarations(declarations: string): Array<{ property: string; value: string }> {
+  return [...declarations.matchAll(/(?:^|;)\s*([\w-]+)\s*:\s*([^;}]+)/gm)].flatMap((match) => {
+    if (!match[1] || !match[2]) return [];
+    return [{ property: match[1].toLowerCase(), value: match[2].trim() }];
+  });
+}
+
+function borderRailViolations(properties: Array<{ property: string; value: string }>): string[] {
+  const borders = properties.filter(({ property }) => {
+    return property === "border" || property.startsWith("border-");
+  });
+  const violations = borders
+    .filter(({ property, value }) => {
+      return !(
+        (property === "border" && value === "0") ||
+        (property === "border-block-end" && value === "1px solid var(--_hf-ui-border)")
+      );
+    })
+    .map(() => "unexpected-border-declaration");
+
+  if (!borders.some(({ property, value }) => property === "border" && value === "0")) {
+    violations.push("missing-zero-border");
+  }
+  if (
+    !borders.some(
+      ({ property, value }) =>
+        property === "border-block-end" && value === "1px solid var(--_hf-ui-border)",
+    )
+  ) {
+    violations.push("missing-baseline");
+  }
+  return violations;
+}
+
+function heightViolations(properties: Array<{ property: string; value: string }>): string[] {
+  const heights = properties.filter(({ property }) => property === "height");
+  const violations = heights
+    .filter(({ value }) => value !== "var(--_hf-ui-control-height)")
+    .map(() => "unexpected-height");
+  if (!heights.some(({ value }) => value === "var(--_hf-ui-control-height)")) {
+    violations.push("missing-control-height");
+  }
+  return violations;
+}
+
+function openRailViolations(declarations: string): string[] {
+  const properties = cssPropertyDeclarations(declarations);
+  const violations: string[] = [];
+  violations.push(...borderRailViolations(properties), ...heightViolations(properties));
+  if (/\b(?:background(?:-[\w-]+)?|border-radius|box-shadow)\s*:/.test(declarations)) {
+    violations.push("framed-or-filled-surface");
+  }
+  return violations;
+}
+
+function transparentButtonViolations(declarations: string): string[] {
+  const violations: string[] = [];
+  if (!/(?:^|;)\s*background\s*:\s*transparent\s*(?:;|$)/m.test(declarations)) {
+    violations.push("missing-transparent-background");
+  }
+  for (const match of declarations.matchAll(/(?:^|;)\s*background(?:-[\w-]+)?\s*:\s*([^;}]+)/gm)) {
+    if (match[1]?.trim() !== "transparent") violations.push("nontransparent-background");
+  }
+  return violations;
+}
+
 function lineAt(source: string, offset: number): number {
   return source.slice(0, Math.max(offset, 0)).split("\n").length;
 }
@@ -447,5 +522,90 @@ describe("Operator Black frozen-scope style audit", () => {
     }
 
     if (violations.length > 0) throw new Error(formatViolationReport(violations));
+  });
+});
+
+describe("Operator Black grouped-control rail", () => {
+  it("uses one open baseline and no framed or filled selection surface", () => {
+    const sources = new Map(
+      ["toggle-group", "button-group", "menubar"].map((id) => [
+        id,
+        readFileSync(resolve(repoRoot, "registry/components", id, `${id}.html`), "utf8"),
+      ]),
+    );
+
+    for (const [id, selector] of [
+      ["toggle-group", ".hf-ui-toggle-group"],
+      ["button-group", ".hf-ui-button-group"],
+      ["menubar", ".hf-ui-menubar"],
+    ] as const) {
+      const rootRule = cssDeclarations(sources.get(id) ?? "", selector);
+      expect(openRailViolations(rootRule)).toEqual([]);
+    }
+
+    const indicatorRule = cssDeclarations(
+      sources.get("toggle-group") ?? "",
+      ".hf-ui-toggle-indicator",
+    );
+    expect(indicatorRule).toContain("bottom: -1px");
+    expect(indicatorRule).toContain("height: 2px");
+    expect(indicatorRule).toContain("background: var(--_hf-ui-accent)");
+    expect(indicatorRule).not.toMatch(/\b(?:border-radius|box-shadow)\s*:/);
+
+    for (const [id, selector] of [
+      ["toggle-group", ".hf-ui-toggle-group button"],
+      ["button-group", ".hf-ui-button-group button"],
+      ["menubar", ".hf-ui-menubar button"],
+    ] as const) {
+      const buttonRule = cssDeclarations(sources.get(id) ?? "", selector);
+      expect(transparentButtonViolations(buttonRule)).toEqual([]);
+    }
+
+    for (const [id, selector] of [
+      ["button-group", '.hf-ui-button-group button[aria-pressed="true"]'],
+      ["menubar", '.hf-ui-menubar button[aria-current="page"]'],
+    ] as const) {
+      const activeRule = cssDeclarations(sources.get(id) ?? "", selector);
+      expect(activeRule).toContain("border-block-end-color: var(--_hf-ui-accent)");
+      expect(activeRule).not.toMatch(/\b(?:background(?:-[\w-]+)?|border-radius|box-shadow)\s*:/);
+    }
+  });
+
+  it("rejects a later duplicate root frame or fill override", () => {
+    const declarations = cssDeclarations(
+      ".rail { height: var(--_hf-ui-control-height); border: 0; " +
+        "border-block-end: 1px solid var(--_hf-ui-border); }\n" +
+        ".rail { border: 1px solid red; background: red; }",
+      ".rail",
+    );
+
+    expect(openRailViolations(declarations)).toEqual([
+      "unexpected-border-declaration",
+      "framed-or-filled-surface",
+    ]);
+  });
+
+  it("rejects later side-border, bottom-rail, and height overrides", () => {
+    const validRail =
+      ".rail { height: var(--_hf-ui-control-height); border: 0; " +
+      "border-block-end: 1px solid var(--_hf-ui-border); }\n";
+
+    for (const [override, expectedViolation] of [
+      ["border-inline: 1px solid red;", "unexpected-border-declaration"],
+      ["border-block-end: 2px solid red;", "unexpected-border-declaration"],
+      ["height: 44px;", "unexpected-height"],
+    ]) {
+      const declarations = cssDeclarations(`${validRail}.rail { ${override} }`, ".rail");
+      expect(openRailViolations(declarations)).toContain(expectedViolation);
+    }
+  });
+
+  it("rejects a later duplicate base-button fill override", () => {
+    const declarations = cssDeclarations(
+      ".rail button { background: transparent; }\n" + ".rail button { background-color: red; }",
+      ".rail button",
+    );
+
+    expect(transparentButtonViolations(declarations)).toEqual(["nontransparent-background"]);
   });
 });
