@@ -19,6 +19,7 @@ import {
 } from "./manualEdits";
 import {
   type OverlayRect,
+  elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
@@ -27,6 +28,7 @@ import {
   type GestureState,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
+  anchorCornerForHandle,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
 
@@ -178,6 +180,23 @@ export function startGesture(
   const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
   const iframe = opts.iframeRef.current;
+
+  // For an anchored corner resize, capture the FIXED corner's real (rotation-aware)
+  // overlay position now, so per-frame anchoring can pin that exact point instead of
+  // an axis-aligned width/height delta (which slides the fixed corner on a rotated
+  // element — the resize jump/gap bug).
+  const resizeHandleForAnchor = kind === "resize" ? (options?.resizeHandle ?? "se") : undefined;
+  let resizeFixedCornerStart: { x: number; y: number } | undefined;
+  if (
+    resizeHandleForAnchor !== undefined &&
+    resizeHandleForAnchor !== "se" &&
+    pathOffsetMember &&
+    overlayEl &&
+    iframe
+  ) {
+    const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
+    if (corners) resizeFixedCornerStart = corners[anchorCornerForHandle(resizeHandleForAnchor)];
+  }
   const snapContext =
     (kind === "drag" || kind === "resize") && overlayEl && iframe
       ? collectSnapContext({
@@ -214,6 +233,7 @@ export function startGesture(
     manualEditDragToken,
     snapContext,
     resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
+    resizeFixedCornerStart,
   };
   return true;
 }

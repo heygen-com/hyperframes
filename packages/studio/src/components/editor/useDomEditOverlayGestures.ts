@@ -29,6 +29,7 @@ import {
 import {
   type GroupOverlayItem,
   type OverlayRect,
+  elementCornerOverlayPoints,
   resolveDomEditGroupOverlayRect,
   toOverlayRect,
 } from "./domEditOverlayGeometry";
@@ -39,6 +40,7 @@ import {
   type GroupGestureState,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
+  anchorCornerForHandle,
   hasDomEditRotationChanged,
   resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
@@ -302,42 +304,58 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       // clamps width/height (and GSAP scale + a centered transform-origin can
       // make the visual size diverge further from the CSS size), so the math
       // `nextSize.overlay{Width,Height}` is NOT what the element actually renders.
-      // Anchoring off the math value (the old code) trailed the true edge by the
-      // rounding/scale residual every frame — the opposite edge wobbled while the
-      // box hugged the real rect, leaving the gap (fix B) and the per-frame
-      // anchor drift on NW/NE/SW (fix C). Anchor off the measured size instead so
-      // the fixed edge stays glued and the offset write is frame-synchronous with
-      // the size write (same synchronous pass as SE's size-only path).
       const overlayEl = opts.overlayRef.current;
       const iframe = opts.iframeRef.current;
       const sizedRect = overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
       const measuredWidth = sizedRect ? sizedRect.width : nextSize.overlayWidth;
       const measuredHeight = sizedRect ? sizedRect.height : nextSize.overlayHeight;
 
-      // West/north handles keep the opposite corner visually fixed by
-      // translating the element through the same manual-offset channel a
-      // drag uses (member created at gesture start).
+      // West/north handles keep the OPPOSITE corner visually fixed by translating
+      // the element through the same manual-offset channel a drag uses (member
+      // created at gesture start).
       let overlayLeft: number;
       let overlayTop: number;
       if (g.pathOffsetMember) {
-        const anchor = resolveResizeAnchorOffset({
-          originWidth: g.originWidth,
-          originHeight: g.originHeight,
-          overlayWidth: measuredWidth,
-          overlayHeight: measuredHeight,
-          anchorX: deltas.anchorX,
-          anchorY: deltas.anchorY,
-        });
+        // Corner-based anchor (rotation-safe). The old code translated by the
+        // AABB width/height delta (originWidth − measuredWidth). That only keeps
+        // the opposite corner still when the element is UNROTATED: a rotated
+        // element grows about its transform-origin in its LOCAL frame, so its
+        // real (rotated) corners move along the rotated axes, not the screen
+        // axes — the AABB delta then slid the fixed corner every frame (the
+        // "jump/lag" and the box gap the user saw). GSAP x/y is a screen-space
+        // translation (it writes matrix e/f directly), so pin the fixed corner by
+        // measuring where it landed after the size write and translating it back
+        // to its gesture-start position. This holds for any rotation/skew and any
+        // transform-origin, because it corrects the actual corner rather than a
+        // bounding-box proxy.
+        const cornersAfterSize =
+          overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, sel.element) : null;
+        const fixedStart = g.resizeFixedCornerStart;
+        let anchor: { dx: number; dy: number };
+        if (cornersAfterSize && fixedStart) {
+          const fixedNow = cornersAfterSize[anchorCornerForHandle(handle)];
+          anchor = { dx: fixedStart.x - fixedNow.x, dy: fixedStart.y - fixedNow.y };
+        } else {
+          // Geometry unmeasurable (no live DOM) — fall back to the AABB delta.
+          anchor = resolveResizeAnchorOffset({
+            originWidth: g.originWidth,
+            originHeight: g.originHeight,
+            overlayWidth: measuredWidth,
+            overlayHeight: measuredHeight,
+            anchorX: deltas.anchorX,
+            anchorY: deltas.anchorY,
+          });
+        }
         g.lastResizeAnchor = anchor;
         applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
-        // Box geometry is exact by construction from the measured size + the anchor
-        // we just applied: the opposite corner is fixed at origin, so the moving
-        // top-left is origin + anchor. This tracks the element's REAL bounds every
-        // frame WITHOUT a second BCR read, which would reflect the transform one
-        // frame late and make the anchored corners lag/jump (fix C) while leaving
-        // the box detached from the element (fix B).
-        overlayLeft = g.originLeft + anchor.dx;
-        overlayTop = g.originTop + anchor.dy;
+        // Re-measure the element's AABB AFTER the anchor translate so the box
+        // hugs the element's true rendered bounds every frame (the corner-anchor
+        // moved the element, so the pre-anchor sizedRect is stale). One extra BCR
+        // read inside the same synchronous pointermove pass — no async lag.
+        const anchoredRect =
+          overlayEl && iframe ? toOverlayRect(overlayEl, iframe, sel.element) : null;
+        overlayLeft = anchoredRect ? anchoredRect.left : g.originLeft + anchor.dx;
+        overlayTop = anchoredRect ? anchoredRect.top : g.originTop + anchor.dy;
       } else {
         // SE (anchorless): no translate, so the element's own top-left is the
         // source of truth. A GSAP scale + centered transform-origin drifts it as

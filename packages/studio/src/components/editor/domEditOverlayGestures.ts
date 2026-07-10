@@ -50,6 +50,29 @@ export interface GestureState {
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
   lastResizeAnchor?: { dx: number; dy: number };
+  /**
+   * The FIXED corner's overlay position at gesture start (the corner opposite the
+   * grabbed handle, in the element's real — possibly rotated — geometry). A corner
+   * resize keeps this point pinned; the per-frame anchor translation is computed as
+   * the shift of this exact corner, not an AABB width/height delta (which only holds
+   * the corner still when the element is unrotated). Undefined for SE (no anchor)
+   * and when the corner geometry can't be measured.
+   */
+  resizeFixedCornerStart?: { x: number; y: number };
+}
+
+/** The element corner a handle keeps FIXED: opposite the grabbed corner. */
+export function anchorCornerForHandle(handle: ResizeHandle): "nw" | "ne" | "sw" | "se" {
+  switch (handle) {
+    case "nw":
+      return "se";
+    case "ne":
+      return "sw";
+    case "sw":
+      return "ne";
+    case "se":
+      return "nw";
+  }
 }
 
 export interface GroupGestureState {

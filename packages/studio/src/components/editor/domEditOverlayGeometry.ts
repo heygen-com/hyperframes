@@ -144,6 +144,92 @@ export function toOverlayRect(
   };
 }
 
+/** Which physical corner of the (possibly rotated) element a resize handle keeps
+ *  fixed: NW grabs the top-left, so the bottom-right (se) is the anchor, etc. */
+export type FixedCorner = "nw" | "ne" | "sw" | "se";
+
+/**
+ * The element's border-box corners in OVERLAY coordinates, honoring its live
+ * transform (rotation/skew/scale) — NOT the axis-aligned getBoundingClientRect.
+ * A rotated element's four visual corners are the transformed local box corners;
+ * anchoring a corner-resize off the AABB (BCR) width/height only holds the
+ * opposite corner still when the element is unrotated. Uses the same
+ * iframe→overlay root scale as toOverlayRect so the returned points share that
+ * function's coordinate space. Returns null when the geometry is unmeasurable.
+ */
+export function elementCornerOverlayPoints(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): Record<FixedCorner, { x: number; y: number }> | null {
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument;
+  if (!win || !doc) return null;
+  const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
+  const DOMPointCtor = (win as Window & typeof globalThis).DOMPoint;
+  if (!DOMMatrixCtor || !DOMPointCtor) return null;
+
+  const iframeRect = iframe.getBoundingClientRect();
+  const overlayRect = overlayEl.getBoundingClientRect();
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  const rootRect = root?.getBoundingClientRect();
+  const declaredWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
+  const declaredHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
+  const rootWidth = declaredWidth ?? rootRect?.width;
+  const rootHeight = declaredHeight ?? rootRect?.height;
+  if (!rootWidth || !rootHeight) return null;
+  const rootScaleX = iframeRect.width / rootWidth;
+  const rootScaleY = iframeRect.height / rootHeight;
+
+  // The element's local border box maps to viewport coords by the SAME transform
+  // matrix the browser used for its BCR. We recover the transform's screen-space
+  // action from the BCR: transformPoint(localCorner - origin) gives a corner
+  // RELATIVE to the transformed origin. We anchor those relative corners to the
+  // BCR by matching the AABB of the transformed corners to the real BCR — the
+  // constant offset cancels in the before/after difference the caller takes, but
+  // we resolve it fully here so callers can also read absolute overlay positions.
+  const cs = win.getComputedStyle(element);
+  const w = element.offsetWidth;
+  const h = element.offsetHeight;
+  const originParts = cs.transformOrigin.split(" ").map((p) => Number.parseFloat(p));
+  const ox = Number.isFinite(originParts[0]!) ? originParts[0]! : w / 2;
+  const oy = Number.isFinite(originParts[1]!) ? originParts[1]! : h / 2;
+  let matrix: DOMMatrix;
+  try {
+    matrix = new DOMMatrixCtor(cs.transform === "none" ? "" : cs.transform);
+  } catch {
+    return null;
+  }
+  const rel = (lx: number, ly: number): { x: number; y: number } => {
+    const p = matrix.transformPoint(new DOMPointCtor(lx - ox, ly - oy));
+    return { x: p.x, y: p.y };
+  };
+  const relCorners = {
+    nw: rel(0, 0),
+    ne: rel(w, 0),
+    se: rel(w, h),
+    sw: rel(0, h),
+  };
+  // Recover the absolute viewport position by matching to the element's BCR:
+  // the relative corners' AABB min corresponds to the BCR's top-left.
+  const xs = [relCorners.nw.x, relCorners.ne.x, relCorners.se.x, relCorners.sw.x];
+  const ys = [relCorners.nw.y, relCorners.ne.y, relCorners.se.y, relCorners.sw.y];
+  const bcr = element.getBoundingClientRect();
+  const dx = bcr.left - Math.min(...xs);
+  const dy = bcr.top - Math.min(...ys);
+  const toOverlay = (pt: { x: number; y: number }): { x: number; y: number } => ({
+    x: iframeRect.left - overlayRect.left + (pt.x + dx) * rootScaleX,
+    y: iframeRect.top - overlayRect.top + (pt.y + dy) * rootScaleY,
+  });
+  return {
+    nw: toOverlay(relCorners.nw),
+    ne: toOverlay(relCorners.ne),
+    se: toOverlay(relCorners.se),
+    sw: toOverlay(relCorners.sw),
+  };
+}
+
 const OVERLAY_RECT_EPSILON_PX = 0.5;
 
 export function rectsEqual(a: OverlayRect | null, b: OverlayRect | null): boolean {
