@@ -69,10 +69,9 @@ describe("PropertyPanelFlatFooter", () => {
   // rounding gap) — is gone now that nothing above the footer is
   // `position: sticky`. Live browser verification (p11 report) confirmed the
   // boundary renders as a single clean hairline without it: whatever
-  // immediately precedes the footer (a collapsed FlatGroupHeader, the open
-  // group's scrollable body wrapper, or a PinnedGroupRow) already draws its
-  // own border-b in normal document flow, so the footer needs no border or
-  // seal of its own.
+  // immediately precedes the footer (a collapsed FlatGroupHeader, or the open
+  // group's scrollable body wrapper) already draws its own border-b in normal
+  // document flow, so the footer needs no border or seal of its own.
   it("renders no seal overlay and no border of its own — the boundary line comes from whatever precedes it", () => {
     const { host, root } = renderFooter({ onAskAgent: vi.fn() });
     const footerRoot = host.firstElementChild as HTMLElement;

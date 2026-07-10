@@ -265,7 +265,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   if (STUDIO_FLAT_INSPECTOR_ENABLED) {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
-    // twice). PropertyPanelFlat owns the one-open/pin group state.
+    // twice). PropertyPanelFlat owns the one-open group state.
     return (
       <PropertyPanelFlat
         {...props}

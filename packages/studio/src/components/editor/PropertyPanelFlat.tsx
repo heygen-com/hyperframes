@@ -6,7 +6,7 @@ import type { PropertyPanelProps } from "./propertyPanelHelpers";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
-import { FlatGroupHeader, PinnedGroupRow, PinnedZoneDivider } from "./propertyPanelFlatPrimitives";
+import { FlatGroupHeader } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
@@ -17,7 +17,6 @@ import { createGsapLivePreview } from "./gsapLivePreview";
 import { formatTextFieldPreview } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
 import { useColorGradingController } from "./useColorGradingController";
-import { usePersistedPinnedGroups } from "../../hooks/usePersistedPinnedGroups";
 import {
   FlatColorGradingAccessory,
   FlatColorGradingSection,
@@ -52,7 +51,7 @@ const EMPTY_GSAP_EFFECT_HANDLERS = {
  *
  * Extracted from PropertyPanel so that file stays under the 600-LOC gate
  * (same one-directional-import precedent as FlatTextSection). Rendered only
- * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open/pin group state.
+ * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open group state.
  *
  * The Text/Style/Layout/Motion/Media/Grade groups share the one-open accordion.
  */
@@ -252,7 +251,6 @@ export function PropertyPanelFlat({
 
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
-  const { pinnedGroupIds, togglePin } = usePersistedPinnedGroups(elementKind);
   const toggleOpen = (groupId: string) =>
     setOpenGroupId((current) => (current === groupId ? "" : groupId));
   // Basis for the Layout keyframe gutter (X/Y/W/H/Angle + 3D Transform) —
@@ -311,9 +309,8 @@ export function PropertyPanelFlat({
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
   // Ordered group descriptors — one per FlatGroup this panel renders, gated by
-  // the same conditions the inline JSX used. Partitioned into pinned/unpinned
-  // below so pinned groups render first (always open, no accordion) above the
-  // PinnedZoneDivider, with the rest in the one-open accordion beneath it.
+  // the same conditions the inline JSX used. Split below into before-open/
+  // open/after-open regions for the one-open accordion.
   const groups: FlatGroupDescriptor[] = [];
   if (isTextEditable) {
     groups.push({
@@ -453,9 +450,6 @@ export function PropertyPanelFlat({
     });
   }
 
-  const pinned = groups.filter((g) => pinnedGroupIds.includes(g.id));
-  const unpinned = groups.filter((g) => !pinnedGroupIds.includes(g.id));
-
   // Fixed-headers + scrollable-open-section layout (design_handoff
   // scrollable-open-section, replaces the prior sticky-stacking mechanism):
   // collapsed headers before/after the open group render in normal document
@@ -463,10 +457,10 @@ export function PropertyPanelFlat({
   // a dedicated region between the two fixed header stacks. When no group is
   // open, every group is just a collapsed header — there's no scrollable
   // middle region at all, since nothing is expanded.
-  const openIndex = unpinned.findIndex((g) => g.id === openGroupId);
-  const beforeOpen = openIndex === -1 ? unpinned : unpinned.slice(0, openIndex);
-  const openGroup = openIndex === -1 ? null : unpinned[openIndex];
-  const afterOpen = openIndex === -1 ? [] : unpinned.slice(openIndex + 1);
+  const openIndex = groups.findIndex((g) => g.id === openGroupId);
+  const beforeOpen = openIndex === -1 ? groups : groups.slice(0, openIndex);
+  const openGroup = openIndex === -1 ? null : groups[openIndex];
+  const afterOpen = openIndex === -1 ? [] : groups.slice(openIndex + 1);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
@@ -487,25 +481,12 @@ export function PropertyPanelFlat({
         showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
       />
       <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {pinned.map((g) => (
-          <PinnedGroupRow
-            key={g.id}
-            title={g.title}
-            accessory={g.accessory}
-            onUnpin={() => togglePin(g.id)}
-          >
-            {g.content}
-          </PinnedGroupRow>
-        ))}
-        {pinned.length > 0 && unpinned.length > 0 && <PinnedZoneDivider />}
         {beforeOpen.map((g) => (
           <FlatGroupHeader
             key={g.id}
             title={g.title}
             isOpen={false}
-            isPinned={false}
             onToggleOpen={() => toggleOpen(g.id)}
-            onTogglePin={() => togglePin(g.id)}
             summary={g.summary}
           />
         ))}
@@ -514,9 +495,7 @@ export function PropertyPanelFlat({
             <FlatGroupHeader
               title={openGroup.title}
               isOpen
-              isPinned={false}
               onToggleOpen={() => toggleOpen(openGroup.id)}
-              onTogglePin={() => togglePin(openGroup.id)}
               accessory={openGroup.accessory}
             />
             <div className="min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3">
@@ -529,9 +508,7 @@ export function PropertyPanelFlat({
             key={g.id}
             title={g.title}
             isOpen={false}
-            isPinned={false}
             onToggleOpen={() => toggleOpen(g.id)}
-            onTogglePin={() => togglePin(g.id)}
             summary={g.summary}
           />
         ))}

@@ -10,8 +10,6 @@ import {
   FlatSelectRow,
   FlatSlider,
   FlatToggle,
-  PinnedGroupRow,
-  PinnedZoneDivider,
 } from "./propertyPanelFlatPrimitives";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -110,22 +108,12 @@ describe("FlatSegmentedRow", () => {
 });
 
 describe("FlatGroupHeader", () => {
-  it("renders the open header (name + pin + caret), with no sticky-related props required", () => {
+  it("renders the open header (name + caret), with no sticky-related props required", () => {
     const onToggleOpen = vi.fn();
-    const onTogglePin = vi.fn();
     const { host, root } = renderInto(
-      <FlatGroupHeader
-        title="Text"
-        isOpen
-        isPinned={false}
-        onToggleOpen={onToggleOpen}
-        onTogglePin={onTogglePin}
-      />,
+      <FlatGroupHeader title="Text" isOpen onToggleOpen={onToggleOpen} />,
     );
     expect(host.textContent).toContain("Text");
-    const pin = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
-    act(() => pin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onTogglePin).toHaveBeenCalledTimes(1);
     const collapse = host.querySelector<HTMLButtonElement>('button[title="Collapse"]');
     act(() => collapse?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onToggleOpen).toHaveBeenCalledTimes(1);
@@ -138,9 +126,7 @@ describe("FlatGroupHeader", () => {
       <FlatGroupHeader
         title="Style"
         isOpen={false}
-        isPinned={false}
         onToggleOpen={onToggleOpen}
-        onTogglePin={vi.fn()}
         summary="fill none · 100%"
       />,
     );
@@ -154,13 +140,7 @@ describe("FlatGroupHeader", () => {
 
   it("renders no inline position styling in either state (collapsed headers never move)", () => {
     const { host: collapsedHost, root: collapsedRoot } = renderInto(
-      <FlatGroupHeader
-        title="Layout"
-        isOpen={false}
-        isPinned={false}
-        onToggleOpen={vi.fn()}
-        onTogglePin={vi.fn()}
-      />,
+      <FlatGroupHeader title="Layout" isOpen={false} onToggleOpen={vi.fn()} />,
     );
     const row = collapsedHost.querySelector<HTMLButtonElement>(
       '[data-flat-group-collapsed="true"]',
@@ -169,25 +149,11 @@ describe("FlatGroupHeader", () => {
     act(() => collapsedRoot.unmount());
 
     const { host: openHost, root: openRoot } = renderInto(
-      <FlatGroupHeader
-        title="Motion"
-        isOpen
-        isPinned={false}
-        onToggleOpen={vi.fn()}
-        onTogglePin={vi.fn()}
-      />,
+      <FlatGroupHeader title="Motion" isOpen onToggleOpen={vi.fn()} />,
     );
     expect(openHost.textContent).toContain("Motion");
     expect(openHost.querySelector("[style]")).toBeNull();
     act(() => openRoot.unmount());
-  });
-});
-
-describe("PinnedZoneDivider", () => {
-  it("renders the 'one open below' label", () => {
-    const { host, root } = renderInto(<PinnedZoneDivider />);
-    expect(host.textContent).toContain("one open below");
-    act(() => root.unmount());
   });
 });
 
@@ -483,24 +449,6 @@ describe("FlatToggle", () => {
     expect(pill?.disabled).toBe(true);
     act(() => pill?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onChange).not.toHaveBeenCalled();
-    act(() => root.unmount());
-  });
-});
-
-describe("PinnedGroupRow", () => {
-  it("renders a 'Pinned' badge, filled pin icon, and always shows children", () => {
-    const onUnpin = vi.fn();
-    const { host, root } = renderInto(
-      <PinnedGroupRow title="Motion" onUnpin={onUnpin}>
-        <div data-testid="body">body</div>
-      </PinnedGroupRow>,
-    );
-    expect(host.textContent).toContain("Pinned");
-    expect(host.textContent).toContain("Motion");
-    expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
-    const unpin = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
-    act(() => unpin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(onUnpin).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 });

@@ -136,7 +136,7 @@ export function FlatSegmentedRow({
 /*  FlatGroupHeader — one-open-at-a-time accordion group header        */
 /*  (fixed-headers + scrollable-open-section layout, design_handoff    */
 /*  scrollable-open-section): renders ONLY the header bar — collapsed  */
-/*  button, or open-state title bar with pin/collapse controls. Never  */
+/*  button, or open-state title bar with the collapse control. Never   */
 /*  positioned (no sticky, no stacking offsets) — it always sits in    */
 /*  normal document flow. The open group's body content is rendered by */
 /*  PropertyPanelFlat.tsx directly, in a dedicated scrollable region,   */
@@ -146,17 +146,13 @@ export function FlatSegmentedRow({
 export function FlatGroupHeader({
   title,
   isOpen,
-  isPinned,
   onToggleOpen,
-  onTogglePin,
   accessory,
   summary,
 }: {
   title: string;
   isOpen: boolean;
-  isPinned: boolean;
   onToggleOpen: () => void;
-  onTogglePin: () => void;
   accessory?: ReactNode;
   summary?: string;
 }) {
@@ -194,39 +190,12 @@ export function FlatGroupHeader({
       <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
       <span className="flex items-center gap-2.5 text-panel-text-5">
         {accessory}
-        <button
-          type="button"
-          data-flat-group-pin="true"
-          title={isPinned ? "Unpin" : "Pin"}
-          onClick={onTogglePin}
-          className={isPinned ? "text-panel-accent" : "text-panel-text-5 hover:text-panel-text-3"}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
-          </svg>
-        </button>
         <button type="button" onClick={onToggleOpen} title="Collapse" className="text-panel-text-3">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
             <path d="M2 4l4 4 4-4z" />
           </svg>
         </button>
       </span>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  PinnedZoneDivider                                                   */
-/* ------------------------------------------------------------------ */
-
-export function PinnedZoneDivider() {
-  return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <span className="h-px flex-1 bg-panel-hairline" aria-hidden="true" />
-      <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-panel-text-5">
-        one open below
-      </span>
-      <span className="h-px flex-1 bg-panel-hairline" aria-hidden="true" />
     </div>
   );
 }
@@ -443,50 +412,6 @@ export function FlatToggle({
           }`}
         />
       </button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  PinnedGroupRow — always-open pinned group (design_handoff #8a)     */
-/* ------------------------------------------------------------------ */
-
-export function PinnedGroupRow({
-  title,
-  accessory,
-  onUnpin,
-  children,
-}: {
-  title: string;
-  accessory?: ReactNode;
-  onUnpin: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-b border-panel-hairline px-4 py-3" data-pinned-group="true">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="flex items-center gap-1.5">
-          <span className="text-[9px] font-semibold uppercase tracking-[0.08em] text-panel-accent">
-            Pinned
-          </span>
-          <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
-        </span>
-        <span className="flex items-center gap-2.5 text-panel-text-5">
-          {accessory}
-          <button
-            type="button"
-            data-pinned-group-unpin="true"
-            title="Unpin — returns to the stack"
-            onClick={onUnpin}
-            className="text-panel-accent"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
-            </svg>
-          </button>
-        </span>
-      </div>
-      {children}
     </div>
   );
 }

@@ -18,10 +18,6 @@ vi.mock("../../contexts/StudioContext", async () => {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  // usePersistedPinnedGroups persists to localStorage; clear it so a pinned
-  // group from one test can't leak into the next (which would move a group out
-  // of the accordion and break an unrelated open-by-default assertion).
-  window.localStorage.clear();
   vi.doUnmock("./manualEditingAvailability");
   vi.resetModules();
 });
@@ -813,47 +809,6 @@ describe("PropertyPanel — Media group (Plan 4)", () => {
   );
 });
 
-describe("PropertyPanel — pinning", () => {
-  it(
-    "renders a pinned group first, always open, above the PinnedZoneDivider",
-    async () => {
-      const { host, root } = await renderPanel(true);
-      // Pin the Text group via its pin button.
-      const pinButton = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
-      if (!pinButton) throw new Error("expected a pin button on the open Text group");
-      act(() => pinButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-
-      const pinnedRow = host.querySelector('[data-pinned-group="true"]');
-      expect(pinnedRow?.textContent).toContain("Text");
-      expect(pinnedRow?.textContent).toContain("Pinned");
-
-      // The divider must appear after the pinned zone.
-      const container = host.querySelector('[data-flat-panel-body="true"]');
-      const children = Array.from(container?.children ?? []);
-      const pinnedIndex = children.indexOf(pinnedRow as Element);
-      const dividerIndex = children.findIndex((el) => el.textContent?.includes("one open below"));
-      expect(pinnedIndex).toBeGreaterThanOrEqual(0);
-      expect(dividerIndex).toBeGreaterThan(pinnedIndex);
-      act(() => root.unmount());
-    },
-    RENDER_TIMEOUT_MS,
-  );
-
-  it(
-    "unpinning returns the group to its normal accordion stack position",
-    async () => {
-      const { host, root } = await renderPanel(true);
-      const pinButton = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
-      act(() => pinButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-      const unpinButton = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
-      act(() => unpinButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-      expect(host.querySelector('[data-pinned-group="true"]')).toBeNull();
-      act(() => root.unmount());
-    },
-    RENDER_TIMEOUT_MS,
-  );
-});
-
 // design_handoff scrollable-open-section: collapsed headers before/after the
 // open group render in normal document flow and never move (no sticky, no
 // stacking offsets) — only the open group's own body content scrolls, in a
@@ -882,8 +837,7 @@ describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", 
         if (child.matches('[data-flat-group-open="true"]')) return child.textContent ?? "";
         return null;
       });
-      // Filter to just the group entries (drop nulls from any divider, none
-      // expected here since no groups are pinned).
+      // Filter to just the group entries (drop any non-group nulls).
       const groupTitles = titles.filter((t): t is string => t !== null);
       expect(groupTitles).toHaveLength(6);
       expect(groupTitles[0]).toContain("Text");

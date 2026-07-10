@@ -28,7 +28,6 @@ export interface StudioUiPreferences {
   timelineZoomMode?: "fit" | "manual";
   /** Manual timeline zoom percent, paired with `timelineZoomMode: "manual"`. */
   timelineManualZoomPercent?: number;
-  pinnedGroupsByElementType?: Record<string, string[]>;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -115,15 +114,6 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
       Number.isFinite(parsed.timelineManualZoomPercent)
     ) {
       preferences.timelineManualZoomPercent = parsed.timelineManualZoomPercent;
-    }
-    if (isRecord(parsed.pinnedGroupsByElementType)) {
-      const map: Record<string, string[]> = {};
-      for (const [kind, ids] of Object.entries(parsed.pinnedGroupsByElementType)) {
-        if (Array.isArray(ids)) {
-          map[kind] = ids.filter((id): id is string => typeof id === "string");
-        }
-      }
-      preferences.pinnedGroupsByElementType = map;
     }
     return preferences;
   } catch {
