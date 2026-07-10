@@ -149,15 +149,41 @@ function writeItem(item: RegistryItem): void {
   console.log(`wrote ${relative(repoRoot, out)}`);
 }
 
-function writeRegistryManifest(items: RegistryItem[]): void {
+/**
+ * The manifest lists every item on disk, not just the examples this script
+ * scaffolds. Blocks and components carry hand-authored registry-item.json
+ * files; scanning the tree keeps them from being dropped on regeneration
+ * (previously this rewrote 300+ entries down to the 8 examples).
+ */
+function writeRegistryManifest(): void {
+  const items: Array<{ name: string; type: RegistryItem["type"] }> = [];
+  for (const [type, dir] of Object.entries(ITEM_TYPE_DIRS) as Array<
+    [RegistryItem["type"], string]
+  >) {
+    const typeDir = resolve(repoRoot, "registry", dir);
+    let entries: string[];
+    try {
+      entries = readdirSync(typeDir);
+    } catch {
+      continue;
+    }
+    for (const name of entries.sort()) {
+      try {
+        statSync(join(typeDir, name, "registry-item.json"));
+      } catch {
+        continue;
+      }
+      items.push({ name, type });
+    }
+  }
   const manifest: RegistryManifest = {
     $schema: "https://hyperframes.heygen.com/schema/registry.json",
     name: "hyperframes",
     homepage: "https://hyperframes.heygen.com",
-    items: items.map((item) => ({ name: item.name, type: item.type })),
+    items,
   };
   writeFileSync(registryManifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
-  console.log(`wrote ${relative(repoRoot, registryManifestPath)}`);
+  console.log(`wrote ${relative(repoRoot, registryManifestPath)} (${items.length} items)`);
 }
 
 function main(): void {
@@ -180,7 +206,6 @@ function main(): void {
     process.exit(1);
   }
 
-  const items: RegistryItem[] = [];
   for (const entry of filtered) {
     const exampleDir = join(examplesDir, entry.id);
     try {
@@ -189,14 +214,12 @@ function main(): void {
       console.warn(`skip ${entry.id}: directory not found at ${relative(repoRoot, exampleDir)}`);
       continue;
     }
-    const item = buildItem(entry);
-    writeItem(item);
-    items.push(item);
+    writeItem(buildItem(entry));
   }
 
   // Only rewrite the top-level manifest on a full-run (not --only).
   if (!only) {
-    writeRegistryManifest(items);
+    writeRegistryManifest();
   }
 }
 

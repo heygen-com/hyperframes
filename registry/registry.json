@@ -4,11 +4,23 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
-      "name": "warm-grain",
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
       "type": "hyperframes:example"
     },
     {
       "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
       "type": "hyperframes:example"
     },
     {
@@ -20,431 +32,15 @@
       "type": "hyperframes:example"
     },
     {
-      "name": "decision-tree",
+      "name": "vscode-theme-visualizer",
       "type": "hyperframes:example"
     },
     {
-      "name": "kinetic-type",
+      "name": "warm-grain",
       "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "data-chart",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-bubble",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-hex",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "us-map-flow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "world-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "spain-map",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "flowchart",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "logo-outro",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "grain-overlay",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "shimmer-sweep",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "accordion",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "alert-dialog",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "blur-in",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "button",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caret",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "checkbox",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "combobox",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "command-menu",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "context-menu",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "cursor",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dialog",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "drawer",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dropdown-menu",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "input",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "popover",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "progress",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "radio",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "resizable",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "select",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "sheet",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "skeleton",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "slider",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "spinner",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "stepper",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "switch",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tabs",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "toast",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "toggle-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tooltip",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ai-prompt-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "checkout-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "onboarding-stepper-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "settings-toggle-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "signup-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "badge-pop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "card-resize",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "input-feedback",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "menu-morph",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "micro-transitions",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "page-slide",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "text-stagger",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tilt-card",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "soft-blur-in",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "tracking-in",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "bottom-up-letters",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "inline-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "number-wheel",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "simulated-cursor",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "fade-through",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dynamic-grid",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "grid-pixelate-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "motion-blur",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "texture-mask-text",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "vignette",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-pill-karaoke",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-accent",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-weight-shift",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-emoji-pop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-editorial-emphasis",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-parallax-layers",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-glitch-rgb",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-matrix-decode",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-particle-burst",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-texture",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-clip-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-kinetic-slam",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-gradient-fill",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-glow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-blend-difference",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "morph-text",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "instagram-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "tiktok-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "yt-lower-third",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "news-ticker",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-accent-underline",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-bold-block",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-clean-bar",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-color-block",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-dark-card",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-kicker-name",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-mask-reveal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-side-rule",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-soft-pill",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lt-stack-bars",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "lower-third-bild",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "x-post",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "reddit-post",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "spotify-card",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "macos-notification",
-      "type": "hyperframes:block"
     },
     {
       "name": "app-showcase",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "north-korea-locked-down",
       "type": "hyperframes:block"
     },
     {
@@ -452,47 +48,7 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "vpn-youtube-spot",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "blue-sweater-intro-video",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "nyc-paris-flight",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ui-3d-reveal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "domain-warp-dissolve",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ridged-burn",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "whip-pan",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "sdf-iris",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ripple-waves",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "gravitational-lens",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "cinematic-zoom",
       "type": "hyperframes:block"
     },
     {
@@ -500,127 +56,35 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "glitch",
+      "name": "cinematic-zoom",
       "type": "hyperframes:block"
     },
     {
-      "name": "swirl-vortex",
+      "name": "code-3d-extrude",
       "type": "hyperframes:block"
     },
     {
-      "name": "thermal-distortion",
+      "name": "code-diff",
       "type": "hyperframes:block"
     },
     {
-      "name": "flash-through-white",
+      "name": "code-highlight",
       "type": "hyperframes:block"
     },
     {
-      "name": "cross-warp-morph",
+      "name": "code-morph",
       "type": "hyperframes:block"
     },
     {
-      "name": "light-leak",
+      "name": "code-particle-assemble",
       "type": "hyperframes:block"
     },
     {
-      "name": "transitions-3d",
+      "name": "code-scroll",
       "type": "hyperframes:block"
     },
     {
-      "name": "transitions-blur",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-cover",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-destruction",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-dissolve",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-distortion",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-grid",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-mechanical",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-other",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-push",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-radial",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "transitions-scale",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-text-cursor",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-liquid-background",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-iphone-device",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-magnetic",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-portal",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-notification",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-context-menu",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-media-controls",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-widgets",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "ios26-liquid-glass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "macos-tahoe-liquid-glass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "vfx-shatter",
+      "name": "code-shader-dissolve",
       "type": "hyperframes:block"
     },
     {
@@ -684,6 +148,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "code-snippet-flight",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "code-snippet-high-contrast",
       "type": "hyperframes:block"
     },
@@ -720,39 +188,27 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "code-morph",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-flight",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "code-typing",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-diff",
+      "name": "cross-warp-morph",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-highlight",
+      "name": "data-chart",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-scroll",
+      "name": "domain-warp-dissolve",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-3d-extrude",
+      "name": "flash-through-white",
       "type": "hyperframes:block"
     },
     {
-      "name": "code-shader-dissolve",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-particle-assemble",
+      "name": "flowchart",
       "type": "hyperframes:block"
     },
     {
@@ -760,19 +216,275 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "glitch",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gravitational-lens",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "instagram-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ios26-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "light-leak",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-context-menu",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-media-controls",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-notification",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "liquid-glass-widgets",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "logo-outro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lower-third-bild",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-accent-underline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-bold-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-clean-bar",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-color-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-dark-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-kicker-name",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-mask-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-side-rule",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-soft-pill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lt-stack-bars",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "macos-notification",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "macos-tahoe-liquid-glass",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "news-ticker",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "north-korea-locked-down",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "nyc-paris-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "reddit-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ridged-burn",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ripple-waves",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "sdf-iris",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "spain-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "spotify-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "swirl-vortex",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "thermal-distortion",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "tiktok-follow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-3d",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-blur",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-cover",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-destruction",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-dissolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-distortion",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-light",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-mechanical",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-other",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-push",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-radial",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "transitions-scale",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ui-3d-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-bubble",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "us-map-hex",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-iphone-device",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-liquid-background",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "vfx-liquid-glass",
       "type": "hyperframes:block"
     },
     {
-      "name": "parallax-zoom",
+      "name": "vfx-magnetic",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-portal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-shatter",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vfx-text-cursor",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "vpn-youtube-spot",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "whip-pan",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "world-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "yt-lower-third",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "accordion",
       "type": "hyperframes:component"
     },
     {
-      "name": "parallax-unzoom",
+      "name": "ai-generation-canvas",
       "type": "hyperframes:component"
     },
     {
-      "name": "card",
+      "name": "ai-prompt-flow",
       "type": "hyperframes:component"
     },
     {
@@ -780,75 +492,19 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "badge",
+      "name": "alert-dialog",
       "type": "hyperframes:component"
     },
     {
-      "name": "avatar",
+      "name": "animated-bar-chart",
       "type": "hyperframes:component"
     },
     {
-      "name": "breadcrumb",
+      "name": "animated-line-chart",
       "type": "hyperframes:component"
     },
     {
-      "name": "button-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "textarea",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "table",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "separator",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "label",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "kbd",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "empty",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "pagination",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "scroll-area",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "hover-card",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "collapsible",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "native-select",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "input-group",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "input-otp",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "toggle",
+      "name": "arc-motion-path",
       "type": "hyperframes:component"
     },
     {
@@ -856,23 +512,139 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "field",
+      "name": "avatar",
       "type": "hyperframes:component"
     },
     {
-      "name": "item",
+      "name": "avatar-group-hover",
       "type": "hyperframes:component"
     },
     {
-      "name": "menubar",
+      "name": "backdrop",
       "type": "hyperframes:component"
     },
     {
-      "name": "navigation-menu",
+      "name": "badge",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "badge-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bezier-callout-route",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-out-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bottom-up-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "breadcrumb",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "browser-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "button",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "button-group",
       "type": "hyperframes:component"
     },
     {
       "name": "calendar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "camera-rig-depth-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-blend-difference",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-clip-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-editorial-emphasis",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-emoji-pop",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-glitch-rgb",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-gradient-fill",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-kinetic-slam",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-matrix-decode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-neon-accent",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-neon-glow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-parallax-layers",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-particle-burst",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-pill-karaoke",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-texture",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caption-weight-shift",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "card-resize",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "caret",
       "type": "hyperframes:component"
     },
     {
@@ -884,43 +656,111 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "sidebar",
+      "name": "chat-to-preview-layout",
       "type": "hyperframes:component"
     },
     {
-      "name": "number-pop-in",
+      "name": "checkbox",
       "type": "hyperframes:component"
     },
     {
-      "name": "icon-swap",
+      "name": "checkout-flow",
       "type": "hyperframes:component"
     },
     {
-      "name": "success-check",
+      "name": "chromatic-aberration-wipe",
       "type": "hyperframes:component"
     },
     {
-      "name": "avatar-group-hover",
+      "name": "code-accordion",
       "type": "hyperframes:component"
     },
     {
-      "name": "text-state-swap",
+      "name": "code-diff-wipe",
       "type": "hyperframes:component"
     },
     {
-      "name": "panel-reveal",
+      "name": "collapsible",
       "type": "hyperframes:component"
     },
     {
-      "name": "skeleton-reveal",
+      "name": "combobox",
       "type": "hyperframes:component"
     },
     {
-      "name": "tabs-slide-indicator",
+      "name": "command-menu",
       "type": "hyperframes:component"
     },
     {
-      "name": "blur-out-up",
+      "name": "command-menu-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "confetti",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "context-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dashboard-populate",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "data-flow-pipes",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "device-mockup-zoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dialog",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "directional-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "drag-and-drop-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "drawer",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dropdown-menu-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dynamic-grid",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "ecosystem-constellation",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "empty",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "fade-through",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "field",
       "type": "hyperframes:component"
     },
     {
@@ -928,11 +768,95 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "frosted-glass-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "glass-code-block",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grain-overlay",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "grid-pixelate-wipe",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hero-device-assemble",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "hover-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "icon-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "image-expand-to-fullscreen",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "infinite-bento-pan",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "infinite-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "inline-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-feedback",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-group",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "input-otp",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kbd",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "keyframe-scrub-stack",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "kinetic-center-build",
       "type": "hyperframes:component"
     },
     {
+      "name": "label",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "landing-code-showcase",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "line-by-line-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "live-code-compilation",
       "type": "hyperframes:component"
     },
     {
@@ -952,6 +876,78 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "menu-morph",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "menubar",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mesh-gradient-bg",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "micro-scale-fade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "micro-transitions",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "morph-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "motion-blur",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "native-select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "navigation-menu",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-pop-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-wheel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "onboarding-stepper-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "orbital-feature-path",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "page-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pagination",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "panel-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-unzoom",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "parallax-zoom",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "per-character-rise",
       "type": "hyperframes:component"
     },
@@ -961,6 +957,38 @@
     },
     {
       "name": "perspective-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "popover",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "pricing-tier-focus",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "progress",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "progress-steps",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "radio",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "registry",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "remocn-ui",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "resizable",
       "type": "hyperframes:component"
     },
     {
@@ -976,11 +1004,43 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "scroll-area",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "select",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "select-item",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "separator",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "settings-toggle-flow",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shader-displacement-panel",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "shared-axis-y",
       "type": "hyperframes:component"
     },
     {
       "name": "shared-axis-z",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "sheet",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shimmer-sweep",
       "type": "hyperframes:component"
     },
     {
@@ -992,159 +1052,19 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "slot-machine-roll",
+      "name": "sidebar",
       "type": "hyperframes:component"
     },
     {
-      "name": "spring-scale-in",
+      "name": "signup-flow",
       "type": "hyperframes:component"
     },
     {
-      "name": "staggered-fade-up",
+      "name": "simulated-cursor",
       "type": "hyperframes:component"
     },
     {
-      "name": "strikethrough-replace",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "top-down-letters",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "typewriter",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ai-generation-canvas",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "animated-bar-chart",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "animated-line-chart",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "backdrop",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "browser-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "chat-to-preview-layout",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "chromatic-aberration-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "code-accordion",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "code-diff-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "command-menu-item",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "confetti",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dashboard-populate",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "data-flow-pipes",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "device-mockup-zoom",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "directional-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "drag-and-drop-flow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "dropdown-menu-item",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "ecosystem-constellation",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "frosted-glass-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "glass-code-block",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "hero-device-assemble",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "image-expand-to-fullscreen",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "infinite-bento-pan",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "infinite-marquee",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "landing-code-showcase",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "live-code-compilation",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "mesh-gradient-bg",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "micro-scale-fade",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "pricing-tier-focus",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "progress-steps",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "registry",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "remocn-ui",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "select-item",
+      "name": "skeleton",
       "type": "hyperframes:component"
     },
     {
@@ -1152,11 +1072,75 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "skeleton-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slider",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slot-machine-roll",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "soft-blur-in",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "spatial-push",
       "type": "hyperframes:component"
     },
     {
+      "name": "spinner",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "spotlight-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spring-scale-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stagger-lattice",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "staggered-fade-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "stepper",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "strikethrough-replace",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "success-check",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "svg-line-draw-loader",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "switch",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "table",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tabs",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tabs-slide-indicator",
       "type": "hyperframes:component"
     },
     {
@@ -1168,7 +1152,67 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "text-stagger",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-state-swap",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "textarea",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "texture-mask-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "three-orbiting-cards",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "three-particle-ribbon",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tilt-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toast",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toggle",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "toggle-group",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "tool-menu-slide-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tooltip",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "top-down-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tracking-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typewriter",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "vignette",
       "type": "hyperframes:component"
     },
     {
@@ -1181,46 +1225,6 @@
     },
     {
       "name": "zoom-through-transition",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "arc-motion-path",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "bezier-callout-route",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "svg-line-draw-loader",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "stagger-lattice",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "keyframe-scrub-stack",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "three-orbiting-cards",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "three-particle-ribbon",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "shader-displacement-panel",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "camera-rig-depth-stack",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "orbital-feature-path",
       "type": "hyperframes:component"
     }
   ]
