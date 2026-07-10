@@ -22,6 +22,7 @@ import {
 } from "./timelineSnapping";
 import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
+import type { StackingPatch } from "./timelineStackingSync";
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 
 const EMPTY_BEAT_TIMES: number[] = [];
@@ -98,6 +99,16 @@ interface UseTimelineClipDragInput {
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
+  /**
+   * Lane ↔ stacking unification (see research/STAGE3-NEEDED-WIRING.md). When both
+   * are supplied and a lane-change drag commits, the edited clip(s) get z-index
+   * patches so their stacking matches lane order relative to time-overlapping
+   * clips. Provisioned by the timeline layer (Timeline.tsx) from the preview
+   * iframe + the canvas z-order persist path; forwarded straight to
+   * commitDraggedClipMove. Both optional → absent = no-op (backward compatible).
+   */
+  readZIndex?: (element: TimelineElement) => number;
+  onStackingPatches?: (patches: StackingPatch[]) => void;
 }
 
 export function useTimelineClipDrag({
@@ -111,6 +122,8 @@ export function useTimelineClipDrag({
   onBlockedEditAttempt,
   setShowPopover,
   setRangeSelectionRef,
+  readZIndex,
+  onStackingPatches,
 }: UseTimelineClipDragInput) {
   const updateElement = usePlayerStore((s) => s.updateElement);
   const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
@@ -183,6 +196,10 @@ export function useTimelineClipDrag({
   onBlockedEditAttemptRef.current = onBlockedEditAttempt;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
+  const readZIndexRef = useRef(readZIndex);
+  readZIndexRef.current = readZIndex;
+  const onStackingPatchesRef = useRef(onStackingPatches);
+  onStackingPatchesRef.current = onStackingPatches;
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
@@ -608,6 +625,10 @@ export function useTimelineClipDrag({
         onMoveElement: onMoveElementRef.current,
         onMoveElements: onMoveElementsRef.current,
         selectedKeys: usePlayerStore.getState().selectedElementIds,
+        // Lane ↔ stacking: engages only when the timeline layer provisions both
+        // deps (Timeline.tsx). Absent → commitDraggedClipMove skips the z-sync.
+        readZIndex: readZIndexRef.current,
+        onStackingPatches: onStackingPatchesRef.current,
       });
     };
 

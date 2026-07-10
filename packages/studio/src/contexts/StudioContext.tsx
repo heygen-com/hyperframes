@@ -54,6 +54,15 @@ export function useStudioShellContext(): StudioShellValue {
   return ctx;
 }
 
+/**
+ * Optional access — returns null outside a provider. Lets the player-package
+ * <Timeline> (a public standalone export) read shell state when embedded in the
+ * NLE without hard-requiring the provider in standalone/test mounts.
+ */
+export function useStudioShellContextOptional(): StudioShellValue | null {
+  return useContext(StudioShellContext);
+}
+
 export function useStudioPlaybackContext(): StudioPlaybackValue {
   const ctx = useContext(StudioPlaybackContext);
   if (!ctx) throw new Error("useStudioPlaybackContext must be used within StudioPlaybackProvider");

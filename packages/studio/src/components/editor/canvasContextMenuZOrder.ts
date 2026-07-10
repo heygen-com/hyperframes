@@ -24,7 +24,7 @@ export function parseZIndex(value: string | null | undefined): number {
 }
 
 /** Read the effective z-index for an element (inline style preferred). */
-function readEffectiveZIndex(el: HTMLElement): number {
+export function readEffectiveZIndex(el: HTMLElement): number {
   const inline = el.style.zIndex;
   if (inline && inline !== "auto") return parseZIndex(inline);
   try {
