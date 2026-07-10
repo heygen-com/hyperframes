@@ -1,5 +1,5 @@
 {
-  "_comment": "Vendored transition registry for the product-launch workflow — the curated Tier-B subset (transform/opacity/filter on the two frame clip wrappers #el-<id>, no overlay DOM, no per-frame cooperation). Each type carries its GSAP template; the transitions.mjs injector stamps it onto window.__timelines[\"main\"]. Recipes originate from the shared catalog skills/hyperframes-animation/transitions/ (css-*.md) — keep in step if those change. Token placeholders the injector substitutes: __OLD__ (#el-<from>), __NEW__ (#el-<to>), __T__ (overlap-start s), __DUR__ (this boundary's duration), __DX__/__DXIN__ (horizontal travel + incoming offset), __DY__/__DYIN__ (vertical).",
+  "_comment": "Vendored transition registry for the product-launch workflow — the curated Tier-B subset (transform/opacity/filter on the two frame clip wrappers #el-<id>, no overlay DOM, no per-frame cooperation). Each type carries a GSAP template and an equivalent anime.js v4 template; the transitions.mjs injector picks one per target composition's detected runtime and stamps it onto the master timeline (window.__timelines[\"main\"] for GSAP, hyperframesAnime.get(\"main\").instance for anime). Recipes originate from the shared catalog skills/hyperframes-animation/transitions/ (css-*.md) — keep in step if those change. Token placeholders the injector substitutes: __OLD__ (#el-<from>), __NEW__ (#el-<to>), __T__/__T_MS__ (overlap-start, seconds for GSAP / milliseconds for anime), __DUR__/__DUR_MS__ (this boundary's duration, seconds/ms), __DX__/__DXIN__ (horizontal travel + incoming offset, px — same for both engines), __DY__/__DYIN__ (vertical, px). anime templates use explicit [from, to] arrays (never an implicit from) because the boundary's start position __T_MS__ can be > 0, decompose transforms into anime's translateX/translateY/scale/scaleX keys (never a CSS `transform` string), and use tl.set(...) for immediate (non-tweened) property writes instead of a zero-duration tl.add(...). GSAP eases map to anime eases per packages/core/src/animation/easeMap.ts (power2 -> Cubic, power3 -> Quart family). transformOrigin values use percentage pairs (\"0% 50%\" / \"100% 50%\"), never CSS keyword syntax (\"left center\") — verified in real Chrome (anime.js 4.5.0) that keyword syntax silently resolves to (0,0) for both endpoints instead of parsing the keywords.",
   "transitions": [
     {
       "name": "crossfade",
@@ -10,6 +10,10 @@
       "gsap_template": [
         "tl.to(__OLD__, { opacity: 0, duration: __DUR__, ease: \"power2.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { opacity: 0 }, { opacity: 1, duration: __DUR__, ease: \"power2.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { opacity: [1, 0], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);",
+        "tl.add(__NEW__, { opacity: [0, 1], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);"
       ]
     },
     {
@@ -22,6 +26,10 @@
       "gsap_template": [
         "tl.to(__OLD__, { filter: \"blur(10px)\", scale: 1.03, opacity: 0, duration: __DUR__, ease: \"power2.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { filter: \"blur(10px)\", scale: 0.97, opacity: 0 }, { filter: \"blur(0px)\", scale: 1, opacity: 1, duration: __DUR__, ease: \"power2.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { filter: [\"blur(0px)\", \"blur(10px)\"], scale: [1, 1.03], opacity: [1, 0], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);",
+        "tl.add(__NEW__, { filter: [\"blur(10px)\", \"blur(0px)\"], scale: [0.97, 1], opacity: [0, 1], duration: __DUR_MS__, ease: \"inOutCubic\" }, __T_MS__);"
       ]
     },
     {
@@ -39,6 +47,16 @@
       "gsap_template_vertical": [
         "tl.to(__OLD__, { y: __DY__, duration: __DUR__, ease: \"power3.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { y: __DYIN__, opacity: 1 }, { y: 0, duration: __DUR__, ease: \"power3.inOut\" }, __T__);"
+      ],
+      "anime_template_horizontal": [
+        "tl.add(__OLD__, { translateX: [0, __DX__], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { translateX: [__DXIN__, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
+      ],
+      "anime_template_vertical": [
+        "tl.add(__OLD__, { translateY: [0, __DY__], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { translateY: [__DYIN__, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
       ]
     },
     {
@@ -50,6 +68,10 @@
       "gsap_template": [
         "tl.to(__OLD__, { scale: 2.5, opacity: 0, filter: \"blur(8px)\", duration: __DUR__, ease: \"power3.in\" }, __T__);",
         "tl.fromTo(__NEW__, { scale: 0.5, opacity: 0, filter: \"blur(8px)\" }, { scale: 1, opacity: 1, filter: \"blur(0px)\", duration: __DUR__, ease: \"power3.out\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.add(__OLD__, { scale: [1, 2.5], opacity: [1, 0], filter: [\"blur(0px)\", \"blur(8px)\"], duration: __DUR_MS__, ease: \"inQuart\" }, __T_MS__);",
+        "tl.add(__NEW__, { scale: [0.5, 1], opacity: [0, 1], filter: [\"blur(8px)\", \"blur(0px)\"], duration: __DUR_MS__, ease: \"outQuart\" }, __T_MS__);"
       ]
     },
     {
@@ -62,6 +84,12 @@
       "gsap_template": [
         "tl.to(__OLD__, { scaleX: 0, transformOrigin: \"left center\", duration: __DUR__, ease: \"power3.inOut\" }, __T__);",
         "tl.fromTo(__NEW__, { scaleX: 0, transformOrigin: \"right center\", opacity: 1 }, { scaleX: 1, transformOrigin: \"right center\", duration: __DUR__, ease: \"power3.inOut\" }, __T__);"
+      ],
+      "anime_template": [
+        "tl.set(__OLD__, { transformOrigin: \"0% 50%\" }, __T_MS__);",
+        "tl.add(__OLD__, { scaleX: [1, 0], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);",
+        "tl.set(__NEW__, { transformOrigin: \"100% 50%\", opacity: 1 }, __T_MS__);",
+        "tl.add(__NEW__, { scaleX: [0, 1], duration: __DUR_MS__, ease: \"inOutQuart\" }, __T_MS__);"
       ]
     }
   ],
