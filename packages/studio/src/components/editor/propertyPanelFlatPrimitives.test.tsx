@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  FlatGroup,
+  FlatGroupHeader,
   FlatRow,
   FlatSegmentedRow,
   FlatSelectRow,
@@ -109,48 +109,77 @@ describe("FlatSegmentedRow", () => {
   });
 });
 
-describe("FlatGroup", () => {
-  it("renders the open header (name + pin + caret) and shows children", () => {
+describe("FlatGroupHeader", () => {
+  it("renders the open header (name + pin + caret), with no sticky-related props required", () => {
     const onToggleOpen = vi.fn();
     const onTogglePin = vi.fn();
     const { host, root } = renderInto(
-      <FlatGroup
+      <FlatGroupHeader
         title="Text"
         isOpen
         isPinned={false}
         onToggleOpen={onToggleOpen}
         onTogglePin={onTogglePin}
-      >
-        <div data-testid="body">body</div>
-      </FlatGroup>,
+      />,
     );
-    expect(host.querySelector('[data-testid="body"]')).not.toBeNull();
+    expect(host.textContent).toContain("Text");
     const pin = host.querySelector<HTMLButtonElement>('[data-flat-group-pin="true"]');
     act(() => pin?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onTogglePin).toHaveBeenCalledTimes(1);
+    const collapse = host.querySelector<HTMLButtonElement>('button[title="Collapse"]');
+    act(() => collapse?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onToggleOpen).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
 
-  it("renders the collapsed row (name + summary + caret-right) and no children", () => {
+  it("renders the collapsed row (name + summary + caret-right) with no sticky positioning", () => {
     const onToggleOpen = vi.fn();
     const { host, root } = renderInto(
-      <FlatGroup
+      <FlatGroupHeader
         title="Style"
         isOpen={false}
         isPinned={false}
         onToggleOpen={onToggleOpen}
         onTogglePin={vi.fn()}
         summary="fill none · 100%"
-      >
-        <div data-testid="body">body</div>
-      </FlatGroup>,
+      />,
     );
-    expect(host.querySelector('[data-testid="body"]')).toBeNull();
     expect(host.textContent).toContain("fill none · 100%");
     const row = host.querySelector<HTMLButtonElement>('[data-flat-group-collapsed="true"]');
+    expect(row?.style.position).toBe("");
     act(() => row?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onToggleOpen).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
+  });
+
+  it("renders no inline position styling in either state (collapsed headers never move)", () => {
+    const { host: collapsedHost, root: collapsedRoot } = renderInto(
+      <FlatGroupHeader
+        title="Layout"
+        isOpen={false}
+        isPinned={false}
+        onToggleOpen={vi.fn()}
+        onTogglePin={vi.fn()}
+      />,
+    );
+    const row = collapsedHost.querySelector<HTMLButtonElement>(
+      '[data-flat-group-collapsed="true"]',
+    );
+    expect(row?.getAttribute("style")).toBeNull();
+    act(() => collapsedRoot.unmount());
+
+    const { host: openHost, root: openRoot } = renderInto(
+      <FlatGroupHeader
+        title="Motion"
+        isOpen
+        isPinned={false}
+        onToggleOpen={vi.fn()}
+        onTogglePin={vi.fn()}
+      />,
+    );
+    expect(openHost.textContent).toContain("Motion");
+    expect(openHost.querySelector("[style]")).toBeNull();
+    act(() => openRoot.unmount());
   });
 });
 

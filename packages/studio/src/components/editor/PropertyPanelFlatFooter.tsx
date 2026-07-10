@@ -15,7 +15,13 @@ export function PropertyPanelFlatFooter({
     : "Record gesture (R)";
 
   return (
-    <div className="flex items-center justify-between border-t border-panel-hairline px-4 py-[11px]">
+    // No border-t here: every possible element immediately above this footer
+    // in the new fixed-headers + scrollable-open-section layout (a collapsed
+    // FlatGroupHeader, the open group's scrollable body wrapper, or a
+    // PinnedGroupRow) already draws its own border-b in normal document flow
+    // — nothing here is `position: sticky` anymore, so there's no rounding
+    // seam to seal (see p11-scrollable-open-section-report.md).
+    <div className="flex items-center justify-between bg-panel-bg px-4 py-[11px]">
       <button
         type="button"
         data-flat-footer-ask="true"

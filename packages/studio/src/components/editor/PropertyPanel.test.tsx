@@ -165,6 +165,22 @@ function inferredMotionElement() {
 // A single "to" tween running from t=2 to t=5 (position 2, duration 3), with
 // keyframes on "x" at 0/50/100% — enough to drive both FlatTimingRow's
 // inference and the Layout "x" row's keyframe-seek gutter.
+// Six-group fixture (fixed-headers + scrollable-open-section worked example):
+// tagName "img" turns on both Media and Grade (resolveEditingSections), on top
+// of baseElement()'s text-editable + style-editable + timing-eligible
+// (data-start) defaults — yielding all six groups in a known order:
+// [text, style, layout, motion, grade, media].
+function sixGroupElement() {
+  return {
+    ...baseElement(),
+    id: "six-group",
+    selector: "#six-group",
+    label: "Six Group",
+    tagName: "img",
+    dataAttributes: { start: "0", duration: "4" },
+  };
+}
+
 const INFERRED_TIMING_ANIMATION = {
   id: "a1",
   targetSelector: "#inferred-anim",
@@ -812,7 +828,7 @@ describe("PropertyPanel — pinning", () => {
       expect(pinnedRow?.textContent).toContain("Pinned");
 
       // The divider must appear after the pinned zone.
-      const container = host.querySelector(".flex-1.overflow-y-auto");
+      const container = host.querySelector('[data-flat-panel-body="true"]');
       const children = Array.from(container?.children ?? []);
       const pinnedIndex = children.indexOf(pinnedRow as Element);
       const dividerIndex = children.findIndex((el) => el.textContent?.includes("one open below"));
@@ -832,6 +848,98 @@ describe("PropertyPanel — pinning", () => {
       const unpinButton = host.querySelector<HTMLButtonElement>('[data-pinned-group-unpin="true"]');
       act(() => unpinButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
       expect(host.querySelector('[data-pinned-group="true"]')).toBeNull();
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});
+
+// design_handoff scrollable-open-section: collapsed headers before/after the
+// open group render in normal document flow and never move (no sticky, no
+// stacking offsets) — only the open group's own body content scrolls, in a
+// dedicated region between the two fixed header stacks. Worked example: 6
+// groups [text, style, layout, motion, grade, media], motion open (index 3)
+// -> text/style/layout render as fixed collapsed headers before it, motion
+// renders as an open header + scrollable body, grade/media render as fixed
+// collapsed headers after it — in exactly that DOM order, nothing sticky.
+describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", () => {
+  it(
+    "renders before-open headers, the open group (header + scrollable body), then after-open headers, in that exact order, with nothing sticky",
+    async () => {
+      const { host, root } = await renderPanel(true, sixGroupElement());
+      // sixGroupElement() opens Text by default; open Motion (index 3) to
+      // match the worked example.
+      openFlatGroup(host, "Motion");
+      expect(openGroupText(host)).toContain("Motion");
+
+      const body = host.querySelector('[data-flat-panel-body="true"]');
+      if (!body) throw new Error("expected the flat panel body container");
+
+      // Titles in DOM order: each child is either a collapsed header button
+      // (before/after the open group) or the open-group wrapper div.
+      const titles = Array.from(body.children).map((child) => {
+        if (child.matches('[data-flat-group-collapsed="true"]')) return child.textContent ?? "";
+        if (child.matches('[data-flat-group-open="true"]')) return child.textContent ?? "";
+        return null;
+      });
+      // Filter to just the group entries (drop nulls from any divider, none
+      // expected here since no groups are pinned).
+      const groupTitles = titles.filter((t): t is string => t !== null);
+      expect(groupTitles).toHaveLength(6);
+      expect(groupTitles[0]).toContain("Text");
+      expect(groupTitles[1]).toContain("Style");
+      expect(groupTitles[2]).toContain("Layout");
+      expect(groupTitles[3]).toContain("Motion");
+      expect(groupTitles[4]).toContain("Grade");
+      expect(groupTitles[5]).toContain("Media");
+
+      // The open group (Motion, index 3) is the one wrapped in
+      // data-flat-group-open, sitting between the before/after collapsed
+      // headers — and it must contain a dedicated scrollable body.
+      const openWrapper = host.querySelector('[data-flat-group-open="true"]');
+      if (!openWrapper) throw new Error("expected the open-group wrapper");
+      expect(openWrapper.textContent).toContain("Motion");
+      expect(openWrapper.querySelector(".overflow-y-auto")).not.toBeNull();
+
+      // Nothing anywhere in the panel body carries inline sticky positioning
+      // — the entire sticky-stacking mechanism is gone.
+      const stickyEls = Array.from(body.querySelectorAll<HTMLElement>("[style]")).filter(
+        (el) => el.style.position === "sticky",
+      );
+      expect(stickyEls).toHaveLength(0);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+
+  it(
+    "renders every group as a plain collapsed header with no scrollable middle region when nothing is open",
+    async () => {
+      const { host, root } = await renderPanel(true, sixGroupElement());
+      // Collapse the default-open Text group so openGroupId becomes "".
+      const collapseButton = host.querySelector<HTMLButtonElement>(
+        '[data-flat-group-open="true"] button[title="Collapse"]',
+      );
+      act(() => collapseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      expect(host.querySelector('[data-flat-group-open="true"]')).toBeNull();
+
+      const collapsedRows = Array.from(
+        host.querySelectorAll<HTMLButtonElement>('[data-flat-group-collapsed="true"]'),
+      );
+      expect(collapsedRows).toHaveLength(6);
+      const titlesInOrder = collapsedRows.map((el) => el.textContent ?? "");
+      expect(titlesInOrder[0]).toContain("Text");
+      expect(titlesInOrder[1]).toContain("Style");
+      expect(titlesInOrder[2]).toContain("Layout");
+      expect(titlesInOrder[3]).toContain("Motion");
+      expect(titlesInOrder[4]).toContain("Grade");
+      expect(titlesInOrder[5]).toContain("Media");
+
+      const body = host.querySelector('[data-flat-panel-body="true"]');
+      expect(body?.querySelector(".overflow-y-auto")).toBeNull();
+      for (const row of collapsedRows) {
+        expect(row.style.position).toBe("");
+      }
       act(() => root.unmount());
     },
     RENDER_TIMEOUT_MS,

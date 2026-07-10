@@ -133,10 +133,17 @@ export function FlatSegmentedRow({
 }
 
 /* ------------------------------------------------------------------ */
-/*  FlatGroup — one-open-at-a-time accordion group (controlled)        */
+/*  FlatGroupHeader — one-open-at-a-time accordion group header        */
+/*  (fixed-headers + scrollable-open-section layout, design_handoff    */
+/*  scrollable-open-section): renders ONLY the header bar — collapsed  */
+/*  button, or open-state title bar with pin/collapse controls. Never  */
+/*  positioned (no sticky, no stacking offsets) — it always sits in    */
+/*  normal document flow. The open group's body content is rendered by */
+/*  PropertyPanelFlat.tsx directly, in a dedicated scrollable region,   */
+/*  not as children here.                                               */
 /* ------------------------------------------------------------------ */
 
-export function FlatGroup({
+export function FlatGroupHeader({
   title,
   isOpen,
   isPinned,
@@ -144,7 +151,6 @@ export function FlatGroup({
   onTogglePin,
   accessory,
   summary,
-  children,
 }: {
   title: string;
   isOpen: boolean;
@@ -153,7 +159,6 @@ export function FlatGroup({
   onTogglePin: () => void;
   accessory?: ReactNode;
   summary?: string;
-  children: ReactNode;
 }) {
   if (!isOpen) {
     return (
@@ -161,7 +166,7 @@ export function FlatGroup({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className="flex min-h-10 w-full items-center justify-between gap-2 border-b border-panel-hairline px-4 text-left"
+        className="flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left"
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
@@ -185,35 +190,27 @@ export function FlatGroup({
   }
 
   return (
-    <div className="border-b border-panel-hairline px-4 py-3" data-flat-group-open="true">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
-        <span className="flex items-center gap-2.5 text-panel-text-5">
-          {accessory}
-          <button
-            type="button"
-            data-flat-group-pin="true"
-            title={isPinned ? "Unpin" : "Pin"}
-            onClick={onTogglePin}
-            className={isPinned ? "text-panel-accent" : "text-panel-text-5 hover:text-panel-text-3"}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={onToggleOpen}
-            title="Collapse"
-            className="text-panel-text-3"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M2 4l4 4 4-4z" />
-            </svg>
-          </button>
-        </span>
-      </div>
-      {children}
+    <div className="flex min-h-10 flex-shrink-0 items-center justify-between bg-panel-bg px-4">
+      <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
+      <span className="flex items-center gap-2.5 text-panel-text-5">
+        {accessory}
+        <button
+          type="button"
+          data-flat-group-pin="true"
+          title={isPinned ? "Unpin" : "Pin"}
+          onClick={onTogglePin}
+          className={isPinned ? "text-panel-accent" : "text-panel-text-5 hover:text-panel-text-3"}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M4 1h4v3.2l1.4 1.4V7H7v4L6 12l-1-1V7H2.6V5.6L4 4.2z" />
+          </svg>
+        </button>
+        <button type="button" onClick={onToggleOpen} title="Collapse" className="text-panel-text-3">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            <path d="M2 4l4 4 4-4z" />
+          </svg>
+        </button>
+      </span>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import type { PropertyPanelProps } from "./propertyPanelHelpers";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { PropertyPanelFlatHeader } from "./PropertyPanelFlatHeader";
 import { PropertyPanelFlatFooter } from "./PropertyPanelFlatFooter";
-import { FlatGroup, PinnedGroupRow, PinnedZoneDivider } from "./propertyPanelFlatPrimitives";
+import { FlatGroupHeader, PinnedGroupRow, PinnedZoneDivider } from "./propertyPanelFlatPrimitives";
 import { FlatTextSection } from "./propertyPanelFlatTextSection";
 import { FlatStyleSection } from "./propertyPanelFlatStyleSections";
 import { FlatLayoutSection } from "./propertyPanelFlatLayoutSection";
@@ -456,6 +456,18 @@ export function PropertyPanelFlat({
   const pinned = groups.filter((g) => pinnedGroupIds.includes(g.id));
   const unpinned = groups.filter((g) => !pinnedGroupIds.includes(g.id));
 
+  // Fixed-headers + scrollable-open-section layout (design_handoff
+  // scrollable-open-section, replaces the prior sticky-stacking mechanism):
+  // collapsed headers before/after the open group render in normal document
+  // flow and never move. Only the open group's own body content scrolls, in
+  // a dedicated region between the two fixed header stacks. When no group is
+  // open, every group is just a collapsed header — there's no scrollable
+  // middle region at all, since nothing is expanded.
+  const openIndex = unpinned.findIndex((g) => g.id === openGroupId);
+  const beforeOpen = openIndex === -1 ? unpinned : unpinned.slice(0, openIndex);
+  const openGroup = openIndex === -1 ? null : unpinned[openIndex];
+  const afterOpen = openIndex === -1 ? [] : unpinned.slice(openIndex + 1);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-panel-bg text-panel-text-1">
       <PropertyPanelFlatHeader
@@ -474,7 +486,7 @@ export function PropertyPanelFlat({
         onUngroup={onUngroup}
         showUngroup={Boolean(onUngroup && element.dataAttributes["hf-group"] != null)}
       />
-      <div className="flex-1 overflow-y-auto">
+      <div data-flat-panel-body="true" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {pinned.map((g) => (
           <PinnedGroupRow
             key={g.id}
@@ -486,19 +498,42 @@ export function PropertyPanelFlat({
           </PinnedGroupRow>
         ))}
         {pinned.length > 0 && unpinned.length > 0 && <PinnedZoneDivider />}
-        {unpinned.map((g) => (
-          <FlatGroup
+        {beforeOpen.map((g) => (
+          <FlatGroupHeader
             key={g.id}
             title={g.title}
-            isOpen={openGroupId === g.id}
+            isOpen={false}
             isPinned={false}
             onToggleOpen={() => toggleOpen(g.id)}
             onTogglePin={() => togglePin(g.id)}
             summary={g.summary}
-            accessory={g.accessory}
-          >
-            {g.content}
-          </FlatGroup>
+          />
+        ))}
+        {openGroup && (
+          <div data-flat-group-open="true" className="flex min-h-0 flex-1 flex-col">
+            <FlatGroupHeader
+              title={openGroup.title}
+              isOpen
+              isPinned={false}
+              onToggleOpen={() => toggleOpen(openGroup.id)}
+              onTogglePin={() => togglePin(openGroup.id)}
+              accessory={openGroup.accessory}
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3">
+              {openGroup.content}
+            </div>
+          </div>
+        )}
+        {afterOpen.map((g) => (
+          <FlatGroupHeader
+            key={g.id}
+            title={g.title}
+            isOpen={false}
+            isPinned={false}
+            onToggleOpen={() => toggleOpen(g.id)}
+            onTogglePin={() => togglePin(g.id)}
+            summary={g.summary}
+          />
         ))}
       </div>
       <PropertyPanelFlatFooter
