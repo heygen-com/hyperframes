@@ -13,6 +13,8 @@ import {
   patchIframeDomTiming,
   readFileContent,
   shiftGsapPositionsBatch,
+  syncTimingEditPreview,
+  type GsapMutationOutcome,
 } from "./timelineEditingHelpers";
 
 /** One clip's timing change in a batched move. */
@@ -142,14 +144,24 @@ export async function persistTimelineElementsMove(
         elementId: e.element.domId as string,
         delta: e.updates.start - e.element.start,
       }));
+    let shiftOutcome: GsapMutationOutcome = { scriptText: null };
     if (shifts.length > 0) {
-      await shiftGsapPositionsBatch(projectId, targetPath, shifts).catch((err) =>
-        console.error("[Timeline] Failed to batch-shift GSAP positions", err),
-      );
+      shiftOutcome = await shiftGsapPositionsBatch(projectId, targetPath, shifts).catch((err) => {
+        console.error("[Timeline] Failed to batch-shift GSAP positions", err);
+        return { scriptText: null };
+      });
     }
 
     forceReloadSdkSession?.();
-    reloadPreview();
+    // Soft-reload with the batch's rewritten script — a multi-clip move is
+    // timing-only (DOM + store already patched), so swap the script in place to
+    // avoid the all-clips flash; full reload is the fallback (see syncTimingEditPreview).
+    syncTimingEditPreview(
+      previewIframe,
+      shiftOutcome,
+      usePlayerStore.getState().currentTime,
+      reloadPreview,
+    );
   }
 }
 

@@ -18,6 +18,34 @@ export function getTimelineZoomPercent(zoomMode: ZoomMode, manualZoomPercent: nu
   return zoomMode === "fit" ? 100 : clampTimelineZoomPercent(manualZoomPercent);
 }
 
+/**
+ * The manual-zoom percent that, applied to `fitPixelsPerSecond`, reproduces the
+ * CURRENT on-screen pixels-per-second exactly. Used to PIN the timeline zoom on
+ * the first edit so a duration change (which recomputes fit-pps) no longer
+ * rescales every clip: we switch `zoomMode` to "manual" with this percent, so
+ * `getTimelinePixelsPerSecond` keeps returning today's pps regardless of the new
+ * fit basis.
+ *
+ * Since `pps = fitPps * (percent / 100)` in manual mode, and while fitting
+ * `pps === fitPps`, the pinned percent is `currentPps / fitPps * 100`. Clamped to
+ * the manual-zoom range so the pin can't land outside the slider's bounds; falls
+ * back to 100 (a no-op pin at the current fit) when either input is unusable.
+ */
+export function computePinnedZoomPercent(
+  currentPixelsPerSecond: number,
+  fitPixelsPerSecond: number,
+): number {
+  if (
+    !Number.isFinite(currentPixelsPerSecond) ||
+    currentPixelsPerSecond <= 0 ||
+    !Number.isFinite(fitPixelsPerSecond) ||
+    fitPixelsPerSecond <= 0
+  ) {
+    return 100;
+  }
+  return clampTimelineZoomPercent((currentPixelsPerSecond / fitPixelsPerSecond) * 100);
+}
+
 export function getTimelinePixelsPerSecond(
   fitPixelsPerSecond: number,
   zoomMode: ZoomMode,

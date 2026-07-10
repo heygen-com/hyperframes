@@ -496,6 +496,16 @@ export function useTimelinePlayer() {
     const iframe = iframeRef.current;
     if (!iframe) return;
     saveSeekPosition();
+    // Hide the iframe across the full reload so the user never sees the reloading
+    // document's RAW DOM (every clip stacked and visible) in the window between the
+    // new document parsing and the runtime initializing + seeking. initializeAdapter
+    // reveals it again right after its restore seek renders the correct frame.
+    // Tradeoff: this shows the parent stage background (a brief "freeze"/blank, on
+    // the order of the reload time ~100-300ms) INSTEAD of the all-clips flash. A
+    // blank is far less jarring than a burst of every asset appearing at once.
+    // Only the FULL-reload edits (drops/inserts) hit this — timing edits now take
+    // the soft-reload path and never touch refreshPlayer.
+    iframe.style.visibility = "hidden";
     const src = iframe.src;
     const url = new URL(src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));

@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { resolveReloadSeekTime } from "./useTimelineSyncCallbacks";
+import { resolveReloadSeekTime, revealIframe } from "./useTimelineSyncCallbacks";
+
+// Minimal stand-in — revealIframe only touches `style.visibility`. Avoids
+// depending on a DOM environment (this test file runs under node).
+function fakeIframe(visibility: string): HTMLIFrameElement {
+  return { style: { visibility } } as unknown as HTMLIFrameElement;
+}
+
+describe("revealIframe", () => {
+  it("clears a hidden iframe's visibility (undoes refreshPlayer's hide)", () => {
+    const iframe = fakeIframe("hidden");
+    revealIframe(iframe);
+    expect(iframe.style.visibility).toBe("");
+  });
+
+  it("leaves an already-visible iframe untouched (idempotent)", () => {
+    const iframe = fakeIframe("");
+    revealIframe(iframe);
+    expect(iframe.style.visibility).toBe("");
+  });
+
+  it("no-ops on a null iframe", () => {
+    expect(() => revealIframe(null)).not.toThrow();
+  });
+});
 
 describe("resolveReloadSeekTime", () => {
   it("restores the pending seek saved by refreshPlayer (the primary reload path)", () => {

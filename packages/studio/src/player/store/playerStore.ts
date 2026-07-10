@@ -3,6 +3,7 @@ import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
 
 /** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
 export interface KeyframeCacheEntry {
@@ -148,6 +149,25 @@ interface PlayerState {
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
+  /**
+   * Pin the timeline zoom to the CURRENT on-screen pixels-per-second on the first
+   * edit, so a subsequent duration change (which recomputes fit-pps) stops
+   * rescaling every clip. No-op once already pinned (mode is "manual") so the
+   * user's own manual zoom is never overwritten by a later edit.
+   */
+  pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
+  /**
+   * The timeline's live pixels-per-second + fit basis, published by <Timeline> on
+   * every render. Non-reactive scratch state (never read as a render input) so
+   * edit handlers OUTSIDE <Timeline> — e.g. the keyboard-delete path — can still
+   * pin the zoom via `pinTimelineZoomToCurrent` without threading viewport
+   * geometry down to them.
+   */
+  timelinePps: number;
+  timelineFitPps: number;
+  setTimelineScale: (pps: number, fitPps: number) => void;
+  /** Pin using the last-published live scale (see `pinTimelineZoom`). */
+  pinTimelineZoomToCurrent: () => void;
   setInPoint: (time: number | null) => void;
   setOutPoint: (time: number | null) => void;
   reset: () => void;
@@ -232,8 +252,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   playbackRate: readStudioUiPreferences().playbackRate ?? 1,
   audioMuted: readStudioUiPreferences().audioMuted ?? false,
   loopEnabled: false,
-  zoomMode: "fit",
-  manualZoomPercent: 100,
+  // Hydrate the pinned zoom from prefs so a zoom pinned on a prior edit survives
+  // the iframe reload that the edit triggers — the reload/store-init used to snap
+  // back to "fit" and rescale every clip when the duration changed.
+  zoomMode: readStudioUiPreferences().timelineZoomMode ?? "fit",
+  manualZoomPercent: readStudioUiPreferences().timelineManualZoomPercent ?? 100,
+  timelinePps: 100,
+  timelineFitPps: 100,
   timeDisplayMode: readStudioUiPreferences().timeDisplayMode ?? "time",
   setTimeDisplayMode: (mode) => {
     writeStudioUiPreferences({ timeDisplayMode: mode });
@@ -360,7 +385,33 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ audioMuted: muted });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
-  setZoomMode: (mode) => set({ zoomMode: mode }),
+  setZoomMode: (mode) => {
+    writeStudioUiPreferences({ timelineZoomMode: mode });
+    set({ zoomMode: mode });
+  },
+  pinTimelineZoom: (currentPixelsPerSecond, fitPixelsPerSecond) =>
+    set((s) => {
+      // Already pinned (or the user manually zoomed) — never clobber that.
+      if (s.zoomMode === "manual") return {};
+      const percent = computePinnedZoomPercent(currentPixelsPerSecond, fitPixelsPerSecond);
+      writeStudioUiPreferences({
+        timelineZoomMode: "manual",
+        timelineManualZoomPercent: percent,
+      });
+      return { zoomMode: "manual", manualZoomPercent: percent };
+    }),
+  setTimelineScale: (pps, fitPps) => {
+    // Non-reactive publish: mutate in place + reuse the same object identity so no
+    // subscriber re-renders (these fields are never a render input, only read
+    // imperatively by pinTimelineZoomToCurrent).
+    const state = get();
+    state.timelinePps = pps;
+    state.timelineFitPps = fitPps;
+  },
+  pinTimelineZoomToCurrent: () => {
+    const { timelinePps, timelineFitPps, pinTimelineZoom } = get();
+    pinTimelineZoom(timelinePps, timelineFitPps);
+  },
   setInPoint: (time) =>
     set((state) => {
       const t = time !== null && Number.isFinite(time) ? time : null;
@@ -382,8 +433,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         loopEnabled: t !== null ? true : state.loopEnabled,
       };
     }),
-  setManualZoomPercent: (percent) =>
-    set({ manualZoomPercent: Math.max(10, Math.min(2000, Math.round(percent))) }),
+  setManualZoomPercent: (percent) => {
+    const clamped = clampTimelineZoomPercent(percent);
+    writeStudioUiPreferences({ timelineManualZoomPercent: clamped });
+    set({ manualZoomPercent: clamped });
+  },
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),
   setDuration: (duration) => set({ duration: Number.isFinite(duration) ? duration : 0 }),
   setTimelineReady: (ready) => set({ timelineReady: ready }),

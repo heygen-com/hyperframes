@@ -159,6 +159,12 @@ export const Timeline = memo(function Timeline({
     containerRef.current = el;
   }, []);
 
+  // Last horizontal scroll offset, tracked so it can be RESTORED across the
+  // post-edit iframe reload: an edit re-derives elements (and may shrink the
+  // content width), which the browser clamps into a scroll jump. Paired with the
+  // pinned zoom (which keeps pps constant so the pixel offset stays meaningful),
+  // restoring this keeps the user parked at the same spot after any edit.
+  const lastScrollLeftRef = useRef(0);
   const setScrollRef = useCallback(
     (el: HTMLDivElement | null) => {
       if (roRef.current) {
@@ -220,9 +226,80 @@ export const Timeline = memo(function Timeline({
   const ppsRef = useRef(100);
   const durationRef = useRef(effectiveDuration);
   durationRef.current = effectiveDuration;
+  // Declared here (used before the fitPps derivation below) so the edit-pin
+  // wrappers can close over it; `fitPpsRef.current` is refreshed each render.
+  const fitPpsRef = useRef(100);
+  const pinTimelineZoom = usePlayerStore((s) => s.pinTimelineZoom);
+  // Pin the timeline zoom to the current on-screen scale on the FIRST edit, so a
+  // duration change from that edit (drops/moves/deletes recompute the fit basis)
+  // stops rescaling every clip — the blink-fix rescale symptom. `pinTimelineZoom`
+  // is a no-op once already pinned (or after a manual zoom), so the user's own zoom
+  // is never clobbered; Fit re-fits. Reads refs at call time for the latest scale.
+  const pinZoomBeforeEdit = useCallback(() => {
+    pinTimelineZoom(ppsRef.current, fitPpsRef.current);
+  }, [pinTimelineZoom]);
 
   // Stable ref so useTimelineClipDrag can clear rangeSelection without circular dep
   const setRangeSelectionRef = useRef<((sel: null) => void) | null>(null);
+
+  // Pin the zoom right before every mutating edit commits, so the reload the edit
+  // triggers keeps the current scale. Each wrapper forwards its args unchanged and
+  // preserves the original's absence (unset callback stays unset → the timeline's
+  // own fallbacks kick in).
+  const pinnedOnMoveElement = useMemo(
+    () =>
+      onMoveElement &&
+      ((...args: Parameters<typeof onMoveElement>) => {
+        pinZoomBeforeEdit();
+        return onMoveElement(...args);
+      }),
+    [onMoveElement, pinZoomBeforeEdit],
+  );
+  const pinnedOnMoveElements = useMemo(
+    () =>
+      onMoveElements &&
+      ((...args: Parameters<typeof onMoveElements>) => {
+        pinZoomBeforeEdit();
+        return onMoveElements(...args);
+      }),
+    [onMoveElements, pinZoomBeforeEdit],
+  );
+  const pinnedOnResizeElement = useMemo(
+    () =>
+      onResizeElement &&
+      ((...args: Parameters<typeof onResizeElement>) => {
+        pinZoomBeforeEdit();
+        return onResizeElement(...args);
+      }),
+    [onResizeElement, pinZoomBeforeEdit],
+  );
+  const pinnedOnFileDrop = useMemo(
+    () =>
+      onFileDrop &&
+      ((...args: Parameters<typeof onFileDrop>) => {
+        pinZoomBeforeEdit();
+        return onFileDrop(...args);
+      }),
+    [onFileDrop, pinZoomBeforeEdit],
+  );
+  const pinnedOnAssetDrop = useMemo(
+    () =>
+      onAssetDrop &&
+      ((...args: Parameters<typeof onAssetDrop>) => {
+        pinZoomBeforeEdit();
+        return onAssetDrop(...args);
+      }),
+    [onAssetDrop, pinZoomBeforeEdit],
+  );
+  const pinnedOnBlockDrop = useMemo(
+    () =>
+      onBlockDrop &&
+      ((...args: Parameters<typeof onBlockDrop>) => {
+        pinZoomBeforeEdit();
+        return onBlockDrop(...args);
+      }),
+    [onBlockDrop, pinZoomBeforeEdit],
+  );
 
   const {
     draggedClip,
@@ -237,9 +314,9 @@ export const Timeline = memo(function Timeline({
     ppsRef,
     durationRef,
     trackOrderRef,
-    onMoveElement,
-    onMoveElements,
-    onResizeElement,
+    onMoveElement: pinnedOnMoveElement,
+    onMoveElements: pinnedOnMoveElements,
+    onResizeElement: pinnedOnResizeElement,
     onBlockedEditAttempt,
     setShowPopover,
     setRangeSelectionRef,
@@ -251,9 +328,9 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
-      onFileDrop,
-      onAssetDrop,
-      onBlockDrop,
+      onFileDrop: pinnedOnFileDrop,
+      onAssetDrop: pinnedOnAssetDrop,
+      onBlockDrop: pinnedOnBlockDrop,
     });
 
   const displayTrackOrder = useMemo(() => {
@@ -319,8 +396,29 @@ export const Timeline = memo(function Timeline({
   zoomModeRef.current = zoomMode;
   const manualZoomPercentRef = useRef(manualZoomPercent);
   manualZoomPercentRef.current = manualZoomPercent;
-  const fitPpsRef = useRef(fitPps);
   fitPpsRef.current = fitPps;
+
+  // Restore the horizontal scroll offset after an edit re-derives the elements
+  // (clipStateVersion changes) so the reload doesn't jump the view. Only in manual
+  // (pinned) mode — fit mode hides the x-scrollbar (scrollLeft is always 0) — and
+  // never mid-drag (auto-scroll owns the offset then). rAF waits for the new layout
+  // so the clamp reads the post-resync scrollWidth. zoomMode is a legitimate dep:
+  // re-running on a mode flip is a no-op thanks to the guard.
+  useEffect(() => {
+    if (zoomMode !== "manual" || isDragging.current) return;
+    const el = scrollRef.current;
+    const target = lastScrollLeftRef.current;
+    if (!el || target <= 0) return;
+    const raf = requestAnimationFrame(() => {
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      const next = Math.min(target, max);
+      if (Math.abs(el.scrollLeft - next) > 0.5) el.scrollLeft = next;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [clipStateVersion, zoomMode]);
+  // Publish the live scale so edit handlers OUTSIDE <Timeline> (the keyboard-delete
+  // path) can pin the zoom via pinTimelineZoomToCurrent without threading geometry.
+  usePlayerStore.getState().setTimelineScale(pps, fitPps);
 
   const { seekFromX, autoScrollDuringDrag, dragScrollRaf } = useTimelinePlayhead({
     playheadRef,
@@ -450,6 +548,10 @@ export const Timeline = memo(function Timeline({
         ref={setScrollRef}
         tabIndex={-1}
         className={`${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-none`}
+        onScroll={(e) => {
+          // Remember the live offset so it can be restored across a post-edit reload.
+          lastScrollLeftRef.current = e.currentTarget.scrollLeft;
+        }}
         onDragOver={handleAssetDragOver}
         onDragLeave={() => clearDropPreview()}
         onDrop={handleAssetDrop}
@@ -611,7 +713,10 @@ export const Timeline = memo(function Timeline({
           currentTime={currentTime}
           onClose={() => setClipContextMenu(null)}
           onSplit={(el, time) => onSplitElement?.(el, time)}
-          onDelete={(el) => _onDeleteElement?.(el)}
+          onDelete={(el) => {
+            pinZoomBeforeEdit();
+            _onDeleteElement?.(el);
+          }}
         />
       )}
     </div>

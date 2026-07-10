@@ -605,7 +605,9 @@ describe("resolveTimelineAssetDrop", () => {
           trackOrder: [0, 3, 7],
         },
         432,
-        310,
+        // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
+        // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
+        368,
       ),
     ).toEqual({ start: 3, track: 3 });
   });

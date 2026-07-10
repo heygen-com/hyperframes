@@ -40,6 +40,7 @@ import {
   formatTimelineAttributeNumber,
   shiftGsapPositions,
   scaleGsapPositions,
+  syncTimingEditPreview,
 } from "./timelineEditingHelpers";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import {
@@ -173,8 +174,19 @@ export function useTimelineEditing({
           const pid = projectIdRef.current;
           const delta = updates.start - element.start;
           if (delta !== 0 && element.domId && pid) {
+            // Soft-reload with the server's rewritten GSAP script instead of a full
+            // iframe reload — a timing-only move already patched the DOM + store, so
+            // swapping the script in place avoids the all-clips flash. Falls back to
+            // reloadPreview() when the soft path can't apply. (See syncTimingEditPreview.)
             return shiftGsapPositions(pid, targetPath, element.domId, delta)
-              .then(() => reloadPreview())
+              .then((outcome) =>
+                syncTimingEditPreview(
+                  previewIframeRef.current,
+                  outcome,
+                  usePlayerStore.getState().currentTime,
+                  reloadPreview,
+                ),
+              )
               .catch((err) => console.error("[Timeline] Failed to shift GSAP positions", err));
           }
           return reloadPreview();
@@ -297,6 +309,8 @@ export function useTimelineEditing({
         enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() => {
           const pid = projectIdRef.current;
           if (timingChanged && element.domId && pid) {
+            // Soft-reload with the rewritten script (timing-only resize) — same
+            // no-flash path as move; full reload is the fallback.
             return scaleGsapPositions(
               pid,
               targetPath,
@@ -306,7 +320,14 @@ export function useTimelineEditing({
               updates.start,
               updates.duration,
             )
-              .then(() => reloadPreview())
+              .then((outcome) =>
+                syncTimingEditPreview(
+                  previewIframeRef.current,
+                  outcome,
+                  usePlayerStore.getState().currentTime,
+                  reloadPreview,
+                ),
+              )
               .catch((err) => console.error("[Timeline] Failed to scale GSAP positions", err));
           }
           return reloadPreview();
@@ -388,6 +409,11 @@ export function useTimelineEditing({
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
       if (elementsToDelete.length === 0) return;
+      // Pin the zoom before a delete shrinks the composition (content-driven
+      // duration), so the reload doesn't re-fit and rescale every clip. Covers the
+      // keyboard-delete path too (the context-menu delete already pins in Timeline;
+      // pinTimelineZoom is idempotent, so a double-pin is harmless).
+      usePlayerStore.getState().pinTimelineZoomToCurrent();
       const count = elementsToDelete.length;
       const label = count === 1 ? getTimelineElementLabel(elementsToDelete[0]) : `${count} clips`;
       try {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampTimelineZoomPercent,
+  computePinnedZoomPercent,
   getNextTimelineZoomPercent,
   getPinchTimelineZoomPercent,
   getTimelinePixelsPerSecond,
@@ -106,6 +107,35 @@ describe("timelineSliderToZoomPercent", () => {
 
   it("maps slider 100 to max zoom", () => {
     expect(timelineSliderToZoomPercent(100)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+  });
+});
+
+describe("computePinnedZoomPercent", () => {
+  it("returns 100 when current pps equals the fit pps (a no-op pin at the current fit)", () => {
+    expect(computePinnedZoomPercent(42, 42)).toBe(100);
+  });
+
+  it("reproduces the current pps: percent × fitPps / 100 === currentPps", () => {
+    const fitPps = 20;
+    const currentPps = 50; // user zoomed in 2.5×
+    const percent = computePinnedZoomPercent(currentPps, fitPps);
+    expect(percent).toBe(250);
+    // Round-trips through getTimelinePixelsPerSecond back to the on-screen pps.
+    expect(getTimelinePixelsPerSecond(fitPps, "manual", percent)).toBeCloseTo(currentPps, 5);
+  });
+
+  it("clamps a pin that would exceed the manual-zoom bounds", () => {
+    // currentPps 10000 / fitPps 1 = 1_000_000% → clamped to MAX.
+    expect(computePinnedZoomPercent(10000, 1)).toBe(MAX_TIMELINE_ZOOM_PERCENT);
+    // Tiny ratio → clamped up to MIN.
+    expect(computePinnedZoomPercent(0.001, 1000)).toBe(MIN_TIMELINE_ZOOM_PERCENT);
+  });
+
+  it("falls back to 100 for unusable inputs (a safe no-op pin)", () => {
+    expect(computePinnedZoomPercent(Number.NaN, 20)).toBe(100);
+    expect(computePinnedZoomPercent(50, 0)).toBe(100);
+    expect(computePinnedZoomPercent(-5, 20)).toBe(100);
+    expect(computePinnedZoomPercent(50, Number.POSITIVE_INFINITY)).toBe(100);
   });
 });
 
