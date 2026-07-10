@@ -9,7 +9,7 @@ pre-commit:
       # Auto-format and re-stage so the committed snapshot is always formatted.
       # Replaces --check which only reports — that left unformatted files in
       # commits when the hook ran after the amend snapshot was taken.
-      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add {staged_files}
+      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
     skills-manifest:
       glob: "skills/**"
       # Regenerate the freshness fingerprint when a skill changes, then re-stage
