@@ -14,9 +14,8 @@ import { FlatMotionSection } from "./propertyPanelFlatMotionSection";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { createGsapLivePreview } from "./gsapLivePreview";
-import { formatTextFieldPreview, StyleSections } from "./propertyPanelSections";
+import { formatTextFieldPreview } from "./propertyPanelSections";
 import { STUDIO_GSAP_PANEL_ENABLED } from "./manualEditingAvailability";
-import { ColorGradingSection } from "./propertyPanelColorGradingSection";
 import { useColorGradingController } from "./useColorGradingController";
 import { usePersistedPinnedGroups } from "../../hooks/usePersistedPinnedGroups";
 import {
@@ -55,8 +54,7 @@ const EMPTY_GSAP_EFFECT_HANDLERS = {
  * (same one-directional-import precedent as FlatTextSection). Rendered only
  * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the one-open/pin group state.
  *
- * The Text/Style/Layout/Motion/Media groups share the one-open accordion. The
- * legacy Color-Grading section renders unchanged below the flat groups.
+ * The Text/Style/Layout/Motion/Media/Grade groups share the one-open accordion.
  */
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
@@ -502,37 +500,6 @@ export function PropertyPanelFlat({
             {g.content}
           </FlatGroup>
         ))}
-        {sections.colorGrading && (
-          <ColorGradingSection
-            key={[
-              element.id ?? "",
-              element.hfId ?? "",
-              element.selector ?? "",
-              String(element.selectorIndex ?? ""),
-            ].join("|")}
-            projectId={projectId}
-            element={element}
-            assets={assets}
-            previewIframeRef={previewIframeRef}
-            onImportAssets={onImportAssets}
-            onSetAttributeLive={onSetAttributeLive}
-            onApplyScope={onApplyColorGradingScope}
-          />
-        )}
-        {showEditableSections && (
-          <StyleSections
-            projectId={projectId}
-            element={element}
-            styles={styles}
-            assets={assets}
-            onSetStyle={onSetStyle}
-            onImportAssets={onImportAssets}
-            gsapBorderRadius={gsapBorderRadius}
-            // Flex now lives in the flat Layout group (LayoutFlexBlock); suppress
-            // the legacy StyleSections Flex `Section` so it renders exactly once.
-            hideFlex
-          />
-        )}
       </div>
       <PropertyPanelFlatFooter
         onAskAgent={onAskAgent}
