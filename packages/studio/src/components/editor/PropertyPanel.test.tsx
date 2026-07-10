@@ -899,3 +899,50 @@ describe("PropertyPanel — fixed headers + scrollable open section (Plan 11)", 
     RENDER_TIMEOUT_MS,
   );
 });
+
+describe("PropertyPanel — flat group entrance animation scoping (fix round)", () => {
+  it(
+    "animates only the opening group and the implicitly-closed group on a non-adjacent toggle, never untouched siblings",
+    async () => {
+      const { host, root } = await renderPanel(true, sixGroupElement());
+      // sixGroupElement() opens Text by default; jump straight to Motion
+      // (skipping over Style/Layout) first, matching the Plan 11 worked
+      // example, then jump back to Text — non-adjacent from Motion, again
+      // skipping over Style/Layout. This is the exact array-slice-position-
+      // shift scenario the justToggledIds mechanism exists to guard: Style
+      // and Layout shift position in the before/after-open slices on both
+      // toggles even though neither of them is the group being toggled.
+      openFlatGroup(host, "Motion");
+      expect(openGroupText(host)).toContain("Motion");
+      openFlatGroup(host, "Text");
+      expect(openGroupText(host)).toContain("Text");
+
+      const collapsedRowByTitle = (title: string) => {
+        const row = Array.from(host.querySelectorAll('[data-flat-group-collapsed="true"]')).find(
+          (el) => el.textContent?.includes(title),
+        );
+        if (!row) throw new Error(`expected a collapsed ${title} row`);
+        return row;
+      };
+
+      // Untouched, non-adjacent siblings must NOT receive the entrance class,
+      // even though they shifted position in the collapsed-header list.
+      expect(collapsedRowByTitle("Style").classList.contains("hf-flat-group-enter")).toBe(false);
+      expect(collapsedRowByTitle("Layout").classList.contains("hf-flat-group-enter")).toBe(false);
+      expect(collapsedRowByTitle("Grade").classList.contains("hf-flat-group-enter")).toBe(false);
+      expect(collapsedRowByTitle("Media").classList.contains("hf-flat-group-enter")).toBe(false);
+
+      // Motion — open a moment ago, just implicitly closed by the click on
+      // Text — must still play its own collapse-entrance animation (Finding 1).
+      expect(collapsedRowByTitle("Motion").classList.contains("hf-flat-group-enter")).toBe(true);
+
+      // Text — the group actually clicked open — must animate too.
+      const openWrapper = host.querySelector('[data-flat-group-open="true"]');
+      if (!openWrapper) throw new Error("expected the open-group wrapper");
+      expect(openWrapper.querySelector(".hf-flat-group-enter")).not.toBeNull();
+
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
+});

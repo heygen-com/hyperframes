@@ -157,7 +157,7 @@ export function FlatGroupHeader({
   accessory?: ReactNode;
   summary?: string;
   /** Play the fast entrance animation on this render — set only for the one
-   *  group actually transitioning (see PropertyPanelFlat's justToggledId).
+   *  group(s) actually transitioning (see PropertyPanelFlat's justToggledIds).
    *  Not derived from `isOpen`/remounting alone: React's key-based diffing
    *  can still shift an unrelated collapsed sibling's position in the
    *  before/after-open arrays (e.g. when the newly opened group isn't

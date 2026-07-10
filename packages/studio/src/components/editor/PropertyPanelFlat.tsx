@@ -235,17 +235,20 @@ export function PropertyPanelFlat({
           : "layout",
   );
 
-  // Tracks which single group is actively transitioning, so its header/body
-  // gets the fast entrance animation (hf-flat-group-enter) and no one else's
-  // does. Deliberately NOT derived from remounting alone: FlatGroupHeader
-  // instances are keyed by group id and React normally preserves them across
-  // re-renders, but toggling a non-adjacent group still shifts the untouched
-  // collapsed siblings between the before/after-open slices below, and
-  // Chromium restarts a CSS animation on that kind of position shift even
-  // though nothing about the sibling actually changed. Gating on this id
-  // (cleared shortly after the 120ms CSS animation finishes) keeps the
-  // animation scoped to only the group that actually just toggled.
-  const [justToggledId, setJustToggledId] = useState<string | null>(null);
+  // Tracks which group(s) are actively transitioning this toggle cycle, so
+  // their header/body gets the fast entrance animation (hf-flat-group-enter)
+  // and no one else's does. Deliberately NOT derived from remounting alone:
+  // FlatGroupHeader instances are keyed by group id and React normally
+  // preserves them across re-renders, but toggling a non-adjacent group still
+  // shifts the untouched collapsed siblings between the before/after-open
+  // slices below, and Chromium restarts a CSS animation on that kind of
+  // position shift even though nothing about the sibling actually changed.
+  // Gating on these ids (cleared shortly after the 120ms CSS animation
+  // finishes) keeps the animation scoped to only the groups that actually
+  // just toggled. Two ids, not one: the clicked (newly-opening/closing) group
+  // AND whichever group was open immediately before the click and got
+  // implicitly closed by it — both freshly-mounted headers need to animate.
+  const [justToggledIds, setJustToggledIds] = useState<string[]>([]);
   const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
@@ -270,10 +273,16 @@ export function PropertyPanelFlat({
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
   const toggleOpen = (groupId: string) => {
+    // Capture what was open BEFORE this click (this render's closure over
+    // openGroupId), so the group that's about to be implicitly closed can be
+    // tracked too — not just the one the user clicked.
+    const previousOpenGroupId = openGroupId;
     setOpenGroupId((current) => (current === groupId ? "" : groupId));
-    setJustToggledId(groupId);
+    const implicitlyClosedId =
+      previousOpenGroupId && previousOpenGroupId !== groupId ? previousOpenGroupId : null;
+    setJustToggledIds(implicitlyClosedId ? [groupId, implicitlyClosedId] : [groupId]);
     if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
-    justToggledTimeoutRef.current = setTimeout(() => setJustToggledId(null), 200);
+    justToggledTimeoutRef.current = setTimeout(() => setJustToggledIds([]), 200);
   };
   // Basis for the Layout keyframe gutter (X/Y/W/H/Angle + 3D Transform) —
   // must agree with Motion's Timing row (FlatTimingRow), which infers the
@@ -510,7 +519,7 @@ export function PropertyPanelFlat({
             isOpen={false}
             onToggleOpen={() => toggleOpen(g.id)}
             summary={g.summary}
-            animateEntrance={g.id === justToggledId}
+            animateEntrance={justToggledIds.includes(g.id)}
           />
         ))}
         {openGroup && (
@@ -520,10 +529,10 @@ export function PropertyPanelFlat({
               isOpen
               onToggleOpen={() => toggleOpen(openGroup.id)}
               accessory={openGroup.accessory}
-              animateEntrance={openGroup.id === justToggledId}
+              animateEntrance={justToggledIds.includes(openGroup.id)}
             />
             <div
-              className={`${openGroup.id === justToggledId ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3`}
+              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3`}
             >
               {openGroup.content}
             </div>
@@ -536,7 +545,7 @@ export function PropertyPanelFlat({
             isOpen={false}
             onToggleOpen={() => toggleOpen(g.id)}
             summary={g.summary}
-            animateEntrance={g.id === justToggledId}
+            animateEntrance={justToggledIds.includes(g.id)}
           />
         ))}
       </div>
