@@ -1,5 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { buildClipRangeSelection, type TimelineRangeSelection } from "./timelineEditing";
+import {
+  buildClipRangeSelection,
+  resolveTimelineAutoScroll,
+  type TimelineRangeSelection,
+} from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { GUTTER } from "./timelineLayout";
@@ -89,6 +93,13 @@ export function useTimelineRangeSelection({
   // Marquee (rubber-band) multi-select on the empty timeline body.
   const marqueeRef = useRef<MarqueeDragState | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
+  // Edge auto-scroll during a marquee drag: last pointer position (client-space)
+  // + shift flag, re-applied each RAF frame while the view scrolls under a
+  // stationary pointer, so the marquee can extend past the visible area.
+  const marqueePointerRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(
+    null,
+  );
+  const marqueeScrollRaf = useRef(0);
 
   /** Pointer position → canvas/content coordinates (same space as clip rects). */
   const toContentPoint = useCallback(
@@ -102,6 +113,98 @@ export function useTimelineRangeSelection({
       };
     },
     [scrollRef],
+  );
+
+  // Recompute the marquee rect + live selection for a client-space pointer.
+  // Content-space (folds in scrollLeft/scrollTop), so re-running it after the
+  // view scrolls naturally extends the rect toward the newly revealed area.
+  // Shared by the pointermove handler and the edge auto-scroll stepper.
+  const applyMarqueeAtClient = useCallback(
+    (clientX: number, clientY: number, shiftKey: boolean) => {
+      const marquee = marqueeRef.current;
+      if (!marquee) return;
+      const point = toContentPoint(clientX, clientY);
+      if (!point) return;
+      if (!marquee.active && !isMarqueeDrag(marquee.originX, marquee.originY, point.x, point.y)) {
+        return;
+      }
+      marquee.active = true;
+      const rect = getMarqueeRect(marquee.originX, marquee.originY, point.x, point.y);
+      setMarqueeRect(rect);
+      // Live selection: every clip the box currently covers. Shift held
+      // mid-drag (or cmd/ctrl at pointerdown) adds to the prior selection.
+      const additive = marquee.additive || shiftKey;
+      const { ids, primaryId } = computeMarqueeSelection({
+        clips: toMarqueeClips(elementsRef.current ?? []),
+        trackOrder: trackOrderRef.current ?? [],
+        pps: ppsRef.current,
+        marquee: rect,
+        baseSelection: additive ? marquee.baseIds : undefined,
+      });
+      const store = usePlayerStore.getState();
+      store.setSelectedElementIds(ids);
+      store.setSelectedElementId(primaryId ?? (additive ? marquee.basePrimary : null));
+    },
+    [toContentPoint, elementsRef, trackOrderRef, ppsRef],
+  );
+
+  const stopMarqueeAutoScroll = useCallback(() => {
+    marqueePointerRef.current = null;
+    if (marqueeScrollRaf.current) {
+      cancelAnimationFrame(marqueeScrollRaf.current);
+      marqueeScrollRaf.current = 0;
+    }
+  }, []);
+
+  // Edge auto-scroll while marquee-dragging: mirrors stepClipDragAutoScroll —
+  // scroll the container toward the edge zone the pointer is in, then re-run the
+  // marquee at the (unchanged) client pointer so the rect + selection extend
+  // under the scroll delta. Self-perpetuating RAF until the pointer leaves the
+  // edge zones or the gesture ends.
+  const stepMarqueeAutoScroll = useCallback(() => {
+    marqueeScrollRaf.current = 0;
+    const marquee = marqueeRef.current;
+    const pointer = marqueePointerRef.current;
+    const scroll = scrollRef.current;
+    if (!marquee || !pointer || !scroll) return;
+
+    const rect = scroll.getBoundingClientRect();
+    const delta = resolveTimelineAutoScroll(rect, pointer.clientX, pointer.clientY);
+    if (delta.x === 0 && delta.y === 0) return;
+
+    const maxScrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    const maxScrollTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, scroll.scrollLeft + delta.x));
+    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, scroll.scrollTop + delta.y));
+    if (nextScrollLeft === scroll.scrollLeft && nextScrollTop === scroll.scrollTop) return;
+
+    scroll.scrollLeft = nextScrollLeft;
+    scroll.scrollTop = nextScrollTop;
+    // Re-run at the SAME client point: toContentPoint folds in the new scroll, so
+    // the marquee's moving corner tracks the revealed content.
+    applyMarqueeAtClient(pointer.clientX, pointer.clientY, pointer.shiftKey);
+    marqueeScrollRaf.current = requestAnimationFrame(stepMarqueeAutoScroll);
+  }, [scrollRef, applyMarqueeAtClient]);
+
+  const syncMarqueeAutoScroll = useCallback(
+    (clientX: number, clientY: number, shiftKey: boolean) => {
+      marqueePointerRef.current = { clientX, clientY, shiftKey };
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const delta = resolveTimelineAutoScroll(rect, clientX, clientY);
+      if (delta.x === 0 && delta.y === 0) {
+        if (marqueeScrollRaf.current) {
+          cancelAnimationFrame(marqueeScrollRaf.current);
+          marqueeScrollRaf.current = 0;
+        }
+        return;
+      }
+      if (!marqueeScrollRaf.current) {
+        marqueeScrollRaf.current = requestAnimationFrame(stepMarqueeAutoScroll);
+      }
+    },
+    [scrollRef, stepMarqueeAutoScroll],
   );
 
   const handlePointerDown = useCallback(
@@ -168,27 +271,10 @@ export function useTimelineRangeSelection({
       }
       const marquee = marqueeRef.current;
       if (marquee) {
-        const point = toContentPoint(e.clientX, e.clientY);
-        if (!point) return;
-        if (!marquee.active && !isMarqueeDrag(marquee.originX, marquee.originY, point.x, point.y)) {
-          return;
-        }
-        marquee.active = true;
-        const rect = getMarqueeRect(marquee.originX, marquee.originY, point.x, point.y);
-        setMarqueeRect(rect);
-        // Live selection: every clip the box currently covers. Shift held
-        // mid-drag (or cmd/ctrl at pointerdown) adds to the prior selection.
-        const additive = marquee.additive || e.shiftKey;
-        const { ids, primaryId } = computeMarqueeSelection({
-          clips: toMarqueeClips(elementsRef.current ?? []),
-          trackOrder: trackOrderRef.current ?? [],
-          pps: ppsRef.current,
-          marquee: rect,
-          baseSelection: additive ? marquee.baseIds : undefined,
-        });
-        const store = usePlayerStore.getState();
-        store.setSelectedElementIds(ids);
-        store.setSelectedElementId(primaryId ?? (additive ? marquee.basePrimary : null));
+        applyMarqueeAtClient(e.clientX, e.clientY, e.shiftKey);
+        // Edge auto-scroll: once the drag is live, scroll when the pointer nears
+        // a viewport edge so the marquee can extend past the visible area.
+        if (marquee.active) syncMarqueeAutoScroll(e.clientX, e.clientY, e.shiftKey);
         return;
       }
       if (!isDragging.current) return;
@@ -220,10 +306,8 @@ export function useTimelineRangeSelection({
       pps,
       scrollRef,
       isDragging,
-      toContentPoint,
-      elementsRef,
-      trackOrderRef,
-      ppsRef,
+      applyMarqueeAtClient,
+      syncMarqueeAutoScroll,
     ],
   );
 
@@ -248,6 +332,7 @@ export function useTimelineRangeSelection({
     const marquee = marqueeRef.current;
     if (marquee) {
       marqueeRef.current = null;
+      stopMarqueeAutoScroll();
       setMarqueeRect(null);
       const store = usePlayerStore.getState();
       if (!marquee.active) {
@@ -273,7 +358,15 @@ export function useTimelineRangeSelection({
     isDragging.current = false;
     setIsScrubbing(false);
     cancelAnimationFrame(dragScrollRaf.current);
-  }, [isDragging, dragScrollRaf, setShowPopover, seekFromX, elementsRef, onSelectElement]);
+  }, [
+    isDragging,
+    dragScrollRaf,
+    setShowPopover,
+    seekFromX,
+    elementsRef,
+    onSelectElement,
+    stopMarqueeAutoScroll,
+  ]);
 
   // Escape: cancel an in-flight marquee (restores the pre-drag selection);
   // otherwise clear any lingering multi-selection.
@@ -284,6 +377,7 @@ export function useTimelineRangeSelection({
       const marquee = marqueeRef.current;
       if (marquee) {
         marqueeRef.current = null;
+        stopMarqueeAutoScroll();
         setMarqueeRect(null);
         if (marquee.active) {
           store.setSelectedElementIds(marquee.baseIds);
@@ -297,7 +391,7 @@ export function useTimelineRangeSelection({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [stopMarqueeAutoScroll]);
 
   return {
     rangeSelection,
