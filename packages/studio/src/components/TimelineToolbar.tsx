@@ -411,6 +411,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <MagnifyingGlassPlus size={16} aria-hidden="true" />
             </button>
           </Tooltip>
+          {/* Numeric zoom readout (main-parity): "Fit" in fit mode, N% in manual. */}
+          <span
+            className="ml-1 w-[38px] text-right font-mono text-[11px] tabular-nums text-neutral-500 select-none"
+            aria-label="Timeline zoom level"
+          >
+            {zoomMode === "fit" ? "Fit" : `${displayedTimelineZoomPercent}%`}
+          </span>
         </div>
       </div>
     </div>
