@@ -632,7 +632,7 @@ describe("resolveDomEditResizeGesture", () => {
     });
   });
 
-  it("snaps width and height to the same value when Shift is held", () => {
+  it("locks the current aspect ratio when Shift is held", () => {
     expect(
       resolveDomEditResizeGesture({
         originWidth: 240,
@@ -647,13 +647,13 @@ describe("resolveDomEditResizeGesture", () => {
       }),
     ).toEqual({
       overlayWidth: 270,
-      overlayHeight: 270,
+      overlayHeight: 135,
       width: 270,
-      height: 270,
+      height: 135,
     });
   });
 
-  it("uses the dominant pointer delta for uniform shrink", () => {
+  it("uses the dominant pointer delta for uniform shrink, preserving aspect", () => {
     expect(
       resolveDomEditResizeGesture({
         originWidth: 300,
@@ -667,8 +667,8 @@ describe("resolveDomEditResizeGesture", () => {
         uniform: true,
       }),
     ).toMatchObject({
-      width: 260,
-      height: 260,
+      width: 700 / 3,
+      height: 140,
     });
   });
 

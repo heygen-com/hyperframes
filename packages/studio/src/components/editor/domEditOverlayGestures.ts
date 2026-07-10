@@ -115,15 +115,27 @@ export function resolveDomEditResizeGesture(input: {
   const scaleY = input.scaleY > 0 ? input.scaleY : 1;
 
   if (input.uniform) {
+    // Aspect-ratio lock (industry Shift semantics): follow the dominant pointer
+    // axis and derive the other from the element's CURRENT aspect ratio.
     const deltaX = input.dx / scaleX;
     const deltaY = input.dy / scaleY;
-    const delta = Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY;
-    const side = Math.max(1, Math.max(input.actualWidth, input.actualHeight) + delta);
+    const baseWidth = Math.max(input.actualWidth, 1);
+    const baseHeight = Math.max(input.actualHeight, 1);
+    const ratio = baseHeight / baseWidth;
+    let width: number;
+    let height: number;
+    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+      width = Math.max(1, baseWidth + deltaX);
+      height = Math.max(1, width * ratio);
+    } else {
+      height = Math.max(1, baseHeight + deltaY);
+      width = Math.max(1, height / ratio);
+    }
     return {
-      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, side * scaleX),
-      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, side * scaleY),
-      width: side,
-      height: side,
+      overlayWidth: Math.max(MIN_RESIZE_EDGE_PX, width * scaleX),
+      overlayHeight: Math.max(MIN_RESIZE_EDGE_PX, height * scaleY),
+      width,
+      height,
     };
   }
 
