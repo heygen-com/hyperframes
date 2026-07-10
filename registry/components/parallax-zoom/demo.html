@@ -281,13 +281,30 @@
 
           const tl = anime.createTimeline({ autoplay: false });
 
+          /* GSAP's stagger { each, from: "center" } gives every card a UNIQUE
+             30ms slot in center-out order (span = each * (n-1)); anime's
+             stagger(30, { from: "center" }) scales by distance so equidistant
+             pairs share slots and the fade-in finishes in half the time
+             (measured: all 15 cards lit by t=0.36s vs the GSAP baseline's
+             ~0.9s). Precompute the GSAP rank order instead. */
+          const pzCards = document.querySelectorAll(".parallax-zoom-card");
+          const pzCenter = (pzCards.length - 1) / 2;
+          const pzOrder = Array.from(pzCards.keys()).sort((a, b) => {
+            const da = Math.abs(a - pzCenter);
+            const db = Math.abs(b - pzCenter);
+            return da === db ? a - b : da - db;
+          });
+          const pzRank = new Array(pzCards.length);
+          pzOrder.forEach((idx, rank) => {
+            pzRank[idx] = rank;
+          });
           tl.add(
             ".parallax-zoom-card",
             {
               opacity: 1,
               duration: 500,
               ease: "outCubic",
-              delay: anime.stagger(30, { from: "center" }),
+              delay: (target, i) => pzRank[i] * 30,
             },
             0,
           );

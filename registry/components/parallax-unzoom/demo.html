@@ -293,13 +293,32 @@
             500,
           );
 
+          /* GSAP's stagger { each, from: "center" } gives every card a UNIQUE
+             20ms slot in center-out order (span = each * (n-1)); anime's
+             stagger(20, { from: "center" }) scales by distance so equidistant
+             pairs share slots and the fade-in cascade finishes in half the
+             time. Precompute the GSAP rank order instead (same fix as
+             parallax-zoom / world-map). */
+          const puCards = document.querySelectorAll(
+            ".parallax-unzoom-card:not([data-pu-focus='true'])",
+          );
+          const puCenter = (puCards.length - 1) / 2;
+          const puOrder = Array.from(puCards.keys()).sort((a, b) => {
+            const da = Math.abs(a - puCenter);
+            const db = Math.abs(b - puCenter);
+            return da === db ? a - b : da - db;
+          });
+          const puRank = new Array(puCards.length);
+          puOrder.forEach((idx, rank) => {
+            puRank[idx] = rank;
+          });
           tl.add(
             ".parallax-unzoom-card:not([data-pu-focus='true'])",
             {
               opacity: [0, 1],
               duration: 1500,
               ease: "outCubic",
-              delay: anime.stagger(20, { from: "center" }),
+              delay: (target, i) => puRank[i] * 20,
             },
             2000,
           );
