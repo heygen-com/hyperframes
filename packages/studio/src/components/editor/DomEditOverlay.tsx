@@ -191,6 +191,20 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+
+  // Close the context menu whenever the selection moves off the element the menu
+  // targets (a click that reselects elsewhere, a deselect, or a preview reload
+  // that rebuilds the selection). Without this the menu can linger — orphaned —
+  // over a stale target after the underlying element is gone. A right-click that
+  // OPENS the menu also selects its target, so the common open path keeps the
+  // menu (same element) rather than immediately dismissing it.
+  useEffect(() => {
+    if (!contextMenu) return;
+    if (!selection || selection.element !== contextMenu.sel.element) {
+      setContextMenu(null);
+    }
+  }, [selection, contextMenu]);
+
   const activeCompositionPathRef = useRef(activeCompositionPath);
   activeCompositionPathRef.current = activeCompositionPath;
   const groupSelectionsRef = useRef(groupSelections);
@@ -612,7 +626,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
                     gestures.startGesture("resize", e, { resizeHandle: def.handle });
                   }}
                 >
-                  <div className="pointer-events-none h-[9px] w-[9px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
+                  <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
                 </div>
               ),
             )}

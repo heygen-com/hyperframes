@@ -160,7 +160,6 @@ export function useElementLifecycleOps({
   // persistDomEditOperations → onTrySdkPersist, so it is already SDK-cut-over as setStyle.
   // No SDK reorder/reparent op exists; DOM sibling order stays server-authoritative if ever needed.
   const handleDomZIndexReorderCommit = useCallback(
-    // fallow-ignore-next-line complexity
     (
       entries: Array<{
         element: HTMLElement;
@@ -169,26 +168,17 @@ export function useElementLifecycleOps({
         selector?: string;
         selectorIndex?: number;
         sourceFile: string;
-        key?: string;
       }>,
     ) => {
-      if (entries.length === 0) return Promise.resolve();
+      if (entries.length === 0) return;
       // Resolver shadow (telemetry-only, decoupled from cutover): record whether
       // the SDK resolves each reordered element — the reorderElements op's targets.
       onReorderShadow?.(
         entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
       );
       const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
-      const saves: Array<Promise<void>> = [];
-      const rollbacks: Array<() => void> = [];
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
-        const priorZIndex = entry.element.style.zIndex;
-        const priorPosition = entry.element.style.position;
-        const priorStoreEntry = entry.key
-          ? usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === entry.key)
-          : undefined;
-        let positionChanged = false;
         entry.element.style.zIndex = String(entry.zIndex);
         const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
           { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
@@ -197,58 +187,33 @@ export function useElementLifecycleOps({
           const win = entry.element.ownerDocument?.defaultView;
           if (win && win.getComputedStyle(entry.element).position === "static") {
             entry.element.style.position = "relative";
-            positionChanged = true;
             patches.push({ type: "inline-style", property: "position", value: "relative" });
           }
         } catch {
           /* cross-origin or detached — skip */
         }
-        if (entry.key) {
-          usePlayerStore
-            .getState()
-            .updateElement(entry.key, { zIndex: entry.zIndex, hasExplicitZIndex: true });
-        }
-        rollbacks.push(() => {
-          entry.element.style.zIndex = priorZIndex;
-          if (positionChanged) entry.element.style.position = priorPosition;
-          if (entry.key && priorStoreEntry) {
-            usePlayerStore.getState().updateElement(entry.key, {
-              zIndex: priorStoreEntry.zIndex,
-              hasExplicitZIndex: priorStoreEntry.hasExplicitZIndex,
-            });
-          }
-        });
-        saves.push(
-          commitPositionPatchToHtml(
-            {
-              element: entry.element,
-              id: entry.id ?? null,
-              hfId: readHfId(entry.element),
-              selector: entry.selector,
-              selectorIndex: entry.selectorIndex,
-              sourceFile: entry.sourceFile,
-            } as unknown as DomEditSelection,
-            patches,
-            {
-              label: "Reorder layers",
-              coalesceKey,
-              skipRefresh: i < entries.length - 1,
-            },
-          ),
-        );
+        void commitPositionPatchToHtml(
+          {
+            element: entry.element,
+            id: entry.id ?? null,
+            hfId: readHfId(entry.element),
+            selector: entry.selector,
+            selectorIndex: entry.selectorIndex,
+            sourceFile: entry.sourceFile,
+          } as unknown as DomEditSelection,
+          patches,
+          {
+            // Never full-reload for a z-index reorder: each entry's live element
+            // already had `style.zIndex` (and, if needed, `position`) mutated
+            // optimistically above, so the browser has already restacked. A reload
+            // would only blank the iframe to a black frame until it re-renders —
+            // aligning with the property panel's inline-style commit convention.
+            label: "Reorder layers",
+            coalesceKey,
+            skipRefresh: true,
+          },
+        ).catch(() => undefined);
       }
-      // Resolves once every z-index patch is persisted so a same-file timing write
-      // can be ordered after it (see applyTimelineStackingReorder callers).
-      return Promise.allSettled(saves).then((settled) => {
-        const rejected = settled.find(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        if (rejected) {
-          for (const rollback of rollbacks) rollback();
-          return Promise.reject(rejected.reason);
-        }
-        return undefined;
-      });
     },
     [commitPositionPatchToHtml, onReorderShadow],
   );
