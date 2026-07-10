@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { resolveEditingSections } from "@hyperframes/core/editing";
 import type { DomEditSelection } from "./domEditing";
 import { isTextEditableSelection } from "./domEditing";
@@ -235,6 +235,24 @@ export function PropertyPanelFlat({
           : "layout",
   );
 
+  // Tracks which single group is actively transitioning, so its header/body
+  // gets the fast entrance animation (hf-flat-group-enter) and no one else's
+  // does. Deliberately NOT derived from remounting alone: FlatGroupHeader
+  // instances are keyed by group id and React normally preserves them across
+  // re-renders, but toggling a non-adjacent group still shifts the untouched
+  // collapsed siblings between the before/after-open slices below, and
+  // Chromium restarts a CSS animation on that kind of position shift even
+  // though nothing about the sibling actually changed. Gating on this id
+  // (cleared shortly after the 120ms CSS animation finishes) keeps the
+  // animation scoped to only the group that actually just toggled.
+  const [justToggledId, setJustToggledId] = useState<string | null>(null);
+  const justToggledTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
+    };
+  }, []);
+
   // Grade group state. Called unconditionally (React rules-of-hooks) even when
   // sections.colorGrading is false — unlike the legacy ColorGradingSection,
   // which is only mounted when the section is active, PropertyPanelFlat is not
@@ -251,8 +269,12 @@ export function PropertyPanelFlat({
 
   const isTextEditable = isTextEditableSelection(element);
   const elementKind = sections.media ? "media" : element.textFields.length > 0 ? "text" : "other";
-  const toggleOpen = (groupId: string) =>
+  const toggleOpen = (groupId: string) => {
     setOpenGroupId((current) => (current === groupId ? "" : groupId));
+    setJustToggledId(groupId);
+    if (justToggledTimeoutRef.current) clearTimeout(justToggledTimeoutRef.current);
+    justToggledTimeoutRef.current = setTimeout(() => setJustToggledId(null), 200);
+  };
   // Basis for the Layout keyframe gutter (X/Y/W/H/Angle + 3D Transform) —
   // must agree with Motion's Timing row (FlatTimingRow), which infers the
   // range from animations when there's no explicit data-duration. Computed
@@ -488,6 +510,7 @@ export function PropertyPanelFlat({
             isOpen={false}
             onToggleOpen={() => toggleOpen(g.id)}
             summary={g.summary}
+            animateEntrance={g.id === justToggledId}
           />
         ))}
         {openGroup && (
@@ -497,8 +520,11 @@ export function PropertyPanelFlat({
               isOpen
               onToggleOpen={() => toggleOpen(openGroup.id)}
               accessory={openGroup.accessory}
+              animateEntrance={openGroup.id === justToggledId}
             />
-            <div className="min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3">
+            <div
+              className={`${openGroup.id === justToggledId ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3`}
+            >
               {openGroup.content}
             </div>
           </div>
@@ -510,6 +536,7 @@ export function PropertyPanelFlat({
             isOpen={false}
             onToggleOpen={() => toggleOpen(g.id)}
             summary={g.summary}
+            animateEntrance={g.id === justToggledId}
           />
         ))}
       </div>

@@ -138,6 +138,36 @@ describe("FlatGroupHeader", () => {
     act(() => root.unmount());
   });
 
+  it("applies the entrance animation class to both states, only when animateEntrance is set", () => {
+    const { host: openHost, root: openRoot } = renderInto(
+      <FlatGroupHeader title="Text" isOpen onToggleOpen={vi.fn()} animateEntrance />,
+    );
+    expect(openHost.firstElementChild?.className).toContain("hf-flat-group-enter");
+    act(() => openRoot.unmount());
+
+    const { host: collapsedHost, root: collapsedRoot } = renderInto(
+      <FlatGroupHeader title="Style" isOpen={false} onToggleOpen={vi.fn()} animateEntrance />,
+    );
+    const row = collapsedHost.querySelector('[data-flat-group-collapsed="true"]');
+    expect(row?.className).toContain("hf-flat-group-enter");
+    act(() => collapsedRoot.unmount());
+  });
+
+  it("omits the entrance animation class in both states when animateEntrance is not set", () => {
+    const { host: openHost, root: openRoot } = renderInto(
+      <FlatGroupHeader title="Text" isOpen onToggleOpen={vi.fn()} />,
+    );
+    expect(openHost.firstElementChild?.className).not.toContain("hf-flat-group-enter");
+    act(() => openRoot.unmount());
+
+    const { host: collapsedHost, root: collapsedRoot } = renderInto(
+      <FlatGroupHeader title="Style" isOpen={false} onToggleOpen={vi.fn()} />,
+    );
+    const row = collapsedHost.querySelector('[data-flat-group-collapsed="true"]');
+    expect(row?.className).not.toContain("hf-flat-group-enter");
+    act(() => collapsedRoot.unmount());
+  });
+
   it("renders no inline position styling in either state (collapsed headers never move)", () => {
     const { host: collapsedHost, root: collapsedRoot } = renderInto(
       <FlatGroupHeader title="Layout" isOpen={false} onToggleOpen={vi.fn()} />,

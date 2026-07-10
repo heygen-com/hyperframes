@@ -149,12 +149,22 @@ export function FlatGroupHeader({
   onToggleOpen,
   accessory,
   summary,
+  animateEntrance,
 }: {
   title: string;
   isOpen: boolean;
   onToggleOpen: () => void;
   accessory?: ReactNode;
   summary?: string;
+  /** Play the fast entrance animation on this render — set only for the one
+   *  group actually transitioning (see PropertyPanelFlat's justToggledId).
+   *  Not derived from `isOpen`/remounting alone: React's key-based diffing
+   *  can still shift an unrelated collapsed sibling's position in the
+   *  before/after-open arrays (e.g. when the newly opened group isn't
+   *  adjacent to the previously open one), and Chromium restarts a CSS
+   *  entrance animation on such a position change even though nothing about
+   *  that sibling actually changed — gating explicitly avoids that replay. */
+  animateEntrance?: boolean;
 }) {
   if (!isOpen) {
     return (
@@ -162,7 +172,7 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className="flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left"
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 w-full flex-shrink-0 items-center justify-between gap-2 border-b border-panel-hairline bg-panel-bg px-4 text-left`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-panel-text-2">{title}</span>
@@ -186,7 +196,9 @@ export function FlatGroupHeader({
   }
 
   return (
-    <div className="flex min-h-10 flex-shrink-0 items-center justify-between bg-panel-bg px-4">
+    <div
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex min-h-10 flex-shrink-0 items-center justify-between bg-panel-bg px-4`}
+    >
       <span className="text-[12px] font-semibold text-panel-text-0">{title}</span>
       <span className="flex items-center gap-2.5 text-panel-text-5">
         {accessory}
