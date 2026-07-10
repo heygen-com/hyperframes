@@ -18,6 +18,35 @@ import {
 import { AudioRow } from "./AudioRow";
 import { GlobalAssetsView } from "./GlobalAssetsView";
 
+/**
+ * Truncate a string to at most `maxLen` chars, preserving the start and end.
+ * Middle characters are replaced with an ellipsis. If the string is short
+ * enough it is returned unchanged.
+ *
+ * @example truncateMiddle("2a37eabf-long-uuid-887d8.mp4", 20) → "2a37eabf-…887d8.mp4"
+ *
+ * Pure — unit-tested.
+ */
+export function truncateMiddle(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  const keep = maxLen - 1; // 1 char for ellipsis
+  const tail = Math.floor(keep / 3);
+  const head = keep - tail;
+  return str.slice(0, head) + "…" + str.slice(str.length - tail);
+}
+
+/**
+ * Format a duration in seconds as MM:SS. Returns an empty string for
+ * non-positive, NaN, or Infinity values. Pure — unit-tested.
+ */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const total = Math.round(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 interface AssetsTabProps {
   projectId: string;
   assets: string[];
@@ -27,38 +56,46 @@ interface AssetsTabProps {
   onAddAssetToTimeline?: (path: string) => void;
 }
 
+/**
+ * Thumbnail card for images and video assets. Renders in a 2-col grid.
+ * Layout:
+ *   - Rounded thumbnail that fills the card; video previews show a poster
+ *     frame (VideoFrameThumbnail) + hover-preview video overlay.
+ *   - "Added" dark chip badge top-left when the asset is used in the timeline.
+ *   - Duration badge top-right for media with a known duration (MM:SS).
+ *   - Filename caption below the card, truncated in the middle.
+ */
 // fallow-ignore-next-line complexity
-function ImageCard({
+function AssetCard({
   projectId,
   asset,
   used,
+  duration,
   onCopy,
   isCopied,
   onDelete,
   onRename,
   onAddAssetToTimeline,
-  size,
 }: {
   projectId: string;
   asset: string;
   used: boolean;
+  duration?: number;
   onCopy: (path: string) => void;
   isCopied: boolean;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
-  size: "large" | "small";
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hovered, setHovered] = useState(false);
+  const fullName = asset.split("/").pop() ?? asset; // filename with extension
   const name = basename(asset);
   const extension = ext(asset);
   const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
-
-  const thumbW = size === "large" ? "w-full" : "w-[50px]";
-  const thumbH = size === "large" ? "h-[100px]" : "h-[32px]";
+  const durationLabel = formatDuration(duration ?? 0);
 
   return (
     <>
@@ -73,7 +110,7 @@ function ImageCard({
             source: "asset",
             path: asset,
             kind: isVideo ? "video" : "image",
-            durationSec: null,
+            durationSec: duration ?? null,
             label: name,
           });
         }}
@@ -84,32 +121,27 @@ function ImageCard({
         }}
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
-        className={`transition-colors cursor-pointer ${
-          size === "large"
-            ? `px-2.5 py-1 ${isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/30"}`
-            : `px-2.5 py-1.5 flex items-center gap-2.5 ${
-                isCopied
-                  ? "bg-studio-accent/10 border-l-2 border-studio-accent"
-                  : "border-l-2 border-transparent hover:bg-neutral-800/50"
-              }`
+        className={`flex flex-col gap-1 cursor-pointer rounded-md p-1 transition-colors ${
+          isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/40"
         }`}
       >
-        {size === "large" ? (
-          <div className="flex flex-col gap-1">
-            <div className={`${thumbW} ${thumbH} rounded overflow-hidden bg-neutral-900 relative`}>
-              {isImage && (
-                <img
-                  src={serveUrl}
-                  alt={name}
-                  loading="lazy"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-              {isVideo && <VideoFrameThumbnail src={serveUrl} />}
-              {isVideo && hovered && (
+        {/* Thumbnail */}
+        <div className="w-full aspect-video rounded overflow-hidden bg-neutral-900 relative">
+          {isImage && (
+            <img
+              src={serveUrl}
+              alt={name}
+              loading="lazy"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          )}
+          {isVideo && (
+            <>
+              <VideoFrameThumbnail src={serveUrl} />
+              {hovered && (
                 <video
                   src={serveUrl}
                   autoPlay
@@ -119,56 +151,128 @@ function ImageCard({
                   className="absolute inset-0 w-full h-full object-cover"
                 />
               )}
+            </>
+          )}
+          {!isImage && !isVideo && (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-[10px] font-medium text-neutral-600">{extension}</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`text-xs font-medium truncate ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
-              >
-                {name}
+          )}
+
+          {/* "Added" badge — top-left */}
+          {used && (
+            <span className="absolute top-1 left-1 text-[9px] font-semibold leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-1">
+              Added
+            </span>
+          )}
+
+          {/* Duration badge — top-right, media only */}
+          {durationLabel && (
+            <span className="absolute top-1 right-1 text-[9px] font-medium leading-none px-1.5 py-[3px] rounded bg-neutral-950/80 text-panel-text-2 tabular-nums">
+              {durationLabel}
+            </span>
+          )}
+        </div>
+
+        {/* Filename caption */}
+        <span
+          className={`text-[10px] leading-tight text-center block w-full ${
+            used ? "text-panel-text-2" : "text-panel-text-4"
+          }`}
+          title={fullName}
+        >
+          {truncateMiddle(fullName, 22)}
+        </span>
+      </div>
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          asset={asset}
+          onClose={() => setContextMenu(null)}
+          onCopy={onCopy}
+          onDelete={onDelete}
+          onRename={onRename}
+          onAddAtPlayhead={onAddAssetToTimeline}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Compact row for font assets (no meaningful thumbnail; show ext badge + name).
+ * Kept as a row rather than a card because font previews require font-loading
+ * and an aspect-video thumbnail would just be empty.
+ */
+function FontRow({
+  asset,
+  used,
+  onCopy,
+  isCopied,
+  onDelete,
+  onRename,
+  onAddAssetToTimeline,
+}: {
+  asset: string;
+  used: boolean;
+  onCopy: (path: string) => void;
+  isCopied: boolean;
+  onDelete?: (path: string) => void;
+  onRename?: (oldPath: string, newPath: string) => void;
+  onAddAssetToTimeline?: (path: string) => void;
+}) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const name = basename(asset);
+  const extension = ext(asset);
+
+  return (
+    <>
+      <div
+        draggable
+        onClick={() => onCopy(asset)}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
+          e.dataTransfer.setData("text/plain", asset);
+          beginDragSession({
+            source: "asset",
+            path: asset,
+            kind: "image", // fonts treated as non-media for DnD kind
+            durationSec: null,
+            label: name,
+          });
+        }}
+        onDragEnd={endDragSession}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
+        className={`px-2.5 py-1.5 flex items-center gap-2.5 cursor-pointer transition-colors ${
+          isCopied
+            ? "bg-studio-accent/10 border-l-2 border-studio-accent"
+            : "border-l-2 border-transparent hover:bg-neutral-800/50"
+        }`}
+      >
+        <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
+          <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <span
+            className={`text-xs font-medium truncate block ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
+          >
+            {name}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-neutral-600 truncate">{extension}</span>
+            {used && (
+              <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
+                in use
               </span>
-              <span className="text-[10px] text-neutral-600">{extension}</span>
-              {used && (
-                <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
-                  in use
-                </span>
-              )}
-            </div>
+            )}
           </div>
-        ) : (
-          <>
-            <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
-              {isImage && (
-                <img
-                  src={serveUrl}
-                  alt={name}
-                  loading="lazy"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-              {!isImage && (
-                <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <span
-                className={`text-xs font-medium truncate block ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
-              >
-                {name}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-neutral-600 truncate">{extension}</span>
-                {used && (
-                  <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
-                    in use
-                  </span>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        </div>
       </div>
 
       {contextMenu && (
@@ -560,26 +664,28 @@ export const AssetsTab = memo(function AssetsTab({
                     onAddAssetToTimeline={onAddAssetToTimeline}
                   />
                 ))}
-              {(cat === "images" || cat === "video") &&
-                categorized[cat].map((a) => (
-                  <ImageCard
-                    key={a}
-                    projectId={projectId}
-                    asset={a}
-                    used={usedPaths.has(a)}
-                    onCopy={handleCopyPath}
-                    isCopied={copiedPath === a}
-                    onDelete={onDelete}
-                    onRename={onRename}
-                    onAddAssetToTimeline={onAddAssetToTimeline}
-                    size={categorized[cat].length <= 4 ? "large" : "small"}
-                  />
-                ))}
+              {(cat === "images" || cat === "video") && (
+                <div className="grid grid-cols-2 gap-1 px-2 pb-1">
+                  {categorized[cat].map((a) => (
+                    <AssetCard
+                      key={a}
+                      projectId={projectId}
+                      asset={a}
+                      used={usedPaths.has(a)}
+                      duration={manifest.get(a)?.duration}
+                      onCopy={handleCopyPath}
+                      isCopied={copiedPath === a}
+                      onDelete={onDelete}
+                      onRename={onRename}
+                      onAddAssetToTimeline={onAddAssetToTimeline}
+                    />
+                  ))}
+                </div>
+              )}
               {cat === "fonts" &&
                 categorized[cat].map((a) => (
-                  <ImageCard
+                  <FontRow
                     key={a}
-                    projectId={projectId}
                     asset={a}
                     used={usedPaths.has(a)}
                     onCopy={handleCopyPath}
@@ -587,7 +693,6 @@ export const AssetsTab = memo(function AssetsTab({
                     onDelete={onDelete}
                     onRename={onRename}
                     onAddAssetToTimeline={onAddAssetToTimeline}
-                    size="small"
                   />
                 ))}
             </div>
