@@ -259,27 +259,27 @@ export function FlatSlider({
         aria-label={label}
         aria-valuenow={value}
         aria-disabled={disabled}
-        className={`relative h-0.5 flex-1 rounded-full bg-panel-hover ${
-          disabled ? "cursor-not-allowed" : "cursor-pointer"
-        }`}
+        className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
         onPointerDown={(e) => {
           if (disabled) return;
           commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
         }}
       >
-        {centerTick && (
-          <div
-            data-flat-slider-center-tick="true"
-            className="absolute left-1/2 top-[-1px] h-1 w-px -translate-x-1/2 bg-panel-text-5"
-          />
-        )}
-        {tier === "explicitCustom" && (
-          <div
-            data-flat-slider-fill="true"
-            className="absolute inset-y-0 left-0 rounded-full bg-panel-text-5"
-            style={{ width: `${clampedPct}%` }}
-          />
-        )}
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
+          {centerTick && (
+            <div
+              data-flat-slider-center-tick="true"
+              className="absolute left-1/2 top-[-1px] h-1 w-px -translate-x-1/2 bg-panel-text-5"
+            />
+          )}
+          {tier === "explicitCustom" && (
+            <div
+              data-flat-slider-fill="true"
+              className="absolute inset-y-0 left-0 rounded-full bg-panel-text-5"
+              style={{ width: `${clampedPct}%` }}
+            />
+          )}
+        </div>
         <div
           data-flat-slider-knob="true"
           className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${

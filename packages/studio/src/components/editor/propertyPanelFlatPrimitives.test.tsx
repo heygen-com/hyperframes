@@ -253,6 +253,33 @@ describe("FlatSlider", () => {
     expect(onCommit).toHaveBeenCalledWith(50);
     act(() => root.unmount());
   });
+
+  it("widens the click/drag hit area vertically beyond the thin visible line", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={50}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="50%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 18 }),
+      );
+    });
+    expect(onCommit).toHaveBeenCalledWith(10);
+    act(() => root.unmount());
+  });
 });
 
 describe("FlatSlider — Grade extensions", () => {
