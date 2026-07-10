@@ -231,6 +231,10 @@ async function captureSnapshots(
         "--enable-webgl",
         "--use-gl=angle",
         "--use-angle=swiftshader",
+        // Match the render pipeline (engine's browserManager enables this
+        // globally): compositions that use ctx.drawElementImage() otherwise
+        // fall back to their "API required" placeholder in snapshots only.
+        "--enable-features=CanvasDrawElement",
       ],
     });
 
