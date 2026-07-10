@@ -69,6 +69,17 @@ export function heygenCredential() {
   return null;
 }
 
+// → "oauth" | "api_key" | null. Same oauth-vs-api-key check heygenAuthHeaders()
+// makes internally, exposed on its own so callers that only need to *tag* the
+// auth path (telemetry) don't have to parse headers back apart. Never throws:
+// no credential (or an expired one) is just `null`, same as a fresh resolve
+// with nothing to tag.
+export function heygenAuthMethod() {
+  const cred = heygenCredential();
+  if (!cred?.headers) return null;
+  return "Authorization" in cred.headers ? "oauth" : "api_key";
+}
+
 // → auth headers object, or throw with a fix hint.
 export function heygenAuthHeaders() {
   const cred = heygenCredential();

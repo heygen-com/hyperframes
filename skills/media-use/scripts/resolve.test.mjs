@@ -179,6 +179,84 @@ test("entity hit matches across icon/image (figma-imported brand marks)", () => 
   cleanup();
 });
 
+// --- auth_method provenance (U6) ---
+
+test("manifest hit for an OAuth-credentialed heygen resolve surfaces authMethod: oauth", () => {
+  setup();
+  const record = makeRecord({
+    id: "voice_001",
+    type: "voice",
+    path: ".media/audio/voice/voice_001.wav",
+    provenance: { provider: "heygen.tts", authMethod: "oauth", prompt: "oauth voice" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached voice");
+
+  const out = runResolve([
+    "--type",
+    "voice",
+    "--intent",
+    "oauth voice",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.authMethod, "oauth");
+  cleanup();
+});
+
+test("manifest hit for an API-key-credentialed heygen resolve surfaces authMethod: api_key", () => {
+  setup();
+  const record = makeRecord({
+    id: "voice_001",
+    type: "voice",
+    path: ".media/audio/voice/voice_001.wav",
+    provenance: { provider: "heygen.tts", authMethod: "api_key", prompt: "api key voice" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached voice");
+
+  const out = runResolve([
+    "--type",
+    "voice",
+    "--intent",
+    "api key voice",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.authMethod, "api_key");
+  cleanup();
+});
+
+test("manifest hit for a non-heygen provider omits authMethod entirely", () => {
+  setup();
+  const record = makeRecord({
+    id: "logo_001",
+    type: "logo",
+    path: ".media/images/logo_001.svg",
+    provenance: { provider: "svgl", prompt: "acme logo" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "<svg/>");
+
+  const out = runResolve(["--type", "logo", "--intent", "acme logo", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal("authMethod" in parsed.provenance, false);
+  cleanup();
+});
+
 // --- global cache hit ---
 
 test("global cache hit copies to project and registers", () => {

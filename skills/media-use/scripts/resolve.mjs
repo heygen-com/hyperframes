@@ -16,6 +16,7 @@ import { buildStats } from "./lib/stats.mjs";
 import { typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
+import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
@@ -212,6 +213,15 @@ function recordAvailable(projectDir, record) {
   return record.type === "grade" && record.grading;
 }
 
+// Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),
+// else `{}` — keeps auth_method telemetry absent for every non-heygen resolve
+// instead of implying an auth method that doesn't apply.
+function heygenAuthMethodFor(provider) {
+  if (!provider || !provider.startsWith("heygen.")) return {};
+  const authMethod = heygenAuthMethod();
+  return authMethod ? { authMethod } : {};
+}
+
 function localizeImportedRecord(record, localPath) {
   if (record?.type === "grade" && record.grading?.lut) {
     record.grading = {
@@ -401,6 +411,7 @@ async function run() {
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
       prompt: intent,
+      ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
     },
   };
@@ -1056,6 +1067,9 @@ async function result(record, source) {
     // parametric), or "params" (offline). Surfaces silent CDN→params downgrades
     // in prod, which --doctor can't (it only answers "reachable now?").
     via: record.provenance?.via,
+    // Free (OAuth) vs. paid (API-key) heygen path — sparse: absent for every
+    // non-heygen provider (see heygenAuthMethodFor at construction time).
+    auth_method: record.provenance?.authMethod,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
   });
