@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.7.48"
+  description="Released - 2026-07-10"
+  tags={["Release", "CLI"]}
+>
+Prevents slow Chrome downloads from losing their install lock and colliding with another HyperFrames process. Also restores `hyperframes tts --text-file` compatibility for existing skills and scripts.
+
+## Fixes
+
+- **CLI:** Restore `tts --text-file` compatibility for file-based narration workflows ([ef38321d5](https://github.com/heygen-com/hyperframes/commit/ef38321d5d1b549777b846d1156de40a0f475b4e), [#2117](https://github.com/heygen-com/hyperframes/pull/2117))
+- **CLI:** Keep slow browser installs serialized with an active lock heartbeat and visible wait progress ([7bd8c0942](https://github.com/heygen-com/hyperframes/commit/7bd8c0942e2d0863b7c82fe5a3dd1c026f1e5db1), [#2116](https://github.com/heygen-com/hyperframes/pull/2116))
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.7.47...v0.7.48).
+</Update>
+
+<Update
   label="HyperFrames v0.7.47"
   description="Released - 2026-07-10"
   tags={["Release", "Media Use", "CLI", "Studio"]}
