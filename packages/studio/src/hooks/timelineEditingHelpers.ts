@@ -73,6 +73,46 @@ export function patchIframeDomTiming(
   }
 }
 
+/**
+ * Pure: find the TOP-LEVEL composition root in `doc` (the `[data-composition-id]`
+ * with no ancestor composition, matching the runtime's own root resolution) and
+ * write `contentEnd` into its `data-duration`. Returns whether a write happened.
+ *
+ * A timing edit optimistically patches the moved clip's `data-start`/`-duration`
+ * in the live iframe, but NOT the root's `data-duration`. Timing edits now take
+ * the soft-reload path (no full iframe reload), which re-runs the GSAP script and
+ * lets the runtime recompute the composition length — it reads the root's
+ * `data-duration` as the authored floor (core/runtime/init.ts) and posts it back,
+ * so the studio store's duration is set from the STALE root and the readout
+ * reverts to the pre-edit length. Patching the root here keeps the runtime's
+ * post-soft-reload duration report in agreement with the optimistic readout, so
+ * the number stays live (grow AND shrink) instead of snapping back.
+ */
+export function patchDocumentRootDuration(
+  doc: Document | null | undefined,
+  contentEnd: number,
+): boolean {
+  if (!doc || !Number.isFinite(contentEnd) || contentEnd <= 0) return false;
+  const nodes = Array.from(doc.querySelectorAll("[data-composition-id]"));
+  const root =
+    nodes.find((node) => !node.parentElement?.closest("[data-composition-id]")) ?? nodes[0] ?? null;
+  if (!root) return false;
+  root.setAttribute("data-duration", formatTimelineAttributeNumber(contentEnd));
+  return true;
+}
+
+/** Best-effort live-iframe wrapper for patchDocumentRootDuration (see above). */
+export function patchIframeRootDuration(
+  iframe: HTMLIFrameElement | null,
+  contentEnd: number,
+): void {
+  try {
+    patchDocumentRootDuration(iframe?.contentDocument ?? null, contentEnd);
+  } catch {
+    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
+  }
+}
+
 // fallow-ignore-next-line complexity
 export function resolveResizePlaybackStart(
   original: string,

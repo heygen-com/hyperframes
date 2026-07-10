@@ -33,6 +33,7 @@ import { generateId } from "../utils/generateId";
 import {
   buildPatchTarget,
   patchIframeDomTiming,
+  patchIframeRootDuration,
   resolveResizePlaybackStart,
   persistTimelineEdit,
   readFileContent,
@@ -130,7 +131,14 @@ export function useTimelineEditing({
   // data-duration) so it's immune to the runtime's truncated live durations.
   const syncReadoutDurationFromPreview = useCallback(() => {
     const end = furthestClipEndFromDocument(previewIframeRef.current?.contentDocument ?? null);
-    if (end > 0) usePlayerStore.getState().setDuration(end);
+    if (end > 0) {
+      usePlayerStore.getState().setDuration(end);
+      // Also write the content end into the live root's `data-duration`. Timing
+      // edits now take the soft-reload path (no full iframe reload), which lets
+      // the runtime recompute the length from the root's declared duration and
+      // post it back — reading the STALE root would revert this optimistic set.
+      patchIframeRootDuration(previewIframeRef.current, end);
+    }
   }, [previewIframeRef]);
 
   // fallow-ignore-next-line complexity

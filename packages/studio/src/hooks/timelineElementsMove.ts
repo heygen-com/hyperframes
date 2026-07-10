@@ -11,6 +11,7 @@ import {
   buildPatchTarget,
   formatTimelineAttributeNumber,
   patchIframeDomTiming,
+  patchIframeRootDuration,
   readFileContent,
   shiftGsapPositionsBatch,
   syncTimingEditPreview,
@@ -136,9 +137,13 @@ export async function persistTimelineElementsMove(
     // Optimistically reflect the new composition length in the player store so
     // the duration readout + seek bar update immediately (they bind to
     // store.duration; without this the number stays frozen until a manual
-    // refresh). Only for the composition currently displayed.
+    // refresh). Only for the composition currently displayed. Also patch the live
+    // root's `data-duration`: a batched move takes the soft-reload path (no full
+    // iframe reload), so the runtime recomputes the length from the root's
+    // declared duration and posts it back — a stale root would revert this set.
     if (contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
       usePlayerStore.getState().setDuration(contentEnd);
+      patchIframeRootDuration(previewIframe, contentEnd);
     }
 
     groupResults.push({ targetPath, original, patched, groupEdits });
