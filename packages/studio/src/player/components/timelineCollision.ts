@@ -93,7 +93,7 @@ export function resolveZoneDropPlacement(input: {
  * from "target this lane" into "insert a new track at this boundary". Tuned by
  * feel — bigger = easier to hit boundaries (harder to land on a lane).
  */
-const INSERT_BAND = 0.22;
+const INSERT_BAND = 0.32;
 
 /**
  * Decide whether a vertical drag is inserting a new track at a lane boundary.

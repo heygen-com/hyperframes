@@ -603,12 +603,12 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         <div
           className="absolute pointer-events-none"
           style={{
-            top: getTimelineRowTop(draggedClip.insertRow) - 1,
+            top: getTimelineRowTop(draggedClip.insertRow) - 0.5,
             left: GUTTER,
             width: trackContentWidth,
-            height: 2,
+            height: 1,
             background: "#3CE6AC",
-            boxShadow: "0 0 6px rgba(60,230,172,0.7)",
+            boxShadow: "0 0 3px rgba(60,230,172,0.5)",
             zIndex: 55,
           }}
         />
