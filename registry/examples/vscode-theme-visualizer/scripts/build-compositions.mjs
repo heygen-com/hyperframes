@@ -4,11 +4,24 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(projectRoot, "../../..");
 const assetsDir = path.join(projectRoot, "assets");
 const compositionsDir = path.join(projectRoot, "compositions");
 const renderEntriesDir = path.join(projectRoot, "render-entries");
-const blocksDir = path.join(repoRoot, "registry", "blocks");
+
+// Block emission only makes sense inside the hyperframes repo. When this
+// example is copied/installed standalone, a blind "../../.." walks to an
+// arbitrary directory (e.g. "/"), so locate the repo by its registry marker
+// and skip block output when it isn't there.
+function findBlocksDir(start) {
+  for (let dir = start; ; ) {
+    const candidate = path.join(dir, "registry", "blocks");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+const blocksDir = findBlocksDir(path.dirname(projectRoot));
 
 fs.mkdirSync(compositionsDir, { recursive: true });
 fs.mkdirSync(renderEntriesDir, { recursive: true });
@@ -920,13 +933,19 @@ for (const theme of registry) {
   );
   fs.writeFileSync(path.join(renderEntriesDir, `${theme.id}.html`), renderEntryMarkup(theme));
 
-  const blockName = `code-snippet-${theme.id}`;
-  const blockDir = path.join(blocksDir, blockName);
-  fs.mkdirSync(blockDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(blockDir, `${blockName}.html`),
-    compositionMarkup(compositionId, theme),
-  );
+  if (blocksDir) {
+    const blockName = `code-snippet-${theme.id}`;
+    const blockDir = path.join(blocksDir, blockName);
+    fs.mkdirSync(blockDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(blockDir, `${blockName}.html`),
+      compositionMarkup(compositionId, theme),
+    );
+  }
+}
+
+if (!blocksDir) {
+  console.log("registry/blocks not found above this project; skipped block HTML output");
 }
 
 fs.writeFileSync(path.join(projectRoot, "index.html"), rootIndexMarkup());
