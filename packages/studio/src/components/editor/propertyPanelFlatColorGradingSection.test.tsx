@@ -103,6 +103,110 @@ describe("FlatColorGradingAccessory", () => {
     expect(resetGrading).toHaveBeenCalledTimes(1);
     act(() => root.unmount());
   });
+
+  it("shows the runtime status message as visible text next to the dot, not only as a title", () => {
+    const { host, root } = renderInto(
+      <FlatColorGradingAccessory
+        state={{
+          grading: neutralGrading(),
+          compareEnabled: false,
+          runtimeStatus: { state: "pending", message: "Waiting for shader" },
+          commitCompare: vi.fn(),
+          resetGrading: vi.fn(),
+        }}
+      />,
+    );
+    const messageEl = host.querySelector('[data-flat-grade-status-message="true"]');
+    expect(messageEl).not.toBeNull();
+    expect(messageEl?.textContent).toBe("Waiting for shader");
+    expect(host.textContent).toContain("Waiting for shader");
+    act(() => root.unmount());
+  });
+
+  function activeGrading() {
+    const grading = neutralGrading();
+    return { ...grading, adjust: { ...grading.adjust, contrast: 0.2 } };
+  }
+
+  it("activates hold-to-compare on pointerdown and releases on window pointerup", () => {
+    const commitCompare = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingAccessory
+        state={{
+          grading: activeGrading(),
+          compareEnabled: false,
+          runtimeStatus: { state: "active", message: "Shader active" },
+          commitCompare,
+          resetGrading: vi.fn(),
+        }}
+      />,
+    );
+    const compareButton = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Hold to show original"]',
+    );
+    if (!compareButton) throw new Error("expected a compare button");
+    act(() => compareButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    expect(commitCompare).toHaveBeenNthCalledWith(1, true);
+    act(() => window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true })));
+    expect(commitCompare).toHaveBeenNthCalledWith(2, false);
+    act(() => root.unmount());
+  });
+
+  it("activates hold-to-compare via keyboard Space and releases on keyup", () => {
+    const commitCompare = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingAccessory
+        state={{
+          grading: activeGrading(),
+          compareEnabled: false,
+          runtimeStatus: { state: "active", message: "Shader active" },
+          commitCompare,
+          resetGrading: vi.fn(),
+        }}
+      />,
+    );
+    const compareButton = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Hold to show original"]',
+    );
+    if (!compareButton) throw new Error("expected a compare button");
+    act(() =>
+      compareButton.dispatchEvent(
+        new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(commitCompare).toHaveBeenNthCalledWith(1, true);
+    act(() =>
+      compareButton.dispatchEvent(
+        new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(commitCompare).toHaveBeenNthCalledWith(2, false);
+    act(() => root.unmount());
+  });
+
+  it("releases an active hold when the window loses focus mid-hold", () => {
+    const commitCompare = vi.fn();
+    const { host, root } = renderInto(
+      <FlatColorGradingAccessory
+        state={{
+          grading: activeGrading(),
+          compareEnabled: false,
+          runtimeStatus: { state: "active", message: "Shader active" },
+          commitCompare,
+          resetGrading: vi.fn(),
+        }}
+      />,
+    );
+    const compareButton = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Hold to show original"]',
+    );
+    if (!compareButton) throw new Error("expected a compare button");
+    act(() => compareButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    expect(commitCompare).toHaveBeenNthCalledWith(1, true);
+    act(() => window.dispatchEvent(new Event("blur")));
+    expect(commitCompare).toHaveBeenNthCalledWith(2, false);
+    act(() => root.unmount());
+  });
 });
 
 function neutralPropsBase() {
@@ -280,6 +384,43 @@ describe("FlatColorGradingSection — Adjust sliders", () => {
     expect(onCommitColorGrading.mock.calls[0][0].adjust.saturation).toBe(0.2);
     act(() => root.unmount());
   });
+
+  it("revives a grade parked at 0% strength back to 100% when an Adjust slider is committed", () => {
+    const onCommitColorGrading = vi.fn();
+    const grading = { ...neutralGrading(), intensity: 0 };
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        grading={grading}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const contrastRow = findRowByText(host, '[data-flat-grade-adjust="true"]', "Contrast");
+    // min=-100, max=100, step=1, ratio=0.75 -> raw=50 -> commit(50) -> adjust.contrast = 0.5
+    dragSliderTrack(contrastRow, 75, 100);
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].intensity).toBe(1);
+    expect(onCommitColorGrading.mock.calls[0][0].adjust.contrast).toBe(0.5);
+    act(() => root.unmount());
+  });
+
+  it("does NOT force intensity to revive when the Strength slider itself is dragged — it writes the value directly", () => {
+    const onCommitColorGrading = vi.fn();
+    const grading = { ...neutralGrading(), intensity: 0 };
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        grading={grading}
+        onCommitColorGrading={onCommitColorGrading}
+      />,
+    );
+    const strengthRow = findRowByText(host, "div", "Strength", "startsWith");
+    // min=0, max=100, step=1, ratio=0.4 -> raw=40 -> commit(40) -> intensity = 40/100 = 0.4
+    dragSliderTrack(strengthRow, 40, 100);
+    expect(onCommitColorGrading).toHaveBeenCalledTimes(1);
+    expect(onCommitColorGrading.mock.calls[0][0].intensity).toBe(0.4);
+    act(() => root.unmount());
+  });
 });
 
 describe("FlatColorGradingSection — Vignette and Grain", () => {
@@ -383,6 +524,46 @@ describe("FlatColorGradingSection — HDR banner and Apply scope", () => {
       />,
     );
     expect(host.textContent).toContain("SDR preview");
+    act(() => root.unmount());
+  });
+
+  it("shows a codec/profile/pixel-format/color detail line in the HDR banner when metadata provides it", () => {
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        mediaMetadata={{
+          kind: "video",
+          color: {
+            dynamicRange: "hdr",
+            hdrTransfer: "pq",
+            label: "HDR10",
+            isHdr: true,
+            codecName: "hevc",
+            profile: "Main10",
+            pixelFormat: "yuv420p10le",
+            colorPrimaries: "bt2020",
+            colorTransfer: "smpte2084",
+          },
+        }}
+      />,
+    );
+    const detail = host.querySelector('[data-flat-grade-hdr-detail="true"]');
+    expect(detail).not.toBeNull();
+    expect(detail?.textContent).toBe("hevc · Main10 · yuv420p10le · bt2020 · smpte2084");
+    act(() => root.unmount());
+  });
+
+  it("omits the HDR detail line entirely when no detail fields are populated", () => {
+    const { host, root } = renderInto(
+      <FlatColorGradingSection
+        {...neutralPropsBase()}
+        mediaMetadata={{
+          kind: "video",
+          color: { dynamicRange: "hdr", hdrTransfer: "pq", label: "HDR10", isHdr: true },
+        }}
+      />,
+    );
+    expect(host.querySelector('[data-flat-grade-hdr-detail="true"]')).toBeNull();
     act(() => root.unmount());
   });
 
