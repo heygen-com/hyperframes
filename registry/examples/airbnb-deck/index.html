@@ -1298,14 +1298,12 @@
         var lastActiveId = null;
 
         // Entrances are computed as a pure function of composition time.
-        // The port originally fired wall-clock anime.animate() calls on scene
-        // entry (mirroring the GSAP original's gsap.from()), but autoplaying
-        // animations run on anime's own rAF engine, which does not advance
-        // under the seek-driven render pipeline -- slides rendered with their
-        // content stuck at opacity 0 (or mid-fade), while the GSAP baseline
-        // happened to complete because GSAP's ticker still ticked during
-        // capture. Deriving progress from t keeps the exact same motion
-        // (400ms, 70ms stagger, outCubic; fragments 350ms) and is
+        // The port originally fired wall-clock anime.animate() calls on
+        // scene entry, but autoplaying animations run on anime's own rAF
+        // engine, which does not advance under the seek-driven render
+        // pipeline -- slides rendered with their content stuck at opacity 0
+        // (or mid-fade). Deriving progress from t keeps the exact same
+        // motion (400ms, 70ms stagger, outCubic; fragments 350ms) and is
         // deterministic under seeking in both directions.
         function outCubic(p) {
           return 1 - Math.pow(1 - p, 3);
