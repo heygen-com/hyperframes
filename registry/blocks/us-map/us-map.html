@@ -288,9 +288,34 @@
               buildTimeline();
             });
 
+          // GSAP's stagger { each, from: "center" } assigns every element a
+          // UNIQUE slot, ordered center-out (total span = each * (n-1)).
+          // anime.stagger(value, { from: "center" }) instead scales delay by
+          // DISTANCE from center, so equidistant pairs share a slot and the
+          // whole reveal finishes in about half the time. Precompute the GSAP
+          // rank order (sort by distance, ties lower-index-first) and hand
+          // anime explicit per-element delays instead.
+          function buildCenterStaggerRanks(count) {
+            const centerIdx = (count - 1) / 2;
+            const order = [];
+            for (let i = 0; i < count; i++) order.push(i);
+            order.sort((a, b) => {
+              const da = Math.abs(a - centerIdx);
+              const db = Math.abs(b - centerIdx);
+              return da === db ? a - b : da - db;
+            });
+            const rank = new Array(count);
+            order.forEach((idx, r) => {
+              rank[idx] = r;
+            });
+            return rank;
+          }
+
           function buildTimeline() {
             const statePaths = statesGroup.querySelectorAll(".state-path");
             const stateLabels = labelsGroup.querySelectorAll(".state-label");
+            const statePathRanks = buildCenterStaggerRanks(statePaths.length);
+            const stateLabelRanks = buildCenterStaggerRanks(stateLabels.length);
 
             tl.add(
               "#us-map .headline",
@@ -318,7 +343,7 @@
                 opacity: 1,
                 scale: 1,
                 duration: 400,
-                delay: anime.stagger(60, { from: "center" }),
+                delay: (target, i) => statePathRanks[i] * 60,
                 ease: "outBack(1.4)",
               },
               1000,
@@ -329,7 +354,7 @@
               {
                 opacity: 1,
                 duration: 300,
-                delay: anime.stagger(40, { from: "center" }),
+                delay: (target, i) => stateLabelRanks[i] * 40,
                 ease: "outCubic",
               },
               3500,
