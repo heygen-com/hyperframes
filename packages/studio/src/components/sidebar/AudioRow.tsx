@@ -3,6 +3,9 @@ import { ContextMenu } from "./AssetContextMenu";
 import { basename, getAudioSubtype } from "./assetHelpers";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { beginDragSession, endDragSession } from "../../utils/dragSession";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 
 export function AudioRow({
   projectId,
@@ -36,6 +39,35 @@ export function AudioRow({
   const name = basename(asset);
   const subtype = getAudioSubtype(asset);
   const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
+
+  // CapCut-style click behavior: drag-threshold gate.
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
+  const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    pointerDownRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const origin = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (!origin) return;
+      if (!isPointerClick(e.clientX - origin.x, e.clientY - origin.y)) return;
+      if (used) {
+        const clip = findClipForAsset(elements, asset);
+        if (clip) {
+          setSelectedElementId(clip.key ?? clip.id);
+          return;
+        }
+      }
+      // Not added → preview overlay (audio player)
+      setPreviewAsset(asset, projectId);
+    },
+    [used, elements, asset, projectId, setSelectedElementId, setPreviewAsset],
+  );
 
   useEffect(() => {
     return () => {
@@ -112,7 +144,8 @@ export function AudioRow({
     <>
       <div
         draggable
-        onClick={() => onCopy(asset)}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));

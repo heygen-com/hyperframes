@@ -5,6 +5,7 @@ import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
+import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -139,6 +140,7 @@ export function PreviewPane({
           {previewDragOver && (
             <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/[0.04] pointer-events-none" />
           )}
+          <AssetPreviewOverlay />
         </div>
         {!isFullscreen && previewOverlay}
       </div>
