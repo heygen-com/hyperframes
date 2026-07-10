@@ -301,10 +301,113 @@ function escapeCssAttributeValue(value: string): string {
 const PRIME_FALLBACK_MS = 36_000_000;
 const PRIME_ZERO_EPSILON_MS = 0.001;
 
+const TRANSFORM_DECOMPOSED_PROPERTIES = new Set([
+  "translateX",
+  "translateY",
+  "scale",
+  "scaleX",
+  "scaleY",
+  "rotate",
+]);
+
+type TransformDecomposition = Partial<Record<string, number>>;
+
+// anime.js v4.5.0's implicit "from" resolution for decomposed transform
+// sub-properties (translateX/Y, scale, rotate, ...) authored without an
+// explicit `[from, to]` array does not read the element's CSS-cascaded
+// `transform` value — it silently defaults to identity (translateX/Y=0,
+// scale=1, rotate=0), rendering the element at (or near) its target value
+// from the very first frame regardless of the authored CSS starting state
+// (e.g. `.node { transform: translate(-50%, -50%) scale(0); }`). This
+// mutates each affected tween's internal `_fromNumber`/`_number` fields —
+// read at render time as the tween's "from" value — with the correct
+// CSS-cascaded value BEFORE the instance's very first seek, so every
+// subsequent render (including the prime-then-restore dance below) computes
+// the right interpolation across the tween's whole lifecycle.
+function correctImplicitTransformFromValues(instance: RuntimeAnimeInstance): void {
+  const seen = new WeakSet<object>();
+  const decomposedByTarget = new WeakMap<Element, TransformDecomposition>();
+  visitAnimeRenderable(instance, seen, (node) => {
+    correctImplicitTransformFromValueForNode(node, decomposedByTarget);
+  });
+}
+
+function correctImplicitTransformFromValueForNode(
+  node: Record<string, unknown>,
+  decomposedByTarget: WeakMap<Element, TransformDecomposition>,
+): void {
+  const property = readStringProperty(node, "property");
+  if (!property || !TRANSFORM_DECOMPOSED_PROPERTIES.has(property)) return;
+  const target = Reflect.get(node, "target");
+  if (!isStyleElement(target)) return;
+  if (readBooleanishProperty(node, "_hasFromValue")) return;
+  if (typeof Reflect.get(node, "_fromNumber") !== "number") return;
+
+  applyCorrectedTransformFromValue(node, target, property, decomposedByTarget);
+}
+
+function applyCorrectedTransformFromValue(
+  node: Record<string, unknown>,
+  target: HTMLElement | SVGElement,
+  property: string,
+  decomposedByTarget: WeakMap<Element, TransformDecomposition>,
+): void {
+  let decomposition = decomposedByTarget.get(target);
+  if (!decomposition) {
+    decomposition = decomposeCurrentTransform(target);
+    decomposedByTarget.set(target, decomposition);
+  }
+  const currentValue = decomposition[property];
+  if (currentValue == null || !Number.isFinite(currentValue)) return;
+
+  const unit = Reflect.get(node, "_unit");
+  const correctedFrom =
+    unit === "%" ? toPercentOfBox(target, property, currentValue) : currentValue;
+  if (!Number.isFinite(correctedFrom)) return;
+
+  Reflect.set(node, "_fromNumber", correctedFrom);
+  Reflect.set(node, "_number", correctedFrom);
+}
+
+function decomposeCurrentTransform(target: HTMLElement | SVGElement): TransformDecomposition {
+  try {
+    if (typeof DOMMatrixReadOnly === "undefined" || typeof getComputedStyle === "undefined") {
+      return {};
+    }
+    const computed = getComputedStyle(target).transform;
+    if (!computed || computed === "none") {
+      return { translateX: 0, translateY: 0, scale: 1, scaleX: 1, scaleY: 1, rotate: 0 };
+    }
+    const matrix = new DOMMatrixReadOnly(computed);
+    return {
+      translateX: matrix.e,
+      translateY: matrix.f,
+      scale: Math.hypot(matrix.a, matrix.b),
+      scaleX: Math.hypot(matrix.a, matrix.b),
+      scaleY: Math.hypot(matrix.c, matrix.d),
+      rotate: (Math.atan2(matrix.b, matrix.a) * 180) / Math.PI,
+    };
+  } catch (err) {
+    swallow("runtime.adapters.animejs.site4", err);
+    return {};
+  }
+}
+
+function toPercentOfBox(
+  target: HTMLElement | SVGElement,
+  property: string,
+  pxValue: number,
+): number {
+  if (!(target instanceof HTMLElement)) return pxValue;
+  const basis = property === "translateY" ? target.offsetHeight : target.offsetWidth;
+  return basis > 0 ? (pxValue / basis) * 100 : pxValue;
+}
+
 function primeAnimeInstance(instance: RuntimeAnimeInstance): void {
   if (primedAnimeInstances.has(instance)) return;
   primedAnimeInstances.add(instance);
   if (typeof instance.seek !== "function") return;
+  correctImplicitTransformFromValues(instance);
   const durationMs = readDurationMs(instance) ?? PRIME_FALLBACK_MS;
   const inlineStylesBeforePrime = snapshotPrimeInlineStyles();
   const styleTimings = collectPrimeStylePropertyTimings(instance);

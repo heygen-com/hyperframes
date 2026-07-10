@@ -448,4 +448,30 @@ describe("animejs adapter", () => {
       expect(() => adapter.revert?.()).not.toThrow();
     });
   });
+
+  // jsdom does not provide DOMMatrixReadOnly, so browser transform decomposition is unavailable.
+  it.skip("corrects implicit transform from-values from the CSS-cascaded transform", () => {
+    const element = document.createElement("div");
+    element.style.transform = "matrix(0, 0, 0, 0, -50, -30)";
+    document.body.append(element);
+    const tween = {
+      target: element,
+      property: "scale",
+      _hasFromValue: 0,
+      _fromNumber: 1,
+      _number: 1,
+      _unit: null,
+      _next: null,
+    };
+    const instance = {
+      _head: tween,
+      seek: vi.fn(),
+    };
+
+    installHyperframesAnimeApi();
+    animeWindow.hyperframesAnime?.register("test-family-a", instance);
+
+    expect(tween._fromNumber).toBe(0);
+    expect(tween._number).toBe(0);
+  });
 });
