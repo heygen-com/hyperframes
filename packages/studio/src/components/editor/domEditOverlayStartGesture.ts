@@ -2,6 +2,7 @@
  * Gesture-begin functions: startGroupDrag and startGesture.
  * These are pure "start a new gesture" operations — no draft rect updates.
  */
+import { readElementGsapNumber } from "../../utils/elementGsap";
 import { type DomEditSelection } from "./domEditing";
 import {
   createManualOffsetDragMember,
@@ -120,8 +121,37 @@ export function startGesture(
   // `--hf-studio-rotation` CSS var (old projects), so a rotate gesture starts from the
   // element's actual visual angle and commits an absolute angle to the timeline.
   const rotation = { angle: readGsapRotation(sel.element) + readStudioRotation(sel.element).angle };
-  const actualWidth = size.width > 0 ? size.width : rect.width / rect.editScaleX;
-  const actualHeight = size.height > 0 ? size.height : rect.height / rect.editScaleY;
+  // The draft writes CSS width/height, so the resize base must be the CSS
+  // layout size. offsetWidth/Height are transform-free; the overlay-rect
+  // fallback (rect / editScale) includes the element's own GSAP scale and
+  // would make a rescaled element's draft grow from the RENDERED size.
+  const layoutWidth = sel.element.offsetWidth;
+  const layoutHeight = sel.element.offsetHeight;
+  const actualWidth =
+    size.width > 0 ? size.width : layoutWidth > 0 ? layoutWidth : rect.width / rect.editScaleX;
+  const actualHeight =
+    size.height > 0 ? size.height : layoutHeight > 0 ? layoutHeight : rect.height / rect.editScaleY;
+  // overlay rect = cssSize x contentScale x editScale, so the element's own
+  // render factor (its GSAP scale) falls out of the measured rect. 1 when
+  // unscaled or unmeasurable.
+  const rawContentScaleX = rect.width / (rect.editScaleX * actualWidth);
+  const rawContentScaleY = rect.height / (rect.editScaleY * actualHeight);
+  const contentScaleX =
+    Number.isFinite(rawContentScaleX) && rawContentScaleX > 0 ? rawContentScaleX : 1;
+  const contentScaleY =
+    Number.isFinite(rawContentScaleY) && rawContentScaleY > 0 ? rawContentScaleY : 1;
+  let resizeAnchor: GestureState["resizeAnchor"];
+  if (kind === "resize") {
+    const startBcr = sel.element.getBoundingClientRect();
+    resizeAnchor = {
+      anchorX: startBcr.x,
+      anchorY: startBcr.y,
+      baseGsapX: readElementGsapNumber(sel.element, "x") ?? 0,
+      baseGsapY: readElementGsapNumber(sel.element, "y") ?? 0,
+      pinX: 0,
+      pinY: 0,
+    };
+  }
   let initialPathOffset = captureStudioPathOffset(sel.element);
   let manualEditDragToken: string | undefined;
   let pathOffsetMember: ManualOffsetDragMember | undefined;
@@ -184,6 +214,9 @@ export function startGesture(
     actualRotation: rotation.angle,
     editScaleX: rect.editScaleX,
     editScaleY: rect.editScaleY,
+    contentScaleX,
+    contentScaleY,
+    resizeAnchor,
     manualEditDragToken,
     snapContext,
   };

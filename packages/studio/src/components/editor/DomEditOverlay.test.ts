@@ -535,6 +535,47 @@ describe("resolveDomEditResizeGesture", () => {
     });
   });
 
+  it("divides the cursor delta by the element's content scale (rescaled element)", () => {
+    // Element renders at 2x via a GSAP scale: a 30px cursor delta must grow the
+    // CSS box by only 15px so the RENDERED box tracks the pointer 1:1.
+    const next = resolveDomEditResizeGesture({
+      originWidth: 480, // 240 css x 2 content scale (overlay px at editScale 1)
+      originHeight: 240,
+      actualWidth: 240,
+      actualHeight: 120,
+      scaleX: 1,
+      scaleY: 1,
+      contentScaleX: 2,
+      contentScaleY: 2,
+      dx: 30,
+      dy: 12,
+      uniform: false,
+    });
+    expect(next.width).toBe(255);
+    expect(next.height).toBe(126);
+    // The overlay box keeps tracking the raw cursor.
+    expect(next.overlayWidth).toBe(510);
+    expect(next.overlayHeight).toBe(252);
+  });
+
+  it("treats a missing/invalid content scale as 1 (unscaled element)", () => {
+    const next = resolveDomEditResizeGesture({
+      originWidth: 240,
+      originHeight: 120,
+      actualWidth: 240,
+      actualHeight: 120,
+      scaleX: 1,
+      scaleY: 1,
+      contentScaleX: 0,
+      contentScaleY: Number.NaN,
+      dx: 30,
+      dy: 12,
+      uniform: false,
+    });
+    expect(next.width).toBe(270);
+    expect(next.height).toBe(132);
+  });
+
   it("snaps width and height to the same value when Shift is held", () => {
     expect(
       resolveDomEditResizeGesture({

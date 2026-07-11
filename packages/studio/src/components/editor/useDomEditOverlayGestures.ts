@@ -4,6 +4,7 @@
  * Owns: onPointerMove, onPointerUp, clearPointerState.
  * startGesture and startGroupDrag live in domEditOverlayStartGesture.ts.
  */
+import { setElementGsapPosition } from "../../utils/elementGsap";
 import type { RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import {
@@ -53,6 +54,13 @@ import {
   resolveEquidistanceGuides,
   SNAP_THRESHOLD_PX,
 } from "./snapEngine";
+/** Undo the resize draft's anchor pin: snap GSAP x/y back to the gesture base. */
+function restoreResizeAnchorPin(element: HTMLElement, g: GestureState): void {
+  const anchor = g.resizeAnchor;
+  if (!anchor || (anchor.pinX === 0 && anchor.pinY === 0)) return;
+  setElementGsapPosition(element, anchor.baseGsapX, anchor.baseGsapY);
+}
+
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
     opts.setOverlayRect(next);
@@ -175,7 +183,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
-      if (!applyRotationDraftViaGsap(sel.element, rotated.angle)) {
+      const draftViaGsap = applyRotationDraftViaGsap(sel.element, rotated.angle);
+      if (!draftViaGsap) {
         applyStudioRotationDraft(sel.element, rotated);
       }
       return;
@@ -278,12 +287,35 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualHeight: g.actualHeight,
         scaleX: g.editScaleX,
         scaleY: g.editScaleY,
+        contentScaleX: g.contentScaleX,
+        contentScaleY: g.contentScaleY,
         dx,
         dy,
         uniform: e.shiftKey,
       });
       applyStudioBoxSizeDraft(sel.element, nextSize);
-
+      // Pin the gesture anchor (top-left): with a live scale transform, the CSS
+      // size change shifts the rendered box around the element center. Measure
+      // the drift of the gesture-start corner and counter it via GSAP x/y —
+      // accumulated onto the previous pin so the correction converges instead
+      // of oscillating. The release-time position compensation re-measures the
+      // drop, so the pin composes with the commit.
+      const anchor = g.resizeAnchor;
+      if (anchor) {
+        const pinned = sel.element.getBoundingClientRect();
+        const nextPinX = anchor.pinX + (anchor.anchorX - pinned.x);
+        const nextPinY = anchor.pinY + (anchor.anchorY - pinned.y);
+        if (
+          setElementGsapPosition(
+            sel.element,
+            anchor.baseGsapX + nextPinX,
+            anchor.baseGsapY + nextPinY,
+          )
+        ) {
+          anchor.pinX = nextPinX;
+          anchor.pinY = nextPinY;
+        }
+      }
       // Re-read BCR after applying dimensions. For elements with a GSAP
       // scale transform and centered transform-origin the visual top-left
       // drifts and the visual size diverges from the raw CSS size, so BCR
@@ -382,6 +414,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (g.kind === "resize" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
+      restoreResizeAnchorPin(sel.element, g);
       restoreStudioBoxSize(sel.element, g.initialBoxSize);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       if (box) {
@@ -411,7 +444,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           restoreStudioRotation(sel.element, g.initialRotation);
         }
       };
-      if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
+      const rotationChanged = hasDomEditRotationChanged(g.actualRotation, finalRotation.angle);
+      if (!rotationChanged) {
         restoreRotation();
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         return;
@@ -422,14 +456,17 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         applyStudioRotation(sel.element, finalRotation);
       }
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
-        .catch(() => {
+        .catch((error) => {
+          console.error("rotate commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
           )
             restoreRotation();
         })
-        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+        .finally(() => {
+          endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
     } else if (g.kind === "drag") {
       const dx = g.lastSnappedDx ?? e.clientX - g.startX;
       const dy = g.lastSnappedDy ?? e.clientY - g.startY;
@@ -469,12 +506,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const finalSize = readStudioBoxSize(sel.element);
       applyStudioBoxSize(sel.element, finalSize);
       void Promise.resolve(opts.onBoxSizeCommitRef.current(sel, finalSize))
-        .catch(() => {
+        .catch((error) => {
+          console.error("resize commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
-          )
+          ) {
+            restoreResizeAnchorPin(sel.element, g);
             restoreStudioBoxSize(sel.element, g.initialBoxSize);
+          }
         })
         .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
     }
@@ -494,6 +534,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "box-size" && sel) {
+      restoreResizeAnchorPin(sel.element, g);
       restoreStudioBoxSize(sel.element, g.initialBoxSize);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       restoreGestureOverlayRect(g);

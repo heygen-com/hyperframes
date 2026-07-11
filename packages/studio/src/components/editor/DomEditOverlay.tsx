@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
@@ -305,8 +306,18 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    // Start marquee if clicking on empty canvas (no element under pointer)
+    // Start marquee if clicking on empty canvas (no element under pointer).
+    // The hover selection is an ASYNC cache: on a fast click (or when the
+    // pointer was already resting over an element) it can still be empty while
+    // an element IS under the pointer — starting a marquee here would swallow
+    // the selection mousedown and the click would silently select nothing.
+    // Confirm emptiness with a fresh SYNCHRONOUS hit-test before committing.
     if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
+      const iframe = iframeRef.current;
+      const freshTarget = iframe
+        ? getPreviewTargetFromPointer(iframe, event.clientX, event.clientY, activeCompositionPath)
+        : null;
+      if (freshTarget) return;
       const overlayEl = overlayRef.current;
       if (overlayEl) {
         const oRect = overlayEl.getBoundingClientRect();
