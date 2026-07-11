@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseToolVersion, runEnvironmentChecks } from "./preflight.js";
+import { checkDisk, parseToolVersion, runEnvironmentChecks } from "./preflight.js";
 import * as manager from "./manager.js";
 import * as linuxDeps from "./linuxDeps.js";
 
@@ -216,5 +216,17 @@ describe("parseToolVersion", () => {
     expect(parseToolVersion("ffprobe version 7.1.1-essentials_build-www.gyan.dev Copyright")).toBe(
       "ffprobe 7.1.1-essentials_build-www.gyan.dev",
     );
+  });
+});
+
+describe("checkDisk", () => {
+  it("checks the requested render volume", () => {
+    const freeDiskMb = vi.fn(() => 512);
+
+    expect(checkDisk("/external/render-output", freeDiskMb)).toMatchObject({
+      ok: false,
+      detail: "0.5 GB free at /external/render-output",
+    });
+    expect(freeDiskMb).toHaveBeenCalledWith("/external/render-output");
   });
 });

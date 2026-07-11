@@ -1452,6 +1452,7 @@ export async function renderLocal(
 
   const preflight = await runEnvironmentChecks({
     projectDir,
+    diskPaths: [tmpdir(), dirname(outputPath)],
     browserPath: options.browserPath,
     includeBrowser: true,
     includeDisk: true,

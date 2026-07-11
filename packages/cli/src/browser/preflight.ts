@@ -38,6 +38,7 @@ export interface EnvironmentCheckResult {
 
 export interface EnvironmentCheckOptions {
   projectDir?: string;
+  diskPaths?: string[];
   browserPath?: string;
   includeBrowser?: boolean;
   includeDisk?: boolean;
@@ -226,8 +227,11 @@ async function checkChrome(browserPath?: string): Promise<EnvironmentCheckOutcom
   };
 }
 
-function checkDisk(projectDir = "."): EnvironmentCheckOutcome {
-  const freeMb = getFreeDiskMb(projectDir);
+export function checkDisk(
+  path = ".",
+  freeDiskMb: (path: string) => number | null = getFreeDiskMb,
+): EnvironmentCheckOutcome {
+  const freeMb = freeDiskMb(path);
   if (freeMb === null) {
     return { name: "Disk", ok: true, level: "ok", detail: "Unable to check" };
   }
@@ -238,11 +242,11 @@ function checkDisk(projectDir = "."): EnvironmentCheckOutcome {
       ok: false,
       level: "error",
       title: "Low disk space",
-      detail: `${freeGb} GB free`,
+      detail: `${freeGb} GB free at ${path}`,
       hint: "Renders produce large temp files. Free disk space before rendering.",
     };
   }
-  return { name: "Disk", ok: true, level: "ok", detail: `${freeGb} GB free` };
+  return { name: "Disk", ok: true, level: "ok", detail: `${freeGb} GB free at ${path}` };
 }
 
 function checkWindowsUncPath(projectDir = process.cwd()): EnvironmentCheckOutcome | undefined {
@@ -281,7 +285,8 @@ export async function runEnvironmentChecks(
   }
 
   if (options.includeDisk) {
-    outcomes.push(checkDisk(options.projectDir));
+    const diskPaths = [...new Set(options.diskPaths ?? [options.projectDir ?? "."])];
+    outcomes.push(...diskPaths.map((path) => checkDisk(path)));
   }
 
   if (options.includeWindowsUnc) {
