@@ -392,6 +392,7 @@ describe("shouldUseStreamingEncode", () => {
   const streamingEnabledConfig = {
     enableStreamingEncode: true,
     streamingEncodeMaxDurationSeconds: 240,
+    lowMemoryMode: false,
   };
 
   it("enables streaming for default single-worker video renders", () => {
@@ -433,6 +434,12 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+  });
+
+  it("keeps long single-worker renders streaming in low-memory mode", () => {
+    expect(
+      shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
+    ).toBe(true);
   });
 });
 

@@ -966,7 +966,8 @@ function replaceBodyWithRenderClone(body: HTMLElement, renderClone: Element): vo
 }
 
 export function shouldUseStreamingEncode(
-  cfg: Pick<EngineConfig, "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds">,
+  cfg: Pick<EngineConfig, "enableStreamingEncode" | "streamingEncodeMaxDurationSeconds"> &
+    Partial<Pick<EngineConfig, "lowMemoryMode">>,
   outputFormat: NonNullable<RenderConfig["format"]>,
   workerCount: number,
   // Composition timeline duration in seconds.
@@ -980,7 +981,11 @@ export function shouldUseStreamingEncode(
   if (outputFormat === "png-sequence") return false;
   if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  if (durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
+  // Low-memory mode already pins capture to one worker. Keep those renders on
+  // the streaming path regardless of duration so captured frames are drained
+  // directly into FFmpeg instead of accumulating hundreds of gigabytes of
+  // data URIs / disk frames until Chrome OOMs.
+  if (!cfg.lowMemoryMode && durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
   // HF_DE_PARALLEL_STREAM (manual opt-in) / forceParallelStream (router):
   // allow multi-worker streaming for the interleaved drawElement produce
   // path. Contiguous-chunk parallel streaming stalls (worker k+1's first
