@@ -388,11 +388,11 @@ export async function observeRenderStage<T>(
   try {
     const result = await fn();
     clearHeartbeats();
-    recorder.stageEnd(phase, startedAt);
+    recorder.stageEnd(phase, startedAt, data);
     return result;
   } catch (error) {
     clearHeartbeats();
-    recorder.stageError(phase, startedAt, error);
+    recorder.stageError(phase, startedAt, error, data);
     throw error;
   }
 }

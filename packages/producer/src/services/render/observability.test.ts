@@ -149,6 +149,21 @@ describe("RenderObservabilityRecorder", () => {
 
     resolveStage?.();
     await stage;
+    const endCall = log.info.mock.calls.find(
+      ([message, meta]) =>
+        message === "[Render:trace]" &&
+        meta?.phase === "capture_streaming" &&
+        meta?.status === "end",
+    );
+    expect(endCall?.[1]).toEqual(
+      expect.objectContaining({
+        framesCompleted: 12,
+        totalFrames: 900,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        workerCount: 1,
+      }),
+    );
     await vi.advanceTimersByTimeAsync(240_000);
     expect(
       log.info.mock.calls.filter(
@@ -169,10 +184,34 @@ describe("RenderObservabilityRecorder", () => {
     });
 
     await expect(
-      observeRenderStage(recorder, "capture_disk", { workerCount: 2 }, async () => {
-        throw new Error("capture failed");
-      }),
+      observeRenderStage(
+        recorder,
+        "capture_disk",
+        {
+          workerCount: 2,
+          totalFrames: 42,
+          framesCompleted: 7,
+          captureMode: "screenshot",
+          captureOperation: "captureScreenshot",
+        },
+        async () => {
+          throw new Error("capture failed");
+        },
+      ),
     ).rejects.toThrow("capture failed");
+    const errorCall = log.info.mock.calls.find(
+      ([message, meta]) =>
+        message === "[Render:trace]" && meta?.phase === "capture_disk" && meta?.status === "error",
+    );
+    expect(errorCall?.[1]).toEqual(
+      expect.objectContaining({
+        framesCompleted: 7,
+        totalFrames: 42,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        workerCount: 2,
+      }),
+    );
     await vi.advanceTimersByTimeAsync(240_000);
 
     expect(

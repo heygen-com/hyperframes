@@ -1950,7 +1950,7 @@ export async function executeRenderJob(
       const outcome = await observeRenderStage(
         observability,
         "capture_calibration",
-        { forceScreenshot: captureForceScreenshot },
+        captureStageObservationData({ forceScreenshot: captureForceScreenshot }),
         () =>
           runCaptureCalibration({
             cfg,
