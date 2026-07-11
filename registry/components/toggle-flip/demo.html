@@ -1,142 +1,76 @@
 <!doctype html>
 <!--
-  toggle-flip -- demo. Standalone playable exercise of the primitive at
-  registry/components/toggle-flip/toggle-flip.html: dark stage, an oversized
-  toggle centered in frame, flipping off -> on. Values below are deliberately
-  non-default (size, label) so preview tooling proves every variable actually
-  changes the frame. Kept in sync with toggle-flip.html by hand; not
-  installed by `hyperframes add`.
+  toggle-flip -- demo. Standalone 1920x1080 composition that MOUNTS the
+  primitive at registry/components/toggle-flip/toggle-flip.html via
+  data-composition-src, instead of inlining it: dark token-themed stage,
+  hosting the toggle in a ~40%-of-frame card centered in the composition.
+  data-variable-values on the host clip carries deliberately non-default
+  overrides (size, label) so preview tooling proves every variable actually
+  flows through the mount into the primitive. This file passing lint +
+  validate + snapshot is the proof the mount contract holds: the primitive
+  has no data-width/data-height of its own, so it must size itself off the
+  box this demo gives it, with no bleed and no 2x oversize. Kept in sync
+  with toggle-flip.html by hand; not installed by `hyperframes add`.
 -->
-<html
-  lang="en"
-  data-composition-variables='[
-    { "id": "direction", "type": "enum", "role": "content", "label": "Flip direction", "description": "Target end state the flip lands on.", "default": "on", "options": [{ "value": "on", "label": "Off → On" }, { "value": "off", "label": "On → Off" }] },
-    { "id": "label", "type": "string", "role": "content", "label": "Caption", "description": "Optional caption under the toggle. Blank hides the line.", "default": "Dark mode" },
-    { "id": "size", "type": "number", "role": "layout", "label": "Size", "description": "Toggle width as a percent of the host box width.", "default": 55, "min": 20, "max": 70, "step": 1, "unit": "%" }
-  ]'
->
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Toggle Flip - Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
-      *,
-      *::before,
-      *::after {
+      * {
+        margin: 0;
+        padding: 0;
         box-sizing: border-box;
       }
 
       html,
       body {
-        margin: 0;
-        width: 100%;
-        height: 100%;
-      }
-
-      #toggle-flip {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        container-type: size;
-        container-name: toggle-flip;
-        isolation: isolate;
+        width: 1920px;
+        height: 1080px;
         overflow: hidden;
-        background: var(--bg, #0b1120);
-        color: var(--fg, #f8fafc);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
+        background: #05070d;
       }
 
-      .tf-clip {
-        width: 100%;
-        height: 100%;
-        display: grid;
-        place-items: center;
-      }
-
-      .tf-stage {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-3, 3cqh);
-        opacity: 0;
-      }
-
-      .tf-label {
-        color: var(--muted, #94a3b8);
-        font-family: var(--font-display, Inter, system-ui, sans-serif);
-        font-weight: 650;
-        font-size: clamp(12px, 2.4cqw, 28px);
-        letter-spacing: 0.01em;
-        text-align: center;
-      }
-
-      .tf-label:empty {
-        display: none;
-      }
-
-      .tf-toggle {
-        --tf-track-w: calc(var(--tf-size, 40) * 1cqw);
-        width: var(--tf-track-w);
-        aspect-ratio: 2.2 / 1;
+      #root {
         position: relative;
-        display: block;
-        border: 0;
-        padding: 0;
-        background: transparent;
-        cursor: default;
-        /* transform is GSAP-owned below (press squeeze); no CSS transform here */
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 40%, #0d1526 0%, #05070d 70%);
       }
 
-      .tf-track {
-        position: absolute;
-        inset: 0;
-        border-radius: 999px;
-        --tf-mix: 0; /* 0..100, GSAP-tweened: 0 = surface/off, 100 = brand/on */
-        border: 0.15cqw solid
-          color-mix(
-            in srgb,
-            var(--border, #334155) calc(100% - var(--tf-mix, 0) * 0.4%),
-            var(--brand, #22c55e) calc(var(--tf-mix, 0) * 0.4%)
-          );
-        background: color-mix(
-          in srgb,
-          var(--surface, #1e293b) calc((100 - var(--tf-mix, 0)) * 1%),
-          var(--brand, #22c55e) calc(var(--tf-mix, 0) * 1%)
-        );
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border, #334155) 45%, transparent);
-      }
+      /* The ~40%-of-frame card the primitive mounts into. A visibly distinct
+         panel (rounded, bordered, its own --bg tone) so the mount box reads
+         clearly against the page backdrop in a snapshot -- proof the toggle
+         stays inside it instead of bleeding past its edges.
 
-      .tf-glow {
-        position: absolute;
-        inset: -14%;
-        border-radius: 999px;
-        background: radial-gradient(
-          closest-side,
-          color-mix(in srgb, var(--accent, #38bdf8) 55%, transparent),
-          transparent 72%
-        );
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .tf-knob {
-        position: absolute;
-        top: calc(var(--tf-size, 40) * 0.0455cqw);
-        left: calc(var(--tf-size, 40) * 0.0455cqw);
-        width: calc(var(--tf-size, 40) * 0.3636cqw);
-        aspect-ratio: 1;
-        border-radius: 50%;
-        background: var(--surface, #f8fafc);
-        box-shadow: 0 0.35cqw 0.7cqw rgba(2, 6, 23, 0.4);
-        /* GSAP tweens x/scale directly below; no CSS transform authored here. */
+         Sized and centered with real percentages against #root's definite
+         1920x1080 box, not left to resolve from data-width/data-height
+         alone: the mounted primitive sizes its own internals off cqw
+         (container query units), and a host box with no definite CSS
+         width of its own forces the browser into shrink-to-fit sizing --
+         which, feeding back through a size-contained container, collapses
+         to the mounted content's tiny intrinsic size instead of the
+         intended box. An explicit width/height here sidesteps that
+         entirely. data-width/data-height stay in sync below for tooling
+         that reads them (lint, per-instance sizing metadata). */
+      .mount-card {
+        --bg: #131b2e;
+        width: 40%;
+        height: 40%;
+        left: 30%;
+        top: 30%;
+        border-radius: 28px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        box-shadow: 0 40px 90px rgba(0, 0, 0, 0.45);
       }
     </style>
   </head>
   <body>
     <div
-      id="toggle-flip"
-      data-composition-id="toggle-flip"
+      id="root"
+      data-composition-id="toggle-flip-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
@@ -144,185 +78,28 @@
       data-fps="30"
     >
       <div
-        id="toggle-flip-clip"
-        class="tf-clip clip"
+        id="toggle-flip-mount"
+        class="mount-card clip"
+        data-composition-id="toggle-flip"
+        data-composition-src="./toggle-flip.html"
+        data-variable-values='{"direction":"on","label":"Dark mode","size":55}'
         data-start="0"
         data-duration="4"
         data-track-index="0"
-      >
-        <div class="tf-stage">
-          <div class="tf-label"></div>
-          <button
-            class="tf-toggle"
-            type="button"
-            data-anchor="toggle-flip"
-            aria-pressed="false"
-            tabindex="-1"
-          >
-            <span class="tf-glow"></span>
-            <span class="tf-track"></span>
-            <span class="tf-knob"></span>
-          </button>
-        </div>
-      </div>
+        data-width="768"
+        data-height="432"
+      ></div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <script>
-      (function () {
-        "use strict";
-
-        var htmlEl = document.documentElement;
-        var root = document.getElementById("toggle-flip");
-        var compositionId = root.getAttribute("data-composition-id");
-        var stage = root.querySelector(".tf-stage");
-        var labelEl = root.querySelector(".tf-label");
-        var toggleEl = root.querySelector(".tf-toggle");
-        var trackEl = root.querySelector(".tf-track");
-        var knobEl = root.querySelector(".tf-knob");
-        var glowEl = root.querySelector(".tf-glow");
-
-        var vars = {};
-        try {
-          JSON.parse(htmlEl.getAttribute("data-composition-variables") || "[]").forEach(
-            function (variable) {
-              vars[variable.id] = variable.default;
-            },
-          );
-        } catch (err) {
-          /* malformed declaration falls through to hardcoded fallbacks below */
-        }
-        Object.assign(vars, window.__hfVariables || {});
-
-        var direction = vars.direction === "off" ? "off" : "on";
-        var toOn = direction === "on";
-        var labelText = vars.label == null ? "" : String(vars.label);
-        var sizePct = Math.max(20, Math.min(70, Number(vars.size) || 40));
-
-        labelEl.textContent = labelText;
-        toggleEl.style.setProperty("--tf-size", String(sizePct));
-
-        var beat = parseFloat(getComputedStyle(root).getPropertyValue("--dur-beat")) || 0.5;
-        var SHEEN_HALF = beat * 1.5;
-
-        var IN_BASE = 0.9;
-        var OUT_BASE = 0.5;
-        var STAGE_IN_BASE = 0.4;
-        var PRESS_LEAD_BASE = 0.2;
-        var FLIP_AT_BASE = 0.5;
-        var FLIP_DURATION_BASE = 0.25;
-        var GLOW_DURATION_BASE = 0.15;
-
-        var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
-        var totalBase = IN_BASE + OUT_BASE;
-        var scale = duration < totalBase ? duration / totalBase : 1;
-        var IN = IN_BASE * scale;
-        var OUT = OUT_BASE * scale;
-        var STAGE_IN = STAGE_IN_BASE * scale;
-        var PRESS_LEAD = PRESS_LEAD_BASE * scale;
-        var FLIP_AT = FLIP_AT_BASE * scale;
-        var FLIP_DURATION = FLIP_DURATION_BASE * scale;
-        var GLOW_DURATION = GLOW_DURATION_BASE * scale;
-        var HOLD = Math.max(0, duration - (IN + OUT));
-        var HOLD_START = IN;
-        var OUT_START = IN + HOLD;
-
-        function fireSfx(id, t) {
-          root.dispatchEvent(
-            new CustomEvent("hf:sfx", { detail: { id: id, t: t }, bubbles: true }),
-          );
-        }
-
-        var mixFrom = toOn ? 0 : 100;
-        var mixTo = toOn ? 100 : 0;
-        var xFrom = toOn ? "0%" : "150%";
-        var xTo = toOn ? "150%" : "0%";
-        gsap.set(stage, { opacity: 0 });
-        gsap.set(toggleEl, { scaleX: 1, scaleY: 1 });
-        gsap.set(knobEl, { x: xFrom, scale: 1 });
-        gsap.set(trackEl, { "--tf-mix": mixFrom });
-        gsap.set(glowEl, { opacity: 0 });
-        toggleEl.setAttribute("aria-pressed", toOn ? "false" : "true");
-
-        var tl = gsap.timeline({ paused: true });
-
-        tl.to(stage, { opacity: 1, duration: STAGE_IN, ease: "power2.out" }, 0);
-
-        if (PRESS_LEAD > 0) {
-          var pressStart = Math.max(0, FLIP_AT - PRESS_LEAD);
-          var pressHalf = PRESS_LEAD / 2;
-          tl.to(
-            toggleEl,
-            { scaleX: 0.94, scaleY: 1.06, duration: pressHalf, ease: "power1.inOut" },
-            pressStart,
-          );
-          tl.to(
-            toggleEl,
-            { scaleX: 1, scaleY: 1, duration: pressHalf, ease: "power1.inOut" },
-            pressStart + pressHalf,
-          );
-        }
-
-        tl.to(knobEl, { x: xTo, duration: FLIP_DURATION, ease: "back.out(1.9)" }, FLIP_AT);
-        tl.to(
-          trackEl,
-          { "--tf-mix": mixTo, duration: FLIP_DURATION, ease: "back.out(1.9)" },
-          FLIP_AT,
-        );
-        tl.fromTo(
-          knobEl,
-          { scale: 1 },
-          {
-            scale: 1.08,
-            duration: FLIP_DURATION * 0.45,
-            ease: "power1.out",
-            yoyo: true,
-            repeat: 1,
-          },
-          FLIP_AT,
-        );
-        tl.set(
-          toggleEl,
-          { attr: { "aria-pressed": toOn ? "true" : "false" } },
-          FLIP_AT + FLIP_DURATION,
-        );
-        tl.call(
-          function () {
-            fireSfx("click-soft", FLIP_AT);
-          },
-          [],
-          FLIP_AT,
-        );
-
-        tl.fromTo(
-          glowEl,
-          { opacity: 0 },
-          { opacity: 1, duration: GLOW_DURATION * 0.5, ease: "power1.out", yoyo: true, repeat: 1 },
-          FLIP_AT + FLIP_DURATION,
-        );
-
-        if (HOLD > SHEEN_HALF) {
-          var breathRepeat = Math.max(0, Math.floor(HOLD / SHEEN_HALF) - 1);
-          tl.fromTo(
-            glowEl,
-            { opacity: 0 },
-            {
-              opacity: 0.32,
-              duration: SHEEN_HALF,
-              ease: "sine.inOut",
-              yoyo: true,
-              repeat: breathRepeat,
-            },
-            HOLD_START + GLOW_DURATION,
-          );
-        }
-
-        tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.out" }, OUT_START);
-
-        tl.seek(0);
-
-        window.__timelines = window.__timelines || {};
-        window.__timelines[compositionId] = tl;
-      })();
+      // No motion of its own: this demo is a static host for the mounted
+      // primitive below, which owns and registers its own timeline. Register
+      // an empty paused timeline under this file's own composition id so the
+      // runtime's timeline-registry check is satisfied without inventing
+      // motion the demo doesn't need.
+      window.__timelines = window.__timelines || {};
+      window.__timelines["toggle-flip-demo"] = gsap.timeline({ paused: true });
     </script>
   </body>
 </html>

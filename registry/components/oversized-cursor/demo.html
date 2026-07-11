@@ -2,22 +2,13 @@
 <!--
   Oversized Cursor, standalone demo.
 
-  Same actor primitive as oversized-cursor.html, wrapped in a dark demo
-  backdrop with non-default variable values (dark cursor variant, an
-  off-center target, a distinct click label) so every declared variable is
-  visibly exercised, per the primitive build contract.
+  Mounts oversized-cursor.html as a sub-composition (data-composition-src) into a
+  dark host stage, instead of inlining its markup/style/script. Passing lint and
+  validate here, with the cursor visibly present in mid-motion snapshots, proves
+  the primitive satisfies the sub-composition mount contract (see
+  skills/hyperframes-core/references/sub-compositions.md).
 -->
-<html
-  lang="en"
-  data-composition-id="oversized-cursor-demo"
-  data-composition-duration="4.2"
-  data-composition-variables='[
-    { "id": "cursor_variant", "type": "enum", "role": "style", "label": "Cursor fill", "default": "dark", "options": [ { "value": "light", "label": "Light (white body)" }, { "value": "dark", "label": "Dark (near-black body)" } ] },
-    { "id": "target_x", "type": "number", "role": "layout", "label": "Target X", "default": 66, "min": 15, "max": 85, "step": 1, "unit": "%" },
-    { "id": "target_y", "type": "number", "role": "layout", "label": "Target Y", "default": 42, "min": 15, "max": 85, "step": 1, "unit": "%" },
-    { "id": "click_label", "type": "string", "role": "content", "label": "Click label", "default": "Ship it" }
-  ]'
->
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -36,292 +27,68 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: var(--bg, #05070c);
       }
 
-      #oversized-cursor {
+      #root {
         position: relative;
-        width: 100%;
-        height: 100%;
+        width: 1920px;
+        height: 1080px;
         overflow: hidden;
-        isolation: isolate;
-        container-type: size;
-        container-name: oc-stage;
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
         background: var(--bg, #05070c);
+        font-family: var(--font-body, Inter, system-ui, sans-serif);
       }
 
-      .oc-stage {
+      .demo-frame {
         position: absolute;
-        inset: 0;
-      }
-
-      .oc-target {
-        position: absolute;
-        left: 50%;
         top: 50%;
-        display: flex;
-        align-items: center;
-        gap: var(--space-1, 0.6cqw);
-        padding: var(--space-2, 1.5cqw) var(--space-3, 2.4cqw);
-        border-radius: var(--radius, 999px);
-        border: 1px solid var(--border, rgba(148, 163, 184, 0.35));
-        background: color-mix(
-          in srgb,
-          var(--surface, #12161f) calc((1 - var(--oc-ignite, 0)) * 100%),
-          var(--brand, #2563eb) calc(var(--oc-ignite, 0) * 100%)
-        );
-        box-shadow: 0 1.2cqw 3.2cqw rgba(2, 6, 23, 0.5);
-        --oc-ignite: 0;
-        z-index: 10;
-      }
-
-      .oc-target-check {
-        width: 1.8cqw;
-        height: 1.8cqw;
-        min-width: 14px;
-        min-height: 14px;
-        flex: none;
-        fill: none;
-        stroke: #ffffff;
-        stroke-width: 2.4;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        opacity: clamp(0, var(--oc-ignite, 0), 1);
-        transform: scale(calc(0.5 + var(--oc-ignite, 0) * 0.5));
-      }
-
-      .oc-target-label {
-        font-size: clamp(12px, 1.7cqw, 30px);
-        font-weight: 650;
-        line-height: 1;
-        white-space: nowrap;
-        color: color-mix(
-          in srgb,
-          var(--fg, #e5e7eb) calc((1 - var(--oc-ignite, 0)) * 100%),
-          #ffffff calc(var(--oc-ignite, 0) * 100%)
-        );
-      }
-
-      .oc-cursor {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 7cqw;
-        height: 7cqw;
-        min-width: 34px;
-        min-height: 34px;
-        pointer-events: none;
-        will-change: transform;
-        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
-        z-index: 20;
-      }
-
-      .oc-cursor-svg {
-        display: block;
-        width: 100%;
-        height: 100%;
-        stroke-linejoin: round;
-        stroke-linecap: round;
-      }
-
-      .oc-cursor[data-variant="light"] .oc-cursor-svg {
-        fill: #ffffff;
-        stroke: #141414;
-        stroke-width: 1.4;
-      }
-      .oc-cursor[data-variant="dark"] .oc-cursor-svg {
-        fill: #1c1c1c;
-        stroke: #ffffff;
-        stroke-width: 1.4;
-      }
-
-      .oc-ripple {
-        position: absolute;
-        left: 21%;
-        top: 14%;
-        width: 2.6cqw;
-        height: 2.6cqw;
-        min-width: 12px;
-        min-height: 12px;
-        border-radius: 999px;
-        border: 0.24cqw solid var(--accent, #22c55e);
+        left: 50%;
         transform: translate(-50%, -50%);
-        opacity: 0;
+        width: 1280px;
+        height: 720px;
+        border-radius: 24px;
+        border: 1px solid var(--border, rgba(148, 163, 184, 0.25));
+        background: var(--surface, #0b0f16);
+        box-shadow: 0 40px 120px rgba(2, 6, 23, 0.55);
+        overflow: hidden;
       }
     </style>
   </head>
   <body>
     <div
-      id="oversized-cursor"
+      id="root"
       data-composition-id="oversized-cursor-demo"
       data-start="0"
       data-width="1920"
       data-height="1080"
       data-duration="4.2"
-      data-fps="30"
     >
-      <div class="oc-stage">
-        <div class="oc-target" id="oc-target">
-          <svg class="oc-target-check" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 13l4 4L19 7" />
-          </svg>
-          <span class="oc-target-label" id="oc-target-label"></span>
-        </div>
-        <div class="oc-cursor" id="oc-cursor" data-variant="light" aria-hidden="true">
-          <div class="oc-ripple"></div>
-          <svg class="oc-cursor-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
-          </svg>
-        </div>
-      </div>
+      <div
+        id="demo-frame"
+        class="demo-frame clip"
+        data-start="0"
+        data-duration="4.2"
+        data-track-index="0"
+      ></div>
+
+      <div
+        class="clip"
+        id="oversized-cursor"
+        data-composition-id="oversized-cursor"
+        data-composition-src="./oversized-cursor.html"
+        data-variable-values='{"cursor_variant":"dark","target_x":66,"target_y":42,"click_label":"Ship it"}'
+        data-start="0.3"
+        data-duration="3.9"
+        data-track-index="1"
+        data-width="1280"
+        data-height="720"
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 1280px; height: 720px;"
+      ></div>
     </div>
 
     <script>
-      (function () {
-        "use strict";
-
-        var html = document.documentElement;
-        var root = document.getElementById("oversized-cursor");
-        var cursor = document.getElementById("oc-cursor");
-        var ripple = cursor.querySelector(".oc-ripple");
-        var target = document.getElementById("oc-target");
-        var targetLabel = document.getElementById("oc-target-label");
-
-        var DEFAULTS = {};
-        try {
-          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
-            function (variable) {
-              DEFAULTS[variable.id] = variable.default;
-            },
-          );
-        } catch (error) {
-          /* malformed declaration falls back to hardcoded defaults below */
-        }
-        var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {});
-
-        function clampPercent(value, fallback) {
-          var n = Number(value);
-          if (!isFinite(n)) n = fallback;
-          return Math.max(0, Math.min(100, n));
-        }
-
-        var compositionId =
-          html.getAttribute("data-composition-id") || root.getAttribute("data-composition-id");
-        var duration = Math.max(
-          0.001,
-          parseFloat(
-            root.dataset.duration || html.getAttribute("data-composition-duration") || "4.2",
-          ),
-        );
-        var variant = vars.cursor_variant === "dark" ? "dark" : "light";
-        var targetX = clampPercent(vars.target_x, 66);
-        var targetY = clampPercent(vars.target_y, 42);
-        var clickLabel = String(vars.click_label || "Ship it");
-
-        cursor.setAttribute("data-variant", variant);
-        targetLabel.textContent = clickLabel;
-        target.style.left = targetX + "%";
-        target.style.top = targetY + "%";
-
-        // Motion runs on transforms only (x/y px), never left/top: layout
-        // props snap to integer device pixels under the seek-by-frame
-        // capture engine and stutter on slow/eased motion. Stage size is
-        // read once, synchronously, at load (deterministic: fixed viewport
-        // per render, no resize mid-render) to convert the percent-based
-        // target/off-screen positions into the px x/y GSAP needs.
-        var stageW = root.clientWidth || 1920;
-        var stageH = root.clientHeight || 1080;
-        function xAt(percent) {
-          return (percent / 100) * stageW;
-        }
-        function yAt(percent) {
-          return (percent / 100) * stageH;
-        }
-
-        gsap.set(cursor, { xPercent: -21, yPercent: -14 });
-        gsap.set(target, { xPercent: -50, yPercent: -50, scale: 1 });
-
-        var IN_BASE = 1.17;
-        var OUT_BASE = 0.6;
-        var totalBase = IN_BASE + OUT_BASE;
-        var IN = IN_BASE;
-        var OUT = OUT_BASE;
-        if (duration < totalBase) {
-          var shrink = duration / totalBase;
-          IN = IN_BASE * shrink;
-          OUT = OUT_BASE * shrink;
-        }
-        var HOLD = Math.max(0, duration - (IN + OUT));
-        var OUT_AT = IN + HOLD;
-        var shrinkFactor = IN / IN_BASE;
-
-        var glideDur = 0.85 * shrinkFactor;
-        var clickInDur = 0.1 * shrinkFactor;
-        var clickOutDur = 0.22 * shrinkFactor;
-        var CLICK_AT = glideDur;
-
-        var offX = xAt(48);
-        var offY = yAt(116);
-
-        var tl = gsap.timeline({ paused: true });
-
-        tl.set(cursor, { scale: 1 });
-        tl.set(ripple, { opacity: 0, scale: 0.4 });
-        tl.set(target, { "--oc-ignite": 0 });
-        tl.fromTo(
-          cursor,
-          { x: offX, y: offY },
-          { x: xAt(targetX), y: yAt(targetY), duration: glideDur, ease: "power3.out" },
-          0,
-        );
-        tl.to(
-          cursor,
-          { scale: 0.84, duration: clickInDur, ease: "power2.in", transformOrigin: "21% 14%" },
-          CLICK_AT,
-        );
-        tl.to(
-          cursor,
-          { scale: 1, duration: clickOutDur, ease: "power2.out", transformOrigin: "21% 14%" },
-          CLICK_AT + clickInDur,
-        );
-
-        tl.to(target, { scale: 0.94, duration: clickInDur, ease: "power2.in" }, CLICK_AT);
-        tl.to(
-          target,
-          { scale: 1, duration: clickOutDur, ease: "power2.out" },
-          CLICK_AT + clickInDur,
-        );
-        tl.fromTo(
-          ripple,
-          { opacity: 0.85, scale: 0.4 },
-          { opacity: 0, scale: 2.4, duration: 0.42, ease: "power2.out" },
-          CLICK_AT + clickInDur,
-        );
-        tl.to(
-          target,
-          { "--oc-ignite": 1, duration: 0.34, ease: "back.out(2.2)" },
-          CLICK_AT + clickInDur,
-        );
-
-        var driftDelay = Math.min(0.22, HOLD * 0.3);
-        var driftDur = Math.max(0, Math.min(0.7, HOLD - driftDelay));
-        if (driftDur > 0.05) {
-          var asideX = clampPercent(targetX + (targetX < 50 ? 16 : -16), targetX);
-          var asideY = clampPercent(targetY + 10, targetY);
-          tl.to(
-            cursor,
-            { x: xAt(asideX), y: yAt(asideY), duration: driftDur, ease: "power2.out", overwrite: "auto" },
-            IN + driftDelay,
-          );
-        }
-
-        tl.to(cursor, { y: yAt(120), duration: OUT, ease: "power2.in", overwrite: "auto" }, OUT_AT);
-
-        tl.seek(0);
-        window.__timelines = window.__timelines || {};
-        window.__timelines[compositionId] = tl;
-      })();
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines["oversized-cursor-demo"] = tl;
     </script>
   </body>
 </html>

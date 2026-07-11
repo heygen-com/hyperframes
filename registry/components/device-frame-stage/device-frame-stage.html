@@ -18,6 +18,18 @@
     frame serves the screen (device-frame-spec's governing law): no spinning
     hardware reveal, glare sweep, or camera-lens tour, ever.
 
+    This file is a mountable HyperFrames sub-composition (see
+    skills/hyperframes-core/references/sub-compositions.md): a host
+    composition embeds it via a clip carrying data-composition-src, a
+    matching data-composition-id, and its own data-start / data-duration /
+    data-track-index / data-width / data-height. Everything the render needs
+    lives inside <template> below; the #root div's own data-width /
+    data-height are declarative reference metadata only (the linter's
+    root-dimensions contract) -- the CSS never reads them, and the device
+    sizes relative to whatever host box it actually lands in (cqh/cqw), so
+    it never needs to be opened or rendered standalone. See demo.html for
+    the reference mount.
+
     Compiled from: fixture + mobile mechanics inventory #1 + device-frame-spec.md
     (~/dev/hyperframes-corpus-data/mobile/device-frame-spec.md), the
     authoritative geometry / material / entry-law source for this primitive.
@@ -47,214 +59,222 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
     <title>Device Frame Stage</title>
+    <!-- head is metadata for the source file only; the runtime only clones
+         <template> contents on mount (see sub-compositions.md), so the gsap
+         loader here exists purely for opening this file directly during
+         authoring -- a host composition already provides window.gsap. -->
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <style>
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        margin: 0;
-        width: 1920px;
-        height: 1080px;
-        overflow: hidden;
-      }
-
-      /* INVARIANT: this outer #device-frame-stage box is the standalone
-         render frame required by hyperframes-core (literal px, so the
-         composition root always resolves a height). It is NOT part of the
-         reusable primitive contract below. */
-      #device-frame-stage {
-        position: relative;
-        width: 1920px;
-        height: 1080px;
-        overflow: hidden;
-        background: transparent;
-      }
-
-      /* ---- reusable primitive: everything from here down is copy-and-own,
-         container-relative, and position-blind (fills whatever box a host
-         composition gives it; ADR-0005/0006). ---- */
-
-      .hf-device-frame-stage {
-        /* INVARIANT: this is the container-query root every cqw/cqh below
-           resolves against. No vw/vh, no fixed stage px past this point. */
-        position: relative;
-        width: 100%;
-        height: 100%;
-        container-type: size;
-        isolation: isolate;
-      }
-
-      .device-stage {
-        --stage-perspective: 1600px;
-        position: absolute;
-        inset: 0;
-        perspective: var(--stage-perspective);
-        perspective-origin: 50% 50%;
-      }
-
-      .device-frame {
-        /* INVARIANT: geometry below is physical-material law from
-           device-frame-spec.md (corner/bezel/aspect percentages, gradient,
-           shadow), not brand paint. It may carry literal fallbacks per the
-           primitive's material exception; do not swap in --radius/--space-*. */
-        --device-color: #1b1d22;
-        --device-color-hi: #343740;
-        --device-color-dark: #111318;
-        --device-radius: 46px;
-        --device-bezel: 9px;
-        --screen-radius: calc(var(--device-radius) - var(--device-bezel));
-        --device-aspect: 9 / 19.5;
-        --device-y: 18cqh;
-        --device-scale: 0.94;
-
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        height: 86cqh;
-        aspect-ratio: var(--device-aspect);
-        border-radius: var(--device-radius);
-        padding: var(--device-bezel);
-        background: linear-gradient(145deg, var(--device-color-hi), var(--device-color) 42%, var(--device-color-dark));
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        box-shadow:
-          0 52px 110px rgba(7, 10, 20, 0.3),
-          0 18px 38px rgba(7, 10, 20, 0.22),
-          0 3px 9px rgba(7, 10, 20, 0.16),
-          inset 0 1px 0 rgba(255, 255, 255, 0.24),
-          inset 0 0 0 1px rgba(0, 0, 0, 0.48);
-        transform: translate(-50%, calc(-50% + var(--device-y))) scale(var(--device-scale));
-        transform-style: preserve-3d;
-        transform-origin: 50% 88%;
-        will-change: transform;
-      }
-
-      /* EDIT ZONE: kind/cutout/body are driven by data-composition-variables
-         (see JS below); an installing agent may also override
-         --device-color / --device-color-hi / --device-color-dark inline for
-         a bespoke finish without touching the geometry laws. */
-      .device-frame[data-kind="tablet"] {
-        --device-radius: 48px;
-        --device-bezel: 16px;
-        --screen-radius: 34px;
-        --device-aspect: 3 / 4;
-        height: 82cqh;
-      }
-
-      .device-frame[data-body="silver"] {
-        --device-color: #c9cdd3;
-        --device-color-hi: #eef1f4;
-        --device-color-dark: #9a9ea6;
-      }
-
-      .device-screen {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        border-radius: var(--screen-radius);
-        background: var(--surface, #f5f6f8);
-        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
-        isolation: isolate;
-        container-type: size;
-      }
-
-      .screen-viewport {
-        /* Logical-pixel authoring space (390x844 phone / 768x1024 tablet),
-           uniformly scaled to the actual screen box by JS-measured
-           --screen-scale (device-frame-spec, "Screen content contract"). The
-           scale is scene setup, not animation. */
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: calc(var(--logical-width, 390) * 1px);
-        height: calc(var(--logical-height, 844) * 1px);
-        transform-origin: 0 0;
-        transform: scale(var(--screen-scale, 1));
-      }
-
-      .screen-safe-area {
-        height: 100%;
-        box-sizing: border-box;
-        padding-top: calc(var(--logical-height, 844) * 1px * 0.03);
-      }
-
-      .device-frame[data-cutout="island"] .screen-safe-area {
-        padding-top: calc(var(--logical-height, 844) * 1px * 0.075);
-      }
-
-      .device-frame[data-cutout="notch"] .screen-safe-area {
-        padding-top: calc(var(--logical-height, 844) * 1px * 0.06);
-      }
-
-      .device-screen-slot {
-        position: relative;
-        width: 100%;
-        height: 100%;
-      }
-
-      /* Visible only while the slot is empty (comments do not count toward
-         :empty); vanishes the moment an installing agent drops real content
-         in, no cleanup required. */
-      .device-screen-slot:empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px dashed var(--border, rgba(15, 23, 42, 0.16));
-        border-radius: calc(var(--screen-radius) * 0.4);
-      }
-
-      .device-screen-slot:empty::before {
-        content: "screen slot: replace with reconstructed UI";
-        padding: var(--space-2, 16px);
-        color: var(--muted, #94a3b8);
-        font-family: var(--font-body, Inter, system-ui, sans-serif);
-        font-size: 15px;
-        text-align: center;
-      }
-
-      .device-cutout {
-        position: absolute;
-        left: 50%;
-        top: 0;
-        z-index: 50;
-        width: 0;
-        height: 0;
-        background: #050607;
-        pointer-events: none;
-        transform: translateX(-50%);
-      }
-
-      .device-frame[data-cutout="island"] .device-cutout {
-        top: 1.4%;
-        width: 28%;
-        height: 3.2%;
-        border-radius: 999px;
-      }
-
-      .device-frame[data-cutout="notch"] .device-cutout {
-        top: 0;
-        width: 52%;
-        height: 3.8%;
-        border-radius: 0 0 18px 18px;
-      }
-    </style>
   </head>
   <body>
-    <div
-      id="device-frame-stage"
-      data-composition-id="device-frame-stage"
-      data-start="0"
-      data-width="1920"
-      data-height="1080"
-      data-duration="5"
-      data-fps="30"
-    >
-      <div class="hf-device-frame-stage">
+    <template>
+      <style>
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+        }
+
+        /* INVARIANT: root is styled by #root, never a class -- the compiler
+           scopes CSS to [data-composition-id="device-frame-stage"] as a
+           descendant selector, so a rule keyed on the root's own class would
+           never match the root itself (see sub-compositions.md, Pitfall 3).
+           This primitive is elastic and fills whatever box a host clip
+           gives it, from a 960x540 slot up to a full 1920x1080 frame.
+
+           The width/height !important below is load-bearing, not decoration:
+           when this root gets inlined into a host, the compiler's
+           flatten step (prepareFlattenedInnerRoot) reads this element's own
+           data-width/data-height (required by the root_missing_dimensions
+           lint rule) and force-writes them back as an inline
+           style="width:1920px;height:1080px". Inline style beats a plain
+           stylesheet rule, so without !important the root would render at a
+           fixed 1920x1080 instead of filling the host box -- exactly the
+           2x-oversized-and-bleeding bug this primitive was fixed for. */
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 100% !important;
+          height: 100% !important;
+          container-type: size;
+          isolation: isolate;
+        }
+
+        .device-stage {
+          --stage-perspective: 1600px;
+          position: absolute;
+          inset: 0;
+          perspective: var(--stage-perspective);
+          perspective-origin: 50% 50%;
+        }
+
+        .device-frame {
+          /* INVARIANT: geometry below is physical-material law from
+             device-frame-spec.md (corner/bezel/aspect percentages, gradient,
+             shadow), not brand paint. It may carry literal fallbacks per the
+             primitive's material exception; do not swap in --radius/--space-*. */
+          --device-color: #1b1d22;
+          --device-color-hi: #343740;
+          --device-color-dark: #111318;
+          --device-radius: 46px;
+          --device-bezel: 9px;
+          --screen-radius: calc(var(--device-radius) - var(--device-bezel));
+          --device-aspect: 9 / 19.5;
+          --device-y: 18cqh;
+          --device-scale: 0.94;
+
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          height: 90cqh;
+          aspect-ratio: var(--device-aspect);
+          border-radius: var(--device-radius);
+          padding: var(--device-bezel);
+          background: linear-gradient(
+            145deg,
+            var(--device-color-hi),
+            var(--device-color) 42%,
+            var(--device-color-dark)
+          );
+          border: 1px solid rgba(255, 255, 255, 0.22);
+          box-shadow:
+            0 52px 110px rgba(7, 10, 20, 0.3),
+            0 18px 38px rgba(7, 10, 20, 0.22),
+            0 3px 9px rgba(7, 10, 20, 0.16),
+            inset 0 1px 0 rgba(255, 255, 255, 0.24),
+            inset 0 0 0 1px rgba(0, 0, 0, 0.48);
+          transform: translate(-50%, calc(-50% + var(--device-y))) scale(var(--device-scale));
+          transform-style: preserve-3d;
+          transform-origin: 50% 88%;
+          will-change: transform;
+        }
+
+        /* EDIT ZONE: kind/cutout/body are driven by data-composition-variables
+           (see JS below); an installing agent may also override
+           --device-color / --device-color-hi / --device-color-dark inline for
+           a bespoke finish without touching the geometry laws. */
+        .device-frame[data-kind="tablet"] {
+          --device-radius: 48px;
+          --device-bezel: 16px;
+          --screen-radius: 34px;
+          --device-aspect: 3 / 4;
+          height: 82cqh;
+        }
+
+        .device-frame[data-body="silver"] {
+          --device-color: #c9cdd3;
+          --device-color-hi: #eef1f4;
+          --device-color-dark: #9a9ea6;
+        }
+
+        .device-screen {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          border-radius: var(--screen-radius);
+          background: var(--surface, #f5f6f8);
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
+          isolation: isolate;
+          container-type: size;
+        }
+
+        .screen-viewport {
+          /* Logical-pixel authoring space (390x844 phone / 768x1024 tablet),
+             uniformly scaled to the actual screen box by JS-measured
+             --screen-scale (device-frame-spec, "Screen content contract"). The
+             scale is scene setup, not animation. */
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: calc(var(--logical-width, 390) * 1px);
+          height: calc(var(--logical-height, 844) * 1px);
+          transform-origin: 0 0;
+          transform: scale(var(--screen-scale, 1));
+        }
+
+        .screen-safe-area {
+          height: 100%;
+          box-sizing: border-box;
+          padding-top: calc(var(--logical-height, 844) * 1px * 0.03);
+        }
+
+        .device-frame[data-cutout="island"] .screen-safe-area {
+          padding-top: calc(var(--logical-height, 844) * 1px * 0.075);
+        }
+
+        .device-frame[data-cutout="notch"] .screen-safe-area {
+          padding-top: calc(var(--logical-height, 844) * 1px * 0.06);
+        }
+
+        .device-screen-slot {
+          position: relative;
+          width: 100%;
+          height: 100%;
+        }
+
+        /* Visible only while the slot is empty (comments do not count toward
+           :empty); vanishes the moment an installing agent drops real content
+           in, no cleanup required. */
+        .device-screen-slot:empty {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px dashed var(--border, rgba(15, 23, 42, 0.16));
+          border-radius: calc(var(--screen-radius) * 0.4);
+        }
+
+        .device-screen-slot:empty::before {
+          content: "screen slot: replace with reconstructed UI";
+          padding: var(--space-2, 16px);
+          color: var(--muted, #94a3b8);
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          font-size: 15px;
+          text-align: center;
+        }
+
+        .device-cutout {
+          position: absolute;
+          left: 50%;
+          top: 0;
+          z-index: 50;
+          width: 0;
+          height: 0;
+          background: #050607;
+          pointer-events: none;
+          transform: translateX(-50%);
+        }
+
+        .device-frame[data-cutout="island"] .device-cutout {
+          top: 1.4%;
+          width: 28%;
+          height: 3.2%;
+          border-radius: 999px;
+        }
+
+        .device-frame[data-cutout="notch"] .device-cutout {
+          top: 0;
+          width: 52%;
+          height: 3.8%;
+          border-radius: 0 0 18px 18px;
+        }
+      </style>
+
+      <!-- data-width / data-height here satisfy the linter's root-dimensions
+           contract (root_missing_dimensions) and match every other
+           sub-composition's #root -- see sub-compositions.md's own
+           file-shape example. The compiler's flatten step also reads these
+           two attributes and force-writes them back as an inline
+           width/height style on mount, so #root's width/height !important
+           above is required to keep the rendered box elastic (fills the
+           host clip's actual box, from a 960x540 slot up to a full
+           1920x1080 frame) instead of a fixed 1920x1080. -->
+      <div
+        id="root"
+        data-composition-id="device-frame-stage"
+        data-width="1920"
+        data-height="1080"
+        data-duration="5"
+      >
         <div class="device-stage">
           <div class="device-frame" data-kind="phone" data-cutout="none" data-body="graphite">
             <div class="device-screen">
@@ -275,155 +295,172 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <script>
-      (function () {
-        "use strict";
+      <script>
+        (function () {
+          "use strict";
 
-        var html = document.documentElement;
-        var root = document.getElementById("device-frame-stage");
-        var frame = root.querySelector(".device-frame");
-        var screen = root.querySelector(".device-screen");
-        var viewport = root.querySelector(".screen-viewport");
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var frame = root.querySelector(".device-frame");
+          var screen = root.querySelector(".device-screen");
+          var viewport = root.querySelector(".screen-viewport");
 
-        var declared = {};
-        try {
-          JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(function (variable) {
-            declared[variable.id] = variable.default;
+          var declared = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                declared[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {}
+          var vars = Object.assign({}, declared, window.__hfVariables || {});
+
+          var device = vars.device === "tablet" ? "tablet" : "phone";
+          var cutout = vars.cutout === "island" || vars.cutout === "notch" ? vars.cutout : "none";
+          var body = vars.body === "silver" ? "silver" : "graphite";
+
+          frame.setAttribute("data-kind", device);
+          frame.setAttribute("data-cutout", cutout);
+          frame.setAttribute("data-body", body);
+
+          var LOGICAL = { phone: [390, 844], tablet: [768, 1024] };
+          var logicalWidth = LOGICAL[device][0];
+          var logicalHeight = LOGICAL[device][1];
+          viewport.style.setProperty("--logical-width", String(logicalWidth));
+          viewport.style.setProperty("--logical-height", String(logicalHeight));
+
+          function updateScreenScale() {
+            var rect = screen.getBoundingClientRect();
+            if (rect.width > 0)
+              viewport.style.setProperty("--screen-scale", String(rect.width / logicalWidth));
+          }
+          updateScreenScale();
+          if (typeof ResizeObserver !== "undefined") {
+            new ResizeObserver(updateScreenScale).observe(screen);
+          }
+
+          // NOTE: the timeline registration key below is a literal string,
+          // not read from root.getAttribute("data-composition-id") -- when
+          // this file is mounted via data-composition-src, the compiler
+          // strips data-composition-id from the inlined root (the HOST
+          // clip keeps its own copy instead), so a live read here would
+          // return null and the host would never find this timeline (see
+          // sub-compositions.md, Pitfall 2). registry/test-scenes/slots/empty.html
+          // models the same literal-key pattern.
+          var compositionId = "device-frame-stage";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "5",
+            ),
+          );
+
+          // INVARIANT: IN/OUT durations are fixed by device-frame-spec's entry
+          // and exit law; only HOLD stretches or compresses to fit whatever
+          // duration the host gives this instance. Never gsap.timeScale().
+          var IN_DELAY = 0.18;
+          var IN_RISE = 0.72;
+          var IN_SETTLE = 0.18;
+          var IN_BASE = IN_DELAY + IN_RISE + IN_SETTLE; // 1.08s
+          var OUT_BASE = 0.56;
+          var totalBase = IN_BASE + OUT_BASE;
+          var IN = IN_BASE;
+          var OUT = OUT_BASE;
+          if (duration < totalBase) {
+            var shrink = duration / totalBase;
+            IN = IN_BASE * shrink;
+            OUT = OUT_BASE * shrink;
+          }
+          var HOLD = Math.max(0, duration - (IN + OUT));
+          var OUT_AT = IN + HOLD;
+          // SYNC POINT: device-settled fires at t = IN (fixed offset into IN,
+          // never inside the elastic HOLD).
+
+          function easeOutCubic(x) {
+            return 1 - Math.pow(1 - x, 3);
+          }
+          function easeInOutQuad(x) {
+            return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+          }
+          function easeInQuad(x) {
+            return x * x;
+          }
+
+          function setPose(yCqh, scaleValue) {
+            frame.style.setProperty("--device-y", yCqh.toFixed(3) + "cqh");
+            frame.style.setProperty("--device-scale", scaleValue.toFixed(4));
+          }
+
+          function renderIn(t) {
+            var delayEnd = IN_DELAY * (IN / IN_BASE);
+            var riseEnd = delayEnd + IN_RISE * (IN / IN_BASE);
+            if (t <= delayEnd) {
+              setPose(18, 0.94);
+              return;
+            }
+            if (t <= riseEnd) {
+              var p = easeOutCubic(
+                Math.min(1, (t - delayEnd) / Math.max(0.0001, riseEnd - delayEnd)),
+              );
+              setPose(18 + (-1.2 - 18) * p, 0.94 + (1.01 - 0.94) * p);
+              return;
+            }
+            var p2 = easeInOutQuad(Math.min(1, (t - riseEnd) / Math.max(0.0001, IN - riseEnd)));
+            setPose(-1.2 + (0 - -1.2) * p2, 1.01 + (1 - 1.01) * p2);
+          }
+
+          // RETIME RANGE: the idle float is the only elastic segment. It
+          // repeats for as long as HOLD lasts, so stretching the host duration
+          // never re-times the fixed IN or OUT phases above.
+          function renderHold(holdT) {
+            var period = 3.2;
+            var amp = 0.6;
+            var phase = ((holdT % period) / period) * Math.PI * 2;
+            setPose(Math.sin(phase) * amp, 1);
+          }
+
+          function renderOut(p) {
+            var e = easeInQuad(Math.min(1, p));
+            setPose(0 + 18 * e, 1 + (0.96 - 1) * e);
+          }
+
+          function render(t) {
+            if (t <= IN) renderIn(t);
+            else if (t < OUT_AT) renderHold(t - IN);
+            else renderOut((t - OUT_AT) / Math.max(0.0001, OUT));
+          }
+
+          function fireSfx(id, atTime) {
+            root.dispatchEvent(
+              new CustomEvent("hf:sfx", { detail: { id: id, t: atTime }, bubbles: true }),
+            );
+          }
+
+          var proxy = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(proxy, {
+            t: duration,
+            duration: duration,
+            ease: "none",
+            onUpdate: function () {
+              render(proxy.t);
+            },
           });
-        } catch (error) {}
-        var vars = Object.assign({}, declared, window.__hfVariables || {});
-
-        var device = vars.device === "tablet" ? "tablet" : "phone";
-        var cutout = vars.cutout === "island" || vars.cutout === "notch" ? vars.cutout : "none";
-        var body = vars.body === "silver" ? "silver" : "graphite";
-
-        frame.setAttribute("data-kind", device);
-        frame.setAttribute("data-cutout", cutout);
-        frame.setAttribute("data-body", body);
-
-        var LOGICAL = { phone: [390, 844], tablet: [768, 1024] };
-        var logicalWidth = LOGICAL[device][0];
-        var logicalHeight = LOGICAL[device][1];
-        viewport.style.setProperty("--logical-width", String(logicalWidth));
-        viewport.style.setProperty("--logical-height", String(logicalHeight));
-
-        function updateScreenScale() {
-          var rect = screen.getBoundingClientRect();
-          if (rect.width > 0) viewport.style.setProperty("--screen-scale", String(rect.width / logicalWidth));
-        }
-        updateScreenScale();
-        if (typeof ResizeObserver !== "undefined") {
-          new ResizeObserver(updateScreenScale).observe(screen);
-        }
-
-        var compositionId = root.getAttribute("data-composition-id");
-        var duration = Math.max(
-          0.001,
-          parseFloat(root.dataset.duration || html.getAttribute("data-composition-duration") || "5"),
-        );
-
-        // INVARIANT: IN/OUT durations are fixed by device-frame-spec's entry
-        // and exit law; only HOLD stretches or compresses to fit whatever
-        // duration the host gives this instance. Never gsap.timeScale().
-        var IN_DELAY = 0.18;
-        var IN_RISE = 0.72;
-        var IN_SETTLE = 0.18;
-        var IN_BASE = IN_DELAY + IN_RISE + IN_SETTLE; // 1.08s
-        var OUT_BASE = 0.56;
-        var totalBase = IN_BASE + OUT_BASE;
-        var IN = IN_BASE;
-        var OUT = OUT_BASE;
-        if (duration < totalBase) {
-          var shrink = duration / totalBase;
-          IN = IN_BASE * shrink;
-          OUT = OUT_BASE * shrink;
-        }
-        var HOLD = Math.max(0, duration - (IN + OUT));
-        var OUT_AT = IN + HOLD;
-        // SYNC POINT: device-settled fires at t = IN (fixed offset into IN,
-        // never inside the elastic HOLD).
-
-        function easeOutCubic(x) {
-          return 1 - Math.pow(1 - x, 3);
-        }
-        function easeInOutQuad(x) {
-          return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
-        }
-        function easeInQuad(x) {
-          return x * x;
-        }
-
-        function setPose(yCqh, scaleValue) {
-          frame.style.setProperty("--device-y", yCqh.toFixed(3) + "cqh");
-          frame.style.setProperty("--device-scale", scaleValue.toFixed(4));
-        }
-
-        function renderIn(t) {
-          var delayEnd = IN_DELAY * (IN / IN_BASE);
-          var riseEnd = delayEnd + IN_RISE * (IN / IN_BASE);
-          if (t <= delayEnd) {
-            setPose(18, 0.94);
-            return;
-          }
-          if (t <= riseEnd) {
-            var p = easeOutCubic(Math.min(1, (t - delayEnd) / Math.max(0.0001, riseEnd - delayEnd)));
-            setPose(18 + (-1.2 - 18) * p, 0.94 + (1.01 - 0.94) * p);
-            return;
-          }
-          var p2 = easeInOutQuad(Math.min(1, (t - riseEnd) / Math.max(0.0001, IN - riseEnd)));
-          setPose(-1.2 + (0 - -1.2) * p2, 1.01 + (1 - 1.01) * p2);
-        }
-
-        // RETIME RANGE: the idle float is the only elastic segment. It
-        // repeats for as long as HOLD lasts, so stretching the host duration
-        // never re-times the fixed IN or OUT phases above.
-        function renderHold(holdT) {
-          var period = 3.2;
-          var amp = 0.6;
-          var phase = ((holdT % period) / period) * Math.PI * 2;
-          setPose(Math.sin(phase) * amp, 1);
-        }
-
-        function renderOut(p) {
-          var e = easeInQuad(Math.min(1, p));
-          setPose(0 + 18 * e, 1 + (0.96 - 1) * e);
-        }
-
-        function render(t) {
-          if (t <= IN) renderIn(t);
-          else if (t < OUT_AT) renderHold(t - IN);
-          else renderOut((t - OUT_AT) / Math.max(0.0001, OUT));
-        }
-
-        function fireSfx(id, atTime) {
-          root.dispatchEvent(new CustomEvent("hf:sfx", { detail: { id: id, t: atTime }, bubbles: true }));
-        }
-
-        var proxy = { t: 0 };
-        var tl = gsap.timeline({ paused: true });
-        tl.to(proxy, {
-          t: duration,
-          duration: duration,
-          ease: "none",
-          onUpdate: function () {
-            render(proxy.t);
-          },
-        });
-        tl.call(
-          function () {
-            fireSfx("device-settle-soft", IN);
-          },
-          [],
-          IN,
-        );
-        tl.to({}, { duration: Math.max(0, duration - tl.duration()) });
-        render(0);
-        tl.seek(0);
-        window.__timelines = window.__timelines || {};
-        window.__timelines[compositionId] = tl;
-      })();
-    </script>
+          tl.call(
+            function () {
+              fireSfx("device-settle-soft", IN);
+            },
+            [],
+            IN,
+          );
+          tl.to({}, { duration: Math.max(0, duration - tl.duration()) });
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
   </body>
 </html>

@@ -40,8 +40,13 @@ but the primary-job scene is the hard gate.
 
 1. Open the scene whose theme/format matches what you want to check (dark, light, or phone
    container), and find the slot matching the primitive's job.
-2. Swap that slot's `data-composition-src` to point at the primitive's demo file, and update
-   `data-composition-id` on the same element to match the demo file's own internal
+2. Swap that slot's `data-composition-src` to point at the PRIMITIVE FILE itself
+   (`registry/components/<name>/<name>.html`), never at its demo. The demo is a standalone
+   showcase with its own full-size stage; mounting it into a slot renders the demo's 1920x1080
+   stage inside the slot box and everything overflows (this exact mistake shipped in the first
+   version of this README and masked four mount-contract failures). The primitive file is the
+   elastic, template-wrapped sub-composition that fills whatever box the slot gives it.
+   Update `data-composition-id` on the same element to match the primitive's own
    `data-composition-id` (the host id is the `window.__timelines` lookup key, it must equal the
    loaded file's id exactly, see `skills/hyperframes-core/references/sub-compositions.md`,
    Pitfall 2). One line changes twice:
