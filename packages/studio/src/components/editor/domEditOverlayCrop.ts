@@ -28,15 +28,21 @@ export function cropRectFromInsets(
   };
 }
 
-/** Current inset crop of an element (inline first, computed fallback), or zeros. */
-export function readElementCropInsets(element: HTMLElement): ClipPathInsetSides & {
-  radius: number;
-} {
+/**
+ * Current inset crop of an element (inline first, computed fallback).
+ * Zeros = no clip (croppable, nothing cropped yet). `null` = the element
+ * carries a clip-path this tool cannot represent (circle/polygon/non-px
+ * inset) — croppers must not lift, edit, or restore it, or the clip gets
+ * silently replaced or destroyed on deselect.
+ */
+export function readElementCropInsets(
+  element: HTMLElement,
+): (ClipPathInsetSides & { radius: number }) | null {
   const inline = element.style.getPropertyValue("clip-path").trim();
   const value =
     inline || element.ownerDocument.defaultView?.getComputedStyle(element).clipPath.trim() || "";
-  const parsed = parseInsetClipPathSides(value === "none" ? "" : value);
-  return parsed ?? { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
+  if (!value || value === "none") return { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
+  return parseInsetClipPathSides(value);
 }
 
 export interface CropInsetDragInput {
@@ -111,6 +117,8 @@ export function hugRectForElement(
   element: HTMLElement,
 ): CropScreenRect {
   const insets = readElementCropInsets(element);
-  if (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0) return rect;
+  // Uneditable clip (null) can't be hugged — show the full element rect.
+  if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
+    return rect;
   return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
 }

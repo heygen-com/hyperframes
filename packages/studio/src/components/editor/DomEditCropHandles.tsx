@@ -77,36 +77,23 @@ export function DomEditCropHandles({
 }: DomEditCropHandlesProps) {
   const gestureRef = useRef<CropGestureState | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [state, setState] = useState(() => {
-    const parsed = readElementCropInsets(selection.element);
-    return {
-      element: selection.element,
-      insets: {
-        top: parsed.top,
-        right: parsed.right,
-        bottom: parsed.bottom,
-        left: parsed.left,
-      } as ClipPathInsetSides,
-      radius: parsed.radius,
-    };
-  });
+  // readElementCropInsets returns null for a clip this tool can't represent
+  // (circle/polygon/non-px inset): the crop UI must fully stand down for that
+  // element — no lift, no handles — or select+deselect replaces the authored
+  // clip with an inset (or deletes it).
+  const cropStateFor = (element: HTMLElement) => {
+    const parsed = readElementCropInsets(element);
+    const { radius, ...insets } = parsed ?? { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
+    return { element, croppable: parsed !== null, insets: insets as ClipPathInsetSides, radius };
+  };
+  const [state, setState] = useState(() => cropStateFor(selection.element));
 
   // Re-sync when the selection targets a different element (reselect, or an
   // undo/redo that re-keys the node): read its committed crop before the lift
   // effect runs. Read inside the guard so a drag's per-frame setState doesn't
   // re-run getComputedStyle every frame.
   if (state.element !== selection.element) {
-    const liveInsets = readElementCropInsets(selection.element);
-    setState({
-      element: selection.element,
-      insets: {
-        top: liveInsets.top,
-        right: liveInsets.right,
-        bottom: liveInsets.bottom,
-        left: liveInsets.left,
-      },
-      radius: liveInsets.radius,
-    });
+    setState(cropStateFor(selection.element));
   }
 
   const hasCrop =
@@ -120,17 +107,28 @@ export function DomEditCropHandles({
   committedRef.current = hasCrop ? buildInsetClipPathSides(state.insets, state.radius) : null;
 
   // Lift the clip while the element is selected so the full content shows and the
-  // cropped-away area can be dimmed; restore the committed crop on deselect. Keyed
-  // on the element so switching selections restores the previous one. Runs after
-  // render, so the state re-sync above still reads the element's real committed clip.
+  // cropped-away area can be dimmed; restore on deselect. Keyed on the element so
+  // switching selections restores the previous one. Runs after render, so the
+  // state re-sync above still reads the element's real committed clip. Restore
+  // prefers the pre-lift inline value VERBATIM — the rebuilt inset only replaces
+  // it after a crop gesture actually commits, so a mere select+deselect can
+  // never reformat (or drop) what the author wrote.
   const liftedRef = useRef(false);
+  const preLiftInlineClipRef = useRef("");
+  const cropCommittedRef = useRef(false);
   useEffect(() => {
     const el = selection.element;
+    if (readElementCropInsets(el) === null) return;
+    preLiftInlineClipRef.current = el.style.getPropertyValue("clip-path");
+    cropCommittedRef.current = false;
     el.style.setProperty("clip-path", "none");
     liftedRef.current = true;
     return () => {
       liftedRef.current = false;
-      if (committedRef.current) el.style.setProperty("clip-path", committedRef.current);
+      const restore = cropCommittedRef.current
+        ? committedRef.current
+        : preLiftInlineClipRef.current || null;
+      if (restore) el.style.setProperty("clip-path", restore);
       else el.style.removeProperty("clip-path");
     };
   }, [selection.element]);
@@ -198,7 +196,12 @@ export function DomEditCropHandles({
     };
     void Promise.resolve(
       onStyleCommit?.("clip-path", buildInsetClipPathSides(state.insets, state.radius)),
-    ).then(reLift, reLift);
+    ).then(() => {
+      // Only a landed commit makes the rebuilt inset the restore value; a
+      // failed one keeps restoring the pre-lift clip.
+      cropCommittedRef.current = true;
+      reLift();
+    }, reLift);
   };
 
   const cancelCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
@@ -211,6 +214,10 @@ export function DomEditCropHandles({
     // Clip stays lifted; the dim follows the reset insets.
     setState((prev) => ({ ...prev, insets: gesture.startInsets }));
   };
+
+  // Uneditable clip (circle/polygon/non-px inset): the element renders exactly
+  // as authored and the crop tool shows nothing. All hooks above stay mounted.
+  if (!state.croppable) return null;
 
   return (
     <>

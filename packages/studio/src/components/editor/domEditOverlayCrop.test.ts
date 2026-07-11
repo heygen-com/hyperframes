@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   cropRectFromInsets,
+  hugRectForElement,
+  readElementCropInsets,
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
 } from "./domEditOverlayCrop";
@@ -102,5 +104,50 @@ describe("cropRectFromInsets", () => {
     );
     expect(r.width).toBe(0);
     expect(r.height).toBe(0);
+  });
+});
+
+describe("readElementCropInsets tri-state", () => {
+  // Regression: a clip-path the crop tool can't represent (circle/polygon/
+  // non-px inset) used to parse to ZEROS — indistinguishable from "no crop" —
+  // so selecting lifted the clip and deselecting removed/replaced it: the
+  // authored circle clip was silently destroyed by a mere select+deselect.
+  const fakeEl = (inlineClip: string) =>
+    ({
+      style: { getPropertyValue: (p: string) => (p === "clip-path" ? inlineClip : "") },
+      ownerDocument: { defaultView: { getComputedStyle: () => ({ clipPath: "none" }) } },
+    }) as unknown as HTMLElement;
+
+  it("zeros for no clip", () => {
+    expect(readElementCropInsets(fakeEl(""))).toEqual({
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      radius: 0,
+    });
+  });
+
+  it("parses a px inset", () => {
+    expect(readElementCropInsets(fakeEl("inset(16px round 12px)"))).toEqual({
+      top: 16,
+      right: 16,
+      bottom: 16,
+      left: 16,
+      radius: 12,
+    });
+  });
+
+  it("null for a circle clip (uneditable, must not be lifted)", () => {
+    expect(readElementCropInsets(fakeEl("circle(50% at 50% 50%)"))).toBeNull();
+  });
+
+  it("null for a non-px inset (uneditable, must not be lifted)", () => {
+    expect(readElementCropInsets(fakeEl("inset(10%)"))).toBeNull();
+  });
+
+  it("hugRectForElement passes the rect through for uneditable clips", () => {
+    const rect = { left: 1, top: 2, width: 30, height: 40, editScaleX: 1, editScaleY: 1 };
+    expect(hugRectForElement(rect, fakeEl("circle(50%)"))).toEqual(rect);
   });
 });
