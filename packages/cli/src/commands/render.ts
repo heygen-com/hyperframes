@@ -1423,6 +1423,7 @@ export async function renderLocal(
 ): Promise<SingleRenderResult> {
   const preflight = await runEnvironmentChecks({
     projectDir,
+    diskPaths: [tmpdir(), dirname(outputPath)],
     browserPath: options.browserPath,
     includeBrowser: true,
     includeDisk: true,
