@@ -73,6 +73,7 @@ export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[]
   let match: RegExpExecArray | null;
   const p = new RegExp(pattern.source, pattern.flags);
   while ((match = p.exec(source)) !== null) {
+    if (isInsideQuotedTagAttribute(source, match.index)) continue;
     blocks.push({
       attrs: match[1] || "",
       content: match[2] || "",
@@ -81,6 +82,27 @@ export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[]
     });
   }
   return blocks;
+}
+
+function isInsideQuotedTagAttribute(source: string, index: number): boolean {
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < index; i += 1) {
+    const char = source[i];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (!inTag) {
+      if (char === "<") inTag = true;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === ">") inTag = false;
+  }
+
+  return inTag && quote !== null;
 }
 
 /**

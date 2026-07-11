@@ -77,6 +77,29 @@ ${headContent}
 }
 
 describe("core rules", () => {
+  it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1280" data-height="720"></div>
+  <iframe srcdoc="<script>const child = gsap.timeline({ paused: true }); child.to(&quot;#x&quot;, { opacity: 1 });</script>"></iframe>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const rootTl = gsap.timeline({ paused: true });
+    window.__timelines["root"] = rootTl;
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find((finding) => finding.code === "invalid_inline_script_syntax"),
+    ).toBeUndefined();
+    expect(
+      result.findings.find((finding) => finding.code === "gsap_timeline_not_registered"),
+    ).toBeUndefined();
+  });
+
   it("warns when an id starts with a digit and is unsafe in a hash selector", async () => {
     const html = `
 <html><body>
