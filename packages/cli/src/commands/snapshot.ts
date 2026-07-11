@@ -465,7 +465,7 @@ async function captureSnapshots(
           );
           writeFileSync(framePath, buffer);
         } else {
-          await page.screenshot({ path: framePath, type: "png" });
+          await page.screenshot({ path: framePath, type: "png", omitBackground: true });
         }
         const rel = relative(projectDir, framePath);
         savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);

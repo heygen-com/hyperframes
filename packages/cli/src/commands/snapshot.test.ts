@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeSnapshotTimes, parseZoomScale, tailFrameTime } from "./snapshot.js";
+import { readFileSync } from "node:fs";
 
 // --zoom's crop-region math (selector bbox + padding + clamp, exact region
 // form, no-match error) is owned by and tested in
@@ -18,6 +19,15 @@ describe("tailFrameTime", () => {
 
   it("never goes negative", () => {
     expect(tailFrameTime(0)).toBe(0);
+  });
+});
+
+describe("transparent snapshot capture", () => {
+  it("asks Chrome to retain the alpha channel in review PNGs", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain(
+      'page.screenshot({ path: framePath, type: "png", omitBackground: true })',
+    );
   });
 });
 
