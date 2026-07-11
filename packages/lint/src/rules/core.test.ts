@@ -77,6 +77,62 @@ ${headContent}
 }
 
 describe("core rules", () => {
+  it("warns when a custom-positioned clip inherits opposite inset edges", async () => {
+    const html = `
+<html><head><style>
+  .clip { position: absolute; inset: 0; }
+  .badge { top: 40px; right: 40px; border-radius: 999px; }
+</style></head><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920">
+    <div class="clip badge">Badge</div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "clip_inset_overconstrained");
+
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.selector).toBe(".badge");
+    expect(finding?.fixHint).toContain("left: auto");
+    expect(finding?.fixHint).toContain("bottom: auto");
+  });
+
+  it("accepts a custom-positioned clip that resets inherited opposite edges", async () => {
+    const html = `
+<html><head><style>
+  .clip { position: absolute; inset: 0; }
+  .badge { top: 40px; right: 40px; left: auto; bottom: auto; border-radius: 999px; }
+</style></head><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920">
+    <div class="clip badge">Badge</div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((f) => f.code === "clip_inset_overconstrained")).toBeUndefined();
+  });
+
+  it("accepts a custom-positioned clip with explicit dimensions", async () => {
+    const html = `
+<html><head><style>
+  .clip { position: absolute; inset: 0; }
+  .badge { top: 40px; right: 40px; width: 120px; height: 48px; border-radius: 999px; }
+</style></head><body>
+  <div data-composition-id="c1" data-width="1080" data-height="1920">
+    <div class="clip badge">Badge</div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((f) => f.code === "clip_inset_overconstrained")).toBeUndefined();
+  });
+
   it("reports error when root is missing data-composition-id", async () => {
     const html = `
 <html><body>

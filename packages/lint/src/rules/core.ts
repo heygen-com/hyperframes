@@ -24,6 +24,22 @@ function selectorTargetsCompositionId(selector: string, compositionId: string): 
   ).test(selector);
 }
 
+function selectorMatchesClassList(selector: string, classes: Set<string>): boolean {
+  const target =
+    selector
+      .trim()
+      .split(/\s+|>|\+|~/)
+      .at(-1) ?? "";
+  const required = [...target.matchAll(/\.([\w-]+)/g)].flatMap((match) =>
+    match[1] ? [match[1]] : [],
+  );
+  return required.length > 0 && required.every((className) => classes.has(className));
+}
+
+function isActiveInset(value: string | undefined): boolean {
+  return value !== undefined && value.trim().toLowerCase() !== "auto";
+}
+
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
   if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) {
     return false;
@@ -181,6 +197,90 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
 }
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // clip_inset_overconstrained
+  // `.clip { inset: 0 }` is the full-canvas default. A custom-positioning rule
+  // that changes only top/right (or another subset) retains the opposite edges,
+  // so an auto-sized absolute element silently stretches across the canvas.
+  ({ tags, styles }) => {
+    const findings: HyperframeLintFinding[] = [];
+    const parsedRules: postcss.Rule[] = [];
+    for (const style of styles) {
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        continue;
+      }
+      root.walkRules((rule) => {
+        parsedRules.push(rule);
+      });
+    }
+
+    for (const tag of tags) {
+      const classNames = (readAttr(tag.raw, "class") ?? "").split(/\s+/).filter(Boolean);
+      if (!classNames.includes("clip") || classNames.length < 2) continue;
+      const classes = new Set(classNames);
+      const edges = new Map<string, string>();
+      let inheritedInset = false;
+      let customSelector: string | undefined;
+
+      for (const rule of parsedRules) {
+        const matchingSelectors = rule.selectors.filter((selector) =>
+          selectorMatchesClassList(selector, classes),
+        );
+        if (matchingSelectors.length === 0) continue;
+        rule.walkDecls((decl) => {
+          const property = decl.prop.trim().toLowerCase();
+          if (property === "inset") {
+            const values = decl.value.trim().split(/\s+/);
+            if (values.length === 1 && isActiveInset(values[0])) {
+              for (const edge of ["top", "right", "bottom", "left"]) edges.set(edge, values[0]!);
+              if (matchingSelectors.some((selector) => /\.clip(?:\b|[.#:[>+~])/.test(selector))) {
+                inheritedInset = true;
+              }
+            }
+            return;
+          }
+          if (!["top", "right", "bottom", "left", "width", "height"].includes(property)) {
+            return;
+          }
+          edges.set(property, decl.value);
+          if (property !== "width" && property !== "height") {
+            const selector = matchingSelectors.find((candidate) => !/^\.clip\s*$/.test(candidate));
+            if (selector) customSelector = selector;
+          }
+        });
+      }
+
+      if (!inheritedInset || !customSelector) continue;
+      const horizontalStretch =
+        isActiveInset(edges.get("left")) &&
+        isActiveInset(edges.get("right")) &&
+        !isActiveInset(edges.get("width"));
+      const verticalStretch =
+        isActiveInset(edges.get("top")) &&
+        isActiveInset(edges.get("bottom")) &&
+        !isActiveInset(edges.get("height"));
+      if (!horizontalStretch && !verticalStretch) continue;
+
+      const resets = [
+        horizontalStretch ? "left: auto" : null,
+        verticalStretch ? "bottom: auto" : null,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      findings.push({
+        code: "clip_inset_overconstrained",
+        severity: "warning",
+        message: `\`${customSelector}\` custom-positions a .clip element but retains opposite edges from \`.clip { inset: 0 }\`, so its auto size stretches across the canvas.`,
+        selector: customSelector,
+        fixHint: `Reset the inherited opposite edges (${resets}) or set an explicit width/height for the intended custom placement.`,
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
