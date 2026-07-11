@@ -1,7 +1,23 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it("keeps the editorial emphasis registry component free of invalid placeholder media", async () => {
+    const component = readFileSync(
+      resolve(
+        process.cwd(),
+        "../../registry/components/caption-editorial-emphasis/caption-editorial-emphasis.html",
+      ),
+      "utf8",
+    );
+
+    const result = await lintHyperframeHtml(component);
+
+    expect(result.findings.find((finding) => finding.code === "media_missing_src")).toBeUndefined();
+  });
+
   it("reports error for duplicate media ids", async () => {
     const html = `
 <html><body>
