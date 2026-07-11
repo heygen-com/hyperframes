@@ -3,6 +3,7 @@ import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerS
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 
 export type { ClipManifestClip } from "../lib/playbackTypes";
 export { createStaticSeekPlaybackAdapter } from "../lib/playbackAdapter";
@@ -15,7 +16,6 @@ export {
   parseTimelineFromDOM,
   readTimelineDurationFromDocument,
   resolveStandaloneRootCompositionSrc,
-  resolveIframe,
 } from "../lib/timelineDOM";
 export {
   shouldIgnorePlaybackShortcutEvent,
@@ -36,6 +36,7 @@ import {
   mergeTimelineElementsPreservingDowngrades,
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
+import { normalizeToZones } from "../components/timelineZones";
 import {
   setPreviewMediaMuted,
   setPreviewPlaybackRate,
@@ -90,12 +91,17 @@ export function useTimelinePlayer() {
       // applyCachedSourceDurations re-applies the cached probe duration: re-derived
       // elements (e.g. after a clip move) can arrive without sourceDuration, which
       // otherwise makes trimmed waveforms lose their window.
-      const mergedElements = applyCachedSourceDurations(
-        mergeTimelineElementsPreservingDowngrades(
-          state.elements,
-          elements,
-          state.duration,
-          resolvedDuration,
+      // Enforced CapCut zoning (overlay → main → audio): normalize track indices
+      // on every discovery. Idempotent — already-zoned input is returned as-is, so
+      // drops persist zoned indices and reloads re-zone to the same (no drift).
+      const mergedElements = normalizeToZones(
+        applyCachedSourceDurations(
+          mergeTimelineElementsPreservingDowngrades(
+            state.elements,
+            elements,
+            state.duration,
+            resolvedDuration,
+          ),
         ),
       );
 
@@ -207,49 +213,14 @@ export function useTimelinePlayer() {
     }
   }, []);
 
-  const stopReverseLoop = useCallback(() => {
-    cancelAnimationFrame(reverseRafRef.current);
-  }, []);
+  const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
+    rafRef,
+    reverseRafRef,
+    getAdapter,
+    setCurrentTime,
+    setIsPlaying,
+  });
 
-  const startRAFLoop = useCallback(() => {
-    // fallow-ignore-next-line complexity
-    const tick = () => {
-      const adapter = getAdapter();
-      if (adapter) {
-        const rawTime = adapter.getTime();
-        const dur = adapter.getDuration();
-        const time = dur > 0 ? Math.min(rawTime, dur) : rawTime;
-        liveTime.notify(time); // direct DOM updates, no React re-render
-        const { inPoint, outPoint } = usePlayerStore.getState();
-        const rawLoopEnd = outPoint !== null ? Math.min(outPoint, dur) : dur;
-        const rawLoopStart = inPoint !== null ? inPoint : 0;
-        const loopEnd = rawLoopStart < rawLoopEnd ? rawLoopEnd : dur;
-        const loopStart = rawLoopStart < rawLoopEnd ? rawLoopStart : 0;
-        if (time >= loopEnd) {
-          if (usePlayerStore.getState().loopEnabled && dur > 0) {
-            // keepPlaying skips the adapter's implicit pause; play() below is then a no-op.
-            adapter.seek(loopStart, { keepPlaying: true });
-            liveTime.notify(loopStart);
-            adapter.play();
-            setIsPlaying(true);
-            rafRef.current = requestAnimationFrame(tick);
-            return;
-          }
-          if (adapter.isPlaying()) adapter.pause();
-          setCurrentTime(time); // sync Zustand once at end
-          setIsPlaying(false);
-          cancelAnimationFrame(rafRef.current);
-          return;
-        }
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }, [getAdapter, setCurrentTime, setIsPlaying]);
-
-  const stopRAFLoop = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-  }, []);
   const applyPlaybackRate = useCallback((rate: number) => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -463,10 +434,24 @@ export function useTimelinePlayer() {
       applyPreviewAudioState,
     });
   const saveSeekPosition = useCallback(() => {
-    const adapter = getAdapter();
-    pendingSeekRef.current = adapter
-      ? adapter.getTime()
-      : (usePlayerStore.getState().currentTime ?? 0);
+    // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
+    // file drop = upload reload + insert reload back-to-back) call this while
+    // the iframe from the FIRST reload is mid-teardown: getAdapter() can still
+    // return that dying document's adapter, whose getTime() reads 0 — and the
+    // store's currentTime can lag the visual playhead. Overwriting the
+    // still-unconsumed pendingSeek with either value is exactly how the
+    // playhead used to end up at 0 after a Finder drop (verified live via a
+    // currentTime write-trace). So: while a refresh is already in flight and a
+    // save exists, keep it; otherwise trust the live adapter, then the store.
+    const refreshInFlight = isRefreshingRef.current && pendingSeekRef.current != null;
+    if (!refreshInFlight) {
+      const adapter = getAdapter();
+      if (adapter) {
+        pendingSeekRef.current = adapter.getTime();
+      } else if (pendingSeekRef.current == null) {
+        pendingSeekRef.current = usePlayerStore.getState().currentTime ?? 0;
+      }
+    }
     isRefreshingRef.current = true;
     stopRAFLoop();
     stopReverseLoop();
@@ -476,6 +461,16 @@ export function useTimelinePlayer() {
     const iframe = iframeRef.current;
     if (!iframe) return;
     saveSeekPosition();
+    // Hide the iframe across the full reload so the user never sees the reloading
+    // document's RAW DOM (every clip stacked and visible) in the window between the
+    // new document parsing and the runtime initializing + seeking. initializeAdapter
+    // reveals it again right after its restore seek renders the correct frame.
+    // Tradeoff: this shows the parent stage background (a brief "freeze"/blank, on
+    // the order of the reload time ~100-300ms) INSTEAD of the all-clips flash. A
+    // blank is far less jarring than a burst of every asset appearing at once.
+    // Only the FULL-reload edits (drops/inserts) hit this — timing edits now take
+    // the soft-reload path and never touch refreshPlayer.
+    iframe.style.visibility = "hidden";
     const src = iframe.src;
     const url = new URL(src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));

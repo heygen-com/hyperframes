@@ -18,7 +18,14 @@ import {
   shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
 } from "./Timeline";
-import { RULER_H, TRACK_H } from "./timelineLayout";
+import {
+  GUTTER,
+  MIN_TIMELINE_EXTENT_S,
+  RULER_H,
+  TRACK_H,
+  getTimelineDisplayContentWidth,
+  getTimelineFitPps,
+} from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
@@ -323,30 +330,30 @@ describe("generateTicks", () => {
 });
 
 describe("formatTime", () => {
-  it("formats 0 seconds as 0:00", () => {
-    expect(formatTime(0)).toBe("0:00");
+  it("formats 0 seconds as 00:00", () => {
+    expect(formatTime(0)).toBe("00:00");
   });
 
   // fallow-ignore-next-line code-duplication
   it("formats seconds below a minute", () => {
-    expect(formatTime(5)).toBe("0:05");
-    expect(formatTime(30)).toBe("0:30");
-    expect(formatTime(59)).toBe("0:59");
+    expect(formatTime(5)).toBe("00:05");
+    expect(formatTime(30)).toBe("00:30");
+    expect(formatTime(59)).toBe("00:59");
   });
 
   it("formats exactly one minute", () => {
-    expect(formatTime(60)).toBe("1:00");
+    expect(formatTime(60)).toBe("01:00");
   });
 
   it("formats minutes and seconds", () => {
-    expect(formatTime(90)).toBe("1:30");
-    expect(formatTime(125)).toBe("2:05");
+    expect(formatTime(90)).toBe("01:30");
+    expect(formatTime(125)).toBe("02:05");
   });
 
   it("floors fractional seconds", () => {
-    expect(formatTime(5.7)).toBe("0:05");
-    expect(formatTime(59.9)).toBe("0:59");
-    expect(formatTime(90.5)).toBe("1:30");
+    expect(formatTime(5.7)).toBe("00:05");
+    expect(formatTime(59.9)).toBe("00:59");
+    expect(formatTime(90.5)).toBe("01:30");
   });
 
   it("handles large values", () => {
@@ -354,16 +361,16 @@ describe("formatTime", () => {
     expect(formatTime(3661)).toBe("61:01");
   });
 
-  it("zero-pads seconds to two digits", () => {
-    expect(formatTime(1)).toBe("0:01");
-    expect(formatTime(9)).toBe("0:09");
-    expect(formatTime(61)).toBe("1:01");
+  it("zero-pads minutes and seconds to two digits", () => {
+    expect(formatTime(1)).toBe("00:01");
+    expect(formatTime(9)).toBe("00:09");
+    expect(formatTime(61)).toBe("01:01");
   });
 });
 
 describe("formatTimelineTickLabel", () => {
   it("uses minute-second labels for normal timeline intervals", () => {
-    expect(formatTimelineTickLabel(90, 180, 5)).toBe("1:30");
+    expect(formatTimelineTickLabel(90, 180, 5)).toBe("01:30");
   });
 
   it("uses hour labels for long timelines", () => {
@@ -371,7 +378,7 @@ describe("formatTimelineTickLabel", () => {
   });
 
   it("shows subsecond labels when the major ruler interval is below one second", () => {
-    expect(formatTimelineTickLabel(1.5, 3, 0.5)).toBe("0:01.5");
+    expect(formatTimelineTickLabel(1.5, 3, 0.5)).toBe("00:01.5");
   });
 });
 
@@ -387,6 +394,80 @@ describe("shouldAutoScrollTimeline", () => {
 
   it("auto-scrolls in manual mode when horizontal overflow exists", () => {
     expect(shouldAutoScrollTimeline("manual", 1200, 800)).toBe(true);
+  });
+});
+
+describe("getTimelineFitPps (min 60s extent)", () => {
+  const viewport = 632; // usable width = 632 - GUTTER - 2 = 598
+
+  it("computes fit pps against the 60s floor for short compositions", () => {
+    // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
+    const pps = getTimelineFitPps(viewport, 10);
+    expect(pps).toBeCloseTo((viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - GUTTER - 2) / 6);
+  });
+
+  it("keeps filling the viewport with the composition when it is 60s or longer", () => {
+    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo((viewport - GUTTER - 2) / 60);
+    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo((viewport - GUTTER - 2) / 120);
+  });
+
+  it("falls back to 100 pps before the viewport is measured", () => {
+    expect(getTimelineFitPps(0, 10)).toBe(100);
+    expect(getTimelineFitPps(GUTTER, 10)).toBe(100);
+    expect(getTimelineFitPps(Number.NaN, 10)).toBe(100);
+  });
+
+  it("uses the floor for zero/invalid durations", () => {
+    expect(getTimelineFitPps(viewport, 0)).toBeCloseTo(
+      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+    expect(getTimelineFitPps(viewport, Number.NaN)).toBeCloseTo(
+      (viewport - GUTTER - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+  });
+});
+
+describe("getTimelineDisplayContentWidth", () => {
+  it("always spans at least MIN_TIMELINE_EXTENT_S seconds of content", () => {
+    // 10s of content at 20 pps = 200px; the floor keeps 60s (1200px) rendered.
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 400, pps: 20 }),
+    ).toBe(MIN_TIMELINE_EXTENT_S * 20);
+  });
+
+  it("still fills the viewport when that is larger than the 60s floor", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 2000, pps: 5 }),
+    ).toBe(2000 - GUTTER - 2);
+  });
+
+  it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        dragGhostEndPx: 5000,
+      }),
+    ).toBe(5000);
+  });
+
+  it("tracks a resize (trim) ghost past every other bound (trim-to-extend)", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 500,
+        viewportWidth: 400,
+        pps: 5,
+        resizeGhostEndPx: 4200,
+      }),
+    ).toBe(4200);
+  });
+
+  it("keeps long content authoritative", () => {
+    expect(
+      getTimelineDisplayContentWidth({ trackContentWidth: 9000, viewportWidth: 400, pps: 50 }),
+    ).toBe(9000);
   });
 });
 
@@ -524,7 +605,9 @@ describe("resolveTimelineAssetDrop", () => {
           trackOrder: [0, 3, 7],
         },
         432,
-        310,
+        // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
+        // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
+        368,
       ),
     ).toEqual({ start: 3, track: 3 });
   });

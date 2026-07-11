@@ -9,6 +9,7 @@ import {
   resolveZoneDropPlacement,
   timeRangesOverlap,
 } from "./timelineCollision";
+import { INSERT_BOUNDARY_BAND } from "./timelineLayout";
 
 function el(id: string, track: number, start: number, duration: number): TimelineElement {
   return { id, tag: "video", start, duration, track };
@@ -191,8 +192,47 @@ describe("resolveInsertRow", () => {
   });
 });
 
-// (The production insert-band suite imports INSERT_BOUNDARY_BAND from timelineLayout,
-// which lands with the timeline glue swap — the full suite re-lands there.)
+describe("resolveInsertRow — production band only arms in the inter-clip gutter (UX rule 1)", () => {
+  // The production band equals the clip inset (CLIP_Y / TRACK_H): a clip body fills
+  // [band, 1 − band] of its row, so an insert must ONLY arm in the thin gutter that
+  // straddles a boundary — never while the pointer is over a clip body. This is the
+  // regression for the plain-horizontal-drag misfire (the old 0.32 band armed an
+  // insert across ~64% of every row).
+  const n = 3;
+  const b = INSERT_BOUNDARY_BAND;
+
+  it("the band is the clip inset (3/48), not the old feel-tuned 0.32", () => {
+    expect(b).toBeCloseTo(3 / 48, 10);
+    expect(b).toBeLessThan(0.1);
+  });
+
+  it("returns null across the WHOLE clip body of every lane (no insert = move-to-lane)", () => {
+    // Sweep each lane's body [band+ε, 1−band−ε] in fine steps → always a move.
+    for (let lane = 0; lane < n; lane++) {
+      for (let frac = b + 0.01; frac <= 1 - b - 0.01 + 1e-9; frac += 0.02) {
+        expect(resolveInsertRow(lane + frac, n, b)).toBeNull();
+      }
+    }
+  });
+
+  it("arms an insert in the gutter straddling every internal boundary (dead-zone-free)", () => {
+    // Just under a boundary → insert BELOW the upper lane; just over → ABOVE the
+    // lower lane. Both resolve to the same boundary row, so the gutter has no dead
+    // spot that neither moves nor inserts.
+    expect(resolveInsertRow(1 - b / 2, n, b)).toBe(1); // bottom gutter of lane 0
+    expect(resolveInsertRow(1 + b / 2, n, b)).toBe(1); // top gutter of lane 1
+    expect(resolveInsertRow(2 - b / 2, n, b)).toBe(2);
+    expect(resolveInsertRow(2 + b / 2, n, b)).toBe(2);
+  });
+
+  it("still arms a top / bottom insert above the first / below the last lane", () => {
+    expect(resolveInsertRow(b / 2, n, b)).toBe(0); // top gutter of lane 0 → insert above top
+    expect(resolveInsertRow(-0.4, n, b)).toBe(0); // in the top breathing pad
+    expect(resolveInsertRow(n - b / 2, n, b)).toBe(n); // bottom gutter of last lane
+    expect(resolveInsertRow(n + 0.4, n, b)).toBe(n); // in the bottom breathing pad
+  });
+});
+
 describe("clampTrackToZone", () => {
   // trackOrder [0,1,2,3]: rows 0,1 = visual; rows 2,3 = audio (audioRow = 2).
   const order = [0, 1, 2, 3];
