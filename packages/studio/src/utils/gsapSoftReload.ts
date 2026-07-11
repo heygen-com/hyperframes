@@ -1,3 +1,6 @@
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
+
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
   __player?: { getTime?: () => number; seek?: (t: number) => void };
@@ -176,6 +179,7 @@ export function applySoftReload(
   scriptText: string,
   onAsyncFailure?: () => void,
   currentTimeOverride?: number,
+  authoredHtml?: string,
 ): SoftReloadResult {
   if (!iframe || !scriptText) return "cannot-soft-reload";
 
@@ -226,6 +230,36 @@ export function applySoftReload(
   // once the plugin loads; the alternative (returning false) would trigger a
   // full iframe reload that destroys the very WebGL context we're preserving.
   let deferredToAsync = false;
+
+  // Authored-opacity resolution for the restore loop below. Three-state:
+  //   "0.98" — the element's authored inline opacity
+  //   ""     — resolved, and the element has NO authored inline opacity
+  //   null   — unknown (no authored HTML supplied, element not found in it,
+  //            and no runtime parse-time stamp)
+  // The just-written file (`authoredHtml`) is the current truth; the runtime's
+  // parse-time stamp (data-hf-authored-opacity, installAuthoredOpacityCapture)
+  // covers elements the file lookup can't resolve. Parsed lazily, at most once.
+  let authoredDoc: Document | null | undefined;
+  const findAuthoredSource = (el: HTMLElement): Element | null => {
+    if (authoredDoc === undefined) {
+      try {
+        authoredDoc = authoredHtml
+          ? new DOMParser().parseFromString(authoredHtml, "text/html")
+          : null;
+      } catch {
+        authoredDoc = null;
+      }
+    }
+    if (!authoredDoc) return null;
+    const hfId = el.getAttribute("data-hf-id");
+    if (hfId) return authoredDoc.querySelector(`[data-hf-id="${hfId}"]`);
+    return el.id ? authoredDoc.getElementById(el.id) : null;
+  };
+  const readAuthoredOpacity = (el: HTMLElement): string | null => {
+    const source = findAuthoredSource(el);
+    if (source instanceof HTMLElement) return source.style.opacity;
+    return readStampedAuthoredOpacity(el);
+  };
 
   // fallow-ignore-next-line complexity
   const doReload = () => {
@@ -283,19 +317,37 @@ export function applySoftReload(
     // nukes the element's CSS base (position, width, height, etc.) from the
     // HTML `style=""` attribute. Save → clear → restore → strip `transform`.
     if (allTargets.length > 0 && win.gsap?.set) {
-      const saved: Array<[Element, string]> = [];
+      const saved: Array<[HTMLElement, string]> = [];
       for (const el of allTargets) {
         const s = (el as HTMLElement).style;
-        if (s?.cssText != null) saved.push([el, s.cssText]);
+        if (s?.cssText != null) saved.push([el as HTMLElement, s.cssText]);
       }
       try {
         win.gsap.set(allTargets, { clearProps: "all" });
       } catch {}
       for (const [el, css] of saved) {
-        const s = (el as HTMLElement).style;
-        if (!s) continue;
+        const s = el.style;
         s.cssText = css;
         s.removeProperty("transform");
+        // The restored cssText carries RUNTIME opacity, not authored opacity:
+        // a mid-flight tween's interpolated value, or the color-grading hide
+        // (`opacity: 0 !important`). The re-run script's tweens re-initialize
+        // against it — a from() captures it as its END, a to() as its START —
+        // turning the transient into the tween's permanent bound (dimmed or
+        // invisible elements). Put the AUTHORED inline opacity back; the seek
+        // below re-renders the correct animated value either way.
+        const authored = readAuthoredOpacity(el);
+        if (authored !== null) {
+          applyAuthoredInlineOpacity(s, authored);
+        } else if (
+          el.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) &&
+          s.getPropertyValue("opacity") === "0" &&
+          s.getPropertyPriority("opacity") === "important"
+        ) {
+          // Authored value unknown, but this is definitely the grading hide —
+          // never let a from() capture 0; fall back to the CSS cascade.
+          s.removeProperty("opacity");
+        }
       }
     }
 
