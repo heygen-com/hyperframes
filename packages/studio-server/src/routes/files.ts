@@ -774,6 +774,13 @@ type GsapMutationRequest =
       delta: number;
     }
   | {
+      // Batched shift: fold shiftPositionsInScript over N selectors in one write.
+      // Lets a multi-clip timeline move (ripple / insert) shift every affected
+      // clip's tweens atomically instead of one racing server round-trip per clip.
+      type: "shift-positions-batch";
+      shifts: Array<{ targetSelector: string; delta: number }>;
+    }
+  | {
       type: "scale-positions";
       targetSelector: string;
       oldStart: number;
@@ -815,6 +822,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   // Time-shift / time-scale tweens, which can move a keyframed position tween's start
   // across t=0, flipping hold need; stale holds are not repositioned by these ops.
   "shift-positions",
+  "shift-positions-batch",
   "scale-positions",
   // Retargets keyframed position tweens to a cloned element's selector; the old hold is
   // keyed to the prior selector, so holds must be rebuilt for the new target.
@@ -1100,6 +1108,14 @@ function executeGsapMutationAcorn(
       const { targetSelector, delta } = body;
       if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
       return shiftPositionsInScript(block.scriptText, targetSelector, delta);
+    }
+    case "shift-positions-batch": {
+      let script = block.scriptText;
+      for (const s of body.shifts) {
+        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
+        script = shiftPositionsInScript(script, s.targetSelector, s.delta);
+      }
+      return script;
     }
     case "scale-positions": {
       const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
@@ -1462,6 +1478,15 @@ async function executeGsapMutationRecast(
       if (!targetSelector || !Number.isFinite(delta) || delta === 0) return block.scriptText;
       const { shiftPositionsInScript } = parser;
       return shiftPositionsInScript(block.scriptText, targetSelector, delta);
+    }
+    case "shift-positions-batch": {
+      const { shiftPositionsInScript } = parser;
+      let script = block.scriptText;
+      for (const s of body.shifts) {
+        if (!s.targetSelector || !Number.isFinite(s.delta) || s.delta === 0) continue;
+        script = shiftPositionsInScript(script, s.targetSelector, s.delta);
+      }
+      return script;
     }
     case "scale-positions": {
       const { targetSelector, oldStart, oldDuration, newStart, newDuration } = body;
@@ -2024,6 +2049,11 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (unsafeFields.length > 0) {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
+    // Defensive shape guard: a malformed shift-positions-batch (missing/non-array
+    // `shifts`) would otherwise TypeError inside `for (const s of body.shifts)`.
+    if (body.type === "shift-positions-batch" && !Array.isArray(body.shifts)) {
+      return c.json({ error: "shift-positions-batch requires a `shifts` array" }, 400);
+    }
 
     let html = readFileSync(res.absPath, "utf-8");
     let block = extractGsapScriptBlock(html);
@@ -2046,7 +2076,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       block = extractGsapScriptBlock(html);
     }
-    if (!block && (body.type === "shift-positions" || body.type === "scale-positions")) {
+    if (
+      !block &&
+      (body.type === "shift-positions" ||
+        body.type === "scale-positions" ||
+        body.type === "shift-positions-batch")
+    ) {
       return c.json({
         ok: true,
         changed: false,
