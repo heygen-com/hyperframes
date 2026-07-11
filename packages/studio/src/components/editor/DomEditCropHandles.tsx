@@ -84,7 +84,7 @@ export function DomEditCropHandles({
   const cropStateFor = (element: HTMLElement) => {
     const parsed = readElementCropInsets(element);
     const { radius, ...insets } = parsed ?? { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
-    return { element, croppable: parsed !== null, insets: insets as ClipPathInsetSides, radius };
+    return { element, croppable: parsed !== null, insets, radius };
   };
   const [state, setState] = useState(() => cropStateFor(selection.element));
 
@@ -102,32 +102,32 @@ export function DomEditCropHandles({
     state.insets.bottom > 0 ||
     state.insets.left > 0;
 
-  // Latest committed crop — re-applied to the element when the selection drops.
-  const committedRef = useRef<string | null>(null);
-  committedRef.current = hasCrop ? buildInsetClipPathSides(state.insets, state.radius) : null;
-
   // Lift the clip while the element is selected so the full content shows and the
   // cropped-away area can be dimmed; restore on deselect. Keyed on the element so
   // switching selections restores the previous one. Runs after render, so the
   // state re-sync above still reads the element's real committed clip. Restore
   // prefers the pre-lift inline value VERBATIM — the rebuilt inset only replaces
   // it after a crop gesture actually commits, so a mere select+deselect can
-  // never reformat (or drop) what the author wrote.
+  // never reformat (or drop) what the author wrote. Both refs are written only
+  // by THIS element's lift effect and crop gestures — never derived from render
+  // state, which by cleanup time already describes the NEXT selection (a direct
+  // A→B switch re-syncs state to B before A's cleanup runs).
   const liftedRef = useRef(false);
   const preLiftInlineClipRef = useRef("");
-  const cropCommittedRef = useRef(false);
+  // null = no crop gesture committed this selection; "" = committed a crop
+  // removal; anything else = the exact committed clip-path value.
+  const committedClipRef = useRef<string | null>(null);
   useEffect(() => {
     const el = selection.element;
     if (readElementCropInsets(el) === null) return;
     preLiftInlineClipRef.current = el.style.getPropertyValue("clip-path");
-    cropCommittedRef.current = false;
+    committedClipRef.current = null;
     el.style.setProperty("clip-path", "none");
     liftedRef.current = true;
     return () => {
       liftedRef.current = false;
-      const restore = cropCommittedRef.current
-        ? committedRef.current
-        : preLiftInlineClipRef.current || null;
+      const committed = committedClipRef.current;
+      const restore = committed !== null ? committed || null : preLiftInlineClipRef.current || null;
       if (restore) el.style.setProperty("clip-path", restore);
       else el.style.removeProperty("clip-path");
     };
@@ -194,12 +194,17 @@ export function DomEditCropHandles({
     const reLift = () => {
       if (liftedRef.current) el.style.setProperty("clip-path", "none");
     };
-    void Promise.resolve(
-      onStyleCommit?.("clip-path", buildInsetClipPathSides(state.insets, state.radius)),
-    ).then(() => {
+    const committedValue = buildInsetClipPathSides(state.insets, state.radius);
+    const cropped =
+      state.insets.top > 0 ||
+      state.insets.right > 0 ||
+      state.insets.bottom > 0 ||
+      state.insets.left > 0;
+    void Promise.resolve(onStyleCommit?.("clip-path", committedValue)).then(() => {
       // Only a landed commit makes the rebuilt inset the restore value; a
-      // failed one keeps restoring the pre-lift clip.
-      cropCommittedRef.current = true;
+      // failed one keeps restoring the pre-lift clip. Store the value itself —
+      // by deselect time, render state describes the next selection.
+      committedClipRef.current = cropped ? committedValue : "";
       reLift();
     }, reLift);
   };
