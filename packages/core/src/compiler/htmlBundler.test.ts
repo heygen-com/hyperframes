@@ -52,6 +52,22 @@ function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): b
 }
 
 describe("bundleToSingleHtml", () => {
+  it("bundles a direct composition entry with paths relative to its file", async () => {
+    const dir = makeTempProject({
+      "index.html": "<html><body>wrong entry</body></html>",
+      "compositions/scene.html": `<!doctype html><html><head><link rel="stylesheet" href="scene.css"></head><body>
+        <div data-composition-id="scene" data-width="320" data-height="180">direct scene</div>
+      </body></html>`,
+      "compositions/scene.css": ".direct-scene { color: rgb(1, 2, 3); }",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("direct scene");
+    expect(bundled).not.toContain("wrong entry");
+    expect(bundled).toContain(".direct-scene { color: rgb(1, 2, 3); }");
+  });
+
   it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

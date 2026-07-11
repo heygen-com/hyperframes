@@ -3,7 +3,7 @@ export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues } from "../runtime/getVariables";
 import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
-import { join, resolve, relative, dirname, isAbsolute, sep } from "path";
+import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
@@ -581,6 +581,8 @@ function stripJsCommentsParserSafe(source: string): string {
 }
 
 export interface BundleOptions {
+  /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
+  entryFile?: string;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
   probeMediaDuration?: MediaDurationProber;
   /**
@@ -692,11 +694,19 @@ export async function bundleToSingleHtml(
   projectDir: string,
   options?: BundleOptions,
 ): Promise<string> {
-  const indexPath = join(projectDir, "index.html");
-  if (!existsSync(indexPath)) throw new Error("index.html not found in project directory");
+  const entryFile = options?.entryFile ?? "index.html";
+  const indexPath = resolveWithinProject(projectDir, entryFile);
+  if (!indexPath || !existsSync(indexPath)) {
+    throw new Error(`${entryFile} not found in project directory`);
+  }
+  const sourceDir = dirname(indexPath);
+  const resolveEntryPath = (relativePath: string): string | null => {
+    const resolved = resolve(sourceDir, relativePath);
+    return isSafePath(projectDir, resolved) ? resolved : null;
+  };
 
   const rawHtml = readFileSync(indexPath, "utf-8");
-  const compiled = await compileHtml(rawHtml, projectDir, options?.probeMediaDuration);
+  const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
@@ -714,7 +724,7 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
     const href = el.getAttribute("href");
     if (!href || !isRelativeUrl(href)) continue;
-    const cssPath = resolveWithinProject(projectDir, href);
+    const cssPath = resolveEntryPath(href);
     if (!cssPath) continue;
     const css = safeReadFile(cssPath);
     if (css == null) continue;
@@ -746,7 +756,7 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
-    const jsPath = resolveWithinProject(projectDir, src);
+    const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
     localJsChunks.push(js);
@@ -781,7 +791,7 @@ export async function bundleToSingleHtml(
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
-      const compPath = resolveWithinProject(projectDir, srcPath);
+      const compPath = resolveEntryPath(srcPath);
       return compPath ? safeReadFile(compPath) : null;
     },
     parseHtml: parseHTMLContent,
@@ -814,7 +824,7 @@ export async function bundleToSingleHtml(
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
     if (isRelativeUrl(extSrc)) {
-      const jsPath = resolveWithinProject(projectDir, extSrc);
+      const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
         compScriptChunks.push(js);
