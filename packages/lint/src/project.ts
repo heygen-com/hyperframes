@@ -32,19 +32,34 @@ export interface ProjectLintResult {
 }
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".opus"]);
-const STYLE_BLOCK_RE = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-const OPEN_TAG_RE = /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi;
 const MASK_IMAGE_URL_RE =
   /\b(?:-webkit-)?mask-image\s*:\s*[^;{}]*url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi;
 
-function readHtmlAttr(tag: string, name: string): string | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = tag.match(new RegExp(`\\b${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
-  return match?.[1] ?? match?.[2] ?? null;
-}
-
 function isLocalStylesheetHref(href: string): boolean {
   return !!href && !/^(https?:|data:|blob:|\/\/)/i.test(href);
+}
+
+function collectLocalStylesheets(
+  projectDir: string,
+  document: ReturnType<typeof parseHTML>["document"],
+  compSrcPath?: string,
+): Array<{ href: string; content: string; rootRelativePath: string }> {
+  const styles: Array<{ href: string; content: string; rootRelativePath: string }> = [];
+  for (const link of document.querySelectorAll("link")) {
+    const rel = link.getAttribute("rel") ?? "";
+    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
+    const href = link.getAttribute("href") ?? "";
+    if (!isLocalStylesheetHref(href)) continue;
+    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
+    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelative);
+    if (!stylesheet) continue;
+    styles.push({
+      href,
+      content: readFileSync(stylesheet.resolved, "utf-8"),
+      rootRelativePath: stylesheet.rootRelativePath,
+    });
+  }
+  return styles;
 }
 
 function collectExternalStyles(
@@ -53,54 +68,31 @@ function collectExternalStyles(
   compSrcPath?: string,
 ): Array<{ href: string; content: string }> {
   const styles: Array<{ href: string; content: string }> = [];
-  const linkRe = /<link\b[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = linkRe.exec(html)) !== null) {
-    const tag = match[0];
-    const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
-    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
-    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
-    if (!isLocalStylesheetHref(href)) continue;
-    const rootRelative = compSrcPath ? join(dirname(compSrcPath), href) : href;
-    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelative);
-    if (!stylesheet) continue;
-    styles.push({ href, content: readFileSync(stylesheet.resolved, "utf-8") });
+  const { document } = parseHTML(html);
+  for (const { href, content } of collectLocalStylesheets(projectDir, document, compSrcPath)) {
+    styles.push({ href, content });
   }
   return styles;
 }
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
   const sources: CssSource[] = [];
+  const { document } = parseHTML(html);
 
-  let styleMatch: RegExpExecArray | null;
-  const stylePattern = new RegExp(STYLE_BLOCK_RE.source, STYLE_BLOCK_RE.flags);
-  while ((styleMatch = stylePattern.exec(html)) !== null) {
-    sources.push({ content: styleMatch[1] ?? "" });
+  for (const style of document.querySelectorAll("style")) {
+    sources.push({ content: style.textContent ?? "" });
   }
 
-  const linkRe = /<link\b[^>]*>/gi;
-  let linkMatch: RegExpExecArray | null;
-  while ((linkMatch = linkRe.exec(html)) !== null) {
-    const tag = linkMatch[0];
-    const rel = readHtmlAttr(tag, "rel") ?? "";
-    if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
-    const href = readHtmlAttr(tag, "href") ?? "";
-    if (!isLocalStylesheetHref(href)) continue;
-
-    const rootRelativePath = compSrcPath ? join(dirname(compSrcPath), href) : href;
-    const stylesheet = resolveExistingLocalAsset(projectDir, rootRelativePath);
-    if (!stylesheet) continue;
-    sources.push({
-      content: readFileSync(stylesheet.resolved, "utf-8"),
-      rootRelativePath: stylesheet.rootRelativePath,
-    });
+  for (const { content, rootRelativePath } of collectLocalStylesheets(
+    projectDir,
+    document,
+    compSrcPath,
+  )) {
+    sources.push({ content, rootRelativePath });
   }
 
-  let tagMatch: RegExpExecArray | null;
-  const tagPattern = new RegExp(OPEN_TAG_RE.source, OPEN_TAG_RE.flags);
-  while ((tagMatch = tagPattern.exec(html)) !== null) {
-    const tag = tagMatch[0];
-    const style = readHtmlAttr(tag, "style");
+  for (const element of document.querySelectorAll("[style]")) {
+    const style = element.getAttribute("style");
     if (!style) continue;
     sources.push({ content: style });
   }

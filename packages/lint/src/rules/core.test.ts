@@ -100,6 +100,23 @@ describe("core rules", () => {
     ).toBeUndefined();
   });
 
+  it("does not lint elements embedded inside an iframe srcdoc attribute", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1280" data-height="720"></div>
+  <iframe srcdoc='<video src="child.mp4" data-start="0"></video>'></iframe>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find(
+        (finding) => finding.elementId === undefined && finding.message.includes("<video"),
+      ),
+    ).toBeUndefined();
+  });
+
   it("warns when an id starts with a digit and is unsafe in a hash selector", async () => {
     const html = `
 <html><body>

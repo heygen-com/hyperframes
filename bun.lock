@@ -169,6 +169,7 @@
       "version": "0.7.45",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
+        "htmlparser2": "^10.1.0",
         "linkedom": "^0.18.12",
         "postcss": "^8.5.8",
       },

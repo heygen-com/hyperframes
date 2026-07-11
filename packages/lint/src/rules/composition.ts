@@ -1,4 +1,4 @@
-import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
+import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import {
   findHtmlTag,
   readAttr,
@@ -132,12 +132,11 @@ function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
  * template/fragment sub-comps hold it on their composition root div. Returns
  * null if any occurrence has unparseable JSON.
  */
-function collectAllDeclaredVariableIds(source: string): Set<string> | null {
+function collectAllDeclaredVariableIds(tags: readonly OpenTag[]): Set<string> | null {
   const all = new Set<string>();
-  const tagRe = /<[a-zA-Z][^>]*\bdata-composition-variables\b[^>]*>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(source)) !== null) {
-    const ids = collectDeclaredVariableIds(match[0]);
+  for (const tag of tags) {
+    if (!readAttr(tag.raw, "data-composition-variables")) continue;
+    const ids = collectDeclaredVariableIds(tag.raw);
     if (ids === null) return null;
     for (const id of ids) all.add(id);
   }
@@ -150,10 +149,10 @@ function collectAllDeclaredVariableIds(source: string): Set<string> | null {
  * `<html>` and no declarations of its own (its values come from a host's
  * data-variable-values, which this file can't see).
  */
-function declaredIdsForBindingCheck(source: string): Set<string> | null {
-  const declared = collectAllDeclaredVariableIds(source);
+function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | null {
+  const declared = collectAllDeclaredVariableIds(tags);
   if (declared === null) return null;
-  if (declared.size === 0 && !findHtmlTag(source)) return null;
+  if (declared.size === 0 && !findHtmlTag(tags)) return null;
   return declared;
 }
 
@@ -653,11 +652,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // nothing, so a typo'd binding is invisible until a customer's override
   // does nothing. Skipped for fragment files (no <html>): their values come
   // from a host's data-variable-values, which this file can't see.
-  ({ source, tags }) => {
+  ({ tags }) => {
     // Declarations live on <html> (full-document comps) OR the composition root
     // div (template/fragment sub-comps); declaredIdsForBindingCheck unions both
     // and returns null for files this rule should skip.
-    const declared = declaredIdsForBindingCheck(source);
+    const declared = declaredIdsForBindingCheck(tags);
     if (!declared) return [];
     const findings: HyperframeLintFinding[] = [];
     for (const tag of tags) {
@@ -683,8 +682,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // catch them at lint time rather than wondering why their `getVariables()`
   // defaults aren't applied.
   // fallow-ignore-next-line complexity
-  ({ source }) => {
-    const htmlTag = findHtmlTag(source);
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
     if (!htmlTag) return [];
     const raw = readJsonAttr(htmlTag.raw, "data-composition-variables");
     if (!raw) return [];
@@ -763,8 +762,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   // fixed top-left-origin screenshot region, which RTL layout can shift the
   // actual content away from), only surfaces the already-confirmed footgun
   // before someone hits it blind.
-  ({ source }) => {
-    const htmlTag = findHtmlTag(source);
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
     if (!htmlTag) return [];
     const dir = readAttr(htmlTag.raw, "dir");
     if (!dir) return [];
