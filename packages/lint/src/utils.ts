@@ -16,6 +16,7 @@ export type ExtractedBlock = {
 };
 
 const TAG_PATTERN = /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi;
+const TAG_WITH_QUOTED_ATTRIBUTES_PATTERN = /<(?:"[^"]*"|'[^']*'|[^'">])*>/g;
 export const STYLE_BLOCK_PATTERN = /<style\b([^>]*)>([\s\S]*?)<\/style>/gi;
 export const SCRIPT_BLOCK_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const COMPOSITION_ID_IN_CSS_PATTERN = /\[data-composition-id=["']([^"']+)["']\]/g;
@@ -70,10 +71,14 @@ export function extractOpenTags(source: string): OpenTag[] {
 
 export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[] {
   const blocks: ExtractedBlock[] = [];
+  const tagRanges = [...source.matchAll(TAG_WITH_QUOTED_ATTRIBUTES_PATTERN)].map(
+    (match) => [match.index, match.index + match[0].length] as const,
+  );
   let match: RegExpExecArray | null;
   const p = new RegExp(pattern.source, pattern.flags);
   while ((match = p.exec(source)) !== null) {
-    if (isInsideQuotedTagAttribute(source, match.index)) continue;
+    const blockIndex = match.index;
+    if (tagRanges.some(([start, end]) => start < blockIndex && blockIndex < end)) continue;
     blocks.push({
       attrs: match[1] || "",
       content: match[2] || "",
@@ -82,27 +87,6 @@ export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[]
     });
   }
   return blocks;
-}
-
-function isInsideQuotedTagAttribute(source: string, index: number): boolean {
-  let inTag = false;
-  let quote: '"' | "'" | null = null;
-
-  for (let i = 0; i < index; i += 1) {
-    const char = source[i];
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (!inTag) {
-      if (char === "<") inTag = true;
-      continue;
-    }
-    if (char === '"' || char === "'") quote = char;
-    else if (char === ">") inTag = false;
-  }
-
-  return inTag && quote !== null;
 }
 
 /**
