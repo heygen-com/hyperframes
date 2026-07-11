@@ -79,7 +79,6 @@ function renderStudioUrlStateHarness(
     previewIframeRef: { current: null },
     rightPanelTab: "renders",
     rightCollapsed: true,
-    timelineVisible: true,
     activeCompPathHydrated: true,
     domEditSelection: null,
     buildDomSelectionFromTarget: () => Promise.resolve(null),
