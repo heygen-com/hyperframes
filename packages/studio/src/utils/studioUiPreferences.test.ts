@@ -50,3 +50,41 @@ describe("studio UI preferences", () => {
     });
   });
 });
+
+describe("timelineSnapEnabled preference", () => {
+  it("round-trips through storage", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ timelineSnapEnabled: false }, storage);
+    expect(readStudioUiPreferences(storage).timelineSnapEnabled).toBe(false);
+  });
+
+  it("ignores non-boolean values", () => {
+    const storage = createStorage();
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ timelineSnapEnabled: "yes" }));
+    expect(readStudioUiPreferences(storage).timelineSnapEnabled).toBeUndefined();
+  });
+});
+
+describe("timeline zoom pin persistence", () => {
+  it("round-trips a pinned manual zoom (survives the post-edit reload)", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences(
+      { timelineZoomMode: "manual", timelineManualZoomPercent: 250 },
+      storage,
+    );
+    const prefs = readStudioUiPreferences(storage);
+    expect(prefs.timelineZoomMode).toBe("manual");
+    expect(prefs.timelineManualZoomPercent).toBe(250);
+  });
+
+  it("ignores an invalid zoom mode and a non-finite percent", () => {
+    const storage = createStorage();
+    storage.setItem(
+      "hf-studio-ui-preferences",
+      JSON.stringify({ timelineZoomMode: "zoomy", timelineManualZoomPercent: "big" }),
+    );
+    const prefs = readStudioUiPreferences(storage);
+    expect(prefs.timelineZoomMode).toBeUndefined();
+    expect(prefs.timelineManualZoomPercent).toBeUndefined();
+  });
+});
