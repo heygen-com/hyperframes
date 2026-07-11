@@ -316,6 +316,12 @@ describe("render telemetry events", () => {
       phase: "capture_hdr_layered",
       status: "error",
       compositionHash: "abc123",
+      captureMode: "screenshot",
+      captureOperation: "captureScreenshot",
+      framesCompleted: 12,
+      totalFrames: 900,
+      heartbeatIndex: 1,
+      stageElapsedMs: 30_000,
       message: "Navigation failed for C:\\Users\\Alice\\project\\video.mov?not-a-query",
     });
 
@@ -324,6 +330,12 @@ describe("render telemetry events", () => {
       expect.objectContaining({
         render_job_id: "render-123",
         composition_hash: "abc123",
+        capture_mode: "screenshot",
+        capture_operation: "captureScreenshot",
+        frames_completed: 12,
+        total_frames: 900,
+        heartbeat_index: 1,
+        stage_elapsed_ms: 30_000,
         message: "Navigation failed for [path]",
       }),
     );

@@ -118,6 +118,7 @@ const MAX_EVENTS = 160;
 const ALLOWED_STRING_DATA_KEYS = new Set([
   "browserGpuMode",
   "captureMode",
+  "captureOperation",
   "compositionHash",
   "effectiveHdr",
   "format",
@@ -370,11 +371,27 @@ export async function observeRenderStage<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const startedAt = recorder.stageStart(phase, data);
+  const heartbeatTimers = [30_000, 60_000, 120_000].map((delayMs, index) => {
+    const timer = setTimeout(() => {
+      recorder.checkpoint(phase, "stage still running", {
+        ...data,
+        heartbeatIndex: index + 1,
+        stageElapsedMs: Date.now() - startedAt,
+      });
+    }, delayMs);
+    timer.unref?.();
+    return timer;
+  });
+  const clearHeartbeats = () => {
+    for (const timer of heartbeatTimers) clearTimeout(timer);
+  };
   try {
     const result = await fn();
+    clearHeartbeats();
     recorder.stageEnd(phase, startedAt);
     return result;
   } catch (error) {
+    clearHeartbeats();
     recorder.stageError(phase, startedAt, error);
     throw error;
   }

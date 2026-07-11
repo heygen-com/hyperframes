@@ -347,6 +347,11 @@ export function trackRenderObservation(props: {
   usePageSideCompositing?: boolean;
   hasHdrContent?: boolean;
   captureMode?: string;
+  captureOperation?: string;
+  framesCompleted?: number;
+  totalFrames?: number;
+  heartbeatIndex?: number;
+  stageElapsedMs?: number;
   videoCount?: number;
   extractedVideoCount?: number;
   totalFramesExtracted?: number;
@@ -373,6 +378,11 @@ export function trackRenderObservation(props: {
     use_page_side_compositing: props.usePageSideCompositing,
     has_hdr_content: props.hasHdrContent,
     capture_mode: props.captureMode,
+    capture_operation: props.captureOperation,
+    frames_completed: props.framesCompleted,
+    total_frames: props.totalFrames,
+    heartbeat_index: props.heartbeatIndex,
+    stage_elapsed_ms: props.stageElapsedMs,
     video_count: props.videoCount,
     extracted_video_count: props.extractedVideoCount,
     total_frames_extracted: props.totalFramesExtracted,

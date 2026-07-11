@@ -41,6 +41,7 @@ const trackingState = vi.hoisted(() => ({
   // `.ts` source under vitest — mocked here so the CLI-trial tests can
   // control it directly instead of inheriting that environment quirk.
   shouldTrack: true,
+  renderObservations: [] as Array<Record<string, unknown>>,
 }));
 
 const preflightState = vi.hoisted(() => ({
@@ -110,6 +111,9 @@ vi.mock("../telemetry/client.js", () => ({
 vi.mock("../telemetry/events.js", () => ({
   trackRenderComplete: vi.fn(),
   trackRenderError: vi.fn(),
+  trackRenderObservation: vi.fn((props: Record<string, unknown>) => {
+    trackingState.renderObservations.push(props);
+  }),
 }));
 
 vi.mock("../browser/ffmpeg.js", () => ({
@@ -154,6 +158,7 @@ describe("renderLocal browser GPU config", () => {
     configState.failWrites = 0;
     configState.writeConfigCalls = [];
     trackingState.shouldTrack = true;
+    trackingState.renderObservations = [];
     resetTrialState();
     savedEnv.clear();
     savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
@@ -198,6 +203,59 @@ describe("renderLocal browser GPU config", () => {
       resolved: true,
     });
   }, 15_000);
+
+  it("forwards render stage start and end lifecycle events to telemetry", async () => {
+    producerState.executeImpl = async (job) => {
+      const logger = (job.config as { logger: { info: (message: string, meta: object) => void } })
+        .logger;
+      logger.info("[Render:trace]", {
+        renderJobId: "render-lifecycle",
+        phase: "capture_streaming",
+        status: "start",
+        elapsedMs: 100,
+        workerCount: 1,
+        captureMode: "screenshot",
+        captureOperation: "captureScreenshot",
+        framesCompleted: 12,
+        totalFrames: 900,
+      });
+      logger.info("[Render:trace]", {
+        renderJobId: "render-lifecycle",
+        phase: "capture_streaming",
+        status: "end",
+        elapsedMs: 250,
+        durationMs: 150,
+      });
+    };
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      skipFeedback: true,
+    });
+
+    expect(trackingState.renderObservations).toEqual([
+      expect.objectContaining({
+        renderJobId: "render-lifecycle",
+        phase: "capture_streaming",
+        status: "start",
+        captureOperation: "captureScreenshot",
+        framesCompleted: 12,
+        totalFrames: 900,
+      }),
+      expect.objectContaining({
+        renderJobId: "render-lifecycle",
+        phase: "capture_streaming",
+        status: "end",
+        durationMs: 150,
+      }),
+    ]);
+  });
 
   it("forwards browserGpuMode='auto' into producer config (probe-then-choose)", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {

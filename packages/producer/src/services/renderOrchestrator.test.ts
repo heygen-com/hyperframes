@@ -30,6 +30,7 @@ import {
   shouldDiscardProbeSessionForPageSideCompositing,
   resolveInversionRetryPlan,
   resolveParallelRouterRetryPlan,
+  resetCaptureAttemptProgress,
   shouldRetryViaPinnedFallback,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
@@ -115,6 +116,14 @@ describe("extractStandaloneEntryFromIndex", () => {
 });
 
 describe("captureAttemptMadeProgress", () => {
+  it("resets completed frames before a fallback attempt starts", () => {
+    const job = { framesRendered: 900 };
+
+    resetCaptureAttemptProgress(job);
+
+    expect(job.framesRendered).toBe(0);
+  });
+
   it("retries when the attempt captured at least one frame toward its target", () => {
     // targeted 100 frames, 40 still missing -> 60 captured -> worth retrying the rest
     expect(captureAttemptMadeProgress(100, 40)).toBe(true);

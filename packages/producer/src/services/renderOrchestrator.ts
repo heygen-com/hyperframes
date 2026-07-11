@@ -110,6 +110,7 @@ import {
   observeRenderStage,
   type RenderCaptureObservability,
   type RenderExtractionObservability,
+  type RenderObservationData,
   type RenderObservabilitySummary,
 } from "./render/observability.js";
 import { type HdrPerfCollector, type HdrPerfSummary } from "./render/hdrPerf.js";
@@ -658,6 +659,10 @@ export function captureAttemptMadeProgress(
   remainingFrameCount: number,
 ): boolean {
   return remainingFrameCount < attemptTargetFrameCount;
+}
+
+export function resetCaptureAttemptProgress(job: { framesRendered?: number }): void {
+  job.framesRendered = 0;
 }
 
 export function isRecoverableParallelCaptureError(error: unknown): boolean {
@@ -2229,7 +2234,47 @@ export async function executeRenderJob(
     const effectiveQuality = job.config.crf ?? preset.quality;
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
-    job.framesRendered = 0;
+    resetCaptureAttemptProgress(job);
+    const captureStageObservationData = (
+      extra: RenderObservationData = {},
+    ): RenderObservationData => ({
+      ...extra,
+      get workerCount() {
+        return workerCount;
+      },
+      get forceScreenshot() {
+        return captureForceScreenshot;
+      },
+      get totalFrames() {
+        return totalFrames;
+      },
+      get framesCompleted() {
+        return job.framesRendered ?? 0;
+      },
+      get captureMode() {
+        return (
+          probeSession?.captureMode ??
+          (captureForceScreenshot
+            ? "screenshot"
+            : cfg.useDrawElement
+              ? "drawelement"
+              : "beginframe")
+        );
+      },
+      get captureOperation() {
+        if ((job.framesRendered ?? 0) >= totalFrames) return "encode";
+        const mode =
+          probeSession?.captureMode ??
+          (captureForceScreenshot
+            ? "screenshot"
+            : cfg.useDrawElement
+              ? "drawelement"
+              : "beginframe");
+        if (mode === "screenshot") return "captureScreenshot";
+        if (mode === "drawelement") return "drawElement";
+        return "beginFrame";
+      },
+    });
 
     // ── Z-ordered multi-layer compositing ─────────────────────────────────
     // Per frame: query all elements' z-order, group into layers (DOM or HDR),
@@ -2248,7 +2293,7 @@ export async function executeRenderJob(
       const hdrRes = await observeRenderStage(
         observability,
         "capture_hdr_layered",
-        { workerCount, forceScreenshot: captureForceScreenshot, hasHdrContent },
+        captureStageObservationData({ hasHdrContent }),
         () =>
           runCaptureHdrStage({
             job,
@@ -2297,11 +2342,12 @@ export async function executeRenderJob(
       let streamingHandled = false;
       if (useStreamingEncode) {
         const captureFrameStart = Date.now();
-        const invokeStreaming = () =>
-          observeRenderStage(
+        const invokeStreaming = () => {
+          resetCaptureAttemptProgress(job);
+          return observeRenderStage(
             observability,
             "capture_streaming",
-            { workerCount, forceScreenshot: captureForceScreenshot },
+            captureStageObservationData(),
             () =>
               runCaptureStreamingStage({
                 fileServer: activeFileServer,
@@ -2339,6 +2385,7 @@ export async function executeRenderJob(
                 dedupPerfs,
               }),
           );
+        };
         let streamingRes;
         try {
           streamingRes = await invokeStreaming();
@@ -2510,11 +2557,12 @@ export async function executeRenderJob(
 
       if (!streamingHandled) {
         // ── Disk-based capture (original flow) ────────────────────────────
+        resetCaptureAttemptProgress(job);
         const captureFrameStart = Date.now();
         const captureRes = await observeRenderStage(
           observability,
           "capture_disk",
-          { workerCount, forceScreenshot: captureForceScreenshot, needsAlpha },
+          captureStageObservationData({ needsAlpha }),
           () =>
             runCaptureStage({
               fileServer: activeFileServer,

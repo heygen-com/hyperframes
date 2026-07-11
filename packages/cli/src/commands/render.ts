@@ -1572,7 +1572,9 @@ function metaBoolean(meta: Record<string, unknown> | undefined, key: string): bo
 function trackRenderTraceFromLog(message: string, meta: Record<string, unknown> | undefined): void {
   if (message !== "[Render:trace]") return;
   const status = metaString(meta, "status");
-  if (status !== "checkpoint" && status !== "error") return;
+  if (status !== "start" && status !== "end" && status !== "checkpoint" && status !== "error") {
+    return;
+  }
   trackRenderObservation({
     source: "cli",
     renderJobId: metaString(meta, "renderJobId"),
@@ -1589,6 +1591,11 @@ function trackRenderTraceFromLog(message: string, meta: Record<string, unknown> 
     usePageSideCompositing: metaBoolean(meta, "usePageSideCompositing"),
     hasHdrContent: metaBoolean(meta, "hasHdrContent"),
     captureMode: metaString(meta, "captureMode"),
+    captureOperation: metaString(meta, "captureOperation"),
+    framesCompleted: metaNumber(meta, "framesCompleted"),
+    totalFrames: metaNumber(meta, "totalFrames"),
+    heartbeatIndex: metaNumber(meta, "heartbeatIndex"),
+    stageElapsedMs: metaNumber(meta, "stageElapsedMs"),
     videoCount: metaNumber(meta, "videoCount"),
     extractedVideoCount: metaNumber(meta, "extractedVideoCount"),
     totalFramesExtracted: metaNumber(meta, "totalFramesExtracted"),
