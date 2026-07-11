@@ -230,13 +230,16 @@ Open the Studio URL in a browser via Playwright (or another browser tool you hav
 [ ] Audio audible and not clipped/peaked
 ```
 
-### Path 2: Render a low-res MP4 and read it frame-by-frame
+### Path 2: Render a draft MP4 and read it frame-by-frame
 
-When Playwright isn't available, render at 540p (fast — ~30s for a 30s video) and read the MP4:
+When Playwright isn't available, render at draft quality and read the MP4. Local
+`hyperframes render` takes its canvas dimensions from the composition's
+`data-width` / `data-height`; `--width` and `--height` are cloud-render flags and
+are not supported by the local command.
 
 ```bash
 node /<repo-root>/packages/cli/dist/cli.js render <project-dir> \
-  --width 960 --height 540 --quality medium
+  --quality draft
 ```
 
 Then sample the resulting MP4 at minimum 5fps (use `ffmpeg -i <mp4> -r 5 frames/frame-%04d.png` if needed). Read those frames sequentially. For each SFX moment in STORYBOARD.md, find the corresponding frame and confirm the visual matches.
