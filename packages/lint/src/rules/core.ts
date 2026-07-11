@@ -181,6 +181,25 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
 }
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  // id_requires_css_escape
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const id = readAttr(tag.raw, "id");
+      if (!id || !/^\d/.test(id)) continue;
+      findings.push({
+        code: "id_requires_css_escape",
+        severity: "warning",
+        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
+        elementId: id,
+        fixHint:
+          "Rename the id to start with a letter (recommended), or build selectors with `#${CSS.escape(id)}` at runtime.",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+    return findings;
+  },
+
   // root_missing_composition_id + root_missing_dimensions
   ({ rootTag }) => {
     const findings: HyperframeLintFinding[] = [];

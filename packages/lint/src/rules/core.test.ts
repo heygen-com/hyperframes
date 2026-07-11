@@ -77,6 +77,37 @@ ${headContent}
 }
 
 describe("core rules", () => {
+  it("warns when an id starts with a digit and is unsafe in a hash selector", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((item) => item.code === "id_requires_css_escape");
+
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("123-frame");
+    expect(finding?.fixHint).toContain("CSS.escape");
+  });
+
+  it("accepts ids that start with a letter", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="frame-123"></div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((item) => item.code === "id_requires_css_escape")).toBeUndefined();
+  });
+
   it("reports error when root is missing data-composition-id", async () => {
     const html = `
 <html><body>
