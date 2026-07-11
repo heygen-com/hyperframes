@@ -876,6 +876,20 @@ describe("texture_mask_asset_not_found", () => {
 });
 
 describe("multiple_root_compositions", () => {
+  it("scopes lint to an explicit render composition entry", async () => {
+    const project = makeProject(validHtml());
+    const standalone = join(project, "standalone.html");
+    writeFileSync(standalone, validHtml("standalone"));
+
+    const { totalErrors, results } = await lintProject(project, standalone);
+
+    expect(totalErrors).toBe(0);
+    expect(results.map((result) => result.file)).toEqual(["standalone.html"]);
+    expect(
+      results[0]?.result.findings.find((finding) => finding.code === "multiple_root_compositions"),
+    ).toBeUndefined();
+  });
+
   it("fires when two HTML files have data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(

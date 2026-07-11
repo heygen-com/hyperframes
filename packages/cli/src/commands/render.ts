@@ -807,7 +807,8 @@ export default defineCommand({
 
     // ── Pre-render lint ──────────────────────────────────────────────────
     {
-      const lintResult = await lintProject(project.dir);
+      const explicitEntry = args.composition && args.composition !== "." ? entryFile : undefined;
+      const lintResult = await lintProject(project.dir, explicitEntry);
       if (!quiet && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
         console.log("");
         for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
