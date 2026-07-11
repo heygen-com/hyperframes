@@ -130,14 +130,25 @@ describe("renderLocal browser GPU config", () => {
   // suites). Importing once in `beforeAll` keeps every test fast and isolated.
   let renderLocal: typeof import("./render.js").renderLocal;
   let resolveBrowserGpuForCli: typeof import("./render.js").resolveBrowserGpuForCli;
+  let renderLintContinuationHint: typeof import("./render.js").renderLintContinuationHint;
   let resetTrialState: typeof import("./render.js").__resetDeParallelRouterTrialStateForTests;
 
   beforeAll(async () => {
     ({
       renderLocal,
       resolveBrowserGpuForCli,
+      renderLintContinuationHint,
       __resetDeParallelRouterTrialStateForTests: resetTrialState,
     } = await import("./render.js"));
+  });
+
+  it("points strict warning-only renders to --strict-all", () => {
+    expect(renderLintContinuationHint(true)).toContain("--strict-all");
+    expect(renderLintContinuationHint(true)).not.toContain("Use --strict to block");
+  });
+
+  it("points non-strict renders to --strict for lint errors", () => {
+    expect(renderLintContinuationHint(false)).toContain("Use --strict to block errors");
   });
 
   function setEnv(key: string, value: string) {

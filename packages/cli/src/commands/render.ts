@@ -825,7 +825,7 @@ export default defineCommand({
           console.log("");
           process.exit(1);
         }
-        console.log(c.dim("  Continuing render despite lint issues. Use --strict to block."));
+        console.log(c.dim(renderLintContinuationHint(strictErrors)));
         console.log("");
       }
     }
@@ -1002,6 +1002,12 @@ export default defineCommand({
 export interface SingleRenderResult {
   durationMs?: number;
   renderTimeMs: number;
+}
+
+export function renderLintContinuationHint(strictErrors: boolean): string {
+  return strictErrors
+    ? "  Continuing render despite lint warnings. Use --strict-all to block warnings."
+    : "  Continuing render despite lint issues. Use --strict to block errors.";
 }
 
 interface RenderOptions {
