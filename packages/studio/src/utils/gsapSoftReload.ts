@@ -319,8 +319,10 @@ export function applySoftReload(
     if (allTargets.length > 0 && win.gsap?.set) {
       const saved: Array<[HTMLElement, string]> = [];
       for (const el of allTargets) {
-        const s = (el as HTMLElement).style;
-        if (s?.cssText != null) saved.push([el as HTMLElement, s.cssText]);
+        // Iframe-realm node: instanceof HTMLElement fails across realms, and
+        // gsap targets() only yields elements here — style access is duck-typed.
+        const styled = el as HTMLElement;
+        if (styled.style?.cssText != null) saved.push([styled, styled.style.cssText]);
       }
       try {
         win.gsap.set(allTargets, { clearProps: "all" });

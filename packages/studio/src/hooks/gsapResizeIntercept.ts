@@ -16,19 +16,18 @@ import {
   commitStaticGsapSize,
   commitKeyframedSizeFromResize,
   computeCurrentPercentage,
+  findExistingPositionWrite,
   findSizeSetAnimation,
   materializeIfDynamic,
 } from "./gsapDragCommit";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { pickClosestToPlayhead } from "./gsapPositionDetection";
+import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
+import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { selectorFromSelection } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
-import { readGsapPositionFromIframe } from "./gsapPositionDetection";
-import { findExistingPositionWrite } from "./gsapDragCommit";
-import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
 
@@ -114,6 +113,8 @@ export async function tryGsapResizeIntercept(
   let scaleDraftDropPoint: { x: number; y: number } | null = null;
   let nonUniformScale = false;
   if (resizeGroup === "scale") {
+    // Iframe-realm element — instanceof HTMLElement fails across realms; the
+    // selector targets composition elements, and every use below is duck-typed.
     const el = iframe?.contentDocument?.querySelector(selector ?? "") as HTMLElement | null;
     // The resize draft modifies el.style.width/height, so read the ORIGINAL
     // dimensions saved by the draft system before it ran.
