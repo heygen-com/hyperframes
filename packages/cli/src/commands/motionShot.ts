@@ -11,6 +11,7 @@
 // (pure, tested); this file only drives the browser and SAMPLES.
 
 import { writeFileSync } from "node:fs";
+import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import {
   buildOnionSvg,
   ghostAlphas,
@@ -258,7 +259,8 @@ async function openCompositionPage(
     ],
   });
   const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+  const navigationTimeout = resolveDiagnosticNavigationTimeoutMs();
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   const size = await page.evaluate(() => {
     const root = document.querySelector("[data-composition-id][data-width][data-height]");
     const w = root ? parseInt(root.getAttribute("data-width") ?? "", 10) : 0;
@@ -269,7 +271,7 @@ async function openCompositionPage(
     };
   });
   await page.setViewport(size);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeout });
   await page
     .waitForFunction(() => !!(window as unknown as { __timelines?: unknown }).__timelines, {
       timeout: 10000,

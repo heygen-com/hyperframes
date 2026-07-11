@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
 const CAPTURE_SETTLE_MS = 1500;
@@ -171,7 +172,10 @@ export async function openSettledCompositionPage(
     await installPageFunctionGuard(page);
     await page.setViewport(viewport);
     await options.beforeNavigate?.(page);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.goto(url, {
+      waitUntil: "domcontentloaded",
+      timeout: resolveDiagnosticNavigationTimeoutMs(),
+    });
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {
