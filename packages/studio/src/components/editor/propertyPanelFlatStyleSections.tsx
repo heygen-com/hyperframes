@@ -411,11 +411,13 @@ function FlatOverflowMaskRows({
       />
       <FlatSelectRow
         label="Mask"
-        value={clipPathPreset === "custom" ? "none" : clipPathPreset}
-        options={["none", "inset", "circle"]}
+        value={clipPathPreset}
+        // "custom" = authored clip-path; showing "none" invites destroying it.
+        options={[...(clipPathPreset === "custom" ? ["custom"] : []), "none", "inset", "circle"]}
         tier={resolveValueTier(clipPathPreset === "none" ? undefined : clipPathPreset, "none")}
         disabled={disabled}
         onChange={(next) => {
+          if (next === "custom") return;
           void onSetStyle(
             "clip-path",
             buildClipPathValue(next as "none" | "inset" | "circle", radiusValue, clipPathValue),

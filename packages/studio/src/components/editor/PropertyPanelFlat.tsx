@@ -363,10 +363,14 @@ export function PropertyPanelFlat({
     });
   }
   if (showEditableSections) {
+    // Number.isFinite guard (not `|| 1`): opacity 0 is a real value — an
+    // invisible element must summarize as 0%, not 100%.
+    const opacityValue = parseFloat(styles.opacity ?? "1");
+    const opacityPct = Math.round((Number.isFinite(opacityValue) ? opacityValue : 1) * 100);
     groups.push({
       id: "style",
       title: "Style",
-      summary: `fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${Math.round((parseFloat(styles.opacity ?? "1") || 1) * 100)}%`,
+      summary: `fill ${styles["background-image"] && styles["background-image"] !== "none" ? "image/gradient" : styles["background-color"] ? "set" : "none"} · ${opacityPct}%`,
       content: (
         <FlatStyleSection
           projectId={projectId}
@@ -383,7 +387,8 @@ export function PropertyPanelFlat({
   groups.push({
     id: "layout",
     title: "Layout",
-    accessory: <span className="text-[9px] text-panel-text-5">drag values to scrub</span>,
+    // No scrub accessory: FlatRow/CommitField has no pointer-drag scrubbing
+    // (wheel/arrow keys only) — advertising "drag values to scrub" here lies.
     summary: `${formatPxMetricValue(displayX)},${formatPxMetricValue(displayY)} · ${Math.round(displayW)}×${Math.round(displayH)}`,
     content: (
       <FlatLayoutSection

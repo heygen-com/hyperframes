@@ -38,6 +38,7 @@ import {
   type ColorGradingScope,
 } from "./studioColorGradingScope";
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
+import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 
 const MIN_INSPECTOR_SPLIT_PERCENT = 20;
 const MAX_INSPECTOR_SPLIT_PERCENT = 75;
@@ -63,7 +64,7 @@ export interface StudioRightPanelProps {
     kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
-  onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
+  onToggleElementHidden?: ToggleHiddenHandler;
 }
 
 // fallow-ignore-next-line complexity
@@ -343,10 +344,11 @@ export function StudioRightPanel({
     [projectId, refreshFileTree, showToast],
   );
 
-  const handleHideAllSelected = () =>
-    domEditGroupSelections
-      .map((el) => el.id ?? el.selector)
-      .forEach((key) => key && void onToggleElementHidden?.(key, true));
+  const handleHideAllSelected = () => {
+    const { elements } = usePlayerStore.getState();
+    const keys = timelineKeysForSelections(domEditGroupSelections, elements, activeCompPath);
+    if (keys.length > 0) void onToggleElementHidden?.(keys, true);
+  };
   const propertyPanel = (
     <DesignPanelPromoteProvider
       selection={domEditGroupSelections.length > 1 ? null : domEditSelection}

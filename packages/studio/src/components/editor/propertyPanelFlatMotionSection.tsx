@@ -21,21 +21,43 @@ export function FlatTimingRow({
   const { start, duration, inferred: derived } = deriveElementTiming(element, animations);
   const end = start + duration;
 
+  // While the range is inferred from animations, editing ONE field must pin the
+  // WHOLE displayed range: writing only data-duration flips inference off and
+  // drops start to data-start-or-0 (the clip silently shifts), and writing only
+  // data-start is ignored while duration is still inferred (the edit looks
+  // dead). Pin both attributes, sequentially, so the display never jumps.
+  const pinRange = async (nextStart: number, nextDuration: number) => {
+    await onSetAttribute("start", nextStart.toFixed(2));
+    await onSetAttribute("duration", nextDuration.toFixed(2));
+  };
+
   const commitStart = (nextValue: string) => {
     const parsed = parseTimingValue(nextValue);
     if (parsed == null) return;
+    if (derived) {
+      void pinRange(parsed, duration);
+      return;
+    }
     void onSetAttribute("start", parsed.toFixed(2));
   };
 
   const commitDuration = (nextValue: string) => {
     const parsed = parseTimingValue(nextValue);
     if (parsed == null || parsed <= 0) return;
+    if (derived) {
+      void pinRange(start, parsed);
+      return;
+    }
     void onSetAttribute("duration", parsed.toFixed(2));
   };
 
   const commitEnd = (nextValue: string) => {
     const parsed = parseTimingValue(nextValue);
     if (parsed == null || parsed <= start) return;
+    if (derived) {
+      void pinRange(start, parsed - start);
+      return;
+    }
     void onSetAttribute("duration", (parsed - start).toFixed(2));
   };
 

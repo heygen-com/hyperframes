@@ -29,6 +29,22 @@ export function isSelectedElementHidden(
   );
 }
 
+/**
+ * 4-part element identity for keying panel remounts on selection change —
+ * id or selector alone collides for id-less same-selector siblings, leaving
+ * mount-initialized state pointed at the previous element.
+ */
+export function selectionIdentityKey(
+  element: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex">,
+): string {
+  return [
+    element.id ?? "",
+    element.hfId ?? "",
+    element.selector ?? "",
+    String(element.selectorIndex ?? ""),
+  ].join("|");
+}
+
 /* ------------------------------------------------------------------ */
 /*  Font types & constants (shared by font and section modules)        */
 /* ------------------------------------------------------------------ */

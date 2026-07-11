@@ -199,4 +199,56 @@ describe("toggleTimelineElementHidden", () => {
       usePlayerStore.getState().elements.find((el) => el.key === "index.html:#track-mate")?.hidden,
     ).toBeUndefined();
   });
+
+  it("hides several elements in ONE atomic write when given an array of keys", async () => {
+    const files = new Map([
+      [
+        "index.html",
+        `<div id="hero" data-start="0" data-duration="2"></div>
+<div id="caption" data-start="1" data-duration="2"></div>
+<div id="badge" data-start="2" data-duration="2"></div>`,
+      ],
+    ]);
+    stubProjectFiles(files);
+
+    const hero = element({ id: "hero", key: "index.html:#hero", domId: "hero", track: 0 });
+    const caption = element({
+      id: "caption",
+      key: "index.html:#caption",
+      domId: "caption",
+      track: 1,
+    });
+    const badge = element({ id: "badge", key: "index.html:#badge", domId: "badge", track: 2 });
+
+    const writes: Array<{ path: string; content: string }> = [];
+    const recordEdit = vi.fn();
+
+    await toggleTimelineElementHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [hero, caption, badge],
+      elementKey: ["index.html:#hero", "index.html:#caption"],
+      hidden: true,
+      previewIframe: null,
+      writeProjectFile: async (path, content) => {
+        writes.push({ path, content });
+      },
+      recordEdit,
+      domEditSaveTimestampRef: { current: 0 },
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    // One write carrying BOTH hides — per-element writes would clobber each
+    // other (each starts from the original file content).
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.content).toContain(
+      'id="hero" data-start="0" data-duration="2" data-hidden=""',
+    );
+    expect(writes[0]?.content).toContain(
+      'id="caption" data-start="1" data-duration="2" data-hidden=""',
+    );
+    expect(writes[0]?.content).toContain('id="badge" data-start="2" data-duration="2"></div>');
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Hide 2 elements");
+  });
 });

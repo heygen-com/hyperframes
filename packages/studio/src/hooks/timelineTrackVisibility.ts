@@ -33,7 +33,8 @@ interface ToggleTimelineTrackHiddenInput {
 }
 
 interface ToggleTimelineElementHiddenInput extends Omit<ToggleTimelineTrackHiddenInput, "track"> {
-  elementKey: string;
+  /** One timeline key, or several to hide/show in a single atomic file write. */
+  elementKey: string | readonly string[];
 }
 
 interface SetElementsHiddenInput {
@@ -232,13 +233,21 @@ export async function toggleTimelineElementHidden({
   domEditSaveTimestampRef,
   pendingTimelineEditPathRef,
 }: ToggleTimelineElementHiddenInput): Promise<string[]> {
-  const element = timelineElements.find((item) => (item.key ?? item.id) === elementKey);
+  const keys = new Set(typeof elementKey === "string" ? [elementKey] : elementKey);
+  const elements = timelineElements.filter((item) => keys.has(item.key ?? item.id));
   return setElementsHidden({
     projectId,
     activeCompPath,
-    elements: element ? [element] : [],
+    elements,
     hidden,
-    label: hidden ? "Hide element" : "Show element",
+    label:
+      elements.length > 1
+        ? hidden
+          ? `Hide ${elements.length} elements`
+          : `Show ${elements.length} elements`
+        : hidden
+          ? "Hide element"
+          : "Show element",
     previewIframe,
     writeProjectFile,
     recordEdit,
@@ -322,11 +331,11 @@ export function useTimelineElementVisibilityEditing({
   isRecordingRef,
   forceReloadSdkSession,
 }: UseTimelineElementVisibilityEditingInput): (
-  elementKey: string,
+  elementKey: string | readonly string[],
   hidden: boolean,
 ) => Promise<void> {
   return useCallback(
-    async (elementKey: string, hidden: boolean) => {
+    async (elementKey: string | readonly string[], hidden: boolean) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;

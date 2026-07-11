@@ -5,6 +5,7 @@ import type { ImportedFontAsset } from "./fontAssets";
 import { normalizeTextMetricValue } from "./propertyPanelHelpers";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
+import { PromotableControl } from "./PromotableControl";
 import { FlatRow, FlatSegmentedRow } from "./propertyPanelFlatPrimitives";
 import {
   resolveValueTier,
@@ -65,20 +66,33 @@ function FlatTextFieldEditor({
 
   return (
     <>
-      <TextAreaField
-        flat
-        label="Content"
-        value={field.value}
-        autoFocus={autoFocus}
-        onCommit={(next) => onSetText(next, field.key)}
-      />
-      <FontFamilyField
-        flat
-        value={field.computedStyles["font-family"] || styles["font-family"] || "inherit"}
-        importedFonts={fontAssets}
-        onImportFonts={onImportFonts}
-        onCommit={(next) => onSetTextFieldStyle(field.key, "font-family", next)}
-      />
+      <PromotableControl channel={{ kind: "text" }} enabled={field.source === "self"}>
+        {({ value, onCommit }) => (
+          <TextAreaField
+            flat
+            label="Content"
+            value={value ?? field.value}
+            autoFocus={autoFocus}
+            onCommit={onCommit ?? ((next) => onSetText(next, field.key))}
+          />
+        )}
+      </PromotableControl>
+      <PromotableControl
+        channel={{ kind: "style", prop: "font-family" }}
+        enabled={field.source === "self"}
+      >
+        {({ value, onCommit }) => (
+          <FontFamilyField
+            flat
+            value={
+              value ?? (field.computedStyles["font-family"] || styles["font-family"] || "inherit")
+            }
+            importedFonts={fontAssets}
+            onImportFonts={onImportFonts}
+            onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "font-family", next))}
+          />
+        )}
+      </PromotableControl>
       <FlatRow
         label="Size"
         value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
@@ -180,12 +194,19 @@ function FlatTextFieldEditor({
           }
         }}
       />
-      <ColorField
-        flat
-        label="Color"
-        value={getTextFieldColor(field, styles)}
-        onCommit={(next) => onSetTextFieldStyle(field.key, "color", next)}
-      />
+      <PromotableControl
+        channel={{ kind: "style", prop: "color" }}
+        enabled={field.source === "self"}
+      >
+        {({ value, onCommit }) => (
+          <ColorField
+            flat
+            label="Color"
+            value={value ?? getTextFieldColor(field, styles)}
+            onCommit={onCommit ?? ((next) => onSetTextFieldStyle(field.key, "color", next))}
+          />
+        )}
+      </PromotableControl>
     </>
   );
 }

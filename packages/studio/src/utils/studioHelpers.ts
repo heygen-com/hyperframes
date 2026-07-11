@@ -237,6 +237,28 @@ export function resolveTimelineIdForSelection(
   );
 }
 
+/**
+ * Resolve every multi-selected element to its scope-qualified timeline key
+ * (dropping unresolvable ones). Selections carry bare DOM ids/selectors, but
+ * the visibility toggle matches keys like "index.html#hero" — and callers must
+ * hide all keys in ONE call so the file is patched in a single atomic write
+ * (per-element calls would clobber each other's reads).
+ */
+export function timelineKeysForSelections(
+  selections: readonly DomEditSelection[],
+  elements: TimelineElement[],
+  activeCompPath: string | null,
+): string[] {
+  return selections
+    .map((selection) => resolveTimelineIdForSelection(selection, elements, activeCompPath))
+    .filter((key): key is string => key !== null);
+}
+
+export type ToggleHiddenHandler = (
+  elementKey: string | readonly string[],
+  hidden: boolean,
+) => Promise<void> | void;
+
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
   element: Pick<TimelineElement, "start" | "duration"> | null | undefined,

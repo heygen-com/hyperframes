@@ -13,6 +13,7 @@ import {
   readGsapRuntimeValuesForPanel,
   readGsapBorderRadiusForPanel,
   isSelectedElementHidden,
+  selectionIdentityKey,
 } from "./propertyPanelHelpers";
 import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
@@ -269,7 +270,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     return (
       <PropertyPanelFlat
         {...props}
-        key={element.id ?? element.selector}
+        key={selectionIdentityKey(element)}
         element={element}
         styles={styles}
         sections={sections}
@@ -372,12 +373,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
         )}
         {sections.colorGrading && (
           <ColorGradingSection
-            key={[
-              element.id ?? "",
-              element.hfId ?? "",
-              element.selector ?? "",
-              String(element.selectorIndex ?? ""),
-            ].join("|")}
+            key={selectionIdentityKey(element)}
             projectId={projectId}
             element={element}
             assets={assets}

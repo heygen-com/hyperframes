@@ -216,6 +216,29 @@ export function FlatGroupHeader({
 /*  FlatSlider — full-width label/track/value row                      */
 /* ------------------------------------------------------------------ */
 
+/** Keyboard target for a slider keydown, or null for keys we don't handle. */
+function sliderKeyTarget(
+  key: string,
+  current: number,
+  min: number,
+  max: number,
+  step: number,
+): number | null {
+  if (key === "Home") return min;
+  if (key === "End") return max;
+  const deltas: Record<string, number> = {
+    ArrowLeft: -step,
+    ArrowDown: -step,
+    ArrowRight: step,
+    ArrowUp: step,
+    PageDown: -step * 10,
+    PageUp: step * 10,
+  };
+  const delta = deltas[key];
+  if (delta === undefined) return null;
+  return Math.max(min, Math.min(max, current + delta));
+}
+
 export function FlatSlider({
   label,
   value,
@@ -252,6 +275,11 @@ export function FlatSlider({
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitAtRef = useRef(0);
   const pendingRef = useRef<number | null>(null);
+  // True from pointerdown to pointerup/cancel. While dragging, the committed
+  // prop echoing back through the parent must NOT reset `draft` — the echo is
+  // up to 40ms stale (throttled commit), and syncing it mid-drag snaps the
+  // knob backwards under the user's pointer.
+  const draggingRef = useRef(false);
   // Tracks the last value actually sent to onCommit — separate from `value`
   // (the committed prop) because in a single pointerdown+pointerup click the
   // leading-edge commit fires before the parent has re-rendered with the new
@@ -260,6 +288,7 @@ export function FlatSlider({
   const lastCommittedRef = useRef(value);
 
   useEffect(() => {
+    if (draggingRef.current) return;
     setDraft(value);
     lastCommittedRef.current = value;
   }, [value]);
@@ -313,10 +342,14 @@ export function FlatSlider({
         role="slider"
         aria-label={label}
         aria-valuenow={draft}
+        aria-valuemin={min}
+        aria-valuemax={max}
         aria-disabled={disabled}
+        tabIndex={disabled ? -1 : 0}
         className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
         onPointerDown={(e) => {
           if (disabled) return;
+          draggingRef.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
           setDraft(stepped);
@@ -332,6 +365,9 @@ export function FlatSlider({
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             e.currentTarget.releasePointerCapture(e.pointerId);
           }
+          if (disabled) return;
+          if (!draggingRef.current) return;
+          draggingRef.current = false;
           // Recompute from the event itself rather than reading the `draft`
           // closure — if pointerdown+pointerup land in the same React batch
           // (e.g. a very fast click), the onPointerUp handler can still be
@@ -339,6 +375,20 @@ export function FlatSlider({
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
           setDraft(stepped);
           commitDraft(stepped);
+        }}
+        onPointerCancel={(e) => {
+          draggingRef.current = false;
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          const next = sliderKeyTarget(e.key, draft, min, max, step);
+          if (next === null) return;
+          e.preventDefault();
+          setDraft(next);
+          commitDraft(next);
         }}
       >
         <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">
@@ -372,7 +422,7 @@ export function FlatSlider({
       >
         {displayValue}
       </span>
-      {centerTick && (
+      {(centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
           {tier === "explicitCustom" && onReset && (
             <button

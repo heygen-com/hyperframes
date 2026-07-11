@@ -485,7 +485,7 @@ describe("FlatSlider — Grade extensions", () => {
     act(() => rootB.unmount());
   });
 
-  it("renders no reset slot at all when centerTick is omitted, matching existing Style/Media callers", () => {
+  it("renders no reset slot at all when neither centerTick nor onReset is provided", () => {
     const { host, root } = renderInto(
       <FlatSlider
         label="Opacity"
@@ -499,6 +499,136 @@ describe("FlatSlider — Grade extensions", () => {
     );
     expect(host.querySelector('[data-flat-slider-reset-slot="true"]')).toBeNull();
     expect(host.querySelector('[data-flat-slider-reset="true"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("shows a reachable reset button on a non-centerTick slider that passes onReset (Grade Vignette/Effects)", () => {
+    const onReset = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Vignette"
+        value={18}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="18%"
+        onReset={onReset}
+        onCommit={vi.fn()}
+      />,
+    );
+    const resetButton = host.querySelector<HTMLButtonElement>('[data-flat-slider-reset="true"]');
+    expect(resetButton).not.toBeNull();
+    act(() => resetButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onReset).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("never commits from a click released on a disabled slider", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={100}
+        min={0}
+        max={100}
+        tier="default"
+        displayValue="100%"
+        disabled
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 50, pointerId: 1 }),
+      );
+      track.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientX: 50, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("supports keyboard operation: focusable, arrow keys step, Home/End clamp to range", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Volume"
+        value={50}
+        min={0}
+        max={100}
+        tier="default"
+        displayValue="50%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    expect(track.getAttribute("tabindex")).toBe("0");
+    expect(track.getAttribute("aria-valuemin")).toBe("0");
+    expect(track.getAttribute("aria-valuemax")).toBe("100");
+    act(() => {
+      track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(51);
+    act(() => {
+      track.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(0);
+    act(() => root.unmount());
+  });
+
+  it("ignores the committed prop echoing back mid-drag (no knob snap-back)", () => {
+    const onCommit = vi.fn();
+    function Harness() {
+      const [value, setValue] = React.useState(10);
+      return (
+        <FlatSlider
+          label="Opacity"
+          value={value}
+          min={0}
+          max={100}
+          tier="explicitCustom"
+          displayValue={`${value}%`}
+          onCommit={(next) => {
+            onCommit(next);
+            setValue(next);
+          }}
+        />
+      );
+    }
+    const { host, root } = renderInto(<Harness />);
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 100, top: 0, height: 20, right: 100, bottom: 20 }),
+    });
+    act(() => {
+      // Leading-edge commit fires at 30 and echoes back through the parent's
+      // state — mid-drag, that echo must NOT reset the draft.
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
+      );
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 80, pointerId: 1 }),
+      );
+    });
+    // Draft tracks the pointer (80), not the stale committed echo (30).
+    expect(track.getAttribute("aria-valuenow")).toBe("80");
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientX: 80, pointerId: 1 }),
+      );
+    });
+    expect(onCommit).toHaveBeenLastCalledWith(80);
+    expect(track.getAttribute("aria-valuenow")).toBe("80");
     act(() => root.unmount());
   });
 });

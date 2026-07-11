@@ -233,7 +233,10 @@ export function useColorGradingController({
         setMediaMetadata(metadata);
       })
       .catch(() => {
-        if (!controller.signal.aborted) MEDIA_METADATA_CACHE.set(cacheKey, null);
+        // Don't cache a transient fetch failure — a cached null would suppress
+        // the HDR banner for this asset for the page's whole lifetime. Leave the
+        // key absent so the next selection retries. (A successful response with
+        // no metadata still caches null above, which IS a stable answer.)
       });
     return () => controller.abort();
   }, [projectId, selectedAssetPath]);

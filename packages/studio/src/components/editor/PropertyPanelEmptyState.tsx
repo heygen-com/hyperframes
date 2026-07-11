@@ -105,7 +105,7 @@ function FlatMultiSelectState({
           const { glyph, className } = elementKindGlyph(element);
           return (
             <span
-              key={element.id ?? element.selector}
+              key={`${element.id ?? element.selector ?? ""}:${element.selectorIndex ?? 0}`}
               className="flex items-center gap-2 rounded-lg border border-panel-border bg-panel-bg px-2.5 py-[7px]"
             >
               <span
