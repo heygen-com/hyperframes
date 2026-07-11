@@ -78,10 +78,23 @@ export function shouldIgnoreRequestFailure(
   errorText: string | undefined,
   resourceType?: string,
 ): boolean {
+  if (isOptionalCaptionOverridesRequest(url)) return true;
   if (errorText !== "net::ERR_ABORTED") return false;
   if (resourceType === "media") return true;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function shouldIgnoreHttpError(url: string, status: number): boolean {
+  return status === 404 && isOptionalCaptionOverridesRequest(url);
+}
+
+function isOptionalCaptionOverridesRequest(url: string): boolean {
+  try {
+    return new URL(url).pathname === "/caption-overrides.json";
   } catch {
     return false;
   }
@@ -207,7 +220,11 @@ export async function auditClipDurations(
       continue;
     }
     const mediaSeconds = Math.max(0, clip.duration - clip.mediaStart);
-    const fit = analyzeClipMediaFit({ slotSeconds: clip.slot, mediaSeconds, loop: clip.loop });
+    const fit = analyzeClipMediaFit({
+      slotSeconds: clip.slot,
+      mediaSeconds,
+      loop: clip.loop,
+    });
     if (!fit) continue;
     warnings.push({
       level: "warning",
@@ -276,7 +293,10 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
           : [],
       )) as ContrastCandidate[];
 
-      const screenshot = (await page.screenshot({ encoding: "base64", type: "png" })) as string;
+      const screenshot = (await page.screenshot({
+        encoding: "base64",
+        type: "png",
+      })) as string;
       const entries = await page.evaluate(
         (b64: string, time: number, cands: ContrastCandidate[]) =>
           typeof (window as unknown as Record<string, unknown>).__contrastAuditFinish === "function"
@@ -369,7 +389,11 @@ async function localizeRemoteAssets(
 async function validateInBrowser(
   project: ProjectDir,
   opts: { timeout?: number; contrast?: boolean },
-): Promise<{ errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] }> {
+): Promise<{
+  errors: ConsoleEntry[];
+  warnings: ConsoleEntry[];
+  contrast?: ContrastEntry[];
+}> {
   const projectDir = project.dir;
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
   const { ensureBrowser } = await import("../browser/manager.js");
@@ -431,9 +455,19 @@ async function validateInBrowser(
       const text = msg.text();
       if (type === "error") {
         if (text.startsWith("Failed to load resource")) return;
-        errors.push({ level: "error", text, url: loc.url, line: loc.lineNumber });
+        errors.push({
+          level: "error",
+          text,
+          url: loc.url,
+          line: loc.lineNumber,
+        });
       } else if (type === "warn") {
-        warnings.push({ level: "warning", text, url: loc.url, line: loc.lineNumber });
+        warnings.push({
+          level: "warning",
+          text,
+          url: loc.url,
+          line: loc.lineNumber,
+        });
       }
     });
 
@@ -463,14 +497,22 @@ async function validateInBrowser(
       if (res.status() >= 400) {
         const url = res.url();
         if (url.includes("favicon")) return;
+        if (shouldIgnoreHttpError(url, res.status())) return;
         const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
-        errors.push({ level: "error", text: `${res.status()} loading ${path}`, url });
+        errors.push({
+          level: "error",
+          text: `${res.status()} loading ${path}`,
+          url,
+        });
       }
     });
 
     const navTimeoutMs = resolveNavigationTimeoutMs(opts.timeout);
     try {
-      await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: navTimeoutMs });
+      await page.goto(server.url, {
+        waitUntil: "domcontentloaded",
+        timeout: navTimeoutMs,
+      });
     } catch (err) {
       const hinted = navigationTimeoutHint(err, navTimeoutMs);
       if (hinted) throw hinted;
@@ -593,7 +635,11 @@ Examples:
   hyperframes validate --timeout 5000`,
   },
   args: {
-    dir: { type: "positional", description: "Project directory", required: false },
+    dir: {
+      type: "positional",
+      description: "Project directory",
+      required: false,
+    },
     json: { type: "boolean", description: "Output as JSON", default: false },
     contrast: {
       type: "boolean",
@@ -620,7 +666,10 @@ Examples:
     }
 
     try {
-      const result = await validateInBrowser(project, { timeout, contrast: useContrast });
+      const result = await validateInBrowser(project, {
+        timeout,
+        contrast: useContrast,
+      });
       const exitCode = printValidationResult(result, asJson);
       process.exit(exitCode);
     } catch (err: unknown) {
@@ -632,7 +681,11 @@ Examples:
 });
 
 function printValidationResult(
-  result: { errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] },
+  result: {
+    errors: ConsoleEntry[];
+    warnings: ConsoleEntry[];
+    contrast?: ContrastEntry[];
+  },
   asJson: boolean,
 ): number {
   const { errors, warnings, contrast } = result;

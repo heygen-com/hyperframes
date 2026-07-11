@@ -12,7 +12,11 @@ import {
   seekCompositionTimeline,
   waitForPreferredSeekTarget,
 } from "../capture/captureCompositionFrame.js";
-import { auditClipDurations, shouldIgnoreRequestFailure } from "../commands/validate.js";
+import {
+  auditClipDurations,
+  shouldIgnoreHttpError,
+  shouldIgnoreRequestFailure,
+} from "../commands/validate.js";
 import { loadBrowserScript } from "../commands/layout.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
@@ -116,7 +120,12 @@ export async function runBrowserCheck(
     // errors). The session is already open, so this is one extra evaluate.
     const { analyzeClipMediaFit } = await import("@hyperframes/engine");
     for (const entry of await auditClipDurations(page, analyzeClipMediaFit, options.timeout)) {
-      drafts.push({ code: "clip_media_fit", severity: entry.level, message: entry.text, time: 0 });
+      drafts.push({
+        code: "clip_media_fit",
+        severity: entry.level,
+        message: entry.text,
+        time: 0,
+      });
     }
     const driver = createPageDriver(page, (time) => {
       currentTime = time;
@@ -211,7 +220,12 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (message.includes("Unexpected token '<'") || message.includes("Unexpected token '&lt;'")) {
       return;
     }
-    drafts.push({ code: "page_error", severity: "error", message, time: currentTime() });
+    drafts.push({
+      code: "page_error",
+      severity: "error",
+      message,
+      time: currentTime(),
+    });
   });
   wireNetworkListeners(page, drafts, currentTime);
 }
@@ -234,6 +248,7 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (response.status() < 400) return;
     const url = response.url();
     if (url.includes("favicon")) return;
+    if (shouldIgnoreHttpError(url, response.status())) return;
     drafts.push({
       code: "http_error",
       severity: "error",
@@ -250,7 +265,10 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     getDuration: () => getCompositionDuration(page),
     getTransitionBoundaries: () => collectTweenBoundaries(page),
     getCanvas: () =>
-      page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
+      page.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })),
     findAmbiguousSelectors: (selectors) => findAmbiguousSelectors(page, selectors),
     seek: async (time) => {
       setTime(time);
@@ -267,10 +285,16 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
 }
 
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {
-  await page.addScriptTag({ content: loadBrowserScript("layout-audit.browser.js") });
-  await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
+  await page.addScriptTag({
+    content: loadBrowserScript("layout-audit.browser.js"),
+  });
+  await page.addScriptTag({
+    content: loadBrowserScript("motion-sample.browser.js"),
+  });
   if (contrast) {
-    await page.addScriptTag({ content: loadBrowserScript("contrast-audit.browser.js") });
+    await page.addScriptTag({
+      content: loadBrowserScript("contrast-audit.browser.js"),
+    });
   }
 }
 
@@ -484,7 +508,11 @@ async function resolveAnchors(page: Page, requests: AnchorRequest[]): Promise<Ch
 
 async function resolveRootAnchor(page: Page): Promise<CheckAnchor> {
   const anchors = await resolveAnchors(page, [
-    { selector: "[data-composition-id]", time: 0, bbox: await compositionBbox(page) },
+    {
+      selector: "[data-composition-id]",
+      time: 0,
+      bbox: await compositionBbox(page),
+    },
   ]);
   return anchors[0] ?? fallbackAnchor(undefined);
 }
@@ -510,7 +538,10 @@ async function collectContrast(
     // This screenshot is the one contrast math is sampled from below — it must
     // stay untouched by the annotation overlay (finishContrast reads real
     // painted pixels), so annotation only ever happens on a SECOND shot.
-    const measurementShot = await page.screenshot({ encoding: "base64", type: "png" });
+    const measurementShot = await page.screenshot({
+      encoding: "base64",
+      type: "png",
+    });
     if (typeof measurementShot !== "string") throw new Error("Contrast screenshot was not base64");
     const raw = await finishContrast(
       page,
@@ -778,7 +809,12 @@ function parseGeometryCandidate(value: unknown, time: number): CheckGeometryCand
   if (!identity) return [];
   const anchor = parseGeometryAnchor(value, rect, time);
   if (!anchor) return [];
-  const candidate: CheckGeometryCandidate = { ...identity, ...anchor, rect, elementRect };
+  const candidate: CheckGeometryCandidate = {
+    ...identity,
+    ...anchor,
+    rect,
+    elementRect,
+  };
   const overflow = parseOverflow(Reflect.get(value, "overflow"));
   if (overflow) candidate.overflow = overflow;
   return [candidate];

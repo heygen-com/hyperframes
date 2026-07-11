@@ -16,6 +16,7 @@ import {
   raceMediaReady,
   resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
+  shouldIgnoreHttpError,
 } from "./validate.js";
 import { waitForPreferredSeekTarget } from "../capture/captureCompositionFrame.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
@@ -99,6 +100,29 @@ describe("raceMediaReady", () => {
 });
 
 describe("shouldIgnoreRequestFailure", () => {
+  it("ignores the optional caption overrides file when it is absent", () => {
+    expect(
+      shouldIgnoreRequestFailure(
+        "http://127.0.0.1:3000/caption-overrides.json",
+        "net::ERR_ABORTED",
+        "fetch",
+      ),
+    ).toBe(true);
+    expect(shouldIgnoreHttpError("http://127.0.0.1:3000/caption-overrides.json", 404)).toBe(true);
+  });
+
+  it("keeps non-optional JSON and non-404 caption override failures reportable", () => {
+    expect(
+      shouldIgnoreRequestFailure(
+        "http://127.0.0.1:3000/transcript.json",
+        "net::ERR_ABORTED",
+        "fetch",
+      ),
+    ).toBe(false);
+    expect(shouldIgnoreHttpError("http://127.0.0.1:3000/transcript.json", 404)).toBe(false);
+    expect(shouldIgnoreHttpError("http://127.0.0.1:3000/caption-overrides.json", 500)).toBe(false);
+  });
+
   it("ignores aborted media preload requests", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/sfx.wav", "net::ERR_ABORTED"),
@@ -140,7 +164,9 @@ describe("waitForPreferredSeekTarget", () => {
 
     await waitForPreferredSeekTarget(page, 123);
 
-    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), { timeout: 123 });
+    expect(page.waitForFunction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 123,
+    });
   });
 
   it("does not fail validation when only the legacy raw timeline fallback is available", async () => {
@@ -173,7 +199,11 @@ describe("extractCompositionErrorsFromLint", () => {
   // lintProject finding into validate's error list so this is a real
   // validate failure instead.
   function makeLintResult(
-    findings: Array<{ code: string; severity: "error" | "warning" | "info"; message: string }>,
+    findings: Array<{
+      code: string;
+      severity: "error" | "warning" | "info";
+      message: string;
+    }>,
   ): Pick<ProjectLintResult, "results"> {
     return {
       results: [
@@ -214,7 +244,11 @@ describe("extractCompositionErrorsFromLint", () => {
   it("ignores unrelated lint finding codes", () => {
     const lintResult = makeLintResult([
       { code: "audio_src_not_found", severity: "error", message: "unrelated" },
-      { code: "root_missing_composition_id", severity: "error", message: "also unrelated" },
+      {
+        code: "root_missing_composition_id",
+        severity: "error",
+        message: "also unrelated",
+      },
     ]);
 
     expect(extractCompositionErrorsFromLint(lintResult)).toEqual([]);
