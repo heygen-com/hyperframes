@@ -105,6 +105,16 @@
   "ignoreExports": [
     // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
     {
+      "file": "packages/studio/src/hooks/timelineElementsMove.ts",
+      "exports": ["useTimelineElementsMove"],
+    },
+    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
+    {
+      "file": "packages/studio/src/player/components/timelineClipDragPreview.ts",
+      "exports": ["computeDragPreview", "computeResizePreview"],
+    },
+    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
+    {
       "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
       "exports": ["furthestClipEndFromDocument"],
     },
@@ -429,6 +439,15 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/utils/timelineAssetDrop.ts",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/nle/NLEContext.test.ts",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/nle/NLELayout.test.ts",
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
       "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
