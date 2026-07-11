@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.52",
+  "version": "0.7.53",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "repository": {
     "type": "git",
