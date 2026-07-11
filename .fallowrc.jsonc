@@ -55,6 +55,11 @@
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
     // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
     // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
+    "packages/studio/src/components/EditorShell.tsx",
+    "packages/studio/src/components/nle/TimelinePane.tsx",
+    "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
+    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
+    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
     "packages/studio/src/components/editor/DomEditSelectionChrome.tsx",
     "packages/studio/src/components/editor/useDomEditNudge.ts",
     "packages/studio/src/components/nle/PreviewOverlays.tsx",
@@ -451,6 +456,18 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/StudioPreviewArea.tsx",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/EditorShell.tsx",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/components/nle/PreviewOverlays.tsx",
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
       "packages/studio/src/components/editor/DomEditOverlay.tsx",
