@@ -55,13 +55,6 @@
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
     // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
     // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/player/components/TimelineLanes.tsx",
-    "packages/studio/src/player/components/useTimelineStackingSync.ts",
-    "packages/studio/src/player/components/useTimelineGeometry.ts",
-    "packages/studio/src/player/components/useTimelineEditPinning.ts",
-    "packages/studio/src/hooks/useTimelineEditingDrops.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
     "packages/studio/src/components/nle/NLEContext.tsx",
     "packages/studio/src/components/nle/PreviewPane.tsx",
     "packages/studio/src/components/nle/AssetPreviewOverlay.tsx",
@@ -448,12 +441,6 @@
     "ignore": [
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useTimelineEditing.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useTimelineEditingDrops.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
       "packages/studio/src/utils/timelineAssetDrop.ts",
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
@@ -631,10 +618,6 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/player/components/useTimelineGeometry.ts",
-      "packages/studio/src/player/components/useTimelineStackingSync.ts",
       // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
       // removed by studio-dnd/pr22 when the final config lands.
       "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
