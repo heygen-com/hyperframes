@@ -296,6 +296,30 @@ describe("runProbeStage — render variable threading", () => {
   });
 });
 
+describe("runProbeStage — decimal duration frame count", () => {
+  it("does not add a frame for a six-decimal duration rounded from an exact frame boundary", async () => {
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 32.866667;
+    input.compiled.staticDuration = 32.866667;
+
+    const result = await runProbeStage(input);
+
+    expect(result.totalFrames).toBe(986);
+  });
+
+  it("still ceilings a duration that genuinely extends into the next frame", async () => {
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 32.867;
+    input.compiled.staticDuration = 32.867;
+
+    const result = await runProbeStage(input);
+
+    expect(result.totalFrames).toBe(987);
+  });
+});
+
 describe("runProbeStage — transient browser error retry (#1687)", () => {
   it("retries once on a transient 'Navigating frame was detached' error and succeeds", async () => {
     resetRetryMocks();
