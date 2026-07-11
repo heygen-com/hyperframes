@@ -364,6 +364,20 @@ export class RenderObservabilityRecorder {
   }
 }
 
+/** Heartbeat ramp before falling back to a steady repeat cadence. */
+const HEARTBEAT_RAMP_MS = [30_000, 60_000, 120_000];
+const HEARTBEAT_REPEAT_MS = 120_000;
+const HEARTBEAT_RAMP_END_MS =
+  HEARTBEAT_RAMP_MS[HEARTBEAT_RAMP_MS.length - 1] ?? HEARTBEAT_REPEAT_MS;
+
+/** Target elapsed-ms for the Nth heartbeat (0-indexed): ramp, then steady repeat so long stalls keep emitting breadcrumbs instead of going dark after the ramp. */
+function heartbeatTargetMs(index: number): number {
+  const rampTarget = HEARTBEAT_RAMP_MS[index];
+  if (rampTarget !== undefined) return rampTarget;
+  const overflow = index - HEARTBEAT_RAMP_MS.length + 1;
+  return HEARTBEAT_RAMP_END_MS + overflow * HEARTBEAT_REPEAT_MS;
+}
+
 export async function observeRenderStage<T>(
   recorder: RenderObservabilityRecorder,
   phase: string,
@@ -371,19 +385,26 @@ export async function observeRenderStage<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const startedAt = recorder.stageStart(phase, data);
-  const heartbeatTimers = [30_000, 60_000, 120_000].map((delayMs, index) => {
-    const timer = setTimeout(() => {
+  let heartbeatCount = 0;
+  let lastFiredAtMs = 0;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleNextHeartbeat = () => {
+    const targetMs = heartbeatTargetMs(heartbeatCount);
+    heartbeatTimer = setTimeout(() => {
+      lastFiredAtMs = targetMs;
+      heartbeatCount += 1;
       recorder.checkpoint(phase, "stage still running", {
         ...data,
-        heartbeatIndex: index + 1,
+        heartbeatIndex: heartbeatCount,
         stageElapsedMs: Date.now() - startedAt,
       });
-    }, delayMs);
-    timer.unref?.();
-    return timer;
-  });
+      scheduleNextHeartbeat();
+    }, targetMs - lastFiredAtMs);
+    heartbeatTimer.unref?.();
+  };
+  scheduleNextHeartbeat();
   const clearHeartbeats = () => {
-    for (const timer of heartbeatTimers) clearTimeout(timer);
+    clearTimeout(heartbeatTimer);
   };
   try {
     const result = await fn();

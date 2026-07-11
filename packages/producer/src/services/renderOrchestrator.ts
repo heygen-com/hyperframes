@@ -1939,6 +1939,51 @@ export async function executeRenderJob(
         process.env.HF_DE_PARALLEL_STREAM === "true",
       routerEnabled: deParallelRouterEnabled,
     });
+    // Declared ahead of resolution (assigned below, after calibration) so
+    // captureStageObservationData can close over it for the calibration
+    // stage itself — reads as undefined until resolveRenderWorkerCount runs.
+    let workerCount: number;
+    const captureStageObservationData = (
+      extra: RenderObservationData = {},
+    ): RenderObservationData => ({
+      ...extra,
+      get workerCount() {
+        return workerCount;
+      },
+      get forceScreenshot() {
+        return captureForceScreenshot;
+      },
+      get totalFrames() {
+        return totalFrames;
+      },
+      get framesCompleted() {
+        return job.framesRendered ?? 0;
+      },
+      get captureMode() {
+        return (
+          probeSession?.captureMode ??
+          (captureForceScreenshot
+            ? "screenshot"
+            : cfg.useDrawElement
+              ? "drawelement"
+              : "beginframe")
+        );
+      },
+      get captureOperation() {
+        if ((job.framesRendered ?? 0) >= totalFrames) return "encode";
+        const mode =
+          probeSession?.captureMode ??
+          (captureForceScreenshot
+            ? "screenshot"
+            : cfg.useDrawElement
+              ? "drawelement"
+              : "beginframe");
+        if (mode === "screenshot") return "captureScreenshot";
+        if (mode === "drawelement") return "drawElement";
+        return "beginFrame";
+      },
+    });
+
     if (
       job.config.workers === undefined &&
       totalFrames >= 60 &&
@@ -1991,7 +2036,7 @@ export async function executeRenderJob(
 
     // Low-memory safe-mode's single-worker pin lives inside
     // resolveRenderWorkerCount so its "why workers=N" logging stays coherent.
-    let workerCount = resolveRenderWorkerCount(
+    workerCount = resolveRenderWorkerCount(
       totalFrames,
       job.config.workers,
       cfg,
@@ -2235,46 +2280,6 @@ export async function executeRenderJob(
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
     resetCaptureAttemptProgress(job);
-    const captureStageObservationData = (
-      extra: RenderObservationData = {},
-    ): RenderObservationData => ({
-      ...extra,
-      get workerCount() {
-        return workerCount;
-      },
-      get forceScreenshot() {
-        return captureForceScreenshot;
-      },
-      get totalFrames() {
-        return totalFrames;
-      },
-      get framesCompleted() {
-        return job.framesRendered ?? 0;
-      },
-      get captureMode() {
-        return (
-          probeSession?.captureMode ??
-          (captureForceScreenshot
-            ? "screenshot"
-            : cfg.useDrawElement
-              ? "drawelement"
-              : "beginframe")
-        );
-      },
-      get captureOperation() {
-        if ((job.framesRendered ?? 0) >= totalFrames) return "encode";
-        const mode =
-          probeSession?.captureMode ??
-          (captureForceScreenshot
-            ? "screenshot"
-            : cfg.useDrawElement
-              ? "drawelement"
-              : "beginframe");
-        if (mode === "screenshot") return "captureScreenshot";
-        if (mode === "drawelement") return "drawElement";
-        return "beginFrame";
-      },
-    });
 
     // ── Z-ordered multi-layer compositing ─────────────────────────────────
     // Per frame: query all elements' z-order, group into layers (DOM or HDR),
@@ -2603,7 +2608,12 @@ export async function executeRenderJob(
         const encodeRes = await observeRenderStage(
           observability,
           "encode",
-          { hasAudio, isPngSequence, isGif, chunkedEncode: enableChunkedEncode },
+          captureStageObservationData({
+            hasAudio,
+            isPngSequence,
+            isGif,
+            chunkedEncode: enableChunkedEncode,
+          }),
           () =>
             runEncodeStage({
               job,
@@ -2651,17 +2661,21 @@ export async function executeRenderJob(
     // directory deliverable, and gif is written directly to outputPath by the
     // two-pass palette encoder.
     if (!isPngSequence && !isGif) {
-      const assembleRes = await observeRenderStage(observability, "assemble", { hasAudio }, () =>
-        runAssembleStage({
-          job,
-          videoOnlyPath,
-          audioOutputPath,
-          outputPath,
-          hasAudio,
-          abortSignal,
-          assertNotAborted,
-          onProgress,
-        }),
+      const assembleRes = await observeRenderStage(
+        observability,
+        "assemble",
+        captureStageObservationData({ hasAudio }),
+        () =>
+          runAssembleStage({
+            job,
+            videoOnlyPath,
+            audioOutputPath,
+            outputPath,
+            hasAudio,
+            abortSignal,
+            assertNotAborted,
+            onProgress,
+          }),
       );
       perfStages.assembleMs = assembleRes.assembleMs;
     } else {

@@ -150,6 +150,7 @@ describe("RenderObservabilityRecorder", () => {
     resolveStage?.();
     await stage;
     const endCall = log.info.mock.calls.find(
+      // fallow-ignore-next-line complexity
       ([message, meta]) =>
         message === "[Render:trace]" &&
         meta?.phase === "capture_streaming" &&
@@ -171,6 +172,40 @@ describe("RenderObservabilityRecorder", () => {
           message === "[Render:trace]" && meta?.message === "stage still running",
       ),
     ).toHaveLength(3);
+    vi.useRealTimers();
+  });
+
+  it("keeps emitting heartbeats every 120s once the initial ramp is exhausted", async () => {
+    vi.useFakeTimers();
+    const log = makeLog();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log,
+      renderJobId: "render-long-hang",
+    });
+    let resolveStage: (() => void) | undefined;
+    const stage = observeRenderStage(
+      recorder,
+      "capture_streaming",
+      { captureMode: "screenshot" },
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStage = resolve;
+        }),
+    );
+
+    // Ramp: 30s, 60s, 120s → 3 heartbeats. Then steady 120s cadence: 240s, 360s.
+    await vi.advanceTimersByTimeAsync(360_000);
+    const heartbeatCalls = log.info.mock.calls.filter(
+      ([message, meta]) => message === "[Render:trace]" && meta?.message === "stage still running",
+    );
+    expect(heartbeatCalls.map(([, meta]) => meta?.heartbeatIndex)).toEqual([1, 2, 3, 4, 5]);
+    expect(heartbeatCalls.map(([, meta]) => meta?.stageElapsedMs)).toEqual([
+      30_000, 60_000, 120_000, 240_000, 360_000,
+    ]);
+
+    resolveStage?.();
+    await stage;
     vi.useRealTimers();
   });
 
@@ -200,6 +235,7 @@ describe("RenderObservabilityRecorder", () => {
       ),
     ).rejects.toThrow("capture failed");
     const errorCall = log.info.mock.calls.find(
+      // fallow-ignore-next-line complexity
       ([message, meta]) =>
         message === "[Render:trace]" && meta?.phase === "capture_disk" && meta?.status === "error",
     );
