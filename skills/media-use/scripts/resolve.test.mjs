@@ -130,6 +130,20 @@ function test(name, fn) {
 
 // --- manifest cache hit ---
 
+test("bundled SFX resolve without HeyGen on PATH", () => {
+  setup();
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: tmp } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.ok(existsSync(join(tmp, parsed.path)));
+  cleanup();
+});
+
 test("project manifest hit skips providers", () => {
   setup();
   const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
