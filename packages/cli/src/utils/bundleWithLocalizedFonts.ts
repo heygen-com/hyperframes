@@ -1,3 +1,6 @@
+import { normalizeErrorMessage } from "./errorMessage.js";
+import { c } from "../ui/colors.js";
+
 /**
  * Bundle a project to a single HTML string AND localize its fonts — fetch and
  * embed `@font-face` rules for every requested family (including families
@@ -11,15 +14,11 @@
  * fall back to an un-styled system sans when the remote font loses the race
  * against the capture. Running the SAME localization the render path uses makes
  * snapshot/check captures font-faithful and deterministic — no network race.
- *
- * Fail-open: if a family can't be fetched (offline, unknown font), the
- * underlying injector leaves the HTML unchanged, so this never makes a bundle
- * worse than plain `bundleToSingleHtml`.
  */
 export async function bundleWithLocalizedFonts(
   projectDir: string,
   // Injectable for tests. Production callers omit it and get the producer
-  // font-localization pass, resolved lazily at runtime (see localizeWithProducer).
+  // font-localization pass (see localizeWithProducer).
   localizeFonts: (html: string) => Promise<string> = localizeWithProducer,
 ): Promise<string> {
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
@@ -27,26 +26,71 @@ export async function bundleWithLocalizedFonts(
   return localizeFonts(html);
 }
 
+type FontInjector = (html: string) => Promise<string>;
+
 /**
- * Run the render pipeline's `injectDeterministicFontFaces` pass, resolving
+ * Load the render pipeline's `injectDeterministicFontFaces`, resolving
  * `@hyperframes/producer` at RUNTIME only. The specifier is kept out of the
  * bundler's/test-runner's static module graph (`@vite-ignore` + a variable
- * specifier) on purpose: the CLI test job doesn't build producer, so a static
- * `import("@hyperframes/producer")` would fail Vitest's transform-time
- * resolution. At runtime — the built CLI, or an installed package — producer is
- * a real dependency and resolves via node_modules.
+ * specifier) on purpose: the CLI test job builds with `--filter
+ * '!@hyperframes/producer'`, so a static `import("@hyperframes/producer")`
+ * would fail Vitest's transform-time resolution. At runtime — the built CLI or
+ * an installed package — producer is a real dependency and resolves via
+ * node_modules.
  *
- * Fail-open: if producer can't be resolved or a fetch layer throws, return the
- * HTML unchanged so a bundle is never worse than plain `bundleToSingleHtml`.
+ * Returns `null` (not a throw) when the module simply isn't available in this
+ * environment, so the caller can treat "producer absent" — a benign, expected
+ * condition — differently from "the injector itself failed".
  */
-async function localizeWithProducer(html: string): Promise<string> {
+async function loadFontInjector(): Promise<FontInjector | null> {
   try {
     const producerSpecifier = "@hyperframes/producer";
-    const { injectDeterministicFontFaces } = (await import(
-      /* @vite-ignore */ producerSpecifier
-    )) as typeof import("@hyperframes/producer");
-    return await injectDeterministicFontFaces(html);
+    const mod = (await import(/* @vite-ignore */ producerSpecifier)) as {
+      injectDeterministicFontFaces?: FontInjector;
+    };
+    return mod.injectDeterministicFontFaces ?? null;
   } catch {
+    return null;
+  }
+}
+
+const warnedFontLocalizationFailures = new Set<string>();
+
+/** Reset the dedup latch — tests only. */
+export function __resetFontLocalizationWarningsForTests(): void {
+  warnedFontLocalizationFailures.clear();
+}
+
+/**
+ * Localize fonts via the producer injector, distinguishing two failure modes:
+ *
+ *  - **Module unavailable** (`loadInjector` yields `null`): benign — producer
+ *    isn't in this environment. Return the HTML unchanged, silently; fonts
+ *    declared via a remote `<link>` still load at capture time as before.
+ *  - **Injector threw** (a fetch layer failed, a family errored past the
+ *    injector's own per-family handling): unexpected — surface it ONCE per
+ *    distinct message (snapshot/check re-bundle per grid point, so an
+ *    un-deduped warning would spam), then fail open to the plain bundle.
+ *
+ * Per-family resolution failures inside a successful pass are already reported
+ * by the injector itself (producer's `warnUnresolvedFonts`); this layer only
+ * owns the module-vs-execution distinction and the dedup.
+ */
+export async function localizeWithProducer(
+  html: string,
+  loadInjector: () => Promise<FontInjector | null> = loadFontInjector,
+  warn: (message: string) => void = (m) => console.warn(`   ${c.warn("⚠")} ${m}`),
+): Promise<string> {
+  const inject = await loadInjector();
+  if (!inject) return html;
+  try {
+    return await inject(html);
+  } catch (err) {
+    const message = `Font localization failed; capturing with remote/fallback fonts instead: ${normalizeErrorMessage(err)}`;
+    if (!warnedFontLocalizationFailures.has(message)) {
+      warnedFontLocalizationFailures.add(message);
+      warn(message);
+    }
     return html;
   }
 }
