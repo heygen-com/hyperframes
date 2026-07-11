@@ -95,8 +95,14 @@ export function TimelinePane({
   const handleMoveElements = useCallback(
     (
       edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
-    ) =>
-      onMoveElements?.(
+      coalesceKey?: string,
+    ) => {
+      // Match the sibling handlers: report the telemetry when the batch touches at
+      // least one expanded sub-comp child (the clips being rebased to local coords).
+      if (edits.some(({ element }) => element.expandedParentStart !== undefined)) {
+        trackStudioExpandedClipEdit({ action: "move" });
+      }
+      return onMoveElements?.(
         edits.map(({ element, updates }) => {
           const basis = element.expandedParentStart;
           if (basis === undefined) return { element, updates };
@@ -105,7 +111,9 @@ export function TimelinePane({
             updates: { ...updates, start: Math.max(0, updates.start - basis) },
           };
         }),
-      ),
+        coalesceKey,
+      );
+    },
     [onMoveElements, toLocalElement],
   );
 

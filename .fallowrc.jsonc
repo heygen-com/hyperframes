@@ -44,7 +44,7 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
-    // NLE notice — rendered conditionally via NLELayout when timeline is first shown.
+    // NLE notice — rendered conditionally via NLEContext/EditorShell when timeline is first shown.
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
@@ -53,39 +53,6 @@
     "packages/studio/src/hooks/gsapTargetCache.ts",
     // Preview helper consumed dynamically from the studio iframe bridge.
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/sidebar/AssetCard.tsx",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/EditorShell.tsx",
-    "packages/studio/src/components/nle/TimelinePane.tsx",
-    "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/editor/DomEditSelectionChrome.tsx",
-    "packages/studio/src/components/editor/useDomEditNudge.ts",
-    "packages/studio/src/components/nle/PreviewOverlays.tsx",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/player/components/TimelineLanes.tsx",
-    "packages/studio/src/player/components/useTimelineStackingSync.ts",
-    "packages/studio/src/player/components/useTimelineGeometry.ts",
-    "packages/studio/src/player/components/useTimelineEditPinning.ts",
-    "packages/studio/src/hooks/useTimelineEditingDrops.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/nle/NLEContext.tsx",
-    "packages/studio/src/components/nle/PreviewPane.tsx",
-    "packages/studio/src/components/nle/AssetPreviewOverlay.tsx",
-    "packages/studio/src/player/components/TimelineOverlays.tsx",
-    "packages/studio/src/player/components/timelineClipChildren.tsx",
-    "packages/studio/src/player/components/timelineClipDragTypes.ts",
-    "packages/studio/src/player/hooks/useTimelinePlayerLoop.ts",
-    "packages/studio/src/utils/assetPreviewStore.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/editor/CanvasContextMenu.tsx",
   ],
   "ignorePatterns": [
     "docs/**",
@@ -123,133 +90,6 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/components/timelineEditing.ts",
-      "exports": [
-        "selectTimelineElementsInMarquee",
-        "TimelineGroupResizeEdge",
-        "TimelineGroupTimingMember",
-      ],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/hooks/timelineElementsMove.ts",
-      "exports": ["useTimelineElementsMove"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/components/timelineClipDragPreview.ts",
-      "exports": ["computeDragPreview", "computeResizePreview"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
-      "exports": ["furthestClipEndFromDocument"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/hooks/timelineEditingHelpers.ts",
-      "exports": ["patchIframeRootDuration"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
-      "exports": ["DeleteConfirm"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
-      "exports": ["overlayCornersCentroid", "elementCornerOverlayPoints", "orientedOverlayRect"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/contexts/DomEditContext.tsx",
-      "exports": ["useDomEditActionsContextOptional"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/contexts/StudioContext.tsx",
-      "exports": ["useStudioShellContextOptional"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/domEditOverlayGestures.ts",
-      "exports": ["ResizeHandle"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/sidebar/assetHelpers.ts",
-      "exports": ["truncateMiddle", "formatDuration"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/utils/studioHelpers.ts",
-      "exports": ["resolveDroppedAssetDimensions"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
-      "exports": ["furthestClipEndFromSource", "readTimelineElementZIndex"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/manualOffsetDrag.ts",
-      "exports": ["applyManualOffsetNudgeDraft", "applyManualOffsetNudgeCommit"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/components/timelineEditing.ts",
-      "exports": [
-        "applyTimelineAutoScrollStep",
-        "resolveTimelineAutoScrollLoopAction",
-        "resolveTimelineDragEscape",
-        "TimelineDragEscapeInput",
-      ],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/hooks/timelineEditingHelpers.ts",
-      "exports": [
-        "shiftGsapPositionsBatch",
-        "syncTimingEditPreview",
-        "GsapMutationOutcome",
-        "readGsapMutationScriptText",
-      ],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/utils/timelineAssetDrop.ts",
-      "exports": [
-        "setCompositionDurationToContent",
-        "extendCompositionDurationIfNeeded",
-        "fitTimelineAssetGeometry",
-        "resolveTimelineAssetCompositionSize",
-      ],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/player/components/timelineLayout.ts",
-      "exports": [
-        "getTimelineRowTop",
-        "getTimelineRowFromY",
-        "DRAG_EXTEND_MARGIN_PX",
-        "getTimelineFitPps",
-        "getTimelineDisplayContentWidth",
-        "TRACKS_TOP_PAD",
-        "MIN_TIMELINE_EXTENT_S",
-      ],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/domEditNudge.ts",
-      "exports": ["CANVAS_NUDGE_COMMIT_DEBOUNCE_MS"],
-    },
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/canvasContextMenuZOrder.ts",
-      "exports": ["readEffectiveZIndex"],
-    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -468,90 +308,6 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useDomEditWiring.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/StudioPreviewArea.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/EditorShell.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/PreviewOverlays.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/editor/DomEditOverlay.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/editor/DomEditSelectionChrome.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useTimelineEditing.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/useTimelineEditingDrops.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/utils/timelineAssetDrop.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/NLEContext.test.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/NLELayout.test.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/NLEContext.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/NLELayout.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/nle/PreviewPane.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/hooks/timelineEditingHelpers.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/Timeline.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/TimelineCanvas.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/TimelineOverlays.tsx",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/timelineClipDragTypes.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/useTimelineClipDrag.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/components/useTimelineMarqueeSelection.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/hooks/useTimelinePlayer.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/hooks/useTimelinePlayerLoop.ts",
-      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
-      // studio-dnd pr22 removes this with the final config.
-      "packages/studio/src/player/lib/timelineElementHelpers.ts",
       // sourcePatcher.ts: pre-existing internal clones between the inline-style
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
@@ -677,37 +433,6 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/components/editor/LayersPanel.test.ts",
-      "packages/studio/src/player/lib/timelineIframeHelpers.ts",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/components/sidebar/AssetCard.tsx",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/components/editor/DomEditSelectionChrome.tsx",
-      "packages/studio/src/components/editor/useDomEditNudge.ts",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/player/components/useTimelineGeometry.ts",
-      "packages/studio/src/player/components/useTimelineStackingSync.ts",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
-      "packages/studio/src/components/editor/manualOffsetDrag.ts",
-      "packages/studio/src/player/components/timelineEditing.ts",
-      "packages/studio/src/player/lib/timelineElementHelpers.ts",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/player/components/TimelineOverlays.tsx",
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/player/hooks/useTimelineSyncCallbacks.ts",
-      "packages/studio/src/components/editor/CanvasContextMenu.tsx",
-      "packages/studio/src/components/editor/canvasContextMenuZOrder.test.ts",
-      "packages/studio/src/player/components/timelineCollision.test.ts",
-      "packages/studio/src/player/components/timelineStackingSync.test.ts",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited
@@ -847,14 +572,12 @@
       "packages/studio/src/components/editor/Transform3DCube.tsx",
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
-      "packages/studio/src/components/nle/NLELayout.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
       "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
-      "packages/studio/src/components/StudioPreviewArea.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",

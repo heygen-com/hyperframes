@@ -7,6 +7,7 @@ export type PersistDomEditOperations = (
   options?: {
     label?: string;
     coalesceKey?: string;
+    coalesceMs?: number;
     skipRefresh?: boolean;
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;

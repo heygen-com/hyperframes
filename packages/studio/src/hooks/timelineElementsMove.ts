@@ -9,7 +9,7 @@ import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import {
   applyPatchByTarget,
   buildPatchTarget,
-  formatTimelineAttributeNumber,
+  buildTimelineMoveTimingPatch,
   patchIframeDomTiming,
   patchIframeRootDuration,
   readFileContent,
@@ -69,16 +69,15 @@ function applyGroupTimingPatches(source: string, groupEdits: TimelineElementMove
   for (const { element, updates } of groupEdits) {
     const target = buildPatchTarget(element);
     if (!target) continue;
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: "start",
-      value: formatTimelineAttributeNumber(updates.start),
-    });
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: "track-index",
-      value: String(updates.track),
-    });
+    // buildTimelineMoveTimingPatch drops any non-finite field (#2212 NaN guard),
+    // so a bad {start|track} never gets serialized into data-* here.
+    for (const patch of buildTimelineMoveTimingPatch(updates)) {
+      patched = applyPatchByTarget(patched, target, {
+        type: "attribute",
+        property: patch.property,
+        value: patch.value,
+      });
+    }
   }
   return patched;
 }
@@ -97,10 +96,14 @@ async function patchTimelineMoveGroups(
   groupResults: MoveGroupResult[];
   filesToSave: Record<string, string>;
   originals: Map<string, string>;
+  /** True if the optimistic root-duration set below ran (must be rolled back on a
+   *  failed write, same as the caller rolls back start/track). */
+  durationChanged: boolean;
 }> {
   const groupResults: MoveGroupResult[] = [];
   const filesToSave: Record<string, string> = {};
   const originals = new Map<string, string>();
+  let durationChanged = false;
   for (const [targetPath, groupEdits] of groups) {
     const original = await readFileContent(deps.projectId, targetPath);
     let patched = applyGroupTimingPatches(original, groupEdits);
@@ -118,52 +121,86 @@ async function patchTimelineMoveGroups(
     if (contentEnd > 0 && targetPath === (deps.activeCompPath || "index.html")) {
       usePlayerStore.getState().setDuration(contentEnd);
       patchIframeRootDuration(deps.previewIframe, contentEnd);
+      durationChanged = true;
     }
 
     groupResults.push({ targetPath, original, patched, groupEdits });
     filesToSave[targetPath] = patched;
     originals.set(targetPath, original);
   }
-  return { groupResults, filesToSave, originals };
+  return { groupResults, filesToSave, originals, durationChanged };
+}
+
+/** The batched GSAP position shifts for one group's clips whose start changed. */
+function groupGsapShifts(group: MoveGroupResult): Array<{ elementId: string; delta: number }> {
+  return group.groupEdits
+    .filter((e) => e.element.domId && e.updates.start - e.element.start !== 0)
+    .map((e) => ({
+      elementId: e.element.domId as string,
+      delta: e.updates.start - e.element.start,
+    }));
 }
 
 /**
- * Phase 3 — post-save preview sync, per group. Non-fatal cosmetic steps (a GSAP
- * shift miss re-syncs on the next reload), so they run after the durable write
- * and never throw back into the caller's rollback path.
+ * Phase 3 — post-save preview sync.
+ *
+ * `shiftGsapPositionsBatch` is a DURABLE server mutation (shift-positions-batch →
+ * file write) that rewrites each file's GSAP tween positions to match the moved
+ * clip timings. It is NOT a cosmetic preview step, so it must run for EVERY changed
+ * group (against that group's own targetPath). Skipping it for a non-active group
+ * leaves that file's persisted clip timings out of sync with its GSAP script
+ * PERMANENTLY — a reload re-reads the same desynced file, so it never heals. (Only
+ * the endpoint FAILING is non-fatal and logged: the write simply didn't happen.)
+ *
+ * The preview is a SINGLE shared iframe showing the ACTIVE composition, so only the
+ * active comp's group can be soft-reloaded (its rewritten script swapped in place).
+ * If any OTHER file changed too — e.g. a sub-comp group in a multi-file move — a
+ * per-group soft-reload would either apply that file's script to the wrong (root)
+ * document or fire a second clobbering reloadPreview; do ONE full reload instead so
+ * every changed file is reflected.
  */
 async function syncTimelineMovePreviews(
   groupResults: MoveGroupResult[],
-  deps: Pick<PersistTimelineElementsMoveDeps, "projectId" | "previewIframe" | "reloadPreview">,
+  deps: Pick<
+    PersistTimelineElementsMoveDeps,
+    "projectId" | "activeCompPath" | "previewIframe" | "reloadPreview"
+  >,
 ): Promise<void> {
-  for (const { targetPath, groupEdits } of groupResults) {
-    // One batched GSAP position shift for every clip whose start changed.
-    const shifts = groupEdits
-      .filter((e) => e.element.domId && e.updates.start - e.element.start !== 0)
-      .map((e) => ({
-        elementId: e.element.domId as string,
-        delta: e.updates.start - e.element.start,
-      }));
-    let shiftOutcome: GsapMutationOutcome = { scriptText: null };
-    if (shifts.length > 0) {
-      shiftOutcome = await shiftGsapPositionsBatch(deps.projectId, targetPath, shifts).catch(
-        (err) => {
-          console.error("[Timeline] Failed to batch-shift GSAP positions", err);
-          return { scriptText: null };
-        },
-      );
-    }
+  const activePath = deps.activeCompPath || "index.html";
+  const activeGroup = groupResults.find((g) => g.targetPath === activePath);
+  const otherFileChanged = groupResults.some((g) => g.targetPath !== activePath);
 
-    // Soft-reload with the batch's rewritten script — a multi-clip move is
-    // timing-only (DOM + store already patched), so swap the script in place to
-    // avoid the all-clips flash; full reload is the fallback.
-    syncTimingEditPreview(
-      deps.previewIframe,
-      shiftOutcome,
-      usePlayerStore.getState().currentTime,
-      deps.reloadPreview,
+  // Run the durable batch shift for every changed group, each against its own file.
+  let activeShiftOutcome: GsapMutationOutcome = { scriptText: null };
+  for (const group of groupResults) {
+    const shifts = groupGsapShifts(group);
+    if (shifts.length === 0) continue;
+    const outcome = await shiftGsapPositionsBatch(deps.projectId, group.targetPath, shifts).catch(
+      (err) => {
+        console.error("[Timeline] Failed to batch-shift GSAP positions", err);
+        return { scriptText: null };
+      },
     );
+    if (group === activeGroup) activeShiftOutcome = outcome;
   }
+
+  if (otherFileChanged || !activeGroup) {
+    // A non-active file changed (or nothing touched the active comp) — the shared
+    // iframe can't soft-reload those, so full-reload once to reflect them all. The
+    // durable shifts above have already been written to every file.
+    deps.reloadPreview();
+    return;
+  }
+
+  // Only the active comp changed → soft-reload with its rewritten script — a
+  // multi-clip move is timing-only (DOM + store already patched), so swap the script
+  // in place to avoid the all-clips flash; full reload is the fallback.
+  syncTimingEditPreview(
+    deps.previewIframe,
+    activeShiftOutcome,
+    usePlayerStore.getState().currentTime,
+    deps.reloadPreview,
+  );
 }
 
 /**
@@ -185,12 +222,16 @@ async function syncTimelineMovePreviews(
  * here for single-undo atomicity on that path too.
  *
  * Throws if a source write fails (so the caller can roll back its optimistic
- * store update). GSAP-shift failures are logged, not thrown (matches the
- * single-clip path — a shift miss is non-fatal, the next reload re-syncs).
+ * store update). A GSAP shift-batch ENDPOINT failure is logged, not thrown (matches
+ * the single-clip path) — but note it does NOT self-heal: shiftGsapPositionsBatch is
+ * a durable file rewrite, so if it fails the file's tween positions stay desynced
+ * from the clip timings until the next successful shift; a reload just re-reads the
+ * un-rewritten file. The console error is the signal.
  */
 export async function persistTimelineElementsMove(
   edits: TimelineElementMoveEdit[],
   deps: PersistTimelineElementsMoveDeps,
+  coalesceKey?: string,
 ): Promise<void> {
   if (edits.length === 0) return;
   const {
@@ -205,20 +246,22 @@ export async function persistTimelineElementsMove(
   } = deps;
 
   // 1. Optimistic live DOM patch — instant feedback before the write lands.
+  //    Non-finite fields are dropped by buildTimelineMoveTimingPatch (#2212).
   for (const { element, updates } of edits) {
-    patchIframeDomTiming(previewIframe, element, [
-      ["data-start", formatTimelineAttributeNumber(updates.start)],
-      ["data-track-index", String(updates.track)],
-    ]);
+    patchIframeDomTiming(
+      previewIframe,
+      element,
+      buildTimelineMoveTimingPatch(updates).map((p): [string, string] => [p.attr, p.value]),
+    );
   }
 
   // Phase 1 — group by owning file and patch each group's source in memory.
   const groups = groupEditsByFile(edits, activeCompPath);
-  const { groupResults, filesToSave, originals } = await patchTimelineMoveGroups(groups, {
-    projectId,
-    activeCompPath,
-    previewIframe,
-  });
+  const previousDuration = usePlayerStore.getState().duration;
+  const { groupResults, filesToSave, originals, durationChanged } = await patchTimelineMoveGroups(
+    groups,
+    { projectId, activeCompPath, previewIframe },
+  );
 
   if (groupResults.length === 0) return;
 
@@ -231,19 +274,56 @@ export async function persistTimelineElementsMove(
   // store all the way back. All-or-nothing on disk now matches the caller's
   // all-or-nothing store rollback, and undo is a single step.
   domEditSaveTimestampRef.current = Date.now();
-  await saveProjectFilesWithHistory({
-    projectId,
-    label: edits.length > 1 ? "Move timeline clips" : "Move timeline clip",
-    kind: "timeline",
-    files: filesToSave,
-    readFile: async (path) => originals.get(path) ?? "",
-    writeFile: writeProjectFile,
-    recordEdit,
-  });
+  try {
+    await saveProjectFilesWithHistory({
+      projectId,
+      label: edits.length > 1 ? "Move timeline clips" : "Move timeline clip",
+      kind: "timeline",
+      // Shared per-gesture key (from the drag commit) so a lane change's move
+      // entry merges with its follow-up z-reorder entry into one undo step.
+      coalesceKey,
+      // The z entry lands only after this persist's round-trip — the default
+      // 300ms merge window can miss it, silently splitting the gesture into two
+      // undo steps. A generous window keeps the pair one step (same key required).
+      coalesceMs: coalesceKey ? 5000 : undefined,
+      files: filesToSave,
+      readFile: async (path) => originals.get(path) ?? "",
+      writeFile: writeProjectFile,
+      recordEdit,
+    });
+  } catch (error) {
+    // Revert the optimistic live-iframe timing attrs patched in step 1. The caller
+    // rolls back the store's {start,track}, but the iframe DOM would otherwise keep
+    // the un-persisted values (data-start/data-track-index the saved source never
+    // got), desyncing the preview from disk until the next reload. The element's own
+    // pre-move start/track are the restore values (always finite).
+    for (const { element } of edits) {
+      patchIframeDomTiming(
+        previewIframe,
+        element,
+        buildTimelineMoveTimingPatch({ start: element.start, track: element.track }).map(
+          (p): [string, string] => [p.attr, p.value],
+        ),
+      );
+    }
+    // Roll back the optimistic root-duration set alongside the caller's start/track
+    // rollback — otherwise a failed write leaves the store + live root advertising a
+    // duration the saved source never got.
+    if (durationChanged) {
+      usePlayerStore.getState().setDuration(previousDuration);
+      patchIframeRootDuration(previewIframe, previousDuration);
+    }
+    throw error;
+  }
 
-  // Phase 3 — post-save preview sync, per group.
+  // Phase 3 — post-save preview sync.
   forceReloadSdkSession?.();
-  await syncTimelineMovePreviews(groupResults, { projectId, previewIframe, reloadPreview });
+  await syncTimelineMovePreviews(groupResults, {
+    projectId,
+    activeCompPath,
+    previewIframe,
+    reloadPreview,
+  });
 }
 
 export interface UseTimelineElementsMoveDeps {
@@ -274,23 +354,27 @@ export function useTimelineElementsMove(deps: UseTimelineElementsMoveDeps) {
     showToast,
   } = deps;
   return useCallback(
-    (edits: TimelineElementMoveEdit[]): Promise<void> => {
+    (edits: TimelineElementMoveEdit[], coalesceKey?: string): Promise<void> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return Promise.resolve();
       }
       const pid = projectIdRef.current;
       if (!pid) return Promise.resolve();
-      return persistTimelineElementsMove(edits, {
-        projectId: pid,
-        activeCompPath,
-        previewIframe: previewIframeRef.current,
-        writeProjectFile,
-        recordEdit,
-        reloadPreview,
-        forceReloadSdkSession,
-        domEditSaveTimestampRef,
-      });
+      return persistTimelineElementsMove(
+        edits,
+        {
+          projectId: pid,
+          activeCompPath,
+          previewIframe: previewIframeRef.current,
+          writeProjectFile,
+          recordEdit,
+          reloadPreview,
+          forceReloadSdkSession,
+          domEditSaveTimestampRef,
+        },
+        coalesceKey,
+      );
     },
     [
       projectIdRef,

@@ -6,6 +6,13 @@ import {
   type DragCommitDeps,
   type TimelineMoveEdit,
 } from "./timelineClipDragCommit";
+import {
+  buildEditHistoryEntry,
+  createEmptyEditHistory,
+  pushEditHistoryEntry,
+} from "../../utils/editHistory";
+import { normalizeToZones } from "./timelineZones";
+import type { StackingPatch } from "./timelineStackingSync";
 
 function el(
   id: string,
@@ -14,12 +21,27 @@ function el(
   duration: number,
   tag = "video",
 ): TimelineElement {
-  return { id, key: id, tag, start, duration, track };
+  // domId gives the row a patchable target so getTimelineEditCapabilities().canMove
+  // is true (the capabilities gate in commitDraggedClipMove filters on it).
+  return { id, key: id, tag, start, duration, track, domId: id };
+}
+
+/** Flush the microtask chain: the z-sync now fires only after the move persist
+ *  promise resolves (serialized), so tests asserting on it must await. */
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function drag(
   element: TimelineElement,
-  opts: { previewStart: number; previewTrack: number; insertRow?: number | null },
+  opts: {
+    previewStart: number;
+    previewTrack: number;
+    desiredTrack?: number;
+    insertRow?: number | null;
+  },
 ): DraggedClipState {
   return {
     element,
@@ -33,6 +55,9 @@ function drag(
     pointerOffsetY: 0,
     previewStart: opts.previewStart,
     previewTrack: opts.previewTrack,
+    // Defaults to previewTrack (a lane change) when a test doesn't distinguish a
+    // horizontal collision bump — the commit's `desiredTrack ?? previewTrack`.
+    desiredTrack: opts.desiredTrack,
     insertRow: opts.insertRow ?? null,
     snapTime: null,
     snapType: null,
@@ -63,15 +88,76 @@ function runClipMove(
   return { updateElement, onMoveElement, onMoveElements };
 }
 
+/** A drag onto another lane where the two clips do NOT time-overlap must issue no
+ *  stacking patch (the dragged clip is elements[0]). Awaits the serialized z-sync. */
+async function expectNoStackingPatchOnNonOverlapLaneChange(
+  elements: TimelineElement[],
+): Promise<void> {
+  const onStackingPatches = vi.fn();
+  runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+    elements,
+    trackOrder: [0, 1],
+    readZIndex: () => 0,
+    onStackingPatches,
+  });
+  await flushMicrotasks();
+  expect(onStackingPatches).not.toHaveBeenCalled();
+}
+
+type MoveMap = Record<string, { start: number; track: number }>;
+
 /** Assert a lane change persisted atomically (single onMoveElements, no single
  *  onMoveElement) and return the resulting id → {start, track} edit map. */
-function expectAtomicMoveMap(spies: {
-  onMoveElement: Mock;
-  onMoveElements: Mock;
-}): Record<string, { start: number; track: number }> {
+function expectAtomicMoveMap(spies: { onMoveElement: Mock; onMoveElements: Mock }): MoveMap {
   expect(spies.onMoveElement).not.toHaveBeenCalled();
   expect(spies.onMoveElements).toHaveBeenCalledTimes(1);
   return editMap(spies.onMoveElements.mock.calls[0][0]);
+}
+
+// Two time-overlapping clips carrying authored z (a below at z=1, b on top at
+// z=5) — the bed for the z-sync / lane-change tests.
+const overlapping = (): TimelineElement[] => [
+  { id: "a", key: "a", tag: "video", start: 0, duration: 10, track: 1, zIndex: 1, domId: "a" },
+  { id: "b", key: "b", tag: "video", start: 0, duration: 10, track: 0, zIndex: 5, domId: "b" },
+];
+const zOf = (e: TimelineElement) => ({ a: 1, b: 5 })[e.key ?? e.id] ?? 0;
+
+// Commit an "insert a above b" lane change: the drop lifts a's z, so both the
+// move persist and the z-sync fire. Tests drive onMoveElements differently
+// (immediate / pending / rejecting), so the persist deps are supplied per call.
+function commitInsertAbove(
+  elements: TimelineElement[],
+  deps: Partial<DragCommitDeps> & Pick<DragCommitDeps, "onMoveElements" | "onStackingPatches">,
+): void {
+  commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 1, insertRow: 0 }), {
+    elements,
+    trackOrder: [0, 1],
+    updateElement: vi.fn(),
+    onMoveElement: vi.fn(),
+    readZIndex: zOf,
+    ...deps,
+  });
+}
+
+// The edited clip `a` is lifted above b(5) → 6, issued as one stacking patch.
+function expectZLiftedToSix(onStackingPatches: Mock): void {
+  expect(onStackingPatches).toHaveBeenCalledTimes(1);
+  expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 6 }]);
+}
+
+// A marquee (a+b selected) time-move of the dragged clip; returns the persist
+// spies plus the resulting id → {start, track} edit map.
+function runMarqueeMove(
+  dragged: TimelineElement,
+  previewStart: number,
+  elements: TimelineElement[],
+): { updateElement: Mock; onMoveElement: Mock; onMoveElements: Mock; map: MoveMap } {
+  const spies = runClipMove(drag(dragged, { previewStart, previewTrack: 0 }), {
+    elements,
+    trackOrder: [0, 1],
+    selectedKeys: new Set(["a", "b"]),
+  });
+  return { ...spies, map: editMap(spies.onMoveElements.mock.calls[0][0]) };
 }
 
 describe("commitDraggedClipMove", () => {
@@ -87,17 +173,18 @@ describe("commitDraggedClipMove", () => {
     expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 1 });
   });
 
-  it("a lane change re-normalizes and persists EVERY clip atomically (fixes raw-vs-normalized collision)", () => {
+  it("a plain lane change persists ONLY the dragged clip (CapCut: never re-lanes others)", () => {
     // Move 'a' from lane 0 down onto lane 1 (b's lane) at a non-overlapping time.
+    // The CapCut rule: editing one clip must never rewrite another. Only 'a' is
+    // persisted — with its new lane (previewTrack 1) — and 'b' is left untouched.
     const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3)];
-    const { onMoveElement, onMoveElements } = runClipMove(
-      drag(elements[0], { previewStart: 20, previewTrack: 1 }),
+    const { onMoveElements } = runClipMove(
+      drag(elements[0], { previewStart: 20, previewTrack: 1, desiredTrack: 1 }),
       { elements, trackOrder: [0, 1] },
     );
-    // BOTH clips persist atomically with consistent normalized tracks (both visual → lane 0).
-    const map = expectAtomicMoveMap({ onMoveElement, onMoveElements });
-    expect(map.a).toEqual({ start: 20, track: 0 });
-    expect(map.b).toEqual({ start: 10, track: 0 });
+    const map = editMap(onMoveElements.mock.calls[0][0]);
+    expect(map.a).toEqual({ start: 20, track: 1 });
+    expect(map.b).toBeUndefined(); // the other clip is NOT rewritten
   });
 
   it("multi-selection time-move shifts EVERY selected clip by the drag delta (atomic)", () => {
@@ -116,11 +203,7 @@ describe("commitDraggedClipMove", () => {
   it("multi-selection move clamps shifted clips at 0 and applies the store update optimistically", () => {
     const elements = [el("a", 0, 6, 3), el("b", 1, 2, 3)];
     // Drag 'a' −5s: b would land at −3 → clamps to 0.
-    const { updateElement, onMoveElements } = runClipMove(
-      drag(elements[0], { previewStart: 1, previewTrack: 0 }),
-      { elements, trackOrder: [0, 1], selectedKeys: new Set(["a", "b"]) },
-    );
-    const map = editMap(onMoveElements.mock.calls[0][0]);
+    const { updateElement, map } = runMarqueeMove(elements[0], 1, elements);
     expect(map.a).toEqual({ start: 1, track: 0 });
     expect(map.b).toEqual({ start: 0, track: 1 });
     expect(updateElement).toHaveBeenCalledWith("a", { start: 1, track: 0 });
@@ -138,31 +221,26 @@ describe("commitDraggedClipMove", () => {
     expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 6, track: 0 });
   });
 
-  it("multi-selection lane change: dragged clip changes track, the rest of the selection shifts in time only", () => {
+  it("multi-selection lane change: dragged clip changes track, selection shifts in time, others untouched", () => {
     const elements = [el("a", 0, 0, 3), el("b", 1, 10, 3), el("c", 2, 20, 3)];
     // Drag 'a' +4s down onto lane 1 (non-overlapping with b) while {a, c} selected.
     const { onMoveElements } = runClipMove(
-      drag(elements[0], { previewStart: 4, previewTrack: 1 }),
+      drag(elements[0], { previewStart: 4, previewTrack: 1, desiredTrack: 1 }),
       { elements, trackOrder: [0, 1, 2], selectedKeys: new Set(["a", "c"]) },
     );
     const map = editMap(onMoveElements.mock.calls[0][0]);
-    expect(map.a.start).toBe(4); // dragged: new time + new (normalized) lane
-    expect(map.c.start).toBe(24); // selected passenger: same +4 delta
-    expect(map.c.track).not.toBe(map.a.track); // passenger keeps its own lane
-    expect(map.b.start).toBe(10); // unselected: time untouched
+    expect(map.a).toEqual({ start: 4, track: 1 }); // dragged: new time + new lane
+    expect(map.c).toEqual({ start: 24, track: 2 }); // passenger: same +4 delta, own lane
+    expect(map.b).toBeUndefined(); // unselected clip is NOT rewritten
   });
 
-  it("inserting a new lane re-packs the whole set into contiguous lanes (single atomic persist)", () => {
-    // a,b,c all start=0 dur=5 → mutually overlapping, all equal z (absent ⇒ 0).
-    // The insert drops c at a fractional lane between a and b. Under the per-clip
-    // constrained pack, equal-z overlapping clips lay out by DOM order (later on
-    // top): c (last in DOM) → lane 0, b → lane 1, a → lane 2. (Was pinned to
-    // a=0/c=1/b=2 by the old whole-track packer, which used the fractional-track
-    // value for ordering; the new pack encodes insert INTENT via the z-sync path
-    // instead, and lanes reflect true canvas paint order.) Contiguous 0..2, one
-    // atomic persist for all three.
+  it("inserting a new lane places the dragged clip at the aimed row and +1-shifts the clips below", () => {
+    // a,b,c all start=0 dur=5 → mutually overlapping. Insert drops c on a NEW lane
+    // at row 1 (between a and b). The CapCut renumber: c lands at row 1, a keeps
+    // row 0, and b (at/below the insert) shifts down by one to row 2. Lane order
+    // now follows track-index (a, c, b) — the ONLY sanctioned multi-clip write,
+    // index-only. Contiguous 0..2, one atomic persist.
     const elements = [el("a", 0, 0, 5), el("b", 1, 0, 5), el("c", 2, 0, 5)];
-    // insert a new lane at row 1 (between a and b) with c.
     const { onMoveElements } = runClipMove(
       drag(elements[2], { previewStart: 0, previewTrack: 2, insertRow: 1 }),
       { elements, trackOrder: [0, 1, 2] },
@@ -171,13 +249,13 @@ describe("commitDraggedClipMove", () => {
     const map = editMap(onMoveElements.mock.calls[0][0]);
     // Lanes are contiguous and distinct (no two overlapping clips share a lane).
     expect(new Set([map.a.track, map.b.track, map.c.track])).toEqual(new Set([0, 1, 2]));
-    expect(map.c.track).toBe(0); // last in DOM → top lane
-    expect(map.b.track).toBe(1);
-    expect(map.a.track).toBe(2);
+    expect(map.a.track).toBe(0); // above the insert → unchanged
+    expect(map.c.track).toBe(1); // dragged clip lands on the new lane
+    expect(map.b.track).toBe(2); // at/below the insert → +1 shift
   });
 
   describe("lane ↔ stacking sync", () => {
-    it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", () => {
+    it("lane change raises the edited clip's z above a time-overlapping lower-lane clip", async () => {
       // a & b overlap in time. Elements carry their authored z (as real discovery
       // populates TimelineElement.zIndex from the DOM), so the per-clip pack lays
       // them out by z: b (z=5) tops, a (z=1) below. The user drags a UP onto the
@@ -187,8 +265,26 @@ describe("commitDraggedClipMove", () => {
       // key-order tie-break placing a on top, which contradicted canvas paint for
       // equal z — the elements now carry z and the drop intent is an insert above.)
       const elements: TimelineElement[] = [
-        { id: "a", key: "a", tag: "video", start: 0, duration: 10, track: 1, zIndex: 1 },
-        { id: "b", key: "b", tag: "video", start: 0, duration: 10, track: 0, zIndex: 5 },
+        {
+          id: "a",
+          key: "a",
+          tag: "video",
+          start: 0,
+          duration: 10,
+          track: 1,
+          zIndex: 1,
+          domId: "a",
+        },
+        {
+          id: "b",
+          key: "b",
+          tag: "video",
+          start: 0,
+          duration: 10,
+          track: 0,
+          zIndex: 5,
+          domId: "b",
+        },
       ];
       const z: Record<string, number> = { a: 1, b: 5 };
       const onStackingPatches = vi.fn();
@@ -199,31 +295,29 @@ describe("commitDraggedClipMove", () => {
         readZIndex: (e) => z[e.key ?? e.id] ?? 0,
         onStackingPatches,
       });
+      // z-sync is serialized after the move persist → deferred to a microtask.
+      await flushMicrotasks();
       // Only `a` (the edited clip) is patched, lifted above b(5) → 6.
-      expect(onStackingPatches).toHaveBeenCalledTimes(1);
-      expect(onStackingPatches.mock.calls[0][0]).toEqual([{ key: "a", zIndex: 6 }]);
+      expectZLiftedToSix(onStackingPatches);
     });
 
-    it("no z-sync deps → no stacking side-effects (pure time-move path safe)", () => {
+    it("partial z-sync deps (no readZIndex) → move persists but no stacking call", async () => {
       const elements = [el("a", 1, 0, 10), el("b", 0, 0, 10)];
-      // No readZIndex/onStackingPatches supplied → must not throw, no patches.
-      runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
-        elements,
-        trackOrder: [0, 1],
-      });
-      // (nothing to assert beyond "did not throw")
+      // onStackingPatches present but readZIndex absent → syncStackingForEdit needs
+      // BOTH, so it must issue zero patches even though this IS a lane change.
+      const onStackingPatches = vi.fn();
+      const { onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 0, previewTrack: 0 }),
+        { elements, trackOrder: [0, 1], onStackingPatches },
+      );
+      await flushMicrotasks();
+      // The move still persists atomically; no z patch is issued, no stacking call.
+      expect(onMoveElements).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches).not.toHaveBeenCalled();
     });
 
-    it("no time overlap → no stacking patch even on a lane change", () => {
-      const elements = [el("a", 1, 0, 5), el("b", 0, 10, 5)];
-      const onStackingPatches = vi.fn();
-      runClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
-        elements,
-        trackOrder: [0, 1],
-        readZIndex: () => 0,
-        onStackingPatches,
-      });
-      expect(onStackingPatches).not.toHaveBeenCalled();
+    it("no time overlap → no stacking patch even on a lane change", async () => {
+      await expectNoStackingPatchOnNonOverlapLaneChange([el("a", 1, 0, 5), el("b", 0, 10, 5)]);
     });
 
     it("pure time-move (no lane change) never triggers a stacking patch", () => {
@@ -236,6 +330,505 @@ describe("commitDraggedClipMove", () => {
         readZIndex: () => 0,
         onStackingPatches,
       });
+      expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("drop-intent lane realization — the dragged clip DISPLAYS on the aimed lane", () => {
+    // CapCut-stable lanes follow the track-index, so a gap INSERT lands the dragged
+    // clip exactly where aimed: it takes the new lane at the insert row and the
+    // clips at/below shift down by one (the sanctioned renumber). z never enters
+    // lane assignment, so a low-z clip aimed at the top gets the top lane regardless
+    // of z. These are full preview→commit→normalize round trips: apply the persisted
+    // track edits (and any z patches), then re-normalize — the lanes come purely
+    // from the track-index renumber, never from z.
+    const vz = (
+      id: string,
+      track: number,
+      start: number,
+      duration: number,
+      zIndex: number,
+    ): TimelineElement => ({
+      id,
+      key: id,
+      tag: "video",
+      start,
+      duration,
+      track,
+      zIndex,
+      domId: id,
+    });
+
+    async function roundTripLane(
+      elements: TimelineElement[],
+      dragState: DraggedClipState,
+      trackOrder: number[],
+    ): Promise<Record<string, number>> {
+      let edits: TimelineMoveEdit[] = [];
+      let patches: StackingPatch[] = [];
+      const z = new Map(elements.map((e) => [e.key ?? e.id, (e.zIndex as number) ?? 0]));
+      commitDraggedClipMove(dragState, {
+        elements,
+        trackOrder,
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements: (e: TimelineMoveEdit[]) => {
+          edits = e;
+        },
+        readZIndex: (el) => z.get(el.key ?? el.id) ?? 0,
+        onStackingPatches: (p: StackingPatch[]) => {
+          patches = p;
+        },
+      });
+      await flushMicrotasks();
+      const te = new Map(edits.map((e) => [e.element.key ?? e.element.id, e.updates]));
+      const ze = new Map(patches.map((p) => [p.key, p.zIndex]));
+      const persisted = elements.map((e) => {
+        const k = e.key ?? e.id;
+        const t = te.get(k);
+        return {
+          ...e,
+          start: t ? t.start : e.start,
+          track: t ? t.track : e.track,
+          zIndex: ze.has(k) ? ze.get(k)! : e.zIndex,
+        };
+      });
+      const lane: Record<string, number> = {};
+      for (const e of normalizeToZones(persisted)) lane[e.key ?? e.id] = e.track;
+      return lane;
+    }
+
+    it("TOP-insert of a clip that OVERLAPS NOTHING lands it on the top lane (not its z-rank)", async () => {
+      // top(z20)/mid(z15) share the upper lanes; dragged(z2) is sequential (no time
+      // overlap with anything) and low-z, so a global z-sort would sink it. Aim: top.
+      const elements = [vz("top", 0, 0, 3, 20), vz("mid", 5, 3, 1, 15), vz("dragged", 1, 30, 3, 2)];
+      const lane = await roundTripLane(
+        elements,
+        drag(elements[2], { previewStart: 30, previewTrack: 1, insertRow: 0 }),
+        [0, 1],
+      );
+      expect(lane.dragged).toBe(0); // aimed at the very top
+      expect(lane.top).toBe(1);
+      expect(lane.mid).toBe(2);
+    });
+
+    it("BETWEEN-insert of a non-overlapping clip lands it between its neighbours", async () => {
+      const elements = [vz("a", 0, 0, 3, 9), vz("b", 1, 0, 3, 5), vz("x", 2, 20, 5, 1)];
+      const lane = await roundTripLane(
+        elements,
+        drag(elements[2], { previewStart: 20, previewTrack: 2, insertRow: 1 }),
+        [0, 1, 2],
+      );
+      expect(lane.a).toBe(0);
+      expect(lane.x).toBe(1); // between a and b, as aimed
+      expect(lane.b).toBe(2);
+    });
+
+    it("TOP-insert clears a NON-overlapping clip that currently tops the timeline", async () => {
+      // X overlaps M but NOT T (T tops the timeline, disjoint in time). Aiming X at
+      // the top must lift it past T even though they never overlap.
+      const elements = [vz("T", 0, 0, 3, 9), vz("M", 1, 10, 5, 5), vz("X", 2, 10, 5, 1)];
+      const lane = await roundTripLane(
+        elements,
+        drag(elements[2], { previewStart: 10, previewTrack: 2, insertRow: 0 }),
+        [0, 1, 2],
+      );
+      expect(lane.X).toBe(0); // aimed top, cleared the non-overlapping T
+    });
+
+    it("dragging X among overlapping neighbours preserves the RELATIVE order of the others (symptom 2)", async () => {
+      // Four mutually-overlapping clips. Baseline lanes by z: n1,n2,x,n3. Drag x to
+      // the top. Everything above x shifts down by one to make room (unavoidable),
+      // but no TWO non-dragged clips may swap — a lane change of X must not reshuffle
+      // its neighbours among themselves.
+      const elements = [
+        vz("n1", 0, 0, 10, 4),
+        vz("n2", 1, 0, 10, 3),
+        vz("x", 2, 0, 10, 2),
+        vz("n3", 3, 0, 10, 1),
+      ];
+      const baseOrder = normalizeToZones(elements)
+        .slice()
+        .sort((a, b) => a.track - b.track)
+        .map((e) => e.id)
+        .filter((id) => id !== "x");
+      const lane = await roundTripLane(
+        elements,
+        drag(elements[2], { previewStart: 0, previewTrack: 2, insertRow: 0 }),
+        [0, 1, 2, 3],
+      );
+      expect(lane.x).toBe(0); // X lands where aimed
+      const finalOrder = Object.keys(lane)
+        .sort((a, b) => lane[a] - lane[b])
+        .filter((id) => id !== "x");
+      expect(finalOrder).toEqual(baseOrder); // neighbours keep their relative order
+    });
+
+    it("a drop that merely SHARES a lane with a non-overlapping neighbour issues no z nudge", async () => {
+      // a → b's lane; they don't overlap → they share the lane, aim already met, so
+      // no stacking patch (byte-identical to the pre-fix no-op path).
+      await expectNoStackingPatchOnNonOverlapLaneChange([
+        vz("a", 1, 0, 5, 0),
+        vz("b", 0, 10, 5, 0),
+      ]);
+    });
+  });
+
+  describe("BUG 1 — a plain horizontal move never patches z (fixture repro)", () => {
+    // Mirror the user's index.html: v-moodboard alone on the top display lane (0),
+    // highest z, over lower-lane clips it OVERLAPS in time. A horizontal drag (the
+    // preview yields insertRow=null, previewTrack unchanged) must be a pure time
+    // move: single-clip persist, and NOT a single z patch or history entry — even
+    // with the z-sync deps fully wired and time-overlapping neighbours present.
+    const fixture = (): TimelineElement[] => [
+      {
+        id: "v-moodboard",
+        key: "v-moodboard",
+        tag: "video",
+        start: 19,
+        duration: 5.5,
+        track: 0,
+        zIndex: 37,
+        domId: "v-moodboard",
+      },
+      {
+        id: "v-dashboard",
+        key: "v-dashboard",
+        tag: "video",
+        start: 19,
+        duration: 4,
+        track: 1,
+        zIndex: 16,
+        domId: "v-dashboard",
+      },
+      {
+        id: "v-globe",
+        key: "v-globe",
+        tag: "video",
+        start: 23,
+        duration: 1.5,
+        track: 1,
+        zIndex: 17,
+        domId: "v-globe",
+      },
+      {
+        id: "cap",
+        key: "cap",
+        tag: "text",
+        start: 20.82,
+        duration: 1.78,
+        track: 2,
+        zIndex: 0,
+        domId: "cap",
+      },
+    ];
+
+    it("+2s on its own lane → single onMoveElement, zero stacking patches", async () => {
+      const elements = fixture();
+      const z: Record<string, number> = { "v-moodboard": 37, "v-dashboard": 16, "v-globe": 17 };
+      const onStackingPatches = vi.fn();
+      // previewTrack === element.track (0) and insertRow null → pure time move.
+      const { onMoveElement, onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 21, previewTrack: 0 }),
+        {
+          elements,
+          trackOrder: [0, 1, 2],
+          readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+          onStackingPatches,
+        },
+      );
+      await flushMicrotasks();
+      expect(onMoveElement).toHaveBeenCalledTimes(1);
+      expect(onMoveElement.mock.calls[0][1]).toEqual({ start: 21, track: 0 });
+      expect(onMoveElements).not.toHaveBeenCalled();
+      expect(onStackingPatches).not.toHaveBeenCalled(); // zero z patches / history entries
+    });
+
+    it("guard: a topology call that AIMS at the clip's own display lane issues no z nudge", async () => {
+      // Belt-and-suspenders: even if a spurious insert whose boundary equals the
+      // clip's own lane slips into the topology branch, aiming at the current lane
+      // must never restack (syncStackingForEdit's aimedLane === currentLane no-op).
+      const elements = fixture();
+      const z: Record<string, number> = { "v-moodboard": 37, "v-dashboard": 16, "v-globe": 17 };
+      const onStackingPatches = vi.fn();
+      // insertRow 0 === v-moodboard's own display lane (0).
+      runClipMove(drag(elements[0], { previewStart: 21, previewTrack: 0, insertRow: 0 }), {
+        elements,
+        trackOrder: [0, 1, 2],
+        readZIndex: (e) => z[e.key ?? e.id] ?? 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("horizontal drag among overlapping neighbours touches exactly ONE clip (live repro)", () => {
+    // The disease: a plain horizontal drag of one caption rewrote its own track,
+    // added a z-index, and rewrote FOUR other clips' track-indexes. The cure: a
+    // horizontal move writes ONLY the dragged clip's start — no other clip's
+    // start/track, no z — even surrounded by time-overlapping clips.
+    it("writes only the dragged clip's start; no other clip, no z", async () => {
+      const elements: TimelineElement[] = [
+        {
+          id: "cap",
+          key: "cap",
+          tag: "text",
+          start: 4.5,
+          duration: 1.2,
+          track: 0,
+          zIndex: 26,
+          domId: "cap",
+        },
+        {
+          id: "n1",
+          key: "n1",
+          tag: "video",
+          start: 4,
+          duration: 3,
+          track: 1,
+          zIndex: 12,
+          domId: "n1",
+        },
+        {
+          id: "n2",
+          key: "n2",
+          tag: "video",
+          start: 4,
+          duration: 3,
+          track: 2,
+          zIndex: 19,
+          domId: "n2",
+        },
+        {
+          id: "n3",
+          key: "n3",
+          tag: "text",
+          start: 5,
+          duration: 2,
+          track: 3,
+          zIndex: 25,
+          domId: "n3",
+        },
+      ];
+      const onStackingPatches = vi.fn();
+      // Pure horizontal: previewTrack === element.track (0), no insert.
+      const { updateElement, onMoveElement, onMoveElements } = runClipMove(
+        drag(elements[0], { previewStart: 5.5, previewTrack: 0, desiredTrack: 0 }),
+        {
+          elements,
+          trackOrder: [0, 1, 2, 3],
+          readZIndex: (e) => (e.zIndex as number) ?? 0,
+          onStackingPatches,
+        },
+      );
+      await flushMicrotasks();
+      // Exactly one clip written, start only, no z entry.
+      expect(updateElement).toHaveBeenCalledTimes(1);
+      expect(updateElement).toHaveBeenCalledWith("cap", { start: 5.5, track: 0 });
+      expect(onMoveElement).toHaveBeenCalledTimes(1);
+      expect(onMoveElements).not.toHaveBeenCalled();
+      expect(onStackingPatches).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("horizontal collision relocation (ITEM 2 — dragged clip only, never z)", () => {
+    it("a horizontal drag bumped to a free lane writes ONLY the dragged clip, and never z", async () => {
+      // The pointer stayed on lane 0 (desiredTrack === element.track), but the
+      // target span was occupied there, so the collision rules relocated the DRAGGED
+      // clip to lane 1 (previewTrack 1). That is not a deliberate vertical move:
+      // persist just the dragged clip (new start + relocated lane), rewrite no other
+      // clip, and issue zero z patches even though it now overlaps a neighbour.
+      const elements: TimelineElement[] = [
+        { id: "a", key: "a", tag: "video", start: 0, duration: 5, track: 0, zIndex: 2, domId: "a" },
+        { id: "d", key: "d", tag: "video", start: 0, duration: 5, track: 2, zIndex: 0, domId: "d" },
+      ];
+      const onStackingPatches = vi.fn();
+      const { onMoveElements } = runClipMove(
+        // desiredTrack 0 (pointer never left lane 0) but previewTrack 1 (bumped).
+        drag(elements[0], { previewStart: 2, previewTrack: 1, desiredTrack: 0 }),
+        {
+          elements,
+          trackOrder: [0, 1, 2],
+          readZIndex: (e) => (e.zIndex as number) ?? 0,
+          onStackingPatches,
+        },
+      );
+      await flushMicrotasks();
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.a).toEqual({ start: 2, track: 1 }); // dragged clip relocated
+      expect(map.d).toBeUndefined(); // untouched
+      expect(onStackingPatches).not.toHaveBeenCalled(); // horizontal → never z
+    });
+  });
+
+  describe("capabilities gate (ITEM 2)", () => {
+    const locked = (
+      id: string,
+      track: number,
+      start: number,
+      duration: number,
+    ): TimelineElement => ({
+      ...el(id, track, start, duration),
+      timelineLocked: true,
+    });
+
+    it("a marquee containing a locked clip never persists an edit for the locked clip", () => {
+      const dragged = el("a", 0, 2, 3);
+      const elements = [dragged, locked("b", 1, 10, 3)];
+      // Pure time-move +5 on the same lane while {a, b} are marquee-selected.
+      const { map } = runMarqueeMove(dragged, 7, elements);
+      expect(map.a).toEqual({ start: 7, track: 0 });
+      expect(map.b).toBeUndefined(); // locked → filtered out of the moving set
+    });
+
+    it("a plain lane change never persists a locked neighbour (only the dragged clip is written)", async () => {
+      const dragged = el("a", 0, 0, 3);
+      const elements = [dragged, locked("b", 1, 0, 3)];
+      // Drag a onto b's lane. A plain lane change writes ONLY the dragged clip, so
+      // the locked neighbour b is inherently untouched (never even a candidate).
+      const { onMoveElements } = runClipMove(drag(dragged, { previewStart: 0, previewTrack: 1 }), {
+        elements,
+        trackOrder: [0, 1],
+      });
+      await flushMicrotasks();
+      const map = editMap(onMoveElements.mock.calls[0][0]);
+      expect(map.a).toBeDefined(); // movable dragged clip persists
+      expect(map.b).toBeUndefined(); // locked clip receives no patch
+    });
+
+    it("a lane change that produces ZERO move edits fires no z-sync (no orphaned z entry, ITEM 5)", async () => {
+      // Every clip in the set is locked (including the dragged one), so the moving
+      // set filters down to nothing. persistMoveEdits resolves true for the empty
+      // batch, but the z-sync must NOT fire — otherwise a "Reorder layers" history
+      // entry lands with no corresponding move.
+      const dragged = locked("a", 0, 0, 5);
+      const elements = [dragged, locked("b", 0, 0, 5)];
+      const onMoveElements = vi.fn();
+      const onStackingPatches = vi.fn();
+      // Drag onto lane 1 (a topology change) so the lane-change branch runs.
+      commitDraggedClipMove(drag(dragged, { previewStart: 0, previewTrack: 1, insertRow: 0 }), {
+        elements,
+        trackOrder: [0],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements,
+        readZIndex: () => 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      expect(onMoveElements).not.toHaveBeenCalled(); // empty batch → no persist call
+      expect(onStackingPatches).not.toHaveBeenCalled(); // and no orphaned z entry
+    });
+  });
+
+  describe("z-sync serialization + rollback (ITEM 3)", () => {
+    it("defers the z-sync until the move persist resolves (no clobbering pre-write)", async () => {
+      const elements = overlapping();
+      let resolveMove!: () => void;
+      const onMoveElements = vi.fn(() => new Promise<void>((r) => (resolveMove = r)));
+      const onStackingPatches = vi.fn();
+      commitInsertAbove(elements, { onMoveElements, onStackingPatches });
+      await flushMicrotasks();
+      // Move persist still pending → the z patch must NOT have been issued yet.
+      expect(onMoveElements).toHaveBeenCalledTimes(1);
+      expect(onStackingPatches).not.toHaveBeenCalled();
+      resolveMove();
+      await flushMicrotasks();
+      // Only after the write lands does the z patch fire — once, for the edited clip.
+      expectZLiftedToSix(onStackingPatches);
+    });
+
+    it("rolls back the move and skips the z-sync when the persist fails", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const elements = overlapping();
+      const onMoveElements = vi.fn(() => Promise.reject(new Error("write failed")));
+      const onStackingPatches = vi.fn();
+      const updateElement = vi.fn();
+      commitInsertAbove(elements, { updateElement, onMoveElements, onStackingPatches });
+      await flushMicrotasks();
+      // Failed move → z patch never issued (no orphaned z change left behind)...
+      expect(onStackingPatches).not.toHaveBeenCalled();
+      // ...and the optimistic start/track edit for the dragged clip is rolled back.
+      expect(updateElement).toHaveBeenCalledWith("a", { start: 0, track: 1 });
+      errSpy.mockRestore();
+    });
+  });
+
+  describe("lane-change undo coalescing (ITEM 3c)", () => {
+    const commitLaneChange = (elements: TimelineElement[]) => {
+      const onMoveElements = vi.fn();
+      const onStackingPatches = vi.fn();
+      commitInsertAbove(elements, { onMoveElements, onStackingPatches });
+      return { onMoveElements, onStackingPatches };
+    };
+
+    it("threads ONE shared coalesceKey to both the move persist and the z-sync, so the two records merge into a single undo entry", async () => {
+      const { onMoveElements, onStackingPatches } = commitLaneChange(overlapping());
+      await flushMicrotasks();
+
+      // Both sides receive the SAME non-empty gesture key (second arg).
+      const moveKey = onMoveElements.mock.calls[0][1];
+      const zKey = onStackingPatches.mock.calls[0][1];
+      expect(typeof moveKey).toBe("string");
+      expect(moveKey).not.toBe("");
+      expect(zKey).toBe(moveKey);
+
+      // With that shared key, editHistory folds the two consecutive records (the
+      // "Move timeline clips" write + the "Reorder layers" z patch, same file,
+      // inside the coalesce window) into ONE undo entry spanning before→after.
+      const now = 1_000;
+      const moveEntry = buildEditHistoryEntry({
+        id: "m",
+        projectId: "p",
+        label: "Move timeline clips",
+        kind: "timeline",
+        coalesceKey: moveKey,
+        now,
+        files: { "index.html": { before: "<v0>", after: "<v1>" } },
+      });
+      const zEntry = buildEditHistoryEntry({
+        id: "z",
+        projectId: "p",
+        label: "Reorder layers",
+        kind: "timeline",
+        coalesceKey: zKey,
+        now: now + 50,
+        files: { "index.html": { before: "<v1>", after: "<v2>" } },
+      });
+      const state = pushEditHistoryEntry(
+        pushEditHistoryEntry(createEmptyEditHistory(), moveEntry),
+        zEntry,
+      );
+      expect(state.undo).toHaveLength(1);
+      expect(state.undo[0].files["index.html"]).toMatchObject({ before: "<v0>", after: "<v2>" });
+    });
+
+    it("distinct gestures get distinct keys (independent moves never cross-merge)", async () => {
+      const { onMoveElements: first } = commitLaneChange(overlapping());
+      const { onMoveElements: second } = commitLaneChange(overlapping());
+      await flushMicrotasks();
+      expect(first.mock.calls[0][1]).not.toBe(second.mock.calls[0][1]);
+    });
+
+    it("a plain move that issues no z patch persists once and records no second entry (unchanged)", async () => {
+      // a & b do NOT overlap in time → the z-sync produces zero patches.
+      const elements = [el("a", 1, 0, 5), el("b", 0, 10, 5)];
+      const onMoveElements = vi.fn();
+      const onStackingPatches = vi.fn();
+      commitDraggedClipMove(drag(elements[0], { previewStart: 0, previewTrack: 0 }), {
+        elements,
+        trackOrder: [0, 1],
+        updateElement: vi.fn(),
+        onMoveElement: vi.fn(),
+        onMoveElements,
+        readZIndex: () => 0,
+        onStackingPatches,
+      });
+      await flushMicrotasks();
+      // Move persists exactly once; no z entry is created → nothing to merge, so
+      // the single "Move timeline clips" entry stands alone as before.
+      expect(onMoveElements).toHaveBeenCalledTimes(1);
       expect(onStackingPatches).not.toHaveBeenCalled();
     });
   });

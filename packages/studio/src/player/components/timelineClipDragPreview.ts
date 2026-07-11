@@ -1,6 +1,6 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
-import { TRACK_H, getTimelineRowFromY } from "./timelineLayout";
+import { TRACK_H, getTimelineRowFromY, INSERT_BOUNDARY_BAND } from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
@@ -9,6 +9,10 @@ import {
   type TimelineSnapTarget,
 } from "./timelineSnapping";
 import { resolveInsertRow, resolveZoneDropPlacement } from "./timelineCollision";
+import {
+  applyTimelineGroupResizePreview,
+  type TimelineGroupResizeSession,
+} from "./timelineGroupEditing";
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
 
@@ -26,6 +30,13 @@ export interface DragPreviewContext {
   elements: TimelineElement[];
   selectedKeys: ReadonlySet<string>;
   buildSnapTargets: BuildSnapTargets;
+  /**
+   * The set of tracks that hold audio clips (drives zone-aware drop placement).
+   * Frozen for the whole gesture, so the hook builds it ONCE at drag start and
+   * passes it in — see useTimelineClipDrag. Absent (e.g. in unit tests) ⇒ built
+   * on demand from `elements`, so the result is identical either way.
+   */
+  audioTracks?: ReadonlySet<number>;
 }
 
 /**
@@ -77,8 +88,15 @@ function resolveDropPlacement(
   const rowFloat = scroll
     ? getTimelineRowFromY(clientY - scroll.getBoundingClientRect().top + scroll.scrollTop)
     : 0;
-  const rawInsertRow = resolveInsertRow(rowFloat, trackOrder.length);
-  const audioTracks = new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
+  // Geometry-exact band (the clip inset) so an insert only arms in the visible
+  // gutter BETWEEN clip bodies — dragging over a clip body is a lane move, never a
+  // phantom insert (the plain-horizontal-drag misfire). See INSERT_BOUNDARY_BAND.
+  const rawInsertRow = resolveInsertRow(rowFloat, trackOrder.length, INSERT_BOUNDARY_BAND);
+  // Pointer sub-row half: when a drop must auto-create a track (aimed span
+  // occupied, no free lane), open it on the side the pointer is nearer.
+  const preferInsertAbove = rowFloat - Math.floor(rowFloat) < 0.5;
+  const audioTracks =
+    ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
   return resolveZoneDropPlacement({
     order: trackOrder,
     audioTracks,
@@ -89,6 +107,7 @@ function resolveDropPlacement(
     duration: drag.element.duration,
     dragKey: drag.element.key ?? drag.element.id,
     isAudio: isAudioTimelineElement(drag.element),
+    preferInsertAbove,
   });
 }
 
@@ -157,6 +176,9 @@ export function computeDragPreview(
     pointerClientY: clientY,
     previewStart,
     previewTrack,
+    // The lane the POINTER aims at (pre-collision): the commit reads it to tell a
+    // deliberate vertical lane change from a horizontal drag merely bumped sideways.
+    desiredTrack: nextMove.track,
     insertRow,
     snapTime: snap.snapTime,
     snapType: snap.snapType,
@@ -283,4 +305,33 @@ export function computeResizePreview(
     previewDuration: nextResize.duration,
     previewPlaybackStart: nextResize.playbackStart,
   };
+}
+
+/**
+ * Apply a rigid group-resize preview: fold the grabbed clip's raw delta into the
+ * session, preview every non-grabbed member through the store (`updateElement`),
+ * and set the grabbed clip's preview state (it renders from resizingClip state, so
+ * its store value stays pristine until commit — like the single-clip path).
+ */
+export function previewGroupResize(
+  session: TimelineGroupResizeSession,
+  next: ResizePreviewResult,
+  grabbedKey: string,
+  updateElement: (
+    key: string,
+    patch: { start: number; duration: number; playbackStart?: number },
+  ) => void,
+  setResizeState: (v: ResizePreviewResult) => void,
+): void {
+  const grabbedChange = applyTimelineGroupResizePreview(session, next);
+  for (const c of session.changes) {
+    if (c.key === grabbedKey) continue;
+    updateElement(c.key, { start: c.start, duration: c.duration, playbackStart: c.playbackStart });
+  }
+  setResizeState({
+    originScrollLeft: next.originScrollLeft,
+    previewStart: grabbedChange?.start ?? next.previewStart,
+    previewDuration: grabbedChange?.duration ?? next.previewDuration,
+    previewPlaybackStart: grabbedChange?.playbackStart ?? next.previewPlaybackStart,
+  });
 }

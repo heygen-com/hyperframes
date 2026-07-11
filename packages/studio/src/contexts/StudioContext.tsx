@@ -31,8 +31,6 @@ export interface StudioShellValue {
   compositionDimensions: CompositionDimensions | null;
   waitForPendingDomEditSaves: () => Promise<void>;
   handlePreviewIframeRef: (iframe: HTMLIFrameElement | null) => void;
-  timelineVisible: boolean;
-  toggleTimelineVisibility: () => void;
 }
 
 export interface StudioPlaybackValue {
@@ -99,8 +97,6 @@ export function StudioShellProvider({
     compositionDimensions,
     waitForPendingDomEditSaves,
     handlePreviewIframeRef,
-    timelineVisible,
-    toggleTimelineVisibility,
   } = value;
 
   const stable = useMemo<StudioShellValue>(
@@ -117,14 +113,11 @@ export function StudioShellProvider({
       compositionDimensions,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      timelineVisible,
-      toggleTimelineVisibility,
     }),
     [
       projectId,
       activeCompPath,
       compositionDimensions,
-      timelineVisible,
       editHistory,
       renderQueue,
       setActiveCompPath,
@@ -134,7 +127,6 @@ export function StudioShellProvider({
       handleRedo,
       waitForPendingDomEditSaves,
       handlePreviewIframeRef,
-      toggleTimelineVisibility,
     ],
   );
   return <StudioShellContext value={stable}>{children}</StudioShellContext>;

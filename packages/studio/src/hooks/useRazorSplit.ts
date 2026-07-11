@@ -20,6 +20,16 @@ interface UseRazorSplitOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   reloadPreview: () => void;
+  /**
+   * Resync the in-memory SDK session after the server-side split write (the
+   * split-element / split-gsap endpoints write the file directly, so the SDK's
+   * linkedom doc is now stale). Without this, a later SDK-routed edit serializes
+   * the PRE-split doc and reverts the split on disk — the undo baseline recorded
+   * here then no longer matches disk, so Cmd+Z trips the "changed externally"
+   * guard. Every other server-side-write timeline path (move / resize / delete /
+   * drop / visibility) already calls this; the split path was the sole omission.
+   */
+  forceReloadSdkSession?: () => void;
   isRecordingRef?: React.RefObject<boolean>;
 }
 
@@ -122,13 +132,23 @@ async function executeSplit(
   const originalContent = await readFileContent(pid, targetPath);
   const newId = generateSplitId(collectHtmlIds(originalContent), element.domId || "clip");
 
+  // An expanded sub-comp child arrives in MASTER-timeline coordinates — both its
+  // `start` and the incoming `splitTime` are offset by the host's master start
+  // (expandedParentStart) — but its `sourceFile` is the sub-comp, whose clips are
+  // authored in LOCAL time. Rebase both onto local time before the server patches
+  // the file, exactly as TimelinePane.handleSplitElement does for non-razor edits.
+  // Root-level clips (no expandedParentStart) are already local, so pass through.
+  const basis = element.expandedParentStart;
+  const localSplitTime = basis === undefined ? splitTime : Math.max(0, splitTime - basis);
+  const localElementStart = basis === undefined ? element.start : element.start - basis;
+
   const splitResult = await splitHtmlElement(
     pid,
     targetPath,
     patchTarget,
-    splitTime,
+    localSplitTime,
     newId,
-    element.start,
+    localElementStart,
     element.duration,
   );
   if (!splitResult.ok) throw new Error("Failed to split clip.");
@@ -147,8 +167,8 @@ async function executeSplit(
         targetPath,
         element.domId,
         newId,
-        splitTime,
-        element.start,
+        localSplitTime,
+        localElementStart,
         element.duration,
       );
       if (gsapResult.content) patchedContent = gsapResult.content;
@@ -172,6 +192,7 @@ export function useRazorSplit({
   recordEdit,
   domEditSaveTimestampRef,
   reloadPreview,
+  forceReloadSdkSession,
   isRecordingRef,
 }: UseRazorSplitOptions) {
   const projectIdRef = useRef(projectId);
@@ -208,6 +229,11 @@ export function useRazorSplit({
           recordEdit,
         });
 
+        // Server wrote the file; resync the stale in-memory SDK doc BEFORE the
+        // reload so a later SDK-routed edit can't serialize the pre-split doc and
+        // revert this split (which would desync disk from the undo baseline just
+        // recorded → Cmd+Z reports "changed externally").
+        forceReloadSdkSession?.();
         reloadPreview();
         trackStudioRazorSplit({ mode: "single", count: 1 });
         showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
@@ -229,6 +255,7 @@ export function useRazorSplit({
       writeProjectFile,
       domEditSaveTimestampRef,
       reloadPreview,
+      forceReloadSdkSession,
       isRecordingRef,
     ],
   );
@@ -288,6 +315,9 @@ export function useRazorSplit({
           ),
         });
 
+        // Resync the stale SDK doc after the batched server write (see the
+        // single-split path above for why this precedes the reload).
+        forceReloadSdkSession?.();
         reloadPreview();
         trackStudioRazorSplit({ mode: "all", count: splitCount });
         showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
@@ -303,6 +333,7 @@ export function useRazorSplit({
       writeProjectFile,
       domEditSaveTimestampRef,
       reloadPreview,
+      forceReloadSdkSession,
       isRecordingRef,
     ],
   );

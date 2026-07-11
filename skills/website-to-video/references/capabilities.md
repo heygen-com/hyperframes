@@ -554,7 +554,7 @@ mp4, webm, mov, png-sequence — with HDR (PQ / HLG / SDR / auto-detect), transp
 
 Full editor in packages/studio/:
 
-- **NLELayout**: NLE preview + timeline + controls
+- **EditorShell**: NLE preview + timeline + controls
 - **Timeline**: clip rendering, drag to move (`data-start`), resize (`data-duration`), `data-track-index` reassignment, asset drop, file drop
 - **PlayerControls**: scrub, play, pause, frame step (`stepFrameTime`), `STUDIO_PREVIEW_FPS`
 - **useTimelinePlayer**: resolves `__player` / `__timeline` / `__timelines`
