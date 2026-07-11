@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RotateCcw } from "../../icons/SystemIcons";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
@@ -241,13 +241,43 @@ export function FlatSlider({
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
-  const clampedPct = Math.max(0, Math.min(100, ((value - min) / Math.max(max - min, 1e-6)) * 100));
+  // Draft/debounce mirrors the legacy SliderControl (propertyPanelPrimitives.tsx):
+  // a real drag fires pointermove far faster than any commit should hit the
+  // network — `draft` gives the knob instant, drag-local feedback while the
+  // actual onCommit call is coalesced to the last value every 40ms, with an
+  // immediate flush on release so the drag never waits out the debounce.
+  const [draft, setDraft] = useState(value);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
-  const commitFromClientX = (clientX: number, rect: DOMRect) => {
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  useEffect(
+    () => () => {
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    },
+    [],
+  );
+
+  const clampedPct = Math.max(0, Math.min(100, ((draft - min) / Math.max(max - min, 1e-6)) * 100));
+
+  const stepFromClientX = (clientX: number, rect: DOMRect) => {
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(rect.width, 1)));
     const raw = min + ratio * (max - min);
     const stepped = Math.round(raw / step) * step;
-    onCommit(Math.max(min, Math.min(max, stepped)));
+    return Math.max(min, Math.min(max, stepped));
+  };
+  const commitDraft = (nextDraft: number) => {
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    if (nextDraft !== valueRef.current) onCommit(nextDraft);
+  };
+  const scheduleCommit = (nextDraft: number) => {
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = setTimeout(() => {
+      if (nextDraft !== valueRef.current) onCommit(nextDraft);
+    }, 40);
   };
 
   return (
@@ -257,22 +287,33 @@ export function FlatSlider({
         data-flat-slider-track="true"
         role="slider"
         aria-label={label}
-        aria-valuenow={value}
+        aria-valuenow={draft}
         aria-disabled={disabled}
         className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
         onPointerDown={(e) => {
           if (disabled) return;
           e.currentTarget.setPointerCapture(e.pointerId);
-          commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          setDraft(stepped);
+          scheduleCommit(stepped);
         }}
         onPointerMove={(e) => {
           if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          commitFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          setDraft(stepped);
+          scheduleCommit(stepped);
         }}
         onPointerUp={(e) => {
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             e.currentTarget.releasePointerCapture(e.pointerId);
           }
+          // Recompute from the event itself rather than reading the `draft`
+          // closure — if pointerdown+pointerup land in the same React batch
+          // (e.g. a very fast click), the onPointerUp handler can still be
+          // bound to the pre-drag render, making `draft` stale.
+          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          setDraft(stepped);
+          commitDraft(stepped);
         }}
       >
         <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-panel-hover">

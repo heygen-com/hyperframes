@@ -155,7 +155,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
 
   it("commits a new volume value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
-    const element = makeVideoElement({ dataAttributes: { volume: "0.5" } });
+    const element = makeVideoElement({ dataAttributes: { volume: "0.2" } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -177,8 +177,9 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     });
     act(() => {
       volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
     });
-    // min=0, max=100, ratio=0.5 -> raw=50 -> commit(50) -> 50/100=0.5 -> "0.5"
+    // starting volume 0.2 (draft=20); min=0, max=100, ratio=0.5 -> raw=50 -> commit(50) -> 50/100=0.5 -> "0.5"
     expect(onSetAttribute).toHaveBeenCalledWith("volume", "0.5");
     act(() => root.unmount());
   });
@@ -207,6 +208,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     });
     act(() => {
       rateTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      rateTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
     // min=25, max=300, ratio=1.0 -> raw=300 -> commit(300) -> 300/100=3 -> "3"
     expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "3");
@@ -237,6 +239,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     });
     act(() => {
       mediaStartTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      mediaStartTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
     // no source-duration set -> mediaStartMax=Math.max(30, Math.ceil(0+10))=30 -> max=3000
     // ratio=1.0 -> raw=3000 -> commit(3000) -> (3000/100).toFixed(2) = "30.00"
