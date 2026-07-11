@@ -589,6 +589,59 @@ describe("animejs adapter", () => {
     element.remove();
   });
 
+  it("leaves an implicit transform tween alone when an earlier explicit tween owns the property", () => {
+    vi.stubGlobal(
+      "DOMMatrixReadOnly",
+      class {
+        a = 1;
+        b = 0;
+        c = 0;
+        d = 1;
+        e = 120;
+        f = 0;
+      },
+    );
+    const element = document.createElement("div");
+    element.style.transform = "matrix(1, 0, 0, 1, 120, 0)";
+    document.body.append(element);
+    // Stacked pattern from registry/blocks/apple-money-count: an explicit
+    // [0, y] burst tween followed by an implicit-from fade tween that anime.js
+    // chains from the burst's end value. The implicit tween must NOT be
+    // rewritten to the CSS-cascade value.
+    const implicitFade = {
+      target: element,
+      property: "translateX",
+      _hasFromValue: 0,
+      _fromNumber: 340,
+      _number: 340,
+      _unit: "px",
+      _absoluteStartTime: 4180,
+      _next: null,
+    };
+    const explicitBurst = {
+      target: element,
+      property: "translateX",
+      _hasFromValue: 1,
+      _fromNumber: 0,
+      _number: 0,
+      _unit: "px",
+      _absoluteStartTime: 3280,
+      _next: implicitFade,
+    };
+    const instance = {
+      _head: explicitBurst,
+      seek: vi.fn(),
+    };
+
+    installHyperframesAnimeApi();
+    animeWindow.hyperframesAnime?.register("test-explicit-owns-property", instance);
+
+    expect(explicitBurst._fromNumber).toBe(0);
+    expect(implicitFade._fromNumber).toBe(340);
+    expect(implicitFade._number).toBe(340);
+    element.remove();
+  });
+
   // jsdom does not provide DOMMatrixReadOnly, so browser transform decomposition is unavailable.
   it.skip("corrects implicit transform from-values from the CSS-cascaded transform", () => {
     const element = document.createElement("div");

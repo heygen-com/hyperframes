@@ -316,6 +316,8 @@ type TransformDecomposition = Partial<Record<string, number>>;
 type ImplicitTransformFromCandidate = {
   node: Record<string, unknown>;
   startTime: number;
+  /** Earliest start of ANY tween (explicit or implicit) on this target/property. */
+  earliestAnyStartTime: number;
 };
 
 type ImplicitTransformFromCandidates = WeakMap<
@@ -446,12 +448,13 @@ function selectImplicitTransformFromCandidate(
   if (!property || !TRANSFORM_DECOMPOSED_PROPERTIES.has(property)) return;
   const target = Reflect.get(node, "target");
   if (!isStyleElement(target)) return;
-  if (readBooleanishProperty(node, "_hasFromValue")) return;
-  if (typeof Reflect.get(node, "_fromNumber") !== "number") return;
   const startTime = readFiniteNumberProperty(node, "_absoluteStartTime");
   if (startTime == null) return;
+  const isImplicit =
+    !readBooleanishProperty(node, "_hasFromValue") &&
+    typeof Reflect.get(node, "_fromNumber") === "number";
 
-  recordImplicitTransformFromCandidate(candidates, target, property, node, startTime);
+  recordImplicitTransformFromCandidate(candidates, target, property, node, startTime, isImplicit);
 }
 
 function recordImplicitTransformFromCandidate(
@@ -460,6 +463,7 @@ function recordImplicitTransformFromCandidate(
   property: string,
   node: Record<string, unknown>,
   startTime: number,
+  isImplicit: boolean,
 ): void {
   let candidatesByProperty = candidates.get(target);
   if (!candidatesByProperty) {
@@ -467,10 +471,23 @@ function recordImplicitTransformFromCandidate(
     candidates.set(target, candidatesByProperty);
   }
   const current = candidatesByProperty.get(property);
-  if (!current || startTime < current.startTime) {
-    candidatesByProperty.set(property, { node, startTime });
+  if (!current) {
+    candidatesByProperty.set(property, {
+      node: isImplicit ? node : NOT_IMPLICIT_NODE,
+      startTime: isImplicit ? startTime : Number.POSITIVE_INFINITY,
+      earliestAnyStartTime: startTime,
+    });
+    return;
+  }
+  if (startTime < current.earliestAnyStartTime) current.earliestAnyStartTime = startTime;
+  if (isImplicit && startTime < current.startTime) {
+    current.node = node;
+    current.startTime = startTime;
   }
 }
+
+/** Sentinel so a property seen only via explicit tweens never matches a node. */
+const NOT_IMPLICIT_NODE: Record<string, unknown> = {};
 
 function correctImplicitTransformFromValueForNode(
   node: Record<string, unknown>,
@@ -481,7 +498,13 @@ function correctImplicitTransformFromValueForNode(
   if (!property) return;
   const target = Reflect.get(node, "target");
   if (!isStyleElement(target)) return;
-  if (candidates.get(target)?.get(property)?.node !== node) return;
+  const candidate = candidates.get(target)?.get(property);
+  if (candidate?.node !== node) return;
+  // An earlier explicit tween on this pair already establishes the value at
+  // render time; anime.js chains this implicit tween from it correctly, and
+  // overwriting with the CSS-cascade identity would discard that chain
+  // (regression class: apple-money-count confetti collapse).
+  if (candidate.earliestAnyStartTime < candidate.startTime) return;
 
   applyCorrectedTransformFromValue(node, target, property, decomposedByTarget);
 }
