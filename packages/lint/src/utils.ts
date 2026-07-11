@@ -66,14 +66,12 @@ export function parseHtmlStructure(source: string): {
     contentStart: number;
     index: number;
   }> = [];
-  let parser: Parser;
-
-  parser = new Parser(
+  const parser: Parser = new Parser(
     {
       onopentag(name) {
         const index = parser.startIndex;
         const raw = source.slice(index, parser.endIndex + 1);
-        const attrs = raw.slice(name.length + 1, -1);
+        const attrs = raw.slice(name.length + 1, -1).replace(/\s*\/$/, "");
         const tag = { raw, name, attrs, index };
         tags.push(tag);
         const sameNameStack = openTagsByName.get(name) ?? [];

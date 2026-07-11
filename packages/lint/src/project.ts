@@ -24,6 +24,19 @@ interface CssSource {
   rootRelativePath?: string;
 }
 
+/** Linkedom keeps template contents in a DocumentFragment that is not part of
+ * the document query tree. Lint rules must still see shell styles and links
+ * inside templates, so walk each template's content recursively without
+ * falling back to regex parsing. */
+function querySelectorAllIncludingTemplates(root: ParentNode, selector: string): Element[] {
+  const matches: Element[] = [...root.querySelectorAll(selector)];
+  for (const template of root.querySelectorAll("template")) {
+    const content = (template as HTMLTemplateElement).content;
+    if (content) matches.push(...querySelectorAllIncludingTemplates(content, selector));
+  }
+  return matches;
+}
+
 export interface ProjectLintResult {
   results: Array<{ file: string; result: HyperframeLintResult }>;
   totalErrors: number;
@@ -41,11 +54,11 @@ function isLocalStylesheetHref(href: string): boolean {
 
 function collectLocalStylesheets(
   projectDir: string,
-  document: ReturnType<typeof parseHTML>["document"],
+  document: ParentNode,
   compSrcPath?: string,
 ): Array<{ href: string; content: string; rootRelativePath: string }> {
   const styles: Array<{ href: string; content: string; rootRelativePath: string }> = [];
-  for (const link of document.querySelectorAll("link")) {
+  for (const link of querySelectorAllIncludingTemplates(document, "link")) {
     const rel = link.getAttribute("rel") ?? "";
     if (!rel.split(/\s+/).some((part) => part.toLowerCase() === "stylesheet")) continue;
     const href = link.getAttribute("href") ?? "";
@@ -79,7 +92,7 @@ function collectCssSources(projectDir: string, html: string, compSrcPath?: strin
   const sources: CssSource[] = [];
   const { document } = parseHTML(html);
 
-  for (const style of document.querySelectorAll("style")) {
+  for (const style of querySelectorAllIncludingTemplates(document, "style")) {
     sources.push({ content: style.textContent ?? "" });
   }
 
@@ -91,7 +104,7 @@ function collectCssSources(projectDir: string, html: string, compSrcPath?: strin
     sources.push({ content, rootRelativePath });
   }
 
-  for (const element of document.querySelectorAll("[style]")) {
+  for (const element of querySelectorAllIncludingTemplates(document, "[style]")) {
     const style = element.getAttribute("style");
     if (!style) continue;
     sources.push({ content: style });
