@@ -11,6 +11,7 @@
 import { useEffect, useCallback } from "react";
 import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
@@ -95,8 +96,7 @@ export function AssetPreviewOverlay() {
 
   if (!previewAsset || !previewProjectId) return null;
 
-  const encodedAsset = previewAsset.split("/").map(encodeURIComponent).join("/");
-  const serveUrl = `/api/projects/${previewProjectId}/preview/${encodedAsset}`;
+  const serveUrl = resolveMediaPreviewUrl(previewAsset, previewProjectId);
   const name = basename(previewAsset);
 
   return (

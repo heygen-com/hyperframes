@@ -11,6 +11,7 @@ import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
 import { basename, ext, truncateMiddle, formatDuration } from "./assetHelpers";
+import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 /** Drag payload writer shared by the asset tile and the font row: copy effect
  *  plus the timeline-asset MIME and a plain-text path fallback. */
@@ -40,25 +41,32 @@ function useProbedDuration(src: string, skip: boolean): number | null | undefine
   useEffect(() => {
     if (skip) return;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    // The in-flight probe element, so unmount cleanup can abort its network
+    // fetch (clearing `src`) instead of leaving it to finish in the background.
+    let liveVid: HTMLVideoElement | null = null;
+
+    function teardown(vid: HTMLVideoElement) {
+      vid.onloadedmetadata = null;
+      vid.onerror = null;
+      vid.src = "";
+    }
 
     function probe(attempt: number) {
       if (cancelled) return;
       const vid = document.createElement("video");
+      liveVid = vid;
       vid.preload = "metadata";
       vid.muted = true;
       vid.onloadedmetadata = () => {
         const d = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : null;
+        teardown(vid);
         if (!cancelled) setDuration(d);
-        vid.onloadedmetadata = null;
-        vid.onerror = null;
-        vid.src = "";
       };
       vid.onerror = () => {
-        vid.onloadedmetadata = null;
-        vid.onerror = null;
-        vid.src = "";
+        teardown(vid);
         if (!cancelled) {
-          if (attempt < 1) setTimeout(() => probe(attempt + 1), 50);
+          if (attempt < 1) retryTimer = setTimeout(() => probe(attempt + 1), 50);
           else setDuration(null);
         }
       };
@@ -68,6 +76,8 @@ function useProbedDuration(src: string, skip: boolean): number | null | undefine
     probe(0);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (liveVid) teardown(liveVid);
     };
   }, [src, skip]);
   return duration;
@@ -111,7 +121,7 @@ export function AssetCard({
   const fullName = asset.split("/").pop() ?? asset;
   const name = basename(asset);
   const extension = ext(asset);
-  const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
+  const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
   const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);

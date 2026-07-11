@@ -5,6 +5,7 @@ import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
+import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 export function AudioRow({
   projectId,
@@ -37,7 +38,7 @@ export function AudioRow({
   const animRef = useRef<number>(0);
   const name = basename(asset);
   const subtype = getAudioSubtype(asset);
-  const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
+  const serveUrl = resolveMediaPreviewUrl(asset, projectId);
 
   // CapCut-style click behavior: drag-threshold gate.
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);

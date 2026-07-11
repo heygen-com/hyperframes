@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { usePlayerStore } from "../../player";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
+import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 
 interface UseCompositionStackOptions {
   projectId: string;
@@ -84,7 +85,7 @@ export function useCompositionStack({
             .split("/")
             .pop()
             ?.replace(/\.html$/, "") || resolvedPath;
-        const previewUrl = `/api/projects/${projectId}/preview/comp/${resolvedPath}`;
+        const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(resolvedPath)}`;
         return [...prev, { id: resolvedPath, label, previewUrl }];
       });
     },
@@ -100,7 +101,7 @@ export function useCompositionStack({
       updateCompositionStack((prev) => (prev.length > 1 ? [prev[0]] : prev));
     } else if (activeCompositionPath && activeCompositionPath.startsWith("compositions/")) {
       const label = activeCompositionPath.replace(/^compositions\//, "").replace(/\.html$/, "");
-      const previewUrl = `/api/projects/${projectId}/preview/comp/${activeCompositionPath}`;
+      const previewUrl = `/api/projects/${projectId}/preview/comp/${encodePreviewPath(activeCompositionPath)}`;
       usePlayerStore.getState().setElements([]);
       updateCompositionStack((prev) => {
         if (prev[prev.length - 1]?.id === activeCompositionPath) return prev;
