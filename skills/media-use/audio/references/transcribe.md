@@ -4,8 +4,8 @@ Create normalized word-level timestamps. **Always specify `--model` explicitly**
 
 ```bash
 npx hyperframes transcribe audio.mp3  --model small.en             # known English
-npx hyperframes transcribe video.mp4  --model small --language es  # known Spanish
-npx hyperframes transcribe audio.mp3  --model small                # unknown language (auto-detect)
+npx hyperframes transcribe video.mp4  --model large-v3 --language es  # known Spanish
+npx hyperframes transcribe audio.mp3  --model large-v3                # unknown language (auto-detect)
 npx hyperframes transcribe subtitles.srt                           # import existing
 npx hyperframes transcribe subtitles.vtt
 npx hyperframes transcribe openai-response.json
@@ -16,27 +16,27 @@ npx hyperframes transcribe openai-response.json
 `.en` models (`tiny.en` / `base.en` / `small.en` / `medium.en`) **translate** non-English audio into English. This silently destroys the original language.
 
 1. **Known English** → `--model small.en` (or `medium.en` for music / noisy audio)
-2. **Known non-English** → `--model small --language <iso-code>` (no `.en` suffix)
-3. **Unknown language** → `--model small` (whisper auto-detects)
+2. **Known non-English** → `--model large-v3 --language <iso-code>`
+3. **Unknown language** → `--model large-v3` (whisper auto-detects)
 
 **CLI default is `small.en`** — do not rely on it; always pass `--model` to make the choice explicit. `--language` also filters out non-target-language segments from mixed-language audio.
 
 ## Model Sizes
 
-| Model      | Size   | Speed    | When                                  |
-| ---------- | ------ | -------- | ------------------------------------- |
-| `tiny`     | 75 MB  | Fastest  | Quick previews, smoke tests           |
-| `base`     | 142 MB | Fast     | Short clips, clear audio              |
-| `small`    | 466 MB | Moderate | Default for most multilingual content |
-| `medium`   | 1.5 GB | Slow     | Music with vocals, noisy audio        |
-| `large-v3` | 3.1 GB | Slowest  | Production quality                    |
+| Model       | Size   | Speed    | When                             |
+| ----------- | ------ | -------- | -------------------------------- |
+| `tiny.en`   | 75 MB  | Fastest  | English previews and smoke tests |
+| `base.en`   | 142 MB | Fast     | Short, clear English speech      |
+| `small.en`  | 466 MB | Moderate | Default for English speech       |
+| `medium.en` | 1.5 GB | Slow     | Noisy English audio and vocals   |
+| `large-v3`  | 3.1 GB | Slowest  | Production quality               |
 
 ### Picking a model by content type
 
 1. Speech over silence / light background → `small.en`
 2. Speech over music, or music with vocals → start with `medium.en`
 3. Produced music track (vocals + full instrumentation) → start with `medium.en`; expect to need manual lyrics or an external API ([`captions/transcript-handling.md`](captions/transcript-handling.md) → "Using External Transcription APIs")
-4. Multilingual → `medium` or `large-v3` (no `.en` suffix), pair with `--language`
+4. Multilingual → `large-v3`, pair with `--language` when known
 
 ## Output Shape
 

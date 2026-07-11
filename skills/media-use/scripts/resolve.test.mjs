@@ -640,6 +640,20 @@ test("--from rejects invalid lut cube without registering or leaving a frozen fi
   cleanup();
 });
 
+test("--from ingests a local video when type is video", () => {
+  setup();
+  const video = join(tmp, "demo.mp4");
+  writeFileSync(video, "video fixture");
+
+  const out = runResolve(["--from", video, "--type", "video", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out);
+
+  assert.equal(parsed.type, "video");
+  assert.ok(parsed.path.endsWith(".mp4"));
+  assert.ok(existsSync(join(tmp, parsed.path)));
+  cleanup();
+});
+
 test("grade miss exits explicitly with no partial file", () => {
   setup();
   const missIntent = `zqxv imaginary neutron ${process.pid}`;

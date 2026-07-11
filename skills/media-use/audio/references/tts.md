@@ -1,10 +1,13 @@
 # Text To Speech
 
-`npx hyperframes tts` auto-detects a provider from env vars; explicit override via `--provider`.
+`npx hyperframes tts` is the local Kokoro-82M command. It accepts `--voice`,
+`--lang`, `--speed`, and `--output`; it does **not** accept `--provider` or
+`--words`. Use the provider-specific scripts below for cloud voices and word
+timestamps.
 
 > **Run the Preflight first — no credential is not a green light to silently use the local voice.** Before generating a voiceover, complete the sign-in **Preflight** (see `../SKILL.md` → Preflight): run `npx hyperframes auth status`, recommend signing in, and **STOP for the user's choice** (sign in for HeyGen voices, or continue offline with local Kokoro). This applies to a one-off "generate a voiceover" request just as much as inside a full workflow.
 
-## Provider chain
+## Media workflow provider chain
 
 | Order | Provider          | Env trigger                                 | Voice IDs                                   | Word timestamps                           | Audio format         |
 | ----- | ----------------- | ------------------------------------------- | ------------------------------------------- | ----------------------------------------- | -------------------- |
@@ -13,16 +16,8 @@
 | 3     | Kokoro-82M        | always (local fallback)                     | `am_michael`, `af_heart`, … (54 voices)     | No                                        | wav direct           |
 
 ```bash
-# Auto-detect (HeyGen if key set, else ElevenLabs, else Kokoro)
+# Local Kokoro
 npx hyperframes tts "Welcome to HyperFrames" -o narration.wav
-
-# Pin the provider explicitly
-npx hyperframes tts "Hello" --provider kokoro
-npx hyperframes tts "Hello" --provider heygen --voice <heygen-uuid>
-npx hyperframes tts "Hello" --provider elevenlabs --voice 21m00Tcm4TlvDq8ikWAM
-
-# HeyGen path: capture word timestamps in one call (skips a Whisper pass)
-npx hyperframes tts "Hi there" --words narration.words.json
 ```
 
 ## Self-contained HeyGen (no CLI) — `scripts/heygen-tts.mjs`
@@ -70,7 +65,11 @@ node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish vo
 
 ## ffmpeg requirement
 
-HeyGen + ElevenLabs return mp3. The CLI transcodes to wav when `--output` ends in `.wav` (the default and what downstream `ffprobe` + Whisper expect). If you'd rather skip the transcode, pass `-o file.mp3`. Without `ffmpeg` on PATH, `.wav` output from the cloud providers fails — install ffmpeg or use `.mp3`.
+HeyGen + ElevenLabs return mp3. Their provider-specific scripts transcode to wav
+when `--output` ends in `.wav` (the default and what downstream `ffprobe` +
+Whisper expect). If you'd rather skip the transcode, pass `-o file.mp3`.
+Without `ffmpeg` on PATH, `.wav` output from cloud providers fails — install
+ffmpeg or use `.mp3`. Local `hyperframes tts` writes Kokoro wav directly.
 
 ## Voice selection (Kokoro)
 
@@ -103,8 +102,8 @@ The first letter of a Kokoro voice ID picks the phonemizer language; `--lang` ov
 | `z`    | Mandarin             |
 
 ```bash
-npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora --provider kokoro
-npx hyperframes tts "Today is a nice day" --voice af_heart --provider kokoro
+npx hyperframes tts "La reunión empieza a las nueve" --voice ef_dora
+npx hyperframes tts "Today is a nice day" --voice af_heart
 ```
 
 Valid `--lang` codes (only needed to override the voice's auto-detected language): `en-us`, `en-gb`, `es`, `fr-fr`, `hi`, `it`, `pt-br`, `ja`, `zh`.
@@ -118,7 +117,8 @@ Non-English phonemization requires `espeak-ng` system-wide (`brew install espeak
 - `1.1-1.2` — intros, transitions, upbeat content
 - `1.5+` — rarely appropriate, test carefully
 
-Honored by Kokoro + HeyGen; ElevenLabs ignores `--speed` (use voice settings on their dashboard).
+`hyperframes tts --speed` controls local Kokoro. Cloud-provider speed support is
+documented by each provider-specific script; do not pass CLI-only flags to them.
 
 ## Long scripts
 
