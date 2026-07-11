@@ -2,6 +2,7 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
+import { isAudioTimelineElement } from "../../utils/timelineInspector";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -62,6 +63,7 @@ export const TimelineClip = memo(function TimelineClip({
     isHovered ? "is-hovered" : "",
     isDragging ? "is-dragging" : "",
     showDefaultText ? "" : "is-micro",
+    isAudioTimelineElement(el) ? "is-audio" : "",
   ]
     .filter((className) => className.length > 0)
     .join(" ");
@@ -72,7 +74,8 @@ export const TimelineClip = memo(function TimelineClip({
     bottom: clipY,
     borderRadius: theme.clipRadius,
     zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-    cursor: capabilities.canMove ? "grab" : "default",
+    // Regular cursor over clips (CapCut-style, user preference) — no grab hand.
+    cursor: "default",
     transform: isDragging ? "translateY(-1px)" : undefined,
   };
 

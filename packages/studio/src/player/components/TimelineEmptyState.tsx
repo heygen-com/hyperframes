@@ -37,7 +37,9 @@ export function TimelineEmptyState({
             style={{ position: "absolute", left: GUTTER + s * 14 }}
           >
             <span className="text-[9px] text-neutral-600 font-mono tabular-nums leading-none mb-0.5">
-              {`${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`}
+              {`${Math.floor(s / 60)
+                .toString()
+                .padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`}
             </span>
             <div className="w-px h-[5px] bg-neutral-700/40" />
           </div>
