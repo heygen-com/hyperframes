@@ -394,6 +394,7 @@
   }
 
   function clippedTextIssue(element, time, tolerance) {
+    if (hasAllowOverflowFlag(element)) return null;
     const style = getComputedStyle(element);
     if (!clipsOverflow(style)) return null;
     const overflowX = element.scrollWidth - element.clientWidth;

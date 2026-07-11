@@ -109,6 +109,38 @@ describe("layout-audit.browser", () => {
     expect(runAudit()).toEqual([]);
   });
 
+  it("does not report clipped text when an overflow-allowed container includes decorative bleed", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="scene" data-layout-allow-overflow>
+          Chapter title
+          <img id="bleed" alt="" />
+        </div>
+      </div>
+    `;
+
+    const scene = document.querySelector("#scene")!;
+    Object.defineProperties(scene, {
+      clientWidth: { value: 640 },
+      clientHeight: { value: 360 },
+      scrollWidth: { value: 740 },
+      scrollHeight: { value: 360 },
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        scene: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        bleed: rect({ left: -50, top: -50, width: 740, height: 460 }),
+        text: rect({ left: 40, top: 40, width: 180, height: 44 }),
+      },
+      { scene: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "clipped_text")).toBe(false);
+  });
+
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
     // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
     // line-height box by a few px vertically — normal typography, nothing is clipped. (fontSize
