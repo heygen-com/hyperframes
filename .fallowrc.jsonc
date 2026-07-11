@@ -55,6 +55,9 @@
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
     // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
     // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
+    "packages/studio/src/components/sidebar/AssetCard.tsx",
+    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
+    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
     "packages/studio/src/components/EditorShell.tsx",
     "packages/studio/src/components/nle/TimelinePane.tsx",
     "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
@@ -659,6 +662,9 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
+      // removed by studio-dnd/pr22 when the final config lands.
+      "packages/studio/src/components/sidebar/AssetCard.tsx",
       // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
       // removed by studio-dnd/pr22 when the final config lands.
       "packages/studio/src/components/editor/DomEditSelectionChrome.tsx",
