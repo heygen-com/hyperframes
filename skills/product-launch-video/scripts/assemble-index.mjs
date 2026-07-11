@@ -169,8 +169,13 @@ function attrValueFrom(attrs, name) {
 function hoistApprovedVideos(html, label) {
   const videos = [];
   const errors = [];
+  const scan = html
+    .replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length))
+    .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, (match) => " ".repeat(match.length))
+    .replace(/<style\b[\s\S]*?<\/style[^>]*>/gi, (match) => " ".repeat(match.length));
   const re = /<video\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/video\s*>/gi;
-  const repaired = html.replace(re, (full, attrs, inner) => {
+  const repaired = html.replace(re, (full, attrs, inner, offset) => {
+    if (scan[offset] !== "<") return full;
     if (attrValueFrom(attrs, "data-frame-video") !== "approved") return full;
     const start = Number(attrValueFrom(attrs, "data-start"));
     const duration = Number(attrValueFrom(attrs, "data-duration"));
@@ -190,7 +195,8 @@ function hoistApprovedVideos(html, label) {
       .replace(/\sdata-frame-video\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
       .replace(/\sdata-start\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
       .replace(/\sdata-duration\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sdata-track-index\s*=\s*(?:"[^"]*"|'[^']*')/i, "");
+      .replace(/\sdata-track-index\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
+      .replace(/\sclass\s*=\s*(?:"[^"]*"|'[^']*')/i, "");
     videos.push({ attrs: cleanedAttrs.trim(), inner, start, duration, track });
     return "<!-- approved frame video hoisted by assemble-index -->";
   });
@@ -423,9 +429,10 @@ for (const m of mounted) {
 for (const [frameIndex, m] of mounted.entries()) {
   for (const video of m.hoistedVideos ?? []) {
     const globalStart = r3(m.start + video.start);
-    const track = 1000 + frameIndex * 100 + video.track;
+    const track = 1000 + frameIndex * 1000 + video.track;
+    const id = /(?:^|\s)id\s*=/.test(video.attrs) ? "" : ` id="el-${m.compId}-video-${frameIndex}"`;
     body.push(
-      `      <video ${video.attrs}`,
+      `      <video${id} ${video.attrs}`,
       `        class="clip"`,
       `        data-start="${globalStart}"`,
       `        data-duration="${r3(video.duration)}"`,
