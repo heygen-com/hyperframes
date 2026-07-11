@@ -103,6 +103,22 @@ async function maybeAutoKeyframeSet(
 
 type Commit = NonNullable<CommitAnimatedPropertyDeps["gsapCommitMutation"]>;
 
+/** Undo-history label for a static-set commit, from the group it writes. */
+const STATIC_SET_LABELS: Partial<Record<ReturnType<typeof classifyPropertyGroup>, string>> = {
+  position: "Move layer",
+  scale: "Resize layer",
+  size: "Resize layer",
+  rotation: "Rotate layer",
+  visual: "Set opacity",
+  other: "Set 3D transform",
+};
+
+function staticSetLabel(propEntries: [string, number | string][]): string {
+  const groups = new Set(propEntries.map(([k]) => classifyPropertyGroup(k)));
+  const only = groups.size === 1 ? [...groups][0] : undefined;
+  return (only && STATIC_SET_LABELS[only]) || "Set properties";
+}
+
 /** Merge ALL props into the static `set` in ONE commit (value-only, instant), then
  *  auto-keyframe. One mutation — a per-property loop would shift the set's
  *  group-derived id mid-way (e.g. reset adding `scale` to a rotation set), 404-ing
@@ -133,7 +149,11 @@ async function commitSetProps(
   await commit(
     selection,
     { type: "update-properties", animationId: setAnim.id, properties },
-    { label: "Set 3D transform", softReload: true, ...(instantPatch ? { instantPatch } : {}) },
+    {
+      label: staticSetLabel(propEntries),
+      softReload: true,
+      ...(instantPatch ? { instantPatch } : {}),
+    },
   );
   await maybeAutoKeyframeSet(selection, setAnim, animations, commit);
 }
@@ -152,22 +172,49 @@ async function commitStaticSet(
   commit: Commit,
 ): Promise<void> {
   if (!selector) return;
-  // Update an existing `set` in ONE batched commit — NEVER a flat `to`/`from`. A
-  // set's id is GROUP-derived, so a per-prop loop shifts it the instant a new-group
-  // prop lands (e.g. `scale` onto a rotation set), 404-ing the next prop; commitSetProps
-  // sends them together. A static element with no set gets a dedicated `set` carrying
-  // ALL props in ONE `add`.
-  const existingSet = animations.find((a) => a.method === "set" && a.targetSelector === selector);
-  if (existingSet) {
-    await commitSetProps(selection, existingSet, propEntries, selector, animations, commit);
-    return;
+  // One commit per PROPERTY GROUP, each into a set that owns that group — never a
+  // flat `to`/`from`, and never a foreign-group set (a width edit used to merge
+  // into the element's position set, producing a mixed set the split machinery
+  // exists to prevent). Within a group everything batches into ONE commit: a
+  // set's id is group-derived, so a per-prop loop would shift the id mid-way and
+  // 404 the next update.
+  const byGroup = new Map<string, [string, number | string][]>();
+  for (const entry of propEntries) {
+    const group = classifyPropertyGroup(entry[0]);
+    const batch = byGroup.get(group) ?? [];
+    batch.push(entry);
+    byGroup.set(group, batch);
   }
-  // Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker, so
-  // adjusting a 3D transform on a non-keyframed element doesn't drop a keyframe on
-  // the timeline (matches the manual-drag UX). The global-set instant patch applies
-  // it straight to the element so the first edit shows with no soft-reload flash.
+  const sets = animations.filter((a) => a.method === "set" && a.targetSelector === selector);
+  for (const [group, batch] of byGroup) {
+    const existingSet =
+      // A set already dedicated to this group wins; else a mixed set that
+      // already carries a property of this group (merging same-group values
+      // there beats spawning a second writer for the same channel).
+      sets.find((a) => a.propertyGroup === group) ??
+      sets.find((a) => Object.keys(a.properties).some((k) => classifyPropertyGroup(k) === group));
+    if (existingSet) {
+      await commitSetProps(selection, existingSet, batch, selector, animations, commit);
+    } else {
+      await addGlobalStaticSet(selection, batch, selector, commit);
+    }
+  }
+}
+
+/**
+ * Base `gsap.set` (off-timeline) — a static hold with no 0% keyframe marker, so
+ * adjusting a 3D transform on a non-keyframed element doesn't drop a keyframe on
+ * the timeline (matches the manual-drag UX). The global-set instant patch applies
+ * it straight to the element so the first edit shows with no soft-reload flash.
+ */
+async function addGlobalStaticSet(
+  selection: DomEditSelection,
+  batch: [string, number | string][],
+  selector: string,
+  commit: Commit,
+): Promise<void> {
   const numericProps: SetPatchProps = {};
-  for (const [k, v] of propEntries) {
+  for (const [k, v] of batch) {
     if (typeof v === "number") numericProps[k as keyof SetPatchProps] = v;
   }
   await commit(
@@ -177,11 +224,11 @@ async function commitStaticSet(
       targetSelector: selector,
       method: "set",
       position: 0,
-      properties: Object.fromEntries(propEntries),
+      properties: Object.fromEntries(batch),
       global: true,
     },
     {
-      label: "Set 3D transform",
+      label: staticSetLabel(batch),
       softReload: true,
       ...(Object.keys(numericProps).length > 0
         ? {

@@ -39,15 +39,16 @@ type Commit = (
 ) => Promise<void>;
 
 /** Renders the hook and hands its commit function to the caller via a ref callback. */
-function renderCommitHook(
-  mutations: Array<Record<string, unknown>>,
+function renderHookWith(
+  animations: GsapAnimation[],
+  onMutation: (mutation: Record<string, unknown>, label: string) => void,
   onReady: (commit: Commit) => void,
 ) {
   function Harness() {
     const { commitAnimatedProperties } = useAnimatedPropertyCommit({
-      selectedGsapAnimations: [keyframedAnim],
-      gsapCommitMutation: async (_sel, mutation) => {
-        mutations.push(mutation);
+      selectedGsapAnimations: animations,
+      gsapCommitMutation: async (_sel, mutation, options) => {
+        onMutation(mutation, options.label);
       },
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -64,6 +65,13 @@ function renderCommitHook(
     root.render(<Harness />);
   });
   return root;
+}
+
+function renderCommitHook(
+  mutations: Array<Record<string, unknown>>,
+  onReady: (commit: Commit) => void,
+) {
+  return renderHookWith([keyframedAnim], (mutation) => mutations.push(mutation), onReady);
 }
 
 // Regression (#1808): a "3D transform" / design-panel property edit on an
@@ -101,5 +109,58 @@ describe("useAnimatedPropertyCommit — autoKeyframeEnabled toggle (#1808)", () 
     );
     expect(mutations.some((m) => m.type === "replace-with-keyframes")).toBe(false);
     act(() => root.unmount());
+  });
+});
+
+// Regression: commitStaticSet picked the FIRST `set` for the selector with no
+// group check — a panel W edit on a static element merged `width` into the
+// POSITION set (`tl.set("#el",{x,y,width})`), a mixed-group set the split
+// machinery exists to prevent, labeled "Set 3D transform" in undo history.
+describe("commitStaticSet group routing", () => {
+  const positionSet = {
+    id: "#box-set-0-position",
+    targetSelector: "#box",
+    propertyGroup: "position",
+    method: "set",
+    properties: { x: 10, y: 20 },
+  } as unknown as GsapAnimation;
+
+  function renderStaticHook(
+    committed: Array<{ mutation: Record<string, unknown>; label: string }>,
+    onReady: (commit: Commit) => void,
+  ) {
+    return renderHookWith(
+      [positionSet],
+      (mutation, label) => committed.push({ mutation, label }),
+      onReady,
+    );
+  }
+
+  it("width edit creates a size set instead of contaminating the position set", async () => {
+    const committed: Array<{ mutation: Record<string, unknown>; label: string }> = [];
+    let commit!: Commit;
+    renderStaticHook(committed, (c) => (commit = c));
+    await act(async () => {
+      await commit(selection, { width: 500 });
+    });
+    const updates = committed.filter((c) => c.mutation.type === "update-properties");
+    expect(updates).toHaveLength(0);
+    const adds = committed.filter((c) => c.mutation.type === "add");
+    expect(adds).toHaveLength(1);
+    expect(adds[0]!.mutation.properties).toEqual({ width: 500 });
+    expect(adds[0]!.label).toBe("Resize layer");
+  });
+
+  it("x edit updates the position set with a Move label", async () => {
+    const committed: Array<{ mutation: Record<string, unknown>; label: string }> = [];
+    let commit!: Commit;
+    renderStaticHook(committed, (c) => (commit = c));
+    await act(async () => {
+      await commit(selection, { x: 400 });
+    });
+    const update = committed.find((c) => c.mutation.type === "update-properties");
+    expect(update).toBeDefined();
+    expect(update!.mutation.animationId).toBe("#box-set-0-position");
+    expect(update!.label).toBe("Move layer");
   });
 });
