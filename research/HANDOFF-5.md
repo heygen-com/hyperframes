@@ -83,6 +83,8 @@ CONFIRMED bugs (fix in owning PR via overlays):
 
 ## 6. Key evidence files
 
+- **`research/REVIEW-EVIDENCE-2026-07-10.md` — READ WITH THIS DOC**: verbatim verifier verdicts (V1–V16 with quoted code evidence), the phase-3 sweep finds, the full Slack-only reviewer findings (Abhai's must-fixes + extras, Rames's deltas), and what review-round-1 already fixed. `research/REVIEWS-GITHUB-RAW-2026-07-10.txt` = all 50 GitHub review bodies raw.
+
 - `/tmp/hf-harvest/ALL_REVIEWS.txt` — all 50 GitHub review bodies. `/tmp/hf-gates-out.txt` + `hf-gates25*-output.txt` — gate runs. `/tmp/verify-0710/` — live verification screenshots. `/tmp/fallow-*.txt` — fallow probes.
 - Memory file `~/.claude/projects/-Users-ularkimsanov-Desktop-hyperframes-3/memory/project_studio_dnd_audit.md` — the full running ledger of the entire arc (every commit, every lesson).
 - Slack: PR-announce draft v3 (Miguel-style) in Ular's self-DM p1783730533352719 — references the CURRENT PR numbers, reusable after fix wave.
