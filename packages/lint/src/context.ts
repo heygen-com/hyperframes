@@ -63,7 +63,15 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
       index: -1,
     })),
   ];
-  const scripts = structure.scripts;
+  const scripts = [
+    ...structure.scripts,
+    ...(options.externalScripts ?? []).map((script) => ({
+      attrs: `src="${script.src}"`,
+      content: script.content,
+      raw: script.content,
+      index: -1,
+    })),
+  ];
   const compositionIds = collectCompositionIds(tags);
   const rootTag = findRootTag(source, tags);
   const rootCompositionId = readAttr(rootTag?.raw || "", "data-composition-id");

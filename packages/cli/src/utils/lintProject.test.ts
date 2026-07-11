@@ -71,6 +71,26 @@ describe("lintProject", () => {
     expect(first?.file).toBe("index.html");
   });
 
+  it("detects timeline registration in a local external script", async () => {
+    const projectDir = makeProject(`<html><body>
+      <div data-composition-id="dance" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+      <script src="work/dance.js"></script>
+    </body></html>`);
+    const workDir = join(projectDir, "work");
+    mkdirSync(workDir, { recursive: true });
+    writeFileSync(
+      join(workDir, "dance.js"),
+      `window.__timelines = window.__timelines || {};
+       window.__timelines["dance"] = gsap.timeline({ paused: true });`,
+    );
+
+    const { results } = await lintProject(projectDir);
+
+    expect(
+      results[0]?.result.findings.find((finding) => finding.code === "missing_timeline_registry"),
+    ).toBeUndefined();
+  });
+
   it("detects errors in index.html", async () => {
     const project = makeProject(htmlWithMissingMediaId());
     const { totalErrors, results } = await lintProject(project);

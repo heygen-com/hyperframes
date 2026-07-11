@@ -264,16 +264,17 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
-  ({ source, rawSource, options }) => {
+  ({ source, rawSource, scripts, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
       return [];
     }
     const findings: HyperframeLintFinding[] = [];
+    const timelineSource = [source, ...scripts.map((script) => script.content)].join("\n");
     if (
-      !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
+      !TIMELINE_REGISTRY_INIT_PATTERN.test(timelineSource) &&
+      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(timelineSource) &&
+      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(timelineSource)
     ) {
       findings.push({
         code: "missing_timeline_registry",
@@ -283,8 +284,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       });
     }
     if (
-      TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_INIT_PATTERN.test(source)
+      TIMELINE_REGISTRY_ASSIGN_PATTERN.test(timelineSource) &&
+      !TIMELINE_REGISTRY_INIT_PATTERN.test(timelineSource)
     ) {
       findings.push({
         code: "timeline_registry_missing_init",
@@ -299,7 +300,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // timeline_id_mismatch
-  ({ source }) => {
+  ({ source, scripts }) => {
     const findings: HyperframeLintFinding[] = [];
     const htmlCompIds = new Set<string>();
     const timelineRegKeys = new Set<string>();
@@ -308,7 +309,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     while ((m = compIdRe.exec(source)) !== null) {
       if (m[1]) htmlCompIds.add(m[1]);
     }
-    for (const key of extractTimelineRegistryKeys(source)) {
+    const timelineSource = [source, ...scripts.map((script) => script.content)].join("\n");
+    for (const key of extractTimelineRegistryKeys(timelineSource)) {
       timelineRegKeys.add(key);
     }
     for (const key of timelineRegKeys) {

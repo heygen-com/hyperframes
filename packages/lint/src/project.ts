@@ -88,6 +88,24 @@ function collectExternalStyles(
   return styles;
 }
 
+function collectExternalScripts(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): Array<{ src: string; content: string }> {
+  const scripts: Array<{ src: string; content: string }> = [];
+  const { document } = parseHTML(html);
+  for (const script of querySelectorAllIncludingTemplates(document, "script[src]")) {
+    const src = script.getAttribute("src") ?? "";
+    if (!src || isRemoteOrInlineUrl(src)) continue;
+    const rootRelative = compSrcPath ? join(dirname(compSrcPath), src) : src;
+    const asset = resolveExistingLocalAsset(projectDir, rootRelative);
+    if (!asset) continue;
+    scripts.push({ src, content: readFileSync(asset.resolved, "utf-8") });
+  }
+  return scripts;
+}
+
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
   const sources: CssSource[] = [];
   const { document } = parseHTML(html);
@@ -191,6 +209,7 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
   const rootResult = await lintHyperframeHtml(rootHtml, {
     filePath: indexPath,
     externalStyles: collectExternalStyles(projectDir, rootHtml),
+    externalScripts: collectExternalScripts(projectDir, rootHtml),
   });
   results.push({ file: "index.html", result: rootResult });
   totalErrors += rootResult.errorCount;
@@ -226,6 +245,7 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
         filePath,
         isSubComposition: true,
         externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+        externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
       });
       results.push({ file: `compositions/${file}`, result });
       totalErrors += result.errorCount;
