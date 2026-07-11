@@ -16,6 +16,18 @@ export interface StudioUiPreferences {
   gridVisible?: boolean;
   gridSpacing?: number;
   snapToGrid?: boolean;
+  /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
+  timelineSnapEnabled?: boolean;
+  /** Transport + ruler readout mode: timecode or frame number. */
+  timeDisplayMode?: "time" | "frame";
+  /**
+   * Timeline zoom mode. Persisted so a zoom PINNED on the first edit survives the
+   * post-edit iframe reload — otherwise the store reset to "fit" and the duration
+   * change rescaled every clip (the blink-fix's rescale symptom).
+   */
+  timelineZoomMode?: "fit" | "manual";
+  /** Manual timeline zoom percent, paired with `timelineZoomMode: "manual"`. */
+  timelineManualZoomPercent?: number;
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -87,6 +99,21 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.snapToGrid === "boolean") {
       preferences.snapToGrid = parsed.snapToGrid;
+    }
+    if (typeof parsed.timelineSnapEnabled === "boolean") {
+      preferences.timelineSnapEnabled = parsed.timelineSnapEnabled;
+    }
+    if (parsed.timeDisplayMode === "time" || parsed.timeDisplayMode === "frame") {
+      preferences.timeDisplayMode = parsed.timeDisplayMode;
+    }
+    if (parsed.timelineZoomMode === "fit" || parsed.timelineZoomMode === "manual") {
+      preferences.timelineZoomMode = parsed.timelineZoomMode;
+    }
+    if (
+      typeof parsed.timelineManualZoomPercent === "number" &&
+      Number.isFinite(parsed.timelineManualZoomPercent)
+    ) {
+      preferences.timelineManualZoomPercent = parsed.timelineManualZoomPercent;
     }
     return preferences;
   } catch {
