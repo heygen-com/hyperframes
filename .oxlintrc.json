@@ -11,6 +11,8 @@
     "playground/",
     "packages/producer/tests/**/src/vendor/**",
     "registry/blocks/**/lib/*.iife.js",
+    "docs/hyperframes-player.global.js",
+    "docs/public/spike/",
     "chrome/"
   ]
 }

@@ -507,6 +507,14 @@ export function wrapScopedCompositionScript(
           var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
           var copy = scoped ? Object.assign({}, scoped) : {};
           delete copy.__duration;
+          // Render-time overrides (render --variables, the player's variables
+          // attribute) win here too, same as the top-level getVariables and
+          // the loader's CSS path. The table is baked at compile time, so the
+          // merge must happen at call time.
+          var overrides = window.__hfVariables;
+          if (overrides && typeof overrides === "object" && !Array.isArray(overrides)) {
+            copy = Object.assign(copy, overrides);
+          }
           return copy;
         },
         getDuration: function() {

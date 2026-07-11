@@ -767,7 +767,11 @@ function stashInstanceVariables(
     ...declaredDefaults,
     ...parseHostVariableValues(params.host),
   };
-  const scopedValues: Record<string, unknown> = { ...merged };
+  // Render-time overrides win in the scripted path too, not just the CSS
+  // path below — otherwise `render --variables` (and the player's variables
+  // attribute) reaches a sub-composition's custom properties but silently
+  // never its getVariables() reads.
+  const scopedValues: Record<string, unknown> = { ...merged, ...readRenderOverrides() };
   const duration = readHostAuthoredDuration(params.host);
   if (duration !== undefined) scopedValues.__duration = duration;
   const cssValues = { ...merged, ...readRenderOverrides() };

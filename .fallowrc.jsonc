@@ -263,6 +263,10 @@
     "debug",
     "puppeteer",
     "puppeteer-core",
+    // Loaded via require.resolve("axe-core/axe.min.js") in
+    // packages/producer/tests/ui-primitives/runner.ts (string reference,
+    // invisible to import-graph analysis); version pinned by verify.test.ts.
+    "axe-core",
     "esbuild",
     "giget",
     "gsap",
