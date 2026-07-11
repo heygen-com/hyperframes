@@ -26,7 +26,7 @@ test("assemble hoists an approved timed frame video to the host root", () => {
   );
   writeFileSync(
     framePath,
-    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" src="https://cdn.example/clip.mp4" data-start="0.25" data-duration="1.5" data-track-index="7" muted></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
+    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" src="https://cdn.example/clip.mp4" onerror="alert(1)" data-start="0.25" data-duration="1.5" data-track-index="7" muted></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
   );
 
   const result = spawnSync(
@@ -41,7 +41,28 @@ test("assemble hoists an approved timed frame video to the host root", () => {
   assert.match(index, /data-duration="1\.5"/);
   assert.match(index, /data-track-index="1007"/);
   assert.match(index, /src="https:\/\/cdn\.example\/clip\.mp4"/);
+  assert.doesNotMatch(index, /onerror=/i);
   assert.doesNotMatch(frame, /<video\b/i);
+});
+
+test("rejects an approved video with missing admission timing", () => {
+  const project = mkdtempSync(join(tmpdir(), "hf-frame-video-missing-"));
+  mkdirSync(join(project, "compositions"));
+  writeFileSync(
+    join(project, "STORYBOARD.md"),
+    "---\nformat: 16:9\n---\n\n## Frame 1\n- status: built\n- duration: 2s\n- src: compositions/frame-1.html\n",
+  );
+  writeFileSync(
+    join(project, "compositions", "frame-1.html"),
+    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" src="clip.mp4" data-duration="1" data-track-index="0"></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
+  );
+  const result = spawnSync(
+    process.execPath,
+    [join(skillDir, "scripts", "assemble-index.mjs"), "--hyperframes", project],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must declare quoted data-start/i);
 });
 
 test("does not hoist declarations hidden in comments or scripts", () => {

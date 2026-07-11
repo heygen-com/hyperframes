@@ -162,7 +162,8 @@ function findRootTag(html) {
 }
 
 function attrValueFrom(attrs, name) {
-  const match = attrs.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = attrs.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
   return match ? (match[1] ?? match[2]) : null;
 }
 
@@ -177,9 +178,18 @@ function hoistApprovedVideos(html, label) {
   const repaired = html.replace(re, (full, attrs, inner, offset) => {
     if (scan[offset] !== "<") return full;
     if (attrValueFrom(attrs, "data-frame-video") !== "approved") return full;
-    const start = Number(attrValueFrom(attrs, "data-start"));
-    const duration = Number(attrValueFrom(attrs, "data-duration"));
-    const track = Number(attrValueFrom(attrs, "data-track-index"));
+    const rawStart = attrValueFrom(attrs, "data-start");
+    const rawDuration = attrValueFrom(attrs, "data-duration");
+    const rawTrack = attrValueFrom(attrs, "data-track-index");
+    if (rawStart === null || rawDuration === null || rawTrack === null) {
+      errors.push(
+        `${label}: approved frame video must declare quoted data-start, data-duration, and data-track-index`,
+      );
+      return full;
+    }
+    const start = Number(rawStart);
+    const duration = Number(rawDuration);
+    const track = Number(rawTrack);
     if (
       !Number.isFinite(start) ||
       !Number.isFinite(duration) ||
@@ -196,7 +206,9 @@ function hoistApprovedVideos(html, label) {
       .replace(/\sdata-start\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
       .replace(/\sdata-duration\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
       .replace(/\sdata-track-index\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sclass\s*=\s*(?:"[^"]*"|'[^']*')/i, "");
+      .replace(/\sclass\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
+      .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      .replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
     videos.push({ attrs: cleanedAttrs.trim(), inner, start, duration, track });
     return "<!-- approved frame video hoisted by assemble-index -->";
   });
