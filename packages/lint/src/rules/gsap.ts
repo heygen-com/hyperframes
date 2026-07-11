@@ -1020,9 +1020,16 @@ export const gsapRules: LintRule<LintContext>[] = [
       // For each scene, check if there's a visibility:hidden set after exit tweens
       for (const tag of sceneElements) {
         const id = readAttr(tag.raw, "id") || "";
-        // Check if this scene has exit tweens (opacity: 0)
-        const exitPattern = new RegExp(`["']#${id}["'][^)]*opacity\\s*:\\s*0`);
-        const hasExit = exitPattern.test(content);
+        // Check for an actual exit tween. A fromTo entrance often puts
+        // opacity:0 in its FIRST vars object; that is not an exit and the final
+        // scene must remain visible through the last frame.
+        const toExitPattern = new RegExp(
+          `\\.to\\(\\s*["']#${id}["']\\s*,\\s*\\{[^}]*opacity\\s*:\\s*0`,
+        );
+        const fromToExitPattern = new RegExp(
+          `\\.fromTo\\(\\s*["']#${id}["']\\s*,\\s*\\{[^}]*\\}\\s*,\\s*\\{[^}]*opacity\\s*:\\s*0`,
+        );
+        const hasExit = toExitPattern.test(content) || fromToExitPattern.test(content);
         if (!hasExit) continue;
 
         // Check if there's a hard visibility kill

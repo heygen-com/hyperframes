@@ -1698,4 +1698,25 @@ describe("GSAP rules", () => {
     const finding = result.findings.find((f) => f.code === "gsap_non_transform_motion");
     expect(finding).toBeUndefined();
   });
+
+  it("scene_layer_missing_visibility_kill: does NOT mistake fromTo entrance opacity for an exit", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="scene1"></div>
+    <div id="scene2"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#scene1", { opacity: 0, duration: 0.5 }, 2.0);
+    tl.set("#scene1", { visibility: "hidden" }, 2.5);
+    tl.fromTo("#scene2", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 2.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "scene_layer_missing_visibility_kill");
+    expect(finding).toBeUndefined();
+  });
 });
