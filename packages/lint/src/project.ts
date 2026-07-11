@@ -200,7 +200,9 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) out.push(...collectHtmlFiles(join(dir, entry.name), relPath));
-        else if (entry.isFile() && entry.name.endsWith(".html")) out.push(relPath);
+        else if (entry.isFile() && entry.name.endsWith(".html") && !entry.name.startsWith("._")) {
+          out.push(relPath);
+        }
       }
       return out;
     };
@@ -442,7 +444,9 @@ function lintTextureMaskAssetNotFound(
 function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
   try {
-    const rootHtmlFiles = readdirSync(projectDir).filter((f) => f.endsWith(".html"));
+    const rootHtmlFiles = readdirSync(projectDir).filter(
+      (file) => file.endsWith(".html") && !file.startsWith("._"),
+    );
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
       if (file === "caption-skin.html") continue;
