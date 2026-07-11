@@ -158,6 +158,16 @@ export interface CaptureOptions {
    * warmup loop).
    */
   lockWarmupTicks?: boolean;
+  /**
+   * drawElement self-verify ground-truth sample count for this session.
+   * Overrides the HF_DE_VERIFY default (4). The parallel coordinator raises
+   * it for multi-worker drawElement capture — N concurrent hardware-GPU
+   * browsers widen the damage surface (compositor tile eviction under
+   * GPU/memory pressure), and each worker only drains ~1/N of the shared
+   * sample grid, thinning effective coverage exactly when risk peaks.
+   * Clamped to 0..8 like the env knob; HF_DE_VERIFY, when set, still wins.
+   */
+  deVerifySamples?: number;
 }
 
 export interface CaptureVideoMetadataHint {

@@ -459,6 +459,24 @@ async function executeWorkerTask(
   }
 }
 
+/**
+ * drawElement self-verify sample count for multi-worker capture. Each worker
+ * arms the same shared sample grid but drains only ~1/N of it, and N
+ * concurrent hardware-GPU browsers are exactly where compositor-tile damage
+ * shows up (wild 0.7.52 black-slab report) — so density rises with worker
+ * count: 4 base + 2 per extra worker, clamped to the verify path's max of 8.
+ * A caller-set value passes through untouched, and explicit HF_DE_VERIFY
+ * still overrides inside the session.
+ */
+export function resolveParallelDeVerifySamples(
+  callerValue: number | undefined,
+  workerCount: number,
+): number | undefined {
+  if (callerValue !== undefined) return callerValue;
+  if (workerCount <= 1) return undefined;
+  return Math.min(8, 4 + 2 * (workerCount - 1));
+}
+
 export async function executeParallelCapture(
   serverUrl: string,
   workDir: string,
@@ -499,12 +517,20 @@ export async function executeParallelCapture(
   };
 
   const parallel = tasks.length > 1;
+  const deVerifySamples = resolveParallelDeVerifySamples(
+    captureOptions.deVerifySamples,
+    tasks.length,
+  );
+  const workerCaptureOptions: CaptureOptions =
+    deVerifySamples === captureOptions.deVerifySamples
+      ? captureOptions
+      : { ...captureOptions, deVerifySamples };
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
         task,
         serverUrl,
-        captureOptions,
+        workerCaptureOptions,
         createBeforeCaptureHook,
         signal,
         onFrameCaptured,

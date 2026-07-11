@@ -6,6 +6,7 @@ import {
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
   shouldVerifyWorkerGpu,
+  resolveParallelDeVerifySamples,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
 
@@ -174,5 +175,26 @@ describe("shouldVerifyWorkerGpu", () => {
   it("returns false when config is undefined", () => {
     expect(shouldVerifyWorkerGpu(0, undefined)).toBe(false);
     expect(shouldVerifyWorkerGpu(3, undefined)).toBe(false);
+  });
+});
+
+describe("resolveParallelDeVerifySamples", () => {
+  it("densifies with worker count: 4 base + 2 per extra worker", () => {
+    expect(resolveParallelDeVerifySamples(undefined, 2)).toBe(6);
+    expect(resolveParallelDeVerifySamples(undefined, 3)).toBe(8);
+  });
+
+  it("clamps at the verify path's max of 8", () => {
+    expect(resolveParallelDeVerifySamples(undefined, 5)).toBe(8);
+    expect(resolveParallelDeVerifySamples(undefined, 16)).toBe(8);
+  });
+
+  it("leaves single-worker capture on the session default", () => {
+    expect(resolveParallelDeVerifySamples(undefined, 1)).toBeUndefined();
+    expect(resolveParallelDeVerifySamples(undefined, 0)).toBeUndefined();
+  });
+
+  it("passes a caller-set value through untouched", () => {
+    expect(resolveParallelDeVerifySamples(2, 3)).toBe(2);
   });
 });

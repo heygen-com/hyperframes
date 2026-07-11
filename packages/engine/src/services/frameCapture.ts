@@ -3125,7 +3125,9 @@ async function captureDeVerificationFrames(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  const kRaw = Number(process.env.HF_DE_VERIFY ?? "4");
+  // Explicit HF_DE_VERIFY wins; otherwise the session's own sample count
+  // (raised by the parallel coordinator for multi-worker DE), then default 4.
+  const kRaw = Number(process.env.HF_DE_VERIFY ?? session.options.deVerifySamples ?? "4");
   const k = Number.isFinite(kRaw) ? Math.max(0, Math.min(8, Math.floor(kRaw))) : 4;
   if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
   if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
