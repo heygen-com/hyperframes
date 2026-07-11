@@ -185,84 +185,87 @@
         // 4. 8.8s-14s: Shift Right (x: 1320, scale: 75%) for Editing Skills graphic (left)
         // 5. 14s-17s: Final Reveal (Center, scale: 100%)
 
-        // Initial state
-        gsap.set("#a-roll", {
-          x: 1100,
-          y: 540,
-          xPercent: -50,
-          yPercent: -50,
-          width: 1920 * 0.6,
-          height: 1080 * 0.6,
-        });
-
-        // 1. Intro Scale Up (0s - 1.8s)
-        tl.to(
-          "#a-roll",
-          {
-            x: 1200,
-            width: 1920 * 0.8,
-            height: 1080 * 0.8,
-            duration: 1.8,
-            ease: "power2.inOut",
-          },
-          0,
-        );
-
-        // 2. Moment 1: 47% Graphic Trigger (1.8s) - Shift Left
-        tl.to(
-          "#a-roll",
-          {
-            x: 600,
+        const aRoll = document.querySelector("#a-roll");
+        if (aRoll) {
+          // Initial state
+          gsap.set(aRoll, {
+            x: 1100,
             y: 540,
-            width: 1920 * 0.7,
-            height: 1080 * 0.7,
-            duration: 0.5,
-            ease: "power2.inOut",
-          },
-          1.8,
-        );
+            xPercent: -50,
+            yPercent: -50,
+            width: 1920 * 0.6,
+            height: 1080 * 0.6,
+          });
 
-        // 3. Moment 2: 62% Graphic Trigger (4.6s) - Shift Center-Bottom
-        tl.to(
-          "#a-roll",
-          {
-            x: 960,
-            y: 750,
-            width: 1920 * 0.7,
-            height: 1080 * 0.7,
-            duration: 0.5,
-            ease: "power2.inOut",
-          },
-          4.6,
-        );
+          // 1. Intro Scale Up (0s - 1.8s)
+          tl.to(
+            aRoll,
+            {
+              x: 1200,
+              width: 1920 * 0.8,
+              height: 1080 * 0.8,
+              duration: 1.8,
+              ease: "power2.inOut",
+            },
+            0,
+          );
 
-        // 4. Moment 3: Editing Skills Trigger (8.8s) - Shift Right
-        tl.to(
-          "#a-roll",
-          {
-            x: 1320,
-            y: 540,
-            width: 1920 * 0.75,
-            height: 1080 * 0.75,
-            duration: 0.5,
-            ease: "power2.inOut",
-          },
-          8.8,
-        );
+          // 2. Moment 1: 47% Graphic Trigger (1.8s) - Shift Left
+          tl.to(
+            aRoll,
+            {
+              x: 600,
+              y: 540,
+              width: 1920 * 0.7,
+              height: 1080 * 0.7,
+              duration: 0.5,
+              ease: "power2.inOut",
+            },
+            1.8,
+          );
 
-        // 5. Final Reveal (14s - 17s)
-        tl.to(
-          "#a-roll",
-          {
-            x: 960,
-            y: 540,
-            width: 1920 * 1.0,
-            height: 1080 * 1.0,
-            duration: 1.0,
-            ease: "power2.inOut",
-          },
-          14,
-        );
+          // 3. Moment 2: 62% Graphic Trigger (4.6s) - Shift Center-Bottom
+          tl.to(
+            aRoll,
+            {
+              x: 960,
+              y: 750,
+              width: 1920 * 0.7,
+              height: 1080 * 0.7,
+              duration: 0.5,
+              ease: "power2.inOut",
+            },
+            4.6,
+          );
+
+          // 4. Moment 3: Editing Skills Trigger (8.8s) - Shift Right
+          tl.to(
+            aRoll,
+            {
+              x: 1320,
+              y: 540,
+              width: 1920 * 0.75,
+              height: 1080 * 0.75,
+              duration: 0.5,
+              ease: "power2.inOut",
+            },
+            8.8,
+          );
+
+          // 5. Final Reveal (14s - 17s)
+          tl.to(
+            aRoll,
+            {
+              x: 960,
+              y: 540,
+              width: 1920 * 1.0,
+              height: 1080 * 1.0,
+              duration: 1.0,
+              ease: "power2.inOut",
+            },
+            14,
+          );
+        }
 
         window.__timelines["main-video"] = tl;
       </script>

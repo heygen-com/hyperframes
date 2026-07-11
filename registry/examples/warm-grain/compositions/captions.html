@@ -115,35 +115,12 @@
         const box = document.querySelector('[data-composition-id="captions"] #caption-box');
         const textEl = document.querySelector('[data-composition-id="captions"] #caption-text');
 
-        lines.forEach((line, index) => {
-          // Fade in and set text
-          tl.set(box, { visibility: "visible" }, line.start);
-          tl.to(
-            box,
-            {
-              opacity: 1,
-              duration: 0.1,
-              ease: "power2.out",
-              onStart: () => {
-                textEl.textContent = line.text;
-              },
-            },
-            line.start,
-          );
-
-          // Fade out at the end of the line
-          tl.to(
-            box,
-            {
-              opacity: 0,
-              duration: 0.1,
-              ease: "power2.in",
-            },
-            line.end,
-          );
-
-          // Hard kill to ensure caption is hidden
-          tl.set(box, { opacity: 0, visibility: "hidden" }, line.end + 0.1);
+        lines.forEach((line) => {
+          // Switch captions atomically so contrast checks never sample a
+          // translucent text/background pair during a fade.
+          tl.set(textEl, { textContent: line.text }, line.start);
+          tl.set(box, { opacity: 1, visibility: "visible" }, line.start);
+          tl.set(box, { opacity: 0, visibility: "hidden" }, line.end);
         });
 
         window.__timelines = window.__timelines || {};

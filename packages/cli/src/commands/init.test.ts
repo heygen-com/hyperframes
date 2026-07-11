@@ -43,6 +43,26 @@ function expectScaffoldedScripts(target: string): void {
 }
 
 describe("hyperframes init flag rename", () => {
+  it("warm-grain without a video guards its optional A-roll timeline", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      const res = runInit([
+        target,
+        "--example",
+        "warm-grain",
+        "--non-interactive",
+        "--skip-skills",
+      ]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).not.toContain('id="a-roll"');
+      expect(html).toContain("if (aRoll) {");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--example blank scaffolds a bundled project with npm scripts", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
