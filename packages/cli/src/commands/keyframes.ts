@@ -788,6 +788,7 @@ function findProjectRoot(entryPath: string): string {
   let candidate = entryDir;
   for (;;) {
     if (existsSync(join(candidate, "index.html"))) return candidate;
+    if (existsSync(join(candidate, ".git"))) return entryDir;
     const parent = dirname(candidate);
     if (parent === candidate) return entryDir;
     candidate = parent;

@@ -133,6 +133,89 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
   });
 }
 
+function rebaseRelativePath(urlValue: string, fromDir: string, toDir: string): string {
+  const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
+  if (!basePath) return urlValue;
+  const absolutePath = resolve(fromDir, basePath);
+  const rebased = relative(resolve(toDir), absolutePath).split(sep).join("/");
+  return appendSuffixToUrl(rebased, suffix);
+}
+
+function rebaseSrcsetPaths(srcsetValue: string, fromDir: string, toDir: string): string {
+  if (!srcsetValue) return srcsetValue;
+  return srcsetValue
+    .split(",")
+    .map((rawCandidate) => {
+      const candidate = rawCandidate.trim();
+      if (!candidate) return candidate;
+      const parts = candidate.split(/\s+/);
+      const first = parts[0] ?? "";
+      if (parts.length === 0 || !isRelativeUrl(first)) return candidate;
+      parts[0] = rebaseRelativePath(first, fromDir, toDir);
+      return parts.join(" ");
+    })
+    .join(", ");
+}
+
+function rebaseColorGradingLutPath(value: string, fromDir: string, toDir: string): string {
+  if (!value.trim().startsWith("{")) return value;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return value;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return value;
+
+  const lut = Reflect.get(parsed, "lut");
+  if (typeof lut === "string") {
+    if (!isRelativeUrl(lut)) return value;
+    Reflect.set(parsed, "lut", rebaseRelativePath(lut, fromDir, toDir));
+    return JSON.stringify(parsed);
+  }
+  if (typeof lut !== "object" || lut === null || Array.isArray(lut)) return value;
+  const lutSrc = Reflect.get(lut, "src");
+  if (typeof lutSrc !== "string" || !isRelativeUrl(lutSrc)) return value;
+  Reflect.set(lut, "src", rebaseRelativePath(lutSrc, fromDir, toDir));
+  return JSON.stringify(parsed);
+}
+
+function rebaseEntryAuthoredAssetPaths(
+  document: Document,
+  sourceDir: string,
+  projectDir: string,
+): void {
+  for (const styleEl of [...document.querySelectorAll("style")]) {
+    styleEl.textContent = rebaseCssUrls(styleEl.textContent || "", sourceDir, projectDir);
+  }
+  for (const el of [...document.querySelectorAll("[style]")]) {
+    const styleAttr = el.getAttribute("style");
+    if (styleAttr) el.setAttribute("style", rebaseCssUrls(styleAttr, sourceDir, projectDir));
+  }
+  for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {
+    if (el.tagName === "LINK" && (el.getAttribute("rel") || "").toLowerCase() === "stylesheet")
+      continue;
+    if (el.tagName === "SCRIPT" && el.hasAttribute("src")) continue;
+    for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
+      const value = el.getAttribute(attr);
+      if (!value || !isRelativeUrl(value)) continue;
+      el.setAttribute(attr, rebaseRelativePath(value, sourceDir, projectDir));
+    }
+  }
+  for (const el of [...document.querySelectorAll("[srcset]")]) {
+    const srcset = el.getAttribute("srcset");
+    if (srcset) el.setAttribute("srcset", rebaseSrcsetPaths(srcset, sourceDir, projectDir));
+  }
+  for (const el of [...document.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)]) {
+    const value = el.getAttribute(HF_COLOR_GRADING_ATTR);
+    if (value)
+      el.setAttribute(
+        HF_COLOR_GRADING_ATTR,
+        rebaseColorGradingLutPath(value, sourceDir, projectDir),
+      );
+  }
+}
+
 function inlineCssFile(
   css: string,
   cssFileDir: string,
@@ -717,6 +800,10 @@ export async function bundleToSingleHtml(
 
   const withInterceptor = injectInterceptor(compiled, options?.runtime ?? "inline");
   const document = parseHTMLContent(withInterceptor);
+
+  if (resolve(sourceDir) !== resolve(projectDir)) {
+    rebaseEntryAuthoredAssetPaths(document, sourceDir, projectDir);
+  }
 
   // Inline local CSS
   const localCssChunks: string[] = [];
