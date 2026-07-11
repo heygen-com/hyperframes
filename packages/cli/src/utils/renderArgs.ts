@@ -117,6 +117,14 @@ export function resolveBrowserTimeoutMsArg(raw: string | undefined): number | un
   return result.value;
 }
 
+/** Navigation budget shared by snapshot/check/inspect browser diagnostics. */
+export function resolveDiagnosticNavigationTimeoutMs(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const parsed = Number(env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10_000;
+}
+
 // ── --composition ──────────────────────────────────────────────────────
 
 export type CompositionEntryParseError =
