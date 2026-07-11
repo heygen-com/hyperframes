@@ -938,6 +938,15 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
           data-track-index="1"
         ></video>
       </div>
+      <!-- Preserve the source program audio while the visual video stays muted. -->
+      <audio
+        id="source-audio"
+        src="input-video.mp4"
+        data-start="0"
+        data-duration="121.2"
+        data-track-index="10"
+        data-volume="1"
+      ></audio>
 
       <!-- Layer 2: each card-host sits at the bounds dictated by its layout. -->
       <!-- IMPORTANT: every card-host MUST carry BOTH "card-host" and "clip" classes. -->
@@ -1164,6 +1173,11 @@ PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
 ```
 
 `hyperframes render <dir>` reads `<dir>/index.html` and produces the MP4.
+The canonical composition keeps the visual `<video>` muted and mounts the same
+source as the root `#source-audio` track, so the rendered MP4 preserves the
+talking-head audio without a manual remux. This uses a separate audio track
+rather than `data-has-audio="true"` so its volume and ducking remain independently
+controllable on the timeline.
 The flag `PRODUCER_BROWSER_GPU_MODE=hardware` (or `--browser-gpu`) is
 strongly recommended on macOS — software-only Chrome rendering times out
 on most laptops.
