@@ -125,6 +125,15 @@
   "ignoreExports": [
     // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
     {
+      "file": "packages/studio/src/player/components/timelineEditing.ts",
+      "exports": [
+        "selectTimelineElementsInMarquee",
+        "TimelineGroupResizeEdge",
+        "TimelineGroupTimingMember",
+      ],
+    },
+    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
+    {
       "file": "packages/studio/src/hooks/timelineElementsMove.ts",
       "exports": ["useTimelineElementsMove"],
     },
@@ -668,6 +677,10 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
+      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
+      // removed by studio-dnd/pr22 when the final config lands.
+      "packages/studio/src/components/editor/LayersPanel.test.ts",
+      "packages/studio/src/player/lib/timelineIframeHelpers.ts",
       // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
       // removed by studio-dnd/pr22 when the final config lands.
       "packages/studio/src/components/sidebar/AssetCard.tsx",

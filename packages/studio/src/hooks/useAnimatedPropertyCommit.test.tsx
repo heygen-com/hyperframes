@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
+import { mountReactHarness } from "./domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,13 +58,7 @@ function renderHookWith(
     onReady(commitAnimatedProperties);
     return null;
   }
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => {
-    root.render(<Harness />);
-  });
-  return root;
+  return mountReactHarness(<Harness />);
 }
 
 function renderCommitHook(
