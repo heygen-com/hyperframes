@@ -17,7 +17,7 @@ const PICKER_BLOCK_SELECTOR = [
   "[data-hyperframes-picker-block]",
   "[data-hyper-shader-loading]",
 ].join(",");
-const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 
 export type PickerModule = {
   enablePickMode: () => void;

@@ -6,6 +6,8 @@ import {
   normalizeHfColorGradingWithVariables,
   type HfColorGradingTarget,
   type NormalizedHfColorGrading,
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
+  COLOR_GRADING_AUTHORED_OPACITY_ATTR,
 } from "../colorGrading";
 import {
   DEFAULT_MAX_CUBE_LUT_SIZE,
@@ -196,8 +198,51 @@ type LutCacheEntry =
 
 const LUT_CACHE = new Map<string, LutCacheEntry>();
 const COLOR_GRADING_CANVAS_ATTR = "data-hf-color-grading-canvas";
-const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
 const COLOR_GRADING_CANVAS_CLASS = "__hf_color_grading_canvas__";
+
+/**
+ * Capture each color-graded element's AUTHORED inline opacity before any
+ * animation engine can mutate it.
+ *
+ * The grading engine hides its source elements with `opacity: 0 !important`
+ * and mirrors their pixels onto a canvas — so at runtime, a graded element's
+ * inline/computed opacity no longer represents authored state. Everything that
+ * later re-reads element state (GSAP from()-tween re-initialization after an
+ * invalidate or a studio soft reload, restoring the source when grading is
+ * removed, lint/selection tooling) needs the authored value, and by then it is
+ * unrecoverable from the DOM. Stamp it onto the element as
+ * `data-hf-authored-opacity` (empty string = no authored inline opacity).
+ *
+ * Must be installed at runtime-bundle evaluation, while the document is still
+ * parsing: the runtime `<script>` sits in `<head>`, and the HTML parser
+ * performs a microtask checkpoint before executing each parser-inserted
+ * script, so the observer stamps every composition element before the
+ * composition's own inline animation script runs. The observer stays alive so
+ * late insertions (inlined sub-compositions) are stamped at insert time, and
+ * the has-attribute guard makes re-inserted (already-stamped) elements a no-op.
+ */
+export function installAuthoredOpacityCapture(): void {
+  if (typeof MutationObserver === "undefined" || typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root) return;
+  const stamp = (el: Element): void => {
+    if (!(el instanceof HTMLElement)) return;
+    if (el.hasAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR)) return;
+    el.setAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR, el.style.opacity);
+  };
+  const scan = (node: Node): void => {
+    if (!(node instanceof Element)) return;
+    if (node.hasAttribute(HF_COLOR_GRADING_ATTR)) stamp(node);
+    for (const el of node.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)) stamp(el);
+  };
+  scan(root);
+  new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) scan(node);
+    }
+  }).observe(root, { childList: true, subtree: true });
+}
+
 // Map insertion order gives us simple FIFO eviction for authoring sessions that cycle LUTs.
 const MAX_LUT_CACHE_ENTRIES = 16;
 const DEFAULT_COMPARE: RuntimeColorGradingCompareState = {
@@ -1234,8 +1279,20 @@ function applyUniforms(
 
 function hideSourceElement(entry: ColorGradingEntry): void {
   if (!entry.sourceHidden) {
-    entry.sourceInlineOpacity = entry.element.style.getPropertyValue("opacity") || null;
-    entry.sourceInlineOpacityPriority = entry.element.style.getPropertyPriority("opacity");
+    // Prefer the parse-time authored capture: by the time the first hide runs,
+    // the inline opacity is usually an animation-engine transient (a from()
+    // tween's 0 at playhead 0), and restoring THAT when grading is removed
+    // would leave the element invisible. Fall back to the live inline value
+    // for documents loaded without the capture installed.
+    // `null` = never captured; "" = captured, authored none (store as null).
+    const authored = entry.element.getAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR);
+    if (authored !== null) {
+      entry.sourceInlineOpacity = authored === "" ? null : authored;
+      entry.sourceInlineOpacityPriority = "";
+    } else {
+      entry.sourceInlineOpacity = entry.element.style.getPropertyValue("opacity") || null;
+      entry.sourceInlineOpacityPriority = entry.element.style.getPropertyPriority("opacity");
+    }
   }
   entry.element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
   entry.element.style.setProperty("opacity", "0", "important");
@@ -1422,6 +1479,32 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   if (typeof ResizeObserver !== "undefined") {
     entry.resizeObserver = new ResizeObserver(redraw);
     entry.resizeObserver.observe(entry.element);
+  }
+  // A studio drag/nudge moves the source via its inline transform — no media
+  // event or ResizeObserver fires for that, so the graded canvas (the visible
+  // pixels) froze in place until the next seek while the invisible source
+  // followed the pointer. Track geometry-relevant inline style and re-sync the
+  // canvas, rAF-throttled. The signature guard keeps the opacity/visibility
+  // writes drawEntry itself makes (the source hide) from re-triggering a loop.
+  if (typeof MutationObserver !== "undefined") {
+    const geometrySignature = () => {
+      const s = entry.element.style;
+      return `${s.transform}|${s.translate}|${s.rotate}|${s.scale}|${s.left}|${s.top}|${s.width}|${s.height}`;
+    };
+    let lastGeometry = geometrySignature();
+    let framePending = false;
+    const styleObserver = new MutationObserver(() => {
+      if (framePending) return;
+      if (geometrySignature() === lastGeometry) return;
+      framePending = true;
+      requestAnimationFrame(() => {
+        framePending = false;
+        lastGeometry = geometrySignature();
+        drawEntry(entry);
+      });
+    });
+    styleObserver.observe(entry.element, { attributes: true, attributeFilter: ["style"] });
+    entry.cleanup.push(() => styleObserver.disconnect());
   }
 }
 
