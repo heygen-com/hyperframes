@@ -1,3 +1,4 @@
+import type { TimelineSnapType } from "./timelineSnapping";
 import { useRef, useState, useCallback, useMemo } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import {
@@ -41,14 +42,23 @@ export interface DraggedClipState {
   pointerOffsetY: number;
   previewStart: number;
   previewTrack: number;
-  previewLayerId: TimelineLayerId;
-  previewLayerIndex: number;
+  previewLayerId?: TimelineLayerId;
+  previewLayerIndex?: number;
   /** Beat time the clip will snap to on drop, for the grid-line highlight. */
-  snapBeatTime: number | null;
-  snapGuideTime: number | null;
-  snapGuideKind: TimelineSnapKind | null;
+  snapBeatTime?: number | null;
+  snapGuideTime?: number | null;
+  snapGuideKind?: TimelineSnapKind | null;
   /** Sibling-scoped z-index reorder intent resolved from the vertical drag. */
-  previewStackingReorder: TimelineStackingReorderIntent | null;
+  previewStackingReorder?: TimelineStackingReorderIntent | null;
+  /**
+   * When non-null, the drop inserts a NEW track at this visual row boundary
+   * (0 = above the top lane) instead of landing on previewTrack. Optional —
+   * populated only by the lane-zone drag path (TimelineLanes).
+   */
+  insertRow?: number | null;
+  /** Snap target the clip will land on, for the guide highlight (lane-zone drag path). */
+  snapTime?: number | null;
+  snapType?: TimelineSnapType | null;
   started: boolean;
 }
 
@@ -56,11 +66,16 @@ export interface ResizingClipState {
   element: TimelineElement;
   edge: "start" | "end";
   originClientX: number;
+  /**
+   * scrollLeft at gesture start. Optional so pre-existing constructors/tests
+   * stay valid; when absent the first preview update captures the current value.
+   */
+  originScrollLeft?: number;
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
-  snapGuideTime: number | null;
-  snapGuideKind: TimelineSnapKind | null;
+  snapGuideTime?: number | null;
+  snapGuideKind?: TimelineSnapKind | null;
   started: boolean;
 }
 
