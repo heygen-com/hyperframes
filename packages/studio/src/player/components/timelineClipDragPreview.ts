@@ -4,8 +4,10 @@ import type { TimelineLayerId } from "./timelineTrackOrder";
 
 interface DragPreviewState {
   element: Pick<TimelineElement, "track">;
-  previewLayerId: TimelineLayerId;
-  previewLayerIndex: number;
+  // Optional during the NLE coexistence window: the intermediate
+  // DraggedClipState carries these only on the legacy drag path.
+  previewLayerId?: TimelineLayerId;
+  previewLayerIndex?: number;
 }
 
 export interface TimelineMovePreview {
@@ -28,8 +30,8 @@ export function resolveDragPreviewPlacement(
 ): {
   previewStart: number;
   previewTrack: number;
-  previewLayerId: TimelineLayerId;
-  previewLayerIndex: number;
+  previewLayerId: TimelineLayerId | undefined;
+  previewLayerIndex: number | undefined;
   previewStackingReorder: TimelineStackingReorderIntent | null;
 } {
   if (groupMove.active) {

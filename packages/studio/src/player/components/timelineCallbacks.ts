@@ -39,10 +39,15 @@ export interface TimelineEditCallbacks {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
-  onMoveElements?: (
-    changes: TimelineGroupMoveChange[],
+  /**
+   * Batched move. Method syntax (bivariant) + union parameter so both the
+   * legacy group-editing shape (TimelineGroupMoveChange) and the NLE edit
+   * shape (TimelineGroupMoveEdit) type-check while both engines coexist.
+   */
+  onMoveElements?(
+    changes: Array<TimelineGroupMoveChange | TimelineGroupMoveEdit>,
     options?: TimelineGroupCommitOptions,
-  ) => Promise<void> | void;
+  ): Promise<void> | void;
   onResizeElements?: (
     changes: TimelineGroupResizeChange[],
     options?: TimelineGroupCommitOptions,
@@ -65,4 +70,14 @@ export interface TimelineEditCallbacks {
     toClipPercentage: number,
   ) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
+}
+
+/**
+ * NLE batched-move edit: the element plus exactly the fields the move changes.
+ * The legacy engine's TimelineGroupMoveChange carries resolved absolute values
+ * instead; onMoveElements accepts either while the engines coexist.
+ */
+export interface TimelineGroupMoveEdit {
+  element: TimelineElement;
+  updates: Pick<TimelineElement, "start" | "track">;
 }

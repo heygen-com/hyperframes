@@ -253,6 +253,8 @@ export const Timeline = memo(function Timeline({
     if (
       !draggedClip?.started ||
       trackOrder.length === 0 ||
+      draggedClip.previewLayerId === undefined ||
+      draggedClip.previewLayerIndex === undefined ||
       trackOrder.includes(draggedClip.previewLayerId)
     )
       return trackOrder;
