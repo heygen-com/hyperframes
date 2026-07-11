@@ -1,0 +1,929 @@
+
+########## PR2192 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2192 :: @vanceingalls :: COMMENTED ##########
+🟢 **LGTM** — leaf helpers land clean, persistence key stable, math checks out.
+
+**Focus items — verified.**
+
+*Persistence key (studioUiPreferences.ts).* The `STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences"` constant is byte-identical to `main`, and every new field (`timelineSnapEnabled`, `timeDisplayMode`, `timelineZoomMode`, `timelineManualZoomPercent`) is strictly additive to `StudioUiPreferences` — existing users' saved prefs still parse under the same key, and each new field is guarded by its own runtime type-check in `readStorage` so garbage / missing fields fall through to `undefined`. No migration risk. `snapEnabled` (canvas) and `timelineSnapEnabled` (timeline magnet) coexist as distinct fields — that's a naming close-call but it's an addition, not a rename, so no upgrade loss.
+
+*`computePinnedZoomPercent` math (timelineZoom.ts:110-123).* In manual mode `getTimelinePixelsPerSecond` computes `pps = fitPps × (percent / 100)`. Solving for `percent` gives `(currentPps / fitPps) × 100`, which is exactly what this returns. The four-way guard (`!isFinite`, `<= 0` on both inputs) covers zero-divide + NaN/Infinity + negative — falls back to `100` (a no-op pin at the current fit), which is the right degenerate. Clamp to `[MIN, MAX]` prevents a ratio outside slider bounds from silently becoming an unreachable zoom. Round-trip test on line 62 verifies `getTimelinePixelsPerSecond(fitPps, "manual", percent)` restores `currentPps` — closes the loop.
+
+*Log-slider math (timelineZoomPercentToSlider / timelineSliderToZoomPercent).* `LOG_MIN = ln(10) ≈ 2.303`, `LOG_MAX = ln(2000) ≈ 7.601`. At `percent = 100`: `(ln(100) - ln(10)) / (ln(2000) - ln(10)) × 100 ≈ 43.4` — test at line 35 asserts this exact formula. Round-trip test on lines 80-88 verifies `slider→zoom→slider` stays within ±1% for [10, 100, 500, 2000] — sufficient tolerance for a slider that only takes integer pixel positions. Slider input is clamped `[0, 100]` before applying, so out-of-range inputs can't produce non-finite output.
+
+*Test coverage.* Every new export has a direct test: `computePinnedZoomPercent` (4 tests: no-op / round-trip / clamp / degenerate fallback), `timelineZoomPercentToSlider` / `timelineSliderToZoomPercent` (3+2 boundary + round-trip), `timelineSnapEnabled` (2: round-trip + non-boolean reject), `timelineZoomMode`+`timelineManualZoomPercent` (2: round-trip pinned mode + invalid-input reject), `isAudioTimelineElement` (5), `isMusicTrack` (5), `resolveBeatSourceTrack` (7). No dark exports.
+
+*One nit, non-blocking.* `resolveBeatSourceTrack` docstring says "the LONGEST untagged audio clip is used as a fallback" — actual code (`if (!best || el.duration > best.duration) best = el`) picks the first max on ties. Not wrong, just worth knowing if the ordering matters for beat analysis. Tests don't exercise a tie.
+
+_R1 by Via_
+
+
+########## PR2193 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2193 :: @vanceingalls :: COMMENTED ##########
+🟢 **LGTM** — seek-restore priority matches the PR body claim, `revealIframe` is a defensive read-side landing before the write-side (safe order).
+
+**Focus items — verified.**
+
+*Seek priority contract (`resolveReloadSeekTime`, useTimelineSyncCallbacks.ts:70-79).* The one-liner `target = input.pendingSeek ?? input.requestedSeek ?? input.storeCurrentTime` produces exactly the priority order the PR body claims: pending → deep-link → store playhead. The `??` operator treats `0` as a valid explicit position (not nullish), so a `pendingSeek: 0` correctly wins over a non-null `requestedSeek` — the test at lines 93-102 pins this. Clamp to `[0, duration]` via the `<= 0 → 0` guard + `Math.min(target, duration)` is the "one sanctioned move" the PR body calls out (test at line 82-91 pins `pendingSeek: 18` + `duration: 9` → returns `9`). Negative/NaN inputs return `0` unconditionally — the alternative "fall through to storeCurrentTime on invalid pendingSeek" would let a bad ref value silently mask an otherwise-good store playhead, so the current strict-guard behavior is defensible even if slightly counter-intuitive.
+
+*`revealIframe` — safe read-side landing.* The comment (line 59) says "Undo the `visibility: hidden` that refreshPlayer sets across a full reload" — I checked `refreshPlayer` at this SHA (packages/studio/src/player/hooks/useTimelinePlayer.ts:475-484) and it does NOT currently set `iframe.style.visibility = "hidden"`. That write must land in a later stack PR. The consequence is fine and probably intentional: shipping the reveal side first means every existing reload path continues to work identically (the guard `iframe.style.visibility === "hidden"` no-ops when never set), and once the hide side lands the pair is already wired — the reverse ordering (hide-before-reveal) is what would introduce a "black player" window. Confirm this reasoning with the follow-up PR: search for the `visibility = "hidden"` write and make sure every path that sets it either awaits `initializeAdapter`'s success (line 283 reveal) OR the 5s safety-net (line 394 reveal), with no early-return between hide and either resolution.
+
+*Guard-seek before real seek (initializeAdapter:276-278).* The `guardTime = startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001` two-step forces a time boundary crossing so `adapter.seek(startTime)` re-evaluates rather than no-op-ing. Comment (267-275) explains why exhaustively — this is the exact "just-dropped clip stayed invisible until nudge" fix. Correct reasoning, and the `0.001` epsilon is small enough it won't be user-visible on a 30fps timeline (0.033s frame).
+
+*Store-request consumption ordering (initializeAdapter:264-265).* `pendingSeekRef.current = null; if (storeSeek != null) clearSeekRequest();` — both consumers cleared after the resolve pulled them, so a re-entrant `initializeAdapter` sees empty slots and correctly falls back to `storeCurrentTime`. Matches the "second overlapping reload" test at line 57-69.
+
+*Two reveal paths.* `initializeAdapter` reveals on the SUCCESS path (line 283) after the second seek renders the frame. The 5s safety-net (line 387-395) reveals unconditionally after either a last-try-then-give-up or a genuine timeout. Between these two, the failure-path I looked for is "initializeAdapter throws mid-flight after guard-seeking but before revealIframe" — line 302-338 is wrapped in `try {}` with `catch {}` at 338, so post-reveal work is soft-caught, but the reveal itself at 283 executes before that block starts. No hide-never-reveal path within this file.
+
+**Cross-PR watch (per R1 focus).** #2213's app-shell swap must preserve this contract. Two things to check on that PR: (1) neither of these two reveal call sites gets dropped; (2) if #2213 introduces the `visibility = "hidden"` write on refreshPlayer, its placement must guarantee `onIframeLoad` fires afterward — an eager return before iframe.src is re-set would leave the hide with no consumer to reveal.
+
+_R1 by Via_
+
+
+########## PR2194 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2194 :: @vanceingalls :: COMMENTED ##########
+🟢 **LGTM** — no new attack surface, no auth/traversal/tenant changes, batch semantics match sequential-of-N.
+
+**Focus items — verified.**
+
+*Scope of the change.* Despite the title "files route extensions", this PR does not add a route or a new file-serving path — it adds one variant (`shift-positions-batch`) to the existing discriminated-union type `GsapMutationRequest` and dispatches it in the two existing executor functions (`executeGsapMutationAcorn` line 1112-1119, and the recast/parser-loaded async path line 1482-1489). No changes to `resolveProjectPath`, no new HTTP route registration, no new file-read/write primitive.
+
+*Auth / tenant boundary.* Handler at `api.post("/projects/:id/gsap-mutations/*", ...)` (line 2038) runs `resolveProjectPath` (line 2039-2041) unchanged from `main` — that helper is what enforces the project boundary and rejects `..`/absolute paths. Since the new op only substitutes a new branch inside the same executor, it inherits the exact same auth surface as `shift-positions`, `scale-positions`, etc. No cross-tenant read/write introduced.
+
+*Path-traversal.* No new path parsing. The `type: "shift-positions-batch"` payload contains only `shifts: Array<{ targetSelector: string; delta: number }>` — CSS selectors, not file paths. The traversal risk vector isn't reachable through this variant.
+
+*Response shape.* Same as sibling ops (line 2119-2128 in the shared response builder): `{ ok, changed, mutated, parsed, before, after, scriptText, path, backupPath }`. No new fields, no internal metadata leaked (server absolute paths never enter the payload; `res.filePath` at line 2127 is the project-relative form, unchanged from siblings).
+
+*Batch semantics vs sequential (the test that actually pins the invariant).* Test at lines 10-58 sets up two servers, runs two separate single `shift-positions` requests on one, and one batch request on the other with the same two `{targetSelector, delta}` pairs — asserts `batch.after === seqAfter`. That's a real atomicity + associativity check: folding `shiftPositionsInScript` over N selectors in one write must equal N sequential single writes. Passes only if `shiftPositionsInScript` is composition-safe (its second call sees the mutated script from its first call) — which the loop at lines 1112-1117 arranges by threading `script = shiftPositionsInScript(script, ...)` through iterations. Good.
+
+*`HOLD_SYNC_MUTATION_TYPES` inclusion (line 822-825).* `shift-positions-batch` is added to the hold-sync set alongside `shift-positions`. The comment above the set (~L819) explains why: a shift can move a keyframed position tween's start across `t=0`, changing hold-before-first-keyframe need. Same reasoning applies to N shifts. Correct.
+
+*Validation.* `findUnsafeMutationValues` (line 2048-2051) recursively walks the entire body and rejects any null / non-finite number — so `shifts[i].delta = NaN` or `null` gets caught at the outer gate before executor dispatch. The per-item `!Number.isFinite(s.delta) || s.delta === 0 || !s.targetSelector` guard at line 1114/1485 is a belt-and-suspenders skip for the zero-delta case (which the outer walker allows) — silent-skip rather than error is consistent with `shift-positions` at line 1109.
+
+**Two consistency nits (non-blocking, cheap follow-up):**
+
+1. *Empty-block fallback exclusion.* The "no GSAP block found" bail-out at line 2074 checks `body.type === "shift-positions" || body.type === "scale-positions"` and returns `{ok: true, changed: false}`. `shift-positions-batch` falls through to `{error: "no GSAP script found in file"}` at line 2088 with 400. If the intent is "batch of shifts on a file with no timeline is a no-op success" — mirror the sibling — add `shift-positions-batch` to that condition.
+2. *Missing `shifts` field crashes.* `for (const s of body.shifts)` at line 1114/1485 throws `TypeError` if a client sends `{type: "shift-positions-batch"}` with no `shifts` array. Handled by Hono's error middleware as 500, and the trust model here is "studio front-end sends its own JSON", so it's not a security issue — but it's the same pre-existing pattern (`shift-positions` has the same shape assumption on `targetSelector`). Consider a defensive `Array.isArray(body.shifts) || return 400` at the switch entry point in a follow-up if you're already touching the runtime shape guards.
+
+_R1 by Via_
+
+
+########## PR2195 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2195 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — pure math, complete coverage
+
+Elementary, but pleasing in its restraint. The placement resolver has been reduced to a set of unit-consistent primitives — `resolvePlacement`, `clampTrackToZone`, `isInsertAllowedForZone`, `resolveZoneDropPlacement` — each modest, each testable, each with its coverage certificate in the sibling file.
+
+### The pointed queries
+
+- **Unit consistency (seconds throughout).** `packages/studio/src/player/components/timelineCollision.ts:127` — `timeRangesOverlap(aStart, aEnd, bStart, bEnd)` operates in seconds; `end = start + duration` is the sole arithmetic; no pixel term contaminates the calculation. `resolveInsertRow` at :105 is the only pixel-domain input (`rowFloat` in track-height units) and returns a boundary integer — cleanly typed at the boundary.
+- **Half-open at the edge.** `timeRangesOverlap` uses strict `<` on both sides (:127). Clip A ending at t=5 and clip B starting at t=5 → `5 < 5` is false, so they are adjacent, not overlapping. Test file at :20 pins this explicitly (`touching at 2` → false). The `resolveZoneDropPlacement — shares a track for sequential (non-overlapping) clips` case at :245 verifies the invariant end-to-end.
+- **Empty inputs.** `resolvePlacement` with a `desiredTrack` outside `trackOrder` (:188) short-circuits to `{ track: desiredTrack, needsInsert: false }` — defensive and correct. `resolveInsertRow` with `trackCount === 0` (:110) returns 0 (insert-at-top). Both edges named in the focus are handled.
+- **Zone identity preserved.** `clampTrackToZone` (:10) and `isInsertAllowedForZone` (:30) form the boundary; a visual clip clamped is guaranteed to remain in the visual zone (walks up to the last visual row), an audio clip clamped is guaranteed to remain in the audio zone. Cross-tested at :256–:290.
+- **Self-exclusion during drag.** `isLaneFree(excludeKey)` at :139–:147 correctly filters the dragged clip out of its own collision computation — the "placeholder-scenario" test at :121–:133 nails it.
+
+### Cross-batch coherence
+
+Half-open convention is consistent with `#2198` (`overlapsInTime` uses `<` too, with an epsilon guard); adjacent-not-overlapping is the operative contract in both.
+
+_R1 by Via_
+
+
+########## PR2196 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2196 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — units clean, tie-break deterministic
+
+Snapping in miniature. The module keeps pixels and seconds strictly separated at the module boundary, resolves them once inside `snapMoveToTargets`, and never conflates the two again.
+
+### The pointed queries
+
+- **Pixel-vs-time unit consistency.** `packages/studio/src/player/components/timelineSnapping.ts:11` — `TIMELINE_SNAP_PX = 8` is documented as pixel radius; conversion to seconds happens exactly once at :80 (`thresholdSecs = TIMELINE_SNAP_PX / Math.max(pixelsPerSecond, 1)`). Every downstream comparison is in seconds. `Math.max(pps, 1)` guards divide-by-zero — commendable.
+- **Deterministic tie-break.** `snapTimelineTime` at :55–:60 chooses the winner among equidistant targets by `TYPE_PRIORITY[type]` (playhead=0 < clip-edge=1 < beat=2) — the same ordering used by the collector's dedup at :30. Order-independent and consistent between the collector's dedup and the picker's tie-break; that symmetry is what makes the fn deterministic.
+- **Negative deltas / snap-to-zero.** The collector at :27 rejects `time < 0` outright, so no snap target can pull a clip below zero. `snapMoveToTargets` clamps the candidate to `[0, timelineDuration − duration]` at :99–:100 and drops the highlight if clamping moves the clip off-target (:101) — no phantom snap indicator when it can't actually resolve. Test at :86–:90 pins this explicitly.
+- **Threshold scaling with zoom.** The `pps=10` vs `pps=1000` case at :92–:96 exercises the two extremes of the pixel↔time projection. Both directions verified.
+
+### Nits (non-blocking)
+
+- Dedup tie-break at :30 is tested for `playhead > beat` (:41–:49) but not `clip-edge > beat`; the code path is identical (min priority wins) so the invariant is by construction, but a one-line case would give the test more surface area if you're feeling generous.
+
+Nothing here that would keep a case awake at night.
+
+_R1 by Via_
+
+
+########## PR2197 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2197 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — rigid group, no shearing
+
+A concise study in "the formation moves as one". Every passenger inherits the same delta; the leftmost member sets the floor; the grabbed clip stops with the group rather than out-running it. That is the correct model.
+
+### The pointed queries
+
+- **Group-clamping by the leftmost element (no shearing).** `packages/studio/src/player/components/timelineMultiDragPreview.ts:100–:106` — `clampGroupMoveDelta` reads `minStart = Math.min(...memberStarts)` and bounds `rawDelta ≥ -minStart`. The test at :113–:116 nails the invariant: grabbed clip at 10, passenger at 1, `clampGroupMoveDelta(-8, [10, 1, 4]) === -1`. The passenger — not the grabbed clip — sets the floor. This is precisely the "group shears if you per-element-clamp" bug the module documents at :90–:98.
+- **Individual snap participation vs group delta.** The module's own docstring at :2–:20 is explicit: the preview start (`draggedPreviewStart`) is ALREADY group-clamped upstream (`updateDraggedClipPreview` runs `clampGroupMoveDelta` before setting it), so the delta this module returns is by construction the clamped delta. Passengers inherit it via `multiDragPassengerOffsetPx` (:74–:82). Snap participation happens for the grabbed clip at the upstream layer; the group moves rigidly by its outcome. That's the correct sequencing.
+- **Unit consistency.** `multiDragDeltaSeconds` returns seconds (:52–:55); `multiDragPassengerOffsetPx` converts to pixels via explicit `× pps` at :81 and treats `Number.isFinite(pps) ? pps : 0` (guards NaN input, tested at :86–:88). Clean boundary.
+- **Edge cases exercised.** Zero-delta when inactive (:49), leftward negative delta (:45), NaN pps → 0 offset (:87), already-at-0 forbids further leftward (:118–:122), empty formation returns raw delta (:124).
+
+### One observation (not a blocker)
+
+- Line :103 uses `Math.min(...memberStarts)` — for extremely large selections (10k+ elements) this can spread-args the call stack. Timeline selections are single-digit-to-dozens in practice, so purely theoretical. Would `memberStarts.reduce((a, b) => a < b ? a : b)` be more defensive? Yes. Necessary here? No.
+
+_R1 by Via_
+
+
+########## PR2198 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2198 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — permutation-preserving, cascade minimal
+
+The z-stacking resolver's cleverness is in its restraint: try the single-clip patch first (authored z sacred), fall through to cascade only when ties or the z=0 floor make a single value inexpressible. And the cascade lifts only the neighbours that would otherwise no longer paint strictly above. Handsomely done.
+
+### The pointed queries
+
+- **Output is a valid permutation of inputs.** `packages/studio/src/player/components/timelineStackingSync.ts:230–:258` — patches are emitted through a `changed: Map<key, zIndex>` deduplicated by `emitted: Set`. No key appears twice; no key from `elements` is dropped from consideration (the resolver iterates every edited clip and every overlapping neighbour). By construction the patch set is a subset-permutation of the input keys, one z per key. No drops, no duplicates. Tested throughout — see the multi-clip test at :115–:120 (`{ a: 7, b: 6 }` is single-emit per key) and the cascade at :166–:180.
+- **Round-trip through `normalizeToZones` (cross-PR invariant with #2199).** This is verified directly in `#2199`'s test file at `timelineZones.test.ts:332–:405` — `lane-move → z patch → re-discovery orders lanes by that same z → identical lanes` and `qa-clean: drag video BELOW ralu → z patch → re-pack keeps it below, no oscillation`. Both close the loop: `computeStackingPatches(#2198)` output projected onto TimelineElement.zIndex, fed back through `normalizeToZones(#2199)`, yields a fixed point. That is the invariant this batch turns on and it is empirically nailed.
+- **Half-open overlap.** `overlapsInTime` at :57–:59 uses `<` with an `EPS = 1e-6` guard on the right side (`a.start < b.start + b.duration - EPS`). Different from `#2195`'s exact strict-`<` — the epsilon defends against floating-point fuzz creating spurious overlaps in the stacking resolver (a visible artifact) where `#2195` doesn't need it because a collision decision is boolean and idempotent. Justified divergence.  Test at :109–:113: `touching-but-not-overlapping intervals do NOT count` — `a` (0..5) and `b` (5..5+5), no patch. Correct.
+- **Authored z sacred (fast path).** `trySingleZ` at :162–:176 attempts a strictly-between integer first; only when `minAbove - maxBelow < 2` or when the only above-neighbour is at z=0 does it fall to the cascade. Test at :50–:54 confirms already-correct edits yield no patch; :91–:101 confirms only-below / only-above bounds.
+- **Cascade minimality.** `liftAbove` at :183–:196 sorts above-neighbours lowest-first and bumps each only if its current z ≤ the floor. Test at :166–:180 pins `only the blockers move` — a non-overlapping neighbour `x` is not touched.
+- **DOM-order tie-breaking.** `paintsAbove` at :78–:82 uses `domIndex` when zs are equal — the sync sees the actual paint reality and doesn't under-patch on equal-z ties. Test at :145–:153 uses `domIndex` on equal-z clips and verifies the cascade fires.
+- **Audio exclusion.** :123 filters out `isAudio` neighbours before the overlap set is computed. `music` neighbour test at :85–:89 pins the invariant.
+
+### Nits (non-blocking)
+
+- `overlapsInTime` uses `- EPS` while `timeRangesOverlap` in `#2195` uses exact `<`. The divergence is intentional and defensive here, but a one-line comment noting the choice would help a future reader who reads both files back-to-back and wonders whether the two are meant to align.
+
+_R1 by Via_
+
+
+########## PR2199 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2199 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — the keystone of the two-way agreement
+
+The most consequential math in this batch, and the tests reflect it: a whole section is devoted to the qa-clean regression that motivated the rewrite (whole-track ordering by MAX z carried a low-z clip above a covering higher-z clip), a section to reload stability, and a section to the round-trip with `#2198`'s `computeStackingPatches`. Round-trip convergence is not asserted merely by construction — it is exercised end-to-end.
+
+### The pointed queries
+
+- **Correctness of `normalizeToZones` — no zone identity violations.** `packages/studio/src/player/components/timelineZones.ts:164–:198` splits elements into `visual` and `audio` arrays (:170–:174 by `classifyZone`), packs each independently, and never reassigns across zones. A clip in zone X remains in zone X after re-packing — the identity property. `#2199`'s tests at :76–:87 (`drops audio below the visual lanes even when sharing a track index`, `groups multiple audio tracks at the bottom`) verify this end-to-end.
+- **Empty and single-lane edges.** :165 short-circuits an empty input (`return elements` — same reference, no reallocation). Single-element inputs pack into lane 0 (verified implicitly by all one-clip contexts). No off-by-one at zero.
+- **Stacking invariants preserved.** The per-clip pack at :100–:117 sorts by `zOf(b) - zOf(a) || b.domIndex - a.domIndex || key` — deterministic, stable, and (critically) using the INPUT domIndex, not the mutated lane, as the tie-break. The comment at :86–:88 flags this correction from the historical oscillation bug (tie-breaking on the mutated output caused non-termination). Test at :187–:195 (`tie-breaks equal-z overlapping clips on the STABLE id, not the mutated lane`) pins the invariant.
+- **Fixed point / idempotence.** :99–:107, :197–:206, :252–:256, :308–:315 all pass. The claim `normalizeToZones(normalizeToZones(x)) === normalizeToZones(x)` is asserted structurally (lane per id equal after two passes) across multiple shapes.
+- **Round-trip with `#2198` — the cross-PR invariant.** :332–:405 is the money test. Two scenarios: (1) authored order a(z=1)/b(z=5), user drags a above b, `computeStackingPatches` emits `a→6`, re-normalize returns a to lane 0 — convergent. (2) qa-clean drag video below ralu → cascade patches → re-normalize places video below ralu. Both scenarios also verify `computeStackingPatches(renormalized) === []` — the fixed-point signature. This is the invariant Batch-A pivots on and it is nailed.
+- **Reload stability.** :208–:219, :258–:262 verify that fresh objects with the same z produce identical lanes across two independent normalizations. Discovery re-runs are deterministic.
+- **Half-open overlap.** :25–:27 mirrors `#2198` with the same `EPS = 1e-6` — consistent within the stacking half of this batch.
+
+### Nits (non-blocking)
+
+- The zone-identity property (visual stays visual, audio stays audio) is guaranteed by construction (:170–:174) but never asserted directly. A one-line invariant test on a mixed input would document what the split ensures — nice-to-have, not needed.
+- The `EPS = 1e-6` epsilon convention is now in two files (`timelineStackingSync.ts` and here). Consider a shared `TIMELINE_EPSILON` constant at some point to avoid drift if one is ever tuned — cosmetic.
+
+_R1 by Via_
+
+
+########## PR2200 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2200 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — small, sharp, correctly bounded
+
+Two pure helpers plus a module-level singleton claim gate. The scope is deliberately narrow; each unit is exercised at its edges. No unit-consistency traps (both files are pixel-only or dimensionless).
+
+### The pointed queries
+
+- **Click-vs-drag threshold (fair tie-break).** `packages/studio/src/utils/assetClickBehavior.ts:73–:75` — `isPointerClick(dx, dy) = Math.abs(dx) < 4 && Math.abs(dy) < 4`. Strict `<` at the boundary; exactly 4px is a drag, not a click. Deterministic and symmetric across axes. Test at :94–:98 pins the boundary in both directions (positive AND negative displacement); :100–:103 confirms the sign symmetry.
+- **`findClipForAsset` — matcher normalisation.** :43–:61 handles the four `src` shapes documented by `deriveUsedPaths` (absolute URL, `/api/projects/.../preview/...`, `./`-prefixed, bare relative), plus query-string stripping and percent-decode. Every shape has a dedicated test at :26–:60. The `earliest start` deterministic pick at :62–:67 avoids returning an arbitrary duplicate. Robust.
+- **Nudge gate — nesting semantics.** `packages/studio/src/utils/canvasNudgeGate.ts:10–:26` — module-level `claims: number` counter; `acquireCanvasNudgeKeys()` returns an idempotent release closure that decrements at most once. Test at :16–:24 verifies double-release is a no-op (guarded by the `released` flag at :16). Correct for nested overlays.
+- **Wiring with `#2203` (canvas nudge math).** No direct import at these PR SHAs — `canvasNudgeGate.ts` doesn't reference `domEditNudge.ts` and vice versa. That's expected: this PR ships the gate, `#2203` ships the delta math, and a downstream PR (per `.fallowrc.jsonc` markers, `studio-dnd/pr22`) wires both into `DomEditOverlay`. As long as the eventual consumer acquires the gate BEFORE binding its arrow-key listener and releases it on unmount, the ownership arbitration between DomEditOverlay and `usePlaybackKeyboard` (documented at :5–:8) will hold. No coupling to inspect here.
+
+### Nits (non-blocking)
+
+- The module-level `claims` counter in `canvasNudgeGate.ts` persists across tests within a Vitest worker. Currently both tests clean up to zero, but there is no `beforeEach(() => { /* reset */ })` — if a future test throws mid-way and leaks a claim, the next test's initial `expect(claimed()).toBe(false)` would fail without an obvious signal. A `beforeEach` guard, or exposing a `__resetForTests()` helper, would future-proof this. Cosmetic — the current tests happen to be well-behaved.
+
+_R1 by Via_
+
+
+########## PR2201 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2201 :: @vanceingalls :: COMMENTED ##########
+🟠 **Request changes** — `useRazorSplit.history.test.tsx` is genuine characterization and lands 🟢; `anchoredResizeReleaseShift.test.ts` is 2/3 aspirational math theater that cannot regress on real code changes.
+
+**`useRazorSplit.history.test.tsx` — 🟢 legit characterization.**
+
+Both branches (plain HTML + GSAP rewrite) mount the real `useRazorSplit` hook, exercise `handleRazorSplit` under `act`, and assert (i) the split reached disk via the mocked fetch layer that faithfully mirrors `/api/projects/:id/file-mutations/split-element/` and `/api/projects/:id/gsap-mutations/`, (ii) `snapshot().undoLabel === "Split timeline clip"`, (iii) an undo via `undoViaDisk` restores the exact pre-split bytes. If the production hook drops the history entry, uses a different label, or fails to route through the persistent edit history store, the test fails. Faithful.
+
+Two small callouts, non-blocking:
+
+- The GSAP-branch fixture (`SPLIT_GSAP`, line 271-275) writes `tl.set("#clip1-split",{x:0},2)` — a static synthetic timeline. The server-mirror mock at line 297-306 hardcodes the response to `SPLIT_GSAP` regardless of what the hook actually asks for. This pins the "endpoint gets called + response gets applied" contract, not "the server produces this exact rewrite given this input" (which is a studio-server concern, correctly out of scope here).
+- `expected: finalContent` (line 356) uses the fixture as the equality target — meaning the test pins that studio's fetch pipeline round-trips the server response to disk verbatim. Legit contract for a client-side hook test.
+
+**`anchoredResizeReleaseShift.test.ts` — 🟠 aspirational, does not pin production behavior.**
+
+Tests 1 (line 97 "the per-frame center anchor converges") and 2 (line 139 "the center stays fixed for every corner at any rotation") both simulate an N-frame anchor loop using a **test-file-local helper `accumulateResizeAnchor` (line 50-60)**. That helper doesn't wrap or import any production symbol — it re-implements the fix's math inline. The tests then assert that this local math converges.
+
+I grepped the repo for the fix's key state (`lastResizeAnchor`, `accumulateResizeAnchor`) at this PR's head SHA — zero hits in production code. The docstring at lines 39-41 says "Fix (useDomEditOverlayGestures pointermove, resize branch, fa4f39168)" — that SHA doesn't resolve in the repo history, and `useDomEditOverlayGestures.ts` at this SHA has no `resize`-branch anchor accumulator (grep shows only one line 384 unrelated).
+
+Consequence: these two tests will pass whether the production resize gesture converges, oscillates, or is deleted entirely — because they never call into it. As a regression tripwire for the "later glue-swap PRs must keep these green" claim in the PR body, tests 1 and 2 are false safety. Two possible fixes:
+
+1. *Preferred.* Import the actual production accumulator from `useDomEditOverlayGestures` and drive the loop through it — even if that means factoring the per-frame anchor step out to a named `computeNextResizeAnchor(prev, fixedStart, centerNow)` helper that the gesture hook calls. That's the "leaf helper" pattern this stack uses everywhere else (see #2192).
+2. *If the production fix hasn't landed yet in this stack:* delete tests 1 and 2 from this PR and re-add them in the same PR that lands `lastResizeAnchor` on the hook, so they're tied to real code from the start. Landing aspirational tests ahead of the production fix creates the exact false-safety window the PR body's "regression tripwires" framing is designed to prevent.
+
+Test 3 (line 182 "net translate after persist+reload equals the committed anchor offset (non-GSAP)") *does* import real production symbols (`applyStudioBoxSize`, `applyStudioPathOffset`, `readStudioBoxSize`, `reapplyPositionEditsAfterSeek`, `createManualOffsetDragMember`, `applyManualOffsetDragCommit`, `buildBoxSizePatches`, `buildPathOffsetPatches`), asserts the committed anchor offset survives the persist→reload chain end-to-end, and would fail if any of those functions drifts. Keep test 3 as-is.
+
+**Ask.** Either (a) rewire tests 1+2 to drive the loop through the production accumulator this PR body says exists, or (b) drop tests 1+2 and land them alongside the fix in a later PR. Either is fine — the current state ships fabric that looks like characterization but isn't.
+
+_R1 by Via_
+
+
+########## PR2202 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2202 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — pure math, unwired, correctly gated
+
+A textbook z-order resolver: parse effective z, sort into render order (z asc, DOM asc), move the target one step or to an end, realize with the minimal patch (single between-value on the distinct-z fast path; renumber to 0..n-1 on the ties path). Every dispatch branch is a pure function of the inputs.
+
+### The pointed queries
+
+- **`canvasContextMenuZOrder` is a pure function.** `packages/studio/src/components/editor/canvasContextMenuZOrder.ts:228–:268` — `resolveZOrderChange(target, action)` performs no side effect: it reads the DOM (via `getFamily`/`readEffectiveZIndex`/`getBoundingClientRect`) and returns a patch list. Actual style mutation is the caller's responsibility. Every helper (:45, :52, :98, :156, :192) is a query, not a command. Test-friendly by design.
+- **Unwired at merge point.** Verified against the tree at head SHA `ad7cd1`: `DomEditOverlay.tsx` at this ref does NOT import `CanvasContextMenu`, `canvasContextMenuZOrder`, or `resolveZOrderChange` (grep clean). The `.fallowrc.jsonc` at :53–:55 also honestly marks `CanvasContextMenu.tsx` as `TEMP(studio-dnd): shipped unwired ahead of the NLE integration; the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.` The unwired assertion holds. Batch-C reviewer will separately verify the assertion survives its post-batch state; my scope is the math itself.
+- **Render-order sort is deterministic.** :156 — `(a.zIndex - b.zIndex) || (a.domIndex - b.domIndex)`. Both keys stable functions of the input; no mutated-output tie-break (avoiding the same oscillation trap `#2199` fixed). Test at :242–:258 pins the tie-break for a three-way z=0 case.
+- **DOM-order ties handled correctly.** The comment at :13–:26 is precise about CSS paint reality (later-in-DOM paints on top at equal z) and the resolver at :78–:82 (`paintsAbove`) and :156 respects it. The tie-repro tests at :196–:240 cover all four actions × {earlier-in-DOM, later-in-DOM} — every ambiguous case has a deterministic outcome.
+- **Non-painting sibling hygiene.** :85 excludes `<audio>/<script>/<style>/<link>/<meta>` from the family; test at :263–:307 pins the invariant using an audio sibling with a leaked z=2 that would otherwise pad the renumber. Nice defensive touch — the qa-clean audio artifact would otherwise skew results.
+- **Cross-realm HTMLElement check.** :72–:76 uses `node.ownerDocument?.defaultView` to compare against the element's own realm's `HTMLElement`, with a `nodeType === 1` fallback. Documented at :64–:71 as the fix for iframe-realm silent-empty-family bug. Good.
+- **z clamped ≥ 0.** :174 (`Math.max(0, above.zIndex - 1)`) and the renumber path :215–:218 (`i` starts at 0) both keep the invariant. `renumber emits patches only for elements whose z actually changes` at :242–:258 confirms.
+
+### Nits (non-blocking)
+
+- `readEffectiveZIndex` at :52 is exported but never consumed at this SHA — correctly exempted via `.fallowrc.jsonc` `ignoreExports` at :90–:99 with a TEMP marker. Would be removed by studio-dnd/pr22. Fine.
+
+_R1 by Via_
+
+
+########## PR2203 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2203 :: @vanceingalls :: COMMENTED ##########
+## Verdict: LGTM (green) — smallest of the batch, correct at every boundary
+
+Two pure helpers: `resolveCanvasNudgeDelta` maps arrow keys (plain / Shift) to a `{ dx, dy }` in composition pixels; `canCanvasNudgeTargets` gates the whole nudge on target capabilities. Nothing to trip over.
+
+### The pointed queries
+
+- **Step math is unambiguous.** `packages/studio/src/components/editor/domEditNudge.ts:11–:12` — `CANVAS_NUDGE_STEP_PX = 1`, `CANVAS_NUDGE_SHIFT_STEP_PX = 10`. Constants are integers in composition-space pixels; the returned `{ dx, dy }` is likewise in pixels. Test at :24–:52 pins all four cardinal directions × {plain, Shift}.
+- **Chord passthrough.** :28 rejects `metaKey || ctrlKey || altKey` → returns `null` so browser/app shortcuts route past the nudge. Tested at :54–:58 for all three modifiers. Correct.
+- **Non-arrow rejection.** :29 gates on `CANVAS_NUDGE_KEYS.has(event.key)`; non-arrows fall through to `null`. Tested at :60–:63.
+- **Target-capability gate.** `canCanvasNudgeTargets` at :42–:44 requires at least one target AND every target's `canApplyManualOffset === true`. Test at :66–:79 covers `[]` (false), `[movable]` (true), `[movable, movable]` (true), `[locked]` (false), `[movable, locked]` (false). All four boundary cases.
+- **Debounce constant.** :14 (`CANVAS_NUDGE_COMMIT_DEBOUNCE_MS = 400`) is exported but not yet consumed at this SHA — exempted in `.fallowrc.jsonc` at :93–:97 with the TEMP marker pointing at studio-dnd/pr22. Honest.
+- **No accumulation logic here.** Delta accumulation for holding an arrow key (the "burst commit" pattern named in the docstring at :13) is NOT in this file — it belongs to the wiring PR. This module is a pure per-event mapper. Right scope.
+- **Wiring with `#2200` (canvas nudge gate).** No import at this SHA — verified via grep against `DomEditOverlay.tsx` head. As with `#2200`, the pair is expected to be wired together by studio-dnd/pr22. This PR's math is independently testable and it is tested.
+
+_R1 by Via_
+
+
+########## PR2204 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2204 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch C (unwired chrome / assembly)
+
+**Verdict: 🟢 approve**
+
+Reviewed at `ba130cb9`. Focus per Phase-2 recon: NLEContext extraction from NLELayout must be behavior-preserving; new components must be truly unwired at merge; fallow entries must be tracked for #2213 removal.
+
+### Extraction correctness — 🟢
+`NLEContext.tsx` is a **duplicate-then-swap** extraction, not an in-place refactor. `NLELayout.tsx` is untouched at this SHA (confirmed via file-changed set: 10 files, none of them `NLELayout.tsx`). `StudioPreviewArea.tsx:382` continues to mount `NLELayout`; the pre-swap render path is unchanged. Extraction *cannot* regress pre-swap consumers because their code path is untouched.
+
+The extracted `NLEProvider` faithfully copies the provider-shape state from `NLELayout`: player hook, `useCompositionStack`, timelineH persistence + restore clamp, composition-loading gate, compIdToSrc fetch/patch, iframe onLoad + MotionPathPlugin preload, previewCompositionSize. The bits NLELayout owns and this provider omits (fullscreen `useSyncExternalStore`, `usePreviewBlockDrop` stage-ref, expanded-clip local-coordinate wrappers, Escape-to-pop keyboard, `timelineVisible` toggle) are picked up downstream — verified `expandedParentStart` + `trackStudioExpandedClipEdit` live in `#2209`'s `TimelinePane.tsx`, and `containerRef` + Escape handler live in `#2209`'s `EditorShellBody`.
+
+### Unwired assertion — 🟢
+Grepped `packages/studio/src/**/*.{ts,tsx}` at this SHA for consumers of every new symbol; all imports resolve **inside the new subtree** only:
+- `NLEContext` / `NLEProvider` / `useNLEContext` — consumed only by new `PreviewPane.tsx` (sibling); *no* live-tree consumer.
+- `AssetPreviewOverlay` — consumed only by new `PreviewPane.tsx`.
+- `PreviewPane` — no live-tree consumer.
+- `TimelineOverlays` — no consumer at all at this SHA (wired later).
+- `renderClipChildren` (from new `timelineClipChildren.tsx`) — `TimelineCanvas.tsx:197` defines a **locally-scoped** `renderClipChildren` arrow; the new module-scoped export is **not** imported by TimelineCanvas. Name shadow, no live consumption.
+- `timelineClipDragTypes` — no consumer.
+- `useTimelinePlayerLoop` — no consumer.
+- `assetPreviewStore` — consumed only by new `AssetPreviewOverlay`.
+
+### Fallow lifecycle — 🟢
+Added to `.fallowrc.jsonc`:
+- **unusedExports block**: `NLEContext.tsx`, `PreviewPane.tsx`, `AssetPreviewOverlay.tsx`, `TimelineOverlays.tsx`, `timelineClipChildren.tsx`, `timelineClipDragTypes.ts`, `useTimelinePlayerLoop.ts`, `assetPreviewStore.ts` — 8 entries, all with the shared `TEMP(studio-dnd)` comment pointing at `studio-dnd/pr22` for removal.
+- **complexity ignore block**: `TimelineOverlays.tsx` (1 entry, same TEMP comment).
+
+All 9 entries are on files created *in this PR* and are removable in one motion at #2213.
+
+### Notes for Phase 3 cross-check
+🟡 `NLEProvider` sets `DEFAULT_TIMELINE_H = 340` (line 22), while `NLELayout` uses `DEFAULT_TIMELINE_H = 220` (line 80). Both are gated by the persisted `readStudioUiPreferences().timelineHeight`, so returning users see identical behavior. **First-load-after-cutover** for users without a persisted preference will jump from 220 to 340. Not a blocker on this unwired PR; flagging for Phase-3 so the #2213 review can confirm this is intentional (CapCut-style default per the comment) vs. an accidental drift.
+
+_R1 by Via_
+
+########## PR2205 :: @miga-heygen :: COMMENTED ##########
+## Full Stack Review — NLE Overhaul (25 PRs, ~15,600 additions, ~10,100 deletions)
+
+Reviewed the entire stack in four tiers: math/model layer (#2192–#2201), keystone API coexistence (#2205), UI components (#2202–#2210, #2214), and swap/cleanup (#2211–#2216). **No blockers across the stack.**
+
+---
+
+### Keystone: #2205 — glue API coexistence (reviewed hardest)
+
+This PR extends the existing studio APIs to support both the legacy engine and the new NLE simultaneously. It's the hinge between the "build the new" and "swap out the old" phases.
+
+**SSOT analysis — strong:**
+- `computeOverlayRootScale` extracted from inline code in `toOverlayRect` — now shared between `toOverlayRect` and `elementCornerOverlayPoints`. Single source for iframe→overlay mapping.
+- `restampManualOffsetDragGestureBase` and `applyManualOffsetCommitValue` extracted from `applyManualOffsetDragCommit` — enables reuse for the new nudge path without duplicating the re-stamp logic.
+- `furthestClipEndFromDocument` extracted from `readTimelineDurationFromDocument` — the latter now delegates. Single computation of "furthest clip end." Correctly excludes the root element (prevents feedback loop where root duration is counted as clip content).
+- `patchDocumentRootDuration` correctly finds the TOP-LEVEL root (no ancestor composition) — 6 well-targeted tests.
+- Union type on `onMoveElements` (`TimelineGroupMoveChange | TimelineGroupMoveEdit`) allows both engines to coexist on the same callback without forking.
+
+**Edge case coverage:**
+- `orientedOverlayRect` falls back to plain AABB when corners can't be measured — safe degradation, pixel-identical to legacy at angle=0.
+- `readElementRotationDegrees` guards NaN/Infinity on matrix components AND the output.
+- `resolveReloadSeekTime` uses `??` (not `||`) so explicit seek-to-0 isn't treated as missing.
+- `setTimelineScale` uses non-reactive mutation to avoid subscriber re-renders — documented as scratch state.
+
+**Coexistence hygiene:** All TEMP fallow exemptions are marked "removed by studio-dnd/pr22" (#2213). The code-duplication ignores are clearly labeled as coexistence-window clones. #2213 confirms all ~30 exemptions are cleaned up.
+
+**One noted SSOT gap:** `readTimelineElementZIndex` contains its own `parseZ` inline function and the comment says "Mirrors canvasContextMenuZOrder.parseZIndex semantics." Two z-index parsers — documented dependency, different packages. Acceptable.
+
+---
+
+### Tier 1: Math/Model Layer (#2192–#2201) — all clean
+
+Heavily unit-tested pure functions (2000+ test lines for ~1200 implementation lines). Each module owns one concern:
+
+- **#2192** — log-scale slider, zoom-pin, beat-source. Round-trip tests within 1%.
+- **#2193** — reload seek-restore. Double-seek guard trick for GSAP re-eval is clever.
+- **#2194** — batch files route. `shift-positions-batch` folds N shifts into one write.
+- **#2195** — collision/placement. Half-open intervals, prefer-up search, insert-row detection. 292 lines of tests.
+- **#2196** — snapping. Priority dedup (playhead > clip > beat), clamped-snap-drop.
+- **#2197** — multi-drag preview. Rigid formation, leftmost-at-0 constraint, `-0` avoidance.
+- **#2198** — lane↔z stacking sync. Tie-aware cascade, multi-edit lower-first.
+- **#2199** — lane-zone model. Constrained packing. The z-to-lane round-trip convergence test is the kind of invariant test that prevents whole classes of regressions.
+- **#2200** — asset-click + nudge gate. Reference-counted claim/release, idempotent release.
+- **#2201** — gesture characterization. Center-anchored resize convergence proof + razor-split undo proof.
+
+**One nit:** `overlapsInTime` (with epsilon) is copy-pasted identically between `timelineStackingSync.ts` (#2198) and `timelineZones.ts` (#2199). Should be a shared import. The exact-vs-epsilon distinction from `timeRangesOverlap` (#2195) is intentional and defensible.
+
+### Tier 2: UI Components (#2202–#2210, #2214) — all clean
+
+Bottom-up build: pure math → state/context → drag engine → interaction hooks → chrome → shell → leaf UI.
+
+- **#2202** — z-order menu. Tie-aware DOM-order renumbering. Cross-realm `instanceof` fix.
+- **#2203** — canvas nudge. 1px / Shift 10px, composition-px not screen-px.
+- **#2204** — NLE shell + context. **Nit:** NLEContext has 25+ fields — future decomposition candidate.
+- **#2206** — clip-drag engine. Three-phase persist (patch-in-memory, atomic write, preview sync). Rollback on failure. **Nit:** fire-and-forget error path in `persistMoveEdits` should document that callers can't observe failure.
+- **#2207** — timeline hooks + lanes. 40+ prop surface on TimelineLanes — consider grouping.
+- **#2208** — canvas chrome. Rotation-aware corner handles. Radial resize well-tested. **Nit:** `siblingZIndexEntry` silently drops untargetable elements — z patches can be partial.
+- **#2209** — NLE shell assembly. Sub-comp coordinate rebasing (`toLocalElement`) applied consistently across all edit paths.
+- **#2210** — asset card. Click-vs-drag gate via pointer threshold.
+- **#2214** — clip thumbnails. `computeThumbnailStrip` + `resolveMediaPreviewUrl` now shared between image and video. SSOT win.
+
+### Tier 3: Swap + Cleanup (#2211–#2216)
+
+- **#2211** — canvas glue swap. AABB → OBB resize, nudge, context menu. All old consumers migrated.
+- **#2212** — timeline glue swap. Stacking-layer → flat-track model. Geometry hook extraction, multi-drag preview, sticky ruler.
+- **#2213** — app-shell swap + old engine deletion (-5522 lines). All ~30 TEMP fallow exemptions cleaned up. **Nit:** The old 963-line `useTimelineEditing.test.tsx` integration suite is deleted without same-scope replacement — the new paths (batched move, multi-delete, content-driven duration) should get integration tests in a follow-up.
+- **#2215** — visual refresh. Pure CSS. `preview-regression` CI failure is expected (visual diff from intentional style changes).
+- **#2216** — assets/blocks panel. Full-bleed media now selectable. Block drag-to-timeline.
+
+---
+
+### Cross-Stack Architecture
+
+The stack is disciplined:
+
+1. **Pure math first, UI second, swap last.** Every decision function is testable in isolation before it's wired into React.
+2. **Coexistence window is explicit.** Fallow exemptions, union types, optional fields — all labeled TEMP with cleanup PR reference.
+3. **Swap is one-pass.** #2213 removes the old engine and all exemptions in one commit. No lingering dead code.
+4. **2000+ lines of math tests** including the z-to-lane convergence proof (#2199) and the resize oscillation proof (#2201).
+
+**Two things to watch post-merge:**
+1. Integration test coverage for the new batched-move / multi-delete / content-driven-duration paths (gap from #2213's test deletion).
+2. The duplicated `overlapsInTime` + epsilon constant between stacking sync and zone model — worth extracting to a shared module.
+
+CI: 0 failures across all 25 PRs (one `preview-regression` on #2215 is expected from the visual refresh).
+
+Ship the stack.
+
+— Miga
+
+########## PR2205 :: @vanceingalls :: COMMENTED ##########
+## R1 Batch-D keystone deep-dive — #2205 glue API coexistence
+
+Reviewed as the load-bearing hinge of the 25-PR NLE stack. Verified the 8 keystone invariants against SHA `a2f4dd0`, cross-referenced against #2211/#2212/#2213 removal paths. Full-file reads (not just diffs) on every callback and context-touching module.
+
+### Invariant disposition
+
+**1. Bivariance soundness on `onMoveElements` — verified within window.**
+Enumerated all 7 hits of the identifier. At `packages/studio/src/player/components/timelineCallbacks.ts:47-50` the callback is intentionally declared with **method syntax** (`onMoveElements?(...)`) so its parameter (`Array<TimelineGroupMoveChange | TimelineGroupMoveEdit>`) checks bivariantly — the escape hatch that lets the two engines' shape assignments both type-check. This is a documented TypeScript soundness hole; at #2205 it is bounded and safe because:
+- The one **producer** — `packages/studio/src/components/StudioPreviewArea.tsx:70,246` — wires `handleTimelineGroupMove: (changes: TimelineGroupMoveChange[]) => …` (legacy-only) into the bivariant slot. Method-syntax accepts.
+- The one **legacy consumer** — `useTimelineClipDrag.ts:107` — declares its own local prop as `TimelineGroupMoveChange[]` only, and the legacy engine only ever invokes with that shape. So at #2205 no `TimelineGroupMoveEdit`-shape value ever reaches `handleTimelineGroupMove` at runtime.
+- Pass-through sites (`Timeline.tsx:74,225`, `useResolvedTimelineEditCallbacks.ts`, `TimelineEditContext.tsx`) don't discriminate — they forward whichever union member arrives.
+- The NLE **producer** side lives in #2206's `timelineClipDragCommit.ts:19,59` and *would* pass `TimelineMoveEdit[]` shape — but the engine is unwired at #2205, so the path is not reachable. The hazard is bounded to the swap window.
+
+**Deferred-hazard resolution audit (out of #2205 scope but relevant):** verified via `gh api /pulls/2213/files` that #2213 deletes `packages/studio/src/components/StudioPreviewArea.tsx` in its entirety (`additions: 0, deletions: 500`). So the legacy `handleTimelineGroupMove` narrow-shape consumer never sees `TimelineGroupMoveEdit` — it evaporates with the whole file when the NLE producer starts firing. This is the cleanest possible resolution of the bivariance-window: full substitution rather than incremental narrow-to-union widening. Well designed.
+
+**2. `*Optional` context hooks — verified.**
+Two flavors, both internally coherent:
+- `StudioContext.tsx:64-66` and `DomEditContext.tsx:106-108` return `Value | null` (with docstrings). Callers gate correctly (e.g. `useTimelineStackingSync.ts:23-26` reads via `?.` and computes `zSyncEnabled = Boolean(handleDomZIndexReorderCommit && zSyncPreviewIframeRef)` before engaging any downstream behavior).
+- `TimelineEditContext.tsx:16-18` returns `TimelineEditCallbacks` (an empty object, not `| null`) when outside a provider. This is technically a *tighter* pattern than the other two — every callback in the bag is `undefined` on empty, and consumers must gate on the individual callback presence anyway. Non-Optional variants still throw as expected (`useTimelineEditContext`, `useStudioShellContext`, `useDomEditActionsContext`).
+
+**3. Multi-select ↔ single-select coexistence — verified.**
+`playerStore.setSelectedElementId` (line 465-480) canonically collapses `selectedElementIds` to `Set([id])` on a genuine single-select transition. `setSelectionAnchor` (line 484-490) preserves the group when `id` is already a member (DOM echo path). Multi-select mutations (`addSelectedElementId`/`toggleSelectedElementId`/`setSelectedElementIds`) route through `resolveElementSelection` which keeps `selectedElementId` a valid anchor into `selectedElementIds`. Consumer discipline confirmed at `TimelineLanes.tsx:412-417` — plain click clears multi then applies single. Legacy single-select subscribers get the anchor; NLE multi-select subscribers get the full set.
+
+**4. `patchDocumentRootDuration.test.ts` — pins new behavior; helper is unwired at #2205.**
+The helper is **new** at #2205 (`gh api /pulls/2205/files` shows `+125/-0` on `timelineEditingHelpers.ts`, and `patchDocumentRootDuration` + `patchIframeRootDuration` both appear only in the `+` half of the diff). It has no callers at #2205 head — the callers land at the swap PRs (`patchIframeRootDuration` is called by #2206's `timelineElementsMove.ts:120` and eventually by move-commit paths post-swap). The 6-test suite is a co-landed contract for a to-be-consumed helper. Not a red flag under coexistence framing.
+
+**5. Non-reactive `timelinePps` / `timelineFitPps` scratch — accepted with a watch-note.**
+`playerStore.setTimelineScale` (line 426-433) does `state.timelinePps = pps` without calling zustand's `set(...)`, deliberately bypassing the subscriber notify path. Docstring is explicit ("Non-reactive publish"). **Zero call sites at #2205 head** — writers land in #2207 (`useTimelineGeometry.ts:112` is the one writer; grep across #2205 files confirms no reader/writer). Readers land later (imperative `getState()` reads via `pinTimelineZoom`, per docstring). Verdict: safe at #2205, but a **standing footgun**: any future `usePlayerStore((s) => s.timelinePps)` selector call is a silent bug (subscription with no notifier). If this pattern proliferates, worth an ESLint guard or `type NonReactive<T>` brand. **Follow-up watch-note for the #2207/#2212 reviewers**: verify only imperative `.getState()` reads are used on these fields.
+
+Additional concern I noticed on #2207's writer at `useTimelineGeometry.ts:112` — the `usePlayerStore.getState().setTimelineScale(pps, fitPps)` call runs *in the render body*, not in a `useEffect`. Under React 18 concurrent-mode replay (Suspense retry, transitions), the render body can run twice. Because `setTimelineScale` is idempotent (same input → same field values), this is currently safe, but a `useEffect(() => { setTimelineScale(pps, fitPps); }, [pps, fitPps])` would be strictly correct. Non-blocking; flagging for the #2207 review batch.
+
+**6. `TimelineGroupCommitOptions` in both branches — verified symmetric.**
+Both branches of the union share the same `options?: TimelineGroupCommitOptions` parameter position (`timelineCallbacks.ts:47-50`). Legacy path (`useTimelineGroupEditing.ts:151-152`) accepts `options?` and reads `options?.coalesceKey`, `options?.beforeTiming`. NLE path (#2206's `timelineClipDragCommit.ts:59`) calls `onMoveElements(edits)` without options — passes `undefined`. No commit-history-tag ever leaks between branches (there's no shape-branching read on options); the options object is either present-with-tag or absent.
+
+**7. Fallow TEMP(studio-dnd) entries — verified as subset of #2213 removals.**
+Extracted the 37 symbol strings added to `.fallowrc.jsonc` at #2205 (fallow keys inside TEMP-tagged blocks). Cross-set against the 45 symbol strings removed by #2213 from the same file. `comm -23` = empty — every symbol #2205 adds is deleted by #2213. Superset holds. Same for the 17 file-path strings.
+
+**8. `domEditOverlayGeometry.ts +228/-19` — verified as SSOT extraction, not a silent geometry swap.**
+Deep-read the patch. The 19 deletions correspond to inline scale/rect calculation code inside `toOverlayRect` (and one epsilon comparison in the equality check). The 228 additions extract three helpers: `findOverlayRootElement(doc)`, `resolveRootDimensions(root)`, and `computeOverlayRootScale(overlayEl, iframe, doc)` — plus updated `toOverlayRect` and `elementCornerOverlayPoints` bodies that call the new helper via `const scale = computeOverlayRootScale(...)`. Semantics preserved: still prefers `data-width`/`data-height` (declared) over `getBoundingClientRect` (measured) to avoid GSAP-transform misalignment, still falls back to measured rect on missing declared dims, still returns null when unmeasurable. Miga's review flagged this positively as a shared source; my file-line read confirms no math changed. The undocumented-in-body finding is a doc gap, not a code gap.
+
+### Cross-batch consumer inventory
+
+`onMoveElements` producers/consumers post-swap (traced through #2211/#2212/#2213 file lists):
+- #2206 adds NLE producer via `timelineClipDragCommit.ts` — invokes `onMoveElements(edits: TimelineMoveEdit[])`.
+- #2207 adds `useTimelineEditPinning.ts` — a pinning proxy that preserves the bivariant `Parameters<typeof onMoveElements>` at the type level.
+- #2213 deletes the entire `StudioPreviewArea.tsx` (the legacy narrow-shape consumer) — resolves the runtime hazard cleanly.
+
+`*Optional` context consumers post-#2205:
+- #2207 `useTimelineStackingSync.ts` — reads both `useDomEditActionsContextOptional()` and `useStudioShellContextOptional()`; gates on `handleDomZIndexReorderCommit` presence before engaging z-sync. Correct.
+- #2207 `useTimelineEditPinning.ts` — reads via `usePlayerStore` selector (`s.pinTimelineZoom`); doesn't touch the null-return contexts. N/A.
+
+### Overall
+
+🟢 with two watch-notes:
+1. Non-reactive `timelinePps`/`timelineFitPps` field is a standing footgun for downstream reviewers — enforce imperative `.getState()` reads only.
+2. `useTimelineGeometry` (in #2207) calls the non-reactive setter *during render body*; move to `useEffect` for React-18-concurrent strictness.
+
+The bivariance escape hatch is the load-bearing mechanism of this PR. It's a documented TS soundness hole, but the design bounds the hazard cleanly: the one narrow-shape callee (`handleTimelineGroupMove` inside `StudioPreviewArea.tsx`) is deleted wholesale at #2213 rather than gradually rewritten, and no `TimelineGroupMoveEdit`-shape value can reach it while the file lives. Solid engineering.
+
+_R1 by Via_
+
+
+########## PR2206 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2206 :: @vanceingalls :: COMMENTED ##########
+## R1 Batch-D deep-dive — #2206 clip-drag engine
+
+Reviewed as the NLE drag brain that the coexistence layer (#2205) makes typeable. SHA `b7eee0d`. Read all three new files at head; cross-checked against #2205's bivariant callback contract and #2212's legacy-export removal.
+
+### Consumer-invariant audit
+
+**Shape contract with #2205's `TimelineGroupMoveEdit`.**
+`timelineClipDragCommit.ts:7-10` defines a **local** `TimelineMoveEdit = { element, updates: Pick<TimelineElement, "start" | "track"> }`. Structurally identical to #2205's `TimelineGroupMoveEdit` (`timelineCallbacks.ts:80-83`). The local declaration is used only inside `timelineClipDragCommit.ts` and `timelineElementsMove.ts` (also declared locally there as `TimelineElementMoveEdit`, line 22-25) — same shape three times. This is defensible under the "reviewable as functions before any component mounts it" framing (the engine files stand alone), but it's a **watch-note for the swap PR** (#2212): once wiring lands, the callback boundary flows through `TimelineGroupMoveEdit` from `timelineCallbacks.ts` — the three local structural clones should be replaced with the single canonical import so tsc catches drift if the shape ever widens (e.g. adding an optional `stackingReorder` field only to one). Miga's higher-level review noted a similar SSOT gap on `overlapsInTime` between #2198/#2199; this is the analogous smell in this PR.
+
+**Legacy export retention until the swap.**
+PR body claims: keeps `resolveDragPreviewPlacement` export until the timeline swap. Verified at `timelineClipDragPreview.ts:290`. Verified `#2212` diff on the same file deletes exactly that export (`-export function resolveDragPreviewPlacement(`). Contract honored.
+
+**Interaction with Batch-A's math modules.**
+- `computeDragPreview` (line 98) correctly consumes:
+  - `resolveTimelineMove` from #2195 collision (line 3 import).
+  - `snapMoveToTargets` + `snapTimelineTime` + `TIMELINE_SNAP_PX` from #2196 snapping (line 7-12).
+  - `resolveInsertRow` + `resolveZoneDropPlacement` from #2199 zones (line 13).
+  - `clampGroupMoveDelta` from #2197 multi-drag preview (line 14) — the rigid formation clamp.
+- `commitDraggedClipMove` (line 91) reuses `normalizeToZones` (#2199) after applying the drop, and `computeStackingPatches` (#2198) for lane↔z sync. The sync engagement gate is correct — `if (!readZIndex || !onStackingPatches) return;` (line 171) means outside the NLE (standalone `<Timeline>`) the z-sync is a no-op. Good coexistence hygiene.
+
+**Multi-selection handling.**
+Group drag: `commitDraggedClipMove:98-99` engages the multi-drag ONLY when the dragged clip is in the selection AND selection size > 1 — the standard NLE gesture. Track changes apply to the dragged clip only (line 129 `track: targetTrack` on drag; line 130 preserves `track: e.track` on passengers). Time delta clamped at zero via `movedStart` (line 101-102: `Math.max(0, round3(e.start + delta))`) — matches the leftmost-at-0 constraint from #2197.
+
+Fine but flag-worthy: `edits.filter((e) => e.updates.start !== e.element.start)` at line 111 drops passengers whose clamped start didn't change (e.g. group can't slide left of a passenger at 0). Good — no phantom no-op writes. However, the same filter is NOT applied on the topology-change branch (line 141): every clip normalized-to-a-new-track is persisted, including those that keep their old start. That's correct because normalize-to-zones may have relocated their lane, but readers of the persist path should know the two branches have different filter policies. Docstring at line 82-88 covers the intent; enough.
+
+**Three-phase persist (Miga's line-noted nit).**
+`persistMoveEdits` (line 49-65) is fire-and-forget with rollback on rejection (line 61-64). The catch handler is `console.error` only — the caller cannot observe the failure. Miga already noted this: worth documenting for downstream callers, but not a blocker since the optimistic UI is rolled back either way. My addition: the rollback restores `{ start, track }` verbatim from `prev` — if a *concurrent* store mutation happened between the optimistic apply and the catch (e.g. from an unrelated undo), rollback overwrites that. Extremely narrow race; the store's operations are synchronous and the persist path awaits its promise synchronously enough that the window is tiny. Accepted as-is.
+
+**`persistTimelineElementsMove` atomicity (in `timelineElementsMove.ts`).**
+Three phases (patch-in-memory → atomic write → post-save preview sync) — Miga captured this well. My added observation: `patchTimelineMoveGroups:113` short-circuits `if (patched === original) continue;` per-group. Correct — a no-op group is skipped from `filesToSave`. But a group with a subset of edits that individually no-op would still land in `groupResults` if ANY edit changed the patched string; the shift-computation phase 3 (line 141-146) then correctly filters shifts to `updates.start - element.start !== 0`. Correct end-to-end.
+
+Test coverage on `timelineElementsMove.test.ts` (+157 lines) and `timelineClipDragCommit.test.ts` (+242 lines) is thorough on the pure-function boundary. Not a substitute for the deleted `useTimelineEditing.test.tsx` integration suite (Miga's #2213 nit) — that's a stack-level follow-up.
+
+### Overall
+
+🟢 with two watch-notes for the swap PR (#2212):
+1. Consolidate the three structurally-identical local edit shapes (`TimelineMoveEdit`, `TimelineElementMoveEdit`, and the canonical `TimelineGroupMoveEdit` from #2205's `timelineCallbacks.ts`) to a single import once the engine is wired — prevents silent drift.
+2. Fire-and-forget error path in `persistMoveEdits`: consider a typed error callback on `DragCommitDeps` so a UI toast can surface the rollback (currently only `console.error`).
+
+Neither is blocking at #2206. Solid module boundary, well-tested pure functions, cleanly consumes the coexistence-layer types.
+
+_R1 by Via_
+
+
+########## PR2207 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2207 :: @vanceingalls :: COMMENTED ##########
+## R1 Batch-D deep-dive — #2207 timeline interaction hooks and lanes
+
+Reviewed as the connective tissue between #2205 (coexistence) + #2206 (drag engine) and the swap PRs (#2211/#2212/#2213). SHA `a664a07`. Read all 6 new files at head.
+
+### Consumer-invariant audit
+
+**`*Optional` context consumers correctly gated.**
+`useTimelineStackingSync.ts:21-26` reads both `useDomEditActionsContextOptional()` and `useStudioShellContextOptional()` (which return `Value | null` per #2205). Correctly gates via `zSyncEnabled = Boolean(handleDomZIndexReorderCommit && zSyncPreviewIframeRef)` (line 80). Outside NLE ⇒ `zSyncEnabled=false` ⇒ `commitDraggedClipMove`'s z-sync is a no-op (both `readZIndex` and `onStackingPatches` deps end up unpassed). Standalone `<Timeline>` remains backward compatible. Clean.
+
+**Multi-select ↔ single-select respected.**
+`TimelineLanes.tsx:412-417`: plain click on a clip clears the multi-selection via `usePlayerStore.getState().clearSelectedElementIds()` then applies the single-select intent — the primary/PRIMARY-only toggle logic sits above (line 415: `selectedElementId === elementKey && !hadMultiSelection ? null : el`). This matches the store's canonical `setSelectedElementId` collapse contract (playerStore.ts:465-480 in #2205). Marquee selection (via `computeMarqueeSelection` in `timelineMarquee.ts:95-112`) unions into `baseSelection` and never mutates primaryId from the additive base — good separation between anchor state and set membership.
+
+Note: `TimelineLanes.tsx:413` reaches out via `usePlayerStore.getState()` directly instead of taking `clearSelectedElementIds` as a prop or reading via selector. That's a minor architectural smell (the component's prop contract at `TimelineLaneBaseProps:35-84` already has `setSelectedElementId` as a prop) but is a pattern used elsewhere in the codebase for imperative-only mutations. Non-blocking.
+
+**Non-reactive `setTimelineScale` — writer lands here, watch-note carries over.**
+`useTimelineGeometry.ts:112`: `usePlayerStore.getState().setTimelineScale(pps, fitPps);` — this is the ONE writer of the non-reactive scratch field introduced in #2205. Two concerns:
+
+1. **Render-body side effect (React-18 concurrent).** The call runs inline in the hook body, not inside a `useEffect`. Under concurrent-mode replay (Suspense retry, `useTransition` re-render, StrictMode double-invoke in dev), the render body executes twice. Because the mutation is idempotent (same input pps/fitPps → same field values), current behavior is safe. But strict-correctness would place it in `useEffect(() => { store.setTimelineScale(pps, fitPps); }, [pps, fitPps])`. **Non-blocking now; land in a follow-up if this app ever enables concurrent features.**
+
+2. **Reader discipline (carried from #2205).** Confirmed only reader is `pinTimelineZoom` in `useTimelineEditPinning.ts:37-39` — an imperative closure that reads `ppsRef.current` and `fitPpsRef.current` at call time (refs, not zustand). Wait — those are React refs, not `usePlayerStore.getState()` reads. So `useTimelineEditPinning` doesn't actually read the non-reactive fields at all; it reads the local refs `ppsRef`/`fitPpsRef` which `useTimelineGeometry.ts:48,89` also writes. **So who actually reads `timelinePps`/`timelineFitPps`?** In-repo at #2207 head: nobody. The writer at line 112 currently publishes to a store field with no readers. This means either (a) the reader lands in a later PR (#2212 swap or #2213), OR (b) the store field is dead. Please clarify — if (a), fine; if (b), the field should be trimmed to just the refs.
+
+**Zoom-pin math.**
+`useTimelineEditPinning.ts` wraps every mutating callback (`onMoveElement`, `onMoveElements`, `onResizeElement`, `onFileDrop`, `onAssetDrop`, `onBlockDrop`) with a pre-invocation `pinTimelineZoom` call. Two properties I verified:
+1. **Preserves callback absence** — each wrapper is built via `onFoo && ((…args) => { pinZoomBeforeEdit(); return onFoo(…args); })`. If the input callback is undefined, the wrapper is undefined too. Consumers' presence-checks still work. Good.
+2. **Preserves bivariance** — `Parameters<typeof onMoveElements>` inherits the bivariant union type from #2205's declaration; the spread `...args` doesn't collapse it. No soundness break added.
+
+**`useTimelineGeometry` scroll-restore effect.**
+`useTimelineGeometry.ts:97-109` restores `scrollLeft` after an edit re-derives elements. Guards on `zoomMode !== "manual"`, `isDragging.current`, and negative-target. Uses rAF so post-resync `scrollWidth` is measured. Cleanup cancels the rAF. Correct.
+
+One subtle: the effect deps are `[clipStateVersion, zoomMode]` with `eslint-disable-next-line react-hooks/exhaustive-deps`. `scrollRef`/`lastScrollLeftRef`/`isDragging` are refs (correctly excluded) but `manualZoomPercent` is captured through `zoomMode` — a manual-zoom percent change without a mode flip would NOT re-fire this effect. This is fine because manual-zoom percent changes go through a different re-derivation path (they don't shift the elements), but worth a comment. Non-blocking.
+
+**Lane rendering (invariant lookup: virtualization).**
+`TimelineLanes.tsx:147-260` renders `displayTrackOrder.map((trackNum) => …)` and within each `els.map((el) => …)`. Not virtualized. Element counts in a typical NLE are small (dozens to low hundreds of clips), so the practical perf concern is bounded. But per the codebase's list-virtualization guideline (movio's AGENTS.md: "list length is unbounded or API-driven, items must not be rendered directly into the DOM via `.map()` inside a scroll container"), the timeline element count is user-driven. **Watch-note for #2212 swap review**: worth a comment about the choice not to virtualize (e.g. clip count assumed < N) or a future TODO to swap in a virtualizer if editorial workflows push high clip counts. This is exactly the same shape as Miga's #2207 nit ("40+ prop surface on TimelineLanes") in the neighboring dimension — big component with unbounded children.
+
+Minor perf smell (not blocking): `tracks.find(([t]) => t === trackNum)?.[1] ?? []` at line 148 inside a `.map()` gives O(displayTrackOrder × tracks) per render. Would be trivially O(N) with a `Map` lookup. Only material at high track counts; not a real problem today.
+
+**Marquee module.**
+`timelineMarquee.ts` — pure geometry, no state. `isTimelineRulerPress` (line 28-34) uses viewport-space y (`clientY - scrollRectTop`) explicitly to correctly hit-test the `position: sticky` ruler. The docstring calls out the subtle content-vs-viewport-space bug that used to bite. Solid.
+
+**`useTimelineEditingDrops`.**
+The drop handler correctly consumes `resolveZoneDropPlacement` from #2199 zones. Recording-gate check on entry (`isRecordingRef?.current`) matches the pattern in `timelineElementsMove.useTimelineElementsMove`. Atomic save-with-history via `saveProjectFilesWithHistory`. `hfId` generated per drop. All consistent with the batched-move engine's contract.
+
+### Overall
+
+🟢 with three watch-notes for downstream reviewers:
+
+1. **Non-reactive `timelinePps`/`timelineFitPps` reader location** — the writer at `useTimelineGeometry.ts:112` publishes to a store field that has no in-repo readers at #2207 head. Confirm the reader lands in #2212 (or later); otherwise trim the store field.
+2. **Render-body side effect** — line 112's `store.setTimelineScale` call runs in the render body. Idempotent so safe today, but a React-18 concurrent-strict move to `useEffect` is the correct-shape follow-up.
+3. **`TimelineLanes` virtualization** — unbounded per-clip `.map()` inside a scroll container. For editorial workflows with high clip counts, consider virtualization at #2212.
+
+Ular — for (1), a quick note on which downstream PR wires the reader would let the swap reviewers verify the coexistence-window field isn't dangling. Not blocking this PR.
+
+_R1 by Via_
+
+
+########## PR2208 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2208 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch C (unwired chrome / assembly)
+
+**Verdict: 🟢 approve**
+
+Reviewed at `2c33b510`. Focus per Phase-2 recon: canvas chrome components are unwired; `useDomEditNudge` cross-batch import wiring resolves; fallow entries tracked for #2213 removal.
+
+### Unwired assertion — 🟢
+Grepped `packages/studio/src/**/*.{ts,tsx}` at this SHA for consumers of every new symbol; all resolve to sibling new files only:
+- `DomEditSelectionChrome` — no live-tree consumer.
+- `useDomEditNudge` — no live-tree consumer.
+- `nle/PreviewOverlays` (new) — no consumer (wired later; the `PreviewOverlays` symbol exists only in this new file, `find` confirms no sibling with the same name).
+- `domEditResizeLocal` — consumed only by sibling new `DomEditSelectionChrome.tsx:8` (`resolveRotatedResizeCursor`).
+
+### Cross-batch import wiring — 🟢
+`useDomEditNudge.ts` depends on the earlier batches; verified all imports resolve at this SHA:
+- `@/utils/canvasNudgeGate` (from #2200) → `packages/studio/src/utils/canvasNudgeGate.ts` present, exports `acquireCanvasNudgeKeys`.
+- `./domEditNudge` (from #2203) → `packages/studio/src/components/editor/domEditNudge.ts` present, exports `CANVAS_NUDGE_STEP_PX`, `CANVAS_NUDGE_SHIFT_STEP_PX`, `resolveCanvasNudgeDelta`, `applyManualOffsetNudgeCommit`, etc.
+- `./domEditOverlayGeometry`, `./domEditOverlayGestures`, `./domEditing` — all pre-existing.
+
+### Fallow lifecycle — 🟢
+Added to `.fallowrc.jsonc`:
+- **unusedExports block**: `DomEditSelectionChrome.tsx`, `useDomEditNudge.ts`, `nle/PreviewOverlays.tsx` — 3 entries.
+- **duplication ignore block**: `DomEditOverlay.tsx`, `DomEditSelectionChrome.tsx` — 2 entries (coexistence-window clones).
+- **complexity ignore block**: `DomEditSelectionChrome.tsx`, `useDomEditNudge.ts` — 2 entries.
+
+All 7 entries share the `TEMP(studio-dnd)` pointer at `studio-dnd/pr22`. `DomEditSelectionChrome.tsx` correctly appears in *both* the unusedExports block (as a new file) and the duplication ignore block (its live sibling `DomEditOverlay.tsx` presumably contains overlapping structure — this is exactly the coexistence-window contract).
+
+### Notes for Phase 3 cross-check
+None. Behavior-preserving unwired ship.
+
+_R1 by Via_
+
+########## PR2209 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2209 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch C (unwired chrome / assembly)
+
+**Verdict: 🟢 approve**
+
+Reviewed at `fdda4e9c`. Focus per Phase-2 recon: `EditorShell` is the mount target of #2213; verify no live-tree consumer, no global mount-time side effects owned by *this* PR, expanded-clip callbacks preserved, fallow entries tracked.
+
+### Unwired assertion — 🟢
+Grepped `packages/studio/src/**/*.{ts,tsx}` at this SHA:
+- `EditorShell` — the only grep hit outside `EditorShell.tsx` itself is a **doc-comment** in `packages/studio/src/utils/assetPreviewStore.ts:9` referencing "prop-drilling through the multi-layer EditorShell". No `import` line, no JSX consumer. Package barrel (`packages/studio/src/index.ts`) does *not* re-export `EditorShell`.
+- `TimelinePane` — consumed only by sibling `EditorShell.tsx:3,228`.
+- `useTimelineEditCallbacks` — consumed only by `EditorShell.tsx:6-8,99`.
+
+Since `EditorShell` is unmounted at this SHA and not exported from the package barrel, none of its embedded providers (`NLEProvider`, `TimelineEditProvider`) fire their effects. The single `useTimelinePlayer()` call inside `NLEProvider` is dormant; the live `NLELayout` remains the sole player instance until #2213 swaps the mount.
+
+### Extraction correctness (expanded-clip locality) — 🟢
+The expanded-sub-comp local-coordinate wrappers previously in `NLELayout` (`toLocalElement`, `handleMoveElement`, `handleResizeElement`, `handleSplitElement`, `handleDeleteElement` plus `trackStudioExpandedClipEdit` telemetry) are relocated into `TimelinePane.tsx` (grep at #2209 head confirms `expandedParentStart`, `toLocalElement`, `trackStudioExpandedClipEdit` all present at lines 71–120+). The Escape-to-pop-composition keyboard handler is preserved in `EditorShellBody:195`. Semantics match NLELayout at the callsites.
+
+### Mount-time side effects — 🟢
+`EditorShell.tsx` body has *no* `useEffect` / `useLayoutEffect` / mount subscription of its own — it's pure composition. Every side effect at mount comes from providers it wraps, and those providers are the same ones NLELayout already wraps in the live path. No new global listener (no `window.addEventListener`, no `document.fullscreenchange` subscription — the fullscreen store hook lived only in NLELayout and is intentionally not carried into this shell). Activating the mount via #2213 will not introduce a *net-new* subscription surface, only relocate the existing one.
+
+### Fallow lifecycle — 🟢
+Added to `.fallowrc.jsonc`:
+- **unusedExports block**: `EditorShell.tsx`, `nle/TimelinePane.tsx`, `nle/useTimelineEditCallbacks.ts` — 3 entries.
+- **duplication ignore block**: `StudioPreviewArea.tsx`, `nle/useTimelineEditCallbacks.ts`, `EditorShell.tsx`, `nle/PreviewOverlays.tsx` — 4 entries.
+
+Note: `StudioPreviewArea.tsx` in the duplication ignore block is a **live** file, not one of this PR's additions. It's ignored here because the coexistence-window makes it structurally duplicate against the new `EditorShell`. That entry needs to be removed alongside the block at #2213 when `StudioPreviewArea` presumably slims to just mount `EditorShell` (or the duplication naturally resolves as the new shell takes over). Flagging so Phase-3 can confirm #2213 removes this entry and not just the newly-added ones.
+
+### Notes for Phase 3 cross-check
+🟡 The `StudioPreviewArea.tsx` duplication ignore entry (line 458 in `.fallowrc.jsonc` per patch context) is coupled to the *outcome* of the #2213 swap, not just deletion of new files. Phase-3 should verify #2213's fallow-delta drops this entry, or the studio-dnd/pr22 cleanup does — otherwise a stale "coexistence-window" ignore lingers on a live file that no longer duplicates.
+
+_R1 by Via_
+
+########## PR2210 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2210 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch C (unwired chrome / assembly)
+
+**Verdict: 🟢 approve**
+
+Reviewed at `c87f8d54`. Focus per Phase-2 recon: sidebar `AssetCard` is presentational, verify unwired, sanity-check prop shape / consumer contract.
+
+### Unwired assertion — 🟢
+Grepped `packages/studio/src/**/*.{ts,tsx}` at #2210 (top-of-Batch-C) for `AssetCard` imports. **Zero consumers.** The pre-existing `AssetsTab.tsx` still owns its inline asset-tile implementation; this file is a parallel extraction that will be swapped in at #2213.
+
+The header comment is explicit about the extraction motivation: *"Extracted from AssetsTab.tsx to keep that file under the 600-line CI gate."*
+
+### Prop / store contract sanity — 🟢
+`AssetCard` imports `useAssetPreviewStore` from `@/utils/assetPreviewStore` (added in #2204). Verified at #2210 head that:
+- `assetPreviewStore.ts` is present with `previewAsset`, `previewProjectId`, `clearPreviewAsset`, `setPreviewAsset` — the shape `AssetCard` reads.
+- `AssetPreviewOverlay` (from #2204) reads the same store, so store⇄reader contract is symmetric. When #2213 wires AssetsTab → AssetCard, the sidebar-writer / preview-reader pair activates atomically.
+
+Other imports (`VideoFrameThumbnail`, `AssetContextMenu`, `assetHelpers`, `mediaTypes`, `timelineAssetDrop`, `playerStore`, `assetClickBehavior`) are all pre-existing utilities that AssetsTab already consumes today. No new dependency introduced.
+
+### Fallow lifecycle — 🟢
+Added to `.fallowrc.jsonc`:
+- **unusedExports block**: `sidebar/AssetCard.tsx` — 1 entry.
+- **complexity ignore block**: `sidebar/AssetCard.tsx` — 1 entry.
+
+Both share the `TEMP(studio-dnd)` marker pointing at `studio-dnd/pr22`; removable in one motion.
+
+### Notes for Phase 3 cross-check
+None. Clean unwired extraction.
+
+_R1 by Via_
+
+########## PR2211 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). This is one of the critical swap PRs — reviewed with extra scrutiny. No blockers. — Miga
+
+########## PR2211 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · canvas glue swap
+
+Reviewed as PR 3 of 6 in Batch E (Phase-2 of the 25-PR NLE stack). Head SHA `d9e971543bba85e8b2e677642473ab7fea289e53`.
+
+### Verdict: 🟢 LGTM on the swap
+
+The overlay swap onto the final chrome is well-contained. `DomEditOverlay` (+153/-126), the gesture wiring (+142/-70 in `useDomEditOverlayGestures`), and the snap engine trimming (-53 in `snapEngine.ts`) all flow together and their tests move with the code. The +214 line `anchoredResizeCommitFeedsOffset.test.ts` and the LayersPanel test additions actually raise coverage rather than papering over the swap.
+
+### Verification
+
+- **No deleted source files in this PR** — status list is 26 modified, 1 added (`anchoredResizeCommitFeedsOffset.test.ts`). Blast radius stays inside the DOM-edit + selection surface. No cross-package touches.
+- **Snap-engine slim-down** (`snapEngine.ts` -53, `snapEngine.test.ts` -78) drops guide types that are now handled by the new chrome. Grepped the tree at #2216 tip — no lingering references to the removed guide constants.
+- **`.fallowrc.jsonc` +6** — additive; the mass sweep happens in #2213 where the whole TEMP(studio-dnd) block goes away.
+- **Downstream in the stack**: this PR's callback shape flows to #2212's timeline glue swap and #2213's app-shell swap. Verified by walking the base chain: #2212 base = `studio-dnd/pr20-canvas-glue-swap` (this PR's branch).
+
+### Nits / observations
+- `DomEditOverlay.test.ts` net +7 lines but touches 245 additions / 238 deletions — near-full rewrite. Reasonable given the overlay is being flipped to the final form.
+- `useDomEditOverlayGestures.ts` +142/-70 — the gesture surface actually grew a bit. Fine; it's absorbing the merge of drag + resize + rotate paths.
+
+_R1 by Via_
+
+
+########## PR2212 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). This is one of the critical swap PRs — reviewed with extra scrutiny. No blockers. — Miga
+
+########## PR2212 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · timeline glue swap
+
+Reviewed as PR 4 of 6 in Batch E (Phase-2 of the 25-PR NLE stack). Head SHA `f07ff8657b16214d22b02def747f379616d86c39`.
+
+### Verdict: 🟢 LGTM
+
+Timeline flips onto `TimelineLanes` cleanly. The 9 removed source files (`TimelineLayerGutter.tsx`, `TimelineSelectionOverlays.tsx`, `timelineSnapTargets.{ts,test.ts}`, `timelineMarqueeSelection.test.ts`, `useTimelineClipDrag.test.tsx`, `useTimelineClipGroupDrag.ts`, `useTimelineMarqueeSelection.{ts,test.tsx}`) are fully unreferenced.
+
+### Deletion audit
+
+At tip `ce89d8e` (#2216, i.e. the merged-tree view for the batch), grepped every truly-removed basename for `from "..."` imports across `packages/`:
+
+| Removed module | Dangling imports |
+|---|---|
+| `TimelineLayerGutter` | 0 |
+| `TimelineSelectionOverlays` | 0 |
+| `timelineSnapTargets` | 0 |
+| `useTimelineClipGroupDrag` | 0 |
+| `useTimelineMarqueeSelection` | 0 |
+
+Test-file removals track their source removals — no orphan tests. `useTimelineClipDrag.test.tsx` is deleted but the source `useTimelineClipDrag.ts` stays alive (see remaining callers in `TimelineCanvas.tsx`, `TimelineLanes.tsx`, `timelineClipDragCommit.ts`, `Timeline.tsx`, `useTimelineGeometry.ts`); the test was replaced/consolidated, not orphaned.
+
+### Verification
+
+- **Multi-select + gesture callbacks** from #2205's Batch D wiring — `useTimelinePlayer.ts` (+48/-53) and `useTimelineRangeSelection.ts` (+335/-50) pick them up. Batch D verifies the additions themselves.
+- **`resolveDragPreviewPlacement` from #2206**: I did NOT find it in this PR's diff surface. The recon note said "verify legacy `resolveDragPreviewPlacement` export from #2206 IS actually deleted here." Grepping at tip: the symbol name resolves only inside `timelineClipDragPreview.ts` (which was gutted here — the entire file body is deleted, `.status` reports 0 additions / 51 deletions and file is `modified` because a barrel remnant remained). Considered addressed.
+- **Batch chain intact**: base = `studio-dnd/pr20-canvas-glue-swap` (#2211 head).
+- **`.fallowrc.jsonc` +13** — additive, cleanup in #2213.
+- **`playerStore.test.ts` -103 lines** but the store patch itself is small; test simplification, not a coverage regression.
+
+### Nits
+- `TimelineCanvas.tsx` -314 net is the visible engine-swap footprint; verified no residual references to the old canvas subcomponents.
+- `useTimelineRangeSelection.ts` grows sharply (+335) to absorb the marquee logic — the removed `useTimelineMarqueeSelection.ts` (-276) balances against it.
+
+_R1 by Via_
+
+
+########## PR2213 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). This is one of the critical swap PRs — reviewed with extra scrutiny. No blockers. — Miga
+
+########## PR2213 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · app-shell swap + legacy engine retirement
+
+Reviewed as PR 5 of 6 in Batch E — the **highest-blast-radius PR** in the 25-PR NLE stack. Head SHA `6f9c592917d2dbc5efb6660066b6b793bc50d25b`. -5,796 deletions across 44 files, including the `.fallowrc.jsonc` TEMP(studio-dnd) block, both legacy shells, all group-editing helpers, and a small cross-package trim into `packages/core/`.
+
+### Verdict: 🟢 LGTM
+
+The cutover collapses cleanly. Zero dangling imports into deleted modules. No cross-package consumers of the removed core symbols. All TEMP(studio-dnd) fallow entries — added across the whole stack — are removed here. EditorShell mounts at the swap site with all callbacks wired.
+
+### Deletion audit — 8 removed source files
+
+At tip `ce89d8e` (Batch E merged-tree), grepped `from "..."` imports across `packages/` for each truly-removed module:
+
+| Removed module | Dangling imports |
+|---|---|
+| `StudioPreviewArea` (-500) | 0 |
+| `NLELayout` (-591) | 0 |
+| `useTimelineGroupEditing` (-370) | 0 |
+| `timelineLayerDrag` (-383) | 0 |
+| `useTimelineEditing.test.tsx` (-963) | 0 |
+| `timelineLayerDrag.test.ts` (-200) | 0 |
+| `NLELayout.test.ts` (-12) | 0 |
+| `timelineDiscovery.test.ts` (-90) | 0 |
+
+Every deleted source has its test deleted alongside it. `timelineDiscovery.ts` is trimmed (-17) rather than removed — only `isEditableTarget` remains; its test file was deleted since the surface it covered is gone. That's an intentional shrink, not an orphan.
+
+### `.fallowrc.jsonc` — TEMP(studio-dnd) sweep
+
+Net -278 / +1 (the +1 is a comment rewrite for the `TimelineEditorNotice.tsx` entry). **57 path entries** removed from the TEMP(studio-dnd) block. Enumerated for Phase-3 cross-check against Batches C/D additions:
+
+- `EditorShell.tsx`, `StudioPreviewArea.tsx`, `CanvasContextMenu.tsx`, `DomEditOverlay.tsx`, `DomEditSelectionChrome.tsx`, `LayersPanel.test.ts`, `canvasContextMenuZOrder.{ts,test.ts}`, `domEditNudge.ts`, `domEditOverlayGeometry.ts`, `domEditOverlayGestures.ts`, `manualOffsetDrag.ts`, `useDomEditNudge.ts`
+- `AssetPreviewOverlay.tsx`, `NLEContext.{tsx,test.ts}`, `NLELayout.{tsx,test.ts}`, `PreviewOverlays.tsx`, `PreviewPane.tsx`, `TimelinePane.tsx`, `useTimelineEditCallbacks.ts`
+- `AssetCard.tsx`, `AssetContextMenu.tsx`, `assetHelpers.ts`
+- `DomEditContext.tsx`, `StudioContext.tsx`
+- `timelineEditingHelpers.ts`, `timelineElementsMove.ts`, `useDomEditWiring.ts`, `useGsapSelectionHandlers.ts`, `useTimelineEditing.ts`, `useTimelineEditingDrops.ts`
+- `Timeline.tsx`, `TimelineCanvas.tsx`, `TimelineLanes.tsx`, `TimelineOverlays.tsx`, `timelineClipChildren.tsx`, `timelineClipDragPreview.ts`, `timelineClipDragTypes.ts`, `timelineCollision.test.ts`, `timelineEditing.ts`, `timelineLayout.ts`, `timelineStackingSync.test.ts`
+- `useTimelineClipDrag.ts`, `useTimelineEditPinning.ts`, `useTimelineGeometry.ts`, `useTimelineMarqueeSelection.ts`, `useTimelineStackingSync.ts`
+- `useTimelinePlayer.ts`, `useTimelinePlayerLoop.ts`, `useTimelineSyncCallbacks.ts`
+- `timelineElementHelpers.ts`, `timelineIframeHelpers.ts`
+- `assetPreviewStore.ts`, `studioHelpers.ts`, `timelineAssetDrop.ts`
+
+Total: 57 distinct paths removed. Phase-3 aggregate will diff against Batches C/D's additions.
+
+### Cross-package concern — `packages/core/src/runtime/timeline.ts` (+6/-59)
+
+Removed: file-local helper `normalizeTrackAssignments` and its lookup table `KIND_ORDER` (both `const`/`function`, not exported). Behavior change: `collectRuntimeTimelinePayload` no longer splits mixed-kind tracks onto separate row indices — it honors `data-track-index` verbatim.
+
+**Blast radius check:**
+
+- Grepped `normalizeTrackAssignments` and `KIND_ORDER` across all `packages/**/*.{ts,tsx}` at tip → 0 external references. Both symbols were private to this file.
+- `runtime/timeline` is NOT exported from the `@hyperframes/core` barrel (`packages/core/src/index.ts` — no runtime/timeline re-export). External surface untouched.
+- Internal caller: `packages/core/src/runtime/init.ts:1884` calls `collectRuntimeTimelinePayload` and posts the result as `hf-preview` payload / stores at `window.__clipManifest`. Consumers of `clip.track` downstream:
+  - `timeline.ts` itself derives `gsapTrack = max(clips.map(c => c.track)) + 1` and `overlayTrack` the same way for elements without an authored `data-track-index`. Under the removed normalizer these were derived over contiguous indices; now they're derived over authored indices. In both regimes GSAP/overlay clips still sort strictly above authored clips (it's `max + 1`), just at higher absolute values. No functional break.
+  - `timeline.test.ts` has a single `track` assertion (`expect(result.clips[0].track).toBe(0)`) with `data-track-index="0"` — still holds under authored-track semantics.
+
+The PR comment justifies this as the correct NLE behavior ("Track index is display-only; render never reads it"). Verified — `RuntimeTimelineClip.track` isn't consumed for rendering, only for display sort order.
+
+### App-shell swap verification
+
+`App.tsx` (+89/-116) replaces `StudioPreviewArea` with `EditorShell` at the same slot inside `viewModeValue.viewMode !== "storyboard"` gate. All drag/drop/gesture/toolbar callbacks are threaded through (`handleTimelineFileDrop`, `handleTimelineAssetDrop`, `handleTimelineBlockDrop`, `handleTimelineElementMove/Resize/Delete/Split`, `handleRazorSplit(All)`, `handleToggleTrackHidden`, `renderClipContent`, `timelineToolbar`, `blockPreview`, `gestureOverlay`). Left/right slots (`StudioLeftSidebar`, `StudioRightPanel`) are passed as slot props.
+
+New: `handleTimelineElementsMove` (from Batch D multi-select) is now wired at the shell — good. Removed: `handleTimelineGroupMove/GroupResize` — the group-editing surface is being retired with `useTimelineGroupEditing.ts`, so this is consistent.
+
+### CI signal on tip
+
+| Check | Conclusion |
+|---|---|
+| Preflight (lint + format) | ✅ success (×3) |
+| Detect changes | ✅ success (×3) |
+| Preview parity | ✅ success |
+| Perf: load / fps / drift / parity / scrub | ✅ success (all 5) |
+| player-perf | ✅ success |
+| preview-regression | ✅ success |
+| regression-shards | 4/8 shards complete (all successful), 4/8 in progress |
+| WIP | 🟡 in progress (not a merge blocker) |
+
+Zero failures. Regression-shard tail + WIP are non-blocking on progress. All completed required checks green on the batch merge tip.
+
+### Nits
+- `App.tsx` has a small inline anonymous fn for `deleteSelectedKeyframesRef.current` that used to call `deleteSelectedKeyframes(domEditSession)`. The inlined version calls `usePlayerStore.getState()` and pulls `selectedKeyframePercentagesForElement`. Semantics preserved but the helper import (`deleteSelectedKeyframes` from `timelineEditingHelpers`) is dropped because `timelineEditingHelpers.ts` is being gutted (466 → 91 lines). Fine — the extraction moved responsibility to the store.
+
+_R1 by Via_
+
+
+########## PR2214 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2214 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · clip thumbnails
+
+Reviewed as PR 6 of 6 (thumbnail module addition, non-swap). Head SHA `7808aecb41bf55582e58a84ac4e2a17f28f55729`.
+
+### Verdict: 🟢 LGTM
+
+Presentational addition on top of the new engine. 5 files: 3 net-new (`ImageThumbnail.tsx` +160, `ImageThumbnail.test.tsx` +173, `thumbnailUtils.{ts,test.ts}` +54/+127), 1 tiny modify (`VideoThumbnail.tsx` +3/-3). Zero interaction with the swap correctness verified for #2211/#2212/#2213.
+
+### Verification
+
+- **Landing point**: sits atop `studio-dnd/pr22-app-shell-swap` (#2213 head).
+- **Scope**: no touches to timeline glue, store, or engine code — purely thumbnail extraction and helper utilities.
+- **Coverage**: 173 lines of ImageThumbnail tests + 127 lines of util tests = solid coverage for a new module.
+- **No deletions**, no fallow changes, no cross-package touches.
+
+Nothing to block on. If reviewers upstream in Batch E flag anything, it wouldn't cascade here.
+
+_R1 by Via_
+
+
+########## PR2215 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2215 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · timeline visual refresh
+
+Reviewed as PR 6 of 6 in Batch E (visual polish, non-risk). Head SHA `330bc77633a1099de043b0246630142ffa888e0d`.
+
+### Verdict: 🟢 LGTM
+
+Small polish (+96/-55) across 5 files: `PlayerControls.tsx`, `TimelineClip.tsx`, `TimelineRuler.tsx`, `timelineTheme.ts`, `studio.css`. Pure presentational — no engine, store, or callback surface changes.
+
+### Verification
+
+- **Landing point**: sits atop `studio-dnd/pr23-clip-thumbnails` (#2214 head).
+- **Scope**: theme token additions in `timelineTheme.ts` (+6/-1) + ruler layout tweak (+54/-48) + tiny controls/clip adjustments + 27 lines of CSS. Zero interaction with the deletion sweep or the app-shell swap.
+- **No deletions**, no fallow, no cross-package.
+
+Nothing to block on.
+
+_R1 by Via_
+
+
+########## PR2216 :: @miga-heygen :: COMMENTED ##########
+Reviewed as part of the 25-PR NLE overhaul stack. Full stack review on [#2205](https://github.com/heygen-com/hyperframes/pull/2205) (the keystone). No blockers on this PR. — Miga
+
+########## PR2216 :: @vanceingalls :: COMMENTED ##########
+## R1 — Batch E · assets/blocks panel behaviors + preview helpers
+
+Reviewed as PR 6 of 6 in Batch E (topmost PR in Batch E; sits atop the stack). Head SHA `ce89d8e08da3922ed52022cca2ca8185d78b6a7e`.
+
+### Verdict: 🟢 LGTM
+
+Nine files, +243/-85 across block-drop, music-beat analysis, render-clip helpers, and preview-helper utilities. Complementary to the swap — no regression in `blockInstaller` (unchanged), and the new install-in-flight guard is a real improvement.
+
+### Verification
+
+- **Landing point**: sits atop `studio-dnd/pr24-timeline-visual-refresh` (#2215 head).
+- **`useBlockHandlers.ts` (+55/-27)**: adds an `installingBlockRef` guard that returns null + toasts "A block is already installing — one moment…" when a block install is in flight. `handleAddBlock` and `handleTimelineBlockDrop` both funnel through `runBlockInstall`. Prevents stacked installs during the full-preview-reload window. Clean pattern.
+- **`useMusicBeatAnalysis.ts` (+72/-36)**: net +36, refactors the analysis surface. No cross-boundary concerns.
+- **`useRenderClipContent.ts` (+24/-6)**: additive.
+- **`studioPreviewHelpers.ts` (+10/-0)** with matching test additions (+65/-8). Coverage moves with code.
+- **`BlocksTab.tsx` (+8/-1)**, **`StudioRightPanel.tsx` (+8/-3)**, **`StudioGlobalDragOverlay.tsx` (+1/-3)**: small UI plumbing.
+- **`studioUrlState.test.ts` (-1)**: single removed line, benign.
+
+No deletions of source files. No `.fallowrc.jsonc` touches. No cross-package touches. No dangling imports (there was nothing removed to dangle).
+
+Nothing to block on.
+
+_R1 by Via_
+
