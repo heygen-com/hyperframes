@@ -14,8 +14,10 @@ function CommitField({
 }) {
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const valueRef = useRef(value);
   const draftRef = useRef(draft);
+  const escapedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   valueRef.current = value;
@@ -46,6 +48,7 @@ function CommitField({
   useEffect(
     () => () => {
       if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+      if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
     },
     [],
   );
@@ -53,6 +56,19 @@ function CommitField({
   const commitDraft = (nextDraft: string) => {
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     if (nextDraft !== valueRef.current) onCommit(nextDraft);
+  };
+
+  // Commit handlers silently drop unparseable values, which would otherwise
+  // leave the field displaying rejected text forever (the value prop never
+  // changes, so the sync effect never fires). After a blur-commit, re-sync
+  // the draft to whatever the accepted value is once the parent state settles.
+  const scheduleResync = () => {
+    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
+    resyncTimerRef.current = setTimeout(() => {
+      if (document.activeElement !== inputRef.current && draftRef.current !== valueRef.current) {
+        setDraft(valueRef.current);
+      }
+    }, 250);
   };
 
   const scheduleCommit = (nextDraft: string) => {
@@ -74,8 +90,23 @@ function CommitField({
         setDraft(e.target.value);
         if (liveCommit) scheduleCommit(e.target.value);
       }}
-      onBlur={() => commitDraft(draft)}
+      onBlur={() => {
+        if (escapedRef.current) {
+          escapedRef.current = false;
+          return;
+        }
+        commitDraft(draft);
+        scheduleResync();
+      }}
       onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          escapedRef.current = true;
+          setDraft(valueRef.current);
+          if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+          e.currentTarget.blur();
+          e.stopPropagation();
+          return;
+        }
         if (e.key === "Enter") {
           (e.target as HTMLInputElement).blur();
           return;
@@ -151,6 +182,8 @@ export function MetricField({
           onPointerDown: handleScrubPointerDown,
           onPointerMove: handleScrubPointerMove,
           onPointerUp: handleScrubPointerUp,
+          onPointerCancel: handleScrubPointerUp,
+          onLostPointerCapture: handleScrubPointerUp,
         } as const)
       : ({ className: "flex-shrink-0 text-[11px] font-medium text-neutral-500" } as const);
 
@@ -203,6 +236,7 @@ export function SliderControl({
   displayValue,
   formatDisplayValue,
   disabled,
+  ariaLabel,
   onCommit,
 }: {
   value: number;
@@ -212,6 +246,7 @@ export function SliderControl({
   displayValue: string;
   formatDisplayValue?: (nextValue: number) => string;
   disabled?: boolean;
+  ariaLabel?: string;
   onCommit: (nextValue: number) => void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -249,6 +284,7 @@ export function SliderControl({
         step={step}
         value={draft}
         disabled={disabled}
+        aria-label={ariaLabel}
         onChange={(e) => {
           const n = Number(e.target.value);
           setDraft(n);
@@ -288,7 +324,8 @@ export function SegmentedControl({
           type="button"
           disabled={disabled}
           onClick={() => onChange(option.value)}
-          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
+          aria-pressed={option.value === value}
+          className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors active:scale-[0.98] disabled:cursor-not-allowed ${
             option.value === value
               ? "bg-panel-hover text-white"
               : "text-panel-text-4 hover:text-panel-text-2"
@@ -348,23 +385,15 @@ export function Section({
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const collapseIcon = collapsed ? (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      className="flex-shrink-0 text-panel-text-5"
-    >
-      <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-  ) : (
+  const collapseIcon = (
     <svg
       width="10"
       height="10"
       viewBox="0 0 10 10"
       fill="currentColor"
-      className="flex-shrink-0 text-panel-text-5"
+      className={`flex-shrink-0 text-panel-text-5 transition-transform duration-150 ${
+        collapsed ? "-rotate-90" : ""
+      }`}
     >
       <path d="M2 3l3 4 3-4z" />
     </svg>
@@ -379,7 +408,8 @@ export function Section({
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left active:scale-[0.99]"
         >
           <h3 className="text-[12px] font-semibold text-panel-text-1">{title}</h3>
           {collapseIcon}

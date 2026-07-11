@@ -45,14 +45,17 @@ export const ArcPathControls = memo(function ArcPathControls({
         <span className={LABEL}>Arc Motion</span>
         <button
           type="button"
+          role="switch"
+          aria-checked={Boolean(arcPath.enabled)}
+          aria-label="Arc motion"
           onClick={handleToggle}
           disabled={disabled}
-          className="relative rounded-full transition-all duration-150"
+          className="relative rounded-full transition-colors duration-200"
           style={{ width: 28, height: 16, background: arcPath.enabled ? P.accent : P.borderInput }}
           title={arcPath.enabled ? "Disable arc motion" : "Enable arc motion"}
         >
           <span
-            className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
+            className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"
             style={{
               width: 12,
               height: 12,
@@ -69,9 +72,12 @@ export const ArcPathControls = memo(function ArcPathControls({
             <span className={LABEL}>Auto-Rotate</span>
             <button
               type="button"
+              role="switch"
+              aria-checked={Boolean(arcPath.autoRotate)}
+              aria-label="Auto-rotate along path"
               onClick={handleAutoRotate}
               disabled={disabled}
-              className="relative rounded-full transition-all duration-150"
+              className="relative rounded-full transition-colors duration-200"
               style={{
                 width: 28,
                 height: 16,
@@ -84,7 +90,7 @@ export const ArcPathControls = memo(function ArcPathControls({
               }
             >
               <span
-                className="absolute top-[2px] left-0 rounded-full transition-transform duration-150"
+                className="absolute top-[2px] left-0 rounded-full transition-transform duration-200"
                 style={{
                   width: 12,
                   height: 12,
@@ -113,6 +119,7 @@ export const ArcPathControls = memo(function ArcPathControls({
                 )}
               </div>
               <SliderControl
+                ariaLabel="Curviness"
                 value={seg.curviness}
                 min={0}
                 max={3}
