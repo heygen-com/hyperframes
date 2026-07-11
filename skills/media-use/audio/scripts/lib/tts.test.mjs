@@ -131,6 +131,25 @@ test("synthesizeHeygen reports a missing audio_url", async () => {
   assert.match(res.error, /no audio_url/);
 });
 
+test("synthesizeHeygen reports wav transcode failures", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-tts-test-"));
+  try {
+    const res = await synthesizeHeygen(
+      { text: "hi", voiceId: "v1", lang: "en", speed: 1, wavAbs: join(dir, "voice.wav") },
+      {
+        heygenAuthHeaders: () => ({}),
+        heygenJSON: async () => ({ data: { audio_url: "http://audio.example/x" } }),
+        fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) }),
+        transcodeToWav: () => false,
+      },
+    );
+    assert.equal(res.ok, false);
+    assert.equal(res.error, "wav transcode failed (ffmpeg)");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("synthResult names a non-zero subprocess exit", () => {
   const res = synthResult({ status: 2 }, "/tmp/none.wav", "kokoro (npx hyperframes tts)");
   assert.equal(res.ok, false);

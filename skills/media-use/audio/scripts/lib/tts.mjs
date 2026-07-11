@@ -312,7 +312,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
         return {
           ok: false,
           words: null,
-          error: "wav transcode failed (ffmpeg — see output above)",
+          error: "wav transcode failed (ffmpeg)",
         };
       }
     } else {
