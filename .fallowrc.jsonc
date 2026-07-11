@@ -95,6 +95,11 @@
   "ignoreExports": [
     // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
     {
+      "file": "packages/studio/src/components/editor/domEditNudge.ts",
+      "exports": ["CANVAS_NUDGE_COMMIT_DEBOUNCE_MS"],
+    },
+    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
+    {
       "file": "packages/studio/src/components/editor/canvasContextMenuZOrder.ts",
       "exports": ["readEffectiveZIndex"],
     },
