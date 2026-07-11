@@ -1,5 +1,6 @@
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { computeThumbnailStrip, THUMBNAIL_CLIP_HEIGHT } from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -8,7 +9,7 @@ interface VideoThumbnailProps {
   duration?: number;
 }
 
-const CLIP_HEIGHT = 66;
+const CLIP_HEIGHT = THUMBNAIL_CLIP_HEIGHT;
 const MAX_UNIQUE_FRAMES: number = 6;
 
 /**
@@ -25,6 +26,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const [containerWidth, setContainerWidth] = useState(0);
   const [visible, setVisible] = useState(false);
   const [frames, setFrames] = useState<string[]>([]);
+  const [failed, setFailed] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
   const ioRef = useRef<IntersectionObserver | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
@@ -117,8 +119,22 @@ export const VideoThumbnail = memo(function VideoThumbnail({
 
     video.addEventListener("seeked", () => {
       if (cancelled) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+      let dataUrl: string;
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+      } catch {
+        // An external http(s) video served without CORS headers taints the
+        // canvas, so toDataURL throws a SecurityError. Stop the extractor
+        // cleanly and fall back to the no-thumbnail rendering (plain clip
+        // background), matching ImageThumbnail's error path — otherwise the
+        // shimmer placeholder would spin forever.
+        cancelled = true;
+        setFailed(true);
+        video.src = "";
+        video.load();
+        return;
+      }
       // Stream each frame immediately
       setFrames((prev) => [...prev, dataUrl]);
       idx++;
@@ -126,7 +142,12 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     });
 
     video.addEventListener("error", () => {
-      /* keep whatever frames we have */
+      // A no-CORS load fails outright (crossOrigin="anonymous" rejects a video
+      // served without CORS headers), firing this instead of the taint path in
+      // "seeked" — so 0 frames are ever extracted. Keep whatever frames we have,
+      // but mark failed so the shimmer placeholder stops spinning forever and we
+      // fall back to the plain clip background (#2214).
+      setFailed(true);
     });
 
     video.src = videoSrc;
@@ -136,13 +157,13 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       cancelled = true;
       extractingRef.current = false;
       setFrames([]);
+      setFailed(false);
       video.src = "";
       video.load();
     };
   }, [visible, videoSrc, duration]);
 
-  const frameW = Math.round(CLIP_HEIGHT * aspect);
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
@@ -168,7 +189,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
         </div>
       )}
 
-      {visible && frames.length === 0 && (
+      {visible && frames.length === 0 && !failed && (
         <div
           className="absolute inset-0 animate-pulse"
           style={{
