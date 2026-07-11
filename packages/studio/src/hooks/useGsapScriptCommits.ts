@@ -72,13 +72,11 @@ function softReloadOrEscalate(
   // not the iframe's raw `__player.getTime()` — see the comment in
   // applySoftReload for why the two can desync after a keyframe-node drag.
   const currentTime = usePlayerStore.getState().currentTime;
-  const result: SoftReloadResult = applySoftReload(
-    iframe,
-    scriptText,
-    reloadPreview,
-    currentTime,
+  const result: SoftReloadResult = applySoftReload(iframe, scriptText, {
+    onAsyncFailure: reloadPreview,
+    currentTimeOverride: currentTime,
     authoredHtml,
-  );
+  });
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
     origin,

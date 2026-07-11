@@ -57,11 +57,15 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  const emitted = new Set(Object.keys(props));
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
       // A key carried by both properties and extras (a set's parsed
-      // `immediateRender: true`) must emit once — properties win.
-      if (!(k in props)) entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
+      // `immediateRender: true`) must emit once — properties win. Same
+      // dedupe shape as the recast twin (gsapParser.ts buildTweenStatementCode).
+      if (emitted.has(k)) continue;
+      emitted.add(k);
+      entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
     }
   }
   const objCode = `{ ${entries.join(", ")} }`;

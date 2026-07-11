@@ -239,8 +239,21 @@ export function installAuthoredOpacityCapture(): void {
   new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) scan(node);
+      // An element can also GAIN grading at runtime (studio applies a preset to
+      // a previously ungraded element). Stamp at that moment — strictly earlier
+      // than the engine's hide, so the captured value can never be worse than
+      // the hide-time fallback, and after a soft reload's authored restore it
+      // IS the authored value. stamp() is idempotent: an existing stamp wins.
+      if (mutation.type === "attributes" && mutation.target instanceof Element) {
+        if (mutation.target.hasAttribute(HF_COLOR_GRADING_ATTR)) stamp(mutation.target);
+      }
     }
-  }).observe(root, { childList: true, subtree: true });
+  }).observe(root, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [HF_COLOR_GRADING_ATTR],
+  });
 }
 
 // Map insertion order gives us simple FIFO eviction for authoring sessions that cycle LUTs.

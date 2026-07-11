@@ -643,4 +643,26 @@ describe("installAuthoredOpacityCapture", () => {
     expect(el.getAttribute("data-hf-authored-opacity")).toBe("");
     el.remove();
   });
+
+  it("stamps an already-inserted element the moment it GAINS grading at runtime", async () => {
+    installAuthoredOpacityCapture();
+    const el = document.createElement("img");
+    el.style.opacity = "0.9";
+    document.body.appendChild(el);
+    await Promise.resolve();
+    expect(el.hasAttribute("data-hf-authored-opacity")).toBe(false);
+
+    // Studio applies a preset to a previously ungraded element — no re-insert.
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.5 } }));
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.9");
+
+    // Later attribute rewrites (preset tweaks) never overwrite the stamp,
+    // even if a transient is live by then.
+    el.style.opacity = "0";
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.9 } }));
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.9");
+    el.remove();
+  });
 });

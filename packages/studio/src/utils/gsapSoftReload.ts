@@ -174,13 +174,21 @@ export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload
  * caller should perform a full reload to recover. It never fires on the
  * synchronous paths.
  */
+export interface SoftReloadOptions {
+  /** Escalation for async plugin-load failures (e.g. MotionPath CDN error). */
+  onAsyncFailure?: () => void;
+  /** Seek target for the rebuilt timeline; defaults to the iframe player time. */
+  currentTimeOverride?: number;
+  /** After-write file HTML — the primary source for authored-opacity restore. */
+  authoredHtml?: string;
+}
+
 export function applySoftReload(
   iframe: HTMLIFrameElement | null,
   scriptText: string,
-  onAsyncFailure?: () => void,
-  currentTimeOverride?: number,
-  authoredHtml?: string,
+  options: SoftReloadOptions = {},
 ): SoftReloadResult {
+  const { onAsyncFailure, currentTimeOverride, authoredHtml } = options;
   if (!iframe || !scriptText) return "cannot-soft-reload";
 
   const win = iframe.contentWindow as IframeWindow | null;

@@ -315,7 +315,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
       const iframe = iframeRef.current;
       const freshTarget = iframe
-        ? getPreviewTargetFromPointer(iframe, event.clientX, event.clientY, activeCompositionPath)
+        ? getPreviewTargetFromPointer(
+            iframe,
+            event.clientX,
+            event.clientY,
+            activeCompositionPathRef.current,
+          )
         : null;
       if (freshTarget) return;
       const overlayEl = overlayRef.current;

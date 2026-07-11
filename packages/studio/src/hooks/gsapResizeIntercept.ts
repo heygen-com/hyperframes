@@ -106,7 +106,12 @@ export async function tryGsapResizeIntercept(
   const coalesceKey = `gsap:resize:${anim.id}`;
 
   const selector = selectorFromSelection(selection);
-  const runtimeProps = selector ? readAllAnimatedProperties(iframe, selector, anim) : {};
+  // Scope every capture to the resize group — same contract as the rotation
+  // intercept. Unfiltered, an opacity-touching intro tween on the element
+  // would ride into resize conversions/backfills (the Fix-2 bake class).
+  const runtimeProps = selector
+    ? readAllAnimatedProperties(iframe, selector, anim, resizeGroup)
+    : {};
 
   let resizeProps: Record<string, number>;
   let scaleDraftEl: HTMLElement | null = null;
@@ -254,7 +259,7 @@ export async function tryGsapResizeIntercept(
       if (newId) anim = { ...anim, id: newId };
     } else if (!anim.keyframes) {
       const resolvedFromValues = selector
-        ? readAllAnimatedProperties(iframe, selector, anim)
+        ? readAllAnimatedProperties(iframe, selector, anim, resizeGroup)
         : undefined;
       await commitMutation(
         selection,

@@ -186,19 +186,40 @@ async function commitStaticSet(
     byGroup.set(group, batch);
   }
   const sets = animations.filter((a) => a.method === "set" && a.targetSelector === selector);
+  // Resolve every group's target BEFORE committing anything, and coalesce
+  // groups that land on the SAME set into one commit: the `sets` snapshot is
+  // captured once, so if two groups resolved to one legacy mixed set, a first
+  // commit could re-shape it server-side and leave the second chasing a stale
+  // id (404 on legacy pre-split files).
+  const byTargetSet = new Map<GsapAnimation, [string, number | string][]>();
+  const newSetBatches: [string, number | string][][] = [];
   for (const [group, batch] of byGroup) {
-    const existingSet =
-      // A set already dedicated to this group wins; else a mixed set that
-      // already carries a property of this group (merging same-group values
-      // there beats spawning a second writer for the same channel).
-      sets.find((a) => a.propertyGroup === group) ??
-      sets.find((a) => Object.keys(a.properties).some((k) => classifyPropertyGroup(k) === group));
+    const existingSet = findGroupOwningSet(sets, group);
     if (existingSet) {
-      await commitSetProps(selection, existingSet, batch, selector, animations, commit);
+      byTargetSet.set(existingSet, [...(byTargetSet.get(existingSet) ?? []), ...batch]);
     } else {
-      await addGlobalStaticSet(selection, batch, selector, commit);
+      newSetBatches.push(batch);
     }
   }
+  for (const [targetSet, batch] of byTargetSet) {
+    await commitSetProps(selection, targetSet, batch, selector, animations, commit);
+  }
+  // Fresh adds don't reshape existing sets, so their ids can't go stale.
+  for (const batch of newSetBatches) {
+    await addGlobalStaticSet(selection, batch, selector, commit);
+  }
+}
+
+/**
+ * The set that owns a property group: one already dedicated to the group wins;
+ * else a mixed set that already carries a property of the group (merging
+ * same-group values there beats spawning a second writer for the channel).
+ */
+function findGroupOwningSet(sets: GsapAnimation[], group: string): GsapAnimation | undefined {
+  return (
+    sets.find((a) => a.propertyGroup === group) ??
+    sets.find((a) => Object.keys(a.properties).some((k) => classifyPropertyGroup(k) === group))
+  );
 }
 
 /**

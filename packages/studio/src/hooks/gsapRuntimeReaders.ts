@@ -106,11 +106,9 @@ export function readAllAnimatedProperties(
   // point of property-group tweens is that a rotation commit never carries
   // opacity/rotationX/etc. captured from unrelated tweens on the element.
   const inGroup = (p: string) => !group || classifyPropertyGroup(p) === group;
-  for (const p of propKeys) {
-    if (!inGroup(p)) propKeys.delete(p);
-  }
+  const groupedPropKeys = new Set([...propKeys].filter(inGroup));
 
-  for (const prop of propKeys) {
+  for (const prop of groupedPropKeys) {
     const val = readLiveGsapValue(gsap, el, prop);
     if (Number.isFinite(val)) {
       result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
@@ -142,7 +140,7 @@ export function readAllAnimatedProperties(
       }
     }
   } catch {}
-  for (const p of propKeys) otherTweenProps.delete(p);
+  for (const p of groupedPropKeys) otherTweenProps.delete(p);
 
   // Tier 1: Transform + visual properties with universal CSS defaults.
   // Safe to compare against hardcoded values — these are always 0 or 1
@@ -174,7 +172,7 @@ export function readAllAnimatedProperties(
   // Collect all properties that ANY tween on this element explicitly targets.
   // Only capture baseline values for these — GSAP reports non-default values
   // (scaleZ=0, brightness=0) for untouched properties, polluting keyframes.
-  const allTweenedProps = new Set([...propKeys, ...otherTweenProps]);
+  const allTweenedProps = new Set([...groupedPropKeys, ...otherTweenProps]);
   for (const [prop, defaultVal] of Object.entries(UNIVERSAL_BASELINE)) {
     if (prop in result) continue;
     if (!allTweenedProps.has(prop)) continue;

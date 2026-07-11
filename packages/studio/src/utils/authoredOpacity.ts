@@ -21,7 +21,14 @@ export function readStampedAuthoredOpacity(element: AttributeReader): string | n
   return element.getAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR);
 }
 
-/** Write an authored inline opacity back: "" removes the property, a value sets it. */
+/**
+ * Write an authored inline opacity back: "" removes the property, a value sets
+ * it. Priority-lossy by design: the capture reads `style.opacity` (value only)
+ * and the write sets no priority, so an authored `opacity: X !important`
+ * round-trips as `opacity: X`. The only `!important` opacity in the pipeline
+ * is the color-grading runtime hide — a transient this contract exists to
+ * discard — and authored compositions don't `!important` their opacity.
+ */
 export function applyAuthoredInlineOpacity(style: CSSStyleDeclaration, authored: string): void {
   if (authored === "") style.removeProperty("opacity");
   else style.setProperty("opacity", authored);
