@@ -5,6 +5,7 @@ interface SaveProjectFilesWithHistoryInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
+  coalesceMs?: number;
   files: Record<string, string>;
   readFile: (path: string) => Promise<string>;
   writeFile: (path: string, content: string) => Promise<void>;
@@ -12,6 +13,7 @@ interface SaveProjectFilesWithHistoryInput {
     label: string;
     kind: EditHistoryKind;
     coalesceKey?: string;
+    coalesceMs?: number;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
 }
@@ -20,6 +22,7 @@ export async function saveProjectFilesWithHistory({
   label,
   kind,
   coalesceKey,
+  coalesceMs,
   files,
   readFile,
   writeFile,
@@ -43,7 +46,7 @@ export async function saveProjectFilesWithHistory({
       writtenPaths.push(path);
     }
 
-    await recordEdit({ label, kind, coalesceKey, files: snapshots });
+    await recordEdit({ label, kind, coalesceKey, coalesceMs, files: snapshots });
   } catch (error) {
     try {
       for (const path of writtenPaths.reverse()) {
