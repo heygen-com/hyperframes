@@ -13,6 +13,7 @@ import {
   groupOverlayItemsEqual,
   isElementVisibleForOverlay,
   groupAwareOverlayRect,
+  orientedOverlayRect,
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
@@ -157,7 +158,15 @@ export function useDomEditOverlayRects({
         // backgroundless full-bleed scene above a subcomposition), which would wrongly
         // hide the selection box. Occlusion stays for hover, where a false hide is cheap.
         if (el && isElementVisibleForOverlay(el)) {
-          const nextRect = groupAwareOverlayRect(overlayEl, iframe, el);
+          // Groups render as an AABB union of their members (a group OBB is out of
+          // scope); a single element renders as an oriented box that co-rotates
+          // with its transform. orientedOverlayRect gates on rotation internally
+          // (a cheap per-call check) and only pays for the full corner-transform
+          // measurement when the element is actually rotated — this RAF loop runs
+          // every frame for any single selection, so that gate matters here most.
+          const nextRect = el.hasAttribute("data-hf-group")
+            ? groupAwareOverlayRect(overlayEl, iframe, el)
+            : orientedOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");
           if (descendants.length > 0 && descendants.length <= 60) {

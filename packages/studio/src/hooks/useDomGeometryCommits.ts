@@ -61,14 +61,29 @@ export function useDomGeometryCommits({
   );
 
   const handleDomBoxSizeCommit = useCallback(
-    (selection: DomEditSelection, next: { width: number; height: number }) => {
+    (
+      selection: DomEditSelection,
+      next: { width: number; height: number },
+      offset?: { x: number; y: number },
+    ) => {
       if (isElementGsapTargeted(previewIframeRef.current, selection.element)) {
         const error = new Error(GSAP_CSS_FALLBACK_BLOCKED_MESSAGE);
         showToast(error.message, "error");
         return Promise.reject(error);
       }
       applyStudioBoxSize(selection.element, next);
-      return commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
+      // Anchored-corner resize (NW/NE/SW) also moves the element to keep the
+      // opposite corner fixed. Apply the offset and emit BOTH patch sets in a
+      // SINGLE commit: one persist = one undo entry, and there is no
+      // intermediate re-stamp where the new size is in source but the anchor
+      // offset is not (that frame was the release "jump"). Both builders read
+      // the already-mutated live element, so concatenation is safe.
+      const patches = buildBoxSizePatches(selection.element);
+      if (offset) {
+        applyStudioPathOffset(selection.element, offset);
+        patches.push(...buildPathOffsetPatches(selection.element));
+      }
+      return commitPositionPatchToHtml(selection, patches, {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       });

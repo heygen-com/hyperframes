@@ -4,7 +4,11 @@ import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
-import { resolveTimelineIdForSelection, type RightPanelTab } from "../utils/studioHelpers";
+import {
+  findMatchingTimelineElementId,
+  findTimelineIdByAncestor,
+  type RightPanelTab,
+} from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -20,7 +24,6 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
-import { usePlayerStore } from "../player/store/playerStore";
 
 // ── Types ──
 
@@ -92,6 +95,7 @@ export interface UseDomSelectionReturn {
   ) => Promise<DomEditSelection | null>;
   handleTimelineElementSelect: (element: TimelineElement | null) => Promise<void>;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => Promise<void>;
+  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
 }
 
@@ -122,16 +126,11 @@ export function useDomSelection({
 
   // ── Refs ──
 
-  const rightPanelTabRef = useRef(rightPanelTab);
-  rightPanelTabRef.current = rightPanelTab;
   const domEditSelectionRef = useRef<DomEditSelection | null>(domEditSelection);
   const domEditGroupSelectionsRef = useRef<DomEditSelection[]>(domEditGroupSelections);
   const domEditHoverSelectionRef = useRef<DomEditSelection | null>(domEditHoverSelection);
   const activeGroupElementRef = useRef<HTMLElement | null>(activeGroupElement);
   const compositionIdentityRef = useRef({ activeCompPath, projectId });
-  // Monotonic token so a rapid A->B timeline-clip select can't let A's slower async
-  // resolution land after B and restore the wrong selection.
-  const timelineSelectSeqRef = useRef(0);
 
   // Keep refs in sync with state
   domEditSelectionRef.current = domEditSelection;
@@ -206,42 +205,22 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          // Keep the Variables tab in place — selecting elements is part of
-          // the bind flow there; yanking to Design would lose the context.
-          if (rightPanelTabRef.current !== "variables") {
-            setRightPanelTab("design");
-          }
+          setRightPanelTab("design");
         }
-        // Mirror the whole DOM group to the store so it stays the single source of
-        // truth: a single selection collapses to one id; a preserved group (echo
-        // during a gesture) keeps every member instead of shrinking to the anchor.
-        const anchorId = resolveTimelineIdForSelection(
-          nextSelection,
-          timelineElements,
-          activeCompPath,
-        );
-        const groupIds = nextGroup
-          .map((selection) =>
-            resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-          )
-          .filter((id): id is string => Boolean(id));
-        if (groupIds.length > 0) {
-          usePlayerStore.getState().setSelection(groupIds, anchorId);
-        } else {
-          setSelectedTimelineElementId(anchorId);
-        }
+        const nextSelectedTimelineId =
+          findMatchingTimelineElementId(nextSelection, timelineElements) ??
+          findTimelineIdByAncestor(
+            nextSelection.element,
+            timelineElements,
+            nextSelection.sourceFile || "index.html",
+          );
+        setSelectedTimelineElementId(nextSelectedTimelineId);
         return;
       }
 
       setSelectedTimelineElementId(null);
     },
-    [
-      setSelectedTimelineElementId,
-      timelineElements,
-      setRightCollapsed,
-      setRightPanelTab,
-      activeCompPath,
-    ],
+    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -381,15 +360,12 @@ export function useDomSelection({
   const handleTimelineElementSelect = useCallback(
     async (element: TimelineElement | null) => {
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) return;
-      const seq = ++timelineSelectSeqRef.current;
       if (!element) {
         applyDomSelection(null, { revealPanel: false });
         return;
       }
 
       const selection = await buildDomSelectionForTimelineElement(element);
-      // A newer selection superseded this one while we were resolving — drop the stale result.
-      if (seq !== timelineSelectSeqRef.current) return;
       if (selection) applyDomSelection(selection);
     },
     [applyDomSelection, buildDomSelectionForTimelineElement],
@@ -422,6 +398,55 @@ export function useDomSelection({
       }
     },
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
+  );
+
+  const refreshDomEditGroupSelectionsFromPreview = useCallback(
+    // fallow-ignore-next-line complexity
+    async (selections: DomEditSelection[]) => {
+      const iframe = previewIframeRef.current;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const nextGroup: DomEditSelection[] = [];
+      for (const selection of selections) {
+        const element = findElementForSelection(doc, selection, activeCompPath);
+        if (!element) continue;
+        const nextSelection = await buildDomSelectionFromTarget(element);
+        if (nextSelection) nextGroup.push(nextSelection);
+      }
+      if (nextGroup.length === 0) return;
+
+      const currentSelection = domEditSelectionRef.current;
+      const nextSelection =
+        nextGroup.find((selection) => domEditSelectionsTargetSame(selection, currentSelection)) ??
+        nextGroup[0] ??
+        null;
+
+      domEditSelectionRef.current = nextSelection;
+      domEditGroupSelectionsRef.current = nextGroup;
+      setDomEditSelection(nextSelection);
+      setDomEditGroupSelections(nextGroup);
+
+      if (nextSelection) {
+        setSelectedTimelineElementId(
+          findMatchingTimelineElementId(nextSelection, timelineElements),
+        );
+      } else {
+        setSelectedTimelineElementId(null);
+      }
+    },
+    [
+      activeCompPath,
+      buildDomSelectionFromTarget,
+      setSelectedTimelineElementId,
+      timelineElements,
+      previewIframeRef,
+    ],
   );
 
   // ── Effects ──
@@ -505,23 +530,16 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId = resolveTimelineIdForSelection(
-        nextSelection,
-        timelineElements,
-        activeCompPath,
-      );
-      const nextTimelineIds = nextGroup
-        .map((selection) =>
-          resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-        )
-        .filter((id): id is string => Boolean(id));
-      if (nextTimelineIds.length > 0) {
-        usePlayerStore.getState().setSelection(nextTimelineIds, nextTimelineId);
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      const nextTimelineId =
+        findMatchingTimelineElementId(nextSelection, timelineElements) ??
+        findTimelineIdByAncestor(
+          nextSelection.element,
+          timelineElements,
+          nextSelection.sourceFile || "index.html",
+        );
+      setSelectedTimelineElementId(nextTimelineId);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId, activeCompPath],
+    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
   );
 
   // Disabled inspector effect
@@ -558,6 +576,7 @@ export function useDomSelection({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
+    refreshDomEditGroupSelectionsFromPreview,
     applyMarqueeSelection,
   };
 }
