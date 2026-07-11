@@ -1,4 +1,5 @@
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
+import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
@@ -98,6 +99,8 @@ export function resolveTimelineAssetInitialGeometry(source: string): {
 
 export function buildTimelineAssetInsertHtml(input: {
   id: string;
+  /** Stable hf-id stamped as data-hf-id by the NLE drop path (optional in the legacy path). */
+  hfId?: string;
   assetPath: string;
   kind: TimelineAssetKind;
   start: number;
@@ -135,4 +138,63 @@ export function insertTimelineAssetIntoSource(source: string, assetHtml: string)
     .map((line, i) => (i === 0 ? line : childIndent + line))
     .join("\n");
   return `${source.slice(0, insertAt)}\n${childIndent}${indented}${source.slice(insertAt)}`;
+}
+
+/**
+ * Set the composition root's `data-duration` to `contentEnd` (grow OR shrink) so the
+ * timeline length tracks content — the content-driven counterpart to
+ * extendCompositionDurationIfNeeded's grow-only ratchet. Used after edits that can
+ * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
+ * an empty timeline keeps its declared duration instead of collapsing to 0.
+ */
+export function setCompositionDurationToContent(source: string, contentEnd: number): string {
+  if (!Number.isFinite(contentEnd) || contentEnd <= 0) return source;
+  const rootDur = readRootCompositionDuration(source);
+  if (rootDur == null) return source;
+  const next = roundToCenti(contentEnd);
+  if (rootDur === next) return source;
+  return patchRootCompositionDuration(source, String(next));
+}
+
+export function extendCompositionDurationIfNeeded(source: string, requiredEnd: number): string {
+  const rootDur = readRootCompositionDuration(source);
+  if (rootDur == null || !Number.isFinite(rootDur) || requiredEnd <= rootDur) return source;
+  return patchRootCompositionDuration(source, String(roundToCenti(requiredEnd)));
+}
+
+/**
+ * Set the composition root's `data-duration` to `contentEnd` (grow OR shrink) so the
+ * timeline length tracks content — the content-driven counterpart to
+ * extendCompositionDurationIfNeeded's grow-only ratchet. Used after edits that can
+ * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
+ * an empty timeline keeps its declared duration instead of collapsing to 0.
+ */
+export function fitTimelineAssetGeometry(
+  natural: { width: number; height: number } | null,
+  comp: { width: number; height: number },
+): { left: number; top: number; width: number; height: number } {
+  if (!natural || natural.width <= 0 || natural.height <= 0) {
+    return { left: 0, top: 0, width: comp.width, height: comp.height };
+  }
+  const scale = Math.min(1, comp.width / natural.width, comp.height / natural.height);
+  const width = Math.round(natural.width * scale);
+  const height = Math.round(natural.height * scale);
+  return {
+    left: Math.round((comp.width - width) / 2),
+    top: Math.round((comp.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+export function resolveTimelineAssetCompositionSize(source: string): {
+  width: number;
+  height: number;
+} {
+  const width = Number.parseFloat(source.match(/\bdata-width=(["'])([^"']+)\1/i)?.[2] ?? "");
+  const height = Number.parseFloat(source.match(/\bdata-height=(["'])([^"']+)\1/i)?.[2] ?? "");
+  return {
+    width: Number.isFinite(width) && width > 0 ? Math.round(width) : 640,
+    height: Number.isFinite(height) && height > 0 ? Math.round(height) : 360,
+  };
 }

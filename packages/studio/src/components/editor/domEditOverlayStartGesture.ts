@@ -26,6 +26,7 @@ import {
 import {
   type GestureKind,
   type GestureState,
+  type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
@@ -100,7 +101,11 @@ export function startGesture(
   kind: GestureKind,
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
-  options?: { selection?: DomEditSelection; rect?: OverlayRect | null },
+  options?: {
+    selection?: DomEditSelection;
+    rect?: OverlayRect | null;
+    resizeHandle?: ResizeHandle;
+  },
 ): boolean {
   const sel = options?.selection ?? opts.selectionRef.current;
   const rect = options?.rect ?? opts.overlayRectRef.current;

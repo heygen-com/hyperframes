@@ -228,3 +228,10 @@ export type UseDomEditOverlayGesturesOptions = {
   onCanvasMouseDown: (e: React.MouseEvent<HTMLDivElement>, o?: PreviewMouseDownOptions) => void;
   snapGuidesRef: RefObject<SnapGuidesState | null>;
 };
+
+/**
+ * Corner identity for a chrome resize handle. Consumed by the selection
+ * chrome + resize-local math; the gesture pipeline threads it through
+ * startGesture options.
+ */
+export type ResizeHandle = "nw" | "ne" | "sw" | "se";

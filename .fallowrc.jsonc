@@ -44,7 +44,7 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
-    // NLE notice — rendered conditionally via NLELayout when timeline is first shown.
+    // NLE notice — rendered conditionally via NLEContext/EditorShell when timeline is first shown.
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
@@ -53,9 +53,6 @@
     "packages/studio/src/hooks/gsapTargetCache.ts",
     // Preview helper consumed dynamically from the studio iframe bridge.
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
-    // TEMP(studio-dnd): shipped unwired ahead of the NLE integration;
-    // the app-shell swap PR (studio-dnd/pr22) wires the consumers and removes this block.
-    "packages/studio/src/components/editor/CanvasContextMenu.tsx",
   ],
   "ignorePatterns": [
     "docs/**",
@@ -93,11 +90,6 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
-    // TEMP(studio-dnd): consumers land later in the stack; removed by studio-dnd/pr22.
-    {
-      "file": "packages/studio/src/components/editor/canvasContextMenuZOrder.ts",
-      "exports": ["readEffectiveZIndex"],
-    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -441,13 +433,6 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
-      // TEMP(studio-dnd): coexistence-window complexity flare (inherited/CRAP-no-coverage);
-      // removed by studio-dnd/pr22 when the final config lands.
-      "packages/studio/src/player/hooks/useTimelineSyncCallbacks.ts",
-      "packages/studio/src/components/editor/CanvasContextMenu.tsx",
-      "packages/studio/src/components/editor/canvasContextMenuZOrder.test.ts",
-      "packages/studio/src/player/components/timelineCollision.test.ts",
-      "packages/studio/src/player/components/timelineStackingSync.test.ts",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited
@@ -587,14 +572,12 @@
       "packages/studio/src/components/editor/Transform3DCube.tsx",
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
-      "packages/studio/src/components/nle/NLELayout.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
       "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
-      "packages/studio/src/components/StudioPreviewArea.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",
