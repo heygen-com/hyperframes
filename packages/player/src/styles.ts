@@ -219,13 +219,18 @@ export const PLAYER_STYLES = /* css */ `
     z-index: 10;
     pointer-events: auto;
     opacity: 1;
-    transition: opacity 0.3s ease;
+    /* Asymmetric reveal: entering the visible state must feel instant (the
+       user just moved the pointer and wants the scrubber NOW), while the
+       idle fade-out stays gentle. The transition on each state rules the
+       transition INTO that state. */
+    transition: opacity 110ms ease-out;
     user-select: none;
   }
 
   .hfp-controls.hfp-hidden {
     opacity: 0;
     pointer-events: none;
+    transition: opacity 280ms ease;
   }
 
   .hfp-play-btn {
@@ -255,8 +260,8 @@ export const PLAYER_STYLES = /* css */ `
     align-items: center;
     justify-content: center;
     transition:
-      opacity 200ms ease,
-      transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+      opacity 140ms ease,
+      transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
   }
   .hfp-play-btn .hfp-ico-play {
     opacity: 1;

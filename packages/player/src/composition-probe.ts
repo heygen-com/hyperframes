@@ -101,7 +101,7 @@ export class CompositionProbe {
     let attempts = 0;
 
     // fallow-ignore-next-line complexity
-    this._interval = setInterval(() => {
+    const tick = () => {
       attempts++;
       try {
         const win = this._iframe.contentWindow as Window & {
@@ -161,7 +161,11 @@ export class CompositionProbe {
         this.stop();
         this._callbacks.onError("Composition timeline not found after 8s");
       }
-    }, 200);
+    };
+    this._interval = setInterval(tick, 200);
+    // Probe immediately: fast compositions are ready on the first paint;
+    // waiting for the first interval adds 200ms of dead boot latency.
+    tick();
   }
 
   stop(): void {
