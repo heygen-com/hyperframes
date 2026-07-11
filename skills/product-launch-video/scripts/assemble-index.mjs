@@ -175,8 +175,15 @@ function hoistApprovedVideos(html, label) {
     const start = Number(attrValueFrom(attrs, "data-start"));
     const duration = Number(attrValueFrom(attrs, "data-duration"));
     const track = Number(attrValueFrom(attrs, "data-track-index"));
-    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0 || !Number.isFinite(track)) {
-      errors.push(`${label}: approved frame video must declare finite data-start, positive data-duration, and data-track-index`);
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      !Number.isFinite(track)
+    ) {
+      errors.push(
+        `${label}: approved frame video must declare finite data-start, positive data-duration, and data-track-index`,
+      );
       return full;
     }
     const cleanedAttrs = attrs
