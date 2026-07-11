@@ -48,6 +48,7 @@ interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
+  coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
 }
 
@@ -271,6 +272,7 @@ export function useDomEditCommits({
         label: options?.label ?? "Edit layer",
         kind: "manual",
         coalesceKey: options?.coalesceKey,
+        coalesceMs: options?.coalesceMs,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
       forceReloadSdkSession?.();

@@ -80,33 +80,3 @@ export function ContextMenu({
     </div>
   );
 }
-
-export function DeleteConfirm({
-  name,
-  onConfirm,
-  onCancel,
-}: {
-  name: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="px-2 py-1.5 bg-red-950/30 border-l-2 border-red-500 flex items-center justify-between gap-2">
-      <span className="text-[10px] text-red-400 truncate">Delete {name}?</span>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={onConfirm}
-          className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white hover:bg-red-500 transition-colors"
-        >
-          Delete
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}

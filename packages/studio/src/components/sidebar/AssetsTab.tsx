@@ -1,21 +1,12 @@
 // fallow-ignore-file code-duplication
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
-import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
-import { MEDIA_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
-import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ContextMenu } from "./AssetContextMenu";
 import { usePlayerStore } from "../../player/store/playerStore";
-import {
-  type MediaCategory,
-  getCategory,
-  basename,
-  ext,
-  CATEGORY_LABELS,
-  FILTER_ORDER,
-} from "./assetHelpers";
+import { type MediaCategory, getCategory, CATEGORY_LABELS, FILTER_ORDER } from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { GlobalAssetsView } from "./GlobalAssetsView";
+import { AssetCard, FontRow } from "./AssetCard";
 
 interface AssetsTabProps {
   projectId: string;
@@ -23,155 +14,7 @@ interface AssetsTabProps {
   onImport?: (files: FileList) => void;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
-}
-
-// fallow-ignore-next-line complexity
-function ImageCard({
-  projectId,
-  asset,
-  used,
-  onCopy,
-  isCopied,
-  onDelete,
-  onRename,
-  size,
-}: {
-  projectId: string;
-  asset: string;
-  used: boolean;
-  onCopy: (path: string) => void;
-  isCopied: boolean;
-  onDelete?: (path: string) => void;
-  onRename?: (oldPath: string, newPath: string) => void;
-  size: "large" | "small";
-}) {
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const name = basename(asset);
-  const extension = ext(asset);
-  const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
-  const isVideo = VIDEO_EXT.test(asset);
-  const isImage = IMAGE_EXT.test(asset);
-
-  const thumbW = size === "large" ? "w-full" : "w-[50px]";
-  const thumbH = size === "large" ? "h-[100px]" : "h-[32px]";
-
-  return (
-    <>
-      <div
-        draggable
-        onClick={() => onCopy(asset)}
-        onDragStart={(e) => {
-          e.dataTransfer.effectAllowed = "copy";
-          e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
-          e.dataTransfer.setData("text/plain", asset);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
-        className={`transition-colors cursor-pointer ${
-          size === "large"
-            ? `px-2.5 py-1 ${isCopied ? "bg-studio-accent/10" : "hover:bg-neutral-800/30"}`
-            : `px-2.5 py-1.5 flex items-center gap-2.5 ${
-                isCopied
-                  ? "bg-studio-accent/10 border-l-2 border-studio-accent"
-                  : "border-l-2 border-transparent hover:bg-neutral-800/50"
-              }`
-        }`}
-      >
-        {size === "large" ? (
-          <div className="flex flex-col gap-1">
-            <div className={`${thumbW} ${thumbH} rounded overflow-hidden bg-neutral-900 relative`}>
-              {isImage && (
-                <img
-                  src={serveUrl}
-                  alt={name}
-                  loading="lazy"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-              {isVideo && <VideoFrameThumbnail src={serveUrl} />}
-              {isVideo && hovered && (
-                <video
-                  src={serveUrl}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`text-xs font-medium truncate ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
-              >
-                {name}
-              </span>
-              <span className="text-[10px] text-neutral-600">{extension}</span>
-              {used && (
-                <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
-                  in use
-                </span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="w-[50px] h-[32px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 flex items-center justify-center">
-              {isImage && (
-                <img
-                  src={serveUrl}
-                  alt={name}
-                  loading="lazy"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              )}
-              {!isImage && (
-                <span className="text-[9px] font-medium text-neutral-700">{extension}</span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <span
-                className={`text-xs font-medium truncate block ${used ? "text-panel-text-1" : "text-panel-text-3"}`}
-              >
-                {name}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-neutral-600 truncate">{extension}</span>
-                {used && (
-                  <span className="text-[9px] font-medium text-panel-accent bg-panel-accent/10 px-1.5 py-px rounded">
-                    in use
-                  </span>
-                )}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          asset={asset}
-          onClose={() => setContextMenu(null)}
-          onCopy={onCopy}
-          onDelete={onDelete}
-          onRename={onRename}
-        />
-      )}
-    </>
-  );
+  onAddAssetToTimeline?: (path: string) => void;
 }
 
 export type UsageFilter = "all" | "used" | "unused";
@@ -200,20 +43,48 @@ export function countUsage(
 /**
  * Project-relative asset paths referenced by composition elements — the set the
  * "in use" badge, used-first sort, and usage filter all key on. Element src is
- * the raw authored value (timelineElementHelpers sets entry.src =
- * getAttribute("src")), so it can be a relative path ("assets/x.png"), a
- * "./"-prefixed path, the served "/api/projects/<id>/preview/assets/x.png" form,
- * or carry a ?query — normalize all of them to the bare project path so they
- * match the asset-list entries. Pure — unit-tested.
+ * populated from the core runtime's `resolveNodeAssetUrl` which calls
+ * `new URL(raw, document.baseURI).toString()`, turning authored relative paths
+ * into fully-absolute URLs with percent-encoded characters, e.g.
+ *   "assets/my file (1).mp4"
+ *   → "http://localhost:3012/api/projects/demo/preview/assets/my%20file%20(1).mp4"
+ *
+ * This function normalizes every src shape to the bare project-relative path so
+ * it matches the asset-list entries:
+ *   - Absolute URL  → strip origin + /api/projects/<id>/preview/ prefix, decode %XX
+ *   - Server-relative /api/…preview/… → same strip + decode
+ *   - Relative "./"-prefixed or bare → strip leading ./ or /
+ *   - ?query / #hash → dropped
+ *
+ * Pure — unit-tested.
  */
 export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> {
   const paths = new Set<string>();
   for (const el of elements) {
     if (!el.src) continue;
-    const s = el.src
+    let s = el.src;
+
+    // Strip absolute origin if present (http://host/path → /path)
+    try {
+      const u = new URL(s);
+      s = u.pathname + (u.search ? u.search : "") + (u.hash ? u.hash : "");
+    } catch {
+      // Not a valid absolute URL — leave as-is (relative path)
+    }
+
+    s = s
       .replace(/^\/api\/projects\/[^/]+\/preview\//, "") // strip the dev serve prefix
       .replace(/^\.?\//, "") // strip leading ./ or /
       .split(/[?#]/)[0]; // drop query / hash
+
+    // Decode percent-encoded characters (spaces, parens, etc.) so the path
+    // matches the plain-text asset-list entries the server returns.
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      // Malformed encoding — use as-is
+    }
+
     if (s) paths.add(s);
   }
   return paths;
@@ -225,6 +96,7 @@ export const AssetsTab = memo(function AssetsTab({
   onImport,
   onDelete,
   onRename,
+  onAddAssetToTimeline,
 }: AssetsTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -232,17 +104,11 @@ export const AssetsTab = memo(function AssetsTab({
   const [activeFilter, setActiveFilter] = useState<MediaCategory | "all">("all");
   const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  // Cross-project view: the global media-use cache (~/.media). The view itself
-  // (GlobalAssetsView) owns its fetch — AssetsTab only tracks which scope is active.
   const [viewMode, setViewMode] = useState<"local" | "global">("local");
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
   >(new Map());
 
-  // Projects whose media manifest 404'd — most don't have one. Cache the miss so
-  // we don't re-fetch (and spam the console) on every re-render; the effect was
-  // also keyed on the `assets` array reference, which changes each render, so it
-  // re-fired constantly. Key on a stable join + skip known-missing manifests.
   const manifest404Ref = useRef<Set<string>>(new Set());
   const assetsKey = assets.join("|");
   useEffect(() => {
@@ -278,7 +144,6 @@ export const AssetsTab = memo(function AssetsTab({
       cancelled = true;
     };
   }, [projectId, assetsKey]);
-
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -287,7 +152,6 @@ export const AssetsTab = memo(function AssetsTab({
     },
     [onImport],
   );
-
   const handleCopyPath = useCallback(async (path: string) => {
     const copied = await copyTextToClipboard(path);
     if (copied) {
@@ -295,22 +159,27 @@ export const AssetsTab = memo(function AssetsTab({
       setTimeout(() => setCopiedPath(null), 1500);
     }
   }, []);
-
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
-
   const mediaAssets = useMemo(() => {
     const media = assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a));
     const all = filterByUsage(media, usedPaths, usageFilter);
     if (!searchQuery) return all;
     const q = searchQuery.toLowerCase();
     return all.filter((a) => {
-      if (basename(a).toLowerCase().includes(q)) return true;
+      if (
+        a
+          .split("/")
+          .pop()
+          ?.replace(/\.[^.]*$/, "")
+          .toLowerCase()
+          .includes(q)
+      )
+        return true;
       const rec = manifest.get(a);
       return rec?.description?.toLowerCase().includes(q);
     });
   }, [assets, searchQuery, manifest, usageFilter, usedPaths]);
-
   const categorized = useMemo(() => {
     const groups: Record<MediaCategory, string[]> = { audio: [], images: [], video: [], fonts: [] };
     for (const a of mediaAssets) {
@@ -327,15 +196,11 @@ export const AssetsTab = memo(function AssetsTab({
     }
     return groups;
   }, [mediaAssets, usedPaths]);
-
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: mediaAssets.length };
     for (const cat of FILTER_ORDER) c[cat] = categorized[cat].length;
     return c;
   }, [mediaAssets, categorized]);
-
-  // Usage counts over the full media set (independent of the active usage filter,
-  // so the chips don't show their own filtered totals).
   const usageCounts = useMemo(
     () =>
       countUsage(
@@ -344,12 +209,10 @@ export const AssetsTab = memo(function AssetsTab({
       ),
     [assets, usedPaths],
   );
-
   const visibleCategories =
     activeFilter === "all"
       ? FILTER_ORDER.filter((c) => categorized[c].length > 0)
       : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
-
   return (
     <div
       className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/[0.05]" : ""}`}
@@ -362,7 +225,7 @@ export const AssetsTab = memo(function AssetsTab({
     >
       {/* Header — matches design panel Section pattern */}
       <div className="px-4 pt-2.5 pb-1.5 flex-shrink-0">
-        {/* Scope toggle — this project's assets vs the global media-use cache */}
+        {/* Scope toggle */}
         <div className="flex gap-1 mb-2.5 p-0.5 rounded-md bg-panel-input">
           {(["local", "global"] as const).map((m) => (
             <button
@@ -447,7 +310,7 @@ export const AssetsTab = memo(function AssetsTab({
           </div>
         )}
 
-        {/* Filter chips — panel-input style (local view only) */}
+        {/* Filter chips */}
         {viewMode === "local" && mediaAssets.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             <button
@@ -475,7 +338,6 @@ export const AssetsTab = memo(function AssetsTab({
                 </button>
               ) : null,
             )}
-            {/* Usage filter — show only assets the composition references, or only the unused ones */}
             {usageCounts.used > 0 && usageCounts.unused > 0 && (
               <>
                 <span className="w-px self-stretch bg-panel-input mx-0.5" aria-hidden="true" />
@@ -505,7 +367,6 @@ export const AssetsTab = memo(function AssetsTab({
         )}
       </div>
 
-      {/* Asset list */}
       <div className="flex-1 overflow-y-auto mt-1">
         {viewMode === "global" ? (
           <GlobalAssetsView searchQuery={searchQuery} />
@@ -553,34 +414,38 @@ export const AssetsTab = memo(function AssetsTab({
                     isCopied={copiedPath === a}
                     onDelete={onDelete}
                     onRename={onRename}
+                    onAddAssetToTimeline={onAddAssetToTimeline}
                   />
                 ))}
-              {(cat === "images" || cat === "video") &&
-                categorized[cat].map((a) => (
-                  <ImageCard
-                    key={a}
-                    projectId={projectId}
-                    asset={a}
-                    used={usedPaths.has(a)}
-                    onCopy={handleCopyPath}
-                    isCopied={copiedPath === a}
-                    onDelete={onDelete}
-                    onRename={onRename}
-                    size={categorized[cat].length <= 4 ? "large" : "small"}
-                  />
-                ))}
+              {(cat === "images" || cat === "video") && (
+                <div className="grid grid-cols-2 gap-1 px-2 pb-1">
+                  {categorized[cat].map((a) => (
+                    <AssetCard
+                      key={a}
+                      projectId={projectId}
+                      asset={a}
+                      used={usedPaths.has(a)}
+                      duration={manifest.get(a)?.duration}
+                      onCopy={handleCopyPath}
+                      isCopied={copiedPath === a}
+                      onDelete={onDelete}
+                      onRename={onRename}
+                      onAddAssetToTimeline={onAddAssetToTimeline}
+                    />
+                  ))}
+                </div>
+              )}
               {cat === "fonts" &&
                 categorized[cat].map((a) => (
-                  <ImageCard
+                  <FontRow
                     key={a}
-                    projectId={projectId}
                     asset={a}
                     used={usedPaths.has(a)}
                     onCopy={handleCopyPath}
                     isCopied={copiedPath === a}
                     onDelete={onDelete}
                     onRename={onRename}
-                    size="small"
+                    onAddAssetToTimeline={onAddAssetToTimeline}
                   />
                 ))}
             </div>
