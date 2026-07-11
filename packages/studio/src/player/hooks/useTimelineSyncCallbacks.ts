@@ -19,6 +19,7 @@ import {
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
+  readTimelineDurationFromDocument,
 } from "../lib/timelineDOM";
 import {
   normalizePreviewViewport,
@@ -39,6 +40,76 @@ interface UseTimelineSyncCallbacksParams {
   setIsPlaying: (v: boolean) => void;
   attachIframeShortcutListeners: () => void;
   applyPreviewAudioState: () => void;
+}
+
+/**
+ * Where should the player seek when the preview (re)loads?
+ * Priority: explicit pending seek (saved by refreshPlayer right before a
+ * reload) → store-level seek request (deep-link `?t=` hydration) → the store's
+ * last known playhead. The last fallback makes the playhead RELOAD-INVARIANT:
+ * edits persist + reload the preview, sometimes more than once (App's
+ * refreshPreviewDocumentVersion staggers extra bumps at 80/300ms), and the
+ * consume-once pendingSeekRef meant any reload after the first found the slot
+ * empty and reset the playhead to 0 — the "dropped a file and the playhead
+ * jumped to 0" bug. Falling back to the store's playhead means every reload
+ * restores position; a fresh project load still starts at 0 because the store
+ * resets currentTime on project switch. Invariant: an edit NEVER moves the
+ * playhead (the clamp below is the one sanctioned move — content shrank past it).
+ */
+/**
+ * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
+ * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
+ * completion + failure path funnels through here so the preview can never get
+ * stuck invisible.
+ */
+export function revealIframe(iframe: HTMLIFrameElement | null): void {
+  if (iframe && iframe.style.visibility === "hidden") {
+    iframe.style.visibility = "";
+  }
+}
+
+export function resolveReloadSeekTime(input: {
+  pendingSeek: number | null;
+  requestedSeek: number | null;
+  storeCurrentTime: number;
+  duration: number;
+}): number {
+  const target = input.pendingSeek ?? input.requestedSeek ?? input.storeCurrentTime;
+  if (!Number.isFinite(target) || target <= 0) return 0;
+  // Only clamp to duration when it's a usable positive number. A non-finite or
+  // non-positive duration (e.g. the adapter reports NaN mid-reload) would turn
+  // Math.min(target, NaN) into NaN and seek(NaN); return the guarded target
+  // unclamped instead so the playhead lands at the intended position.
+  if (!Number.isFinite(input.duration) || input.duration <= 0) return target;
+  return Math.min(target, input.duration);
+}
+
+/** Reject non-finite, non-positive, and absurdly large (loop-inflated) values. */
+function sanitizeDurationSeconds(value: number): number {
+  return Number.isFinite(value) && value > 0 && value < 7200 ? value : 0;
+}
+
+/**
+ * The transport TOTAL a clip-manifest message should write to the store.
+ *
+ * The manifest's `durationInFrames` measures the runtime timeline; some runtimes
+ * report only the furthest clip end and ignore the root composition's authored
+ * `data-duration`. When that manifest total is SHORTER than the authored root
+ * duration, writing it makes the readout stale (playback still runs the full
+ * authored window — the user saw "0:44/0:40" on a root authored at 44.5s whose
+ * last clip ends at 40s). The authored root duration is the floor for the total,
+ * so the readout can never sit below what the file declares. A manifest total
+ * that is LONGER (clips extend past the root) still wins — content can only grow
+ * the timeline, never shrink it below the authored window.
+ */
+export function resolveTimelineTotalDuration(input: {
+  manifestDurationSeconds: number;
+  authoredRootDurationSeconds: number;
+}): number {
+  return Math.max(
+    sanitizeDurationSeconds(input.manifestDurationSeconds),
+    sanitizeDurationSeconds(input.authoredRootDurationSeconds),
+  );
 }
 
 export function useTimelineSyncCallbacks({
@@ -154,8 +225,14 @@ export function useTimelineSyncCallbacks({
       const rawDuration = data.durationInFrames / 30;
       // Clamp non-finite or absurdly large durations — the runtime can emit
       // Infinity when it detects a loop-inflated GSAP timeline without an
-      // explicit data-duration on the root composition.
-      const newDuration = Number.isFinite(rawDuration) && rawDuration < 7200 ? rawDuration : 0;
+      // explicit data-duration on the root composition. Floor the manifest total
+      // at the authored root `data-duration` so a runtime that measures only the
+      // furthest clip end (shorter than the authored window) can't leave a stale,
+      // too-short total in the transport (the "0:44/0:40" bug).
+      const newDuration = resolveTimelineTotalDuration({
+        manifestDurationSeconds: rawDuration,
+        authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
+      });
       const effectiveDuration = newDuration > 0 ? newDuration : usePlayerStore.getState().duration;
       const clampedEls =
         effectiveDuration > 0
@@ -218,12 +295,32 @@ export function useTimelineSyncCallbacks({
     // never reaches pendingSeekRef). Reconciling with the store here is what makes a
     // deep-linked `?t=` land instead of starting at 0.
     const storeSeek = usePlayerStore.getState().requestedSeekTime;
-    const seekTo = pendingSeekRef.current ?? storeSeek;
+    const startTime = resolveReloadSeekTime({
+      pendingSeek: pendingSeekRef.current,
+      requestedSeek: storeSeek,
+      storeCurrentTime: usePlayerStore.getState().currentTime,
+      duration: adapter.getDuration(),
+    });
     pendingSeekRef.current = null;
     if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-    const startTime = seekTo != null ? Math.min(seekTo, adapter.getDuration()) : 0;
 
+    // Force a REAL render at startTime, not a no-op. After a post-edit reload the
+    // freshly rebuilt GSAP timeline can already report being at `startTime`
+    // internally (the reload restores the same playhead), so a single
+    // `adapter.seek(startTime)` is a GSAP no-op — `tl.seek(t)` at the current time
+    // doesn't re-evaluate. That's why a just-dropped clip stayed invisible until
+    // the user nudged the playhead: its element's state was never applied at the
+    // restore position. Seeking to a DIFFERENT guard value first (a hair off, or 0
+    // when startTime is already ~0) guarantees the follow-up seek to `startTime`
+    // crosses a time boundary and re-renders every clip — including the new one.
+    const guardTime = startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001;
+    adapter.seek(guardTime);
     adapter.seek(startTime);
+    // The correct frame is now rendered — reveal the iframe that refreshPlayer hid
+    // for the reload, so the user sees the restored frame directly (never the raw
+    // all-clips DOM). Cleared unconditionally: any later failure path must not leave
+    // the preview stuck invisible.
+    revealIframe(iframeRef.current);
     // Keep non-React listeners such as the capture link and time display in sync
     // with the initial adapter seek on iframe load.
     liveTime.notify(startTime);
@@ -332,6 +429,9 @@ export function useTimelineSyncCallbacks({
         trySettle();
       }
       window.removeEventListener("message", onMessage);
+      // Never leave the preview stuck invisible if the runtime never settled
+      // (initializeAdapter reveals on success; this covers the give-up case).
+      revealIframe(iframeRef.current);
     }, 5000) as unknown as ReturnType<typeof setInterval>;
   }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
 
