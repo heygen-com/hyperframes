@@ -306,8 +306,8 @@ describe("FlatSlider", () => {
         new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
       );
     });
-    // Instant, un-debounced knob feedback via aria-valuenow (draft state) —
-    // this must update on every pointermove regardless of the commit debounce.
+    // Instant, un-throttled knob feedback via aria-valuenow (draft state) —
+    // this must update on every pointermove regardless of the commit throttle.
     expect(track.getAttribute("aria-valuenow")).toBe("10");
     act(() => {
       track.dispatchEvent(
@@ -327,7 +327,7 @@ describe("FlatSlider", () => {
     act(() => root.unmount());
   });
 
-  it("coalesces rapid drag commits to only the final value on release, not every step", () => {
+  it("throttles rapid drag commits to leading edge + final value on release, not every step", () => {
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -346,6 +346,8 @@ describe("FlatSlider", () => {
       value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
     });
     act(() => {
+      // pointerdown fires the leading-edge commit immediately — a live
+      // preview needs to move the instant the drag starts, not wait 40ms.
       track.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
       );
@@ -356,9 +358,12 @@ describe("FlatSlider", () => {
         new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
       );
     });
-    // None of the rapid intermediate positions (10, 80) have committed yet —
-    // only the debounce timer or the pointerup flush should ever call onCommit.
-    expect(onCommit).not.toHaveBeenCalled();
+    // The leading-edge commit (10) fired; the rapid intermediate position (80)
+    // from the first pointermove never committed — it's within the 40ms
+    // throttle window, so only the trailing flush or the pointerup release
+    // gets to send the next value.
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(10);
     act(() => {
       // Real pointerup events always carry the pointer's true release position
       // (matches the last pointermove) — the handler recomputes from this
@@ -368,8 +373,8 @@ describe("FlatSlider", () => {
       );
     });
     // Release flushes immediately with the LAST position only.
-    expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith(50);
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onCommit).toHaveBeenNthCalledWith(2, 50);
     act(() => root.unmount());
   });
 

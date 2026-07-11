@@ -241,18 +241,27 @@ export function FlatSlider({
   onReset?: () => void;
   onCommit: (nextValue: number) => void;
 }) {
-  // Draft/debounce mirrors the legacy SliderControl (propertyPanelPrimitives.tsx):
-  // a real drag fires pointermove far faster than any commit should hit the
-  // network — `draft` gives the knob instant, drag-local feedback while the
-  // actual onCommit call is coalesced to the last value every 40ms, with an
-  // immediate flush on release so the drag never waits out the debounce.
+  // `draft` gives the knob instant, drag-local visual feedback. `onCommit` is
+  // throttled (not debounced) to at most once per 40ms: a real drag fires
+  // pointermove faster than that, and a pure debounce (reset the timer on
+  // every move) never commits until the pointer pauses or lifts — which kills
+  // live preview updates during a continuous drag. Throttling still fires on
+  // the leading edge and on a trailing timer, so the preview keeps updating
+  // while dragging, with an immediate flush on release for the final value.
   const [draft, setDraft] = useState(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  const lastCommitAtRef = useRef(0);
+  const pendingRef = useRef<number | null>(null);
+  // Tracks the last value actually sent to onCommit — separate from `value`
+  // (the committed prop) because in a single pointerdown+pointerup click the
+  // leading-edge commit fires before the parent has re-rendered with the new
+  // prop, so the release flush must dedupe against what we just sent, not
+  // against the stale prop, or the same value commits twice.
+  const lastCommittedRef = useRef(value);
 
   useEffect(() => {
     setDraft(value);
+    lastCommittedRef.current = value;
   }, [value]);
   useEffect(
     () => () => {
@@ -270,14 +279,30 @@ export function FlatSlider({
     return Math.max(min, Math.min(max, stepped));
   };
   const commitDraft = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    if (nextDraft !== valueRef.current) onCommit(nextDraft);
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+    pendingRef.current = null;
+    lastCommitAtRef.current = Date.now();
+    if (nextDraft !== lastCommittedRef.current) {
+      lastCommittedRef.current = nextDraft;
+      onCommit(nextDraft);
+    }
   };
   const scheduleCommit = (nextDraft: number) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (nextDraft !== valueRef.current) onCommit(nextDraft);
-    }, 40);
+    const elapsed = Date.now() - lastCommitAtRef.current;
+    if (elapsed >= 40) {
+      commitDraft(nextDraft);
+      return;
+    }
+    pendingRef.current = nextDraft;
+    if (!commitTimerRef.current) {
+      commitTimerRef.current = setTimeout(() => {
+        commitTimerRef.current = null;
+        if (pendingRef.current !== null) commitDraft(pendingRef.current);
+      }, 40 - elapsed);
+    }
   };
 
   return (
