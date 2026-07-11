@@ -167,6 +167,26 @@ function attrValueFrom(attrs, name) {
   return match ? (match[1] ?? match[2]) : null;
 }
 
+function escapeHtmlAttr(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function approvedVideoAttrs(attrs) {
+  const forwarded = [];
+  for (const name of ["id", "src", "poster", "preload", "aria-label"]) {
+    const value = attrValueFrom(attrs, name);
+    if (value !== null) forwarded.push(`${name}="${escapeHtmlAttr(value)}"`);
+  }
+  for (const name of ["muted", "playsinline", "loop"]) {
+    if (attrPresent(attrs, name)) forwarded.push(name);
+  }
+  return forwarded.join(" ");
+}
+
 function hoistApprovedVideos(html, label) {
   const videos = [];
   const errors = [];
@@ -201,15 +221,7 @@ function hoistApprovedVideos(html, label) {
       );
       return full;
     }
-    const cleanedAttrs = attrs
-      .replace(/\sdata-frame-video\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sdata-start\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sdata-duration\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sdata-track-index\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\sclass\s*=\s*(?:"[^"]*"|'[^']*')/i, "")
-      .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-      .replace(/\ssrcdoc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
-    videos.push({ attrs: cleanedAttrs.trim(), inner, start, duration, track });
+    videos.push({ attrs: approvedVideoAttrs(attrs), inner, start, duration, track });
     return "<!-- approved frame video hoisted by assemble-index -->";
   });
   return { html: repaired, videos, errors };

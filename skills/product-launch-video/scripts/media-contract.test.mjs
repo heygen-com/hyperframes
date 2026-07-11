@@ -26,7 +26,7 @@ test("assemble hoists an approved timed frame video to the host root", () => {
   );
   writeFileSync(
     framePath,
-    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" src="https://cdn.example/clip.mp4" onerror="alert(1)" data-start="0.25" data-duration="1.5" data-track-index="7" muted></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
+    `<html><body><div id="root" data-composition-id="frame-1" data-width="1920" data-height="1080"><video data-frame-video="approved" src="https://cdn.example/clip.mp4" poster="poster.png" preload="auto" muted playsinline loop style="background:url(https://evil.example/x)" nonce="unsafe" onerror="alert(1)" srcdoc="<script>alert(2)</script>" data-start="0.25" data-duration="1.5" data-track-index="7"></video></div><script>window.__timelines = {}; window.__timelines["frame-1"] = gsap.timeline();</script></body></html>`,
   );
 
   const result = spawnSync(
@@ -41,7 +41,15 @@ test("assemble hoists an approved timed frame video to the host root", () => {
   assert.match(index, /data-duration="1\.5"/);
   assert.match(index, /data-track-index="1007"/);
   assert.match(index, /src="https:\/\/cdn\.example\/clip\.mp4"/);
+  assert.match(index, /poster="poster\.png"/);
+  assert.match(index, /preload="auto"/);
+  assert.match(index, /\smuted(?:\s|>)/);
+  assert.match(index, /\splaysinline(?:\s|>)/);
+  assert.match(index, /\sloop(?:\s|>)/);
   assert.doesNotMatch(index, /onerror=/i);
+  assert.doesNotMatch(index, /srcdoc=/i);
+  assert.doesNotMatch(index, /nonce=/i);
+  assert.doesNotMatch(index, /style=/i);
   assert.doesNotMatch(frame, /<video\b/i);
 });
 
