@@ -123,7 +123,7 @@ describe("extractStandaloneEntryFromIndex", () => {
   </div>
 </body>
 </html>`;
-    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="2"></div></template>`;
+    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="3"></div></template>`;
 
     const extracted = extractStandaloneEntryFromIndex(
       indexHtml,
@@ -131,8 +131,8 @@ describe("extractStandaloneEntryFromIndex", () => {
       sceneHtml,
     );
 
-    // The extracted standalone advertises the scene's 2s, not the master's 12s.
-    expect(extracted).toContain('data-duration="2"');
+    // The extracted standalone advertises the scene file's 3s, not the mount's 2s or master's 12s.
+    expect(extracted).toContain('data-duration="3"');
     expect(extracted).not.toContain('data-duration="12"');
   });
 
