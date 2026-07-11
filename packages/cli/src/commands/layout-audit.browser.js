@@ -431,9 +431,13 @@
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance) {
-    const textRect = textRectFor(element);
+    // Controls often contain decorative descendants (ripples, glows, icons) whose transformed
+    // boxes are included when a Range selects the whole element. Measure direct text nodes when
+    // present so those effects cannot inflate the reported text bounds.
+    const directOnly = hasOwnTextCandidate(element, true);
+    const textRect = textRectFor(element, directOnly);
     if (!textRect) return [];
-    const text = textContentFor(element);
+    const text = textContentFor(element, directOnly);
     const selector = selectorFor(element);
     const issues = [];
 

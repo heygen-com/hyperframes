@@ -377,6 +377,24 @@ function styleLooksFullFrameOverlay(style: string): boolean {
   return coversFrame && styleHasOpaqueBackground(style);
 }
 
+function isNestedInExplicitlySizedBox(
+  tag: OpenTag,
+  tags: OpenTag[],
+  styleRules: Map<string, string>,
+): boolean {
+  const parent = tags
+    .filter(
+      (candidate) =>
+        candidate.index < tag.index &&
+        candidate.closeIndex != null &&
+        candidate.closeIndex > tag.index,
+    )
+    .sort((a, b) => b.index - a.index)[0];
+  if (!parent || readAttr(parent.raw, "data-composition-id")) return false;
+  const parentStyle = combinedTagStyle(parent, styleRules);
+  return !!(readStyleProperty(parentStyle, "width") && readStyleProperty(parentStyle, "height"));
+}
+
 function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
   const rules = new Map<string, string>();
   for (const style of styles) {
@@ -667,6 +685,12 @@ export const gsapRules: LintRule<LintContext>[] = [
         if (reportedVisibleOverlayKeys.has(overlayKey)) continue;
         const authoredStyle = combinedTagStyle(tag, styleRules);
         if (!authoredStyle || !styleLooksFullFrameOverlay(authoredStyle)) continue;
+        if (
+          readStyleProperty(authoredStyle, "position")?.toLowerCase() === "absolute" &&
+          isNestedInExplicitlySizedBox(tag, tags, styleRules)
+        ) {
+          continue;
+        }
         if (styleHasHiddenInitialState(authoredStyle)) continue;
 
         const visibilityWindows = gsapWindows

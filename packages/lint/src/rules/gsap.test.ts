@@ -191,6 +191,28 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does not treat an inset child of a constrained parent as a full-frame overlay", async () => {
+    const html = `
+<html><body data-composition-id="c1" data-width="1920" data-height="1080">
+  <div class="banner-shell"><div id="banner">Notice</div></div>
+  <style>
+    .banner-shell { position: absolute; left: 100px; top: 100px; width: 500px; height: 42px; }
+    #banner { position: absolute; inset: 0; background: #fff; }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#banner", { opacity: 1, duration: 0.2 }, 2);
+    tl.to("#banner", { opacity: 0, duration: 0.2 }, 3);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings.find((f) => f.code === "gsap_fullscreen_overlay_starts_visible"),
+    ).toBeUndefined();
+  });
+
   it("does not error when GSAP hides a full-frame transition flash at frame zero", async () => {
     const html = `
 <html><body data-composition-id="c1" data-width="1920" data-height="1080">

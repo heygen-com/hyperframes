@@ -145,6 +145,41 @@ describe("layout-audit.browser", () => {
     expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(true);
   });
 
+  it("measures a control's own text without including a decorative child effect", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="bubble"><button id="headline">Continue<span id="ripple"></span></button></div>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      bubble: rect({ left: 80, top: 120, width: 240, height: 80 }),
+      headline: rect({ left: 100, top: 140, width: 180, height: 40 }),
+      ripple: rect({ left: -200, top: -100, width: 720, height: 288 }),
+    });
+    vi.mocked(document.createRange).mockImplementation(() => {
+      let selected: Node | null = null;
+      return {
+        selectNodeContents(node: Node) {
+          selected = node;
+        },
+        getClientRects() {
+          const ownText = rect({ left: 120, top: 148, width: 100, height: 24 });
+          const descendantUnion = rect({ left: -200, top: -100, width: 720, height: 288 });
+          return [selected?.nodeType === 3 ? ownText : descendantUnion] as unknown as DOMRectList;
+        },
+        detach() {},
+      } as unknown as Range;
+    });
+    installAuditScript();
+
+    expect(
+      runAudit().some(
+        (issue) => issue.code === "text_box_overflow" && issue.selector === "#headline",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps auditing visible descendants beyond the second element", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
