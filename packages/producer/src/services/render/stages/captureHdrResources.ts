@@ -204,27 +204,29 @@ function assertHdrExtractionDiskHeadroom(
   log: ProducerLogger,
 ): void {
   const estimatedBytes = estimateHdrExtractionBytes(plannedVideos, fps);
+  let freeBytes: number;
   try {
     const stat = statfsSync(framesDir);
-    const freeBytes = stat.bavail * stat.bsize;
-    const estimatedGb = (estimatedBytes / 1e9).toFixed(1);
-    if (estimatedBytes > freeBytes * HDR_EXTRACTION_HEADROOM_FRACTION) {
-      throw new Error(
-        `HDR pre-extraction needs ~${estimatedGb} GB of raw 16-bit frames but only ` +
-          `${(freeBytes / 1e9).toFixed(1)} GB is free at ${framesDir}. ` +
-          `If the composition doesn't need HDR output, re-run with --sdr; ` +
-          `otherwise free up disk space and retry.`,
-      );
-    }
-    if (estimatedBytes > HDR_EXTRACTION_WARN_BYTES) {
-      log.warn(
-        `HDR pre-extraction will write ~${estimatedGb} GB of raw 16-bit frames ` +
-          `(pass --sdr to skip if HDR output isn't needed)`,
-        { estimatedBytes, freeBytes },
-      );
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("HDR pre-extraction needs")) throw err;
+    freeBytes = stat.bavail * stat.bsize;
+  } catch {
+    // statfs unsupported on this platform/filesystem — skip the gate.
+    return;
+  }
+  const estimatedGb = (estimatedBytes / 1e9).toFixed(1);
+  if (estimatedBytes > freeBytes * HDR_EXTRACTION_HEADROOM_FRACTION) {
+    throw new Error(
+      `HDR pre-extraction needs ~${estimatedGb} GB of raw 16-bit frames but only ` +
+        `${(freeBytes / 1e9).toFixed(1)} GB is free at ${framesDir}. ` +
+        `If the composition doesn't need HDR output, re-run with --sdr; ` +
+        `otherwise free up disk space and retry.`,
+    );
+  }
+  if (estimatedBytes > HDR_EXTRACTION_WARN_BYTES) {
+    log.warn(
+      `HDR pre-extraction will write ~${estimatedGb} GB of raw 16-bit frames ` +
+        `(pass --sdr to skip if HDR output isn't needed)`,
+      { estimatedBytes, freeBytes },
+    );
   }
 }
 
