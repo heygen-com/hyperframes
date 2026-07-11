@@ -450,7 +450,7 @@ export interface CropCapturePage {
     height: number;
     deviceScaleFactor?: number;
   }): Promise<void>;
-  screenshot(options: { clip: CropRegion; type: "png" }): Promise<Uint8Array>;
+  screenshot(options: { clip: CropRegion; type: "png"; omitBackground: true }): Promise<Uint8Array>;
 }
 
 /**
@@ -469,7 +469,7 @@ export async function captureRegionCrop(
   const original = page.viewport();
   if (original) await page.setViewport({ ...original, deviceScaleFactor: scale });
   try {
-    const shot = await page.screenshot({ clip: region, type: "png" });
+    const shot = await page.screenshot({ clip: region, type: "png", omitBackground: true });
     return Buffer.isBuffer(shot) ? shot : Buffer.from(shot);
   } finally {
     if (original) await page.setViewport(original);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   computeSnapshotTimes,
   parseZoomScale,
@@ -23,6 +24,15 @@ describe("tailFrameTime", () => {
 
   it("never goes negative", () => {
     expect(tailFrameTime(0)).toBe(0);
+  });
+});
+
+describe("transparent snapshot capture", () => {
+  it("asks Chrome to retain the alpha channel in review PNGs", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain(
+      'page.screenshot({ path: framePath, type: "png", omitBackground: true })',
+    );
   });
 });
 

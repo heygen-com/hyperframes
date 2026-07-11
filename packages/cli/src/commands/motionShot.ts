@@ -10,7 +10,8 @@
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 import {
   buildOnionSvg,
@@ -24,6 +25,10 @@ import {
 export interface ShotRequest {
   /** CSS selector of the moving element to sample (e.g. "#dot"). */
   selector: string;
+}
+
+export function ensureShotOutputDir(outPath: string): void {
+  mkdirSync(dirname(outPath), { recursive: true });
 }
 
 /** Returned by the in-browser selector resolver: which animated selectors a
@@ -613,6 +618,7 @@ export async function captureMotionPathShot(
   outPath: string,
   opts: ShotOptions = {},
 ): Promise<string> {
+  ensureShotOutputDir(outPath);
   let requests = requestsIn;
   const samples = Math.max(1, Math.min(60, opts.samples ?? 9));
   const layout = opts.layout ?? "path";

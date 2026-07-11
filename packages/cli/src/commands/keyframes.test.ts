@@ -1,9 +1,10 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import { collectShotSelectors, resolveScope, surfaceComposition } from "./keyframes.js";
+import { ensureShotOutputDir } from "./motionShot.js";
 
 beforeAll(() => ensureDOMParser());
 
@@ -23,6 +24,15 @@ describe("keyframes direct composition scope", () => {
 
     expect(scope.projectDir).toBe(projectDir);
     expect(scope.entryFile).toBe("compositions/scene.html");
+  });
+});
+
+describe("keyframes shot output", () => {
+  it("creates a missing parent directory before writing --shot", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-dir-"));
+    const outputDir = join(projectDir, "nested", "proofs");
+    ensureShotOutputDir(join(outputDir, "shot.png"));
+    expect(existsSync(outputDir)).toBe(true);
   });
 });
 
