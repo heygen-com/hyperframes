@@ -14,7 +14,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function makeProject(): string {
+function makeProject({ preInflatedRoot = true } = {}): string {
   const project = mkdtempSync(join(tmpdir(), "hf-transition-tail-"));
   tempDirs.push(project);
   mkdirSync(join(project, "compositions"));
@@ -22,11 +22,10 @@ function makeProject(): string {
     join(project, "STORYBOARD.md"),
     `---\nformat: 1920x1080\n---\n\n## Frame 1\n- status: built\n- duration: 2s\n- src: compositions/01.html\n\n## Frame 2\n- status: built\n- duration: 2s\n- src: compositions/02.html\n- transition_in: crossfade 0.5s\n`,
   );
-  // Reproduces the worker variant from the report: root already inflated to
-  // 2.5s, while visual clips still stop at the synced 2.0s boundary.
+  const rootDuration = preInflatedRoot ? 2.5 : 2;
   writeFileSync(
     join(project, "compositions", "01.html"),
-    `<div data-composition-id="01" data-start="0" data-duration="2.5">
+    `<div data-composition-id="01" data-start="0" data-duration="${rootDuration}">
       <div id="ground" data-start="0" data-duration="2"></div>
       <div id="content" data-start="0.5" data-duration="1.5"></div>
       <audio id="voice" data-start="0" data-duration="2"></audio>
@@ -48,19 +47,25 @@ function makeProject(): string {
 }
 
 describe.each(skillNames)("%s transition contract", (skillName) => {
-  it("extends the outgoing frame root and visual tail clips across overlap", () => {
-    const project = makeProject();
-    const script = join(REPO_ROOT, "skills", skillName, "scripts", "transitions.mjs");
-    execFileSync(process.execPath, [script, "inject", "--hyperframes", project], {
-      stdio: "pipe",
-    });
+  it.each([
+    ["pre-inflated worker root", true],
+    ["normal worker root", false],
+  ])(
+    "extends the outgoing frame root and visual tail clips across overlap (%s)",
+    (_, preInflatedRoot) => {
+      const project = makeProject({ preInflatedRoot });
+      const script = join(REPO_ROOT, "skills", skillName, "scripts", "transitions.mjs");
+      execFileSync(process.execPath, [script, "inject", "--hyperframes", project], {
+        stdio: "pipe",
+      });
 
-    const frame = readFileSync(join(project, "compositions", "01.html"), "utf8");
-    const index = readFileSync(join(project, "index.html"), "utf8");
-    expect(frame).toContain('data-composition-id="01" data-start="0" data-duration="2.5"');
-    expect(frame).toContain('id="ground" data-start="0" data-duration="2.5"');
-    expect(frame).toContain('id="content" data-start="0.5" data-duration="2"');
-    expect(frame).toContain('id="voice" data-start="0" data-duration="2"');
-    expect(index).toMatch(/id="el-01"[^>]*data-duration="2.5"/);
-  });
+      const frame = readFileSync(join(project, "compositions", "01.html"), "utf8");
+      const index = readFileSync(join(project, "index.html"), "utf8");
+      expect(frame).toContain('data-composition-id="01" data-start="0" data-duration="2.5"');
+      expect(frame).toContain('id="ground" data-start="0" data-duration="2.5"');
+      expect(frame).toContain('id="content" data-start="0.5" data-duration="2"');
+      expect(frame).toContain('id="voice" data-start="0" data-duration="2"');
+      expect(index).toMatch(/id="el-01"[^>]*data-duration="2.5"/);
+    },
+  );
 });
