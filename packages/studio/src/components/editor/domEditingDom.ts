@@ -28,7 +28,7 @@ export function isTextBearingTag(tagName: string): boolean {
   return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
 }
 
-const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 
 export function isElementVisibleThroughAncestors(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
