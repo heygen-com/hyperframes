@@ -218,6 +218,7 @@ describe("template shell style sources", () => {
         <link rel="stylesheet" href="shell.css">
         <style>[data-composition-id="main"] .title { opacity: 0; }</style>
         <div style="mask-image: url(missing-inline-mask.png)"></div>
+        <template><style>[data-composition-id="main"] .nested { opacity: 0; }</style></template>
       </template>
       <script>window.__timelines = {};</script>
     </body></html>`);
@@ -230,7 +231,7 @@ describe("template shell style sources", () => {
     const findings = results.flatMap((entry) => entry.result.findings);
     expect(
       findings.filter((finding) => finding.code === "composition_self_attribute_selector"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(findings.some((finding) => finding.code === "texture_mask_asset_not_found")).toBe(true);
   });
 });
