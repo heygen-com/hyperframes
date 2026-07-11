@@ -47,15 +47,26 @@ afterEach(() => {
 });
 
 describe("seekCompositionTimeline", () => {
-  it("keeps the existing raced double-frame settle as the default", async () => {
+  it("keeps the raced double-frame settle and adds a bounded font wait by default", async () => {
     const { page, evaluate, waitForFunction } = fakeSeekPage();
 
     await seekCompositionTimeline(page, 1.25);
 
     expect(waitForFunction).not.toHaveBeenCalled();
-    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(evaluate).toHaveBeenCalledTimes(3);
     expect(evaluate).toHaveBeenNthCalledWith(1, expect.any(Function), 1.25, false);
     expect(evaluate.mock.calls[1]?.[0]).toContain("window.setTimeout(finish, 100)");
+    // Post-seek font settle: a seek can reveal glyphs whose unicode-range
+    // subsets only start loading after the next layout (CJK snapshot reports).
+    expect(evaluate).toHaveBeenNthCalledWith(3, expect.any(Function), 500);
+  });
+
+  it("waitForFontsMs: 0 disables the post-seek font wait", async () => {
+    const { page, evaluate } = fakeSeekPage();
+
+    await seekCompositionTimeline(page, 1.25, { waitForFontsMs: 0 });
+
+    expect(evaluate).toHaveBeenCalledTimes(2);
   });
 
   it("prefers renderSeek so the runtime synchronizes clip visibility", async () => {
@@ -128,6 +139,7 @@ describe("seekCompositionTimeline", () => {
       fallbackToBridgeAndTimelines: true,
       waitForPreferredSeekTargetMs: 500,
       animationFrameSettle: "none",
+      waitForFontsMs: 0,
       settleMs: 150,
     });
     await vi.advanceTimersByTimeAsync(150);
