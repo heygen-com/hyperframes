@@ -256,3 +256,91 @@ export function resolveTimelineAssetDrop(
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),
   };
 }
+
+/**
+ * The y (content-space) of the top edge of track ROW index `row` (0 = first
+ * displayed lane). The single source of truth for row→y — the ruler height plus
+ * the top breathing pad plus whole track lanes above it. Every clip/ghost/
+ * placeholder/insertion top and every pointer-y→row inversion goes through this
+ * (or its inverse in {@link getTimelineRowFromY}) so the pad can never drift.
+ */
+export function getTimelineRowTop(row: number): number {
+  return RULER_H + TRACKS_TOP_PAD + row * TRACK_H;
+}
+
+/**
+ * Inverse of {@link getTimelineRowTop}: the fractional row index for a content-
+ * space y (used for insert-row / drop-lane decisions). Subtracts the ruler and
+ * top pad before dividing by the track height.
+ */
+export function getTimelineRowFromY(contentY: number): number {
+  return (contentY - RULER_H - TRACKS_TOP_PAD) / TRACK_H;
+}
+
+/**
+ * While a clip drag is live, the rendered timeline extends this far past the
+ * ghost's end so the right-edge auto-scroll zone always has room to keep
+ * stepping — that's what lets a drag extend the timeline past its current
+ * rendered width (see Timeline.tsx displayContentWidth).
+ */
+export const DRAG_EXTEND_MARGIN_PX = 160;
+
+/**
+ * Fit-mode pixels-per-second: fill the viewport with the composition, but
+ * never map fewer than MIN_TIMELINE_EXTENT_S seconds onto it — a short comp
+ * takes a fraction of the width and the remaining ruler runs to 1:00.
+ * Manual zoom multiplies this base, so the floor only anchors the default.
+ */
+export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
+  const safeDuration =
+    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
+  const span = Math.max(safeDuration, MIN_TIMELINE_EXTENT_S);
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER) return 100;
+  return (viewportWidth - GUTTER - 2) / span;
+}
+
+/**
+ * The rendered timeline extent in px. Always covers, whichever is largest:
+ * the actual clip content, the visible viewport (no dead black after short
+ * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
+ * margin (drag/trim-to-extend), and the MIN_TIMELINE_EXTENT_S floor. Only the
+ * RENDERED extent grows; clip positions/durations are untouched.
+ */
+export function getTimelineDisplayContentWidth(input: {
+  trackContentWidth: number;
+  viewportWidth: number;
+  pps: number;
+  dragGhostEndPx?: number;
+  resizeGhostEndPx?: number;
+}): number {
+  const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
+  return Math.max(
+    input.trackContentWidth,
+    input.viewportWidth - GUTTER - 2,
+    input.dragGhostEndPx ?? 0,
+    input.resizeGhostEndPx ?? 0,
+    MIN_TIMELINE_EXTENT_S * safePps,
+  );
+}
+
+/**
+ * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
+ * track-row y computation via {@link getTimelineRowTop} — never inline a magic
+ * offset; a track row's top is always `RULER_H + TRACKS_TOP_PAD + row*TRACK_H`.
+ *
+ * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
+ *   (~half a track height) so the first clip isn't jammed under the ruler.
+ * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
+ *   enough to comfortably drag a clip into the void to create a new bottom lane.
+ */
+export const TRACKS_TOP_PAD = 50;
+
+/**
+ * The rendered timeline always spans at least this many seconds of ruler +
+ * track lanes, even when the composition is shorter — the empty space on the
+ * right is a real, drag/drop-enabled surface (clips can be moved into it; the
+ * composition grows on commit, content-driven). In fit mode the fit pps is
+ * derived against this floor, so a 10s comp renders as ~1/6 of the viewport
+ * with 60s of ruler after it.
+ */
+export const MIN_TIMELINE_EXTENT_S = 60;
