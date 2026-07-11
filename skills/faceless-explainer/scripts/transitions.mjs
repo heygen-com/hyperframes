@@ -134,10 +134,7 @@ function extendFrameTail(hyperframesDir, frame, baseDuration, targetDuration, di
     const end = start + duration;
     if (end < baseDuration - EPS || end >= targetDuration - EPS) return tag;
     extended++;
-    return tag.replace(
-      /\bdata-duration="[\d.]+"/,
-      `data-duration="${r3(targetDuration - start)}"`,
-    );
+    return tag.replace(/\bdata-duration="[\d.]+"/, `data-duration="${r3(targetDuration - start)}"`);
   });
 
   if (!foundRoot) die(`${frame.src} has no data-composition-id="${compId}" root`);
@@ -239,13 +236,7 @@ function runInject(argv) {
     const T = r3(incoming.start); // cut = incoming start (frames tile)
     const baseDuration = outgoing.duration;
     outgoing.duration = r3(baseDuration + dur); // extend outgoing only
-    extendFrameTail(
-      hyperframesDir,
-      order[i - 1].frame,
-      baseDuration,
-      outgoing.duration,
-      die,
-    );
+    extendFrameTail(hyperframesDir, order[i - 1].frame, baseDuration, outgoing.duration, die);
     padFrameInternalDuration(
       hyperframesDir,
       order[i - 1].frame.src,
