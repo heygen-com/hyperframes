@@ -234,11 +234,11 @@ describe("FlatSlider", () => {
     const { host, root } = renderInto(
       <FlatSlider
         label="Opacity"
-        value={50}
+        value={10}
         min={0}
         max={100}
         tier="explicitCustom"
-        displayValue="50%"
+        displayValue="10%"
         onCommit={onCommit}
       />,
     );
@@ -249,6 +249,7 @@ describe("FlatSlider", () => {
     });
     act(() => {
       track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+      track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
     });
     expect(onCommit).toHaveBeenCalledWith(50);
     act(() => root.unmount());
@@ -276,12 +277,13 @@ describe("FlatSlider", () => {
       track.dispatchEvent(
         new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 18 }),
       );
+      track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 20 }));
     });
     expect(onCommit).toHaveBeenCalledWith(10);
     act(() => root.unmount());
   });
 
-  it("commits continuously while dragging, not just on the initial pointerdown", () => {
+  it("tracks the knob instantly on every pointermove during a drag (draft state)", () => {
     const onCommit = vi.fn();
     const { host, root } = renderInto(
       <FlatSlider
@@ -304,22 +306,70 @@ describe("FlatSlider", () => {
         new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
       );
     });
-    expect(onCommit).toHaveBeenLastCalledWith(10);
+    // Instant, un-debounced knob feedback via aria-valuenow (draft state) —
+    // this must update on every pointermove regardless of the commit debounce.
+    expect(track.getAttribute("aria-valuenow")).toBe("10");
     act(() => {
       track.dispatchEvent(
         new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
       );
     });
-    expect(onCommit).toHaveBeenLastCalledWith(80);
+    expect(track.getAttribute("aria-valuenow")).toBe("80");
     act(() => {
       track.dispatchEvent(
         new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
       );
     });
-    expect(onCommit).toHaveBeenLastCalledWith(50);
+    expect(track.getAttribute("aria-valuenow")).toBe("50");
     act(() => {
       track.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1 }));
     });
+    act(() => root.unmount());
+  });
+
+  it("coalesces rapid drag commits to only the final value on release, not every step", () => {
+    const onCommit = vi.fn();
+    const { host, root } = renderInto(
+      <FlatSlider
+        label="Opacity"
+        value={5}
+        min={0}
+        max={100}
+        tier="explicitCustom"
+        displayValue="5%"
+        onCommit={onCommit}
+      />,
+    );
+    const track = host.querySelector<HTMLElement>('[data-flat-slider-track="true"]');
+    if (!track) throw new Error("expected a track element");
+    Object.defineProperty(track, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 }),
+    });
+    act(() => {
+      track.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 20, pointerId: 1 }),
+      );
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 160, pointerId: 1 }),
+      );
+      track.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 100, pointerId: 1 }),
+      );
+    });
+    // None of the rapid intermediate positions (10, 80) have committed yet —
+    // only the debounce timer or the pointerup flush should ever call onCommit.
+    expect(onCommit).not.toHaveBeenCalled();
+    act(() => {
+      // Real pointerup events always carry the pointer's true release position
+      // (matches the last pointermove) — the handler recomputes from this
+      // rather than trusting a possibly-stale `draft` closure.
+      track.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, clientX: 100, pointerId: 1 }),
+      );
+    });
+    // Release flushes immediately with the LAST position only.
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(50);
     act(() => root.unmount());
   });
 

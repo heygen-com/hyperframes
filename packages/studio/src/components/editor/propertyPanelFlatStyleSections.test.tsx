@@ -372,6 +372,7 @@ describe("FlatStyleSection — blur sliders", () => {
     });
     act(() => {
       track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
     });
     // filterBlurValue=4 -> max=Math.max(40, 4)=40; clientX=50 of width 100 -> ratio 0.5 -> 20px.
     expect(onSetStyle).toHaveBeenCalledWith("filter", "blur(20px)");
@@ -390,6 +391,7 @@ describe("FlatStyleSection — blur sliders", () => {
     });
     act(() => {
       backdropTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      backdropTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
     });
     // backdropBlurValue=6 -> max=Math.max(60, 6)=60; clientX=50 of width 100 -> ratio 0.5 -> 30px.
     expect(onSetStyle).toHaveBeenCalledWith("backdrop-filter", "blur(30px)");
@@ -551,6 +553,7 @@ describe("FlatStyleSection — Overflow and Mask", () => {
     });
     act(() => {
       maskInsetTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      maskInsetTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
     });
     // clipInsetValue=8 -> max=Math.max(120, 8)=120; clientX=50 of width 100 -> ratio 0.5 -> 60px.
     // border-radius is unset here, so the clip-path's own `round 4px` is not reused — radiusValue
@@ -587,6 +590,7 @@ describe("FlatStyleSection — Opacity", () => {
     });
     act(() => {
       opacityTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 50 }));
+      opacityTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 50 }));
     });
     expect(onSetStyle).toHaveBeenCalledWith("opacity", "0.5");
     act(() => root.unmount());

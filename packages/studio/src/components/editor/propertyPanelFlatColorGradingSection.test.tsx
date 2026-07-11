@@ -52,6 +52,7 @@ function dragSliderTrack(row: Element, clientX: number, trackWidth: number) {
   });
   act(() => {
     track.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX }));
+    track.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX }));
   });
 }
 
