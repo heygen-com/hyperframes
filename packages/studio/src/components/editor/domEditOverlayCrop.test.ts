@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   cropRectFromInsets,
   hugRectForElement,
+  readElementCropFrame,
   readElementCropInsets,
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
+  rotateDeltaIntoFrame,
 } from "./domEditOverlayCrop";
 
 describe("resolveCropInsetFromEdgeDrag", () => {
@@ -149,5 +151,93 @@ describe("readElementCropInsets tri-state", () => {
   it("hugRectForElement passes the rect through for uneditable clips", () => {
     const rect = { left: 1, top: 2, width: 30, height: 40, editScaleX: 1, editScaleY: 1 };
     expect(hugRectForElement(rect, fakeEl("circle(50%)"))).toEqual(rect);
+  });
+});
+
+// Regression: crop UI drawn on the axis-aligned bounding box visually
+// "straightens" a rotated element — the dim masks the rotated corners. The
+// frame gives the element's own box + rotation so the UI rotates with it.
+describe("readElementCropFrame", () => {
+  const overlayRect = { left: 100, top: 50, width: 220, height: 130, editScaleX: 1, editScaleY: 1 };
+
+  const fakeEl = (transform: string, offsetWidth = 200, offsetHeight = 100) =>
+    ({
+      offsetWidth,
+      offsetHeight,
+      ownerDocument: { defaultView: { getComputedStyle: () => ({ transform }) } },
+    }) as unknown as HTMLElement;
+
+  it("identity transform → the axis-aligned overlay rect", () => {
+    expect(readElementCropFrame(fakeEl("none"), overlayRect)).toEqual({
+      angleDeg: 0,
+      left: 100,
+      top: 50,
+      width: 220,
+      height: 130,
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+
+  it("rotated element → its own box, centered on the AABB, with the angle", () => {
+    // rotate(30deg): matrix(cos, sin, -sin, cos, tx, ty)
+    const cos = Math.cos(Math.PI / 6);
+    const sin = Math.sin(Math.PI / 6);
+    const frame = readElementCropFrame(
+      fakeEl(`matrix(${cos}, ${sin}, ${-sin}, ${cos}, 10, 20)`),
+      overlayRect,
+    );
+    expect(frame.angleDeg).toBeCloseTo(30, 3);
+    expect(frame.width).toBeCloseTo(200, 3);
+    expect(frame.height).toBeCloseTo(100, 3);
+    // centered on the AABB center (210, 115)
+    expect(frame.left + frame.width / 2).toBeCloseTo(210, 3);
+    expect(frame.top + frame.height / 2).toBeCloseTo(115, 3);
+    expect(frame.scaleX).toBeCloseTo(1, 3);
+  });
+
+  it("scaled element → scale factored into px-per-element-px", () => {
+    const frame = readElementCropFrame(fakeEl("matrix(1.5, 0, 0, 2, 0, 0)"), overlayRect);
+    expect(frame.angleDeg).toBe(0);
+    expect(frame.scaleX).toBeCloseTo(1.5, 3);
+    expect(frame.scaleY).toBeCloseTo(2, 3);
+    expect(frame.width).toBeCloseTo(300, 3);
+    expect(frame.height).toBeCloseTo(200, 3);
+  });
+
+  it("3D transform falls back to the axis-aligned frame", () => {
+    const frame = readElementCropFrame(
+      fakeEl("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)"),
+      overlayRect,
+    );
+    expect(frame).toEqual({
+      angleDeg: 0,
+      left: 100,
+      top: 50,
+      width: 220,
+      height: 130,
+      scaleX: 1,
+      scaleY: 1,
+    });
+  });
+});
+
+describe("rotateDeltaIntoFrame", () => {
+  it("passes deltas through at 0deg", () => {
+    expect(rotateDeltaIntoFrame(10, 5, 0)).toEqual({ deltaX: 10, deltaY: 5 });
+  });
+
+  it("rotates a screen delta into a 90deg-rotated frame", () => {
+    // Element rotated +90°: dragging DOWN on screen moves along the element's +x.
+    const { deltaX, deltaY } = rotateDeltaIntoFrame(0, 10, 90);
+    expect(deltaX).toBeCloseTo(10, 6);
+    expect(deltaY).toBeCloseTo(0, 6);
+  });
+
+  it("round-trips a 30deg rotation", () => {
+    const local = rotateDeltaIntoFrame(7, -3, 30);
+    const back = rotateDeltaIntoFrame(local.deltaX, local.deltaY, -30);
+    expect(back.deltaX).toBeCloseTo(7, 6);
+    expect(back.deltaY).toBeCloseTo(-3, 6);
   });
 });

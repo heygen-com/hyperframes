@@ -4,9 +4,11 @@ import type { OverlayRect } from "./domEditOverlayGeometry";
 import {
   type CropEdge,
   cropRectFromInsets,
+  readElementCropFrame,
   readElementCropInsets,
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
+  rotateDeltaIntoFrame,
 } from "./domEditOverlayCrop";
 import { buildInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelpers";
 
@@ -17,6 +19,10 @@ interface CropGestureState {
   startY: number;
   startInsets: ClipPathInsetSides;
   didMove: boolean;
+  /** Element frame captured at gesture start: pointer deltas rotate into it. */
+  angleDeg: number;
+  scaleX: number;
+  scaleY: number;
 }
 
 interface DomEditCropHandlesProps {
@@ -133,11 +139,20 @@ export function DomEditCropHandles({
     };
   }, [selection.element]);
 
-  const scaleX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
-  const scaleY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
-  const width = overlayRect.width / scaleX;
-  const height = overlayRect.height / scaleY;
-  const cropRect = cropRectFromInsets(overlayRect, state.insets, scaleX, scaleY);
+  // The crop applies in the element's LOCAL frame (clip-path precedes the
+  // transform), so all crop UI is drawn inside a container rotated with the
+  // element — on a rotated element an axis-aligned dim visually "straightens"
+  // it by masking the rotated corners.
+  const frame = readElementCropFrame(selection.element, overlayRect);
+  const width = frame.width / frame.scaleX; // element CSS px
+  const height = frame.height / frame.scaleY;
+  // Crop rect in FRAME-LOCAL coordinates (origin = frame top-left).
+  const cropRect = cropRectFromInsets(
+    { left: 0, top: 0, width: frame.width, height: frame.height },
+    state.insets,
+    frame.scaleX,
+    frame.scaleY,
+  );
 
   const startCropGesture = (edge: CropEdge | "move", event: ReactPointerEvent<HTMLElement>) => {
     if (!onStyleCommit) return;
@@ -151,6 +166,9 @@ export function DomEditCropHandles({
       startY: event.clientY,
       startInsets: state.insets,
       didMove: false,
+      angleDeg: frame.angleDeg,
+      scaleX: frame.scaleX,
+      scaleY: frame.scaleY,
     };
     // Clip is already lifted by the selection effect; just flag the drag so the
     // rule-of-thirds grid shows.
@@ -162,12 +180,17 @@ export function DomEditCropHandles({
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     event.preventDefault();
     event.stopPropagation();
+    const local = rotateDeltaIntoFrame(
+      event.clientX - gesture.startX,
+      event.clientY - gesture.startY,
+      gesture.angleDeg,
+    );
     const drag = {
       startInsets: gesture.startInsets,
-      deltaX: event.clientX - gesture.startX,
-      deltaY: event.clientY - gesture.startY,
-      scaleX,
-      scaleY,
+      deltaX: local.deltaX,
+      deltaY: local.deltaY,
+      scaleX: gesture.scaleX,
+      scaleY: gesture.scaleY,
     };
     const nextInsets =
       gesture.edge === "move"
@@ -225,24 +248,27 @@ export function DomEditCropHandles({
   if (!state.croppable) return null;
 
   return (
-    <>
+    <div
+      data-dom-edit-crop-frame="true"
+      className="pointer-events-none absolute"
+      style={{
+        left: frame.left,
+        top: frame.top,
+        width: frame.width,
+        height: frame.height,
+        transform: frame.angleDeg !== 0 ? `rotate(${frame.angleDeg}deg)` : undefined,
+      }}
+    >
       {/* Dim the cropped-away area whenever the element is cropped and selected,
-          so the hidden content is visible (ghosted) without dragging. */}
+          so the hidden content is visible (ghosted) without dragging. Clipped to
+          the element's own (rotated) box. */}
       {hasCrop && (
-        <div
-          className="pointer-events-none absolute overflow-hidden"
-          style={{
-            left: overlayRect.left,
-            top: overlayRect.top,
-            width: overlayRect.width,
-            height: overlayRect.height,
-          }}
-        >
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div
             className="absolute"
             style={{
-              left: cropRect.left - overlayRect.left,
-              top: cropRect.top - overlayRect.top,
+              left: cropRect.left,
+              top: cropRect.top,
               width: cropRect.width,
               height: cropRect.height,
               boxShadow: "0 0 0 100000px rgba(8, 8, 12, 0.6)",
@@ -324,6 +350,6 @@ export function DomEditCropHandles({
           />
         );
       })}
-    </>
+    </div>
   );
 }
