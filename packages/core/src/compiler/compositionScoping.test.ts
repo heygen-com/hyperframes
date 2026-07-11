@@ -96,6 +96,36 @@ body { margin: 0; }
     expect(scoped).toContain("overflow: hidden");
   });
 
+  it("rewrites prefix/substring composition-id selectors (^= *= $=) in place, not by prepending", () => {
+    // Sub-comps commonly ship `[data-composition-id^="scene"]` (an authoring
+    // pipeline rewrites `="scene"` to `^="scene"` so the rule survives the
+    // duplicate-instance rename scene -> scene__hf2). The prefix/substring forms
+    // must be consumed by the composition-id scoper exactly like the exact form:
+    // a DESCENDANT selector is rewritten in place to the instance scope, and a
+    // BARE root selector flows into the composition-box remap. If a prefix form
+    // fell through to the prepend branch it would become
+    // `${scope} [data-composition-id^="scene"] …`, which needs a NESTED
+    // composition-id element the loader strips at mount, so nothing matches and
+    // the rule drops.
+    const scope = '[data-composition-id="scene__hf2"]';
+    const scoped = scopeCssToComposition(
+      `[data-composition-id^="scene"] .gas { stroke: red; }
+[data-composition-id*="scene"] .bar { fill: blue; }
+[data-composition-id^="scene"] { --accent: red; }`,
+      "scene",
+      scope,
+    );
+
+    // Descendant prefix/substring selectors → in-place rewrite to the instance scope.
+    expect(scoped).toContain('[data-composition-id="scene__hf2"] .gas { stroke: red; }');
+    expect(scoped).toContain('[data-composition-id="scene__hf2"] .bar { fill: blue; }');
+    // A bare prefix root selector → the composition-box remap (host or flattened inner root).
+    expect(scoped).toContain('[data-composition-id="scene__hf2"]:not(:has([data-hf-inner-root]))');
+    // The prefix/substring forms are consumed — never left intact behind a prepended scope.
+    expect(scoped).not.toContain('[data-composition-id^="scene"]');
+    expect(scoped).not.toContain('[data-composition-id*="scene"]');
+  });
+
   it("wraps classic scripts without render-loop requestAnimationFrame waits", () => {
     const wrapped = wrapScopedCompositionScript("window.__ran = true;", "scene");
 

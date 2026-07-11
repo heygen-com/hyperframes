@@ -137,8 +137,19 @@ function scopeSelector(
     // caused the parent-body clobber, which is what this remap targets.
     return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
   }
+  // Match the composition-root attribute whether the author used an exact
+  // (`=`) or a substring operator (`^=`, `*=`, `$=`) with the authored id.
+  // Sub-comps often ship prefix-match selectors — e.g. authoring pipelines
+  // rewrite `[data-composition-id="x"]` to `[data-composition-id^="x"]` so
+  // rules survive the duplicate-instance rename (x -> x__hf2). Those must be
+  // rewritten IN PLACE to the instance scope, exactly like the exact form.
+  // Otherwise they fall through to the prepend branch below and become a
+  // two-level `${scope} [data-composition-id^="x"] …` selector that needs a
+  // NESTED composition-id element — but the loader strips the inner root's
+  // composition-id at mount, so nothing matches and the rules silently drop
+  // (class-styled elements render unstyled).
   const compositionIdPattern = new RegExp(
-    `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
+    `\\[\\s*data-composition-id\\s*[\\^\\*\\$]?=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
   );
   if (compositionIdPattern.test(trimmed)) {
