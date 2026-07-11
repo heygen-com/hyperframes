@@ -59,7 +59,9 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
-      entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
+      // A key carried by both properties and extras (a set's parsed
+      // `immediateRender: true`) must emit once — properties win.
+      if (!(k in props)) entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
     }
   }
   const objCode = `{ ${entries.join(", ")} }`;
@@ -263,10 +265,16 @@ function reconcileEditableProps(
   const overrides = nonEditableOverrides ?? {};
   const { entries, keys } = preservedEntries(objNode, source, isEditableVarKey, overrides);
   for (const [key, value] of Object.entries(overrides)) {
-    if (!keys.has(key)) entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    if (!keys.has(key)) {
+      keys.add(key);
+      entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    }
   }
   for (const [key, value] of Object.entries(newProps)) {
-    entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    // A non-editable key riding along in newProps (immediateRender read off
+    // live tween vars) is already preserved above — emitting it again writes
+    // `immediateRender: true, immediateRender: true` into the file.
+    if (!keys.has(key)) entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
   }
   ms.overwrite(objNode.start, objNode.end, `{ ${entries.join(", ")} }`);
 }
