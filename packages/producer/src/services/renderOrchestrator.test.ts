@@ -1763,10 +1763,26 @@ describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
     probeDeGated: false,
     experimentalParallelDeOptIn: false,
     routerEnabled: true,
+    totalMemoryMb: 32768,
+    minMemoryMb: 24576,
   };
 
   it("routes an auto-resolved multi-worker render for an eligible long comp", () => {
     expect(shouldPreferParallelDrawElement(eligible)).toBe(true);
+  });
+
+  it("withholds the parallel bet below the RAM floor (16 GB black-slab report)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 16384 })).toBe(false);
+  });
+
+  it("routes exactly at the RAM floor", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 24576 })).toBe(true);
+  });
+
+  it("minMemoryMb <= 0 disables the RAM guard", () => {
+    expect(
+      shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 8192, minMemoryMb: 0 }),
+    ).toBe(true);
   });
 
   it("is disabled by default (routerEnabled: false is the shipped default)", () => {

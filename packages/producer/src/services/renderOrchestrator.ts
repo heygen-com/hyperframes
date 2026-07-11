@@ -76,6 +76,7 @@ import {
   isDrawElementVerificationError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
+import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import {
@@ -1130,6 +1131,10 @@ export function shouldPreferParallelDrawElement(args: {
   experimentalParallelDeOptIn: boolean;
   /** HF_DE_PARALLEL_ROUTER === "true" — the router's own kill switch, default off. */
   routerEnabled: boolean;
+  /** Machine RAM (os.totalmem, MB). */
+  totalMemoryMb: number;
+  /** RAM floor for routing; <=0 disables the guard. */
+  minMemoryMb: number;
 }): boolean {
   return (
     args.routerEnabled &&
@@ -1144,7 +1149,14 @@ export function shouldPreferParallelDrawElement(args: {
     !args.layeredOrEffectRoute &&
     !args.supersampling &&
     !args.probeDeGated &&
-    !args.experimentalParallelDeOptIn
+    !args.experimentalParallelDeOptIn &&
+    // RAM floor: routed parallel DE runs 3 concurrent hardware-GPU Chrome
+    // instances. On a 16 GB machine that produced vertical black slabs in the
+    // final MP4 (wild report, CLI 0.7.52) — compositor tiles evicted under
+    // GPU/memory pressure, and sampled self-verify can miss partial-frame
+    // damage. Single-worker DE (the inversion) stays available below the
+    // floor; only the parallel bet is withheld.
+    (args.minMemoryMb <= 0 || args.totalMemoryMb >= args.minMemoryMb)
   );
 }
 
@@ -1919,6 +1931,17 @@ export async function executeRenderJob(
     const deParallelMinFrames = Number.isFinite(deParallelMinFramesNum)
       ? deParallelMinFramesNum
       : 2000;
+    // RAM floor default 24 GB: the wild black-slab report was a 16 GB
+    // machine; every clean routed cohort in telemetry so far is >=24 GB.
+    // HF_DE_PARALLEL_MIN_MEM_MB overrides (0 disables the guard).
+    const deParallelMinMemRaw = process.env.HF_DE_PARALLEL_MIN_MEM_MB;
+    const deParallelMinMemNum =
+      deParallelMinMemRaw === undefined || deParallelMinMemRaw.trim() === ""
+        ? 24576
+        : Number(deParallelMinMemRaw);
+    const deParallelMinMemoryMb = Number.isFinite(deParallelMinMemNum)
+      ? deParallelMinMemNum
+      : 24576;
     const deParallelRouterEligible = shouldPreferParallelDrawElement({
       workerCount: WOULD_RESOLVE_MULTI_WORKER,
       requestedWorkers: job.config.workers,
@@ -1938,6 +1961,8 @@ export async function executeRenderJob(
         process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true" ||
         process.env.HF_DE_PARALLEL_STREAM === "true",
       routerEnabled: deParallelRouterEnabled,
+      totalMemoryMb: Math.round(totalmem() / (1024 * 1024)),
+      minMemoryMb: deParallelMinMemoryMb,
     });
     // Declared ahead of resolution (assigned below, after calibration) so
     // captureStageObservationData can close over it for the calibration
