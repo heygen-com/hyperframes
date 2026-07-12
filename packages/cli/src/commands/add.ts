@@ -238,9 +238,15 @@ export default defineCommand({
       type: "string",
       description: "Project directory (defaults to the current working directory)",
     },
-    "no-clipboard": {
+    clipboard: {
+      // Declared as the positive `clipboard` (default on) so citty's built-in
+      // `--no-<name>` negation handles `--no-clipboard`. Declaring the arg
+      // literally as `"no-clipboard"` made citty parse `--no-clipboard` as the
+      // negation of a (nonexistent) `clipboard` arg, so assertKnownFlags threw
+      // "Unknown flag: --clipboard" even though --help advertised it.
       type: "boolean",
-      description: "Skip copying the include snippet to the clipboard",
+      default: true,
+      description: "Copy the include snippet to the clipboard (use --no-clipboard to skip)",
     },
     json: {
       type: "boolean",
@@ -250,7 +256,7 @@ export default defineCommand({
   async run({ args }) {
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
-    const skipClipboard = args["no-clipboard"] === true;
+    const skipClipboard = args.clipboard === false;
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
 
     // Try single item first. If it fails, check if the name matches a tag.

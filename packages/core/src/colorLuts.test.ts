@@ -38,6 +38,35 @@ describe("cube LUT parsing", () => {
     ]);
   });
 
+  it("accepts DaVinci/IRIDAS-style 3D input ranges", () => {
+    const lut = parseCubeLut(`
+      TITLE "Resolve Range"
+      LUT_3D_SIZE 2
+      LUT_3D_INPUT_RANGE 0 1
+      0 0 0
+      1 0 0
+      0 1 0
+      1 1 0
+      0 0 1
+      1 0 1
+      0 1 1
+      1 1 1
+    `);
+
+    expect(lut.title).toBe("Resolve Range");
+    expect(lut.domainMin).toEqual([0, 0, 0]);
+    expect(lut.domainMax).toEqual([1, 1, 1]);
+  });
+
+  it("rejects inverted 3D input ranges at the range line", () => {
+    expect(() =>
+      parseCubeLut(`
+        LUT_3D_SIZE 2
+        LUT_3D_INPUT_RANGE 1 0
+      `),
+    ).toThrow("LUT_3D_INPUT_RANGE max must exceed min");
+  });
+
   it("rejects unsupported 1D cube LUTs", () => {
     expect(() =>
       parseCubeLut(`

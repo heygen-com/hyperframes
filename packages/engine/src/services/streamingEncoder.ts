@@ -52,18 +52,27 @@ export interface FrameReorderBuffer {
   waitForFrame: (frame: number) => Promise<void>;
   advanceTo: (frame: number) => void;
   waitForAllDone: () => Promise<void>;
+  /**
+   * Reject every parked and future waiter with `err`. Required by the
+   * interleaved parallel drain: when one worker fails (e.g. drawElement
+   * self-verification), its frames will never be written — peers parked in
+   * waitForFrame would otherwise deadlock the whole capture (the worker pool
+   * awaits ALL workers before surfacing the failure).
+   */
+  abort: (err: Error) => void;
 }
 
 export function createFrameReorderBuffer(startFrame: number, endFrame: number): FrameReorderBuffer {
   let cursor = startFrame;
-  const pending = new Map<number, Array<() => void>>();
+  let aborted: Error | null = null;
+  const pending = new Map<number, Array<{ resolve: () => void; reject: (e: Error) => void }>>();
 
-  const enqueueAt = (frame: number, resolve: () => void): void => {
+  const enqueueAt = (frame: number, resolve: () => void, reject: (e: Error) => void): void => {
     const list = pending.get(frame);
     if (list === undefined) {
-      pending.set(frame, [resolve]);
+      pending.set(frame, [{ resolve, reject }]);
     } else {
-      list.push(resolve);
+      list.push({ resolve, reject });
     }
   };
 
@@ -71,16 +80,20 @@ export function createFrameReorderBuffer(startFrame: number, endFrame: number): 
     const list = pending.get(frame);
     if (list === undefined) return;
     pending.delete(frame);
-    for (const resolve of list) resolve();
+    for (const waiter of list) waiter.resolve();
   };
 
   const waitForFrame = (frame: number): Promise<void> =>
-    new Promise<void>((resolve) => {
+    new Promise<void>((resolve, reject) => {
+      if (aborted) {
+        reject(aborted);
+        return;
+      }
       if (frame === cursor) {
         resolve();
         return;
       }
-      enqueueAt(frame, resolve);
+      enqueueAt(frame, resolve, reject);
     });
 
   const advanceTo = (frame: number): void => {
@@ -89,15 +102,28 @@ export function createFrameReorderBuffer(startFrame: number, endFrame: number): 
   };
 
   const waitForAllDone = (): Promise<void> =>
-    new Promise<void>((resolve) => {
+    new Promise<void>((resolve, reject) => {
+      if (aborted) {
+        reject(aborted);
+        return;
+      }
       if (cursor >= endFrame) {
         resolve();
         return;
       }
-      enqueueAt(endFrame, resolve);
+      enqueueAt(endFrame, resolve, reject);
     });
 
-  return { waitForFrame, advanceTo, waitForAllDone };
+  const abort = (err: Error): void => {
+    if (aborted) return;
+    aborted = err;
+    for (const [frame, list] of pending) {
+      pending.delete(frame);
+      for (const waiter of list) waiter.reject(err);
+    }
+  };
+
+  return { waitForFrame, advanceTo, waitForAllDone, abort };
 }
 
 // ---------------------------------------------------------------------------

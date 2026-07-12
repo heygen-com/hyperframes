@@ -72,6 +72,16 @@ type SlideshowMediaElement = HTMLMediaElement & {
   dataset: DOMStringMap;
 };
 
+/** True when the keydown originated in a text-entry control (typing must never
+ *  navigate the deck). Duck-typed so it works for events from the composition
+ *  iframe's realm, where instanceof this realm's element classes always fails. */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!target || typeof (target as HTMLElement).tagName !== "string") return false;
+  const el = target as HTMLElement;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
+}
+
 function isPlayerElement(el: HTMLElement): el is PlayerElement {
   return (
     typeof (el as PlayerElement).seek === "function" &&
@@ -178,6 +188,9 @@ export class HyperframesSlideshow extends HTMLElement {
   private initTimer: ReturnType<typeof setTimeout> | null = null;
   private initInFlight = false;
   private initGeneration = 0;
+  private keyForwardFrame: HTMLIFrameElement | null = null;
+  private detachIframeKeys: (() => void) | null = null;
+  private warnedIframeKeyForwardingUnavailable = false;
   private _muted = false;
   private mediaWireInterval: ReturnType<typeof setInterval> | null = null;
   private playerObserver: MutationObserver | null = null;
@@ -196,7 +209,7 @@ export class HyperframesSlideshow extends HTMLElement {
   }
 
   /** Mode resolves from the `mode` attribute, falling back to the URL query
-   *  (?mode=audience) so the audience window opened by present() is detected. */
+   *  (?mode=audience) so the audience tab opened by present() is detected. */
   private resolveMode(): string | null {
     const attr = this.getAttribute("mode");
     if (attr) return attr;
@@ -223,9 +236,8 @@ export class HyperframesSlideshow extends HTMLElement {
     this.initInFlight = false;
     this.initGeneration += 1;
     this.tabIndex = 0;
-    // note: if the inner player iframe has keyboard focus, window keydown in the
-    // top document won't fire — that edge remains; this listener fixes the dominant
-    // case where the page loads and arrows should work without clicking the element.
+    // Keydowns with focus inside the player iframe don't reach this window
+    // listener — attachIframeKeyForwarding() (wired in init) covers that path.
     window.addEventListener("keydown", this.onKey);
     this.addEventListener("touchstart", this.onTouchStart, { passive: true });
     this.addEventListener("touchend", this.onTouchEnd);
@@ -259,6 +271,7 @@ export class HyperframesSlideshow extends HTMLElement {
       this.initTimer = null;
     }
     window.removeEventListener("keydown", this.onKey);
+    this.detachIframeKeys?.();
     this.removeEventListener("touchstart", this.onTouchStart);
     this.removeEventListener("touchend", this.onTouchEnd);
     window.removeEventListener("message", this.onMessage);
@@ -295,17 +308,26 @@ export class HyperframesSlideshow extends HTMLElement {
   }
 
   /**
-   * Opens an audience window and switches this element to presenter layout.
-   * Audience window URL: current page URL with `mode=audience` query param.
+   * Opens an audience tab and switches this element to presenter layout.
+   * Audience tab URL: current page URL with `mode=audience` query param.
    */
   present(): void {
     if (this.resolveMode() === "audience" || this.getAttribute("data-hf-presenting") === "true") {
       return;
     }
-    const sep = location.search ? "&" : "?";
-    // noopener,noreferrer: the audience window must not get a reference back to
-    // this window (it syncs over BroadcastChannel, not window.opener).
-    window.open(location.href + sep + "mode=audience", "_blank", "noopener,noreferrer");
+    // URL API, not string concat: with a #fragment in the page URL, appending
+    // "?mode=audience" would land inside the fragment and the opened tab would
+    // boot as an unsynced second presenter.
+    const url = new URL(location.href);
+    url.searchParams.set("mode", "audience");
+    // Anchor click, not window.open(features): rel="noopener noreferrer" severs
+    // opener at creation time while Chrome still opens a regular tab. Passing a
+    // non-empty features string tends to create a popup WINDOW, which freezes
+    // when fully covered during screen share.
+    if (!this.openAudienceTab(url.href)) {
+      console.warn("[hyperframes-slideshow] present(): browser blocked the audience tab");
+      return;
+    }
     this.setAttribute("data-hf-presenting", "true");
     this.postCurrentPresenterPositionBurst();
     this.presenterStartMs = Date.now();
@@ -313,6 +335,22 @@ export class HyperframesSlideshow extends HTMLElement {
       this.presenterInterval = setInterval(() => this.updateElapsed(), 1000);
     }
     this.render();
+  }
+
+  private openAudienceTab(href: string): boolean {
+    const userActivation = (navigator as Navigator & { userActivation?: { isActive?: boolean } })
+      .userActivation;
+    if (userActivation && userActivation.isActive === false) return false;
+
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.style.display = "none";
+    (document.body ?? document.documentElement).appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    return true;
   }
 
   /**
@@ -378,6 +416,8 @@ export class HyperframesSlideshow extends HTMLElement {
 
       // Guard: if a disconnect or reconnect happened while waiting, bail out.
       if (gen !== this.initGeneration) return;
+
+      this.attachIframeKeyForwarding(playerEl);
 
       // Wait for scenes to be populated (the runtime "timeline" postMessage
       // arrives ~1000ms after waitForReady resolves). Graceful fallback to []
@@ -545,6 +585,51 @@ export class HyperframesSlideshow extends HTMLElement {
     if (this.playerObserver !== null) return;
     this.playerObserver = new MutationObserver(() => this.ensureInteractivePlayers());
     this.playerObserver.observe(this, { childList: true, subtree: true });
+  }
+
+  /**
+   * Forward keydown events from the composition iframe to onKey. Interactive
+   * decks move focus into the iframe when the presenter clicks a slide, and
+   * top-window keydown stops firing — without this, arrow keys stop controlling
+   * the deck after any in-slide click. Same-origin frames only (cross-origin
+   * access throws → warn once and leave top-window shortcuts working).
+   * Re-attached on every iframe `load`,
+   * because a navigation clears listeners the parent added to the content
+   * window.
+   */
+  private attachIframeKeyForwarding(player: Partial<PlayerElement> & HTMLElement): void {
+    const frame = player.iframeElement;
+    if (!(frame instanceof HTMLIFrameElement) || frame === this.keyForwardFrame) return;
+    this.detachIframeKeys?.();
+    const attach = (): void => {
+      try {
+        // addEventListener dedupes same handler+target, so re-runs are safe.
+        frame.contentWindow?.addEventListener("keydown", this.onKey);
+      } catch {
+        this.warnIframeKeyForwardingUnavailable();
+      }
+    };
+    attach();
+    frame.addEventListener("load", attach);
+    this.keyForwardFrame = frame;
+    this.detachIframeKeys = (): void => {
+      frame.removeEventListener("load", attach);
+      try {
+        frame.contentWindow?.removeEventListener("keydown", this.onKey);
+      } catch {
+        this.warnIframeKeyForwardingUnavailable();
+      }
+      this.keyForwardFrame = null;
+      this.detachIframeKeys = null;
+    };
+  }
+
+  private warnIframeKeyForwardingUnavailable(): void {
+    if (this.warnedIframeKeyForwardingUnavailable) return;
+    this.warnedIframeKeyForwardingUnavailable = true;
+    console.warn(
+      "[hyperframes-slideshow] iframe keyboard forwarding is unavailable for this composition, likely because the player iframe is cross-origin. Arrow shortcuts work when focus is outside the iframe.",
+    );
   }
 
   private playerFrameDocument(player: Partial<PlayerElement> & HTMLElement): Document | null {
@@ -732,17 +817,14 @@ export class HyperframesSlideshow extends HTMLElement {
 
   // fallow-ignore-next-line complexity
   private onKey = (e: KeyboardEvent): void => {
-    if (!this.controller) return;
-    const target = e.target;
-    if (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement ||
-      (target instanceof HTMLElement && target.isContentEditable)
-    ) {
-      return;
-    }
+    // Duck-typed (not instanceof): this handler also receives keydowns forwarded
+    // from the composition iframe, whose elements are instances of the IFRAME
+    // realm's classes — instanceof against this realm's would never match.
+    if (isTextEntryTarget(e.target)) return;
     const active = document.activeElement;
+    // With focus inside the composition iframe, the top document's activeElement
+    // is the <iframe> itself — contained by this element, so `focused` stays true
+    // and arrows keep driving the deck after the presenter clicks into the slide.
     const focused = active === this || this.contains(active);
     // Arrows act even when nothing is focused (active === body/null) so a freshly
     // loaded deck responds without a click; Space/Backspace have strong page-level
@@ -751,6 +833,16 @@ export class HyperframesSlideshow extends HTMLElement {
     // doesn't drive every instance at once — only the focused deck responds.
     const multiInstance = document.querySelectorAll("hyperframes-slideshow").length > 1;
     const ambient = focused || (!multiInstance && (active === document.body || active === null));
+    // P is handled BEFORE the controller guard: present() doesn't need the
+    // controller, and on a slow-loading deck the advertised shortcut must work
+    // immediately rather than silently doing nothing until the controller binds.
+    if ((e.key === "p" || e.key === "P") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!ambient || !this.shouldShowPresentControl()) return;
+      this.present();
+      e.preventDefault();
+      return;
+    }
+    if (!this.controller) return;
     if (e.key === "ArrowRight") {
       if (!ambient) return;
       this.controller.next();
@@ -770,10 +862,6 @@ export class HyperframesSlideshow extends HTMLElement {
     } else if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (!focused) return;
       this.toggleFullscreen();
-      e.preventDefault();
-    } else if ((e.key === "p" || e.key === "P") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (!ambient || !this.shouldShowPresentControl()) return;
-      this.present();
       e.preventDefault();
     }
   };

@@ -345,6 +345,101 @@ describe("DomEditOverlay", () => {
     Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     host.remove();
   });
+
+  it("passes the tracked hover selection when clicking the existing selection box", async () => {
+    const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (): DOMRect {
+      return {
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 450,
+        width: 800,
+        height: 450,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    };
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const selection: DomEditSelection = {
+      element: document.createElement("div"),
+      id: "hero-title",
+      selector: ".hero-title",
+      selectorIndex: 0,
+      sourceFile: "index.html",
+      tagName: "div",
+      label: "Hero Title",
+      textContent: "Hello",
+      textFields: [],
+      capabilities: {
+        canEditText: true,
+        canEditLayout: true,
+        canMove: false,
+        canApplyManualOffset: false,
+        canApplyManualSize: false,
+        canApplyManualRotation: false,
+        canAdjustOpacity: true,
+        canAdjustFill: true,
+        canAdjustBorderRadius: true,
+        canAdjustStroke: true,
+        canAdjustShadow: true,
+        canAdjustZIndex: true,
+      },
+      computedStyle: {
+        display: "block",
+        position: "absolute",
+      },
+    };
+    const hoverSelection: DomEditSelection = { ...selection, id: "hovered-sibling" };
+    const onCanvasMouseDown = vi.fn();
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+
+    function Harness() {
+      return React.createElement(DomEditOverlay, {
+        ...createOverlayProps({
+          iframeRef,
+          selection,
+          hoverSelection,
+          onSelectionChange: () => {},
+        }),
+        onCanvasMouseDown,
+      });
+    }
+
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+
+    const selectionBox = host.querySelector(
+      '[data-dom-edit-selection-box="true"]',
+    ) as HTMLDivElement;
+    expect(selectionBox).toBeTruthy();
+
+    act(() => {
+      selectionBox.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onCanvasMouseDown).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ hoverSelection }),
+    );
+
+    act(() => {
+      root.unmount();
+    });
+    Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    host.remove();
+  });
 });
 
 describe("resolveDomEditCoordinateScale", () => {
@@ -438,6 +533,47 @@ describe("resolveDomEditResizeGesture", () => {
       width: 270,
       height: 132,
     });
+  });
+
+  it("divides the cursor delta by the element's content scale (rescaled element)", () => {
+    // Element renders at 2x via a GSAP scale: a 30px cursor delta must grow the
+    // CSS box by only 15px so the RENDERED box tracks the pointer 1:1.
+    const next = resolveDomEditResizeGesture({
+      originWidth: 480, // 240 css x 2 content scale (overlay px at editScale 1)
+      originHeight: 240,
+      actualWidth: 240,
+      actualHeight: 120,
+      scaleX: 1,
+      scaleY: 1,
+      contentScaleX: 2,
+      contentScaleY: 2,
+      dx: 30,
+      dy: 12,
+      uniform: false,
+    });
+    expect(next.width).toBe(255);
+    expect(next.height).toBe(126);
+    // The overlay box keeps tracking the raw cursor.
+    expect(next.overlayWidth).toBe(510);
+    expect(next.overlayHeight).toBe(252);
+  });
+
+  it("treats a missing/invalid content scale as 1 (unscaled element)", () => {
+    const next = resolveDomEditResizeGesture({
+      originWidth: 240,
+      originHeight: 120,
+      actualWidth: 240,
+      actualHeight: 120,
+      scaleX: 1,
+      scaleY: 1,
+      contentScaleX: 0,
+      contentScaleY: Number.NaN,
+      dx: 30,
+      dy: 12,
+      uniform: false,
+    });
+    expect(next.width).toBe(270);
+    expect(next.height).toBe(132);
   });
 
   it("snaps width and height to the same value when Shift is held", () => {

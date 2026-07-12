@@ -350,6 +350,105 @@ interface ElasticHold {
 
 ---
 
+## CompositionVariable
+
+The full schema for one declared variable — used by `comp.declareVariable()`, returned from `comp.listVariables()`. A closed union discriminated on `type`; every variant shares the same base fields plus its own type-specific ones.
+
+```typescript
+interface CompositionVariableBase {
+  id: string;
+  type: "string" | "number" | "color" | "boolean" | "enum" | "font" | "image";
+  label: string;
+  description?: string;
+}
+
+interface StringVariable extends CompositionVariableBase {
+  type: "string";
+  default: string;
+  placeholder?: string;
+  maxLength?: number;
+}
+
+interface NumberVariable extends CompositionVariableBase {
+  type: "number";
+  default: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+}
+
+interface ColorVariable extends CompositionVariableBase {
+  type: "color";
+  default: string;
+  brandRole?: string;
+}
+
+interface BooleanVariable extends CompositionVariableBase {
+  type: "boolean";
+  default: boolean;
+}
+
+interface EnumVariable extends CompositionVariableBase {
+  type: "enum";
+  default: string;
+  options: { value: string; label: string }[];
+}
+
+interface FontVariable extends CompositionVariableBase {
+  type: "font";
+  default: string;
+  source?: string;
+  default_name?: string;
+  default_source?: string;
+}
+
+interface ImageVariable extends CompositionVariableBase {
+  type: "image";
+  default: string;
+  brandRole?: string;
+}
+
+type CompositionVariable =
+  | StringVariable
+  | NumberVariable
+  | ColorVariable
+  | BooleanVariable
+  | EnumVariable
+  | FontVariable
+  | ImageVariable;
+```
+
+<ResponseField name="id" type="string">
+  Stable identifier, referenced by `setVariableValue`, `getVariableValue`, `removeVariable`, and `var.{id}` override-set keys.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Discriminant. Determines which variant's extra fields apply and what shape `default` takes.
+</ResponseField>
+
+<ResponseField name="label" type="string">
+  Human-readable name for a variables panel UI.
+</ResponseField>
+
+<ResponseField name="default" type="string | number | boolean">
+  The variable's fallback value. `font` and `image` variants store their fallback as a plain string here (a font-family name / image URL) — the richer `FontValue`/`ImageValue` object shapes are only used as `setVariableValue`'s runtime argument, not as `default`'s stored type.
+</ResponseField>
+
+<ResponseField name="brandRole" type="string (color, image)">
+  Optional semantic label for brand-system tooling, e.g. `"color:primary"` or `"logo:primary"`.
+</ResponseField>
+
+<ResponseField name="options" type="{ value: string; label: string }[] (enum only)">
+  The selectable choices for an `enum` variable.
+</ResponseField>
+
+<ResponseField name="source" type="string (font only)">
+  Font stylesheet URL (e.g. a Google Fonts CSS link) paired with the `default` font-family name.
+</ResponseField>
+
+---
+
 ## FontValue
 
 Object value for a `font` composition variable. Always an object — never a raw CSS string.
@@ -619,6 +718,8 @@ type EditOp =
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
   | { type: "setVariableValue"; id: string; value: string | number | boolean | FontValue | ImageValue }
+  | { type: "declareVariable"; decl: CompositionVariable }
+  | { type: "removeVariable"; id: string }
   | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
   | { type: "removeGsapTween"; animationId: string }

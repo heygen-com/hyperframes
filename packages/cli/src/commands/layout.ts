@@ -7,7 +7,7 @@ import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
@@ -26,10 +26,17 @@ import {
   type MotionFrame,
 } from "../utils/motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionSpec } from "../utils/motionSpec.js";
+import {
+  AUDIT_SEEK_OPTIONS,
+  installPageFunctionGuard,
+  seekCompositionTimeline,
+  waitForCompositionFonts,
+  type SeekCompositionTimelineOptions,
+} from "../capture/captureCompositionFrame.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const SEEK_SETTLE_MS = 120;
+const LAYOUT_SEEK_OPTIONS: SeekCompositionTimelineOptions = AUDIT_SEEK_OPTIONS;
 // All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
 // Motion verification (#1437): dense sampling grid for the seeked-timeline checks.
@@ -68,6 +75,8 @@ function buildMotionSampleTimes(duration: number): number[] {
 }
 
 async function getCompositionDuration(page: import("puppeteer-core").Page): Promise<number> {
+  // Serialized into the page; the duration-source cascade cannot be split.
+  // fallow-ignore-next-line complexity
   return page.evaluate(() => {
     const win = window as unknown as {
       __hf?: { duration?: number };
@@ -94,52 +103,6 @@ async function getCompositionDuration(page: import("puppeteer-core").Page): Prom
 
     return 0;
   });
-}
-
-async function waitForFonts(page: import("puppeteer-core").Page, timeoutMs: number): Promise<void> {
-  await page
-    .evaluate((ms: number) => {
-      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
-      if (!fonts?.ready) return Promise.resolve();
-      return Promise.race([
-        fonts.ready.then(() => undefined),
-        new Promise<void>((resolve) => setTimeout(resolve, ms)),
-      ]);
-    }, timeoutMs)
-    .catch(() => {});
-}
-
-async function seekTo(page: import("puppeteer-core").Page, time: number): Promise<void> {
-  await page.evaluate((t: number) => {
-    const win = window as unknown as {
-      __hf?: { seek?: (time: number) => void };
-      __player?: { seek?: (time: number) => void };
-      __timelines?: Record<string, { pause?: () => void; seek?: (time: number) => void }>;
-    };
-    if (typeof win.__hf?.seek === "function") {
-      win.__hf.seek(t);
-      return;
-    }
-    if (typeof win.__player?.seek === "function") {
-      win.__player.seek(t);
-      return;
-    }
-    const timelines = win.__timelines;
-    if (timelines) {
-      for (const timeline of Object.values(timelines)) {
-        if (typeof timeline.pause === "function") timeline.pause();
-        if (typeof timeline.seek === "function") timeline.seek(t);
-      }
-    }
-  }, time);
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolveFrame) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolveFrame())),
-      ),
-  );
-  await waitForFonts(page, 500);
-  await new Promise((resolveSettle) => setTimeout(resolveSettle, SEEK_SETTLE_MS));
 }
 
 /**
@@ -234,6 +197,7 @@ async function runLayoutAudit(
 ): Promise<LayoutAuditResult> {
   const { ensureBrowser } = await import("../browser/manager.js");
   const puppeteer = await import("puppeteer-core");
+  const { buildChromeArgs } = await import("@hyperframes/engine");
   const html = await bundleProjectHtml(projectDir);
   const server = await serveStaticProjectHtml(
     projectDir,
@@ -247,17 +211,11 @@ async function runLayoutAudit(
     chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: [
-        "--no-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--enable-webgl",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-      ],
+      args: buildChromeArgs({ width: 1920, height: 1080, captureMode: "screenshot" }),
     });
 
     const page = await chromeBrowser.newPage();
+    await installPageFunctionGuard(page);
     await page.setViewport({ width: 1920, height: 1080 });
     await page.goto(server.url, { waitUntil: "domcontentloaded", timeout: 10000 });
     await alignViewportToComposition(page, server.url);
@@ -266,7 +224,7 @@ async function runLayoutAudit(
         timeout: opts.timeout,
       })
       .catch(() => {});
-    await waitForFonts(page, 750);
+    await waitForCompositionFonts(page, 750);
     await new Promise((resolveSettle) => setTimeout(resolveSettle, 250));
 
     const duration = await getCompositionDuration(page);
@@ -308,7 +266,7 @@ async function runLayoutAudit(
   }
 }
 
-function loadBrowserScript(name: string): string {
+export function loadBrowserScript(name: string): string {
   const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
@@ -330,7 +288,7 @@ async function collectLayoutIssues(
 
   const issues: LayoutIssue[] = [];
   for (const time of samples) {
-    await seekTo(page, time);
+    await seekCompositionTimeline(page, time, LAYOUT_SEEK_OPTIONS);
     const sampleIssues = await page.evaluate(
       (auditOptions: { time: number; tolerance: number }) => {
         const win = window as unknown as {
@@ -373,7 +331,7 @@ async function collectMotionFrames(
 ): Promise<MotionFrame[]> {
   const frames: MotionFrame[] = [];
   for (const time of times) {
-    await seekTo(page, time);
+    await seekCompositionTimeline(page, time, LAYOUT_SEEK_OPTIONS);
     const sample = await page.evaluate(
       (options: { selectors: string[]; livenessScopes: string[] }) => {
         const win = window as unknown as {
@@ -427,16 +385,19 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
   if (json) {
     console.log(
       JSON.stringify(
-        withMeta({
-          schemaVersion: INSPECT_SCHEMA_VERSION,
-          ok: false,
-          error: message,
-          issues: [],
-          errorCount: 0,
-          warningCount: 0,
-          infoCount: 0,
-          issueCount: 0,
-        }),
+        withMeta(
+          {
+            schemaVersion: INSPECT_SCHEMA_VERSION,
+            ok: false,
+            error: message,
+            issues: [],
+            errorCount: 0,
+            warningCount: 0,
+            infoCount: 0,
+            issueCount: 0,
+          },
+          { deprecated: true },
+        ),
         null,
         2,
       ),
@@ -447,7 +408,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
   process.exit(1);
 }
 
-function parseAt(value: unknown): number[] | undefined {
+export function parseAt(value: unknown): number[] | undefined {
   if (!value) return undefined;
   const times = String(value)
     .split(",")
@@ -461,7 +422,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
     meta: {
       name: commandName,
       description:
-        "Inspect rendered composition layout for text/container overflow, plus optional motion verification via a *.motion.json sidecar",
+        "Inspect rendered composition layout for text/container overflow, plus optional motion verification via a *.motion.json sidecar (deprecated, use check)",
     },
     args: {
       dir: { type: "positional", description: "Project directory", required: false },
@@ -512,7 +473,10 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         default: false,
       },
     },
+    // Pre-existing command-run branching; U1 only swapped the seek internals.
+    // fallow-ignore-next-line complexity
     async run({ args }) {
+      printDeprecationNotice(commandName);
       const project = resolveProject(args.dir);
       const samples = Math.max(1, parseInt(args.samples as string, 10) || 9);
       const tolerance = Math.max(0, parseFloat(args.tolerance as string) || 2);
@@ -562,7 +526,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           );
         }
         const allIssues = collapseStatic
-          ? collapseStaticLayoutIssues(result.rawIssues)
+          ? collapseStaticLayoutIssues(result.rawIssues, result.samples.length)
           : result.rawIssues;
         const limited = limitLayoutIssues(allIssues, maxIssues);
         const summary = summarizeLayoutIssues(allIssues);
@@ -571,25 +535,28 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         if (args.json) {
           console.log(
             JSON.stringify(
-              withMeta({
-                schemaVersion: INSPECT_SCHEMA_VERSION,
-                duration: result.duration,
-                samples: result.samples,
-                transitionSamples: atTransitions ? result.transitionSamples : undefined,
-                transitionSamplesDropped: atTransitions
-                  ? result.transitionSamplesDropped
-                  : undefined,
-                tolerance,
-                strict,
-                collapseStatic,
-                motionSpec: motionSpec ? motionSpecPath : undefined,
-                motionSamples: motionSpec ? result.motionSamples : undefined,
-                ...summary,
-                totalIssueCount: limited.totalIssueCount,
-                truncated: limited.truncated,
-                ok,
-                issues: limited.issues,
-              }),
+              withMeta(
+                {
+                  schemaVersion: INSPECT_SCHEMA_VERSION,
+                  duration: result.duration,
+                  samples: result.samples,
+                  transitionSamples: atTransitions ? result.transitionSamples : undefined,
+                  transitionSamplesDropped: atTransitions
+                    ? result.transitionSamplesDropped
+                    : undefined,
+                  tolerance,
+                  strict,
+                  collapseStatic,
+                  motionSpec: motionSpec ? motionSpecPath : undefined,
+                  motionSamples: motionSpec ? result.motionSamples : undefined,
+                  ...summary,
+                  totalIssueCount: limited.totalIssueCount,
+                  truncated: limited.truncated,
+                  ok,
+                  issues: limited.issues,
+                },
+                { deprecated: true },
+              ),
               null,
               2,
             ),
@@ -639,16 +606,19 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
         if (args.json) {
           console.log(
             JSON.stringify(
-              withMeta({
-                schemaVersion: INSPECT_SCHEMA_VERSION,
-                ok: false,
-                error: message,
-                issues: [],
-                errorCount: 0,
-                warningCount: 0,
-                infoCount: 0,
-                issueCount: 0,
-              }),
+              withMeta(
+                {
+                  schemaVersion: INSPECT_SCHEMA_VERSION,
+                  ok: false,
+                  error: message,
+                  issues: [],
+                  errorCount: 0,
+                  warningCount: 0,
+                  infoCount: 0,
+                  issueCount: 0,
+                },
+                { deprecated: true },
+              ),
               null,
               2,
             ),

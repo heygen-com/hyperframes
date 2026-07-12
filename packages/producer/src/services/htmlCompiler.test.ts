@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,8 +7,11 @@ import { parseHTML } from "linkedom";
 import {
   collectExternalAssets,
   compileForRender,
+  injectSdkPositionEditsRenderScript,
+  detectAncestorBackgroundImage,
   detectRenderModeHints,
   detectShaderTransitionUsage,
+  detectThreeDTransformUsage,
   discoverAudioVolumeAutomationFromTimeline,
   inlineExternalScripts,
   localizeRemoteMediaSources,
@@ -16,6 +20,28 @@ import {
   recompileWithResolutions,
 } from "./htmlCompiler.js";
 import { validateNoSystemFonts } from "./render/planValidation.js";
+
+describe("injectSdkPositionEditsRenderScript", () => {
+  it("injects before </body> when SDK position-edit markers are present", () => {
+    const html =
+      '<html><body><h1 data-x="-231" data-y="-139" data-hf-edit-base-x="0" data-hf-edit-base-y="0">Hi</h1></body></html>';
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain("<script>");
+    expect(out.indexOf("<script>")).toBeLessThan(out.indexOf("</body>"));
+    expect(out).toContain("data-hf-edit-base-x");
+  });
+
+  it("appends the script when there is no </body> tag", () => {
+    const out = injectSdkPositionEditsRenderScript('<div data-hf-edit-base-y="0"></div>');
+    expect(out.startsWith('<div data-hf-edit-base-y="0"></div>')).toBe(true);
+    expect(out).toContain("<script>");
+  });
+
+  it("is a no-op for style/text-only HTML", () => {
+    const html = '<html><body><h1 style="color:#f00">Hi</h1></body></html>';
+    expect(injectSdkPositionEditsRenderScript(html)).toBe(html);
+  });
+});
 
 // ── collectExternalAssets ──────────────────────────────────────────────────
 
@@ -649,6 +675,109 @@ describe("detectRenderModeHints", () => {
   });
 });
 
+describe("detectThreeDTransformUsage", () => {
+  it("detects CSS perspective property", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: 1000px; }</style>")).toBe(true);
+  });
+
+  it("detects transform-style preserve-3d", () => {
+    expect(detectThreeDTransformUsage("<style>.c { transform-style: preserve-3d; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects backface-visibility", () => {
+    expect(detectThreeDTransformUsage("<style>.f { backface-visibility: hidden; }</style>")).toBe(
+      true,
+    );
+  });
+
+  it("detects perspective() transform function", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: perspective(500px)"></div>')).toBe(
+      true,
+    );
+  });
+
+  it("detects GSAP transformPerspective", () => {
+    expect(
+      detectThreeDTransformUsage("<script>gsap.to(el, { transformPerspective: 800 })</script>"),
+    ).toBe(true);
+  });
+
+  it("does not match flat GSAP rotationX without a perspective context", () => {
+    expect(detectThreeDTransformUsage("<script>gsap.to(el, { rotationX: 180 })</script>")).toBe(
+      false,
+    );
+  });
+
+  it("does not match translateZ(0) promotion hack", () => {
+    expect(detectThreeDTransformUsage('<div style="transform: translateZ(0)"></div>')).toBe(false);
+  });
+
+  it("does not match perspective: none", () => {
+    expect(detectThreeDTransformUsage("<style>.s { perspective: none; }</style>")).toBe(false);
+  });
+});
+
+describe("detectAncestorBackgroundImage", () => {
+  const wrap = (headCss: string, bodyAttrs = "", inner = "") =>
+    `<!doctype html><html><head><style>${headCss}</style></head><body${bodyAttrs ? ` ${bodyAttrs}` : ""}>` +
+    `<div id="root" data-composition-id="main" data-duration="10">${inner}</div></body></html>`;
+
+  it("detects a linear-gradient body background from a style rule", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("body { background: linear-gradient(135deg, #1b2735, #090a0f); }"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a url() background-image on html", () => {
+    expect(detectAncestorBackgroundImage(wrap('html { background-image: url("bg.png"); }'))).toBe(
+      true,
+    );
+  });
+
+  it("detects an inline gradient style on body", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("", 'style="background: radial-gradient(circle, #111, #000)"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a class-selected wrapper between body and the root", () => {
+    const html =
+      "<!doctype html><html><head><style>.page-bg { background-image: linear-gradient(#111, #000); }</style></head>" +
+      '<body><div class="page-bg"><div data-composition-id="main" data-duration="10"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("ignores background-image on elements inside the composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap(
+          "#hero { background-image: linear-gradient(#111, #000); }",
+          "",
+          '<div id="hero"></div>',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores plain background-color ancestors", () => {
+    expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
+  });
+
+  it("returns false without a composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        "<html><head><style>body { background: linear-gradient(#111, #000); }</style></head><body></body></html>",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("detectShaderTransitionUsage", () => {
   it("detects authored HyperShader initialization", () => {
     const html = `<!doctype html>
@@ -920,6 +1049,68 @@ describe("template-wrapped sub-composition media offsets", () => {
     expect(compiled.html).toContain("__hfNormalizeSelector");
   });
 
+  it("resolves a class selector on the authored root wrapper itself (issue #1847 repro)", async () => {
+    // The original bug report: a sub-composition root authored as
+    // `<div id="scene-root" class="scene-wrapper">` styled via
+    // `.scene-wrapper .title { color: red }`. Class-based descendant
+    // selectors anchored on the authored root's own class only resolve if
+    // the root survives as a real element in the render DOM, not just via
+    // id-selector rewriting to [data-hf-authored-id].
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-class-wrapper-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <head></head>
+  <body>
+    <div id="root" data-composition-id="root" data-start="0" data-width="1920" data-height="1080" data-duration="3">
+      <div
+        id="scene-host"
+        data-composition-id="scene"
+        data-composition-src="compositions/scene.html"
+        data-start="0"
+        data-duration="3"
+      ></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["root"] = { duration: () => 3 };
+    </script>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(compositionsDir, "scene.html"),
+      `<template id="scene-template">
+  <div id="scene-root" class="scene-wrapper" data-composition-id="scene" data-width="1920" data-height="1080" data-duration="3">
+    <div class="title">ISSUE 1847 REPRO</div>
+    <style>
+      .scene-wrapper { background: #111; }
+      .scene-wrapper .title { color: red; }
+    </style>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = { duration: () => 3 };
+    </script>
+  </div>
+</template>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const host = document.querySelector("#scene-host");
+
+    const wrapper = host?.querySelector(".scene-wrapper");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.getAttribute("data-hf-authored-id")).toBe("scene-root");
+    expect(wrapper?.querySelector(".title")?.textContent).toBe("ISSUE 1847 REPRO");
+    // The authored class selector round-trips unmodified: no id rewriting
+    // is needed for a class selector, only the wrapper element surviving.
+    expect(compiled.html).toContain(".scene-wrapper .title");
+  });
+
   it("preserves the inferred composition boundary when the host has no composition id", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-anonymous-host-"));
     const compositionsDir = join(projectDir, "compositions");
@@ -954,7 +1145,12 @@ describe("template-wrapped sub-composition media offsets", () => {
     const host = document.querySelector("#scene-host");
 
     expect(host?.getAttribute("data-composition-id")).toBeNull();
-    expect(host?.querySelector('[data-composition-id="scene"] .title')?.textContent).toBe("Scene");
+    // The host has no data-composition-id of its own, but the composition's
+    // own id is restored onto the flattened wrapper, so root-scoped
+    // selectors and self-referencing scripts still resolve.
+    const wrapper = host?.querySelector("[data-hf-inner-root]");
+    expect(wrapper?.getAttribute("data-composition-id")).toBe("scene");
+    expect(wrapper?.querySelector(".title")?.textContent).toBe("Scene");
     expect(compiled.html).toContain('var __hfCompId = "scene";');
   });
 });
@@ -1597,5 +1793,211 @@ describe("discoverAudioVolumeAutomationFromTimeline", () => {
       globalThis.HTMLAudioElement = previousAudioElement;
       globalThis.HTMLVideoElement = previousVideoElement;
     }
+  });
+});
+
+describe("sub-composition variable injection (render path, #2064)", () => {
+  function writeSubCompVarProject(hostVars: string): string {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"color","type":"color","label":"Color","default":"#000000"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="card-bg"></div>
+      <script>
+        var color = __hyperframes.getVariables().color || "#000000";
+        document.querySelector('[data-composition-id="card"] .card-bg').style.background = color;
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240">
+      <div data-composition-id="card-1" data-composition-src="compositions/card.html" data-start="0" data-duration="3" data-track-index="1" ${hostVars}></div>
+    </div>
+  </body>
+</html>`,
+    );
+    return projectDir;
+  }
+
+  it("injects the __hfVariablesByComp writer so JS getVariables() sees per-instance values", async () => {
+    // Regression for #2064: render inlined the sub-comp reader scripts but never
+    // emitted the writer, so window.__hyperframes.getVariables() returned {} and
+    // parametrized sub-comps shipped blank/default text in the final MP4 while
+    // snapshot QA passed.
+    const projectDir = writeSubCompVarProject(`data-variable-values='{"color":"#00ff00"}'`);
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain("#00ff00");
+  });
+
+  it("still injects the declared default even with no per-instance override", async () => {
+    const projectDir = writeSubCompVarProject("");
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
+    expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
+  });
+
+  it("scopes per-instance values when one sub-comp is mounted multiple times (template reuse)", async () => {
+    // #2066 fixed the single-instance case but left a preview/render divergence:
+    // two mounts of the SAME sub-comp (same authored data-composition-id) with
+    // different data-variable-values collapsed to one __hfVariablesByComp key
+    // and one scope selector, so the last mount clobbered the earlier one and
+    // all-but-one instance rendered blank. The producer now assigns per-instance
+    // runtime ids (card__hf1, card__hf2), mirroring the preview bundler.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="2"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const ids = Array.from(
+      document.querySelectorAll('[data-composition-file="compositions/card.html"]'),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    // Each instance gets a unique runtime id, in document order.
+    expect(ids).toContain("card__hf1");
+    expect(ids).toContain("card__hf2");
+    // And each carries its own per-instance values — no cross-instance clobber.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
+  it("assigns a distinct runtime id to every mount when the same sub-comp appears 3+ times", async () => {
+    // Pins the uniqueCompositionId(baseId, index) progression beyond two: the
+    // third and fourth mounts must land as card__hf3 / card__hf4, each with its
+    // own values.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-multi3-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="card" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`,
+    );
+    const mounts = ["A", "B", "C", "D"]
+      .map(
+        (label, i) =>
+          `<div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_${label}"}' data-start="0" data-duration="3" data-track-index="${i + 1}"></div>`,
+      )
+      .join("\n      ");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      ${mounts}
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const ids = Array.from(
+      parseHTML(compiled.html).document.querySelectorAll(
+        '[data-composition-file="compositions/card.html"]',
+      ),
+    ).map((h) => h.getAttribute("data-composition-id"));
+    expect(ids).toEqual(["card__hf1", "card__hf2", "card__hf3", "card__hf4"]);
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+    expect(compiled.html).toContain('"card__hf3":{"label":"CARD_C"}');
+    expect(compiled.html).toContain('"card__hf4":{"label":"CARD_D"}');
+  });
+
+  it("leaves a single-mount sub-comp's authored id untouched while renaming a duplicated one", async () => {
+    // Pins the "single instances are untouched" claim: a solo mount keeps its
+    // authored data-composition-id; only the duplicated sub-comp is renamed.
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-mixed-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    const declare = (id: string) =>
+      `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"label","type":"string","label":"Label","default":"DEFAULT"}]'>
+  <body>
+    <div data-composition-id="${id}" data-width="320" data-height="240">
+      <div class="lbl"></div>
+      <script>
+        document.querySelector('.lbl').textContent = __hyperframes.getVariables().label || "DEFAULT";
+      </script>
+    </div>
+  </body>
+</html>`;
+    writeFileSync(join(projectDir, "compositions", "solo.html"), declare("solo"));
+    writeFileSync(join(projectDir, "compositions", "card.html"), declare("card"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <div data-composition-id="solo" data-composition-src="compositions/solo.html" data-variable-values='{"label":"SOLO"}' data-start="0" data-duration="3" data-track-index="1"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_A"}' data-start="0" data-duration="3" data-track-index="2"></div>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-variable-values='{"label":"CARD_B"}' data-start="0" data-duration="3" data-track-index="3"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    // Solo mount keeps its authored id (not renamed to solo__hf1).
+    expect(compiled.html).toContain('"solo":{"label":"SOLO"}');
+    expect(compiled.html).not.toContain("solo__hf");
+    // Duplicated card mounts are renamed per-instance.
+    expect(compiled.html).toContain('"card__hf1":{"label":"CARD_A"}');
+    expect(compiled.html).toContain('"card__hf2":{"label":"CARD_B"}');
+  });
+
+  it("omits the writer when the sub-comp declares no variables at all", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-subvar-none-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "plain.html"),
+      `<!DOCTYPE html><html><body><div data-composition-id="plain" data-width="320" data-height="240"><span>hi</span></div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html><html><body><div id="root" class="composition" data-composition-id="host" data-start="0" data-duration="3" data-width="320" data-height="240"><div data-composition-id="p-1" data-composition-src="compositions/plain.html" data-start="0" data-duration="3" data-track-index="1"></div></div></body></html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    expect(compiled.html).not.toMatch(/window\.__hfVariablesByComp\s*=\s*Object\.assign/);
   });
 });

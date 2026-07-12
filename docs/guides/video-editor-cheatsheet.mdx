@@ -27,7 +27,7 @@ Before showing or rendering a project:
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 npx hyperframes render --quality standard --output review.mp4
 ```
 
@@ -174,8 +174,8 @@ I moved the hero title and resized the CTA manually in Studio. Inspect the chang
 | `npx hyperframes capture https://example.com` | Capture a website as source material for a video |
 | `npx hyperframes preview` | Open the live Studio preview |
 | `npx hyperframes lint` | Catch structural mistakes before preview or render |
-| `npx hyperframes validate` | Run the composition in headless Chrome to catch runtime errors |
-| `npx hyperframes inspect` | Find text overflow and layout problems across the timeline |
+| `npx hyperframes check` | Run the composition in headless Chrome to catch runtime errors |
+| `npx hyperframes check` | Find text overflow and layout problems across the timeline |
 | `npx hyperframes snapshot --at 1,3,5` | Save PNG checks at exact timestamps |
 | `npx hyperframes render --output final.mp4` | Render the video |
 | `npx hyperframes publish` | Upload the project and get a shareable HyperFrames URL |
@@ -278,9 +278,9 @@ For editor-facing changes, keep `npx hyperframes preview` running, then have the
 | --- | --- |
 | Preview will not start | `npx hyperframes doctor` |
 | Port already in use | `npx hyperframes preview --port 4567` |
-| Render fails | `npx hyperframes lint` then `npx hyperframes validate` |
+| Render fails | `npx hyperframes lint` then `npx hyperframes check` |
 | Need exact frame checks | `npx hyperframes snapshot --at 1,2.5,5` |
-| Text overflows in the frame | `npx hyperframes inspect` |
+| Text overflows in the frame | `npx hyperframes check` |
 | Final render is too slow | Try `--quality draft`, reduce image sizes, or lower `--fps` |
 | Need to share editable project | `npx hyperframes publish` |
 

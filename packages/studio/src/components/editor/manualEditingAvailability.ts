@@ -64,12 +64,6 @@ export const STUDIO_GSAP_PANEL_ENABLED = resolveStudioBooleanEnvFlag(
   true,
 );
 
-export const STUDIO_COLOR_GRADING_ENABLED = resolveStudioBooleanEnvFlag(
-  env,
-  ["VITE_STUDIO_ENABLE_COLOR_GRADING", "VITE_STUDIO_COLOR_GRADING_ENABLED"],
-  false,
-);
-
 export const STUDIO_KEYFRAMES_ENABLED = resolveStudioBooleanEnvFlag(
   env,
   ["VITE_STUDIO_ENABLE_KEYFRAMES", "VITE_STUDIO_KEYFRAMES_ENABLED"],

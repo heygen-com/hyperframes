@@ -29,7 +29,7 @@ Give your AI agent a URL and a creative direction. It captures the site, extract
     Create a 25-second product launch video from https://example.com. Bold, cinematic, dark theme energy.
     ```
 
-    The agent loads the skill when they see a URL and a video request, and runs the full pipeline — capture, design, script, storyboard, voiceover, build, validate.
+    The agent loads the skill when they see a URL and a video request, and runs the full pipeline — capture, design, strategy & messaging, storyboard + script, voiceover, build, validate.
 
     <Note>
       Agents also trigger this skill automatically when they see a URL and a video request.
@@ -65,12 +65,12 @@ The skill follows the [Hyperframes pipeline](/guides/pipeline): seven steps, eac
 | Step | Output | What happens |
 |------|--------|-------------|
 | **Capture** | `capture/` | Extract screenshots, design tokens, fonts, assets, animations |
-| **Design** | `DESIGN.md` | Brand reference — colors, typography, do's and don'ts |
-| **Script** | `SCRIPT.md` | Narration text with hook, story, proof, CTA |
-| **Storyboard** | `STORYBOARD.md` | Per-beat creative direction — mood, assets, animations, transitions |
+| **Design** | `DESIGN.md` | Brand reference — colors, typography, component stylings, spacing, iteration guide |
+| **Strategy & Messaging** | — | Align on video type, style, the ONE message, and narrative arc |
+| **Storyboard + Script** | `STORYBOARD.md` + `SCRIPT.md` | Concept-first storyboard and narration script, written together |
 | **VO + Timing** | `narration.wav` + `transcript.json` | TTS audio with word-level timestamps |
 | **Build** | `compositions/*.html` | Animated HTML compositions, one per beat |
-| **Validate** | Snapshot PNGs | Visual verification before delivery |
+| **Validate** | Snapshot PNGs + lint/validate pass | Visual verification and runtime checks before delivery |
 
 See [the pipeline guide](/guides/pipeline) for a detailed walkthrough of each step, the contents of every generated file, and how to iterate without re-running the whole pipeline. The structure is useful for any Hyperframes project, not just website captures.
 
@@ -81,11 +81,10 @@ The prompt determines the format. Include a duration and creative direction:
 | Type | Duration | Example |
 |------|----------|---------|
 | Social ad | 10–15s | _"15-second Instagram reel. Energetic, fast cuts."_ |
-| Product launch | 20–30s | _"25-second product launch. Apple keynote energy."_ |
-| Product tour | 30–60s | _"45-second tour showing the top 3 features."_ |
-| Brand reel | 15–30s | _"20-second brand video. Celebrate the design."_ |
-| Feature announcement | 15–25s | _"Feature announcement highlighting the new AI agents."_ |
-| Teaser | 8–15s | _"10-second teaser. Super minimal. Just the hook."_ |
+| Product demo | 30–60s | _"45-second demo showing the top 3 features."_ |
+| Feature announcement | 15–30s | _"Feature announcement highlighting the new AI agents."_ |
+| Brand reel | 20–45s | _"30-second brand video. Celebrate the design."_ |
+| Launch teaser | 10–20s | _"12-second teaser. Super minimal. Just the hook."_ |
 
 <Tip>
   Creative direction matters more than format. _"Playful, hand-crafted feel"_ or _"dark, developer-focused, show code"_ shapes the storyboard and drives every visual decision the agent makes.

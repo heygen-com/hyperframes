@@ -1,5 +1,29 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it, vi } from "vitest";
-import { coversComposition, pauseStudioPreviewPlayback } from "./studioPreviewHelpers";
+import {
+  coversComposition,
+  getPreviewTargetFromPointer,
+  pauseStudioPreviewPlayback,
+} from "./studioPreviewHelpers";
+
+function domRect(left: number, top: number, width: number, height: number): DOMRect {
+  return {
+    x: left,
+    y: top,
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+    toJSON: () => ({}),
+  };
+}
+
+function stubRect(el: Element, rect: DOMRect): void {
+  el.getBoundingClientRect = () => rect;
+}
 
 describe("coversComposition (full-bleed canvas-pick exclusion)", () => {
   const viewport = { width: 1920, height: 1080 };
@@ -77,5 +101,75 @@ describe("pauseStudioPreviewPlayback", () => {
     expect(pauseStudioPreviewPlayback(iframe)).toBe(2.5);
     expect(timelinePause).toHaveBeenCalledTimes(1);
     expect(siblingPause).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getPreviewTargetFromPointer", () => {
+  it("skips candidates hidden from author hit-testing by inherited pointer-events:none", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene">
+        <h1 id="headline">Launch title</h1>
+        <div id="overlay-parent" style="pointer-events: none;">
+          <div id="overlay" style="position: absolute; background: rgba(0, 0, 0, 0.1);"></div>
+        </div>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const headline = doc.getElementById("headline");
+    const overlayParent = doc.getElementById("overlay-parent");
+    const overlay = doc.getElementById("overlay");
+    if (!scene || !headline || !overlayParent || !overlay) {
+      throw new Error("Expected preview fixture elements");
+    }
+
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(headline, domRect(40, 40, 160, 48));
+    stubRect(overlayParent, domRect(0, 0, 360, 260));
+    stubRect(overlay, domRect(0, 0, 360, 260));
+    doc.elementsFromPoint = () => [overlay, overlayParent, headline, scene];
+
+    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+
+    iframe.remove();
+  });
+
+  it("honors a CSS-class pointer-events:auto opt-in under a pointer-events:none ancestor", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("Expected iframe document");
+
+    doc.head.innerHTML = `<style>.clickable { pointer-events: auto; }</style>`;
+    doc.body.innerHTML = `
+      <main id="scene" data-composition-id="scene">
+        <div id="overlay-parent" style="pointer-events: none;">
+          <button id="clickable-child" class="clickable">Play</button>
+        </div>
+      </main>
+    `;
+
+    const scene = doc.getElementById("scene");
+    const overlayParent = doc.getElementById("overlay-parent");
+    const clickableChild = doc.getElementById("clickable-child");
+    if (!scene || !overlayParent || !clickableChild) {
+      throw new Error("Expected preview fixture elements");
+    }
+
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(overlayParent, domRect(0, 0, 360, 260));
+    stubRect(clickableChild, domRect(40, 40, 80, 24));
+    doc.elementsFromPoint = () => [clickableChild, overlayParent, scene];
+
+    expect(getPreviewTargetFromPointer(iframe, 60, 50, "index.html")).toBe(clickableChild);
+
+    iframe.remove();
   });
 });

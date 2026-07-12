@@ -1,6 +1,6 @@
 # source phase — asset sourcing (asset-first)
 
-Runs **only when `shot-plan.json.asset_needs` is non-empty** (the form categories never reach here). Sources each needed asset → a **frozen project-local path** + a ledger (`assets/index.md`). Uses `/hyperframes-media` (capture / asset prep) plus, **when an external asset-search skill such as media-use is installed**, its `resolve` step. If no such search capability is available, it **degrades to asset-free** (see below).
+Runs **only when `shot-plan.json.asset_needs` is non-empty** (the form categories never reach here). Sources each needed asset → a **frozen project-local path** + a ledger (`assets/index.md`). Uses `/media-use` (capture / asset prep) plus, **when an external asset-search skill such as media-use is installed**, its `resolve` step. If no such search capability is available, it **degrades to asset-free** (see below).
 
 ## Per asset_need
 

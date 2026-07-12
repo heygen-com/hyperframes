@@ -90,27 +90,34 @@ async function flushEvents(): Promise<void> {
   }
 }
 
+// Synchronously drains the queue via sendBeacon — safe to call from any
+// tab-hide handler regardless of listener registration order. Exported so
+// other modules (e.g. sdkResolverShadow.ts) can force delivery of an event
+// they just queued without racing this module's own visibilitychange
+// listener below.
+export function flushViaBeacon(): void {
+  if (flushTimer) {
+    clearInterval(flushTimer);
+    flushTimer = null;
+  }
+  if (queue.length === 0) return;
+  const batch = queue.map((e) => ({
+    event: e.event,
+    properties: { ...e.properties, $ip: null },
+    distinct_id: getDistinctId(),
+    timestamp: e.timestamp,
+  }));
+  queue = [];
+  const body = JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
+  try {
+    navigator.sendBeacon(`${POSTHOG_HOST}/batch/`, body);
+  } catch {
+    // best-effort
+  }
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      if (flushTimer) {
-        clearInterval(flushTimer);
-        flushTimer = null;
-      }
-      if (queue.length === 0) return;
-      const batch = queue.map((e) => ({
-        event: e.event,
-        properties: { ...e.properties, $ip: null },
-        distinct_id: getDistinctId(),
-        timestamp: e.timestamp,
-      }));
-      queue = [];
-      const body = JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
-      try {
-        navigator.sendBeacon(`${POSTHOG_HOST}/batch/`, body);
-      } catch {
-        // best-effort
-      }
-    }
+    if (document.visibilityState === "hidden") flushViaBeacon();
   });
 }

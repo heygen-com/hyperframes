@@ -14,6 +14,7 @@ import {
 } from "../../utils/studioHelpers";
 import { Layers } from "../../icons/SystemIcons";
 import { useLayerDrag, isLayerDraggable, type LayerReorderEvent } from "./useLayerDrag";
+import { computeReorderZValues, getElementZIndex } from "../../player/lib/layerOrdering";
 
 const TAG_ICONS: Record<string, string> = {
   video: "Vi",
@@ -228,9 +229,7 @@ export const LayersPanel = memo(function LayersPanel() {
       reordered.splice(toIndex, 0, moved);
 
       const existingValues = siblingLayers.map((l) => getElementZIndex(l.element));
-      const sorted = [...existingValues].sort((a, b) => b - a);
-      const hasDupes = sorted.some((v, i) => i > 0 && v === sorted[i - 1]);
-      const zValues = hasDupes ? reordered.map((_, i) => reordered.length - i) : sorted;
+      const zValues = computeReorderZValues(existingValues, fromIndex, toIndex);
 
       const entries = reordered.map((layer, i) => ({
         element: layer.element,
@@ -387,25 +386,6 @@ export const LayersPanel = memo(function LayersPanel() {
 });
 
 // ── Pure helpers ──────────────────────────────────────────────────────
-
-// fallow-ignore-next-line complexity
-function getElementZIndex(element: HTMLElement): number {
-  try {
-    const inline = element.style?.zIndex;
-    if (inline && inline !== "auto") {
-      const parsed = parseInt(inline, 10);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-    const win = element.ownerDocument?.defaultView;
-    if (!win) return 0;
-    const value = win.getComputedStyle(element).zIndex;
-    if (value === "auto" || value === "") return 0;
-    const parsed = parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
-}
 
 // fallow-ignore-next-line complexity
 export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem[] {

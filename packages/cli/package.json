@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.7.26",
+  "version": "0.7.54",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "repository": {
     "type": "git",
@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.8.0",
-    "@puppeteer/browsers": "^2.13.0",
+    "@puppeteer/browsers": "^3.0.6",
     "adm-zip": "^0.5.16",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
@@ -41,7 +41,7 @@
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
-    "puppeteer-core": "^24.39.1",
+    "puppeteer-core": "^25.2.1",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

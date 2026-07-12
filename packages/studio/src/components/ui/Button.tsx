@@ -30,22 +30,24 @@ const variantStyles: Record<ButtonVariant, string> = {
   primary: [
     "bg-white text-neutral-950 font-medium",
     "shadow-btn-primary",
-    "hover:bg-neutral-200",
-    "active:scale-[0.97]",
+    "enabled:hover:bg-neutral-200",
+    "enabled:active:scale-[0.97]",
   ].join(" "),
   secondary: [
     "bg-transparent text-neutral-300 font-medium",
     "border border-border",
-    "hover:bg-surface-hover hover:text-white hover:border-border-strong",
-    "active:scale-[0.98]",
+    "enabled:hover:bg-surface-hover enabled:hover:text-white enabled:hover:border-border-strong",
+    "enabled:active:scale-[0.98]",
   ].join(" "),
-  danger: ["bg-accent-red text-white font-medium", "hover:bg-red-600", "active:scale-[0.97]"].join(
-    " ",
-  ),
+  danger: [
+    "bg-accent-red text-white font-medium",
+    "enabled:hover:bg-red-600",
+    "enabled:active:scale-[0.97]",
+  ].join(" "),
   ghost: [
     "bg-transparent text-neutral-400",
-    "hover:bg-surface-hover hover:text-white",
-    "active:scale-[0.98]",
+    "enabled:hover:bg-surface-hover enabled:hover:text-white",
+    "enabled:active:scale-[0.98]",
   ].join(" "),
 };
 
@@ -55,6 +57,8 @@ const sizeStyles: Record<ButtonSize, string> = {
   lg: "h-9 px-4 text-base gap-2 rounded-button",
 };
 
+// Imported by the shell/renders PRs later in this stack.
+// fallow-ignore-next-line unused-export
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     {
@@ -76,8 +80,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={[
           "inline-flex items-center justify-center",
           "transition-all duration-press ease-standard",
-          "disabled:opacity-40 disabled:pointer-events-none",
+          // No pointer-events-none: disabled buttons must still receive hover
+          // so a wrapping Tooltip can explain WHY they're disabled (A5).
+          "disabled:opacity-40 disabled:cursor-not-allowed",
           "select-none cursor-pointer",
+          "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
           variantStyles[variant],
           sizeStyles[size],
           className,
@@ -126,6 +133,7 @@ const iconSizeStyles: Record<ButtonSize, string> = {
   lg: "min-w-9 min-h-9 rounded-button", // 36px
 };
 
+// fallow-ignore-next-line unused-export
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ icon, size = "md", variant = "ghost", className = "", ...props }, ref) => {
     return (
@@ -134,8 +142,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         className={[
           "inline-flex items-center justify-center",
           "transition-all duration-press ease-standard",
-          "disabled:opacity-40 disabled:pointer-events-none",
+          "disabled:opacity-40 disabled:cursor-not-allowed",
           "select-none cursor-pointer",
+          "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-studio-accent",
           variantStyles[variant],
           iconSizeStyles[size],
           className,

@@ -29,6 +29,7 @@ export async function commitWholePropertyOffset(
   callbacks: GsapDragCommitCallbacks,
   label: string,
 ): Promise<void> {
+  // fallow-ignore-next-line code-duplication
   let effectiveAnim = anim;
   if (anim.keyframes) {
     const newId = await materializeIfDynamic(anim, iframe, callbacks.commitMutation, selection);

@@ -38,7 +38,7 @@ The engine implements a **seek-and-capture** loop that is fundamentally differen
     Your HTML composition is loaded into a browser page. The Hyperframes runtime is injected to manage timeline seeking.
   </Step>
   <Step title="Seek to each frame">
-    For every frame in the video (e.g., 900 frames for a 30-second video at 30fps), the engine calls `renderSeek(time)` to advance the composition to the exact timestamp. No wall clock is involved — each frame is independently positioned.
+    For every frame in the video (e.g., 900 frames for a 30-second video at 30fps), the engine calls `window.__hf.seek(time)` to advance the composition to the exact timestamp. No wall clock is involved — each frame is independently positioned.
   </Step>
   <Step title="Capture via BeginFrame">
     Chrome's `HeadlessExperimental.beginFrame` API captures the compositor output as a pixel buffer. This produces pixel-perfect frames without any screen recording artifacts.
@@ -95,14 +95,16 @@ import {
   closeCaptureSession,
 } from '@hyperframes/engine';
 
-// 1. Create a capture session
-const session = await createCaptureSession({ fps: { num: 30, den: 1 }, width: 1920, height: 1080 });
+// 1. Create a capture session (serverUrl, outputDir, options)
+const session = await createCaptureSession(serverUrl, outputDir, {
+  fps: { num: 30, den: 1 }, width: 1920, height: 1080,
+});
 
-// 2. Initialize with a composition
-await initializeSession(session, './my-video/index.html');
+// 2. Initialize the session
+await initializeSession(session);
 
-// 3. Get the total duration
-const duration = getCompositionDuration(session);
+// 3. Get the total duration (async)
+const duration = await getCompositionDuration(session);
 
 // 4. Capture frames
 const totalFrames = Math.ceil(duration * 30);
@@ -227,7 +229,7 @@ const frames = await extractAllVideoFrames(videoPath, { fps: 30 });
 
 // Create a lookup table for fast frame access
 const lookup = createFrameLookupTable(frames);
-const frame = lookup.getFrameAtTime(5.0);
+const frame = lookup.getFrame('video-1', 5.0);
 ```
 
 ### Audio Processing
@@ -384,7 +386,7 @@ For more on how this enables deterministic output, see [Deterministic Rendering]
 
 ### Seek Contract
 
-The engine relies on the Hyperframes runtime's `renderSeek(time)` function. When called, `renderSeek`:
+The engine relies on the Hyperframes runtime's `window.__hf.seek(time)` function. When called, `seek`:
 
 1. Pauses all GSAP timelines
 2. Seeks every timeline to the exact timestamp

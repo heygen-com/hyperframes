@@ -117,6 +117,114 @@ body {
   height: 100dvh;
 }
 
+.timeline-clip {
+  background-color: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+}
+
+.timeline-clip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(60, 230, 172, 0.2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-clip[data-active] {
+  border-color: rgba(60, 230, 172, 0.55);
+}
+
+.timeline-clip[data-active]::before {
+  opacity: 1;
+}
+
+.timeline-clip.is-hovered {
+  background-color: rgba(255, 255, 255, 0.09);
+}
+
+.timeline-clip[data-active].is-hovered {
+  border-color: rgba(60, 230, 172, 0.75);
+}
+
+.timeline-clip.is-selected {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+}
+
+.timeline-clip[data-active].is-selected {
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+}
+
+.timeline-clip.is-dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.timeline-clip[data-active].is-selected.is-dragging {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.timeline-clip__label {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  right: 10px;
+  z-index: 6;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-clip[data-active] .timeline-clip__label {
+  color: rgba(232, 255, 247, 0.95);
+}
+
+.timeline-clip__timecode {
+  position: absolute;
+  bottom: 6px;
+  left: 12px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.34);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .timeline-clip {
+    transition:
+      background-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip::before {
+    transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip__label {
+    transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .timeline-clip__handle-bar {
+    transition: opacity 120ms ease-out;
+  }
+}
+
 /* CodeMirror overrides */
 .cm-editor {
   height: 100%;
@@ -250,4 +358,65 @@ body {
   border-radius: inherit;
   background: linear-gradient(90deg, #06e3fa, #4fdb5e);
   transition: transform 160ms ease;
+}
+
+/* Toast enter/exit (StudioToast) */
+@keyframes hf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hf-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.hf-toast-enter {
+  animation: hf-toast-in 160ms ease-out;
+}
+
+.hf-toast-exit {
+  animation: hf-toast-out 160ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-toast-enter,
+  .hf-toast-exit {
+    animation: none;
+  }
+  .hf-toast-exit {
+    opacity: 0;
+  }
+}
+
+/* Overlay/backdrop entrance — the heaviest visual changes shouldn't pop in */
+@keyframes hf-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hf-backdrop-in {
+  animation: hf-backdrop-in 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-backdrop-in {
+    animation: none;
+  }
 }

@@ -1,0 +1,55 @@
+# Validates the experimental fast-capture (drawElementImage) VIDEO path on a
+# native amd64 Linux runner — where chrome-headless-shell's per-frame BeginFrame
+# drives a real paint each frame, so drawElementImage's snapshot is fresh and
+# video captures correctly. This is the one part of the feature that could not be
+# validated locally (macOS has no BeginFrame; Docker-on-rosetta hung).
+# See docs/fast-capture-limitations.md (Limitation 2).
+#
+# Manual trigger: Actions → "Fast-capture video validation" → Run workflow.
+name: Fast-capture video validation
+
+permissions:
+  contents: read
+
+on:
+  # Manual only. NOTE: currently fails by design — fast capture cannot capture
+  # video on any platform yet (see docs/fast-capture-limitations.md, Limitation 2).
+  # This is the regression gate for if/when fast video is implemented.
+  workflow_dispatch:
+    inputs:
+      composition:
+        description: Test composition to render (must contain <video>)
+        default: sub-composition-video
+      min_psnr:
+        description: Min fast-vs-baseline PSNR (dB) to pass
+        default: "25"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build test Docker image (cached)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile.test
+          load: true
+          tags: hyperframes-producer:test
+          cache-from: type=gha,scope=regression-test-image
+          cache-to: type=gha,mode=max,scope=regression-test-image
+
+      - name: Validate fast-capture video (drawElement + BeginFrame)
+        run: |
+          docker run --rm \
+            --security-opt seccomp=unconfined \
+            --shm-size=4g \
+            -e PRODUCER_VALIDATE_COMP='${{ inputs.composition }}' \
+            -e PRODUCER_VALIDATE_MIN_PSNR='${{ inputs.min_psnr }}' \
+            --workdir /app/packages/producer \
+            --entrypoint bunx \
+            hyperframes-producer:test tsx scripts/validate-fast-video.ts

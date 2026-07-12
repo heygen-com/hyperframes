@@ -101,6 +101,7 @@ try {
 
 import { defineCommand, runMain } from "citty";
 import type { ArgsDef, CommandDef } from "citty";
+import { getRunId } from "./telemetry/runId.js";
 import { reportCommandFailure, trackCommandFailures } from "./utils/command-failure-tracking.js";
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
@@ -119,6 +120,7 @@ const commandLoaders = {
   publish: () => import("./commands/publish.js").then((m) => m.default),
   render: () => import("./commands/render.js").then((m) => m.default),
   lint: () => import("./commands/lint.js").then((m) => m.default),
+  check: () => import("./commands/check.js").then((m) => m.default),
   beats: () => import("./commands/beats.js").then((m) => m.default),
   inspect: () => import("./commands/inspect.js").then((m) => m.default),
   keyframes: () => import("./commands/keyframes.js").then((m) => m.default),
@@ -139,11 +141,14 @@ const commandLoaders = {
   events: () => import("./commands/events.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
+  "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
+  compare: () => import("./commands/compare.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
   cloud: () => import("./commands/cloud.js").then((m) => m.default),
   auth: () => import("./commands/auth.js").then((m) => m.default),
+  figma: () => import("./commands/figma.js").then((m) => m.default),
 };
 
 // Wrap each command's run() so a thrown failure reports its reason to telemetry
@@ -192,7 +197,13 @@ let _trackCliError:
     }) => void)
   | undefined;
 let _trackCommandResult:
-  | ((props: { command: string; success: boolean; exitCode: number; durationMs: number }) => void)
+  | ((props: {
+      command: string;
+      success: boolean;
+      exitCode: number;
+      durationMs: number;
+      runId?: string;
+    }) => void)
   | undefined;
 let _printUpdateNotice: (() => void) | undefined;
 let _printSkillsUpdateNotice: (() => void) | undefined;
@@ -207,14 +218,26 @@ if (!isHelp && command !== "telemetry" && command !== "events" && command !== "u
     _trackCliError = mod.trackCliError;
     _trackCommandResult = mod.trackCommandResult;
     mod.showTelemetryNotice();
-    mod.trackCommand(command);
+    mod.trackCommand(command, runId);
     if (mod.shouldTrack()) mod.incrementCommandCount();
   });
 }
 
 // `events` skips the update check too — a skill-usage beacon must not add
 // network latency or trigger a background self-upgrade on the calling skill.
-if (!isHelp && !hasJsonFlag && command !== "upgrade" && command !== "events") {
+// `skills` is excluded from the SKILLS nudge for the same reason `upgrade` is
+// excluded from the self-update notice: a command that is itself actively
+// checking/reconciling skills (`skills check`, `skills update`) must not also
+// tell the user to go run `skills update` — that's either redundant (it just
+// did) or, worse, misleading (it printed a stale nudge count from the last
+// cached check while reporting fresh results of its own).
+if (
+  !isHelp &&
+  !hasJsonFlag &&
+  command !== "upgrade" &&
+  command !== "events" &&
+  command !== "skills"
+) {
   // Report any completed auto-install from the previous run first, before
   // kicking off the next check — so the user sees "updated to vX" once and
   // we don't over-print.
@@ -238,6 +261,7 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade" && command !== "events") {
 }
 
 const commandStart = Date.now();
+const runId = getRunId();
 
 // Async flush for normal exit. `beforeExit` re-fires every time the
 // event loop drains, and the async `_flush()` itself schedules new
@@ -261,6 +285,7 @@ process.on("exit", (code) => {
     success: code === 0 && !commandFailed,
     exitCode: code,
     durationMs: Date.now() - commandStart,
+    runId,
   });
   _flushSync?.();
 });

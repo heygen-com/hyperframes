@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// audio.mjs — pr-to-video audio ADAPTER. The TTS / BGM / SFX implementation
+// audio.mjs — audio ADAPTER (reuses the product-launch SCRIPT.md / STORYBOARD.md
+// model; this file is intentionally identical across the reusing skills). The
+// TTS / BGM / SFX implementation
 // no longer lives here: it is the shared engine at
-// ../../hyperframes-media/scripts/audio.mjs. This file only (a) maps the
-// frame model (SCRIPT.md frames + STORYBOARD.md music/sfx) into the
+// ../../media-use/audio/scripts/audio.mjs. This file only (a) maps the
+// product-launch model (SCRIPT.md frames + STORYBOARD.md music/sfx) into the
 // engine's neutral audio_request.json, (b) converts the engine's id-keyed
 // audio_meta back into the frame-keyed shape captions.mjs / assemble-index.mjs
 // already consume, and (c) keeps the local `sync-durations` pass (it rewrites
-// STORYBOARD.md, which is this skill's concern).
+// STORYBOARD.md, which is product-launch-specific).
 //
 // Three modes (unchanged CLI surface):
 //   (default) generate — engine --only tts,bgm. BGM mode is "retrieve" (strict:
@@ -27,7 +29,7 @@ import { fileURLToPath } from "node:url";
 import { parseStoryboard } from "./lib/storyboard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_ENGINE = join(HERE, "..", "..", "hyperframes-media", "scripts", "audio.mjs");
+const DEFAULT_ENGINE = join(HERE, "..", "..", "media-use", "audio", "scripts", "audio.mjs");
 
 const flag = (argv, name, def) => {
   const i = argv.indexOf(`--${name}`);
@@ -86,9 +88,9 @@ function runEngine({ request, hyperframesDir, neutral, only, extra = [] }, die) 
   if (r.status !== 0) die(`media audio engine exited ${r.status}`);
 }
 
-// Engine neutral meta (id-keyed) → frame-keyed meta consumed by
+// Engine neutral meta (id-keyed) → product-launch meta (frame-keyed) consumed by
 // captions.mjs / assemble-index.mjs. id is the zero-padded frame number.
-function toFrameKeyedMeta(neutral) {
+function toProductLaunchMeta(neutral) {
   const voices = (neutral.voices ?? []).map((v) => ({
     frame: Number(v.id),
     path: v.path,
@@ -152,7 +154,7 @@ function runGenerate(argv) {
   const neutral = neutralPath(outPath);
   runEngine({ request, hyperframesDir, neutral, only: "tts,bgm" }, die);
 
-  const meta = toFrameKeyedMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(
     `✓ audio generate: ${meta.voices.length} voice + ${meta.bgm ? "1 bgm" : "no bgm"} → ${outPath}`,
@@ -189,7 +191,7 @@ function runFetchSfx(argv) {
   // voices/bgm written by the earlier generate (--only tts,bgm) pass are preserved.
   runEngine({ request, hyperframesDir, neutral, only: "sfx" }, die);
 
-  const meta = toFrameKeyedMeta(JSON.parse(readFileSync(neutral, "utf8")));
+  const meta = toProductLaunchMeta(JSON.parse(readFileSync(neutral, "utf8")));
   writeFileSync(outPath, JSON.stringify(meta, null, 2));
   console.log(`✓ audio fetch-sfx: ${meta.sfx.length} SFX cue(s) → ${outPath}`);
 }

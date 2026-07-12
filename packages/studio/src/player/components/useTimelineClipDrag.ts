@@ -5,68 +5,28 @@ import {
   resolveTimelineResize,
   resolveTimelineAutoScroll,
   type BlockedTimelineEditIntent,
+  type TimelineStackingReorderIntent,
 } from "./timelineEditing";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import { TRACK_H } from "./timelineLayout";
 import { isMusicTrack } from "../../utils/timelineInspector";
 import { mergeUserBeats } from "../../utils/beatEditing";
+import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrder";
+import type {
+  TimelineGroupMoveChange,
+  TimelineGroupResizeChange,
+} from "../../hooks/useTimelineGroupEditing";
+import {
+  buildTimelineSnapTargets,
+  snapEdgesToTargets,
+  snapResizeEdgeToTargets,
+  type TimelineSnapKind,
+} from "./timelineSnapTargets";
+import { resolveDragPreviewPlacement } from "./timelineClipDragPreview";
+import { useTimelineClipGroupDrag } from "./useTimelineClipGroupDrag";
 
-const BEAT_SNAP_PX = 8;
 const EMPTY_BEAT_TIMES: number[] = [];
-
-function snapToNearestBeat(time: number, beatTimes: number[], thresholdSecs: number): number {
-  let best = time;
-  let bestDist = thresholdSecs;
-  for (const bt of beatTimes) {
-    const d = Math.abs(bt - time);
-    if (d < bestDist) {
-      bestDist = d;
-      best = bt;
-    }
-  }
-  return best;
-}
-
-/**
- * Snap a moved clip so whichever edge (start or end) is nearest a beat lands on
- * it, keeping the duration fixed. Returns the (clamped) start plus the beat time
- * it snapped to (for the grid-line highlight), or `beat: null` when no edge is
- * within threshold.
- */
-function snapMoveStartToBeat(
-  start: number,
-  duration: number,
-  beatTimes: number[],
-  pixelsPerSecond: number,
-  timelineDuration: number,
-): { start: number; beat: number | null } {
-  if (beatTimes.length === 0) return { start, beat: null };
-  const snapSecs = BEAT_SNAP_PX / Math.max(pixelsPerSecond, 1);
-  const snappedStart = snapToNearestBeat(start, beatTimes, snapSecs);
-  const snappedEnd = snapToNearestBeat(start + duration, beatTimes, snapSecs);
-  const startMoved = snappedStart !== start;
-  const endMoved = snappedEnd !== start + duration;
-
-  let candidate = start;
-  let beat: number | null = null;
-  if (
-    startMoved &&
-    (!endMoved || Math.abs(snappedStart - start) <= Math.abs(snappedEnd - (start + duration)))
-  ) {
-    candidate = snappedStart;
-    beat = snappedStart;
-  } else if (endMoved) {
-    candidate = snappedEnd - duration;
-    beat = snappedEnd;
-  }
-
-  const maxStart = Math.max(0, timelineDuration - duration);
-  const clamped = Math.max(0, Math.min(maxStart, Math.round(candidate * 1000) / 1000));
-  // If clamping pulled the clip off the snap target, drop the highlight.
-  if (beat != null && Math.abs(clamped - candidate) > 1e-6) beat = null;
-  return { start: clamped, beat };
-}
 
 /* ── Shared state types ─────────────────────────────────────────── */
 export interface DraggedClipState {
@@ -81,8 +41,14 @@ export interface DraggedClipState {
   pointerOffsetY: number;
   previewStart: number;
   previewTrack: number;
+  previewLayerId: TimelineLayerId;
+  previewLayerIndex: number;
   /** Beat time the clip will snap to on drop, for the grid-line highlight. */
   snapBeatTime: number | null;
+  snapGuideTime: number | null;
+  snapGuideKind: TimelineSnapKind | null;
+  /** Sibling-scoped z-index reorder intent resolved from the vertical drag. */
+  previewStackingReorder: TimelineStackingReorderIntent | null;
   started: boolean;
 }
 
@@ -93,6 +59,8 @@ export interface ResizingClipState {
   previewStart: number;
   previewDuration: number;
   previewPlaybackStart?: number;
+  snapGuideTime: number | null;
+  snapGuideKind: TimelineSnapKind | null;
   started: boolean;
 }
 
@@ -108,29 +76,41 @@ export interface BlockedClipState {
 interface UseTimelineClipDragInput {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   ppsRef: React.RefObject<number>;
-  durationRef: React.RefObject<number>;
-  trackOrderRef: React.RefObject<number[]>;
+  trackOrderRef: React.RefObject<TimelineLayerId[]>;
+  timelineLayersRef: React.RefObject<StackingTimelineLayer[]>;
+  timelineElementsRef: React.RefObject<TimelineElement[]>;
   onMoveElement?: (
     element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "track">,
+    updates: Pick<TimelineElement, "start" | "track"> & {
+      stackingReorder?: TimelineStackingReorderIntent | null;
+    },
   ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
+  onMoveElements?: (changes: TimelineGroupMoveChange[]) => Promise<void> | void;
+  onResizeElements?: (changes: TimelineGroupResizeChange[]) => Promise<void> | void;
+  onPreviewMoveElements?: (changes: TimelineGroupMoveChange[]) => void;
+  onPreviewResizeElements?: (changes: TimelineGroupResizeChange[]) => void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   setShowPopover: (show: boolean) => void;
-  /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
+  /** Stable ref to the range selection setter, wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
 }
 
 export function useTimelineClipDrag({
   scrollRef,
   ppsRef,
-  durationRef,
   trackOrderRef,
+  timelineLayersRef,
+  timelineElementsRef,
   onMoveElement,
   onResizeElement,
+  onMoveElements,
+  onResizeElements,
+  onPreviewMoveElements,
+  onPreviewResizeElements,
   onBlockedEditAttempt,
   setShowPopover,
   setRangeSelectionRef,
@@ -139,6 +119,8 @@ export function useTimelineClipDrag({
   const rawBeatTimes = usePlayerStore((s) => s.beatAnalysis?.beatTimes ?? EMPTY_BEAT_TIMES);
   const rawBeatStrengths = usePlayerStore((s) => s.beatAnalysis?.beatStrengths ?? EMPTY_BEAT_TIMES);
   const beatEdits = usePlayerStore((s) => s.beatEdits);
+  const playhead = usePlayerStore((s) => s.currentTime);
+  const compositionDuration = usePlayerStore((s) => s.duration);
   const musicStart = usePlayerStore((s) => s.elements.find(isMusicTrack)?.start ?? 0);
   const musicPlaybackStart = usePlayerStore(
     (s) => s.elements.find(isMusicTrack)?.playbackStart ?? 0,
@@ -166,6 +148,29 @@ export function useTimelineClipDrag({
 
   const beatTimesRef = useRef<number[]>([]);
   beatTimesRef.current = adjustedBeatTimes;
+  const playheadRef = useRef(0);
+  playheadRef.current = playhead;
+  const compositionDurationRef = useRef(0);
+  compositionDurationRef.current = compositionDuration;
+
+  const buildSnapTargets = useCallback(
+    (element: TimelineElement) => {
+      const draggedKey = element.key ?? element.id;
+      const selected = selectedElementIdsRef.current;
+      // In a group drag every selected clip moves together, so none of them may act
+      // as a snap target for the others; exclude the whole set, not just the grabbed clip.
+      const excludedKeys =
+        selected.size > 1 && selected.has(draggedKey) ? selected : new Set([draggedKey]);
+      return buildTimelineSnapTargets({
+        elements: timelineElementsRef.current,
+        excludedKeys,
+        playhead: playheadRef.current,
+        compDuration: compositionDurationRef.current,
+        beats: isMusicTrack(element) ? EMPTY_BEAT_TIMES : beatTimesRef.current,
+      });
+    },
+    [timelineElementsRef],
+  );
 
   const [draggedClip, setDraggedClip] = useState<DraggedClipState | null>(null);
   const draggedClipRef = useRef<DraggedClipState | null>(null);
@@ -182,10 +187,35 @@ export function useTimelineClipDrag({
   onMoveElementRef.current = onMoveElement;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
+  const onMoveElementsRef = useRef(onMoveElements);
+  onMoveElementsRef.current = onMoveElements;
+  const onResizeElementsRef = useRef(onResizeElements);
+  onResizeElementsRef.current = onResizeElements;
+  const onPreviewMoveElementsRef = useRef(onPreviewMoveElements);
+  onPreviewMoveElementsRef.current = onPreviewMoveElements;
+  const onPreviewResizeElementsRef = useRef(onPreviewResizeElements);
+  onPreviewResizeElementsRef.current = onPreviewResizeElements;
+  const selectedElementIdsRef = useRef(usePlayerStore.getState().selectedElementIds);
+  selectedElementIdsRef.current = usePlayerStore((s) => s.selectedElementIds);
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const {
+    previewGroupMove,
+    previewGroupResize,
+    commitGroupMove,
+    commitGroupResize,
+    clearGroupDragSessions,
+  } = useTimelineClipGroupDrag({
+    timelineElementsRef,
+    updateElement,
+    onMoveElementsRef,
+    onResizeElementsRef,
+    onPreviewMoveElementsRef,
+    onPreviewResizeElementsRef,
+  });
 
+  // fallow-ignore-next-line complexity
   const updateDraggedClipPreview = useCallback(
     (drag: DraggedClipState, clientX: number, clientY: number): DraggedClipState => {
       const scroll = scrollRef.current;
@@ -202,33 +232,45 @@ export function useTimelineClipDrag({
           currentScrollTop: scroll?.scrollTop ?? drag.originScrollTop,
           pixelsPerSecond: ppsRef.current,
           trackHeight: TRACK_H,
-          maxStart: Math.max(0, durationRef.current - drag.element.duration),
-          trackOrder: trackOrderRef.current,
+          maxStart: Number.POSITIVE_INFINITY,
+          trackOrder: timelineLayersRef.current.map((layer) => layer.placementTrack),
+          layerOrder: trackOrderRef.current,
+          timelineLayers: timelineLayersRef.current,
+          stackingElement: drag.element,
+          stackingElements: timelineElementsRef.current,
         },
         clientX,
         clientY,
       );
-      // The music track defines the beats, so it must not snap to itself.
-      const snap = isMusicTrack(drag.element)
-        ? { start: nextMove.start, beat: null }
-        : snapMoveStartToBeat(
-            nextMove.start,
-            drag.element.duration,
-            beatTimesRef.current,
-            ppsRef.current,
-            durationRef.current,
-          );
+      const snap = snapEdgesToTargets(
+        nextMove.start,
+        drag.element.duration,
+        buildSnapTargets(drag.element),
+        ppsRef.current,
+        { maxStart: Number.POSITIVE_INFINITY },
+      );
+      const groupMove = previewGroupMove(drag.element, selectedElementIdsRef.current, snap.start);
+      const placement = resolveDragPreviewPlacement(drag, nextMove, groupMove);
       return {
         ...drag,
         started: true,
         pointerClientX: clientX,
         pointerClientY: clientY,
-        previewStart: snap.start,
-        previewTrack: nextMove.track,
-        snapBeatTime: snap.beat,
+        ...placement,
+        snapBeatTime: snap.snapKind === "beat" ? snap.snapTime : null,
+        snapGuideTime: snap.snapTime,
+        snapGuideKind: snap.snapKind,
       };
     },
-    [scrollRef, ppsRef, durationRef, trackOrderRef],
+    [
+      scrollRef,
+      ppsRef,
+      trackOrderRef,
+      timelineLayersRef,
+      timelineElementsRef,
+      buildSnapTargets,
+      previewGroupMove,
+    ],
   );
 
   const stopClipDragAutoScroll = useCallback(() => {
@@ -287,6 +329,12 @@ export function useTimelineClipDrag({
 
   const updateDraggedClipPreviewRef = useRef(updateDraggedClipPreview);
   updateDraggedClipPreviewRef.current = updateDraggedClipPreview;
+  const commitGroupMoveRef = useRef(commitGroupMove);
+  commitGroupMoveRef.current = commitGroupMove;
+  const commitGroupResizeRef = useRef(commitGroupResize);
+  commitGroupResizeRef.current = commitGroupResize;
+  const clearGroupDragSessionsRef = useRef(clearGroupDragSessions);
+  clearGroupDragSessionsRef.current = clearGroupDragSessions;
   const syncClipDragAutoScrollRef = useRef(syncClipDragAutoScroll);
   syncClipDragAutoScrollRef.current = syncClipDragAutoScroll;
   const stopClipDragAutoScrollRef = useRef(stopClipDragAutoScroll);
@@ -299,6 +347,7 @@ export function useTimelineClipDrag({
       });
     };
 
+    // fallow-ignore-next-line complexity
     const handleWindowPointerMove = (e: PointerEvent) => {
       const drag = draggedClipRef.current;
       const resize = resizingClipRef.current;
@@ -322,7 +371,7 @@ export function useTimelineClipDrag({
         const normalizedTag = resize.element.tag.toLowerCase();
         const canSeedPlaybackStart = normalizedTag === "audio" || normalizedTag === "video";
         const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
-        const maxEnd = Math.min(durationRef.current, resize.element.start + sourceRemaining);
+        const maxEnd = resize.element.start + sourceRemaining;
         let nextResize = resolveTimelineResize(
           {
             start: resize.element.start,
@@ -341,54 +390,43 @@ export function useTimelineClipDrag({
           e.clientX,
         );
 
-        // Snap edge to beat grid when beat analysis is available. The snap must
-        // stay inside the same limits resolveTimelineResize enforces, or it would
-        // push the edge past the available source media / composition end.
-        // The music track defines the beats, so it must not snap to itself.
-        const beatTimes = beatTimesRef.current;
-        if (beatTimes.length > 0 && !isMusicTrack(resize.element)) {
-          const snapSecs = BEAT_SNAP_PX / Math.max(ppsRef.current, 1);
-          if (resize.edge === "end") {
-            const edgeTime = nextResize.start + nextResize.duration;
-            const snapped = snapToNearestBeat(edgeTime, beatTimes, snapSecs);
-            // Stay within [start+minDuration, maxEnd] so the snap can't create a
-            // degenerate clip or run past the source/composition limit.
-            const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-            if (snapped !== edgeTime && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
-              nextResize = { ...nextResize, duration: snappedDuration };
-            }
-          } else {
-            const snapped = snapToNearestBeat(nextResize.start, beatTimes, snapSecs);
-            const delta = nextResize.start - snapped; // >0 when snapping left
-            // Leftward snap reveals more source; cap so playbackStart can't go < 0.
-            const maxLeftDelta =
-              nextResize.playbackStart != null
+        const snap = snapResizeEdgeToTargets(
+          resize.edge,
+          nextResize.start,
+          nextResize.duration,
+          buildSnapTargets(resize.element),
+          ppsRef.current,
+          {
+            minDuration: 0.05,
+            maxEnd,
+            maxLeftDelta:
+              resize.edge === "start" && nextResize.playbackStart != null
                 ? nextResize.playbackStart / playbackRate
-                : Number.POSITIVE_INFINITY;
-            // Also require the resulting duration to stay >= minDuration so a
-            // rightward snap (delta < 0) can't collapse the clip to zero/negative.
-            const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-            if (
-              snapped !== nextResize.start &&
-              snapped >= 0 &&
-              delta <= maxLeftDelta + 1e-6 &&
-              snappedDuration >= 0.05
-            ) {
-              nextResize = {
-                ...nextResize,
-                start: snapped,
-                duration: snappedDuration,
-                playbackStart:
-                  nextResize.playbackStart != null
-                    ? Math.round(
-                        Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000,
-                      ) / 1000
-                    : undefined,
-              };
-            }
+                : Number.POSITIVE_INFINITY,
+          },
+        );
+        if (snap.snapTime != null) {
+          const unsnappedStart = nextResize.start;
+          nextResize = { ...nextResize, start: snap.start, duration: snap.duration };
+          if (resize.edge === "start" && nextResize.playbackStart != null) {
+            const delta = unsnappedStart - snap.start;
+            nextResize = {
+              ...nextResize,
+              playbackStart:
+                Math.round(Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000) /
+                1000,
+            };
           }
         }
-
+        const groupResize = previewGroupResize(
+          resize.element,
+          selectedElementIdsRef.current,
+          resize.edge,
+          nextResize,
+        );
+        if (groupResize.active) {
+          nextResize = groupResize.updates;
+        }
         setResizingClip((prev) =>
           prev
             ? {
@@ -397,6 +435,8 @@ export function useTimelineClipDrag({
                 previewStart: nextResize.start,
                 previewDuration: nextResize.duration,
                 previewPlaybackStart: nextResize.playbackStart,
+                snapGuideTime: snap.snapTime,
+                snapGuideKind: snap.snapKind,
               }
             : prev,
         );
@@ -434,6 +474,7 @@ export function useTimelineClipDrag({
       syncClipDragAutoScrollRef.current(e.clientX, e.clientY);
     };
 
+    // fallow-ignore-next-line complexity
     const handleWindowPointerUp = () => {
       stopClipDragAutoScrollRef.current();
 
@@ -445,6 +486,8 @@ export function useTimelineClipDrag({
 
         suppressClickRef.current = true;
         clearSuppressedClick();
+
+        if (commitGroupResizeRef.current(resize.element)) return;
 
         const hasChanged =
           resize.previewStart !== resize.element.start ||
@@ -492,24 +535,26 @@ export function useTimelineClipDrag({
       suppressClickRef.current = true;
       clearSuppressedClick();
 
-      const hasChanged =
-        drag.previewStart !== drag.element.start || drag.previewTrack !== drag.element.track;
+      if (commitGroupMoveRef.current(drag.element)) return;
+
+      const hasStackingReorder =
+        drag.previewStackingReorder != null && drag.previewStackingReorder.zIndexChanges.length > 0;
+      const hasChanged = drag.previewStart !== drag.element.start || hasStackingReorder;
       if (!hasChanged) return;
 
       updateElement(drag.element.key ?? drag.element.id, {
         start: drag.previewStart,
-        track: drag.previewTrack,
       });
 
       Promise.resolve(
         onMoveElementRef.current?.(drag.element, {
           start: drag.previewStart,
-          track: drag.previewTrack,
+          track: drag.element.track,
+          stackingReorder: drag.previewStackingReorder,
         }),
       ).catch((error) => {
         updateElement(drag.element.key ?? drag.element.id, {
           start: drag.element.start,
-          track: drag.element.track,
         });
         console.error("[Timeline] Failed to persist clip move", error);
       });
@@ -519,6 +564,7 @@ export function useTimelineClipDrag({
     window.addEventListener("pointerup", handleWindowPointerUp);
     window.addEventListener("pointercancel", handleWindowPointerUp);
     return () => {
+      clearGroupDragSessionsRef.current();
       stopClipDragAutoScrollRef.current();
       window.removeEventListener("pointermove", handleWindowPointerMove);
       window.removeEventListener("pointerup", handleWindowPointerUp);

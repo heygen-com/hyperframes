@@ -10,11 +10,8 @@
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import {
-  tryGsapDragIntercept,
-  tryGsapResizeIntercept,
-  tryGsapRotationIntercept,
-} from "./gsapRuntimeBridge";
+import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
+import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 import {
   useGsapSaveFailureTelemetry,

@@ -52,6 +52,13 @@ print(json.dumps({
 }))
 `;
 
+// espeak-ng maps Mandarin Chinese to ISO 639-3 "cmn", not Kokoro's own "zh"
+// voice-prefix convention. Translate at the Python/espeak boundary only —
+// keep "zh" as the public --lang value since it matches Kokoro's docs.
+const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
+  zh: "cmn",
+};
+
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
@@ -110,6 +117,7 @@ export interface SynthesizeResult {
 /**
  * Synthesize text to speech using Kokoro-82M via kokoro-onnx.
  */
+// fallow-ignore-next-line complexity
 export async function synthesize(
   text: string,
   outputPath: string,
@@ -124,13 +132,13 @@ export async function synthesize(
   const python = findPython();
   if (!python) {
     throw new Error(
-      "Python 3 is required for text-to-speech. Install Python 3.8+ and run: pip install kokoro-onnx soundfile",
+      "Python 3 is required for text-to-speech. Install Python 3.10+ and run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
     );
   }
 
   if (!hasPythonPackage(python, "kokoro_onnx")) {
     throw new Error(
-      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile",
+      "The kokoro-onnx package is not installed. Run: pip install kokoro-onnx soundfile (or point HYPERFRAMES_PYTHON at a venv python that has them)",
     );
   }
 
@@ -153,9 +161,10 @@ export async function synthesize(
   // 5. Run synthesis
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
   try {
+    const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
       python,
-      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, lang],
+      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, espeakLang],
       {
         encoding: "utf-8",
         timeout: 300_000,

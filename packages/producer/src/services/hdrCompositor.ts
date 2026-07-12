@@ -416,6 +416,17 @@ export function resolveCompositeTransfer(
   return hasHdrContent && effectiveHdr ? effectiveHdr.transfer : "srgb";
 }
 
+export function selectDomLayerShowIds(
+  layerElementIds: string[],
+  fullStacking: ElementStackingInfo[],
+): string[] {
+  const byId = new Map(fullStacking.map((el) => [el.id, el]));
+  return layerElementIds.filter((id) => {
+    const el = byId.get(id);
+    return !!el && el.opacity > 0 && (el.visible || el.renderFrameVisible === true);
+  });
+}
+
 export interface HdrCompositeContext {
   log: ProducerLogger;
   domSession: CaptureSession;
@@ -607,10 +618,10 @@ export async function compositeHdrFrame(
       //
       // The mask:
       //   - mass-hides every body descendant via stylesheet
-      //   - re-shows the layer's elements (and their descendants and
-      //     their injected `__render_frame_*` siblings) so deep-nested
-      //     content stays visible even though intermediate ancestors
-      //     are hidden
+      //   - re-shows the layer's currently paintable elements (and their
+      //     descendants and injected `__render_frame_*` siblings) so
+      //     deep-nested content stays visible even though intermediate
+      //     ancestors are hidden
       //   - inline-hides every other data-start element so they don't
       //     paint when they happen to be descendants of a layer element
       //     (most importantly: HDR videos and other-layer SDR videos
@@ -621,6 +632,17 @@ export async function compositeHdrFrame(
       // border/box-shadow of cards, etc.) and the resulting opaque
       // pixels overwrite previously composited HDR content beneath.
       const layerIds = new Set(layer.elementIds);
+      const showIds = selectDomLayerShowIds(layer.elementIds, fullStacking);
+      if (showIds.length === 0) {
+        if (shouldLog) {
+          log.info("[diag] dom layer skipped, all elements not paintable", {
+            frame: debugFrameIndex,
+            layerIdx,
+            layerIds: layer.elementIds,
+          });
+        }
+        continue;
+      }
       const hideIds = allElementIds.filter((id) => !layerIds.has(id));
       if (hdrPerf) hdrPerf.domLayerCaptures += 1;
 
@@ -640,7 +662,7 @@ export async function compositeHdrFrame(
 
       // 3. Install the mask (mass-hide stylesheet + inline-hide non-layer ids)
       await timeHdrPhaseAsync(hdrPerf, "domMaskApplyMs", () =>
-        applyDomLayerMask(domSession.page, layer.elementIds, hideIds),
+        applyDomLayerMask(domSession.page, showIds, hideIds),
       );
 
       // 4. Screenshot
@@ -669,6 +691,7 @@ export async function compositeHdrFrame(
             frame: debugFrameIndex,
             layerIdx,
             layerIds: layer.elementIds,
+            showIds,
             hideCount: hideIds.length,
             pngBytes: domPng.length,
             alphaPixels,

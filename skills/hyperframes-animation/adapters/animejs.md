@@ -105,7 +105,7 @@ After editing a composition that uses Anime.js:
 
 ```bash
 npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 ```
 
 ## Credits And References

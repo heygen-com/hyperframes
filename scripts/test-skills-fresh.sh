@@ -237,7 +237,7 @@ ROUTER="hyperframes"
 WORKFLOWS=(product-launch-video website-to-video faceless-explainer embedded-captions \
            talking-head-recut pr-to-video motion-graphics general-video \
            remotion-to-hyperframes slideshow)
-DOMAIN=(hyperframes-core hyperframes-creative hyperframes-animation hyperframes-cli hyperframes-media hyperframes-registry)
+DOMAIN=(hyperframes-core hyperframes-creative hyperframes-animation hyperframes-cli media-use hyperframes-registry)
 
 MISSING=()
 check_skill() { if [[ -d "$SKILLS_DIR/$1" ]]; then ok "$SKILLS_DIR/$1/"; else MISSING+=("$1"); fi; }

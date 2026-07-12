@@ -1,6 +1,6 @@
 ---
 title: The Pipeline
-description: "The 7-step pipeline for producing any Hyperframes video: capture, design, script, storyboard, voiceover, build, validate."
+description: "The 7-step pipeline for producing any Hyperframes video: capture, design, strategy & messaging, storyboard + script, voiceover, build, validate."
 ---
 
 Every well-structured Hyperframes video flows through the same 7 steps, whether it starts from a website, a PDF, a CSV, or a blank page. Each step produces a named artifact that the next step depends on, so your AI agent (and you) always know what's done, what's next, and where the creative decisions live on disk.
@@ -11,15 +11,15 @@ This pipeline is the backbone of the [website-to-video workflow](/guides/website
 
 Each step produces an artifact that feeds the next:
 
-| # | Step          | Output                                  | What happens                                                            |
-|---|---------------|-----------------------------------------|-------------------------------------------------------------------------|
-| 1 | **Capture**   | `capture/`                              | Extract screenshots, design tokens, fonts, assets, animations from a source |
-| 2 | **Design**    | `DESIGN.md`                             | Brand reference: colors, typography, components, do's and don'ts        |
-| 3 | **Script**    | `SCRIPT.md`                             | Narration text with hook, story, proof, and CTA                         |
-| 4 | **Storyboard**| `STORYBOARD.md`                         | Per-beat creative direction: mood, assets, animations, transitions      |
-| 5 | **VO + Timing**| `narration.wav` + `transcript.json`    | TTS audio with word-level timestamps                                    |
-| 6 | **Build**     | `compositions/*.html`                   | Animated HTML compositions, one per beat                                |
-| 7 | **Validate**  | Snapshot PNGs + `lint`/`validate` pass  | Visual verification and runtime checks before delivery                  |
+| # | Step                    | Output                                  | What happens                                                            |
+|---|-------------------------|-----------------------------------------|-------------------------------------------------------------------------|
+| 1 | **Capture**             | `capture/`                              | Extract screenshots, design tokens, fonts, assets, animations from a source |
+| 2 | **Design**              | `DESIGN.md`                             | Brand reference: colors, typography, component stylings, spacing, iteration guide |
+| 3 | **Strategy & Messaging**| —                                       | Align on video type, style, the ONE message, narrative arc, and audience |
+| 4 | **Storyboard + Script** | `STORYBOARD.md` + `SCRIPT.md`          | Concept-first storyboard and narration script, written together         |
+| 5 | **VO + Timing**         | `narration.wav` + `transcript.json`     | TTS audio with word-level timestamps                                    |
+| 6 | **Build**               | `compositions/*.html`                   | Animated HTML compositions, one per beat                                |
+| 7 | **Validate**            | Snapshot PNGs + `lint`/`validate` pass  | Visual verification and runtime checks before delivery                  |
 
 <Tip>
   Not every project uses every step. A no-narration brand reel skips Step 5; a hand-authored composition skips Steps 1-2. But the order matters: scene durations come from narration, animation choices come from the storyboard, and the storyboard depends on the design reference. Skip a step only when you don't need its artifact downstream.
@@ -76,36 +76,35 @@ For sources that aren't websites (PDFs, decks, CSVs, notes), capture isn't a lit
 
 `DESIGN.md` is the brand cheat sheet. It encodes the visual identity factually so every downstream decision can reference exact colors, fonts, and components instead of inventing them. It's a reference document, not a creative plan. The creative work happens in the storyboard.
 
-A typical `DESIGN.md` has six sections:
+A typical `DESIGN.md` has five sections:
 
 | Section | What it captures |
 |---------|------------------|
-| **Overview** | 3-4 sentences describing layout patterns, color strategy, typography tone |
-| **Colors** | 5-10 HEX values with semantic roles (primary surface, accent warm, etc.) |
-| **Typography** | Font families with weights, roles, and distinctive usage |
-| **Components** | Patterns the brand uses: bento grids, logo walls, gradient meshes |
-| **Imagery** | Asset categories and how the brand uses them |
-| **Do's and Don'ts** | Hard rules: "white backgrounds, never dark", "no drop shadows" |
+| **Visual Theme** | 3-5 sentences describing the brand's visual personality — dark/light, contrast, mood, what makes it distinctive |
+| **Quick Reference** | Colors (8-12 HEX values with semantic roles and WCAG contrast ratios) and fonts (families, weights, roles, file paths) |
+| **Component Stylings** | Exact CSS-level specs for 6-12 components the brand uses: buttons, cards, containers, distinctive UI patterns |
+| **Spacing & Layout** | Base spacing unit, scale with usage, max-width / grid, and breakpoint strategy |
+| **Iteration Guide** | Do's and don'ts, common failure modes, and rules for modifying the design in later steps |
 
 `DESIGN.md` is also the input format for [Open Design](/guides/open-design) and [Claude Design](/guides/claude-design); both produce a `DESIGN.md` you can drop into a Hyperframes project.
 
-**Gate:** `DESIGN.md` exists with all six sections filled in from real captured data (or chosen deliberately for greenfield projects).
+**Gate:** `DESIGN.md` exists with all five sections filled in from real captured data (or chosen deliberately for greenfield projects).
 
-## Step 3: Script
+## Step 3: Strategy & Messaging
 
-**Output:** `SCRIPT.md` in the project root
+**Output:** Alignment on video type, duration, style, and — critically — the ONE message and narrative arc
 
-`SCRIPT.md` is the narration backbone. Scene durations come from the narration, not from guessing, so write the script before the storyboard and time beats to spoken words.
+Before any creative decisions, align with the user on the story this video must tell. Parse the user's prompt first — they probably already gave you the video type and style. Only ask about things they didn't specify. If the prompt is detailed enough, confirm the direction in one message and move to Step 4.
 
-A typical structure: **hook** (one sentence that earns attention), **story** (what the product or topic is), **proof** (numbers, components, customers), **CTA** (one clear action). Reference real features, real stats, and real components from `capture/extracted/visible-text.txt`. Don't invent claims the source doesn't support.
+The questions to resolve: what type of video (social ad, product demo, brand reel, etc.), what style and energy, what's the ONE thing this video must communicate, what narrative arc serves that message, and whether narration is wanted.
 
-For videos without narration (brand reels, music-driven teasers), `SCRIPT.md` becomes a per-beat copy plan instead: the on-screen text and headlines, with timing notes.
+**Gate:** Video type, duration, format, and the message and narrative arc are locked. Without those, Step 4 can't write a concept-first storyboard.
 
-**Gate:** `SCRIPT.md` exists in the project root.
+## Step 4: Storyboard + Script
 
-## Step 4: Storyboard
+**Outputs:** `STORYBOARD.md` + `SCRIPT.md` in the project root
 
-**Output:** `STORYBOARD.md` in the project root
+Write the storyboard concept-first: message → narrative arc → beats that serve the arc → techniques per beat → brand accents pass at the end. Then write the narration script to match. The storyboard and script are written together — the storyboard drives the script, not the other way around.
 
 `STORYBOARD.md` tells the engineer (human or agent) exactly what to build for each beat: mood, camera, animations, transitions, assets, depth layers, sound effects. It's where the creative choices get pinned down.
 
@@ -121,9 +120,9 @@ Each beat in `STORYBOARD.md` typically covers:
 | Transitions      | How this beat enters from the previous one and exits to the next |
 | SFX              | Short, specific sound effects (e.g. _"woosh on logo entry, soft tick on counter"_) |
 
-The storyboard typically opens with a global-direction block: format, voiceover direction, style basis, and guardrails that apply to every beat.
+The storyboard typically opens with a global-direction block: format, voiceover direction, style basis, and guardrails that apply to every beat. `SCRIPT.md` contains the narration backbone: **hook** (one sentence that earns attention), **story** (what the product or topic is), **proof** (numbers, components, customers), **CTA** (one clear action). For videos without narration, `SCRIPT.md` becomes a per-beat copy plan with on-screen text and timing notes.
 
-**Gate:** `STORYBOARD.md` exists with beat-by-beat direction and an asset audit that names every file used.
+**Gate:** `STORYBOARD.md` + `SCRIPT.md` exist with beat-by-beat direction, an asset audit that names every file used, and user approval of the plan.
 
 ## Step 5: VO and timing
 
@@ -142,7 +141,7 @@ npx hyperframes transcribe narration.wav
 | `narration.txt`  | The exact spoken text with pronunciation substitutions applied (`API` → `A P I`, `$2T` → `two trillion`). Distinct from `SCRIPT.md` so you can regenerate the audio later with a different voice without redoing the substitutions. |
 | `transcript.json`| `[{ text, start, end }]` for every word. Every later step reads this for timing. |
 
-Hyperframes ships multiple TTS adapters (Kokoro, ElevenLabs, HeyGen); see [`/hyperframes-media`](/guides/prompting) for the skill that picks one. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
+Hyperframes ships multiple TTS adapters (Kokoro, ElevenLabs, HeyGen); see [`/media-use`](/guides/prompting) for the skill that picks one. After generating audio, update `STORYBOARD.md` with the real beat boundaries from `transcript.json`.
 
 **Gate:** `narration.wav`, `narration.txt`, and `transcript.json` exist. `STORYBOARD.md` beat timings reference real timestamps, not estimates.
 
@@ -166,7 +165,7 @@ Three checks before delivery:
 
 ```bash
 npx hyperframes lint                              # static HTML structure checks
-npx hyperframes validate                          # loads in headless Chrome, catches runtime errors
+npx hyperframes check                             # one browser session: runtime errors, layout, motion, contrast
 npx hyperframes snapshot my-video --at 2.9,10.4   # PNGs at beat midpoints
 ```
 

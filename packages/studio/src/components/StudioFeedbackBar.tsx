@@ -69,6 +69,7 @@ function markPrompted(): void {
 // fallow-ignore-next-line complexity
 export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
   const [visible, setVisible] = useState(false);
+  const [entered, setEntered] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -87,6 +88,14 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
     }, 3000);
     return () => clearTimeout(showTimer);
   }, []);
+
+  // Animate height in on entrance — appearing 3s after load, an instant 32px
+  // bar shoves the whole preview stack up mid-task.
+  useEffect(() => {
+    if (!visible) return;
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, [visible]);
 
   // Auto-dismiss timer — reset when user interacts (sets rating)
   useEffect(() => {
@@ -141,8 +150,8 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
   return (
     <div
       className={[
-        "flex items-center gap-3 px-4 h-8 border-t border-neutral-800/50 bg-neutral-900/80 text-[11px] transition-all duration-300",
-        exiting ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0",
+        "flex items-center gap-3 px-4 overflow-hidden border-t border-neutral-800/50 bg-neutral-900/80 text-[11px] transition-all duration-300 motion-reduce:transition-none",
+        entered && !exiting ? "h-8 opacity-100" : "h-0 opacity-0 border-t-transparent",
       ].join(" ")}
     >
       {submitted ? (

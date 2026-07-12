@@ -18,11 +18,13 @@ export interface StudioSaveFailureInput {
 
 export class StudioSaveHttpError extends Error {
   readonly statusCode: number;
+  readonly alreadyToasted: boolean;
 
-  constructor(message: string, statusCode: number) {
+  constructor(message: string, statusCode: number, options: { alreadyToasted?: boolean } = {}) {
     super(message);
     this.name = "StudioSaveHttpError";
     this.statusCode = statusCode;
+    this.alreadyToasted = options.alreadyToasted ?? false;
   }
 }
 
@@ -130,6 +132,7 @@ export function trackStudioSaveFailure(input: StudioSaveFailureInput): void {
 export async function createStudioSaveHttpError(
   response: Response,
   fallbackMessage: string,
+  options: { alreadyToasted?: boolean } = {},
 ): Promise<StudioSaveHttpError> {
   let body = "";
   try {
@@ -141,7 +144,7 @@ export async function createStudioSaveHttpError(
   const message = detail
     ? `${fallbackMessage} (${response.status}): ${detail}`
     : `${fallbackMessage} (${response.status})`;
-  return new StudioSaveHttpError(message, response.status);
+  return new StudioSaveHttpError(message, response.status, options);
 }
 
 export async function retryStudioSave<T>(

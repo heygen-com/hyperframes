@@ -98,7 +98,8 @@ async function probeHardwareWebGlInfo(
 
 // "beginframe" = atomic compositor control via HeadlessExperimental.beginFrame (Linux only)
 // "screenshot" = renderSeek + Page.captureScreenshot (all platforms)
-export type CaptureMode = "beginframe" | "screenshot";
+// "drawelement" = BeginFrame compositor advance + canvas.drawElementImage capture
+export type CaptureMode = "beginframe" | "screenshot" | "drawelement";
 
 export interface AcquiredBrowser {
   browser: Browser;

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/sdk",
-  "version": "0.7.26",
+  "version": "0.7.54",
   "description": "Headless, framework-neutral HyperFrames composition editing engine",
   "repository": {
     "type": "git",

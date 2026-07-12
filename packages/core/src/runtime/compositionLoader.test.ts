@@ -972,6 +972,43 @@ describe("loadExternalCompositions", () => {
       expect(byCompAfterSecondMount?.["card-last"]).toBeUndefined();
     });
   });
+
+  it("preserves data-composition-id unflattened for a host with no id of its own (anonymous host)", async () => {
+    // Regression test documenting why this file's own prepareFlattenedInnerRoot
+    // (line ~527) does NOT need the same anonymous-host id-restoration that
+    // producer/bundler compilation needed: an anonymous host's authoredCompositionId
+    // is null, so mountCompositionContent's innerRoot lookup never runs, and it
+    // falls through to a raw document.importNode() of the whole template content
+    // instead of prepareFlattenedInnerRoot. The composition's own
+    // data-composition-id is never stripped in the first place, so its root-styling
+    // CSS and self-referencing querySelector('[data-composition-id="X"]') calls
+    // already resolve. See PR review discussion on #1886 for the audit trail.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-src", "https://example.com/scoped-text.html");
+    document.body.appendChild(host);
+
+    const compositionHtml = `
+      <template id="scoped-text-template">
+        <div data-composition-id="scoped-text" data-width="1080" data-height="1920">
+          <div class="label">Scoped Text Should Stay Styled</div>
+        </div>
+      </template>
+    `;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadExternalCompositions({ ...defaultParams });
+
+    // Not flattened: no data-hf-inner-root wrapper was created.
+    expect(host.querySelector("[data-hf-inner-root]")).toBeNull();
+    // The composition's own root element, with its own id intact, is a
+    // direct descendant of the (still anonymous) host.
+    const mountedRoot = host.querySelector('[data-composition-id="scoped-text"]');
+    expect(mountedRoot).not.toBeNull();
+    expect(mountedRoot?.querySelector(".label")?.textContent).toBe(
+      "Scoped Text Should Stay Styled",
+    );
+  });
 });
 
 describe("loadInlineTemplateCompositions", () => {

@@ -9,6 +9,11 @@
 export interface DomEditCapabilities {
   canSelect: boolean;
   canEditStyles: boolean;
+  /** Can take a non-destructive `clip-path: inset()` crop. Broader than
+   *  canEditStyles: a sub-composition host can be cropped from the parent view
+   *  (the crop is a viewport clip that persists on the host in the parent
+   *  source), even though its internal styles are edited by drilling in. */
+  canCrop: boolean;
   /** Directly editable authored left/top style fields. Canvas drag uses manual edits instead. */
   canMove: boolean;
   /** Directly editable authored width/height style fields. Canvas resize uses manual edits instead. */
@@ -104,6 +109,7 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
     return {
       canSelect: !facts.isInsideLockedComposition,
       canEditStyles: false,
+      canCrop: false,
       canMove: false,
       canResize: false,
       canApplyManualOffset: false,
@@ -119,6 +125,7 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
     return {
       canSelect: true,
       canEditStyles: false,
+      canCrop: false,
       canMove: false,
       canResize: false,
       canApplyManualOffset: false,
@@ -132,6 +139,7 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
     return {
       canSelect: true,
       canEditStyles: true,
+      canCrop: false, // the root defines the canvas/preview bounds — nothing to crop against
       canMove: false,
       canResize: false,
       canApplyManualOffset: false,
@@ -161,10 +169,15 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
     : "Select an internal layer to transform it.";
 
   const canEditStyles = !(facts.isCompositionHost && facts.isMasterView);
+  // Crop is broader than style editing: a sub-composition host CAN be cropped
+  // from the parent view (a viewport clip persisted on the host in the parent
+  // source), even though its internal styles are edited by drilling in.
+  const canCrop = true;
 
   return {
     canSelect: true,
     canEditStyles,
+    canCrop,
     canMove,
     canResize,
     canApplyManualOffset: canApplyManualGeometry,
@@ -182,7 +195,7 @@ function resolveCapabilities(facts: EditableElementFacts): DomEditCapabilities {
 export function resolveEditingSections(facts: EditableElementFacts): EditingSectionApplicability {
   return {
     text: facts.hasEditableText && !facts.isCompositionHost && !facts.isInsideLockedComposition,
-    media: facts.tag === "video" || facts.tag === "audio",
+    media: facts.tag === "video" || facts.tag === "audio" || facts.tag === "img",
     colorGrading: facts.tag === "video" || facts.tag === "img",
     timing: facts.hasTimingStart || facts.animationCount > 0,
     animation: facts.animationCount > 0,

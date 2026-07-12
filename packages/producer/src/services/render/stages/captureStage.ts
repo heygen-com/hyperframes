@@ -43,7 +43,10 @@ import {
   type CaptureSession,
   type EngineConfig,
   captureFrame,
+  captureFrameToBufferPipelined,
+  writeCapturedFrame,
   closeCaptureSession,
+  completeDeferredDrawElementInit,
   createCaptureSession,
   getCapturePerfSummary,
   initializeSession,
@@ -258,6 +261,13 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
     try {
       if (!session.isInitialized) {
         await initializeSession(session);
+      } else if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
+        // Deferred drawElement init (probe-initialized video comps). The disk
+        // path has no drain-time self-verification, so only an explicit opt-in
+        // completes it here — mirroring the orchestrator clamp that routes
+        // default-on drawElement renders to the screenshot baseline on this
+        // path. No-op unless the session is deferred with an injector attached.
+        await completeDeferredDrawElementInit(session);
       }
       assertNotAborted();
       lastBrowserConsole = session.browserConsoleBuffer;
@@ -271,16 +281,8 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       const rangeEnd = frameRange?.endFrame ?? totalFrames;
       const rangeFrames = rangeEnd - rangeStart;
 
-      for (let i = 0; i < rangeFrames; i++) {
-        assertNotAborted();
-        const absoluteIdx = rangeStart + i;
-        const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-        await captureFrame(session, i, time);
-        job.framesRendered = i + 1;
-
-        const frameProgress = (i + 1) / rangeFrames;
-        const progress = 25 + frameProgress * 45;
-
+      const reportFrame = (fileIndex: number): void => {
+        job.framesRendered = fileIndex + 1;
         // Keep status cadence identical to the streaming sequential path; the
         // capture error wrapper below must remain separate from finally so it
         // can throw with the browser console before cleanup overwrites flow.
@@ -288,10 +290,43 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
         updateJobStatus(
           job,
           "rendering",
-          `Capturing frame ${i + 1}/${rangeFrames}`,
-          Math.round(progress),
+          `Capturing frame ${fileIndex + 1}/${rangeFrames}`,
+          Math.round(25 + ((fileIndex + 1) / rangeFrames) * 45),
           onProgress,
         );
+      };
+
+      if (session.workerEncodeEnabled) {
+        // Worker-encode depth-2 pipeline on the DISK path (mirrors the streaming
+        // path): frame N's in-page Worker encodes while frame N+1's main thread
+        // does seek+paint+drawElement. Long comps (>streaming cap) land here, so
+        // without this they'd fall back to synchronous toDataURL and lose the
+        // ~1.5-2x worker-encode speedup entirely.
+        let prev: { fileIndex: number; encodeResult: Promise<Buffer> } | null = null;
+        const drainPrev = async (): Promise<void> => {
+          if (!prev) return;
+          assertNotAborted();
+          const buf = await prev.encodeResult;
+          writeCapturedFrame(session, prev.fileIndex, buf);
+          reportFrame(prev.fileIndex);
+        };
+        for (let i = 0; i < rangeFrames; i++) {
+          assertNotAborted();
+          const absoluteIdx = rangeStart + i;
+          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+          const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+          await drainPrev();
+          prev = { fileIndex: i, encodeResult };
+        }
+        await drainPrev();
+      } else {
+        for (let i = 0; i < rangeFrames; i++) {
+          assertNotAborted();
+          const absoluteIdx = rangeStart + i;
+          const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
+          await captureFrame(session, i, time);
+          reportFrame(i);
+        }
       }
       // Capture the sequential session's static-dedup perf before close (the
       // counters are valid only while the session is live).

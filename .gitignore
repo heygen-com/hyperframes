@@ -51,6 +51,9 @@ output/
 renders/
 !packages/producer/tests/*/output/
 !packages/producer/tests/distributed/*/output/
+# Source dir that the renders/ output rule accidentally shadows (its files are
+# tracked; without this, pre-commit's format re-stage fails on them).
+!packages/studio/src/components/renders/
 
 # Composition source media (large binaries)
 compositions/**/*.mp4
@@ -69,7 +72,9 @@ tmp/
 .tmp/
 
 # Generated files
-packages/core/src/generated/
+packages/core/src/generated/*
+!packages/core/src/generated/position-edits-render-inline.ts
+!packages/core/src/generated/position-edits-render-inline.test.ts
 packages/producer/src/services/fontData.generated.ts
 
 # Plan documents (working artifacts, not committed)
@@ -78,7 +83,10 @@ docs/plans/
 # Local proof / test artifacts
 qa-artifacts/
 my-video/
-.hyperframes/backup/
+# Studio project state (hf-id backups, per-file state) — always runtime-generated,
+# never committed. Broadened from .hyperframes/backup/ after preview-generated state
+# leaked into a fixture commit.
+.hyperframes/
 examples/*
 # Tracked OSS examples — negations override the blanket `examples/*` ignore.
 !examples/aws-lambda

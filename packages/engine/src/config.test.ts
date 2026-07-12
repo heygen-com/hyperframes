@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { resolveConfig, DEFAULT_CONFIG, scaleProtocolTimeoutForComposition } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
 
@@ -6,8 +8,13 @@ describe("resolveConfig", () => {
   const savedEnv = new Map<string, string | undefined>();
 
   function setEnv(key: string, value: string) {
-    savedEnv.set(key, process.env[key]);
+    if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
     process.env[key] = value;
+  }
+
+  function unsetEnv(key: string) {
+    if (!savedEnv.has(key)) savedEnv.set(key, process.env[key]);
+    delete process.env[key];
   }
 
   beforeEach(() => {
@@ -179,6 +186,113 @@ describe("resolveConfig", () => {
       setEnv("HF_PAGE_SIDE_COMPOSITING", "true");
       const config = resolveConfig({ enablePageSideCompositing: false });
       expect(config.enablePageSideCompositing).toBe(false);
+    });
+  });
+
+  describe("extraction cache env", () => {
+    it("defaults the extract cache directory to tmpdir plus uid when env is unset", () => {
+      unsetEnv("HYPERFRAMES_EXTRACT_CACHE_DIR");
+
+      const config = resolveConfig();
+
+      expect(config.extractCacheDir).toBe(
+        join(tmpdir(), `hyperframes-extract-cache-${process.getuid?.() ?? "u"}`),
+      );
+    });
+
+    it("disables the extract cache when env is an opt-out token", () => {
+      for (const value of ["off", "none", "false", "0", " OFF "]) {
+        setEnv("HYPERFRAMES_EXTRACT_CACHE_DIR", value);
+
+        expect(resolveConfig().extractCacheDir).toBeUndefined();
+      }
+    });
+
+    it("uses an explicit extract cache path from env", () => {
+      setEnv("HYPERFRAMES_EXTRACT_CACHE_DIR", "/tmp/custom-hf-cache");
+
+      expect(resolveConfig().extractCacheDir).toBe("/tmp/custom-hf-cache");
+    });
+
+    it("converts HYPERFRAMES_EXTRACT_CACHE_MAX_MB to bytes", () => {
+      setEnv("HYPERFRAMES_EXTRACT_CACHE_MAX_MB", "512");
+
+      expect(resolveConfig().extractCacheMaxBytes).toBe(512 * 1024 ** 2);
+    });
+  });
+
+  describe("useDrawElement (PRODUCER_EXPERIMENTAL_FAST_CAPTURE)", () => {
+    it("default is clamped off on software-GPU hosts (page-side compositing preserved)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
+      expect(config.enablePageSideCompositing).toBe(true);
+    });
+
+    it("default engages on macOS with a hardware-GPU browser", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(process.platform === "darwin");
+    });
+
+    it("default engages on macOS with auto GPU mode (the stock CLI path)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "auto");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      unsetEnv("HF_DE_WORKER_ENCODE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(process.platform === "darwin");
+    });
+
+    it("default requires worker-encode (the verified drain)", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      setEnv("HF_DE_WORKER_ENCODE", "false");
+      unsetEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
+    });
+
+    it("explicit env opt-in skips the platform clamp", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "software");
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(true);
+    });
+
+    it("env kill switch wins over the default", () => {
+      setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "false");
+      const config = resolveConfig();
+      expect(config.useDrawElement).toBe(false);
+    });
+
+    it("explicit override wins over the env var", () => {
+      setEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "true");
+      const config = resolveConfig({ useDrawElement: false });
+      expect(config.useDrawElement).toBe(false);
+    });
+
+    it("forces page-side compositing off when enabled (incompatible strategies)", () => {
+      const config = resolveConfig({ useDrawElement: true, enablePageSideCompositing: true });
+      expect(config.useDrawElement).toBe(true);
+      expect(config.enablePageSideCompositing).toBe(false);
+      // The auto-disable is recorded so compile-time gates can restore it.
+      expect(config.pageSideCompositingAutoDisabled).toBe(true);
+    });
+
+    it("does NOT mark auto-disabled when the caller explicitly opted out of page-side compositing", () => {
+      const config = resolveConfig({ useDrawElement: true, enablePageSideCompositing: false });
+      expect(config.enablePageSideCompositing).toBe(false);
+      // Explicit caller intent — a compile-time drawElement gate must not restore it.
+      expect(config.pageSideCompositingAutoDisabled).not.toBe(true);
+    });
+
+    it("leaves page-side compositing on when fast capture is off", () => {
+      const config = resolveConfig({ useDrawElement: false });
+      expect(config.enablePageSideCompositing).toBe(true);
     });
   });
 

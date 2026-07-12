@@ -179,6 +179,10 @@ export interface TypographyRole {
 export interface ComponentStyle {
   label: string;
   background: string;
+  /** Gradient background-image if any (url()/none dropped) — a core brand signal */
+  backgroundImage?: string;
+  /** backdrop-filter value if any (frosted-glass panels); "" when none */
+  backdropFilter?: string;
   color: string;
   padding: string;
   borderRadius: string;
@@ -217,6 +221,17 @@ export interface DesignStyles {
   statCells?: StatCellStyle[];
   /** tab controls */
   tabs?: ComponentStyle[];
+  /** Dominant gradient/mesh background washes, ranked by on-screen area covered */
+  backgrounds?: Array<{ value: string; area: number }>;
+  /** Frosted-glass panels (backdrop-filter): raw translucent fill + blur, ranked by area */
+  glass?: Array<{
+    backdropFilter: string;
+    background: string;
+    border: string;
+    borderRadius: string;
+    boxShadow: string;
+    area: number;
+  }>;
 }
 
 // ── Assets ──────────────────────────────────────────────────────────────────

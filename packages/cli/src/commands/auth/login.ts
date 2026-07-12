@@ -78,10 +78,19 @@ export default defineCommand({
 async function runOAuthLogin(): Promise<void> {
   assertOAuthConfiguredOrExit();
 
+  const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
+  trackAuthLoginStarted("oauth");
+
   try {
     await startAuthorizationCodeFlow();
   } catch (err) {
-    console.error(c.error(`Sign-in failed: ${(err as Error).message}`));
+    const message = (err as Error).message ?? "";
+    // The loopback server rejects with "OAuth callback timed out after …" when
+    // the user never completes the browser step (closed the tab / walked away).
+    // That is the dominant non-error dropout, so split it from real failures
+    // (IdP misconfig, network) instead of lumping everything as flow_error.
+    trackAuthLoginFailed("oauth", /timed out/i.test(message) ? "flow_timeout" : "flow_error");
+    console.error(c.error(`Sign-in failed: ${message}`));
     process.exit(1);
   }
 
@@ -90,8 +99,11 @@ async function runOAuthLogin(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function reportIdentity(): Promise<void> {
+  const { trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
+    await import("../../telemetry/index.js");
   const credential = await tryResolveCredential();
   if (!credential) {
+    trackAuthLoginFailed("oauth", "no_credential");
     console.error(c.warn("Sign-in completed but no credential was persisted."));
     process.exit(1);
   }
@@ -108,18 +120,40 @@ async function reportIdentity(): Promise<void> {
     // `auth status` can show "Logged in as ..." without re-hitting
     // /v3/users/me. Best-effort — a persist failure never fails the login.
     await persistUserInfo(user);
+    // Attribute this install to the signed-in account (and stitch its prior
+    // anonymous usage) before recording completion, so the completed event
+    // carries the identity. Both no-op under the telemetry opt-out.
+    const id = identityKey(user);
+    if (id) identifyUser(id);
+    trackAuthLoginCompleted("oauth", id);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
   } catch (err) {
     // Don't roll back — the OAuth tokens are valid on disk; this is a
-    // transient verify-side issue. The identity probe failed, so any
-    // stale user block from a prior login (possibly a DIFFERENT account)
-    // is cleared so `auth status` can't surface the wrong identity.
+    // transient verify-side issue. The credential is persisted and usable, so
+    // the sign-in still COMPLETED; we just have no resolved identity to
+    // attribute it to. The stale user block from a prior login (possibly a
+    // DIFFERENT account) is cleared so `auth status` can't surface it.
     await clearUserInfoBestEffort();
+    trackAuthLoginCompleted("oauth");
     console.error(
       c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
     );
   }
+}
+
+/**
+ * The stable key we associate this install with in telemetry after sign-in.
+ * `/v3/users/me` exposes no opaque user_id, so we key on the HeyGen account
+ * EMAIL — the canonical account identifier and the reliable join key back to
+ * billing — falling back to username only when the account exposes no email.
+ * (Username is NOT a privacy win — HeyGen usernames are frequently email-shaped
+ * — it is purely a fallback so an emailless account is still attributable.)
+ * The privacy notice (showTelemetryNotice) and docs/packages/cli.mdx disclose
+ * both, so keep them in sync with whatever this returns.
+ */
+function identityKey(user: UserInfo): string | undefined {
+  return user.email ?? user.username;
 }
 
 /** Project the API `/v3/users/me` view onto the on-disk identity block. */
@@ -163,8 +197,24 @@ async function clearUserInfoBestEffort(): Promise<void> {
 
 // fallow-ignore-next-line complexity
 async function runApiKeyLogin(inlineKey: string): Promise<void> {
-  const key = await collectApiKey(inlineKey);
+  const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
+    await import("../../telemetry/index.js");
+  trackAuthLoginStarted("api_key");
+
+  // collectApiKey throws when the user cancels the interactive prompt (Ctrl-C)
+  // or when no key arrives on stdin before the timeout — both are "user walked
+  // away", the abandonment signal we most want. Record it before the error
+  // propagates so `started` still reconciles to `completed + failed`.
+  let key: string;
+  try {
+    key = await collectApiKey(inlineKey);
+  } catch (err) {
+    trackAuthLoginFailed("api_key", "aborted");
+    console.error(c.error((err as Error).message || "Sign-in aborted."));
+    process.exit(1);
+  }
   if (!key) {
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error("No API key provided."));
     process.exit(1);
   }
@@ -172,10 +222,12 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     // CR/LF in the value would smuggle headers when the key is sent
     // via `x-api-key`. The backend handles "wrong key" itself, but
     // header-injection has to be caught here.
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error("API key must not contain newline or control characters."));
     process.exit(1);
   }
   if (key.length < MIN_KEY_LENGTH) {
+    trackAuthLoginFailed("api_key", "invalid_input");
     console.error(c.error(`API key looks too short (got ${key.length} chars).`));
     process.exit(1);
   }
@@ -184,11 +236,15 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
   const next: Credentials = { ...previous, api_key: key };
   await writeStore(next);
 
-  const verifyOk = await verifyAndReport(key);
-  if (!verifyOk) {
+  const user = await verifyAndReport(key);
+  if (!user) {
+    trackAuthLoginFailed("api_key", "rejected");
     await rollback(previous);
     process.exit(1);
   }
+  const id = identityKey(user);
+  if (id) identifyUser(id);
+  trackAuthLoginCompleted("api_key", id);
 }
 
 async function snapshotStore(): Promise<Credentials> {
@@ -222,8 +278,11 @@ async function rollback(previous: Credentials): Promise<void> {
   }
 }
 
+// Returns the verified user on success (so the caller can attribute the
+// completed sign-in to that identity), or null when the backend rejects the
+// key. Other errors propagate.
 // fallow-ignore-next-line complexity
-async function verifyAndReport(key: string): Promise<boolean> {
+async function verifyAndReport(key: string): Promise<UserInfo | null> {
   const client = new AuthClient();
   try {
     const user = await client.getCurrentUser({ type: "api_key", key, source: "file_json" });
@@ -232,7 +291,7 @@ async function verifyAndReport(key: string): Promise<boolean> {
     await persistUserInfo(user);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ API key saved. Authenticated as ${identity}.`));
-    return true;
+    return user;
   } catch (err) {
     if (isAuthError(err) && err.code === "UNAUTHENTICATED") {
       console.error(
@@ -240,7 +299,7 @@ async function verifyAndReport(key: string): Promise<boolean> {
           `  ${c.dim(err.message)}\n` +
           `Run ${c.accent("hyperframes auth login --api-key")} again with a valid key.`,
       );
-      return false;
+      return null;
     }
     throw err;
   }
@@ -288,8 +347,9 @@ async function promptForKey(): Promise<string> {
     },
   });
   if (clack.isCancel(value)) {
-    console.error("Aborted.");
-    process.exit(1);
+    // Throw rather than exit here so the single catch in runApiKeyLogin records
+    // the abandonment (auth_login_failed: aborted) and then exits.
+    throw new Error("Aborted.");
   }
   return value.trim();
 }

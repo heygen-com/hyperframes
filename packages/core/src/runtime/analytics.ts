@@ -12,7 +12,8 @@ export type RuntimeAnalyticsEvent =
   | "composition_paused"
   | "composition_seeked"
   | "composition_ended"
-  | "element_picked";
+  | "element_picked"
+  | "position_edit_fold_skipped";
 
 export type RuntimeAnalyticsProperties = Record<string, string | number | boolean | null>;
 

@@ -253,5 +253,72 @@ describe("T10 — PreviewAdapter contract (spec for R7)", () => {
       expect(timings["hf-notimed"].start).toBeUndefined();
       expect(timings["hf-notimed"].end).toBeUndefined();
     });
+
+    it("resolves data-duration into end when there is no data-end (never worked before)", () => {
+      make("div", { "data-hf-id": "hf-t1", "data-start": "1", "data-duration": "3" });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-t1"]).toEqual({ start: 1, end: 4 });
+    });
+
+    it("resolves a relative data-start reference ('ref + offset') instead of returning undefined", () => {
+      make("div", { "data-hf-id": "hf-intro", "data-start": "1", "data-duration": "3" });
+      make("div", { "data-hf-id": "hf-outro", "data-start": "hf-intro + 2", "data-duration": "1" });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      // hf-intro ends at 4 (1 + 3); hf-outro starts 2s after that = 6.
+      expect(timings["hf-outro"]).toEqual({ start: 6, end: 7 });
+    });
+
+    it("resolves a bare reference (no offset) to the referenced element's end", () => {
+      make("div", { "data-hf-id": "hf-intro", "data-start": "1", "data-end": "4" });
+      make("div", {
+        "data-hf-id": "hf-right-after",
+        "data-start": "hf-intro",
+        "data-duration": "1",
+      });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-right-after"]).toEqual({ start: 4, end: 5 });
+    });
+
+    it("returns undefined start (not NaN) when the reference target doesn't exist", () => {
+      make("div", {
+        "data-hf-id": "hf-orphan",
+        "data-start": "hf-nonexistent + 5",
+        "data-duration": "2",
+      });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-orphan"].start).toBeUndefined();
+    });
+
+    it("returns undefined start when the reference target exists but its own timing is unresolvable", () => {
+      make("div", { "data-hf-id": "hf-untimed" }); // no data-end, no data-duration
+      make("div", {
+        "data-hf-id": "hf-outro",
+        "data-start": "hf-untimed + 2",
+        "data-duration": "1",
+      });
+      const adapter = adapterWith(() => null);
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-outro"].start).toBeUndefined();
+    });
+
+    it("terminates (not an infinite loop) on a mutual A <-> B reference cycle", () => {
+      make("div", { "data-hf-id": "hf-a", "data-start": "hf-b", "data-duration": "2" });
+      make("div", { "data-hf-id": "hf-b", "data-start": "hf-a", "data-duration": "3" });
+      const adapter = adapterWith(() => null);
+      // Unlike the SDK's static resolver (which fails safe to 0 and lets real
+      // durations propagate outward into arbitrary-but-finite numbers), this
+      // simpler resolver has no 0-fallback — an unresolvable `sv` poisons
+      // `resolveEnd` (it requires a finite start to add duration), so the whole
+      // cycle correctly reports "no defined timing" rather than a fabricated
+      // number. The guard's job is just termination; this call must return
+      // synchronously instead of hanging.
+      const timings = adapter.getElementTimings();
+      expect(timings["hf-a"].start).toBeUndefined();
+      expect(timings["hf-b"].start).toBeUndefined();
+    });
   });
 });

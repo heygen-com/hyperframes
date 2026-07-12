@@ -40,6 +40,44 @@ export interface RenderCaptureObservability {
   usePageSideCompositing?: boolean;
   hasHdrContent?: boolean;
   browserGpuMode?: string;
+  /**
+   * drawElement per-render SELF-VERIFICATION tripped (blank/PSNR) → whole
+   * render re-ran via screenshot. NARROWED semantics since the pinned-fallback
+   * retry was widened (review): OOM- and generic-capture-error-triggered
+   * fallbacks report FALSE here, with `deFallbackReason` ∈ {oom,
+   * capture_error}. The "any fallback fired" signal is `deFallbackReason`
+   * being set, NOT this flag — dashboards keyed on `de_self_verify_fallback =
+   * true` as any-fallback must migrate to `de_fallback_reason IS NOT NULL`.
+   */
+  deSelfVerifyFallback?: boolean;
+  /**
+   * Why the capture-stage retry (self-verify OR the pinned-worker-count
+   * fallback) fired: "blank"/"psnr" for a real self-verify trip,
+   * "oom"/"capture_error" for the widened generic-failure retry. Set
+   * whenever a fallback is attempted, independent of whether that retry
+   * itself later succeeds — so a render that fails AFTER a fallback attempt
+   * (perfSummary never built) is still distinguishable in failure-path
+   * telemetry from one that never attempted any fallback.
+   */
+  deFallbackReason?: string;
+  /** Auto-parallel inversion outcome: "inverted" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
+  deWorkerInversion?: "inverted" | "reverted";
+  /** Worker count the resolver would have used absent the inversion; undefined if it never fired. */
+  dePreInversionWorkers?: number;
+  /** DE parallel-router outcome: "routed" (fired, held) | "reverted" (fired, self-verify retry rolled back). */
+  deParallelRouter?: "routed" | "reverted";
+  /** Worker count the resolver would have used absent the router; undefined if it never fired. */
+  dePreRouterWorkers?: number;
+  /**
+   * Non-DE parallel-streaming router outcome (HF_CAPTURE_PARALLEL_STREAM):
+   * "screenshot" | "beginframe" — the render passed every gate AND the kill
+   * switch was on, so it was routed through the interleaved streaming encoder
+   * (the value is the capture mode that streamed); "eligible_off" — the render
+   * passed every gate EXCEPT the kill switch (passive cohort-sizing signal for
+   * the default-off soak: how many renders WOULD route if enabled). Absent =
+   * ineligible regardless of the switch.
+   */
+  captureParallelStream?: "screenshot" | "beginframe" | "eligible_off";
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;
@@ -90,6 +128,7 @@ const MAX_EVENTS = 160;
 const ALLOWED_STRING_DATA_KEYS = new Set([
   "browserGpuMode",
   "captureMode",
+  "captureOperation",
   "compositionHash",
   "effectiveHdr",
   "format",
@@ -306,6 +345,13 @@ export class RenderObservabilityRecorder {
     return this.failedPhase !== undefined;
   }
 
+  /** A phase failure that was subsequently recovered (e.g. the drawElement
+   * self-verify fallback re-rendering via screenshot) should not brand the
+   * whole render as failed in the summary. */
+  clearFailure(phase: string): void {
+    if (this.failedPhase === phase) this.failedPhase = undefined;
+  }
+
   private record(event: RenderObservationEvent): RenderObservationEvent {
     this.eventCount++;
     const eventWithJob = { ...event, renderJobId: this.input.renderJobId };
@@ -328,6 +374,20 @@ export class RenderObservabilityRecorder {
   }
 }
 
+/** Heartbeat ramp before falling back to a steady repeat cadence. */
+const HEARTBEAT_RAMP_MS = [30_000, 60_000, 120_000];
+const HEARTBEAT_REPEAT_MS = 120_000;
+const HEARTBEAT_RAMP_END_MS =
+  HEARTBEAT_RAMP_MS[HEARTBEAT_RAMP_MS.length - 1] ?? HEARTBEAT_REPEAT_MS;
+
+/** Target elapsed-ms for the Nth heartbeat (0-indexed): ramp, then steady repeat so long stalls keep emitting breadcrumbs instead of going dark after the ramp. */
+function heartbeatTargetMs(index: number): number {
+  const rampTarget = HEARTBEAT_RAMP_MS[index];
+  if (rampTarget !== undefined) return rampTarget;
+  const overflow = index - HEARTBEAT_RAMP_MS.length + 1;
+  return HEARTBEAT_RAMP_END_MS + overflow * HEARTBEAT_REPEAT_MS;
+}
+
 export async function observeRenderStage<T>(
   recorder: RenderObservabilityRecorder,
   phase: string,
@@ -335,12 +395,35 @@ export async function observeRenderStage<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   const startedAt = recorder.stageStart(phase, data);
+  let heartbeatCount = 0;
+  let lastFiredAtMs = 0;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleNextHeartbeat = () => {
+    const targetMs = heartbeatTargetMs(heartbeatCount);
+    heartbeatTimer = setTimeout(() => {
+      lastFiredAtMs = targetMs;
+      heartbeatCount += 1;
+      recorder.checkpoint(phase, "stage still running", {
+        ...data,
+        heartbeatIndex: heartbeatCount,
+        stageElapsedMs: Date.now() - startedAt,
+      });
+      scheduleNextHeartbeat();
+    }, targetMs - lastFiredAtMs);
+    heartbeatTimer.unref?.();
+  };
+  scheduleNextHeartbeat();
+  const clearHeartbeats = () => {
+    clearTimeout(heartbeatTimer);
+  };
   try {
     const result = await fn();
-    recorder.stageEnd(phase, startedAt);
+    clearHeartbeats();
+    recorder.stageEnd(phase, startedAt, data);
     return result;
   } catch (error) {
-    recorder.stageError(phase, startedAt, error);
+    clearHeartbeats();
+    recorder.stageError(phase, startedAt, error, data);
     throw error;
   }
 }

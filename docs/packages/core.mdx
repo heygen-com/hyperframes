@@ -62,11 +62,6 @@ import {
   isTextElement,
   isMediaElement,
   isCompositionElement,
-  isStringVariable,
-  isNumberVariable,
-  isColorVariable,
-  isBooleanVariable,
-  isEnumVariable,
 } from '@hyperframes/core';
 
 // Constants
@@ -183,18 +178,16 @@ const result = validateCompositionHtml(html);
 
 ```typescript
 import {
-  parseGsapScript,
   serializeGsapAnimations,
-  updateAnimationInScript,
-  addAnimationToScript,
-  removeAnimationFromScript,
-  getAnimationsForElement,
+  getAnimationsForElementId,
   validateCompositionGsap,
   keyframesToGsapAnimations,
   gsapAnimationsToKeyframes,
-  SUPPORTED_PROPS,            // animatable properties
-  SUPPORTED_EASES,            // available easing functions
 } from '@hyperframes/core';
+
+// GSAP parsing, mutation, and constants live in @hyperframes/parsers:
+import { parseGsapScript, SUPPORTED_PROPS, SUPPORTED_EASES } from '@hyperframes/parsers/gsap-parser';
+import { updateAnimationInScript, addAnimationToScript, removeAnimationFromScript } from '@hyperframes/parsers/gsap-writer-acorn';
 import type { GsapAnimation, GsapMethod, ParsedGsap } from '@hyperframes/core';
 
 // Parse GSAP script into structured animations
@@ -258,7 +251,7 @@ import { lintHyperframeHtml, lintMediaUrls } from '@hyperframes/core/lint';
 import type {
   HyperframeLintResult,
   HyperframeLintFinding,
-  HyperframeLintSeverity,     // "error" | "warning"
+  HyperframeLintSeverity,     // "error" | "warning" | "info"
   HyperframeLinterOptions,
 } from '@hyperframes/core/lint';
 

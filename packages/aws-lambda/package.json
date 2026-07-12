@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/aws-lambda",
-  "version": "0.7.26",
+  "version": "0.7.54",
   "description": "AWS Lambda adapter for HyperFrames distributed rendering — handler, client-side SDK, and CDK construct.",
   "repository": {
     "type": "git",
@@ -53,7 +53,7 @@
     "@sparticuz/chromium": "148.0.0",
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
-    "puppeteer-core": "^24.39.1",
+    "puppeteer-core": "^25.2.1",
     "tar": "^7.4.3"
   },
   "devDependencies": {

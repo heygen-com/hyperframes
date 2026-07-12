@@ -153,7 +153,9 @@ for (const m of mounted) {
   body.push("");
 }
 
-// BGM (track 11) — full duration; duck slightly when VO present
+// BGM (track 11) — full duration. Here the music IS the content (music-first
+// skill), so it never drops to the explainer pipelines' narration-bed default
+// (bgmDefaultVolume() 0.12 ≈ -18 dB): an incidental VO ducks it only slightly.
 let bgmEmitted = false;
 if (existsSync(join(hyperframesDir, bgmRel))) {
   const vol = voiceCount > 0 ? 0.8 : 0.9;

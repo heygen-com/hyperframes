@@ -8,12 +8,13 @@ A storyboard is the **plan layer** for a video — an ordered set of **frames** 
 
 YAML block at the top. Unknown keys are kept under `globals.extra`.
 
-| Key        | Meaning         | Example                                   |
-| ---------- | --------------- | ----------------------------------------- |
-| `format`   | Canvas size     | `1920x1080`                               |
-| `message`  | One-line thesis | `Ship a launch video in an afternoon`     |
-| `arc`      | Narrative arc   | `Hook → Problem → Solution → Proof → CTA` |
-| `audience` | Who it's for    | `indie devs on X`                         |
+| Key        | Meaning                                                           | Example                                   |
+| ---------- | ----------------------------------------------------------------- | ----------------------------------------- |
+| `format`   | Canvas size                                                       | `1920x1080`                               |
+| `message`  | One-line thesis                                                   | `Ship a launch video in an afternoon`     |
+| `arc`      | Narrative arc                                                     | `Hook → Problem → Solution → Proof → CTA` |
+| `audience` | Who it's for                                                      | `indie devs on X`                         |
+| `mode`     | Interaction mode (see `brief-contract.md`; default collaborative) | `autonomous`                              |
 
 ## Per-frame sections
 

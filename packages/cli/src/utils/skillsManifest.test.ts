@@ -1,16 +1,51 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   hashSkillBundle,
   buildManifest,
   checkSkills,
   diffSkills,
+  FALLBACK_CORE_SKILLS,
+  isCoreSkill,
+  MANIFEST_FILE,
+  presentSkills,
+  pruneOrphanedLockEntries,
   skillsAttributedToSource,
   type SkillsManifest,
   type SkillEntry,
 } from "./skillsManifest.js";
+
+// The retired-skill regression tests below drive `checkSkills`'s real
+// `canonical: true` network path (see resolveLatestManifest) instead of an
+// explicit local `source` — that's the whole point (it must NOT read a stale
+// local repo manifest). Stub the two network boundaries it can reach so those
+// tests stay fast and offline: `git ls-remote` (remoteHeadSha) always "fails"
+// so it falls back to the branch URL, and `fetch` is stubbed per-test. `vi.mock`
+// is hoisted above these imports regardless of source position. No existing
+// test in this file omits `source`, so nothing else touches this mock.
+vi.mock("node:child_process", () => ({
+  execFile: vi.fn(
+    (
+      _cmd: string,
+      _args: readonly string[],
+      _opts: unknown,
+      callback: (err: Error | null) => void,
+    ) => callback(new Error("no git in tests")),
+  ),
+}));
 
 let root: string;
 
@@ -70,6 +105,40 @@ describe("buildManifest", () => {
   });
 });
 
+describe("isCoreSkill", () => {
+  it("classifies the entry router, hyperframes-* domain skills, and media-use as core", () => {
+    expect(isCoreSkill("hyperframes")).toBe(true);
+    expect(isCoreSkill("hyperframes-core")).toBe(true);
+    expect(isCoreSkill("hyperframes-animation")).toBe(true);
+    expect(isCoreSkill("media-use")).toBe(true);
+    // End-user workflows and optional integrations install on demand.
+    expect(isCoreSkill("pr-to-video")).toBe(false);
+    expect(isCoreSkill("embedded-captions")).toBe(false);
+    expect(isCoreSkill("figma")).toBe(false);
+  });
+});
+
+describe("FALLBACK_CORE_SKILLS pin", () => {
+  // The fallback list exists because isCoreSkill is a pattern and the offline
+  // path can't enumerate a pattern. This pins the list to the repo's actual
+  // skills/ tree so it can't drift silently when core membership changes.
+  it("matches the core skills present in the repo's skills/ tree exactly", () => {
+    const skillsRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "..",
+      "..",
+      "skills",
+    );
+    const onDisk = readdirSync(skillsRoot).filter((n) =>
+      existsSync(join(skillsRoot, n, "SKILL.md")),
+    );
+    const coreOnDisk = onDisk.filter((n) => isCoreSkill(n)).sort();
+    expect([...FALLBACK_CORE_SKILLS].sort()).toEqual(coreOnDisk);
+  });
+});
+
 describe("diffSkills", () => {
   const latest: SkillsManifest = {
     source: "test",
@@ -94,14 +163,10 @@ describe("diffSkills", () => {
       changed: "outdated",
       gone: "missing",
     });
-    expect(diff.summary).toEqual({ current: 1, outdated: 1, missing: 1 });
+    expect(diff.summary).toEqual({ current: 1, outdated: 1, missing: 1, coreMissing: 0 });
   });
 
-  it("flags updateAvailable when a skill is outdated OR missing", () => {
-    // The full set is the goal, so missing skills now count too.
-    const missingOnly = diffSkills({ keep: { hash: "h1", files: 1 } }, latest);
-    expect(missingOnly.updateAvailable).toBe(true);
-
+  it("flags updateAvailable for anything outdated", () => {
     const hasOutdated = diffSkills({ changed: { hash: "X", files: 1 } }, latest);
     expect(hasOutdated.updateAvailable).toBe(true);
 
@@ -127,6 +192,57 @@ describe("diffSkills", () => {
       latest,
     );
     expect(withExtra.updateAvailable).toBe(false);
+  });
+
+  it("a missing on-demand skill is NOT an update — a missing core skill is", () => {
+    // The old semantics ("full set is the goal") made any missing skill flip
+    // updateAvailable, which re-pulled all skills onto deliberate partial
+    // installs. On-demand skills now install when their workflow triggers.
+    const withCore: SkillsManifest = {
+      source: "test",
+      skills: {
+        hyperframes: { hash: "e1", files: 1 }, // core: entry router
+        "pr-to-video": { hash: "w1", files: 1 }, // on-demand workflow
+      },
+    };
+
+    // Core current, workflow missing → partial install is fine, no update.
+    const workflowMissing = diffSkills({ hyperframes: { hash: "e1", files: 1 } }, withCore);
+    expect(workflowMissing.updateAvailable).toBe(false);
+    expect(workflowMissing.summary).toEqual({
+      current: 1,
+      outdated: 0,
+      missing: 1,
+      coreMissing: 0,
+    });
+
+    // Core itself missing → every workflow needs it, so that IS an update.
+    const coreMissing = diffSkills({ "pr-to-video": { hash: "w1", files: 1 } }, withCore);
+    expect(coreMissing.updateAvailable).toBe(true);
+    expect(coreMissing.summary).toEqual({ current: 1, outdated: 0, missing: 1, coreMissing: 1 });
+  });
+});
+
+describe("presentSkills", () => {
+  it("returns only the names present in the located install", () => {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    mkdirSync(project, { recursive: true });
+    const skillsDir = join(home, ".claude/skills");
+    mkdirSync(join(skillsDir, "hyperframes"), { recursive: true });
+    writeFileSync(join(skillsDir, "hyperframes", "SKILL.md"), "# hyperframes");
+
+    expect(presentSkills(["hyperframes", "pr-to-video"], { cwd: project, home })).toEqual([
+      "hyperframes",
+    ]);
+  });
+
+  it("returns [] when no install exists at all", () => {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    mkdirSync(home, { recursive: true });
+    mkdirSync(project, { recursive: true });
+    expect(presentSkills(["hyperframes"], { cwd: project, home })).toEqual([]);
   });
 });
 
@@ -213,11 +329,22 @@ describe("checkSkills install detection", () => {
     const home = join(root, "home");
     mkdirSync(project, { recursive: true });
     mkdirSync(home, { recursive: true });
-    const source = writeManifest(root);
+    // A manifest with a core skill: a truly fresh machine is missing the core
+    // set, and THAT (not the missing on-demand skills) makes the update
+    // available.
+    const source = join(root, "manifest-core.json");
+    writeFileSync(
+      source,
+      JSON.stringify({
+        source: "test",
+        skills: { hyperframes: { hash: "x", files: 1 }, alpha: { hash: "y", files: 1 } },
+      }),
+    );
 
     const res = await checkSkills({ source, cwd: project, home });
     expect(res.location).toBeNull();
     expect(res.summary.missing).toBe(2);
+    expect(res.summary.coreMissing).toBe(1);
     expect(res.updateAvailable).toBe(true);
   });
 
@@ -349,7 +476,13 @@ describe("checkSkills removed-upstream detection", () => {
     writeGlobalLock(home, { alpha: { source: "test" }, gamma: { source: "test" } });
 
     const res = await checkSkills(opts);
-    expect(res.summary).toEqual({ current: 1, outdated: 0, missing: 0, removed: 1 });
+    expect(res.summary).toEqual({
+      current: 1,
+      outdated: 0,
+      missing: 0,
+      coreMissing: 0,
+      removed: 1,
+    });
     expect(res.updateAvailable).toBe(true);
   });
 
@@ -447,5 +580,175 @@ describe("checkSkills removed-upstream detection", () => {
     const byName = Object.fromEntries(res.skills.map((s) => [s.name, s.status]));
     expect(byName.gamma).toBe("removed");
     expect(res.summary.removed).toBe(1);
+  });
+});
+
+// Regression coverage for "variant 1" of the retired-skill bug: `updateSkills`
+// (see commands/skills.ts) resolves its own targeted-install check with
+// `canonical: true` specifically so it never trusts a stale local
+// `skills-manifest.json` — this is the mechanism that makes that safe.
+describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetchedManifest(manifest: SkillsManifest): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => manifest }) as unknown as Response),
+    );
+  }
+
+  it("without canonical, a stale in-repo manifest wins (documented dev/CI shortcut)", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    // A checked-out repo's own manifest, stale: it still lists a skill that
+    // has since been retired from the canonical published repo.
+    writeFileSync(
+      join(project, MANIFEST_FILE),
+      JSON.stringify({
+        source: "heygen-com/hyperframes",
+        skills: { "retired-skill": { hash: "x", files: 1 } },
+      }),
+    );
+
+    const res = await checkSkills({ cwd: project, home });
+    expect(res.skills.map((s) => s.name)).toContain("retired-skill");
+  });
+
+  it("with canonical:true, the same stale in-repo manifest is ignored — the fetched manifest wins", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(project, MANIFEST_FILE),
+      JSON.stringify({
+        source: "heygen-com/hyperframes",
+        skills: { "retired-skill": { hash: "x", files: 1 }, kept: { hash: "y", files: 1 } },
+      }),
+    );
+    // The canonical (fetched) manifest no longer ships `retired-skill`.
+    stubFetchedManifest({
+      source: "heygen-com/hyperframes",
+      skills: { kept: { hash: "y", files: 1 } },
+    });
+
+    const res = await checkSkills({ cwd: project, home, canonical: true });
+    expect(res.skills.map((s) => s.name)).not.toContain("retired-skill");
+    expect(res.skills.map((s) => s.name)).toContain("kept");
+  });
+
+  it("canonical:true still honors an explicit local `source` override", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(project, MANIFEST_FILE),
+      JSON.stringify({ source: "test", skills: { "from-repo-shortcut": { hash: "x", files: 1 } } }),
+    );
+    const explicitSource = join(root, "explicit-manifest.json");
+    writeFileSync(
+      explicitSource,
+      JSON.stringify({
+        source: "test",
+        skills: { "from-explicit-source": { hash: "y", files: 1 } },
+      }),
+    );
+
+    // An explicit `source` is a deliberate caller choice — canonical must not
+    // override it, only the silent in-repo shortcut.
+    const res = await checkSkills({ source: explicitSource, cwd: project, home, canonical: true });
+    expect(res.skills.map((s) => s.name)).toEqual(["from-explicit-source"]);
+  });
+});
+
+describe("pruneOrphanedLockEntries", () => {
+  function writeLock(path: string, skills: Record<string, { source: string }>): void {
+    writeFileSync(path, JSON.stringify({ version: 1, skills, dismissed: [] }));
+  }
+
+  it("removes only the given names, leaving other entries and lock fields intact", () => {
+    const home = join(root, "home");
+    mkdirSync(join(home, ".agents"), { recursive: true });
+    const lockPath = join(home, ".agents", ".skill-lock.json");
+    writeLock(lockPath, {
+      a: { source: "heygen-com/hyperframes" },
+      b: { source: "heygen-com/hyperframes" },
+      c: { source: "heygen-com/hyperframes" },
+    });
+
+    const pruned = pruneOrphanedLockEntries(["a", "b"], "global", { home });
+
+    expect(pruned.sort()).toEqual(["a", "b"]);
+    const rewritten = JSON.parse(readFileSync(lockPath, "utf8"));
+    expect(Object.keys(rewritten.skills)).toEqual(["c"]);
+    expect(rewritten.version).toBe(1); // other lock fields survive the rewrite
+  });
+
+  it("is idempotent — a second call with the same names finds nothing left and no-ops", () => {
+    const home = join(root, "home");
+    mkdirSync(join(home, ".agents"), { recursive: true });
+    const lockPath = join(home, ".agents", ".skill-lock.json");
+    writeLock(lockPath, { a: { source: "heygen-com/hyperframes" } });
+
+    const first = pruneOrphanedLockEntries(["a"], "global", { home });
+    expect(first).toEqual(["a"]);
+
+    const before = readFileSync(lockPath, "utf8");
+    const second = pruneOrphanedLockEntries(["a"], "global", { home });
+    expect(second).toEqual([]);
+    // No entries left to touch → the file is never rewritten a second time.
+    expect(readFileSync(lockPath, "utf8")).toBe(before);
+  });
+
+  it("writes atomically with no trailing newline, no leftover temp file, and preserves the file mode", () => {
+    const home = join(root, "home-atomic");
+    mkdirSync(join(home, ".agents"), { recursive: true });
+    const lockPath = join(home, ".agents", ".skill-lock.json");
+    writeLock(lockPath, {
+      a: { source: "heygen-com/hyperframes" },
+      b: { source: "heygen-com/hyperframes" },
+    });
+    chmodSync(lockPath, 0o640);
+
+    const pruned = pruneOrphanedLockEntries(["a"], "global", { home });
+
+    expect(pruned).toEqual(["a"]);
+    const raw = readFileSync(lockPath, "utf8");
+    expect(raw.endsWith("\n")).toBe(false);
+    expect(JSON.parse(raw).skills).toEqual({ b: { source: "heygen-com/hyperframes" } });
+    // No `.tmp` sibling left behind by the temp-file + rename.
+    expect(readdirSync(join(home, ".agents"))).toEqual([".skill-lock.json"]);
+    // Original permissions survive the rewrite (POSIX only — Windows's fs
+    // layer reports 0o666 regardless of the mode we set, so the bits aren't
+    // meaningful there).
+    if (process.platform !== "win32") {
+      expect(statSync(lockPath).mode & 0o777).toBe(0o640);
+    }
+  });
+
+  it("no-ops without throwing when the lock file doesn't exist", () => {
+    const home = join(root, "home-without-lock");
+    mkdirSync(home, { recursive: true });
+    expect(pruneOrphanedLockEntries(["a"], "global", { home })).toEqual([]);
+  });
+
+  it("resolves the project lock at <cwd>/skills-lock.json for scope: project", () => {
+    const project = join(root, "project");
+    mkdirSync(project, { recursive: true });
+    writeLock(join(project, "skills-lock.json"), {
+      a: { source: "heygen-com/hyperframes" },
+      b: { source: "heygen-com/hyperframes" },
+    });
+
+    const pruned = pruneOrphanedLockEntries(["a"], "project", { cwd: project });
+
+    expect(pruned).toEqual(["a"]);
+    const rewritten = JSON.parse(readFileSync(join(project, "skills-lock.json"), "utf8"));
+    expect(Object.keys(rewritten.skills)).toEqual(["b"]);
   });
 });

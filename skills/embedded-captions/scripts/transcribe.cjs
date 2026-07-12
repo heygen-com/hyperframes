@@ -110,7 +110,7 @@ function main() {
     console.error("usage: transcribe.cjs <project-dir> [model] [language]");
     process.exit(1);
   }
-  // Default = multilingual `small`, NOT `small.en`. Per hyperframes-media: ".en models
+  // Default = multilingual `small`, NOT `small.en`. Per media-use: ".en models
   // mistranslate non-English and mis-handle accented speech; default to small (auto-detects
   // language)." We hardcoded small.en before — it hallucinated a wrong transcript on an
   // accented speaker. Pass `small.en` only for known-clean-English; tough accents → a larger model.

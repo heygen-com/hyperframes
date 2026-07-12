@@ -209,6 +209,67 @@ describe("edit history", () => {
     expect(state.undo[0].files["index.html"].after).toBe("c");
   });
 
+  it("folds a slow GSAP follow-up into the timing edit via a per-entry coalesceMs override", () => {
+    const timing = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Resize timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-resize:clip",
+      files: { "index.html": { before: "orig", after: "timing" } },
+      now: 0,
+      id: "timing",
+    });
+    // The server GSAP rewrite lands ~2s later, past the 300ms default window, but the
+    // follow-up carries a large coalesceMs so undo still collapses to a single step.
+    const gsap = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Resize timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-resize:clip",
+      coalesceMs: 10_000,
+      files: { "index.html": { before: "timing", after: "timing+gsap" } },
+      now: 2000,
+      id: "gsap",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), timing),
+      gsap,
+    );
+
+    expect(state.undo).toHaveLength(1);
+    expect(state.undo[0].files["index.html"].before).toBe("orig");
+    expect(state.undo[0].files["index.html"].after).toBe("timing+gsap");
+  });
+
+  it("does not merge a slow follow-up without the coalesceMs override", () => {
+    const timing = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Resize timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-resize:clip",
+      files: { "index.html": { before: "orig", after: "timing" } },
+      now: 0,
+      id: "timing",
+    });
+    const late = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Resize timeline clip",
+      kind: "timeline",
+      coalesceKey: "timeline-resize:clip",
+      files: { "index.html": { before: "timing", after: "timing+gsap" } },
+      now: 2000,
+      id: "late",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), timing),
+      late,
+    );
+
+    expect(state.undo).toHaveLength(2);
+  });
+
   it("coalesces entries with the same coalesceKey within the window (prop: format)", () => {
     const first = buildEditHistoryEntry({
       projectId: "project-1",

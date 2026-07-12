@@ -30,7 +30,7 @@ export class CubeLutParseError extends Error {
 
 const DEFAULT_DOMAIN_MIN: CubeLutVec3 = [0, 0, 0];
 const DEFAULT_DOMAIN_MAX: CubeLutVec3 = [1, 1, 1];
-const DEFAULT_MAX_SIZE = 64;
+export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
 
 function stripComment(line: string): string {
   let inQuote = false;
@@ -93,7 +93,7 @@ function isNumericDataLine(token: string): boolean {
 
 // fallow-ignore-next-line complexity
 export function parseCubeLut(input: string, options: ParseCubeLutOptions = {}): CubeLut3D {
-  const maxSize = options.maxSize ?? DEFAULT_MAX_SIZE;
+  const maxSize = options.maxSize ?? DEFAULT_MAX_CUBE_LUT_SIZE;
   let title: string | null = null;
   let domainMin: CubeLutVec3 = DEFAULT_DOMAIN_MIN;
   let domainMax: CubeLutVec3 = DEFAULT_DOMAIN_MAX;
@@ -120,6 +120,19 @@ export function parseCubeLut(input: string, options: ParseCubeLutOptions = {}): 
     }
     if (keyword === "DOMAIN_MAX") {
       domainMax = parseVec3(rest, keyword, lineNumber);
+      continue;
+    }
+    if (keyword === "LUT_3D_INPUT_RANGE") {
+      if (rest.length !== 2) {
+        throw new CubeLutParseError(`${keyword} expects two numbers`, lineNumber);
+      }
+      const min = parseFiniteNumber(rest[0]!, lineNumber);
+      const max = parseFiniteNumber(rest[1]!, lineNumber);
+      if (max <= min) {
+        throw new CubeLutParseError("LUT_3D_INPUT_RANGE max must exceed min", lineNumber);
+      }
+      domainMin = [min, min, min];
+      domainMax = [max, max, max];
       continue;
     }
     if (keyword === "LUT_1D_SIZE") {

@@ -38,9 +38,12 @@ export interface ClipManifestClip {
   start: number;
   duration: number;
   track: number;
+  zIndex?: number;
+  stackingContextId?: string | null;
   kind: "video" | "audio" | "image" | "element" | "composition";
   tagName: string | null;
   compositionId: string | null;
+  compositionAncestors?: string[];
   parentCompositionId: string | null;
   compositionSrc: string | null;
   assetUrl: string | null;

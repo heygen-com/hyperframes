@@ -4,6 +4,7 @@ export type {
   StudioApiAdapter,
   ResolvedProject,
   RenderJobState,
+  MediaProcessingJobState,
   LintResult,
   StudioSelectionResponse,
   StudioSelectionSnapshot,
@@ -13,6 +14,10 @@ export { isSafePath, walkDir } from "./helpers/safePath.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
 export { getElementScreenshotClip, type ScreenshotClip } from "./helpers/screenshotClip.js";
+export {
+  createBackgroundRemovalJob,
+  type BackgroundRemovalRender,
+} from "./helpers/backgroundRemovalJob.js";
 export {
   STUDIO_MANUAL_EDITS_PATH,
   createStudioManualEditsRenderBodyScript,

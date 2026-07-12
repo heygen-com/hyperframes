@@ -2,12 +2,14 @@ import { useCallback, useState, type RefObject } from "react";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { TRACK_H, resolveTimelineAssetDrop } from "./timelineLayout";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrder";
 
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
   durationRef: RefObject<number>;
-  trackOrderRef: RefObject<number[]>;
+  trackOrderRef: RefObject<TimelineLayerId[]>;
+  timelineLayersRef: RefObject<StackingTimelineLayer[]>;
 }
 
 export function useTimelineAssetDrop({
@@ -15,6 +17,7 @@ export function useTimelineAssetDrop({
   ppsRef,
   durationRef,
   trackOrderRef,
+  timelineLayersRef,
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
@@ -39,6 +42,10 @@ export function useTimelineAssetDrop({
       setIsDragOver(false);
       const scroll = scrollRef.current;
       const rect = scroll?.getBoundingClientRect();
+      const layerById = new Map(timelineLayersRef.current.map((layer) => [layer.id, layer]));
+      const trackOrder = trackOrderRef.current
+        .map((id) => layerById.get(id)?.placementTrack)
+        .filter((track): track is number => track != null);
       const dropInput = {
         rectLeft: rect?.left ?? 0,
         rectTop: rect?.top ?? 0,
@@ -47,7 +54,7 @@ export function useTimelineAssetDrop({
         pixelsPerSecond: ppsRef.current,
         duration: durationRef.current,
         trackHeight: TRACK_H,
-        trackOrder: trackOrderRef.current,
+        trackOrder,
       };
       if (onFileDrop && e.dataTransfer.files.length > 0) {
         void onFileDrop(
@@ -84,7 +91,16 @@ export function useTimelineAssetDrop({
         }
       }
     },
-    [onAssetDrop, onBlockDrop, onFileDrop, scrollRef, ppsRef, durationRef, trackOrderRef],
+    [
+      onAssetDrop,
+      onBlockDrop,
+      onFileDrop,
+      scrollRef,
+      ppsRef,
+      durationRef,
+      trackOrderRef,
+      timelineLayersRef,
+    ],
   );
 
   return { isDragOver, setIsDragOver, handleAssetDragOver, handleAssetDrop };

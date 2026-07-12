@@ -26,6 +26,7 @@ npm install @hyperframes/parsers
 | Import | Description |
 |--------|-------------|
 | `@hyperframes/parsers` | HTML parser, GSAP serialize/validate helpers, hf-ids, shared types |
+| `@hyperframes/parsers/gsap-parser` | GSAP parser exports, `parseGsapScript`, `SUPPORTED_PROPS`, `SUPPORTED_EASES` |
 | `@hyperframes/parsers/gsap-parser-acorn` | Acorn-based GSAP parser (browser-safe, read path) |
 | `@hyperframes/parsers/gsap-writer-acorn` | Acorn-based GSAP writer (mutation helpers) |
 | `@hyperframes/parsers/gsap-parser-recast` | Recast-based GSAP parser/writer (legacy implementation) |
@@ -35,6 +36,7 @@ npm install @hyperframes/parsers
 | `@hyperframes/parsers/slideshow` | Slideshow manifest parser (`parseSlideshowManifest`, `resolveSlideshow`) |
 | `@hyperframes/parsers/composition` | Pure, browser-safe composition primitives (data types, font aliases, URL helper) |
 | `@hyperframes/parsers/asset-paths` | Node-only asset-path rewriting helpers (`rewriteAssetPath`, …) |
+| `@hyperframes/parsers/sub-composition-validity` | Sub-composition validation utilities |
 
 <Info>
   The package ships subpath entries so consumers tree-shake to what they use — importing `@hyperframes/parsers/hf-ids` (a couple KB) does **not** pull in the GSAP AST machinery (recast/babel/acorn).

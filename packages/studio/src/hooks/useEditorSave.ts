@@ -18,6 +18,7 @@ interface UseEditorSaveOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  showToast: (message: string, tone?: "error" | "info") => void;
 }
 
 export function useEditorSave({
@@ -28,9 +29,13 @@ export function useEditorSave({
   recordEdit,
   domEditSaveTimestampRef,
   setRefreshKey,
+  showToast,
 }: UseEditorSaveOptions) {
   const saveRafRef = useRef<number | null>(null);
   const refreshRafRef = useRef<number | null>(null);
+  // One error toast per burst of failures — every keystroke retries the save,
+  // and error toasts persist until dismissed, so don't stack duplicates.
+  const lastFailureToastAtRef = useRef(0);
 
   const handleContentChange = useCallback(
     (content: string) => {
@@ -61,6 +66,14 @@ export function useEditorSave({
               source: "code_editor",
               error_message: error instanceof Error ? error.message : "unknown",
             });
+            const now = Date.now();
+            if (now - lastFailureToastAtRef.current > 5000) {
+              lastFailureToastAtRef.current = now;
+              showToast(
+                `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
+                "error",
+              );
+            }
           });
       });
     },
@@ -71,6 +84,7 @@ export function useEditorSave({
       readProjectFile,
       recordEdit,
       setRefreshKey,
+      showToast,
       writeProjectFile,
     ],
   );

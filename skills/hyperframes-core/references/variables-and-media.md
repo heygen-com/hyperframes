@@ -15,12 +15,29 @@ Declare variables on the `<html>` element with `data-composition-variables`. Eac
 ></html>
 ```
 
-Read resolved values once during initialization:
+**Prefer declarative bindings — no script needed** for direct substitution:
+
+```html
+<img class="clip" data-start="0" data-duration="5" data-var-src="heroImage" src="fallback.jpg" />
+<h1 class="clip" data-start="0" data-duration="5" data-var-text="title">Fallback</h1>
+<style>
+  .card {
+    color: var(--accent);
+  }
+</style>
+```
+
+- `data-var-src="id"` substitutes the element's `src` (URL string or image `{url}`); the authored `src` is the fallback.
+- `data-var-text="id"` substitutes the element's own text; element children (nested clips, animated spans) are preserved.
+- Every scalar variable is applied automatically as a `--{id}` CSS custom property on the composition root, so `var(--id)` CSS responds to overrides — no `setProperty` boilerplate.
+- Bindings resolve identically in preview and render, and per-instance for sub-compositions.
+- Caveat: media with audio should keep a real fallback `src` — render audio extraction reads the authored attribute (lint: `media_variable_src_no_fallback`).
+
+For logic beyond direct substitution (loops, conditionals, derived values), read values once during initialization:
 
 ```js
 const { title, accent } = window.__hyperframes.getVariables();
 document.getElementById("title").textContent = title;
-document.documentElement.style.setProperty("--accent", accent);
 ```
 
 ### Variable Rules
@@ -36,7 +53,7 @@ document.documentElement.style.setProperty("--accent", accent);
 - Use `npx hyperframes render --variables '{"title":"Q4 Report"}'` or `--variables-file` for render-time overrides.
 - Add `--strict-variables` in CI: turns undeclared keys, type mismatches, and enum values not in `options` into errors instead of warnings.
 - Read values once during init, not on every animation tick — variables don't change mid-render.
-- Media color grading can use exact variable references inside `data-color-grading` JSON. Use `$gradingPreset` or `${gradingIntensity}` as the whole field value; the runtime resolves it from the current composition's variables before applying the shader grading.
+- Media color grading can use exact variable references inside `data-color-grading` JSON. Use `$gradingPreset` or `${gradingIntensity}` as the whole field value; the runtime resolves it from the current composition's variables before applying shader adjustments, finishing details, blur/pixelate effects, and custom LUTs.
 
 ### Two JSON Shapes (Easy to Confuse)
 

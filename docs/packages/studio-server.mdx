@@ -29,6 +29,7 @@ npm install @hyperframes/studio-server
 | Import | Description |
 |--------|-------------|
 | `@hyperframes/studio-server` | `createStudioApi`, helpers, types |
+| `@hyperframes/studio-server/source-mutation` | Source mutation utilities |
 | `@hyperframes/studio-server/screenshot-clip` | Element screenshot-clip geometry |
 | `@hyperframes/studio-server/manual-edits-render-script` | Manual-edits render body script |
 | `@hyperframes/studio-server/studio-motion-render-script` | Studio motion render body script |
@@ -49,6 +50,8 @@ const adapter: StudioApiAdapter = {
   bundle: async (projectDir) => bundleToSingleHtml(projectDir),
   lint: (html, opts) => lintHyperframeHtml(html, opts),
   runtimeUrl: '/hyperframe-runtime.js',
+  rendersDir: (project) => join(project.dir, 'renders'),
+  startRender: async (opts) => startRenderJob(opts),
 };
 
 const api = createStudioApi(adapter); // → Hono app

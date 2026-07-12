@@ -28,6 +28,13 @@ import {
   MAX_TRANSIENT_CAPTURE_RETRIES,
   resolveCaptureForceScreenshotForPageSideCompositing,
   shouldDiscardProbeSessionForPageSideCompositing,
+  resolveInversionRetryPlan,
+  resolveParallelRouterRetryPlan,
+  resetCaptureAttemptProgress,
+  shouldRetryViaPinnedFallback,
+  shouldPreferParallelDrawElement,
+  shouldPreferSingleWorkerDrawElement,
+  shouldStreamParallelCapture,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -107,9 +114,55 @@ describe("extractStandaloneEntryFromIndex", () => {
 
     expect(extracted).toBeNull();
   });
+
+  it("re-points the wrapper duration at the scene's own, not the master's", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="3"></div></template>`;
+
+    const extracted = extractStandaloneEntryFromIndex(
+      indexHtml,
+      "compositions/scene1.html",
+      sceneHtml,
+    );
+
+    // The extracted standalone advertises the scene file's 3s, not the mount's 2s or master's 12s.
+    expect(extracted).toContain('data-duration="3"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
+
+  it("falls back to the mount's data-duration when the scene file isn't supplied", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+    const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/scene1.html");
+
+    expect(extracted).toContain('data-duration="2"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
 });
 
 describe("captureAttemptMadeProgress", () => {
+  it("resets completed frames before a fallback attempt starts", () => {
+    const job = { framesRendered: 900 };
+
+    resetCaptureAttemptProgress(job);
+
+    expect(job.framesRendered).toBe(0);
+  });
+
   it("retries when the attempt captured at least one frame toward its target", () => {
     // targeted 100 frames, 40 still missing -> 60 captured -> worth retrying the rest
     expect(captureAttemptMadeProgress(100, 40)).toBe(true);
@@ -400,6 +453,14 @@ describe("shouldUseStreamingEncode", () => {
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 2, 240)).toBe(false);
   });
 
+  it("forceParallelStream overrides the parallel-capture clamp for verified multi-worker streaming", () => {
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 240, true)).toBe(true);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 3, 240, false)).toBe(false);
+    expect(shouldUseStreamingEncode(streamingEnabledConfig, "png-sequence", 3, 240, true)).toBe(
+      false,
+    );
+  });
+
   it("keeps renders over the configured max duration on normal encoding", () => {
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240)).toBe(true);
     expect(shouldUseStreamingEncode(streamingEnabledConfig, "mp4", 1, 240.001)).toBe(false);
@@ -553,6 +614,188 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(extracted.outputDir).toBe(linkPath);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("falls back to copying frames when symlinkSync fails with EPERM (Windows, no Developer Mode)", () => {
+    // Windows without Developer Mode/Administrator rejects symlink creation with
+    // EPERM — high/standard-quality renders failed here while draft worked. The
+    // helper must degrade to a recursive copy instead of throwing.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          const err: NodeJS.ErrnoException = new Error("EPERM: operation not permitted, symlink");
+          err.code = "EPERM";
+          throw err;
+        },
+        cpSync: (src, dest, options) => {
+          copies.push({ src, dest, recursive: options.recursive });
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+    expect(extracted.outputDir).toBe(linkPath);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  it("rethrows a non-permission symlink error instead of masking it with a copy", () => {
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+
+    expect(() =>
+      materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+        pathModule: win32,
+        fileSystem: {
+          existsSync: () => false,
+          mkdirSync: () => undefined,
+          symlinkSync: () => {
+            const err: NodeJS.ErrnoException = new Error("ENOSPC: no space left");
+            err.code = "ENOSPC";
+            throw err;
+          },
+          cpSync: () => {
+            throw new Error("must not fall back to copy for a non-permission error");
+          },
+        },
+      }),
+    ).toThrow(/ENOSPC/);
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("clears a stale dangling entry and re-stages when symlinkSync fails with EEXIST", () => {
+    // After the extraction cache is GC'd, a symlink from a prior render dangles
+    // (its target removed). existsSync() follows the dead link so the caller's
+    // guard reads it as absent and reaches staging, but the link file itself
+    // still exists, so symlinkSync collides with EEXIST. The helper must clear
+    // the stale entry (rmSync) and re-stage, not hard-fail the render.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    const removed: string[] = [];
+    const symlinks: Array<{ target: string; path: string }> = [];
+    let symlinkCalls = 0;
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          symlinkCalls += 1;
+          if (symlinkCalls === 1) {
+            const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists, symlink");
+            err.code = "EEXIST";
+            throw err;
+          }
+          symlinks.push({ target, path });
+        },
+        cpSync: () => {
+          throw new Error("EEXIST recovery should re-link, not copy");
+        },
+        rmSync: (path) => {
+          removed.push(path);
+        },
+      },
+    });
+
+    expect(removed).toEqual([linkPath]);
+    expect(symlinks).toEqual([{ target: outputDir, path: linkPath }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("falls back to copying when symlinkSync fails with UNKNOWN (some Windows privilege denials)", () => {
+    // Some Windows builds surface a no-symlink-privilege denial as an
+    // UNKNOWN-coded error rather than EPERM/EACCES — it must still degrade to a
+    // copy, not hard-fail the render.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          const err: NodeJS.ErrnoException = new Error("UNKNOWN: unknown error, symlink");
+          err.code = "UNKNOWN";
+          throw err;
+        },
+        cpSync: (src, dest, options) => {
+          copies.push({ src, dest, recursive: options.recursive });
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("clears a stale entry and re-copies when the eager-copy path (materializeSymlinks) hits EEXIST", () => {
+    // #2025 routes Windows through the eager-copy branch. Reusing a dir a prior
+    // Linux run populated with a (now dangling) symlink makes cpSync collide
+    // with EEXIST — the recovery must clear the stale entry and re-copy, exactly
+    // like the symlink path does.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    const removed: string[] = [];
+    const copies: Array<{ src: string; dest: string }> = [];
+    let cpCalls = 0;
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      materializeSymlinks: true,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: () => {
+          throw new Error("eager-copy path must not symlink");
+        },
+        cpSync: (src, dest) => {
+          cpCalls += 1;
+          if (cpCalls === 1) {
+            const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists, cp");
+            err.code = "EEXIST";
+            throw err;
+          }
+          copies.push({ src, dest });
+        },
+        rmSync: (path) => {
+          removed.push(path);
+        },
+      },
+    });
+
+    expect(removed).toEqual([linkPath]);
+    expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
 });
 
@@ -961,10 +1204,15 @@ describe("resolveRenderWorkerCount", () => {
       debug: vi.fn(),
     };
 
+    const stableCfg = {
+      ...cfg,
+      concurrency: 2 as const,
+      largeRenderThreshold: 1_000,
+    };
     const workers = resolveRenderWorkerCount(
       180,
       undefined,
-      { ...cfg, forceScreenshot: true },
+      { ...stableCfg, forceScreenshot: true },
       {
         hasShaderTransitions: false,
         renderModeHints: { recommendScreenshot: false, reasons: [] },
@@ -973,7 +1221,7 @@ describe("resolveRenderWorkerCount", () => {
       { multiplier: 1, reasons: [], p95Ms: 180 },
     );
 
-    expect(workers).toBe(6);
+    expect(workers).toBe(2);
     expect(log.warn).not.toHaveBeenCalled();
   });
 });
@@ -1380,5 +1628,465 @@ describe("resolveDeviceScaleFactor", () => {
         outputResolution: "landscape",
       }),
     ).toThrow(/aspect ratio/);
+  });
+});
+
+describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
+  const eligible = {
+    workerCount: 5,
+    requestedWorkers: "auto" as const,
+    useDrawElement: true,
+    deCompileGate: undefined,
+    forceScreenshot: false,
+    outputFormat: "mp4" as const,
+    totalFrames: 2380,
+    minFrames: 900,
+    singleWorkerStreamingOk: true,
+    layeredOrEffectRoute: false,
+    supersampling: false,
+    probeDeGated: false,
+    experimentalParallelDeOptIn: false,
+  };
+
+  it("inverts an auto-resolved multi-worker render for an eligible long comp", () => {
+    expect(shouldPreferSingleWorkerDrawElement(eligible)).toBe(true);
+  });
+
+  it("honors explicitly requested workers", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, requestedWorkers: 3 })).toBe(false);
+  });
+
+  it("inverts for requestedWorkers undefined — the value production actually passes for auto", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, requestedWorkers: undefined })).toBe(
+      true,
+    );
+  });
+
+  it("skips comps routed to layered/HDR/shader paths (drawElement never runs there)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, layeredOrEffectRoute: true })).toBe(
+      false,
+    );
+  });
+
+  it("skips supersampled renders (engine init-time DE gate)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, supersampling: true })).toBe(false);
+  });
+
+  it("skips when the probe session already shows DE gated out", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, probeDeGated: true })).toBe(false);
+  });
+
+  it("honors the explicit experimental parallel-DE opt-in", () => {
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, experimentalParallelDeOptIn: true }),
+    ).toBe(false);
+  });
+
+  it("skips below the amortization threshold (measured crossover ~900 frames)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 360 })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 900 })).toBe(true);
+  });
+
+  it("is disabled by minFrames <= 0 (HF_DE_SINGLE_MIN_FRAMES=0 kill switch)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: -1 })).toBe(false);
+  });
+
+  it("requires drawElement to be enabled and ungated", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, useDrawElement: false })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, deCompileGate: "3d" })).toBe(false);
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, forceScreenshot: true })).toBe(false);
+  });
+
+  it("only applies to the benchmarked configuration (mp4 + streaming-eligible)", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, singleWorkerStreamingOk: false }),
+    ).toBe(false);
+  });
+
+  it("is a no-op when workers already resolved to 1", () => {
+    expect(shouldPreferSingleWorkerDrawElement({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+});
+
+describe("resolveInversionRetryPlan (self-verify retry rollback)", () => {
+  const cfg = { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 240 };
+
+  it("returns null when the render was never inverted", () => {
+    expect(
+      resolveInversionRetryPlan({
+        deWorkerInversion: undefined,
+        preInversionWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+        isMemoryExhaustion: false,
+      }),
+    ).toBe(null);
+    expect(
+      resolveInversionRetryPlan({
+        deWorkerInversion: "reverted",
+        preInversionWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+        isMemoryExhaustion: false,
+      }),
+    ).toBe(null);
+  });
+
+  it("restores the pre-inversion worker count and routes multi-worker retries to disk", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: false,
+    });
+    expect(plan).toEqual({
+      workerCount: 5,
+      // shouldUseStreamingEncode is workerCount===1-only — parallel retry
+      // goes through the disk path.
+      useStreamingEncode: false,
+      deWorkerInversion: "reverted",
+    });
+  });
+
+  it("keeps streaming when the pre-inversion resolution was already single-worker", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 1,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: false,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deWorkerInversion: "reverted",
+    });
+  });
+
+  it("drops to a single worker on OOM regardless of the pre-inversion count (the actual memory remedy)", () => {
+    const plan = resolveInversionRetryPlan({
+      deWorkerInversion: "inverted",
+      preInversionWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: true,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deWorkerInversion: "reverted",
+    });
+  });
+});
+
+describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
+  const eligible = {
+    workerCount: 5,
+    requestedWorkers: "auto" as const,
+    useDrawElement: true,
+    deCompileGate: undefined,
+    forceScreenshot: false,
+    outputFormat: "mp4" as const,
+    totalFrames: 2381,
+    minFrames: 2000,
+    layeredOrEffectRoute: false,
+    supersampling: false,
+    probeDeGated: false,
+    experimentalParallelDeOptIn: false,
+    routerEnabled: true,
+    totalMemoryMb: 32768,
+    minMemoryMb: 24576,
+  };
+
+  it("routes an auto-resolved multi-worker render for an eligible long comp", () => {
+    expect(shouldPreferParallelDrawElement(eligible)).toBe(true);
+  });
+
+  it("withholds the parallel bet below the RAM floor (16 GB black-slab report)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 16384 })).toBe(false);
+  });
+
+  it("routes exactly at the RAM floor", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 24576 })).toBe(true);
+  });
+
+  it("minMemoryMb <= 0 disables the RAM guard", () => {
+    expect(
+      shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 8192, minMemoryMb: 0 }),
+    ).toBe(true);
+  });
+
+  it("is disabled by default (routerEnabled: false is the shipped default)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, routerEnabled: false })).toBe(false);
+  });
+
+  it("honors explicitly requested workers", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, requestedWorkers: 3 })).toBe(false);
+  });
+
+  it("routes for requestedWorkers undefined — the value production actually passes for auto", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, requestedWorkers: undefined })).toBe(
+      true,
+    );
+  });
+
+  it("skips comps routed to layered/HDR/shader paths (drawElement never runs there)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, layeredOrEffectRoute: true })).toBe(
+      false,
+    );
+  });
+
+  it("skips supersampled renders (engine init-time DE gate)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, supersampling: true })).toBe(false);
+  });
+
+  it("skips when the probe session already shows DE gated out", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, probeDeGated: true })).toBe(false);
+  });
+
+  it("honors the explicit experimental parallel-DE opt-in (already parallel, router is a no-op)", () => {
+    expect(
+      shouldPreferParallelDrawElement({ ...eligible, experimentalParallelDeOptIn: true }),
+    ).toBe(false);
+  });
+
+  it("skips below the amortization threshold (benchmark: real-work comps clear 1.25x at ~2,000+ frames)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalFrames: 915 })).toBe(false);
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalFrames: 2000 })).toBe(true);
+  });
+
+  it("is disabled by minFrames <= 0 (HF_DE_PARALLEL_MIN_FRAMES=0 kill switch)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
+    expect(shouldPreferParallelDrawElement({ ...eligible, minFrames: -1 })).toBe(false);
+  });
+
+  it("requires drawElement to be enabled and ungated", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, useDrawElement: false })).toBe(false);
+    expect(shouldPreferParallelDrawElement({ ...eligible, deCompileGate: "3d" })).toBe(false);
+    expect(shouldPreferParallelDrawElement({ ...eligible, forceScreenshot: true })).toBe(false);
+  });
+
+  it("only applies to mp4 (the benchmarked configuration)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, outputFormat: "webm" })).toBe(false);
+  });
+
+  it("is a no-op when workers already resolved to 1", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+});
+
+describe("resolveParallelRouterRetryPlan (self-verify retry rollback)", () => {
+  const cfg = { enableStreamingEncode: true, streamingEncodeMaxDurationSeconds: 240 };
+
+  it("returns null when the render was never router-routed", () => {
+    expect(
+      resolveParallelRouterRetryPlan({
+        deParallelRouter: undefined,
+        preRouterWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+        isMemoryExhaustion: false,
+      }),
+    ).toBe(null);
+    expect(
+      resolveParallelRouterRetryPlan({
+        deParallelRouter: "reverted",
+        preRouterWorkerCount: 5,
+        cfg,
+        outputFormat: "mp4",
+        durationSeconds: 80,
+        isMemoryExhaustion: false,
+      }),
+    ).toBe(null);
+  });
+
+  it("restores the pre-router worker count and routes multi-worker retries to disk", () => {
+    const plan = resolveParallelRouterRetryPlan({
+      deParallelRouter: "routed",
+      preRouterWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: false,
+    });
+    expect(plan).toEqual({
+      workerCount: 5,
+      useStreamingEncode: false,
+      deParallelRouter: "reverted",
+    });
+  });
+
+  it("drops to a single worker on OOM regardless of the pre-router count (the actual memory remedy)", () => {
+    const plan = resolveParallelRouterRetryPlan({
+      deParallelRouter: "routed",
+      preRouterWorkerCount: 5,
+      cfg,
+      outputFormat: "mp4",
+      durationSeconds: 80,
+      isMemoryExhaustion: true,
+    });
+    expect(plan).toEqual({
+      workerCount: 1,
+      useStreamingEncode: true,
+      deParallelRouter: "reverted",
+    });
+  });
+});
+
+describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic capture failures, including OOM)", () => {
+  it("always retries a drawElement self-verify failure, pinned or not", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: true,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("retries a generic capture failure when the router pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(true);
+  });
+
+  it("retries a generic capture failure when the inversion pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry a generic capture failure when nothing pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("retries OOM too when the router pinned the worker count (fallback's Chrome processes are already dead by the time this runs, and the fallback is pooled/lighter than the pinned path)", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(true);
+  });
+
+  it("retries OOM too when the inversion pinned the worker count", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not retry a generic failure on an already-reverted cohort (no pin left to retreat from)", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: false,
+        deWorkerInversion: "reverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("never retries a cancellation, even on a pinned cohort — must propagate immediately, not detour through a fresh encoder spin-up", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: "inverted",
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: false,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: "routed",
+      }),
+    ).toBe(false);
+  });
+
+  it("cancellation wins even if the error also looks like a self-verify failure", () => {
+    expect(
+      shouldRetryViaPinnedFallback({
+        isVerifyError: true,
+        isCancellation: true,
+        deWorkerInversion: undefined,
+        deParallelRouter: undefined,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
+  const eligible = {
+    routerEnabled: true,
+    workerCount: 3,
+    useDrawElement: false,
+    outputFormat: "mp4" as const,
+    streamingOk: true,
+    layeredOrEffectRoute: false,
+  };
+
+  it("routes an eligible multi-worker non-drawElement render", () => {
+    expect(shouldStreamParallelCapture(eligible)).toBe(true);
+  });
+
+  it("is disabled by default (kill switch off is the shipped default)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
+  });
+
+  it("never fires for single-worker renders (those already stream)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+
+  it("never fires when drawElement will capture (the DE routers own that path)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, useDrawElement: true })).toBe(false);
+  });
+
+  it("only applies to mp4", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "png-sequence" })).toBe(false);
+  });
+
+  it("respects the streaming-encode config/duration gates", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, streamingOk: false })).toBe(false);
+  });
+
+  it("skips HDR-layered and shader-transition routes", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
   });
 });

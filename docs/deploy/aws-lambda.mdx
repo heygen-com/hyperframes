@@ -44,7 +44,7 @@ The Lambda handler is a thin dispatch: parse the Step Functions event, download 
 
 | Tool | Why | Install |
 |------|-----|---------|
-| AWS credentials | The CLI and the deploy step both call AWS APIs. | Env vars, `~/.aws/credentials`, SSO, or IMDS — any chain `boto3` would resolve. |
+| AWS credentials | The CLI and the deploy step both call AWS APIs. | Env vars, `~/.aws/credentials`, SSO, or IMDS — any chain the AWS SDK for JavaScript v3 would resolve. |
 | AWS SAM CLI | `hyperframes lambda deploy/destroy` shells out to `sam deploy`/`sam delete`. | [Install guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) |
 | `bun` | Used to build `packages/aws-lambda/dist/handler.zip` at deploy time. | `npm install -g bun` or [bun.sh](https://bun.sh) |
 | HyperFrames repo checkout | `lambda deploy` builds the Lambda handler ZIP from source. Adopters who deploy outside a checkout can set `HYPERFRAMES_REPO_ROOT` to point at one. | `git clone https://github.com/heygen-com/hyperframes` |

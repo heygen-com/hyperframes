@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: HyperFrames CLI dev loop. Use when running npx hyperframes init, add, catalog, capture, lint, validate, inspect, layout, snapshot, preview, play, render, publish, lambda, doctor, browser, info, upgrade, skills, compositions, docs, benchmark, telemetry, transcribe, tts, or remove-background, or when troubleshooting the HyperFrames build/render environment. Entry point for AWS Lambda cloud rendering (`hyperframes lambda deploy / render / progress / destroy / policies`).
+description: HyperFrames CLI dev loop. Use when running npx hyperframes init, add, catalog, capture, lint, check, snapshot, compare, grade-compare, preview, play, render, publish, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, docs, benchmark, telemetry, transcribe, tts, or remove-background (validate/inspect/layout are deprecated aliases covered by check), or when troubleshooting the HyperFrames build/render environment. Entry point for AWS Lambda cloud rendering (`hyperframes lambda deploy / render / progress / destroy / policies / sites`).
 ---
 
 # HyperFrames CLI
@@ -11,20 +11,19 @@ Everything runs through `npx hyperframes` unless project instructions specify a 
 
 1. **Scaffold** — `npx hyperframes init my-video` (or `capture` from a URL). `init` also checks the installed skills against the latest on GitHub and updates the global set if any are out of date. The `--skip-skills` flag is currently neutered (temporary, while the skills.sh registry catches up), so every `init` runs this check and pulls our latest skills regardless.
 2. **Write** — author HTML composition (see the `hyperframes-core` skill)
-3. **Lint** — `npx hyperframes lint`
-4. **Validate** — `npx hyperframes validate` (runtime errors + contrast)
-5. **Visual inspect** — `npx hyperframes inspect`
-6. **Preview / edit** — `npx hyperframes preview` opens **Studio**, the timeline editor where the user can manually edit anything (not just watch). Review there, then ask before rendering.
-7. **Render** — pick the variant:
+3. **Lint** — `npx hyperframes lint` (static, fast — run it early while iterating)
+4. **Check** — `npx hyperframes check` (the browser gate; add `--snapshots` for annotated frames + per-finding crops)
+5. **Preview / edit** — `npx hyperframes preview` opens **Studio**, the timeline editor where the user can manually edit anything (not just watch). Review there, then ask before rendering.
+6. **Render** — pick the variant:
    - Iterate: `npx hyperframes render --quality draft`
    - Deliver: `npx hyperframes render --quality high --output out.mp4`
    - CI / cross-host repro: `npx hyperframes render --docker --strict --output out.mp4`
    - Cloud (long / large): `npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait` (see Lambda below)
-8. **Report feedback** — after verifying the output, `npx hyperframes feedback --rating <1-5> --comment "..."` once per task (see Agent Conventions).
+7. **Report feedback** — after verifying the output, `npx hyperframes feedback --rating <1-5> --comment "..."` once per task (see Agent Conventions).
 
-Run lint, validate, and inspect before preview. `lint` catches missing `data-composition-id`, overlapping tracks, and unregistered timelines. `validate` loads the composition in headless Chrome and reports runtime console errors plus WCAG contrast issues. `inspect` seeks through the timeline and reports text spilling out of bubbles/containers or off the canvas — and, when a `*.motion.json` sidecar is present, verifies motion intent (entrances firing under seek, stagger order, in-frame, liveness) against that same seeked timeline.
+Run `check` before preview. It runs the linter first (and skips the browser entirely on lint errors), then does everything the old validate → inspect → snapshot sequence did in **one** browser session and one seek pass: runtime console errors and failed requests, layout defects (text spilling out of bubbles/containers or off canvas, held overlaps, occlusion), motion-sidecar verification (`*.motion.json` — entrances under seek, stagger order, in-frame, liveness), and WCAG contrast. Contrast failures are errors and carry the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color, so most contrast fixes need no screenshot. Every finding carries a selector, `data-*` identity, composition source file, bbox, and sample time — jump straight to the HTML. Single-sample transients demote to info; findings held across samples gate the exit code (`--strict` gates warnings too). `validate`, `inspect`, and `layout` still work but are deprecated aliases of parts of `check`.
 
-For motion-heavy work, prefer snapshot-driven iteration and a `*.motion.json` sidecar — see `references/lint-validate-inspect.md` for the discipline and motion-verification spec.
+For motion-heavy work, prefer snapshot-driven iteration and a `*.motion.json` sidecar — see `references/lint-validate-inspect.md` for the discipline and motion-verification spec. To compare agent-authored candidate variants, use `npx hyperframes compare <path...> [--at <sec>] [--labels a,b,c] [--out compare.png] [--cols n] [--json]` to render each composition through its own runtime, assemble one labeled sheet, inspect it side by side, and choose. For color-grade selection, use the color-specific sibling `npx hyperframes grade-compare --for <frame> --grades grades.json` (or `--luts a.cube,b.cube`) to render every grading candidate through the real WebGL grading runtime into one labeled PNG before choosing the winner.
 
 ## Agent Conventions
 
@@ -34,6 +33,7 @@ Cross-cutting rules that hold for every command:
 - **`doctor --json` always exits 0**, even when the environment is broken. Gate on the payload's `ok` field: `npx hyperframes doctor --json | jq -e '.ok' > /dev/null`. This insulates pipelines from CLI release churn.
 - **Non-TTY mode is auto-detected.** When `stdout` is not a TTY (CI, agents, piped output) the CLI auto-switches to non-interactive; `init` then **requires `--example`**. Pass `--non-interactive` to force this mode even on a TTY.
 - **CI gating on render**: `--strict` fails on lint errors, `--strict-all` fails on warnings too, `--strict-variables` fails on undeclared `--variables` keys.
+- **Correlate a verify loop with `HYPERFRAMES_RUN_ID`.** Orchestrators driving the CLI per task/design element should set this env var once per unit of work; every command invocation attaches it to telemetry, and `check` emits a per-gate breakdown, making roundtrips-per-task measurable.
 - **Paths in `--json` are redacted** — `$HOME` becomes the literal `$HOME` so output is safe to paste into bug reports and agent contexts.
 - **Render is user-gated.** Never auto-render once the checks pass. Pause at `preview`, tell the user the video is editable in Studio, and render only after they approve.
 - **Use Studio context for user-directed edits.** When the user says "this selected element", "the thing I clicked", "current selection", or similar, ask them to select it in Studio, then run `npx hyperframes preview --context --json --context-fields selection`. Use the returned `selection.target.hfId` / `selector`, `selection.sourceFile`, `selection.currentTime`, and `selection.thumbnailUrl` to anchor the edit. If `selection` is `null` and `errors.selection.code` is `no-selection`, ask the user to click the element and rerun; do not guess from screenshots.
@@ -46,7 +46,7 @@ Cross-cutting rules that hold for every command:
 | Want to…                                                                                                   | Read                                  |
 | ---------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | Scaffold a project (`init`, `capture`, `skills`)                                                           | `references/init-and-scaffold.md`     |
-| Check correctness (`lint`, `validate`, `inspect`, `snapshot`)                                              | `references/lint-validate-inspect.md` |
+| Check correctness (`lint`, `check`, `snapshot`, deprecated `validate`/`inspect`)                           | `references/lint-validate-inspect.md` |
 | Preview or render (`preview`, `play`, `render`, `publish`)                                                 | `references/preview-render.md`        |
 | Diagnose the environment (`doctor`, `browser`)                                                             | `references/doctor-browser.md`        |
 | Cloud render on AWS Lambda (`lambda deploy / sites / render / progress / destroy / policies`)              | `references/lambda.md`                |
@@ -56,7 +56,7 @@ Cross-cutting rules that hold for every command:
 
 - **Tailwind projects** (`init --tailwind`) → use `hyperframes-core` (Tailwind reference) before editing classes or theme tokens.
 - **Registry blocks/components** (`hyperframes add`, `hyperframes catalog`) → use `hyperframes-registry` for install paths, sub-composition wiring, and snippet merging.
-- **Asset preprocessing** (`tts`, `transcribe`, `remove-background`) → use `hyperframes-media` for voice selection, Whisper model rules, captions, and TTS-to-captions chain.
+- **Asset preprocessing** (`tts`, `transcribe`, `remove-background`) → use `media-use` for voice selection, Whisper model rules, captions, and TTS-to-captions chain.
 - **Parametrized renders** (`--variables`) → declared via `data-composition-variables` on `<html>`; see `hyperframes-core` for the full schema.
 
 ## Lambda (Cloud Rendering)
@@ -75,18 +75,15 @@ See `references/lambda.md` for prerequisites, all 6 subcommands (`deploy`, `site
 
 ## Minimum Completion Gate
 
-### Static gates
-
 ```bash
-npx hyperframes lint
-npx hyperframes validate
+npx hyperframes check
 ```
 
-Add `inspect` for layout-sensitive work and `render --strict` in CI to fail on lint errors.
+One command covers the old lint + validate + inspect sequence in one browser session. Add `--strict` to gate warnings and `render --strict` in CI to fail on lint errors. `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` and `--frame-check` add opt-in band/bounds gates for pipelines that need them.
 
 ### Visual smoke test — required when the project uses sub-compositions
 
-`lint` / `validate` / `inspect` evaluate each composition **in isolation**. They never load `index.html` and mount sub-compositions via `data-composition-src`, so they cannot catch cross-file mount failures (see `hyperframes-core` → `references/sub-compositions.md`, "Common pitfalls"). The only gate that catches them is one that actually loads `index.html` and seeks the timeline.
+The audits evaluate the bundled composition; they cannot catch every cross-file mount failure when `index.html` mounts sub-compositions via `data-composition-src` (see `hyperframes-core` → `references/sub-compositions.md`, "Common pitfalls"). The gate that catches those is one that actually loads `index.html` the way `render` does and seeks the timeline.
 
 Use `hyperframes snapshot` — it loads the project the same way `render` does (so it exercises the same mount path) but only captures the timestamps you request, so it's seconds instead of a full render:
 

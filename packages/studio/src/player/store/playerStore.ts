@@ -28,6 +28,16 @@ export interface TimelineElement {
   start: number;
   duration: number;
   track: number;
+  /** Resolved z-index for stacking-aware timeline ordering. */
+  zIndex?: number;
+  /** True when the effective z-index was authored inline or through CSS, not auto. */
+  hasExplicitZIndex?: boolean;
+  /** Stacking context this element belongs to; root clips use the root composition id. */
+  stackingContextId?: string | null;
+  /** Nearest parent composition context, matching RuntimeTimelineClip. */
+  parentCompositionId?: string | null;
+  /** Composition ancestry from root to nearest parent, matching RuntimeTimelineClip. */
+  compositionAncestors?: string[];
   domId?: string;
   /** Stable `data-hf-id` attribute value — used as primary patch target when present */
   hfId?: string;
@@ -49,6 +59,8 @@ export interface TimelineElement {
   timingSource?: "authored" | "implicit";
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */
   timelineLocked?: boolean;
+  /** Set by data-hidden on the host element — hides the clip in preview and render. */
+  hidden?: boolean;
   /** Value of data-timeline-role attribute — used to identify music vs. voiceover. */
   timelineRole?: string;
   /**
@@ -62,6 +74,23 @@ export interface TimelineElement {
 
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
+
+function resolveElementSelection(
+  ids: Iterable<string>,
+  anchor?: string | null,
+): { selectedElementIds: Set<string>; selectedElementId: string | null } {
+  const selectedElementIds = new Set(ids);
+  if (selectedElementIds.size === 0) {
+    return { selectedElementIds, selectedElementId: null };
+  }
+  if (anchor && selectedElementIds.has(anchor)) {
+    return { selectedElementIds, selectedElementId: anchor };
+  }
+  return {
+    selectedElementIds,
+    selectedElementId: selectedElementIds.values().next().value ?? null,
+  };
+}
 
 interface PlayerState {
   isPlaying: boolean;
@@ -113,8 +142,10 @@ interface PlayerState {
 
   /** Multi-select: additional selected elements beyond selectedElementId. */
   selectedElementIds: Set<string>;
+  setSelection: (ids: Iterable<string>, anchor?: string | null) => void;
+  addSelectedElementId: (id: string) => void;
   toggleSelectedElementId: (id: string) => void;
-  clearSelectedElementIds: () => void;
+  clearSelection: () => void;
 
   /** Keyframe data per element id, populated from parsed GSAP animations. */
   keyframeCache: Map<string, KeyframeCacheEntry>;
@@ -130,9 +161,16 @@ interface PlayerState {
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
   setSelectedElementId: (id: string | null) => void;
+  /** Move the selection anchor within an active multi-selection without collapsing it. */
+  setSelectionAnchor: (id: string | null) => void;
   updateElement: (
     elementId: string,
-    updates: Partial<Pick<TimelineElement, "start" | "duration" | "track" | "playbackStart">>,
+    updates: Partial<
+      Pick<
+        TimelineElement,
+        "start" | "duration" | "track" | "zIndex" | "hasExplicitZIndex" | "playbackStart" | "hidden"
+      >
+    >,
   ) => void;
   setZoomMode: (mode: ZoomMode) => void;
   setManualZoomPercent: (percent: number) => void;
@@ -248,14 +286,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
 
   selectedElementIds: new Set<string>(),
+  setSelection: (ids, anchor) => set(resolveElementSelection(ids, anchor)),
+  addSelectedElementId: (id: string) =>
+    set((s) => {
+      const next = new Set(s.selectedElementIds);
+      next.add(id);
+      return resolveElementSelection(next, s.selectedElementId);
+    }),
   toggleSelectedElementId: (id: string) =>
     set((s) => {
       const next = new Set(s.selectedElementIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return { selectedElementIds: next };
+      return resolveElementSelection(next, s.selectedElementId);
     }),
-  clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
+  clearSelection: () => set({ selectedElementId: null, selectedElementIds: new Set() }),
 
   keyframeCache: new Map(),
   setKeyframeCache: (elementId, data) =>
@@ -366,16 +411,35 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setTimelineReady: (ready) => set({ timelineReady: ready }),
   setBeatDragging: (dragging) => set({ beatDragging: dragging }),
   setElements: (elements) => set({ elements }),
+  // A genuine single selection: always collapse the set to just this element. User
+  // intent (timeline click, preview click via applyDomSelection) flows here; DOM sync
+  // echoes that must preserve a group go through setSelectionAnchor instead.
   setSelectedElementId: (id) =>
-    set((s) =>
+    set((s) => {
+      const selectedElementIds = id ? new Set([id]) : new Set<string>();
       // Selecting a different element drops any active keyframe selection — otherwise
       // a stale activeKeyframePct from a prior diamond click would force the next drag
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER
       // calling setSelectedElementId, so this never clobbers a genuine keyframe select.
-      id !== s.selectedElementId
-        ? { selectedElementId: id, activeKeyframePct: null, motionPathArmed: false }
-        : { selectedElementId: id },
-    ),
+      return id !== s.selectedElementId
+        ? {
+            selectedElementId: id,
+            selectedElementIds,
+            activeKeyframePct: null,
+            motionPathArmed: false,
+          }
+        : { selectedElementId: id, selectedElementIds };
+    }),
+  // Move the anchor within an active multi-selection WITHOUT collapsing it — used by
+  // DOM->store sync echoes while a group gesture re-patches the preview. A non-member
+  // id is treated as a genuine new single selection.
+  setSelectionAnchor: (id) =>
+    set((s) => {
+      if (id != null && s.selectedElementIds.size > 1 && s.selectedElementIds.has(id)) {
+        return { selectedElementId: id };
+      }
+      return { selectedElementId: id, selectedElementIds: id ? new Set([id]) : new Set<string>() };
+    }),
   updateElement: (elementId, updates) =>
     set((state) => ({
       elements: state.elements.map((el) =>

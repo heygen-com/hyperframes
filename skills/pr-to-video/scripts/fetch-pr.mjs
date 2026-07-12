@@ -9,6 +9,8 @@
 //                      call — `gh pr view --json files` truncates at ~100 files, so a
 //                      big PR would otherwise lose the tail. Commits keep gh pr view's
 //                      rich `authors[]` (co-authors) — only `files` needs the override.
+//                      For MERGED PRs it also stamps a best-effort `shipped_version`
+//                      (+ `version_source`) so the end card / cta doesn't invent one.
 //   capture/diff.patch the full unified diff (`gh pr diff`).
 //
 // gh runs HERE so auth / not-found / private-repo errors surface with gh's own stderr
@@ -82,6 +84,8 @@ const FIELDS = [
   "assignees",
   "reviewDecision",
   "mergedBy",
+  "state",
+  "mergedAt",
 ].join(",");
 
 const view = ghTry(["pr", "view", prRef, "--json", FIELDS]);
@@ -136,6 +140,71 @@ if (owner && repo && number != null) {
   console.error("  (warn: could not parse owner/repo from PR url — keeping pr view's files)");
 }
 
+// ── 2.5 best-effort shipping version (MERGED PRs only) ───────────────────────
+// The end card / cta ("upgrade to vN", "what's new in vN") wants a real version;
+// a PR carries none, so the agent would otherwise guess. We resolve one here and
+// stamp it onto pr.json as `shipped_version` (+ a `version_source` note that keeps
+// it honest). `git tag --contains` isn't available on a remote-only fetch, so we
+// use gh api proxies: the first release published at/after the merge is the first
+// tag that can contain the merge commit; failing that, the default branch's
+// package manifest version (unreleased); else null. Always best-effort — a lookup
+// failure just leaves the fields null (the skill then falls back to the repo URL).
+pr.shipped_version = null;
+pr.version_source = null;
+if (pr.state === "MERGED") {
+  const mergedAt = pr.mergedAt ? Date.parse(pr.mergedAt) : NaN;
+
+  // (a) earliest non-draft release published on/after the merge.
+  if (owner && repo && !Number.isNaN(mergedAt)) {
+    const rel = ghTry([
+      "api",
+      "--paginate",
+      `repos/${owner}/${repo}/releases`,
+      "--jq",
+      ".[] | select(.draft == false) | {tag: .tag_name, published: .published_at}",
+    ]);
+    if (rel.ok) {
+      let best = null;
+      for (const line of rel.stdout.split("\n").filter(Boolean)) {
+        let r;
+        try {
+          r = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (!r?.tag || !r?.published) continue;
+        const t = Date.parse(r.published);
+        if (Number.isNaN(t) || t < mergedAt) continue;
+        if (!best || t < best.t) best = { tag: r.tag, t };
+      }
+      if (best) {
+        pr.shipped_version = best.tag;
+        pr.version_source = "first release published at/after merge";
+      }
+    } else {
+      console.error(`  (warn: gh api releases failed: ${rel.stderr.split("\n")[0]})`);
+    }
+  }
+
+  // (b) fallback — default branch's package manifest version (change merged but not
+  //     yet in a tagged release). Marked as unreleased so the skill doesn't present
+  //     it as a shipped tag.
+  if (pr.shipped_version == null && owner && repo) {
+    const pkg = ghTry(["api", `repos/${owner}/${repo}/contents/package.json`, "--jq", ".content"]);
+    if (pkg.ok && pkg.stdout.trim()) {
+      try {
+        const manifest = JSON.parse(Buffer.from(pkg.stdout.trim(), "base64").toString("utf8"));
+        if (manifest?.version) {
+          pr.shipped_version = String(manifest.version);
+          pr.version_source = "default-branch package.json (unreleased)";
+        }
+      } catch {
+        /* not JSON / no version — leave null */
+      }
+    }
+  }
+}
+
 // ── 3. write capture/pr.json + capture/diff.patch ────────────────────────────
 mkdirSync(outDir, { recursive: true });
 const prJsonPath = join(outDir, "pr.json");
@@ -159,6 +228,7 @@ console.log(
   [
     `✓ fetch-pr: ${repoLabel} PR #${number ?? "?"} — "${(pr.title || "").slice(0, 72)}"`,
     `  files: ${filesNote}; diff: ${diff.ok ? `${diff.stdout.length} chars` : "MISSING"}`,
+    `  shipped_version: ${pr.shipped_version ?? "null"}${pr.version_source ? ` (${pr.version_source})` : ""}`,
     `  wrote ${prJsonPath}${diff.ok ? ` + ${diffPath}` : ""}`,
   ].join("\n"),
 );

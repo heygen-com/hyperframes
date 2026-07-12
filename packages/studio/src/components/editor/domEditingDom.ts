@@ -3,6 +3,7 @@
  * selector utilities, and composition source resolution.
  * No imports from other domEditing* modules — safe to import from anywhere.
  */
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
 
 // ─── Type guard ───────────────────────────────────────────────────────────────
@@ -27,8 +28,6 @@ export { parsePx } from "@hyperframes/core/editing";
 export function isTextBearingTag(tagName: string): boolean {
   return ["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName);
 }
-
-const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
 
 export function isElementVisibleThroughAncestors(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;

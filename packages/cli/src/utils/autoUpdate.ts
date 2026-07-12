@@ -30,7 +30,11 @@ import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { isDevMode } from "./env.js";
-import { detectInstaller } from "./installerDetection.js";
+import {
+  detectInstaller,
+  installInvocation,
+  type InstallInvocation,
+} from "./installerDetection.js";
 
 const CONFIG_DIR = join(homedir(), ".hyperframes");
 const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
@@ -74,22 +78,30 @@ function log(line: string): void {
  * the install that edits the config file in place. Keeps the whole thing to
  * one spawned process with no extra binary to distribute.
  */
-function launchDetachedInstall(installCommand: string, version: string): void {
+function launchDetachedInstall(
+  invocation: InstallInvocation,
+  displayCommand: string,
+  version: string,
+): void {
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const configFile = join(CONFIG_DIR, "config.json");
 
   // The child script:
-  //   1. Runs the install command, capturing exit code + stderr tail.
+  //   1. Runs the install via execFile (bin + argv, NO shell) so a version
+  //      string can never be re-interpreted as shell syntax — structural
+  //      symmetry with the interactive `runDetectedInstall` path.
   //   2. Rewrites the config file with completedUpdate, clears pendingUpdate.
-  // We shell out to `node -e` so we don't need to ship a separate file.
+  // We run it through `node -e` so we don't need to ship a separate file. Bin
+  // and args are embedded as JSON literals (data, not code).
   const nodeScript = `
-    const { exec } = require("node:child_process");
+    const { execFile } = require("node:child_process");
     const { readFileSync, renameSync, writeFileSync } = require("node:fs");
     const CFG = ${JSON.stringify(configFile)};
     const TMP = \`\${CFG}.tmp\`;
     const VERSION = ${JSON.stringify(version)};
-    const CMD = ${JSON.stringify(installCommand)};
-    exec(CMD, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    const BIN = ${JSON.stringify(invocation.bin)};
+    const ARGS = ${JSON.stringify(invocation.args)};
+    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       let cfg = {};
       try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) {}
       cfg.completedUpdate = {
@@ -114,7 +126,7 @@ function launchDetachedInstall(installCommand: string, version: string): void {
     env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_AUTO_INSTALL: "1" },
   });
   child.unref();
-  log(`[launch] pid=${child.pid ?? "?"} cmd=${installCommand} version=${version}`);
+  log(`[launch] pid=${child.pid ?? "?"} cmd=${displayCommand} version=${version}`);
 }
 
 /**
@@ -149,7 +161,8 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     return false;
   }
   const installCommand = installer.installCommand(latestVersion);
-  if (!installCommand) return false;
+  const invocation = installInvocation(installer.kind, latestVersion);
+  if (!installCommand || !invocation) return false;
 
   const config = readConfig();
 
@@ -177,7 +190,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   writeConfig(config);
 
   try {
-    launchDetachedInstall(installCommand, latestVersion);
+    launchDetachedInstall(invocation, installCommand, latestVersion);
     return true;
   } catch (err) {
     log(`[error] spawn failed: ${String(err)}`);

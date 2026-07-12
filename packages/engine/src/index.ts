@@ -40,6 +40,7 @@ export type {
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
+  SubTimelineWaitOutcome,
 } from "./types.js";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -82,6 +83,13 @@ export {
   closeCaptureSession,
   captureFrame,
   captureFrameToBuffer,
+  captureFrameToBufferPipelined,
+  captureFramesBatchPipelined,
+  DrawElementVerificationError,
+  isDrawElementVerificationError,
+  recaptureDrawElementFrameForVerify,
+  completeDeferredDrawElementInit,
+  writeCapturedFrame,
   discardWarmupCapture,
   getCompositionDuration,
   getCapturePerfSummary,
@@ -101,6 +109,7 @@ export {
   injectVideoFramesBatch,
   syncVideoFrameVisibility,
   cdpSessionCache,
+  probeBeginFrameLiveness,
   initTransparentBackground,
   captureAlphaPng,
   applyDomLayerMask,
@@ -168,6 +177,7 @@ export type {
 export {
   calculateOptimalWorkers,
   distributeFrames,
+  distributeFramesInterleaved,
   executeParallelCapture,
   mergeWorkerFrames,
   getSystemResources,

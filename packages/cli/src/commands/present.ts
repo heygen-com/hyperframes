@@ -98,6 +98,17 @@ export default defineCommand({
       return;
     }
     const islandJson = islandMatch[1].trim();
+    // Malformed island JSON makes the slideshow component render no chrome at
+    // all (no Present control, P key dead) — fail loudly here instead.
+    try {
+      JSON.parse(islandJson);
+    } catch (err) {
+      clack.log.error(
+        `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
@@ -152,7 +163,15 @@ export default defineCommand({
     console.log(`  ${c.dim("Deck")}      ${c.accent(project.name)}`);
     console.log(`  ${c.dim("Present")}   ${c.accent(url)}`);
     console.log();
-    console.log(`  ${c.dim("Click ▶ Present (or press P) to open the audience display.")}`);
+    console.log(
+      `  ${c.dim("Click the Present control (or press P) to open the audience display.")}`,
+    );
+    console.log(
+      `  ${c.dim('Google Meet: share the AUDIENCE tab ("Share screen → A tab"), not a window or your whole screen.')}`,
+    );
+    console.log(
+      `  ${c.dim("Zoom desktop: drag the audience tab into its own window and share that window (keep it at least partly visible).")}`,
+    );
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
     console.log();
 
@@ -175,18 +194,18 @@ function buildPresentPage(projectName: string, islandJson: string): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escHtml(projectName)} — Presenter</title>
+    <script>
+      // Retitle the audience tab so the two tabs are distinguishable in the
+      // browser tab strip and in Meet's "Share a tab" picker.
+      if (new URLSearchParams(location.search).get("mode") === "audience") {
+        document.title = ${JSON.stringify(projectName).replace(/</g, "\\u003c")} + " — Audience";
+      }
+    </script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
       hyperframes-slideshow { display: block; position: relative; width: 100vw; height: 100vh; }
       hyperframes-player { position: absolute; inset: 0; }
-      #present-btn {
-        position: fixed; top: 18px; right: 18px; z-index: 99999;
-        font: 600 14px/1 system-ui, sans-serif; color: #0d1321;
-        background: #f4b740; border: none; border-radius: 999px;
-        padding: 11px 18px; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,.45);
-      }
-      #present-btn:hover { background: #ffcb5c; }
     </style>
     <script src="/player.js"></script>
     <script src="/slideshow.js"></script>
@@ -198,28 +217,8 @@ function buildPresentPage(projectName: string, islandJson: string): string {
 ${islandJson}
       </script>
     </hyperframes-slideshow>
-    <button id="present-btn" type="button">▶&nbsp; Present</button>
-    <script>
-      (function () {
-        // The audience window loads this same page with ?mode=audience; it must not
-        // show the Present button or it would recurse opening windows.
-        var isAudience = new URLSearchParams(location.search).get("mode") === "audience";
-        var btn = document.getElementById("present-btn");
-        if (isAudience) { if (btn) btn.remove(); return; }
-        function present() {
-          var ss = document.querySelector("hyperframes-slideshow");
-          if (ss && typeof ss.present === "function") {
-            ss.present();
-            if (btn) btn.style.display = "none";
-          }
-        }
-        if (btn) btn.addEventListener("click", present);
-        // 'P' opens presenter mode (window.open needs a user gesture, so a key/click).
-        window.addEventListener("keydown", function (e) {
-          if ((e.key === "p" || e.key === "P") && !e.metaKey && !e.ctrlKey) present();
-        });
-      })();
-    </script>
+    <!-- Present CTA lives in the component's nav cluster (data-hf-present, plus
+         the P key) — no page-level button, or we'd render two Present CTAs. -->
     <script>
       // Sound effects play HERE, in the parent document. The composition runs in the
       // player's iframe, which is autoplay-blocked without its own user gesture; the

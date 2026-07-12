@@ -1,9 +1,34 @@
 export const HF_COLOR_GRADING_ATTR = "data-color-grading";
 
+// Runtime <-> studio contract attributes. The runtime grading engine writes
+// them; studio editing/soft-reload code reads them. Single owner — never
+// re-declare these literals elsewhere.
+/** Set on a graded source while its pixels render on the grading canvas. */
+export const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hidden";
+/**
+ * The element's AUTHORED inline opacity, stamped at document parse time before
+ * any animation engine mutates it ("" = authored none; attribute absent =
+ * never captured). See installAuthoredOpacityCapture in the runtime.
+ */
+export const COLOR_GRADING_AUTHORED_OPACITY_ATTR = "data-hf-authored-opacity";
+
+export const HF_COLOR_GRADING_CANVAS_ID_PREFIX = "__hf_color_grading_";
+
 export const HF_COLOR_GRADING_COLOR_SPACE = "rec709";
 
 export type HfColorGradingPresetId =
   | "neutral"
+  | "natural-lift"
+  | "fresh-pop"
+  | "warm-daylight"
+  | "clean-studio"
+  | "skin-soft"
+  | "food-pop"
+  | "night-lift"
+  | "muted-editorial"
+  | "vintage-wash"
+  | "mono-clean"
+  | "mono-fade"
   | "warm-clean"
   | "cool-clean"
   | "soft-boost"
@@ -19,9 +44,25 @@ export type HfColorGradingAdjustKey =
   | "blacks"
   | "temperature"
   | "tint"
+  | "vibrance"
   | "saturation";
 
 export type HfColorGradingAdjust = Partial<Record<HfColorGradingAdjustKey, number>>;
+
+export type HfColorGradingDetailKey =
+  | "vignette"
+  | "vignetteMidpoint"
+  | "vignetteRoundness"
+  | "vignetteFeather"
+  | "grain"
+  | "grainSize"
+  | "grainRoughness";
+
+export type HfColorGradingDetails = Partial<Record<HfColorGradingDetailKey, number>>;
+
+export type HfColorGradingEffectKey = "blur" | "pixelate";
+
+export type HfColorGradingEffects = Partial<Record<HfColorGradingEffectKey, number>>;
 
 export interface HfColorGradingLutRef {
   src: string;
@@ -33,6 +74,8 @@ export interface HfColorGrading {
   preset?: HfColorGradingPresetId | string | null;
   intensity?: number;
   adjust?: HfColorGradingAdjust;
+  details?: HfColorGradingDetails;
+  effects?: HfColorGradingEffects;
   lut?: HfColorGradingLutRef | string | null;
   colorSpace?: typeof HF_COLOR_GRADING_COLOR_SPACE | string;
 }
@@ -42,6 +85,8 @@ export interface NormalizedHfColorGrading {
   preset: HfColorGradingPresetId | string | null;
   intensity: number;
   adjust: Record<HfColorGradingAdjustKey, number>;
+  details: Record<HfColorGradingDetailKey, number>;
+  effects: Record<HfColorGradingEffectKey, number>;
   lut: HfColorGradingLutRef | null;
   colorSpace: typeof HF_COLOR_GRADING_COLOR_SPACE | string;
 }
@@ -57,6 +102,8 @@ export interface HfColorGradingPreset {
   id: HfColorGradingPresetId;
   label: string;
   adjust: Record<HfColorGradingAdjustKey, number>;
+  details: Record<HfColorGradingDetailKey, number>;
+  effects: Record<HfColorGradingEffectKey, number>;
 }
 
 export type HfColorGradingVariableMap = Record<string, unknown>;
@@ -70,90 +117,216 @@ const ADJUST_ZERO: Record<HfColorGradingAdjustKey, number> = {
   blacks: 0,
   temperature: 0,
   tint: 0,
+  vibrance: 0,
   saturation: 0,
 };
 
-export const HF_COLOR_GRADING_ADJUST_KEYS: readonly HfColorGradingAdjustKey[] = [
-  "exposure",
-  "contrast",
-  "highlights",
-  "shadows",
-  "whites",
-  "blacks",
-  "temperature",
-  "tint",
-  "saturation",
-];
+// Detail sub-controls keep identity-state defaults so enabling vignette/grain starts from useful
+// perceptual settings instead of raw mathematical zeroes.
+const DETAIL_ZERO: Record<HfColorGradingDetailKey, number> = {
+  vignette: 0,
+  vignetteMidpoint: 0.5,
+  vignetteRoundness: 0,
+  vignetteFeather: 0.65,
+  grain: 0,
+  grainSize: 0.25,
+  grainRoughness: 0.5,
+};
+
+const EFFECT_ZERO: Record<HfColorGradingEffectKey, number> = {
+  blur: 0,
+  pixelate: 0,
+};
+
+export const HF_COLOR_GRADING_ADJUST_KEYS = Object.keys(
+  ADJUST_ZERO,
+) as readonly HfColorGradingAdjustKey[];
+
+export const HF_COLOR_GRADING_DETAIL_KEYS = Object.keys(
+  DETAIL_ZERO,
+) as readonly HfColorGradingDetailKey[];
+
+export const HF_COLOR_GRADING_EFFECT_KEYS = Object.keys(
+  EFFECT_ZERO,
+) as readonly HfColorGradingEffectKey[];
+
+function preset(
+  id: HfColorGradingPresetId,
+  label: string,
+  adjust: HfColorGradingAdjust = {},
+  details: HfColorGradingDetails = {},
+): HfColorGradingPreset {
+  return {
+    id,
+    label,
+    adjust: { ...ADJUST_ZERO, ...adjust },
+    details: { ...DETAIL_ZERO, ...details },
+    effects: { ...EFFECT_ZERO },
+  };
+}
 
 export const HF_COLOR_GRADING_PRESETS: readonly HfColorGradingPreset[] = [
-  {
-    id: "neutral",
-    label: "Neutral",
-    adjust: { ...ADJUST_ZERO },
-  },
-  {
-    id: "warm-clean",
-    label: "Warm Clean",
-    adjust: {
-      ...ADJUST_ZERO,
-      exposure: 0.05,
+  preset("neutral", "Neutral"),
+  preset("natural-lift", "Natural Lift", {
+    exposure: 0.04,
+    contrast: 0.06,
+    highlights: -0.06,
+    shadows: 0.08,
+    saturation: 0.05,
+  }),
+  preset("fresh-pop", "Fresh Pop", {
+    exposure: 0.08,
+    contrast: 0.12,
+    whites: 0.06,
+    shadows: 0.04,
+    temperature: -0.02,
+    vibrance: 0.08,
+    saturation: 0.16,
+  }),
+  preset("warm-daylight", "Warm Daylight", {
+    exposure: 0.06,
+    contrast: 0.07,
+    highlights: -0.06,
+    shadows: 0.08,
+    temperature: 0.18,
+    saturation: 0.08,
+  }),
+  preset("clean-studio", "Clean Studio", {
+    contrast: 0.08,
+    highlights: -0.08,
+    shadows: 0.06,
+    temperature: -0.08,
+    tint: 0.03,
+    saturation: 0.04,
+  }),
+  preset("skin-soft", "Skin Soft", {
+    exposure: 0.04,
+    contrast: -0.03,
+    highlights: -0.12,
+    shadows: 0.12,
+    temperature: 0.08,
+    tint: 0.02,
+    saturation: 0.04,
+  }),
+  preset("food-pop", "Food Pop", {
+    exposure: 0.06,
+    contrast: 0.1,
+    shadows: 0.06,
+    temperature: 0.14,
+    vibrance: 0.1,
+    saturation: 0.18,
+  }),
+  preset(
+    "night-lift",
+    "Night Lift",
+    {
+      exposure: 0.08,
       contrast: 0.08,
-      highlights: -0.08,
-      shadows: 0.08,
-      temperature: 0.16,
-      saturation: 0.06,
-    },
-  },
-  {
-    id: "cool-clean",
-    label: "Cool Clean",
-    adjust: {
-      ...ADJUST_ZERO,
-      contrast: 0.06,
-      highlights: -0.06,
-      shadows: 0.06,
-      temperature: -0.12,
-      tint: 0.04,
+      highlights: -0.18,
+      shadows: 0.2,
+      blacks: -0.08,
       saturation: 0.04,
     },
-  },
-  {
-    id: "soft-boost",
-    label: "Soft Boost",
-    adjust: {
-      ...ADJUST_ZERO,
-      exposure: 0.06,
-      contrast: -0.04,
-      highlights: -0.14,
-      shadows: 0.16,
-      saturation: 0.1,
+    {
+      vignette: 0.12,
     },
-  },
-  {
-    id: "bright-pop",
-    label: "Bright Pop",
-    adjust: {
-      ...ADJUST_ZERO,
-      exposure: 0.12,
-      contrast: 0.12,
-      whites: 0.08,
-      blacks: -0.04,
-      saturation: 0.14,
-    },
-  },
-  {
-    id: "deep-contrast",
-    label: "Deep Contrast",
-    adjust: {
-      ...ADJUST_ZERO,
-      exposure: -0.03,
-      contrast: 0.2,
+  ),
+  preset(
+    "muted-editorial",
+    "Muted Editorial",
+    {
+      exposure: -0.02,
+      contrast: 0.08,
       highlights: -0.08,
-      shadows: -0.08,
-      blacks: -0.12,
-      saturation: 0.06,
+      shadows: 0.06,
+      blacks: -0.05,
+      temperature: -0.03,
+      saturation: -0.12,
     },
-  },
+    {
+      vignette: 0.1,
+    },
+  ),
+  preset(
+    "vintage-wash",
+    "Vintage Wash",
+    {
+      exposure: 0.03,
+      contrast: -0.12,
+      highlights: -0.1,
+      shadows: 0.16,
+      whites: -0.04,
+      blacks: 0.08,
+      temperature: 0.13,
+      vibrance: -0.08,
+      saturation: -0.08,
+    },
+    {
+      vignette: 0.18,
+    },
+  ),
+  preset("mono-clean", "Mono Clean", {
+    contrast: 0.12,
+    highlights: -0.04,
+    shadows: 0.04,
+    blacks: -0.08,
+    saturation: -1,
+  }),
+  preset(
+    "mono-fade",
+    "Mono Fade",
+    {
+      contrast: -0.04,
+      highlights: -0.06,
+      shadows: 0.1,
+      blacks: 0.12,
+      saturation: -1,
+    },
+    {
+      vignette: 0.08,
+    },
+  ),
+  preset("warm-clean", "Warm Clean", {
+    exposure: 0.05,
+    contrast: 0.08,
+    highlights: -0.08,
+    shadows: 0.08,
+    temperature: 0.16,
+    vibrance: 0.04,
+    saturation: 0.06,
+  }),
+  preset("cool-clean", "Cool Clean", {
+    contrast: 0.06,
+    highlights: -0.06,
+    shadows: 0.06,
+    temperature: -0.12,
+    tint: 0.04,
+    saturation: 0.04,
+  }),
+  preset("soft-boost", "Soft Boost", {
+    exposure: 0.06,
+    contrast: -0.04,
+    highlights: -0.14,
+    shadows: 0.16,
+    vibrance: 0.08,
+    saturation: 0.1,
+  }),
+  preset("bright-pop", "Bright Pop", {
+    exposure: 0.12,
+    contrast: 0.12,
+    whites: 0.08,
+    blacks: -0.04,
+    vibrance: 0.08,
+    saturation: 0.14,
+  }),
+  preset("deep-contrast", "Deep Contrast", {
+    exposure: -0.03,
+    contrast: 0.2,
+    highlights: -0.08,
+    shadows: -0.08,
+    blacks: -0.12,
+    saturation: 0.06,
+  }),
 ];
 
 const PRESETS_BY_ID = new Map<string, HfColorGradingPreset>(
@@ -171,7 +344,23 @@ const ADJUST_LIMITS: Record<HfColorGradingAdjustKey, { min: number; max: number 
   blacks: { min: -1, max: 1 },
   temperature: { min: -1, max: 1 },
   tint: { min: -1, max: 1 },
+  vibrance: { min: -1, max: 1 },
   saturation: { min: -1, max: 1 },
+};
+
+const DETAIL_LIMITS: Record<HfColorGradingDetailKey, { min: number; max: number }> = {
+  vignette: { min: 0, max: 1 },
+  vignetteMidpoint: { min: 0, max: 1 },
+  vignetteRoundness: { min: -1, max: 1 },
+  vignetteFeather: { min: 0, max: 1 },
+  grain: { min: 0, max: 1 },
+  grainSize: { min: 0, max: 1 },
+  grainRoughness: { min: 0, max: 1 },
+};
+
+const EFFECT_LIMITS: Record<HfColorGradingEffectKey, { min: number; max: number }> = {
+  blur: { min: 0, max: 1 },
+  pixelate: { min: 0, max: 1 },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -189,10 +378,9 @@ function clampUnit(value: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, parsed));
 }
 
-function readAdjustValue(value: unknown, key: HfColorGradingAdjustKey): number {
+function readLimitedValue(value: unknown, limit: { min: number; max: number }): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return 0;
-  const limit = ADJUST_LIMITS[key];
   return clamp(parsed, limit.min, limit.max);
 }
 
@@ -278,13 +466,31 @@ export function normalizeHfColorGrading(raw: unknown): NormalizedHfColorGrading 
   const presetId = normalizePresetId(grading.preset);
   const preset = getHfColorGradingPreset(presetId);
   const presetAdjust = preset?.adjust ?? ADJUST_ZERO;
+  const presetDetails = preset?.details ?? DETAIL_ZERO;
+  const presetEffects = preset?.effects ?? EFFECT_ZERO;
   const rawAdjust = isRecord(grading.adjust) ? grading.adjust : {};
+  const rawDetails = isRecord(grading.details) ? grading.details : {};
+  const rawEffects = isRecord(grading.effects) ? grading.effects : {};
   const adjust = HF_COLOR_GRADING_ADJUST_KEYS.reduce<Record<HfColorGradingAdjustKey, number>>(
     (result, key) => {
-      result[key] = readAdjustValue(rawAdjust[key] ?? presetAdjust[key], key);
+      result[key] = readLimitedValue(rawAdjust[key] ?? presetAdjust[key], ADJUST_LIMITS[key]);
       return result;
     },
     { ...ADJUST_ZERO },
+  );
+  const details = HF_COLOR_GRADING_DETAIL_KEYS.reduce<Record<HfColorGradingDetailKey, number>>(
+    (result, key) => {
+      result[key] = readLimitedValue(rawDetails[key] ?? presetDetails[key], DETAIL_LIMITS[key]);
+      return result;
+    },
+    { ...DETAIL_ZERO },
+  );
+  const effects = HF_COLOR_GRADING_EFFECT_KEYS.reduce<Record<HfColorGradingEffectKey, number>>(
+    (result, key) => {
+      result[key] = readLimitedValue(rawEffects[key] ?? presetEffects[key], EFFECT_LIMITS[key]);
+      return result;
+    },
+    { ...EFFECT_ZERO },
   );
 
   return {
@@ -292,6 +498,8 @@ export function normalizeHfColorGrading(raw: unknown): NormalizedHfColorGrading 
     preset: presetId,
     intensity: clampUnit(grading.intensity, 1),
     adjust,
+    details,
+    effects,
     lut: normalizeLut(grading.lut),
     colorSpace:
       typeof grading.colorSpace === "string" && grading.colorSpace.trim()
@@ -322,5 +530,10 @@ export function isHfColorGradingActive(
   if (!grading?.enabled) return false;
   if (grading.intensity === 0) return false;
   if (grading.lut && grading.lut.intensity !== 0) return true;
-  return HF_COLOR_GRADING_ADJUST_KEYS.some((key) => Math.abs(grading.adjust[key]) > 0.0001);
+  return (
+    HF_COLOR_GRADING_ADJUST_KEYS.some((key) => Math.abs(grading.adjust[key]) > 0.0001) ||
+    Math.abs(grading.details.vignette) > 0.0001 ||
+    Math.abs(grading.details.grain) > 0.0001 ||
+    HF_COLOR_GRADING_EFFECT_KEYS.some((key) => Math.abs(grading.effects[key]) > 0.0001)
+  );
 }

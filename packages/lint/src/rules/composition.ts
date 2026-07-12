@@ -1,4 +1,4 @@
-import type { LintContext, HyperframeLintFinding, ExtractedBlock } from "../context";
+import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import {
   findHtmlTag,
   readAttr,
@@ -105,6 +105,55 @@ function rootClassStyledSelectors(styles: ExtractedBlock[], rootClasses: string[
     }
   }
   return offenders;
+}
+
+/** Declared variable ids from an <html> tag's raw text; null when the JSON is unparseable. */
+function collectDeclaredVariableIds(htmlTagRaw: string): Set<string> | null {
+  const declared = new Set<string>();
+  const raw = readJsonAttr(htmlTagRaw, "data-composition-variables");
+  if (!raw) return declared;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return declared;
+  for (const entry of parsed) {
+    const id = (entry as { id?: unknown } | null)?.id;
+    if (typeof id === "string") declared.add(id);
+  }
+  return declared;
+}
+
+/**
+ * Union declared variable ids from every element carrying
+ * `data-composition-variables`: full-document comps hold it on `<html>`;
+ * template/fragment sub-comps hold it on their composition root div. Returns
+ * null if any occurrence has unparseable JSON.
+ */
+function collectAllDeclaredVariableIds(tags: readonly OpenTag[]): Set<string> | null {
+  const all = new Set<string>();
+  for (const tag of tags) {
+    if (!readAttr(tag.raw, "data-composition-variables")) continue;
+    const ids = collectDeclaredVariableIds(tag.raw);
+    if (ids === null) return null;
+    for (const id of ids) all.add(id);
+  }
+  return all;
+}
+
+/**
+ * Declared ids to validate `data-var-*` bindings against, or null to skip the
+ * file: unparseable declarations (reported elsewhere), or a fragment with no
+ * `<html>` and no declarations of its own (its values come from a host's
+ * data-variable-values, which this file can't see).
+ */
+function declaredIdsForBindingCheck(tags: readonly OpenTag[]): Set<string> | null {
+  const declared = collectAllDeclaredVariableIds(tags);
+  if (declared === null) return null;
+  if (declared.size === 0 && !findHtmlTag(tags)) return null;
+  return declared;
 }
 
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
@@ -495,6 +544,42 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // missing_data_no_timeline
+  // The producer polls window.__timelines[id] with a 45-second timeout waiting
+  // for GSAP timeline registration. Compositions that never call
+  // window.__timelines[id] = tl stall for 45 s every render. Adding
+  // data-no-timeline to the root element tells the producer to skip the poll.
+  ({ rootTag, rootCompositionId, scripts, rawSource, options }) => {
+    if (options.isSubComposition) return [];
+    if (!rootCompositionId || !rootTag) return [];
+    // readAttr only matches valued attrs (attr="..."); data-no-timeline is
+    // typically boolean (no value). Strip quoted attribute values first to
+    // avoid matching attr names that appear inside other values
+    // (e.g. title="add data-no-timeline here"), then check with a boundary
+    // that rejects hyphenated variants (data-no-timeline-start has '-' next,
+    // not a word-break char).
+    const tagNoValues = rootTag.raw.replace(/"[^"]*"|'[^']*'/g, '""');
+    if (/(?:^|\s)data-no-timeline(?=[\s>=/]|$)/i.test(tagNoValues)) return [];
+    // Can't scan external script files for timeline registration; skip to avoid
+    // false positives on compositions that register via a bundled JS file.
+    if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
+    const registersTimeline = scripts.some((s) => s.content.includes("window.__timelines["));
+    if (registersTimeline) return [];
+    return [
+      {
+        code: "missing_data_no_timeline",
+        severity: "warning",
+        message:
+          "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. " +
+          "The producer polls for timeline registration for up to 45 seconds before timing out, " +
+          "adding 45 s to every render.",
+        fixHint:
+          'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.',
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
+  },
+
   // requestanimationframe_in_composition
   ({ scripts, rawSource, options }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
@@ -561,14 +646,44 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // unknown_variable_binding
+  // data-var-src / data-var-text bind an element to a declared variable id;
+  // the runtime silently keeps the authored fallback when the id resolves to
+  // nothing, so a typo'd binding is invisible until a customer's override
+  // does nothing. Skipped for fragment files (no <html>): their values come
+  // from a host's data-variable-values, which this file can't see.
+  ({ tags }) => {
+    // Declarations live on <html> (full-document comps) OR the composition root
+    // div (template/fragment sub-comps); declaredIdsForBindingCheck unions both
+    // and returns null for files this rule should skip.
+    const declared = declaredIdsForBindingCheck(tags);
+    if (!declared) return [];
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      for (const attr of ["data-var-src", "data-var-text"]) {
+        const id = readAttr(tag.raw, attr)?.trim();
+        if (!id || declared.has(id)) continue;
+        findings.push({
+          code: "unknown_variable_binding",
+          severity: "warning",
+          message: `<${tag.name}> binds ${attr}="${id}" but no variable "${id}" is declared in data-composition-variables — the binding will silently keep the authored fallback.`,
+          fixHint: `Declare the variable on the composition root (<html>, or the [data-composition-id] root element for a template/fragment comp): data-composition-variables='[{"id":"${id}","type":"${attr === "data-var-src" ? "image" : "string"}","label":"${id}","default":"..."}]', or fix the binding id.`,
+          elementId: readAttr(tag.raw, "id") || undefined,
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // invalid_composition_variables_declaration
   // The runtime parses `data-composition-variables` and silently returns []
   // on any structural problem. Surface JSON / shape failures so authors
   // catch them at lint time rather than wondering why their `getVariables()`
   // defaults aren't applied.
   // fallow-ignore-next-line complexity
-  ({ source }) => {
-    const htmlTag = findHtmlTag(source);
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
     if (!htmlTag) return [];
     const raw = readJsonAttr(htmlTag.raw, "data-composition-variables");
     if (!raw) return [];
@@ -632,6 +747,38 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       }
     }
     return findings;
+  },
+
+  // html_dir_attribute_breaks_render — valid non-LTR dir values on
+  // <html> renders correctly in preview/snapshot but produces a fully
+  // blank/black video from render, with no other lint/validate/inspect
+  // check catching it (output file size, far smaller than expected, is the
+  // only tell). Confirmed independently by two separate reports, both
+  // diagnosing the same exact trigger and the same fix: drop dir from
+  // <html>, keep lang, and scope `direction: rtl` to individual
+  // text-containing elements via CSS instead (text still bidi-shapes
+  // correctly). Advisory-only — this does not attempt to fix the render
+  // pipeline's own root cause (suspected to be a capture step that clips a
+  // fixed top-left-origin screenshot region, which RTL layout can shift the
+  // actual content away from), only surfaces the already-confirmed footgun
+  // before someone hits it blind.
+  ({ tags }) => {
+    const htmlTag = findHtmlTag(tags);
+    if (!htmlTag) return [];
+    const dir = readAttr(htmlTag.raw, "dir");
+    if (!dir) return [];
+    const normalizedDir = dir.toLowerCase();
+    if (normalizedDir !== "rtl" && normalizedDir !== "auto") return [];
+    const scopedDirection = normalizedDir === "auto" ? 'dir="auto"' : `direction: ${normalizedDir}`;
+    return [
+      {
+        code: "html_dir_attribute_breaks_render",
+        severity: "error",
+        message: `<html dir="${dir}"> renders correctly in preview/snapshot but produces a fully blank/black video from render — a confirmed, silent failure.`,
+        fixHint: `Remove dir="${dir}" from <html>. Keep lang, and scope ${scopedDirection} to individual text-containing elements instead — text still shapes correctly via the browser's own bidi algorithm.`,
+        snippet: truncateSnippet(htmlTag.raw),
+      },
+    ];
   },
 
   // subcomposition_blanks_before_host

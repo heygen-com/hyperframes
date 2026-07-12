@@ -66,12 +66,17 @@ function softReloadOrEscalate(
   scriptText: string,
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
+  authoredHtml?: string,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
   // applySoftReload for why the two can desync after a keyframe-node drag.
   const currentTime = usePlayerStore.getState().currentTime;
-  const result: SoftReloadResult = applySoftReload(iframe, scriptText, reloadPreview, currentTime);
+  const result: SoftReloadResult = applySoftReload(iframe, scriptText, {
+    onAsyncFailure: reloadPreview,
+    currentTimeOverride: currentTime,
+    authoredHtml,
+  });
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
     origin,
@@ -116,7 +121,13 @@ export function applyPreviewSync(
     // already correct on screen, and a remount re-flashes the WebGL context AND
     // re-inlines subcomps (reverting their keyframes). The async MotionPath-plugin
     // load failure escalates separately via `onAsyncFailure`.
-    softReloadOrEscalate(iframe, result.scriptText, reloadPreview, "preview_sync");
+    softReloadOrEscalate(
+      iframe,
+      result.scriptText,
+      reloadPreview,
+      "preview_sync",
+      result.after ?? undefined,
+    );
   } else {
     reloadPreview();
   }
@@ -149,7 +160,19 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       if (options.skipReload) return;
       throw error;
     }
-    if (result.changed === false) return;
+    if (result.changed === false) {
+      // The FILE already matched, but a deferred instant patch may still be
+      // owed to the RUNTIME: paired commits (x with skipReload, then y carrying
+      // the patch for both) rely on the SECOND commit to sync the preview — if
+      // that half happens to be a no-op (a purely-horizontal drag or resize
+      // compensation), returning here would leave the runtime showing the old
+      // value while the file holds the new one. Patching in place is idempotent
+      // when the values truly match everywhere.
+      if (!options.skipReload && options.instantPatch) {
+        applyPreviewSync(previewIframeRef.current, result, options, reloadPreview);
+      }
+      return;
+    }
     domEditSaveTimestampRef.current = Date.now();
     if (result.before != null && result.after != null) {
       await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
@@ -196,7 +219,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
         // plugin-CDN load error genuinely breaks the iframe → full reload. Per U4, a
         // synchronous "verify-failed" (transient empty __timelines) does NOT escalate,
         // but a "cannot-soft-reload" (structural failure) does.
-        softReloadOrEscalate(previewIframeRef.current, script, reloadPreview, "sdk_refresh");
+        softReloadOrEscalate(previewIframeRef.current, script, reloadPreview, "sdk_refresh", after);
       } else {
         reloadPreview();
       }

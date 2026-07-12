@@ -40,6 +40,13 @@ export function renderObservabilityTelemetryPayload(
     capturePlayerReadyTimeoutMs: capture.playerReadyTimeoutMs,
     captureTransientRetries: capture.transientRetries,
     captureMemoryExhaustionDetected: capture.memoryExhaustionDetected,
+    captureDeWorkerInversion: capture.deWorkerInversion,
+    captureDePreInversionWorkers: capture.dePreInversionWorkers,
+    captureDeParallelRouter: capture.deParallelRouter,
+    captureDePreRouterWorkers: capture.dePreRouterWorkers,
+    captureDeSelfVerifyFallback: capture.deSelfVerifyFallback,
+    captureDeFallbackReason: capture.deFallbackReason,
+    captureParallelStream: capture.captureParallelStream,
     observabilityExtractVideoCount: extraction?.videoCount,
     observabilityExtractedVideoCount: extraction?.extractedVideoCount,
     observabilityExtractTotalFrames: extraction?.totalFramesExtracted,
@@ -58,7 +65,10 @@ export function renderObservabilityTelemetryPayload(
 export function renderJobObservabilityTelemetryPayload(
   job: RenderJob | undefined,
 ): RenderObservabilityTelemetryPayload {
-  return renderObservabilityTelemetryPayload(
-    job?.errorDetails?.observability ?? job?.perfSummary?.observability,
-  );
+  return {
+    ...renderObservabilityTelemetryPayload(
+      job?.errorDetails?.observability ?? job?.perfSummary?.observability,
+    ),
+    subTimelineWait: job?.errorDetails?.subTimelineWait ?? job?.perfSummary?.subTimelineWait,
+  };
 }

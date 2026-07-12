@@ -14,6 +14,7 @@ type BridgeDeps = {
   onSetNativeMediaSyncDisabled: (disabled: boolean) => void;
   onSetWebAudioMediaDisabled: (disabled: boolean) => void;
   onSetPlaybackRate: (rate: number) => void;
+  onSetRootDuration: (durationSeconds: number) => void;
   onSetColorGrading: (target: HfColorGradingTarget | string | null, grading: unknown) => void;
   onSetColorGradingCompare: (
     target: HfColorGradingTarget | string | null,
@@ -53,6 +54,7 @@ const CONTROL_HANDLERS: Record<string, ControlHandler> = {
   "set-web-audio-media-disabled": (data, deps) =>
     deps.onSetWebAudioMediaDisabled(Boolean(data.disabled)),
   "set-playback-rate": (data, deps) => deps.onSetPlaybackRate(Number(data.playbackRate ?? 1)),
+  "set-root-duration": (data, deps) => deps.onSetRootDuration(Number(data.durationSeconds ?? 0)),
   "set-color-grading": (data, deps) =>
     deps.onSetColorGrading(data.target ?? null, data.grading ?? null),
   "set-color-grading-compare": (data, deps) =>

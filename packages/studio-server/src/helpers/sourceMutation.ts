@@ -2,6 +2,7 @@ import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
+import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
   id?: string | null;
@@ -57,10 +58,14 @@ function querySelectorAllWithTemplates(root: Document | Element, selector: strin
   // querySelectorAll doesn't traverse <template> content in linkedom.
   // Search directly on each template element (NOT .content — removing from
   // .content's DocumentFragment doesn't update the serialized output).
+  // Recurse so NESTED templates resolve too — ensureHfIds and the SDK's
+  // querySelectorAllDeep descend nested composition templates, so ids exist at
+  // any template depth; a one-level search here would silently no-op
+  // server-side ops on those ids while the SDK resolves them.
   const templates = Array.from(root.querySelectorAll("template"));
   for (const tmpl of templates) {
-    const inner = tmpl.querySelectorAll(selector);
-    if (inner.length > 0) return Array.from(inner);
+    const inner = querySelectorAllWithTemplates(tmpl, selector);
+    if (inner.length > 0) return inner;
   }
   return [];
 }
@@ -123,75 +128,32 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
   return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }
 
-export function isHTMLElement(el: Element): el is HTMLElement {
-  const HTMLEl = el.ownerDocument.defaultView?.HTMLElement;
-  return HTMLEl ? el instanceof HTMLEl : "style" in el;
+export function isHTMLElement(el: Node): el is HTMLElement {
+  const HTMLEl = el.ownerDocument?.defaultView?.HTMLElement;
+  return HTMLEl ? el instanceof HTMLEl : el.nodeType === 1 && "style" in el;
 }
 
 export interface PatchOperation {
   type: "inline-style" | "attribute" | "html-attribute" | "text-content";
   property: string;
   value: string | null;
+  childSelector?: string;
+  childIndex?: number;
 }
 
-// fallow-ignore-next-line complexity
-function parseStyleDecls(style: string): { props: Map<string, string>; order: string[] } {
-  const props = new Map<string, string>();
-  const order: string[] = [];
-  // Tokenize declarations robustly: values can contain ';' inside quoted strings
-  // (e.g. content: ';') and ':' inside values (data URIs, url(), etc.).
-  // Split on ';' only when outside quotes and balanced parens; the first ':' in
-  // the resulting segment is the property/value separator (property names never
-  // contain ':').
-  let i = 0;
-  while (i < style.length) {
-    let depth = 0;
-    let inSingle = false;
-    let inDouble = false;
-    const start = i;
-    while (i < style.length) {
-      const ch = style[i];
-      if (ch === "'" && !inDouble) inSingle = !inSingle;
-      else if (ch === '"' && !inSingle) inDouble = !inDouble;
-      else if (!inSingle && !inDouble) {
-        if (ch === "(") depth++;
-        else if (ch === ")") depth = Math.max(0, depth - 1);
-        else if (ch === ";" && depth === 0) break;
-      }
-      i++;
-    }
-    const decl = style.slice(start, i).trim();
-    i++; // advance past ';'
-    if (!decl) continue;
-    const colon = decl.indexOf(":");
-    if (colon < 0) continue;
-    const key = decl.slice(0, colon).trim();
-    const val = decl.slice(colon + 1).trim();
-    if (!key) continue;
-    if (!props.has(key)) order.push(key);
-    props.set(key, val);
+interface ResolvedPatchOperation {
+  op: PatchOperation;
+  target: HTMLElement;
+}
+
+function resolveOperationTarget(parent: HTMLElement, op: PatchOperation): HTMLElement | null {
+  if (op.childSelector === undefined) return parent;
+  try {
+    const child = parent.querySelectorAll(op.childSelector)[op.childIndex ?? 0] ?? null;
+    return child && isHTMLElement(child) ? child : null;
+  } catch {
+    return null;
   }
-  return { props, order };
-}
-
-function serializeStyleDecls(props: Map<string, string>, order: string[]): string {
-  return order
-    .map((k) => `${k}: ${props.get(k) ?? ""}`)
-    .filter((d) => d.trim())
-    .join("; ");
-}
-
-function patchStyleAttrString(style: string, property: string, value: string | null): string {
-  const { props, order } = parseStyleDecls(style);
-  if (value === null) {
-    props.delete(property);
-    const idx = order.indexOf(property);
-    if (idx >= 0) order.splice(idx, 1);
-  } else {
-    if (!props.has(property)) order.push(property);
-    props.set(property, value);
-  }
-  return serializeStyleDecls(props, order);
 }
 
 // fallow-ignore-next-line complexity
@@ -205,7 +167,14 @@ export function patchElementInHtml(
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
   const htmlEl = el;
 
+  const resolved: ResolvedPatchOperation[] = [];
   for (const op of operations) {
+    const opTarget = resolveOperationTarget(htmlEl, op);
+    if (!opTarget) return { html: source, matched: false };
+    resolved.push({ op, target: opTarget });
+  }
+
+  for (const { op, target: opTarget } of resolved) {
     switch (op.type) {
       case "inline-style":
         // linkedom's CSSStyleDeclaration does not support CSS custom properties
@@ -213,18 +182,18 @@ export function patchElementInHtml(
         // scale) via style.setProperty(). Manipulate the style attribute string
         // directly so all property names survive the round-trip.
         {
-          const raw = htmlEl.getAttribute("style") ?? "";
+          const raw = opTarget.getAttribute("style") ?? "";
           const patched = patchStyleAttrString(raw, op.property, op.value);
-          htmlEl.setAttribute("style", patched);
+          opTarget.setAttribute("style", patched);
         }
         break;
       case "attribute":
         {
           const fullAttr = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
           if (op.value != null) {
-            htmlEl.setAttribute(fullAttr, op.value);
+            opTarget.setAttribute(fullAttr, op.value);
           } else {
-            htmlEl.removeAttribute(fullAttr);
+            opTarget.removeAttribute(fullAttr);
           }
         }
         break;
@@ -232,15 +201,15 @@ export function patchElementInHtml(
         if (!isAllowedHtmlAttribute(op.property)) break;
         if (op.value != null) {
           if (!isSafeAttributeValue(op.property, op.value)) break;
-          htmlEl.setAttribute(op.property, op.value);
+          opTarget.setAttribute(op.property, op.value);
         } else {
-          htmlEl.removeAttribute(op.property);
+          opTarget.removeAttribute(op.property);
         }
         break;
       case "text-content":
         if (op.value != null) {
-          const inner = htmlEl.children.length === 1 ? htmlEl.firstElementChild : null;
-          const textTarget = inner && isHTMLElement(inner) ? inner : htmlEl;
+          const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
+          const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
         }
         break;
@@ -333,7 +302,8 @@ export function splitElementInHtml(
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;
 
-  const clone = el.cloneNode(true) as HTMLElement;
+  const clone = el.cloneNode(true);
+  if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of

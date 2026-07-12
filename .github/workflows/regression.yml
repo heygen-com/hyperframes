@@ -8,6 +8,12 @@ permissions:
 env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
+# Graphite can update a branch and its PR base separately for the same head
+# SHA. Keep only the newest expensive regression run for each PR/ref.
+concurrency:
+  group: regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
   push:
@@ -111,7 +117,10 @@ jobs:
           load: true
           tags: hyperframes-producer:test
           cache-from: type=gha,scope=regression-test-image
-          cache-to: type=gha,mode=max,scope=regression-test-image
+          # PR matrices can fan out across many stacked branches at once. Let
+          # them consume the shared cache, but keep a single writer on main so
+          # concurrent exports cannot exhaust the Actions cache service.
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=regression-test-image' || '' }}
 
       - name: "Run regression shard: ${{ matrix.shard }}"
         run: |

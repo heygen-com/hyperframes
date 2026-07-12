@@ -1,7 +1,17 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
-import { trackEvent } from "./client.js";
+import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
+import { flush, trackEvent } from "./client.js";
+import { readConfig } from "./config.js";
+
+// run_id is attached only when the orchestrator set HYPERFRAMES_RUN_ID — an
+// absent property, never null/"" (PostHog treats those as real values).
+function runIdField(runId: string | undefined): { run_id?: string } {
+  return runId !== undefined ? { run_id: runId } : {};
+}
 
 export interface RenderObservabilityTelemetryPayload {
+  /** Worst sub-composition timeline wait outcome across sessions. */
+  subTimelineWait?: SubTimelineWaitOutcome;
   observabilityRenderJobId?: string;
   observabilityCompositionHash?: string;
   observabilityEventCount?: number;
@@ -30,6 +40,22 @@ export interface RenderObservabilityTelemetryPayload {
   capturePlayerReadyTimeoutMs?: number;
   captureTransientRetries?: number;
   captureMemoryExhaustionDetected?: boolean;
+  // Mirror of the DE inversion/router state on `RenderCaptureObservability` —
+  // sourced from the live-mutated capture object rather than `perfSummary`,
+  // so a hard failure (crash, OOM, timeout) that never reaches perfSummary
+  // construction still reports which DE experiment cohort it was in. Mapped
+  // to the SAME `de_*` event keys `trackRenderComplete` sets explicitly from
+  // `perfSummary.drawElement`; the caller must spread this payload FIRST so
+  // the more authoritative perfSummary value wins when both are present.
+  captureDeWorkerInversion?: string;
+  captureDePreInversionWorkers?: number;
+  captureDeParallelRouter?: string;
+  captureDePreRouterWorkers?: number;
+  captureDeSelfVerifyFallback?: boolean;
+  captureDeFallbackReason?: string;
+  /** Non-DE parallel-streaming router outcome ("screenshot" | "beginframe" —
+   * routed; "eligible_off" — would route but the kill switch is off). */
+  captureParallelStream?: string;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -46,6 +72,7 @@ export interface RenderObservabilityTelemetryPayload {
 
 function renderObservabilityEventProperties(props: RenderObservabilityTelemetryPayload) {
   return {
+    sub_timeline_wait: props.subTimelineWait,
     observability_render_job_id: props.observabilityRenderJobId,
     observability_composition_hash: props.observabilityCompositionHash,
     observability_event_count: props.observabilityEventCount,
@@ -74,6 +101,13 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     capture_player_ready_timeout_ms: props.capturePlayerReadyTimeoutMs,
     capture_transient_retries: props.captureTransientRetries,
     capture_memory_exhaustion_detected: props.captureMemoryExhaustionDetected,
+    de_worker_inversion: props.captureDeWorkerInversion,
+    de_pre_inversion_workers: props.captureDePreInversionWorkers,
+    de_parallel_router: props.captureDeParallelRouter,
+    de_pre_router_workers: props.captureDePreRouterWorkers,
+    de_self_verify_fallback: props.captureDeSelfVerifyFallback,
+    de_fallback_reason: props.captureDeFallbackReason,
+    capture_parallel_stream: props.captureParallelStream,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,
@@ -93,8 +127,11 @@ function redactTelemetryMessage(value: string): string {
   return redactTelemetryString(value);
 }
 
-export function trackCommand(command: string): void {
-  trackEvent("cli_command", { command });
+export function trackCommand(command: string, runId?: string): void {
+  trackEvent("cli_command", {
+    command,
+    ...runIdField(runId),
+  });
 }
 
 export function trackRenderComplete(
@@ -114,6 +151,32 @@ export function trackRenderComplete(
     staticDedupSkipReason?: string;
     staticDedupPredictedFrames?: number;
     staticDedupReusedFrames?: number;
+    // BeginFrame no-damage reuse outcome (Linux/Docker lastFrameCache — the BF
+    // counterpart of static dedup). Undefined outside beginframe capture mode.
+    beginFrameNoDamageFrames?: number;
+    beginFrameHasDamageFrames?: number;
+    // drawElement fast-capture outcome (default-on release visibility).
+    // Undefined on render paths with no capture session.
+    deCaptureMode?: string;
+    deCompileGate?: string;
+    deClampReason?: string;
+    deWorkerInversion?: string;
+    dePreInversionWorkers?: number;
+    deParallelRouter?: string;
+    dePreRouterWorkers?: number;
+    deGateReason?: string;
+    deWorkerEncode?: boolean;
+    deVerifyArmed?: number;
+    deVerifyChecked?: number;
+    deVerifyMinDb?: number;
+    deVerifyInitMs?: number;
+    deSelfVerifyFallback?: boolean;
+    deFallbackReason?: string;
+    deBlankSuspects?: number;
+    deBlankDeterministicAccepts?: number;
+    deBlankRecaptures?: number;
+    deBoundaryFrames?: number;
+    deNcprFallbacks?: number;
     // "cli" when triggered by `hyperframes render` (default), "studio" when
     // triggered by a studio preview-server render (POST /api/projects/:id/render).
     source?: "cli" | "studio";
@@ -125,6 +188,10 @@ export function trackRenderComplete(
     // Processing efficiency
     speedRatio?: number;
     captureAvgMs?: number;
+    /** Warmup-robust per-frame capture median (basis for speedup estimates). */
+    captureP50Ms?: number;
+    /** <video> element count (speedup segmentation: injection comps read lower). */
+    videoCount?: number;
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
@@ -158,6 +225,11 @@ export function trackRenderComplete(
   trackEvent(
     "render_complete",
     {
+      // Spread first: explicit de_* keys below (sourced from the more
+      // authoritative perfSummary.drawElement, always present on this
+      // success path) must win over the observability-capture fallback
+      // this shares with trackRenderError's failure path.
+      ...renderObservabilityEventProperties(props),
       duration_ms: props.durationMs,
       fps: props.fps,
       quality: props.quality,
@@ -170,6 +242,28 @@ export function trackRenderComplete(
       static_dedup_skip_reason: props.staticDedupSkipReason,
       static_dedup_predicted_frames: props.staticDedupPredictedFrames,
       static_dedup_reused_frames: props.staticDedupReusedFrames,
+      begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
+      begin_frame_has_damage_frames: props.beginFrameHasDamageFrames,
+      de_capture_mode: props.deCaptureMode,
+      de_compile_gate: props.deCompileGate,
+      de_clamp_reason: props.deClampReason,
+      de_worker_inversion: props.deWorkerInversion,
+      de_pre_inversion_workers: props.dePreInversionWorkers,
+      de_parallel_router: props.deParallelRouter,
+      de_pre_router_workers: props.dePreRouterWorkers,
+      de_gate_reason: props.deGateReason,
+      de_worker_encode: props.deWorkerEncode,
+      de_verify_armed: props.deVerifyArmed,
+      de_verify_checked: props.deVerifyChecked,
+      de_verify_min_db: props.deVerifyMinDb,
+      de_verify_init_ms: props.deVerifyInitMs,
+      de_self_verify_fallback: props.deSelfVerifyFallback,
+      de_fallback_reason: props.deFallbackReason,
+      de_blank_suspects: props.deBlankSuspects,
+      de_blank_deterministic_accepts: props.deBlankDeterministicAccepts,
+      de_blank_recaptures: props.deBlankRecaptures,
+      de_boundary_frames: props.deBoundaryFrames,
+      de_ncpr_fallbacks: props.deNcprFallbacks,
       source: props.source ?? "cli",
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
@@ -177,6 +271,8 @@ export function trackRenderComplete(
       total_frames: props.totalFrames,
       speed_ratio: props.speedRatio,
       capture_avg_ms: props.captureAvgMs,
+      capture_p50_ms: props.captureP50Ms,
+      video_count: props.videoCount,
       capture_peak_ms: props.capturePeakMs,
       peak_memory_mb: props.peakMemoryMb,
       memory_free_mb: props.memoryFreeMb,
@@ -199,10 +295,17 @@ export function trackRenderComplete(
       extract_phase3_ms: props.extractPhase3Ms,
       extract_cache_hits: props.extractCacheHits,
       extract_cache_misses: props.extractCacheMisses,
-      ...renderObservabilityEventProperties(props),
     },
     props.distinctId,
   );
+  // Send immediately instead of waiting for the exit-time flush. The render
+  // command's normal teardown (agent-pipe EPIPE → process.exit(0), or an
+  // explicit process.exit) kills the lazy beforeExit flush mid-flight, which
+  // is why only ~10-15% of successful renders ever produced a render_complete
+  // — and the survivors skewed toward users with low RTT to PostHog. The
+  // process is alive and idle here; if it still dies mid-request, the queue
+  // keeps the event for the exit-time flushSync() fallback.
+  void flush();
 }
 
 export function trackRenderError(
@@ -244,6 +347,9 @@ export function trackRenderError(
     },
     props.distinctId,
   );
+  // Same rationale as trackRenderComplete: error paths process.exit(1) before
+  // the lazy flush can win its race — send now, exit-time fallback covers the rest.
+  void flush();
 }
 
 export function trackRenderObservation(props: {
@@ -262,6 +368,11 @@ export function trackRenderObservation(props: {
   usePageSideCompositing?: boolean;
   hasHdrContent?: boolean;
   captureMode?: string;
+  captureOperation?: string;
+  framesCompleted?: number;
+  totalFrames?: number;
+  heartbeatIndex?: number;
+  stageElapsedMs?: number;
   videoCount?: number;
   extractedVideoCount?: number;
   totalFramesExtracted?: number;
@@ -288,6 +399,11 @@ export function trackRenderObservation(props: {
     use_page_side_compositing: props.usePageSideCompositing,
     has_hdr_content: props.hasHdrContent,
     capture_mode: props.captureMode,
+    capture_operation: props.captureOperation,
+    frames_completed: props.framesCompleted,
+    total_frames: props.totalFrames,
+    heartbeat_index: props.heartbeatIndex,
+    stage_elapsed_ms: props.stageElapsedMs,
     video_count: props.videoCount,
     extracted_video_count: props.extractedVideoCount,
     total_frames_extracted: props.totalFramesExtracted,
@@ -306,6 +422,57 @@ export function trackInitTemplate(templateId: string, props?: { tailwind?: boole
 
 export function trackBrowserInstall(): void {
   trackEvent("browser_install", {});
+}
+
+// Sign-in lifecycle. The CLI tracks command and render lifecycles but never
+// authentication, so `auth login` outcomes are invisible on the observability
+// dashboards — a completed sign-in, a browser flow the user abandoned, and a
+// rejected key all look identical (i.e. absent). These three events close that
+// gap so the sign-in funnel is measurable like the render funnel already is.
+// `method` is "oauth" (the default browser PKCE flow) or "api_key". No token,
+// key, identity, email, or free text is ever attached — only the method and a
+// low-cardinality outcome/reason.
+//
+// The three trackers accept an optional `distinctId`, forwarded to trackEvent
+// exactly like trackRenderComplete/trackRenderError already do. It is unused
+// today (events attribute to the install's anonymousId), but pre-plumbing it
+// makes attributing a completed sign-in to a resolved identity later a one-line
+// change at the callsite rather than a signature sweep.
+export type AuthLoginMethod = "oauth" | "api_key";
+export type AuthLoginFailureReason =
+  | "flow_error" // OAuth authorization/exchange threw a real error
+  | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
+  | "no_credential" // flow reported success but nothing was persisted
+  | "rejected" // backend rejected the supplied API key (401)
+  | "invalid_input" // key was empty, header-unsafe, or too short
+  | "aborted"; // prompt cancelled, or no key arrived on stdin before timeout
+
+export function trackAuthLoginStarted(method: AuthLoginMethod, distinctId?: string): void {
+  trackEvent("auth_login_started", { method }, distinctId);
+}
+
+export function trackAuthLoginCompleted(method: AuthLoginMethod, distinctId?: string): void {
+  trackEvent("auth_login_completed", { method }, distinctId);
+}
+
+export function trackAuthLoginFailed(
+  method: AuthLoginMethod,
+  reason: AuthLoginFailureReason,
+  distinctId?: string,
+): void {
+  trackEvent("auth_login_failed", { method, reason }, distinctId);
+}
+
+// Associate this install with the signed-in HeyGen account after a completed
+// sign-in. Emits a PostHog `$identify` alias whose `$anon_distinct_id` is the
+// install's anonymousId, so events recorded before sign-in stitch to the same
+// person instead of stranding as a separate anonymous profile. Routed through
+// trackEvent so it shares the opt-out gate and flush path — a no-op when
+// telemetry is disabled. `distinctId` is the account email (else username);
+// see the privacy notice in showTelemetryNotice and docs/packages/cli.mdx.
+export function identifyUser(distinctId: string): void {
+  if (!distinctId) return;
+  trackEvent("$identify", { $anon_distinct_id: readConfig().anonymousId }, distinctId);
 }
 
 // A render was rejected by the output-resolution/alpha/HDR pre-flight (P1-3)
@@ -338,6 +505,37 @@ export function trackCliError(props: {
   });
 }
 
+/**
+ * One figma import outcome (asset/tokens/component). Carries capability mix,
+ * dedup effectiveness, and fidelity-degradation counts — never fileKeys,
+ * node ids, names, or descriptions.
+ */
+export function trackFigmaImport(props: {
+  phase: "asset" | "tokens" | "component";
+  durationMs: number;
+  reused?: boolean;
+  tokensMode?: "variables" | "styles";
+  entryCount?: number;
+  unresolvedBindings?: number;
+  rasterizedNodes?: number;
+  rasterizeFailures?: number;
+}): void {
+  trackEvent("figma_import", {
+    phase: props.phase,
+    duration_ms: props.durationMs,
+    ...(props.reused !== undefined ? { reused: props.reused } : {}),
+    ...(props.tokensMode !== undefined ? { tokens_mode: props.tokensMode } : {}),
+    ...(props.entryCount !== undefined ? { entry_count: props.entryCount } : {}),
+    ...(props.unresolvedBindings !== undefined
+      ? { unresolved_bindings: props.unresolvedBindings }
+      : {}),
+    ...(props.rasterizedNodes !== undefined ? { rasterized_nodes: props.rasterizedNodes } : {}),
+    ...(props.rasterizeFailures !== undefined
+      ? { rasterize_failures: props.rasterizeFailures }
+      : {}),
+  });
+}
+
 // Report why a command failed before it exits non-zero. cli_command_result
 // records the failure but not the reason; this fills that gap via cli_error so
 // command failures are diagnosable. Enqueues synchronously — the process `exit`
@@ -359,6 +557,25 @@ export function trackCommandFailure(command: string, err: unknown): void {
 // the caller (init / skill pipeline) treated captions as skippable.
 export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
+}
+
+// grade-compare / compare stand up headless Chrome and render up to 16 cells.
+// Cell count, truncation-cap hits, and whether the render-ready timeout fired
+// are the signals needed before safely lifting the cap. Low-cardinality only.
+export function trackCompareSheet(props: {
+  command: "grade-compare" | "compare";
+  cells: number;
+  truncated: boolean;
+  total: number;
+  renderReadyTimedOut: boolean;
+}): void {
+  trackEvent("media_use_compare", {
+    command: props.command,
+    cells: props.cells,
+    truncated: props.truncated,
+    total: props.total,
+    render_ready_timed_out: props.renderReadyTimedOut,
+  });
 }
 
 // A skills install was skipped because a required prerequisite binary is
@@ -390,11 +607,65 @@ export function trackCommandResult(props: {
   success: boolean;
   exitCode: number;
   durationMs: number;
+  runId?: string;
 }): void {
   trackEvent("cli_command_result", {
     command: props.command,
     success: props.success,
     exit_code: props.exitCode,
     duration_ms: props.durationMs,
+    ...runIdField(props.runId),
+  });
+}
+
+export function trackCheckReport(props: {
+  contrastGate: boolean;
+  motionGate: boolean;
+  captionZoneGate: boolean;
+  frameCheckGate: boolean;
+  snapshotsGate: boolean;
+  lintErrors: number;
+  lintWarnings: number;
+  runtimeErrors: number;
+  runtimeWarnings: number;
+  layoutErrors: number;
+  layoutWarnings: number;
+  motionErrors: number;
+  motionWarnings: number;
+  contrastErrors: number;
+  contrastWarnings: number;
+  launchSettleMs: number;
+  seekLoopMs: number;
+  contrastMs: number;
+  gridPoints: number;
+  contrastPoints: number;
+  ok: boolean;
+  exitCode: number;
+  runId?: string;
+}): void {
+  trackEvent("check_report", {
+    gate_contrast: props.contrastGate,
+    gate_motion: props.motionGate,
+    gate_caption_zone: props.captionZoneGate,
+    gate_frame_check: props.frameCheckGate,
+    gate_snapshots: props.snapshotsGate,
+    lint_errors: props.lintErrors,
+    lint_warnings: props.lintWarnings,
+    runtime_errors: props.runtimeErrors,
+    runtime_warnings: props.runtimeWarnings,
+    layout_errors: props.layoutErrors,
+    layout_warnings: props.layoutWarnings,
+    motion_errors: props.motionErrors,
+    motion_warnings: props.motionWarnings,
+    contrast_errors: props.contrastErrors,
+    contrast_warnings: props.contrastWarnings,
+    launch_settle_ms: props.launchSettleMs,
+    seek_loop_ms: props.seekLoopMs,
+    contrast_ms: props.contrastMs,
+    grid_points: props.gridPoints,
+    contrast_points: props.contrastPoints,
+    ok: props.ok,
+    exit_code: props.exitCode,
+    ...runIdField(props.runId),
   });
 }

@@ -102,6 +102,73 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
   return id;
 }
 
+/**
+ * True for a sub-composition authoring template whose content the studio preview
+ * unwraps into the served body. Two accepted forms:
+ *   A) `<template data-composition-id="X">…` — the id on the template itself.
+ *   B) `<template id="X-template"><div data-composition-id="X">…` — the id on the
+ *      wrapped root div (the form `hyperframes add` scaffolds and registry blocks use).
+ * Only these are treated as transparent containers for hf-id purposes. A plain
+ * `<template>` (runtime clone-source: list item, particle, etc.) must NOT get
+ * inner ids — its content is cloned N times into the live DOM, so a persisted
+ * inner id would be duplicated across every clone. Form B is distinguished from
+ * a clone-source by the presence of a direct `[data-composition-id]` child.
+ */
+function getChildElements(parent: Element): Element[] {
+  const directChildren = Array.from(parent.children);
+  if (directChildren.length || parent.tagName.toLowerCase() !== "template") return directChildren;
+  const content = (parent as HTMLTemplateElement).content;
+  if (content?.children.length) return Array.from(content.children);
+  return directChildren;
+}
+
+export function isCompositionTemplate(el: Element): boolean {
+  if (el.tagName.toLowerCase() !== "template") return false;
+  if (el.getAttribute("data-composition-id") !== null) return true;
+  for (const child of getChildElements(el)) {
+    if (child.getAttribute("data-composition-id") !== null) return true;
+  }
+  return false;
+}
+
+/**
+ * Walk document-order descendants, descending through composition templates
+ * while keeping plain templates inert. linkedom's querySelectorAll does not
+ * expose template contents, so callers that model the served composition use
+ * this traversal instead.
+ */
+export function walkCompositionDescendants(
+  root: Document | Element,
+  visit: (el: Element) => void,
+): void {
+  const rootElement: Element | null =
+    root.nodeType === 9 ? (root as Document).documentElement : (root as Element);
+  if (!rootElement) return;
+
+  const walk = (parent: Element): void => {
+    for (const child of getChildElements(parent)) {
+      const isTemplate = child.tagName.toLowerCase() === "template";
+      if (isTemplate && !isCompositionTemplate(child)) continue;
+      visit(child);
+      walk(child);
+    }
+  };
+
+  walk(rootElement);
+}
+
+/**
+ * Document-order walk of every element under `root`, descending into
+ * composition `<template>` subtrees — linkedom's querySelectorAll does not, so
+ * template-based sub-comps would otherwise never get inner ids (the preview
+ * unwraps the template and stamps the SAME content, so skipping here splits
+ * the id space between the served DOM and the raw file). Plain templates are
+ * skipped entirely (see isCompositionTemplate).
+ */
+function walkElements(root: Element, visit: (el: Element) => void): void {
+  walkCompositionDescendants(root, visit);
+}
+
 export function ensureHfIds(html: string): string {
   // Mirror parseSourceDocument's fragment-wrapping so bare fragments don't land
   // outside <body> in linkedom, which would cause body.querySelectorAll to return [].
@@ -117,16 +184,16 @@ export function ensureHfIds(html: string): string {
   // Seed with already-present ids (pin) so fresh mints never collide with them.
   // Scope to <body> to match the mint walk below — a stray data-hf-id in <head>
   // must not pin an id into the set that a body element would then be bumped off.
-  for (const el of Array.from(body.querySelectorAll("[data-hf-id]"))) {
+  walkElements(body, (el) => {
     const existing = el.getAttribute("data-hf-id");
     if (existing) assigned.add(existing);
-  }
+  });
 
-  for (const el of Array.from(body.querySelectorAll("*"))) {
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
-    if (el.getAttribute("data-hf-id")) continue; // pinned
+  walkElements(body, (el) => {
+    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) return;
+    if (el.getAttribute("data-hf-id")) return; // pinned
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
-  }
+  });
 
   return wrapped ? document.body.innerHTML || "" : document.toString();
 }

@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { bundleToSingleHtml } from "./htmlBundler";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 
@@ -52,6 +52,49 @@ function tryCreateSymlink(target: string, path: string, type: "dir" | "file"): b
 }
 
 describe("bundleToSingleHtml", () => {
+  it("bundles a direct composition entry with paths relative to its file", async () => {
+    const dir = makeTempProject({
+      "index.html": "<html><body>wrong entry</body></html>",
+      "compositions/scene.html": `<!doctype html><html><head><link rel="stylesheet" href="scene.css"></head><body>
+        <div data-composition-id="scene" data-width="320" data-height="180">direct scene</div>
+      </body></html>`,
+      "compositions/scene.css": ".direct-scene { color: rgb(1, 2, 3); }",
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("direct scene");
+    expect(bundled).not.toContain("wrong entry");
+    expect(bundled).toContain(".direct-scene { color: rgb(1, 2, 3); }");
+  });
+
+  it("rebases direct-entry authored asset paths before inlining", async () => {
+    const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
+    const bgSvg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';
+    const dir = makeTempProject({
+      "index.html": "<html><body>wrong entry</body></html>",
+      "compositions/scene.html": `<!doctype html><html><head>
+        <style>.scene { background-image: url("./bg.svg"); }</style>
+      </head><body>
+        <div class="scene" data-composition-id="scene" data-width="320" data-height="180" data-start="0" data-duration="1">
+          <img src="./sprite.svg">
+        </div>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.scene = {}</script>
+      </body></html>`,
+      "compositions/sprite.svg": spriteSvg,
+      "compositions/bg.svg": bgSvg,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+    const spriteDataUrl = `data:image/svg+xml;base64,${Buffer.from(spriteSvg).toString("base64")}`;
+    const bgDataUrl = `data:image/svg+xml;base64,${Buffer.from(bgSvg).toString("base64")}`;
+
+    expect(bundled).toContain(`src="${spriteDataUrl}"`);
+    expect(bundled).toContain(`url("${bgDataUrl}")`);
+    expect(bundled).not.toContain("./sprite.svg");
+    expect(bundled).not.toContain("./bg.svg");
+  });
+
   it("does not merge author scripts into the runtime bootstrap placeholder", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -962,6 +1005,42 @@ describe("bundleToSingleHtml", () => {
 
     expect(lutSrc).toMatch(/^data:text\/plain;base64,/);
     expect(lutSrc).not.toContain("assets/luts/identity.cube");
+  });
+
+  it("can keep data-color-grading LUT paths external for studio preview", async () => {
+    const dir = makeColorGradingProject("assets/luts/identity.cube", {
+      "assets/luts/identity.cube": `LUT_3D_SIZE 2
+0 0 0
+1 0 0
+0 1 0
+1 1 0
+0 0 1
+1 0 1
+0 1 1
+1 1 1`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { inlineColorGradingLuts: false });
+    const lutSrc = readBundledColorGradingLutSrc(bundled);
+
+    expect(lutSrc).toBe("assets/luts/identity.cube");
+  });
+
+  it("warns when a render bundle cannot inline a referenced color grading LUT", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const dir = makeColorGradingProject("assets/luts/missing.cube");
+
+      const bundled = await bundleToSingleHtml(dir);
+      const lutSrc = readBundledColorGradingLutSrc(bundled);
+
+      expect(lutSrc).toBe("assets/luts/missing.cube");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Could not inline color grading LUT "assets/luts/missing.cube"'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("resolves nested CSS @import chains", async () => {

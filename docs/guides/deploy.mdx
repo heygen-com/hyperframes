@@ -1,20 +1,21 @@
 ---
 title: Deploy
-description: "Run a Hyperframes preview + render API in the cloud from a one-click template."
+description: "Run a Hyperframes preview + render API in the cloud from an official template."
 ---
 
-Hyperframes ships two official deployment templates that wrap a composition in a small web app: an in-browser preview and a `/api/render` endpoint that produces an MP4 server-side. Both are open source, Apache-2.0, and deploy from a single button.
+Hyperframes ships three official deployment templates that wrap a composition in a small web app: an in-browser preview and a `/api/render` endpoint that produces an MP4 server-side. All are open source, Apache-2.0 — Vercel and Cloudflare deploy from a single button, Modal from a single `modal deploy`.
 
 | Template | Compute | Storage | Deploy |
 |----------|---------|---------|--------|
 | [Vercel](https://github.com/heygen-com/hyperframes-vercel-template) | [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) (Firecracker microVM) | [Vercel Blob](https://vercel.com/docs/vercel-blob) | [vercel.com/templates/ai/hyperframes-on-vercel](https://vercel.com/templates/ai/hyperframes-on-vercel) |
 | [Cloudflare](https://github.com/heygen-com/hyperframes-cloudflare-template) | [Cloudflare Containers](https://developers.cloudflare.com/containers/) (Workers + Durable Object) | [R2](https://developers.cloudflare.com/r2/) | One-click button in the repo README |
+| [Modal](https://github.com/heygen-com/hyperframes-modal-template) | [Modal Functions](https://modal.com/docs/guide/webhooks) (serverless containers, scale-to-zero) | [Modal Volume](https://modal.com/docs/guide/volumes) | `modal deploy src/app.py` |
 
-Both templates use the same shape:
+All three templates use the same shape:
 
 - **Preview** the bundled `ui-3d-reveal` composition in the browser via the [`<hyperframes-player>`](/packages/player) web component.
-- **Render** to MP4 by POSTing to `/api/render`. The handler ships the composition to a sandboxed runtime that has Chromium, FFmpeg, and `hyperframes` pre-installed, then streams the MP4 back to object storage and returns a public URL.
-- **Author locally**, deploy the preview + render API. Compositions are still built on your machine with `npx hyperframes init`, then dropped into the template's `public/compositions/` directory.
+- **Render** to MP4 by POSTing to `/api/render`. The handler ships the composition to a sandboxed runtime that has Chromium, FFmpeg, and `hyperframes` pre-installed, then streams the MP4 back to storage and returns a URL.
+- **Author locally**, deploy the preview + render API. Compositions are still built on your machine with `npx hyperframes init`, then dropped into the template's compositions directory.
 
 ## Choosing a template
 
@@ -65,11 +66,41 @@ Both templates use the same shape:
       Cloudflare's hosted [Browser Rendering](https://developers.cloudflare.com/browser-rendering/) API can't install FFmpeg — that's why the template uses Cloudflare Containers, which gives you a real OCI container in a Worker-bound Durable Object with up to 4 vCPUs and 12 GiB RAM.
     </Note>
   </Tab>
+  <Tab title="Modal">
+    Pick this if you already run on Modal, want containers that scale to zero with per-second billing, or want the render to run as a spawned function decoupled from the request.
+
+    Modal deploys from the CLI rather than a button:
+
+    ```bash Terminal
+    uv sync
+    source .venv/bin/activate
+    modal setup                 # one-time auth
+    modal deploy src/app.py
+    ```
+
+    **What you get**
+
+    - A FastAPI app (`@modal.asgi_app`) that serves the `<hyperframes-player>` preview and a `POST /api/render` route.
+    - A Modal image with Node.js 22, Python 3.12, FFmpeg, `hyperframes`, and `chrome-headless-shell` baked in at build time — no install at request time.
+    - A Modal Volume (`hyperframes-renders`) that persists the MP4, served back from the `/renders/:name` endpoint.
+
+    **Performance**
+
+    First deploy takes ~2 min to build the image; subsequent deploys are ~2s. Renders cold-boot in ~1s and containers scale to zero when idle. With `--workers auto`, three parallel Chrome workers cut render time (GPU is disabled via `--no-browser-gpu`). A 12s 1080p30 composition renders in roughly 10–90s depending on complexity.
+
+    **Pricing**
+
+    You pay per second of render time and nothing while idle, since containers scale to zero. See [Modal pricing](https://modal.com/pricing) for current per-CPU and per-GB rates.
+
+    <Note>
+      Modal web endpoints cap at 150s per request, so `POST /api/render` returns a `call_id` immediately and the render runs in a spawned Modal Function (up to 15 min, `timeout=900`). Poll `GET /api/render/:id` — it returns `202` while the render is still running, then the finished MP4.
+    </Note>
+  </Tab>
 </Tabs>
 
 ## Architecture
 
-Both templates follow the same flow: the browser plays a preview locally, then POSTs to a render endpoint that delegates to a sandboxed runtime with Chromium + FFmpeg.
+All three templates follow the same flow: the browser plays a preview locally, then POSTs to a render endpoint that delegates to a sandboxed runtime with Chromium + FFmpeg.
 
 ```
  Browser                    Edge / Function              Sandboxed renderer
@@ -81,14 +112,14 @@ Both templates follow the same flow: the browser plays a preview locally, then P
 │                  │  url  │  → upload to blob  │  mp4  │                          │
 └──────────────────┘       └────────────────────┘       └──────────────────────────┘
                                     │
-                                    └─▶ Vercel Blob / Cloudflare R2
+                                    └─▶ Vercel Blob / Cloudflare R2 / Modal Volume
 ```
 
-The key cost-saver in both templates is **pre-baking the renderer**. Installing Chromium system libraries plus `chrome-headless-shell` takes 30–60s, which would dominate every cold render. Vercel's template snapshots the sandbox at build time; Cloudflare's template bakes everything into the container image. Both restore in milliseconds and let you spend the entire request budget on actual rendering.
+The key cost-saver in all three templates is **pre-baking the renderer**. Installing Chromium system libraries plus `chrome-headless-shell` takes 30–60s, which would dominate every cold render. Vercel's template snapshots the sandbox at build time; Cloudflare's and Modal's templates bake everything into the container image. All restore in milliseconds and let you spend the entire request budget on actual rendering.
 
 ## Swapping the composition
 
-Both templates ship with one bundled composition (`ui-3d-reveal`). To use your own:
+All three templates ship with one bundled composition (`ui-3d-reveal`). To use your own:
 
 <Steps>
   <Step title="Author locally">
@@ -101,11 +132,12 @@ Both templates ship with one bundled composition (`ui-3d-reveal`). To use your o
     ```
   </Step>
   <Step title="Drop the bundle into the template">
-    Copy your composition into `public/compositions/<your-name>/`.
+    Copy your composition into the template's compositions directory — `public/compositions/<your-name>/` for Vercel and Cloudflare, `compositions/<your-name>/` for Modal.
   </Step>
   <Step title="Point the template at it">
     - **Vercel**: edit `PREVIEW_COMPOSITION_DIR` at the top of `lib/preview.ts` and the dimensions in `app/page.tsx` if it isn't 1920×1080.
     - **Cloudflare**: set `PREVIEW_COMPOSITION_DIR=compositions/<your-name>` when running `npm run deploy`, or edit the default in `scripts/build.mjs`. Update player dimensions in `public/index.html` if needed.
+    - **Modal**: set `PREVIEW_COMPOSITION = "<your-name>"` in `src/app.py`. Update the `<hyperframes-player>` dimensions in `web/index.html` if it isn't 1920×1080.
   </Step>
   <Step title="Deploy">
     ```bash Terminal
@@ -114,6 +146,9 @@ Both templates ship with one bundled composition (`ui-3d-reveal`). To use your o
 
     # Cloudflare
     npm run deploy
+
+    # Modal
+    modal deploy src/app.py
     ```
   </Step>
 </Steps>
@@ -141,6 +176,9 @@ For everything else, the templates are the recommended starting point.
     Source on GitHub
   </Card>
   <Card title="Cloudflare template" icon="github" href="https://github.com/heygen-com/hyperframes-cloudflare-template">
+    Source on GitHub
+  </Card>
+  <Card title="Modal template" icon="github" href="https://github.com/heygen-com/hyperframes-modal-template">
     Source on GitHub
   </Card>
 </CardGroup>

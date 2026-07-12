@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import { inlineSubCompositions } from "./inlineSubCompositions";
+import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
 
@@ -175,6 +176,52 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
   });
 
+  it("with flattenInnerRoot: restores data-composition-id on the wrapper for an anonymous host", () => {
+    // Regression test: a host mounted via data-composition-src with no
+    // data-composition-id of its own (an "anonymous" host). The composition
+    // styles its own root box via the bare composition-id selector and a
+    // script self-references it too — both need something in the render DOM
+    // to actually carry that id once flattenInnerRoot strips it from the
+    // wrapper by default.
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-src="scoped-text.html" data-start="0" data-duration="3"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector('[data-composition-src="scoped-text.html"]')!;
+
+    const scopedTextHtml = `<template id="scoped-text-template">
+  <div data-composition-id="scoped-text" data-width="1080" data-height="1920" data-duration="3">
+    <div class="label">Scoped Text Should Stay Styled</div>
+    <style>
+      [data-composition-id="scoped-text"] { display: flex; background: rgb(12, 12, 12); }
+    </style>
+  </div>
+</template>`;
+
+    function flattenInnerRoot(innerRoot: Element): Element {
+      const clone = innerRoot.cloneNode(true) as Element;
+      clone.removeAttribute("data-composition-id");
+      clone.removeAttribute("data-start");
+      clone.removeAttribute("data-duration");
+      clone.setAttribute("data-hf-inner-root", "true");
+      return clone;
+    }
+
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => scopedTextHtml,
+      parseHtml: (html) => parseHTML(html).document,
+      flattenInnerRoot,
+    });
+
+    const wrapper = host.querySelector("[data-hf-inner-root]");
+    expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
+
+    const scopedCss = result.styles.join("\n");
+    expect(scopedCss).toContain("display: flex");
+  });
+
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {
     const subCompWithLinks = `<!doctype html>
 <html><head>
@@ -310,5 +357,48 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toMatch(
       /\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]\s+\.title/,
     );
+  });
+});
+
+describe("inlineSubCompositions – variable defaults on a template sub-comp root div", () => {
+  const SUB_COMP_WITH_VAR = `<template id="card-template">
+  <div id="card" data-composition-id="card" data-width="1920" data-height="1080"
+       data-composition-variables='[{"id":"headline","type":"string","label":"Headline","default":"Hi there"}]'>
+    <h1 class="title" data-var-text="headline">Hi there</h1>
+  </div>
+</template>`;
+
+  function hostDoc() {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div data-composition-id="card" data-composition-src="card.html"
+             data-start="0" data-duration="4" data-track-index="0"></div>
+      </div></body></html>`);
+    return document;
+  }
+
+  it("aggregates defaults declared on the inner root div (template comps have no <html> to hold them)", () => {
+    const document = hostDoc();
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
+  });
+
+  it("lets a per-instance host value override the declared default", () => {
+    const document = hostDoc();
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    host.setAttribute("data-variable-values", JSON.stringify({ headline: "Overridden" }));
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
   });
 });

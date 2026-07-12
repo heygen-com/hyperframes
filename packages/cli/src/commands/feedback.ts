@@ -7,6 +7,7 @@ import { trackRenderFeedback } from "../telemetry/events.js";
 import { shouldTrack, flush } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
 import { publishProjectArchive } from "../utils/publishProject.js";
+import { submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
@@ -164,7 +165,10 @@ export default defineCommand({
     trackRenderFeedback({ rating, comment, doctorSummary });
 
     await flush();
+    // Ack first so the user isn't kept waiting on the best-effort forward (which
+    // is bounded to a few seconds and never surfaces an error either way).
     console.log(c.dim("Thanks for the feedback!"));
+    await submitFeedback({ rating, comment, cliVersion: VERSION, env: doctorSummary });
 
     if (args["file-issue"] === true) {
       await fileGithubIssue({

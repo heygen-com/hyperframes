@@ -1,4 +1,4 @@
-// fallow-ignore-file complexity
+// fallow-ignore-file complexity code-duplication
 /**
  * Frame Capture Service
  *
@@ -25,11 +25,24 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  ensureRenderFrameSiblings,
   getCdpSession,
   pageScreenshotCapture,
   initTransparentBackground,
   shouldDefaultCaptureBeyondViewport,
 } from "./screenshotService.js";
+import {
+  detectSwiftShader,
+  injectDrawElementCanvas,
+  captureDrawElementFrame,
+  resolveDrawElementCaptureMode,
+  instrumentAcceleratedCanvases,
+  initDrawElementWorkerEncode,
+  cleanupDrawElementWorkerEncode,
+  produceDrawElementFrame,
+  produceDrawElementFrameBatch,
+} from "./drawElementService.js";
+import { initThreeDProjection, detectCssEffectRisk } from "./threeDProjection.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
@@ -37,6 +50,7 @@ import type {
   CaptureResult,
   CaptureBufferResult,
   CapturePerfSummary,
+  SubTimelineWaitOutcome,
 } from "../types.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -82,6 +96,16 @@ export interface CaptureSession {
   pageReleased?: boolean;
   browserReleased?: boolean;
   browserConsoleBuffer: string[];
+  /**
+   * Script resources that failed to load (request failure or HTTP >= 400).
+   * pollSubCompositionTimelines fail-fasts on these: a comp whose timeline
+   * script 404'd can never register window.__timelines[id], so waiting the
+   * full playerReadyTimeout (45s) buys nothing (~1% of wild local renders
+   * were hitting that wall — a 705-render spike at the 45s setup bucket).
+   */
+  scriptLoadFailures: string[];
+  /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
+  subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   initTelemetry?: {
     initDurationMs: number;
     tweenCount: number;
@@ -92,8 +116,18 @@ export interface CaptureSession {
     beforeCaptureMs: number;
     screenshotMs: number;
     totalMs: number;
+    /** Per-frame capture durations (batch frames get the batch mean). Basis for
+     * the warmup-robust p50 in the perf summary. */
+    frameMs: number[];
   };
   captureMode: CaptureMode;
+  /**
+   * Browser LAUNCH mode, immutable after createCaptureSession. `captureMode`
+   * is reassigned by initializeSession (e.g. to "drawelement"), so callers
+   * that need to know whether this browser actually drives BeginFrame (the
+   * SwiftShader liveness probe) read this field instead.
+   */
+  launchCaptureMode: CaptureMode;
   // BeginFrame state
   beginFrameTimeTicks: number;
   beginFrameIntervalMs: number;
@@ -101,6 +135,88 @@ export interface CaptureSession {
   beginFrameNoDamageCount: number;
   /** Optional producer config — when set, overrides module-level env var constants. */
   config?: Partial<EngineConfig>;
+  /** True if running on SwiftShader (detected at init). Undefined before init. */
+  isSwiftShader?: boolean;
+  /** drawElementImage canvas was injected and is ready for capture. */
+  drawElementReady?: boolean;
+  /**
+   * Worker-encode pipeline is active for this session. Set by
+   * `initDrawElementOrTransparentBackground` when `enableDrawElementWorkerEncode`
+   * is true and capture mode resolved to "drawelement".
+   */
+  workerEncodeEnabled?: boolean;
+  /**
+   * Frame indices that must be captured via screenshot rather than drawElement.
+   * Populated at init by the clip-cut boundary predictor (Lim 6): frames where
+   * the outgoing clip is dropped a frame before the incoming clip's paint record
+   * is ready → black frame. Controlled by `HF_FAST_CAPTURE_BOUNDARY_SS=false`.
+   * Empty/undefined when the predictor produces no frames.
+   */
+  clipBoundaryFrames?: Set<number>;
+  /** Rolling drawElement frame byte-sizes (last ~60), for silent-blank-drop detection:
+   * drawElement intermittently returns an anomalously small (blank) frame with no
+   * throw; a frame far below the running median is re-captured via screenshot. */
+  deFrameSizes?: number[];
+  /** Last non-deduped encode result, reused for a static frame on the drawElement
+   * worker-encode path (mirrors `lastFrameBuffer` on the screenshot path). Only set
+   * when static-frame dedup is armed on the drawElement path. */
+  lastEncodeResult?: Promise<Buffer>;
+  /** Frame index lastEncodeResult belongs to — static-dedup reuse must verify
+   * every frame in (lastEncodeResultFrame, i] is predicted-static (under the
+   * interleaved parallel stride the "previous" produced frame is i−N, and
+   * reusing it for frame i is only valid when the whole gap is static). */
+  lastEncodeResultFrame?: number;
+  /** Per-render self-verification ground truth (ungated-release safety net):
+   * K screenshot frames captured at init BEFORE the drawElement canvas is
+   * injected (the only window where a page screenshot shows the live DOM, not
+   * the capture canvas's stale bitmap). The producer drain compares the DE
+   * frame at each index against these; a breach aborts the render with
+   * DrawElementVerificationError and the orchestrator re-renders via the
+   * screenshot path. */
+  deVerifyFrames?: Map<number, Buffer>;
+  /** Low-cardinality init-gate reason when drawElement routed to baseline (telemetry). */
+  deGateReason?: string;
+  /** Wall-clock ms spent capturing self-verification ground truth at init (telemetry). */
+  deVerifyInitMs?: number;
+  /** Count of per-frame "No cached paint record" screenshot fallbacks (telemetry). */
+  deNcprFallbacks?: number;
+  /**
+   * drawElement init passed every gate but stopped before verification +
+   * canvas injection: the session has no video-frame injector yet (probe
+   * sessions initialize before extraction) and the comp has <video> elements,
+   * so ground-truth screenshots would capture black video boxes. The capture
+   * stage completes the init via completeDeferredDrawElementInit once
+   * prepareCaptureSessionForReuse attaches the injector.
+   */
+  deInitDeferred?: boolean;
+}
+
+/**
+ * drawElement self-verification failure — a captured DE frame diverged from its
+ * pre-injection screenshot ground truth (or a blank frame survived a retry).
+ * The orchestrator catches this and re-renders the whole job with
+ * forceScreenshot. Discriminant-based guard (not instanceof) so it survives
+ * duplicated module instances across package boundaries.
+ */
+export class DrawElementVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DrawElementVerificationError";
+    // Discriminant property, assigned dynamically: isDrawElementVerificationError
+    // reads it structurally so detection survives duplicated module instances
+    // across package boundaries (where instanceof fails).
+    (this as unknown as { deVerificationFailure: boolean }).deVerificationFailure = true;
+  }
+}
+
+export function isDrawElementVerificationError(err: unknown): boolean {
+  // Walk the cause chain — the producer wraps capture errors (CaptureStageError).
+  let e: unknown = err;
+  for (let depth = 0; depth < 5 && typeof e === "object" && e !== null; depth++) {
+    if ((e as { deVerificationFailure?: boolean }).deVerificationFailure === true) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -342,6 +458,312 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
+/**
+ * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
+ * init paths (called after the page is fully ready). When `useDrawElement` is
+ * set, detect SwiftShader and route: transparent+SwiftShader falls back to
+ * screenshot capture (the drawElement transparent path is broken on SwiftShader),
+ * everything else injects the drawElement canvas and switches to "drawelement"
+ * mode. Otherwise, for PNG output, force a transparent page background so the
+ * screenshots carry a real alpha channel (Chrome resets the override on every
+ * navigation, so this must run after page load).
+ *
+ * drawElement is also skipped when supersampling (deviceScaleFactor > 1):
+ * `drawElementImage` reads the canvas at CSS pixels and has no equivalent of
+ * `Page.captureScreenshot`'s clip+scale, so it would silently capture at 1x and
+ * drop the requested supersample. Such renders fall through to the screenshot
+ * path (preMode already forces "screenshot" for DPR > 1).
+ */
+async function initDrawElementOrTransparentBackground(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  const supersampling = (session.options.deviceScaleFactor ?? 1) > 1;
+  // forceScreenshot is an explicit routing decision made upstream (render-mode
+  // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
+  // drawElement must not override it. Concretely: an rAF-compat comp on
+  // SwiftShader gets a screenshot-launched (free-running) browser, where
+  // drawElement runs in paint-event-sync mode; SwiftShader never refreshes a
+  // 2d canvas bitmap inside a cached paint record there, so every canvas
+  // captures frozen-blank (raf-ball rendered fully black). On a GPU the same
+  // path happens to work, but the hint asked for screenshot — honor it.
+  const forceScreenshot = session.config?.forceScreenshot ?? false;
+  // DIAGNOSTIC ONLY — HF_FORCE_DRAWELEMENT=1 forces the drawElement path,
+  // bypassing every compile/init gate AND the compatibility hints (it overrides
+  // forceScreenshot). Exists for upstream-Chromium repro work (isolating gate
+  // behavior from drawElementImage behavior, e.g. the crbug 521861819 149-vs-151
+  // comparison) and for R&D on gated effect classes. Renders under this flag may
+  // be DAMAGED by design — the gates it skips exist because measured damage
+  // (blur/backdrop ~18-49dB, 3D backface, SwiftShader sub-layer drops) is real.
+  // Never set it in production; it is intentionally not documented in user-facing
+  // help, and the safety-net blank guard also stands down under it so diagnostic
+  // frames arrive unmodified.
+  const forceDE = process.env.HF_FORCE_DRAWELEMENT === "1";
+  const useDrawElement =
+    ((session.config?.useDrawElement ?? false) || forceDE) &&
+    !supersampling &&
+    (!forceScreenshot || forceDE);
+  if ((session.config?.useDrawElement ?? false) && supersampling) {
+    session.deGateReason = "supersampling";
+    console.log(
+      "[engine] --experimental-fast-capture disabled for this render: drawElementImage " +
+        "ignores deviceScaleFactor, so supersampled (DPR > 1) output uses screenshot capture.",
+    );
+  }
+  if ((session.config?.useDrawElement ?? false) && !supersampling && forceScreenshot) {
+    session.deGateReason = "render_mode_hint";
+    console.log(
+      "[engine] fast capture: falling back to screenshot — render-mode compatibility " +
+        "hint forced screenshot capture (e.g. raw requestAnimationFrame composition).",
+    );
+  }
+  if (useDrawElement) {
+    session.isSwiftShader = await detectSwiftShader(page);
+    const transparent = session.options.format === "png";
+    async function routeToFallback(): Promise<void> {
+      session.captureMode = session.launchCaptureMode;
+      if (transparent) {
+        await initTransparentBackground(session.page);
+      }
+      // Static-frame dedup is capture-mode-independent (the serial path reuses
+      // lastFrameBuffer regardless of how the frame was captured) and lossless
+      // (anchor-verified). A comp only reaches THIS fallback with useDrawElement=true
+      // AND forceScreenshot=false — i.e. it is deterministic: raw-rAF / iframe /
+      // htmlInCanvas comps are forced to screenshot upstream (forceScreenshot=true) and
+      // never enter this block, so they never arm dedup. The comps that DO fall back here
+      // (blur / backdrop / 3D / at-risk) carry only a compositor
+      // EFFECT drawElement can't paint, not nondeterminism, so their predicted-static set
+      // is sound. Verification seeks via Page.captureScreenshot, which hangs on a
+      // BeginFrame-launched browser — gate on the launch mode (macOS fast-capture launches
+      // screenshot-mode; Linux/Docker launches beginframe and is skipped).
+      if (session.launchCaptureMode === "screenshot") {
+        await armStaticDedup(session, page, logInitPhase);
+      }
+    }
+    // Capability gate: `canvas.drawElementImage` is an unlaunched Blink feature
+    // that only exists on recent Dev/Canary Chrome builds (~151+); it is absent
+    // from Stable and from most pinned/system Chrome installs. The
+    // `--enable-features=CanvasDrawElement` flag no-ops silently on a build that
+    // doesn't implement it, so without this probe the first drawElementImage()
+    // call throws `TypeError: ... is not a function` deep inside the capture
+    // loop and takes the whole render down instead of falling back (HF#2060).
+    // Cheap (no paint-wait) and must run before any other drawElement work.
+    // Not gated by forceDE (HF_FORCE_DRAWELEMENT, an R&D knob that bypasses the
+    // quality gates below to measure raw damage) — there's no "forced but
+    // degraded" mode for a method that doesn't exist, only a crash, so this
+    // always routes to the fallback instead.
+    const supportsDrawElement = await page.evaluate(() => {
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d");
+      return (
+        typeof (ctx as unknown as { drawElementImage?: unknown })?.drawElementImage === "function"
+      );
+    });
+    if (!supportsDrawElement) {
+      session.deGateReason = "unsupported_chrome";
+      console.log(
+        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+          "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
+          "feature, ~151+); run `hyperframes browser ensure --force` to fetch a supported " +
+          "build, or set HYPERFRAMES_BROWSER_PATH to one.",
+      );
+      await routeToFallback();
+      return;
+    }
+    // SwiftShader gate: drawElement's only advantage is skipping the GPU→CPU
+    // screenshot-readback IPC. On a software rasterizer (Docker/CI, no GPU) both
+    // paths block on identical software raster, so drawElement is parity-or-slower
+    // — route to the platform baseline.
+    //
+    // Two gates were REMOVED here once Chrome 151 fixed crbug 521861819
+    // (drawElementImage dropped compositor-promoted opacity layers mid-fade):
+    //   - the <video> gate (a proxy for the word-by-word caption opacity pattern,
+    //     Lim 2), and
+    //   - the stacked-fade gate (>=2 overlapping viewport-scale opacity-fade targets).
+    // Both reproduced on Chrome <=150 (video+caption-fade ~12 dB; stacked fade
+    // 24.5 dB) and both render correctly on 151 (verified: video+nested-fade repro
+    // PSNR=inf; efb59c5b 24.5→47.4 dB, 0 damaged frames). 151 is the pinned floor.
+    const mode = resolveDrawElementCaptureMode(session.isSwiftShader, transparent);
+    if (mode === "screenshot") {
+      session.deGateReason = "swiftshader";
+      // Fall back to the browser's LAUNCH mode, not unconditionally to
+      // "screenshot": on a BeginFrame-launched browser (Linux fast capture)
+      // Page.captureScreenshot hangs for the full protocol timeout, while
+      // beginFrameCapture is the platform's normal baseline path.
+      console.log(
+        `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+          "SwiftShader (software rasterizer — no GPU egress to skip, drawElement is " +
+          "parity-or-slower; see fast-capture-limitations.md)",
+      );
+      await routeToFallback();
+    } else {
+      // CSS-effect gate: backdrop-filter samples the compositor backdrop and
+      // filter:blur/drop-shadow render differently through the paint-record
+      // path — drawElementImage can't reproduce either, producing 18–49 dB
+      // damaged frames (community eval). Fall back to the platform baseline.
+      // HF_FAST_CAPTURE_CSSFX=true bypasses for R&D.
+      if (!forceDE && process.env.HF_FAST_CAPTURE_CSSFX !== "true") {
+        const cssFx = await detectCssEffectRisk(page);
+        if (cssFx) {
+          session.deGateReason = `css_effect:${(cssFx.split(":")[0] ?? "").replace(/[^a-z-]/gi, "")}`;
+          console.log(
+            `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+              `${cssFx} detected (drawElementImage cannot reproduce it; see fast-capture-limitations.md)`,
+          );
+          await routeToFallback();
+          return;
+        }
+      }
+      // Lim 7: timeline-interval at-risk predictor. Walk window.__timelines and
+      // find tweens animating compositor-incompatible props (opacity, filter,
+      // blend-mode, 3D transform, clip-path, mask). drawElementImage drops these
+      // mid-animation (crbug 521861819 et al), and whether it drops a given one
+      // cannot be told reliably without rendering (jump-seek != sequential render,
+      // proven 2026-06-16) nor from geometry (size is a proxy, not the mechanism).
+      // The only deterministic + reliable route to 0 damage is to gate on the
+      // PRESENCE of any such tween — a pure fact of the declared timeline, the same
+      // every run. Conservative by design: comps whose risky tweens drawElement
+      // would have handled also fall back, but correctness is never at risk and the
+      // fast path stays open for static + plain-2D-transform comps (x/y/scale are
+      // NOT in the at-risk set). Tune the gate's frame-fraction floor with
+      // HF_FAST_CAPTURE_INTERVAL_FRACTION (default 0 = any at-risk frame gates).
+      // Must run BEFORE canvas injection so a whole-comp fallback doesn't leave the
+      // drawElement canvas wrapping the composition root. Disable with
+      // HF_FAST_CAPTURE_INTERVAL_SS=false.
+      if (!forceDE && process.env.HF_FAST_CAPTURE_INTERVAL_SS !== "false") {
+        const fps = fpsToNumber(session.options.fps);
+        const { frames: atRisk, totalFrames } = await computeTimelineAtRiskFrames(page, fps);
+        const atRiskFraction = atRisk.size / totalFrames;
+        const fractionFloor = Number(process.env.HF_FAST_CAPTURE_INTERVAL_FRACTION ?? "0");
+        logInitPhase(
+          `timeline at-risk predictor: ${atRisk.size}/${totalFrames} frames (${Math.round(atRiskFraction * 100)}%)`,
+        );
+        if (atRisk.size > 0 && atRiskFraction > fractionFloor) {
+          session.deGateReason = "at_risk_timeline";
+          console.log(
+            `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+              `${atRisk.size}/${totalFrames} frames animate a compositor-incompatible prop ` +
+              `(blend/3D/clip/mask); drawElementImage drops these mid-animation ` +
+              `(deterministic timeline gate; see fast-capture-limitations.md Lim 7)`,
+          );
+          await routeToFallback();
+          return;
+        }
+      }
+      // Rewrite CSS 3D contexts into WebGL-projected canvases BEFORE the
+      // layoutsubtree canvas goes in (rects are measured in normal layout).
+      // drawElementImage cannot paint 3D rendering contexts — see
+      // threeDProjection.ts. No-op for compositions without 3D content.
+      const threeD = await initThreeDProjection(page);
+      if (!forceDE && !threeD.ok) {
+        session.deGateReason = "3d_init_failed";
+        console.log(
+          `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
+            `3D projection init failed (${threeD.reason ?? "unknown"})`,
+        );
+        await routeToFallback();
+        return;
+      }
+      if (threeD.groups > 0) {
+        logInitPhase(
+          `3D projection active: ${threeD.groups} context(s), ${threeD.quads} quad(s), ` +
+            `${threeD.selfQuads ?? 0} self-quad el(s), ${threeD.stubTargets ?? 0} stub target(s)`,
+        );
+      }
+      // Task B: arm static-frame dedup here — drawElement is confirmed (all gates
+      // passed) and the DOM is still normal (canvas not yet injected, so the
+      // verification screenshots are valid). drawElement-path only; see armStaticDedup.
+      await armStaticDedup(session, page, logInitPhase);
+      // Video comps on injector-less sessions (probe sessions initialize before
+      // video extraction) DEFER the rest of the drawElement init: ground-truth
+      // screenshots would capture black <video> boxes, and once the canvas is
+      // injected they can never be retaken. The capture stage completes the
+      // init after prepareCaptureSessionForReuse attaches the injector.
+      if (!session.onBeforeCapture && !forceDE) {
+        const hasVideos = await page.evaluate(() => document.querySelector("video") !== null);
+        if (hasVideos) {
+          session.deInitDeferred = true;
+          logInitPhase("drawElement init deferred: video comp awaiting frame injector");
+          return;
+        }
+      }
+      await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
+    }
+  } else if (session.options.format === "png") {
+    await initTransparentBackground(session.page);
+  }
+}
+
+/**
+ * The tail of drawElement init: self-verification ground truth (pre-injection),
+ * canvas injection, capture-mode flip, clip-boundary predictor, worker-encode.
+ * Runs inline when the session already has its video-frame injector (or the
+ * comp has no videos); runs deferred via completeDeferredDrawElementInit for
+ * probe-initialized video comps.
+ */
+async function finalizeDrawElementInit(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+  opts: { transparent: boolean; forceDE: boolean },
+): Promise<void> {
+  const { transparent, forceDE } = opts;
+  // Self-verification ground truth: must run pre-injection — after the canvas
+  // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
+  // not the live DOM (see the Lim 6 boundary-screenshot note).
+  {
+    const verifyStart = Date.now();
+    await captureDeVerificationFrames(session, page, logInitPhase);
+    session.deVerifyInitMs = Date.now() - verifyStart;
+  }
+  await injectDrawElementCanvas(page, session.options.width, session.options.height);
+  if (transparent) {
+    await initTransparentBackground(session.page);
+  }
+  session.captureMode = "drawelement";
+  session.drawElementReady = true;
+  logInitPhase("drawElement canvas injected");
+  // Lim 6: clip-cut boundary frames — screenshot these instead of drawElement.
+  if (process.env.HF_FAST_CAPTURE_BOUNDARY_SS !== "false" && !forceDE) {
+    const fps = fpsToNumber(session.options.fps);
+    const boundaryFrames = await computeClipBoundaryFrames(page, fps);
+    if (boundaryFrames.size > 0) {
+      session.clipBoundaryFrames = boundaryFrames;
+      logInitPhase(`screenshot fallback: ${boundaryFrames.size} clip-boundary frame(s)`);
+    }
+  }
+  // Worker-encode pipeline: macOS hardware GPU path only (syncToPaintEvent=true,
+  // beginFrameTimeTicks=0). Skip for BeginFrame (Linux/Docker) and transparent
+  // (PNG) output — those use the existing synchronous path unchanged.
+  const workerEncodeEnabled =
+    (session.config?.enableDrawElementWorkerEncode ?? false) &&
+    !transparent &&
+    session.beginFrameTimeTicks === 0;
+  if (workerEncodeEnabled) {
+    await initDrawElementWorkerEncode(page);
+    session.workerEncodeEnabled = true;
+    logInitPhase("drawElement worker encode initialized");
+  }
+}
+
+/**
+ * Complete a deferred drawElement init (see CaptureSession.deInitDeferred).
+ * Call after prepareCaptureSessionForReuse has attached the video-frame
+ * injector; no-op when the session is not deferred or still has no injector.
+ */
+export async function completeDeferredDrawElementInit(session: CaptureSession): Promise<void> {
+  if (!session.deInitDeferred || !session.onBeforeCapture) return;
+  const page = session.page;
+  const logInitPhase = (phase: string) =>
+    console.log(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  await finalizeDrawElementInit(session, page, logInitPhase, {
+    transparent: session.options.format === "png",
+    forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
+  });
+  session.deInitDeferred = false;
+}
+
 // fallow-ignore-next-line unit-size
 export async function createCaptureSession(
   serverUrl: string,
@@ -357,9 +779,33 @@ export async function createCaptureSession(
   // `options.format === "png"` for transparent capture should also set
   // `config.forceScreenshot = true` (the producer's renderOrchestrator does this
   // automatically when `RenderConfig.format` is an alpha-capable value).
+  // Exception: `useDrawElement=true` with png self-manages the screenshot-browser
+  // requirement (both the SwiftShader fallback and the GPU transparent path need
+  // a screenshot-launched browser — the SwiftShader path calls Page.captureScreenshot
+  // which hangs on a BeginFrame browser, and the GPU path doesn't need BeginFrame
+  // because the compositor runs freely on a screenshot-launched browser).
   const headlessShell = resolveHeadlessShellPath(config);
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
+  const useDrawElement = config?.useDrawElement ?? false;
+  const drawElementTransparent = useDrawElement && options.format === "png";
+  // drawElement and page-side shader compositing are mutually incompatible
+  // capture strategies: drawElement reads the composition root's paint records
+  // directly and skips the prepare→micro-screenshot→resolve protocol (the
+  // micro-screenshot would also hang on an opaque/beginframe-launched browser).
+  // `resolveConfig` forces page-side compositing off whenever useDrawElement is
+  // set, so this only trips for a direct caller that bypassed resolveConfig and
+  // passed both flags — warn once and treat page-side as disabled.
+  if (
+    useDrawElement &&
+    (config?.enablePageSideCompositing ?? DEFAULT_CONFIG.enablePageSideCompositing)
+  ) {
+    console.warn(
+      "[engine] useDrawElement is incompatible with page-side shader compositing — " +
+        "ignoring enablePageSideCompositing for this render. Prefer resolveConfig, " +
+        "which disables page-side compositing automatically for fast-capture renders.",
+    );
+  }
   // BeginFrame's screenshot does not honor a viewport `deviceScaleFactor`
   // (the captured surface is sized by the OS window in CSS pixels regardless
   // of `Emulation.setDeviceMetricsOverride`'s DPR). When supersampling we
@@ -367,7 +813,9 @@ export async function createCaptureSession(
   // the screenshot path for any DPR > 1.
   const supersampling = (options.deviceScaleFactor ?? 1) > 1;
   const preMode: CaptureMode =
-    headlessShell && isLinux && !forceScreenshot && !supersampling ? "beginframe" : "screenshot";
+    headlessShell && isLinux && !forceScreenshot && !supersampling && !drawElementTransparent
+      ? "beginframe"
+      : "screenshot";
   const requestedGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
   const resolvedGpuMode = await resolveBrowserGpuMode(requestedGpuMode, {
     chromePath: headlessShell ?? undefined,
@@ -413,6 +861,37 @@ export async function createCaptureSession(
       w.__name = <T>(fn: T, _name: string): T => fn;
     }
   });
+  // Fast capture: record accelerated canvases (webgl/webgl2/webgpu) and force
+  // preserveDrawingBuffer before any page script can create a context — their
+  // paint records freeze at the first frame, so captureDrawElementFrame
+  // composites their live content via drawImage instead (see
+  // instrumentAcceleratedCanvases). Must be registered before navigation.
+  if (useDrawElement) {
+    await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
+  }
+  // The opacity → autoAlpha tween rewrite was RETIRED with the requestPaint
+  // contract adoption (crbug 529829538 closed WAI): a requestPaint-driven
+  // paint refreshes nested opacity layers natively, and the rewrite itself
+  // measured ~28 dB of damage on comps whose fades it touched. Warn instead
+  // of silently ignoring the old escape hatch.
+  if (process.env.HF_FAST_CAPTURE_AUTOALPHA !== undefined) {
+    console.warn(
+      "[engine] HF_FAST_CAPTURE_AUTOALPHA is retired and ignored — the requestPaint " +
+        "paint contract captures animated opacity natively (see drawElementService.ts).",
+    );
+  }
+  // Re-apply the captured root's own compositor-applied props to the 2D
+  // context where the snapshot does not carry them (see the correction
+  // comment in drawElementService.ts drawAndEncode: transform always —
+  // never baked, verified under the requestPaint contract 2026-07-07;
+  // opacity ratio only on non-requestPaint paints, where the snapshot holds
+  // the load-time value). On by default; disable with
+  // HF_FAST_CAPTURE_ROOT_PROPS=false.
+  if (useDrawElement && process.env.HF_FAST_CAPTURE_ROOT_PROPS !== "false") {
+    await page.evaluateOnNewDocument(() => {
+      (window as unknown as { __HF_ROOT_PROPS__?: boolean }).__HF_ROOT_PROPS__ = true;
+    });
+  }
   // Inject render-time variable overrides before any page script runs, so the
   // runtime helper `getVariables()` returns the merged result on its first
   // call. Pass the JSON string and parse inside the page so we don't require
@@ -466,14 +945,17 @@ export async function createCaptureSession(
     onBeforeCapture,
     isInitialized: false,
     browserConsoleBuffer: [],
+    scriptLoadFailures: [],
     capturePerf: {
       frames: 0,
       seekMs: 0,
       beforeCaptureMs: 0,
       screenshotMs: 0,
       totalMs: 0,
+      frameMs: [],
     },
     captureMode,
+    launchCaptureMode: captureMode,
     beginFrameTimeTicks: 0,
     // Frame interval in ms: 1000 * den / num. For 30/1 → 33.333…, for
     // 30000/1001 (NTSC) → 33.366…. JavaScript number precision is fine at
@@ -534,21 +1016,6 @@ export function formatConsoleDiagnostic(
         : "[Browser]";
 
   return { text: `${prefix} ${text}`, suppressHostLog: false };
-}
-
-async function pollPageExpression(
-  page: Page,
-  expression: string,
-  timeoutMs: number,
-  intervalMs: number = 100,
-): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const ready = Boolean(await page.evaluate(expression));
-    if (ready) return true;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  return Boolean(await page.evaluate(expression));
 }
 
 const HF_READY_DIAGNOSTIC_EXPR = `(function() {
@@ -686,23 +1153,57 @@ async function pollHfReady(page: Page, timeoutMs: number, intervalMs: number = 1
   );
 }
 
-async function pollSubCompositionTimelines(
+export async function pollSubCompositionTimelines(
   page: Page,
   timeoutMs: number,
   intervalMs: number = 150,
-): Promise<void> {
+  // Fail-fast hook: when a SCRIPT resource failed to load (404 / request
+  // failure), the timeline registration it carried can never arrive — the
+  // full-timeout wait buys nothing (measured: a 705-render spike at the 45s
+  // setup bucket in 30 days of wild local renders, ~1% of renders, each also
+  // shipping silently-broken animations). Once failures are present the poll
+  // is cut to `scriptFailureGraceMs` from its start.
+  getScriptLoadFailures?: () => readonly string[],
+  scriptFailureGraceMs: number = 2_000,
+): Promise<SubTimelineWaitOutcome> {
+  // Hosts may opt out of the timeline wait with `data-no-timeline` —
+  // compositions driven purely by CSS animations / rAF (the render-compat
+  // contract) never register window.__timelines[id], and without the opt-out
+  // they stall here for the full playerReadyTimeout (45 s) on every render.
   const expression = `(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     if (hosts.length === 0) return true;
     var timelines = window.__timelines || {};
     for (var i = 0; i < hosts.length; i++) {
+      if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
       if (!id) continue;
       if (!timelines[id]) return false;
     }
     return true;
   })()`;
-  const ready = await pollPageExpression(page, expression, timeoutMs, intervalMs);
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+  let ready = false;
+  let scriptFailureBail = false;
+  for (;;) {
+    ready = Boolean(await page.evaluate(expression));
+    if (ready) break;
+    const now = Date.now();
+    if (now >= deadline) break;
+    const failures = getScriptLoadFailures?.() ?? [];
+    if (failures.length > 0 && now - start >= scriptFailureGraceMs) {
+      scriptFailureBail = true;
+      console.warn(
+        `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
+          `script resource(s) failed to load (${failures.join(", ")}) — ` +
+          `the timeline registration they carry can never arrive. ` +
+          `Fix the script reference; the render proceeds without those animations.`,
+      );
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
   // Always force a timeline rebind once sub-composition timelines are
   // confirmed present. The previous implementation only called rebind
   // when the timeline count grew during the poll, which missed the case
@@ -716,23 +1217,33 @@ async function pollSubCompositionTimelines(
         window.__hfForceTimelineRebind();
       }
     })()`);
+    return "ready";
   }
-  if (!ready) {
-    const missing = await page.evaluate(`(function() {
-      var hosts = document.querySelectorAll("[data-composition-id]");
-      var timelines = window.__timelines || {};
-      var m = [];
-      for (var i = 0; i < hosts.length; i++) {
-        var id = hosts[i].getAttribute("data-composition-id");
-        if (id && !timelines[id]) m.push(id);
-      }
-      return m.join(", ");
-    })()`);
+  // Enumerate the still-unregistered composition ids regardless of bail
+  // reason — a script-failure bail used to skip this entirely, so a render
+  // with multiple sub-compositions only named the failed script URL(s), not
+  // which composition(s) it was still waiting on (review).
+  const missing = await page.evaluate(`(function() {
+    var hosts = document.querySelectorAll("[data-composition-id]");
+    var timelines = window.__timelines || {};
+    var m = [];
+    for (var i = 0; i < hosts.length; i++) {
+      if (hosts[i].hasAttribute("data-no-timeline")) continue;
+      var id = hosts[i].getAttribute("data-composition-id");
+      if (id && !timelines[id]) m.push(id);
+    }
+    return m.join(", ");
+  })()`);
+  if (scriptFailureBail) {
+    console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
+  } else {
     console.warn(
       `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
-        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes.`,
+        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes. ` +
+        `Compositions intentionally driven without GSAP timelines (CSS animations / rAF) can mark the host with data-no-timeline to skip this wait.`,
     );
   }
+  return scriptFailureBail ? "script_failure" : "timeout";
 }
 
 async function pollVideosReady(
@@ -909,6 +1420,16 @@ async function waitForOptionalTailwindReady(page: Page, timeoutMs: number): Prom
   }
 }
 
+// A 4xx `response` and a `requestfailed` can both fire for the same script
+// (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
+// the same URL duplicate it further — dedupe so the fail-fast warning names
+// each failed URL once.
+function recordScriptLoadFailure(session: CaptureSession, url: string): void {
+  if (!session.scriptLoadFailures.includes(url)) {
+    session.scriptLoadFailures.push(url);
+  }
+}
+
 // fallow-ignore-next-line unit-size
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
@@ -939,6 +1460,9 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   });
 
   page.on("requestfailed", (request) => {
+    if (request.resourceType() === "script") {
+      recordScriptLoadFailure(session, request.url());
+    }
     appendBrowserDiagnostic(
       session,
       formatRequestFailureDiagnostic({
@@ -955,6 +1479,9 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     if (status < 400) return;
 
     const request = response.request();
+    if (request.resourceType() === "script") {
+      recordScriptLoadFailure(session, response.url());
+    }
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({
@@ -1019,8 +1546,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
 
-    await pollSubCompositionTimelines(page, pageReadyTimeout);
-    logInitPhase("pollSubCompositionTimelines complete");
+    session.subTimelineWaitOutcome = await pollSubCompositionTimelines(
+      page,
+      pageReadyTimeout,
+      undefined,
+      () => session.scriptLoadFailures,
+    );
+    logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
     logInitPhase("applyVideoMetadataHints complete");
@@ -1073,18 +1605,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await recordSessionInitTelemetry(session, initStart);
 
-    // For PNG captures, force the page background fully transparent so the
-    // captured screenshots carry a real alpha channel. Must run AFTER
-    // navigation (Chrome resets the override on every goto) and AFTER the
-    // page is loaded (the injected stylesheet needs a real document.head).
-    // The override is overridden by `body { background: ... }` and
-    // `#root { background: ... }` rules — the helper handles that with a
-    // `[data-composition-id]{background:transparent !important}` injection.
-    if (session.options.format === "png") {
-      await initTransparentBackground(session.page);
-    }
+    // drawElement or transparent-background init — runs after page is fully ready.
+    await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
     await armStaticDedup(session, session.page, logInitPhase);
+    await ensureRenderFrameSiblings(session.page);
     session.isInitialized = true;
     return;
   }
@@ -1161,8 +1686,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     throw err;
   }
 
-  await pollSubCompositionTimelines(page, pageReadyTimeout);
-  logInitPhase("pollSubCompositionTimelines complete");
+  session.subTimelineWaitOutcome = await pollSubCompositionTimelines(
+    page,
+    pageReadyTimeout,
+    undefined,
+    () => session.scriptLoadFailures,
+  );
+  logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
 
   await applyVideoMetadataHints(page, session.options.videoMetadataHints);
   logInitPhase("applyVideoMetadataHints complete");
@@ -1215,30 +1745,64 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   await recordSessionInitTelemetry(session, initStart);
 
-  // Stop warmup. Unlocked mode exits on this flag; locked mode keeps ticking
-  // until LOCKED_WARMUP_TICKS, so we await its promise to ensure the count is
-  // exact before deriving the baseline.
+  // Stop warmup, then drain the loop in BOTH modes before any further
+  // BeginFrame on this session (drawElement init, the render-frame commit tick
+  // at the end of init, and frame 0). Clearing the flag only stops new
+  // iterations — a warmup `HeadlessExperimental.beginFrame` may still be in
+  // flight, and a second beginFrame on the same session while one is pending
+  // fails with "Another frame is pending". Locked mode additionally needs the
+  // await to reach the exact LOCKED_WARMUP_TICKS count before deriving the
+  // baseline below.
   warmupState.running = false;
-  if (lockWarmupTicks) {
-    await warmupLoopPromise.catch(() => {});
-  }
+  await warmupLoopPromise.catch(() => {});
 
   // Set base frame time ticks past warmup range. Locked mode pins to the
   // constant so chunk workers on different hosts compute the same baseline.
   const baseTickCount = lockWarmupTicks ? LOCKED_WARMUP_TICKS : warmupState.ticks;
   session.beginFrameTimeTicks = (baseTickCount + 10) * session.beginFrameIntervalMs;
 
-  // For PNG captures, inject the transparent-background override + stylesheet
-  // (see the screenshot-mode branch above for the rationale). BeginFrame mode
-  // does not actually preserve alpha through its compositor — callers that
-  // need transparent output should set `forceScreenshot: true` so this branch
-  // is bypassed entirely. The call is left here as defense-in-depth for any
-  // future BeginFrame alpha support.
-  if (session.options.format === "png") {
-    await initTransparentBackground(session.page);
-  }
+  // drawElement or transparent-background init — runs after page is fully ready.
+  // IMPORTANT: must stay after beginFrameTimeTicks is set above. The per-frame
+  // drawelement branch gates its BeginFrame call on `beginFrameTimeTicks > 0`;
+  // if this ran first, ticks would be 0 and the paused compositor would never
+  // advance for opaque drawElement on Linux. (In beginframe-launched mode,
+  // transparent is always false — useDrawElement+png forces preMode="screenshot"
+  // upstream — so the SwiftShader fallback inside the helper is dead-but-harmless
+  // defense-in-depth here.)
+  await initDrawElementOrTransparentBackground(session, page, logInitPhase);
 
   await armStaticDedup(session, session.page, logInitPhase);
+
+  // Pre-create the hidden `__render_frame__` siblings so the first per-session
+  // `injectVideoFramesBatch` takes the `hasImg = true` (src-update) path instead
+  // of inserting a fresh `<img>` mid-capture. Then drive ONE non-capture,
+  // *visual* BeginFrame (`noDisplayUpdates: false`) to actually composite the
+  // new layers before the first real capture. The warmup ticks above are
+  // `noDisplayUpdates: true` (they advance the clock but don't paint), and the
+  // seek in `prepareFrameForCapture` doesn't tick, so without this commit tick
+  // the first *display-producing* BeginFrame would be the capture itself — and
+  // the freshly-inserted layers would miss it (the per-session worker-boundary
+  // near-black flash). The tick time sits in the gap between the last warmup
+  // tick and frame 0 (`beginFrameTimeTicks` carries +10 intervals of headroom),
+  // so ticks stay monotonic and no render frame is consumed.
+  //
+  // It must land BELOW the producer's BeginFrame liveness probe, which fires
+  // from probeStage right after init at `beginFrameTimeTicks - 5·interval`
+  // (screenshotService.probeBeginFrameLiveness). This commit tick is sent during
+  // init — temporally before the probe — so if its tick were above the probe's,
+  // the probe would run backwards in BeginFrame time (non-monotonic) and
+  // chrome-headless-shell stalls it indefinitely (surfaced as a "SwiftShader
+  // heavy-layer" probe timeout, then routed to screenshot capture). At the
+  // original `-1·interval` that stalled every comp reaching the probe; at
+  // `-6·interval` the order stays warmup < commit < probe < capture.
+  await ensureRenderFrameSiblings(page);
+  const commitCdp = await getCdpSession(page);
+  await commitCdp.send("HeadlessExperimental.beginFrame", {
+    frameTimeTicks: session.beginFrameTimeTicks - 6 * session.beginFrameIntervalMs,
+    interval: session.beginFrameIntervalMs,
+    noDisplayUpdates: false,
+  });
+
   session.isInitialized = true;
 }
 
@@ -1325,7 +1889,11 @@ async function prepareFrameForCapture(
   //  1. prepare — clone scenes (now containing injected video <img>s)
   //  2. micro-screenshot — force browser to paint cloned elements
   //  3. resolve — drawElementImage reads paint records, shader composites
-  if (hasPendingComposite && session.captureMode !== "beginframe") {
+  if (
+    hasPendingComposite &&
+    session.captureMode !== "beginframe" &&
+    session.captureMode !== "drawelement"
+  ) {
     await page.evaluate(async () => {
       const w = window as unknown as { __hf_page_composite_prepare?: () => Promise<boolean> };
       if (typeof w.__hf_page_composite_prepare === "function") {
@@ -1392,7 +1960,7 @@ async function computeClipBoundaryFrames(page: Page, fps: number): Promise<Set<n
  * comp on any signal the tween-walker can't see: video / canvas / webgl (redraw without
  * a tween), zero tweens (non-GSAP animation), or a running CSS/WAAPI animation.
  */
-async function computeStaticFrameSet(
+export async function computeStaticFrameSet(
   page: Page,
   fps: number,
 ): Promise<{
@@ -1411,11 +1979,25 @@ async function computeStaticFrameSet(
       duration(): number;
       totalDuration?(): number;
       getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+      vars?: Record<string, unknown>;
     };
     const intervals: Array<{ start: number; end: number }> = [];
     let tweenCount = 0;
     // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
     // a repeating timeline is marked opaque over its whole span (conservative).
+    // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
+    // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
+    // no separate "undo" callback, so both directions invoke the SAME forward
+    // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
+    // textContent) is not seek-idempotent: crossing it during the static-dedup
+    // verifier's own arm-time seeking permanently mutates the page, and that
+    // corruption can leak into a LATER, unrelated static run's real capture
+    // (the verifier's mismatch check only catches drift within the run being
+    // checked, not contamination from a run checked afterward). No reliable
+    // way to tell a DOM-mutating call() from a harmless one (analytics ping,
+    // class toggle with no visual effect) without executing it, so disqualify
+    // the whole comp on ANY call() rather than risk shipping wrong pixels.
+    let hasTimelineCall = false;
     function walk(tl: AnyTween, offset: number): void {
       if (typeof tl.getChildren !== "function") return;
       for (const child of tl.getChildren(false, true, true)) {
@@ -1423,11 +2005,28 @@ async function computeStaticFrameSet(
         const single = typeof child.duration === "function" ? child.duration() : 0;
         const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
         if (typeof child.getChildren === "function") {
-          if (total > single + 1e-6) intervals.push({ start, end: start + total });
-          else walk(child, start);
+          if (total > single + 1e-6) {
+            intervals.push({ start, end: start + total });
+            // Still descend for hasTimelineCall even though the repeating
+            // span is already opaque (its frames are excluded from dedup
+            // regardless): a call() inside it is a review-flagged detection
+            // gap otherwise — the arm-time verifier can still forward-seek
+            // through this span while checking a LATER static run, firing
+            // the call() and corrupting the page (review).
+            walk(child, start);
+          } else {
+            walk(child, start);
+          }
         } else {
           tweenCount++;
           intervals.push({ start, end: start + total });
+          if (
+            total <= 1e-6 &&
+            (typeof child.vars?.onComplete === "function" ||
+              typeof child.vars?.onReverseComplete === "function")
+          ) {
+            hasTimelineCall = true;
+          }
         }
       }
     }
@@ -1471,6 +2070,7 @@ async function computeStaticFrameSet(
       hasCanvas,
       hasNonGsapAnim,
       hasUnresolvableClipStart,
+      hasTimelineCall,
     };
   });
 
@@ -1482,6 +2082,7 @@ async function computeStaticFrameSet(
     hasCanvas,
     hasNonGsapAnim,
     hasUnresolvableClipStart,
+    hasTimelineCall,
   } = result as {
     intervals: Array<{ start: number; end: number }>;
     tweenCount: number;
@@ -1490,6 +2091,7 @@ async function computeStaticFrameSet(
     hasCanvas: boolean;
     hasNonGsapAnim: boolean;
     hasUnresolvableClipStart: boolean;
+    hasTimelineCall: boolean;
   };
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
   const animated = new Set<number>();
@@ -1505,6 +2107,12 @@ async function computeStaticFrameSet(
   if (hasCanvas) reasons.push("canvas/webgl");
   if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
   if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
+  // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection
+  // above) — the arm-time verifier's own forward-seeking can permanently fire
+  // one, corrupting the page for a later, unrelated static run's real capture
+  // even though each run's own verification passes in isolation (HF static-
+  // dedup content-drift report, tools-onboarding FR render).
+  if (hasTimelineCall) reasons.push("tl.call() side effect (not seek-safe)");
   if (hasUnresolvableClipStart) reasons.push("unresolvable clip start (reference expression)");
   const eligible = reasons.length === 0;
   const staticFrameSet = new Set<number>();
@@ -1525,6 +2133,49 @@ async function computeStaticFrameSet(
   };
 }
 
+// Fixed density target for verification checks: never leave a gap wider than this
+// many frames within a run, independent of the user-tunable sampleCount. This is
+// what fixes long runs going nearly unverified — deliberately NOT derived from
+// sampleCount, so that knob's effect on density stays monotonic (see below).
+const STATIC_VERIFY_REFERENCE_STRIDE = 24;
+
+/**
+ * Interior verification points for a run [a..b], plus the always-included end `b`.
+ * Density used to be a flat point-count cap (min(sampleCount, 8)), so a run's
+ * stride grew with its span — on a long run (many merged static frames), two
+ * checks could land hundreds of frames apart. A genuine content change in
+ * between (e.g. text swapped by a mechanism computeStaticFrameSet's GSAP-only
+ * tween walk can't see) then hides between samples and the whole run gets
+ * wrongly trusted as static.
+ *
+ * `sampleCount` (HF_STATIC_DEDUP_SAMPLES) is a per-run point-count FLOOR, not a
+ * stride cap — raising it always increases density, never decreases it. (An
+ * earlier revision of this fix bounded the stride BY sampleCount directly, which
+ * inverted that: raising sampleCount widened the allowed gap instead of shrinking
+ * it, and the "raise HF_STATIC_DEDUP_SAMPLES to verify more" log guidance became
+ * backwards for exactly the long runs it's meant to help.) The length-scaling
+ * fix itself comes from STATIC_VERIFY_REFERENCE_STRIDE, which is independent of
+ * sampleCount, so density scales with run length regardless of how that knob is
+ * set; sampleCount only ever raises density further above that floor.
+ *
+ * Pure and exported so its scaling behavior is unit-testable without a real
+ * page/browser.
+ */
+export function computeStaticVerificationPoints(
+  a: number,
+  b: number,
+  sampleCount: number,
+): number[] {
+  const span = b - a;
+  const lengthScaledPoints = span > 0 ? Math.ceil(span / STATIC_VERIFY_REFERENCE_STRIDE) + 1 : 1;
+  const perRun = Math.max(3, sampleCount, lengthScaledPoints);
+  const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
+  const pts = new Set<number>();
+  for (let f = a; f <= b; f += stride) pts.add(f);
+  pts.add(b);
+  return [...pts].sort((x, y) => x - y);
+}
+
 /**
  * Empirically verify the predicted-static set before trusting it. Group static frames
  * into runs; each run [a..b] reuses anchor a-1. CRITICAL: compare against the ANCHOR,
@@ -1534,7 +2185,7 @@ async function computeStaticFrameSet(
  * mismatch ⇒ the run isn't truly static ⇒ disable dedup whole-comp. Capture-mode-
  * independent (seeks + screenshots in normal DOM). Returns the first bad frame, or null.
  */
-async function verifyStaticFramesSafe(
+export async function verifyStaticFramesSafe(
   session: CaptureSession,
   page: Page,
   staticFrames: Set<number>,
@@ -1551,44 +2202,60 @@ async function verifyStaticFramesSafe(
     if (last && f === last.b + 1) last.b = f;
     else runs.push({ a: f, b: f });
   }
-  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
+  const seekToFrame = async (frameIdx: number): Promise<void> => {
     const t = quantizeTimeToFrame(frameIdx / fps, fps);
     await page.evaluate((tt: number) => {
-      const hf = (window as unknown as { __hf?: { seek?: (t: number) => void } }).__hf;
-      if (hf && typeof hf.seek === "function") hf.seek(tt);
+      const hf = (
+        window as unknown as {
+          __hf?: { seek?: (t: number, options?: { suppressEvents?: boolean }) => void };
+        }
+      ).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
     }, t);
+  };
+  const seekCapture = async (frameIdx: number): Promise<Buffer> => {
+    await seekToFrame(frameIdx);
     return pageScreenshotCapture(page, session.options);
   };
   // Verify EVERY run in order (no longest-first truncation that would leave runs armed
   // but unverified). Per run, compare the FIRST reused frame `a`, the END `b` (max
-  // accumulated drift), and interior points at a stride — against the anchor the run
-  // actually reuses. `sampleCount` sets the interior density (points per run ~ that many
-  // for a long run); a hard cap bounds pathological run counts, and hitting it DISABLES
-  // dedup (conservative: never trust an unverified set).
-  const perRun = Math.max(3, Math.min(sampleCount, 8));
-  const hardCap = Math.max(sampleCount * 8, 400);
-  let spent = 0;
-  for (const { a, b } of runs) {
-    const anchor = a - 1;
-    if (anchor < 0) continue;
-    const anchorBuf = await seekCapture(anchor);
-    spent++;
-    const span = b - a;
-    const stride = span > 0 ? Math.max(1, Math.floor(span / (perRun - 1))) : 1;
-    const pts = new Set<number>();
-    for (let f = a; f <= b; f += stride) pts.add(f);
-    pts.add(b); // always include the end (max drift)
-    for (const f of [...pts].sort((x, y) => x - y)) {
-      const cur = await seekCapture(f);
+  // accumulated drift), and interior points at a stride (see computeStaticVerificationPoints)
+  // — against the anchor the run actually reuses.
+  //
+  // hardCap bounds pathological cases and hitting it DISABLES dedup (conservative:
+  // never trust an unverified set). It must scale with the new density model:
+  // each run now costs roughly span/STATIC_VERIFY_REFERENCE_STRIDE + 1 checks (plus
+  // one anchor), not the ~8 the old flat point cap cost — sizing the budget only off
+  // sampleCount (which no longer drives density for long runs) would make a
+  // genuinely-static long composition spuriously disarm under the new, more
+  // thorough checking. `frames.length` approximates total interior checks; a 3x
+  // margin absorbs per-run anchor overhead and the 3-point floor on short runs.
+  const hardCap = Math.max(
+    sampleCount * 8,
+    400,
+    Math.ceil(frames.length / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + runs.length,
+  );
+  try {
+    let spent = 0;
+    for (const { a, b } of runs) {
+      const anchor = a - 1;
+      if (anchor < 0) continue;
+      const anchorBuf = await seekCapture(anchor);
       spent++;
-      if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
+      for (const f of computeStaticVerificationPoints(a, b, sampleCount)) {
+        const cur = await seekCapture(f);
+        spent++;
+        if (!anchorBuf.equals(cur)) return { badFrame: f, budgetExhausted: false };
+      }
+      // Budget exhausted → can't fully verify → disarm, distinct from real drift so a
+      // `verification_budget` spike in telemetry reads as "this composition has a lot
+      // of static material to verify," not "compositions are non-static."
+      if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
     }
-    // Budget exhausted → can't fully verify → disarm. Reported distinctly from real
-    // drift so a `verification_budget` spike in telemetry signals "tune HF_STATIC_DEDUP_SAMPLES",
-    // not "compositions are non-static".
-    if (spent > hardCap) return { badFrame: a, budgetExhausted: true };
+    return null;
+  } finally {
+    await seekToFrame(0).catch(() => {});
   }
-  return null;
 }
 
 /**
@@ -1603,6 +2270,13 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
+  // (verification screenshots need the un-injected DOM), and initializeSession
+  // calls this again unconditionally afterwards. Once staticFrames is
+  // populated, re-running would overwrite the armed state with
+  // skipReason="capture_mode" (captureMode is "drawelement" by then) —
+  // contradictory telemetry — and re-run the verification seeks. No-op instead.
+  if (session.staticFrames || session.staticDedupSkipReason) return;
   // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
   // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
   // Default-on: only an explicit `staticFrameDedup === false` (resolved from
@@ -1664,7 +2338,7 @@ async function armStaticDedup(
     logInitPhase(
       verdict.budgetExhausted
         ? `static-frame dedup: disabled (verification budget exhausted before frame ${verdict.badFrame}; ` +
-            `raise HF_STATIC_DEDUP_SAMPLES to verify more)`
+            `too much predicted-static material to fully verify — this is the safe fallback, not an error)`
         : `static-frame dedup: disabled (verification failed — content drifts from anchor at ` +
             `predicted-static frame ${verdict.badFrame})`,
     );
@@ -1679,10 +2353,112 @@ async function armStaticDedup(
 }
 
 /**
- * Internal core: prepare, screenshot, and track perf.
- * Shared by captureFrame (disk) and captureFrameToBuffer (buffer).
- * Returns the screenshot buffer, quantized time, and total capture time.
+ * Walk window.__timelines and collect frame intervals where GSAP tweens animate
+ * compositor-incompatible properties (blend-mode, 3D transforms, clip-path, mask).
+ * drawElement cannot reproduce these effects mid-tween → capture those frames via
+ * screenshot instead. opacity/filter fades were dropped from the set once Chrome 151
+ * fixed crbug 521861819. See docs/fast-capture-limitations.md Lim 7.
+ *
+ * Returns the union of at-risk frame indices (±1 margin around each tween interval)
+ * and totalFrames (for fraction computation by the caller).
  */
+async function computeTimelineAtRiskFrames(
+  page: Page,
+  fps: number,
+): Promise<{ frames: Set<number>; totalFrames: number }> {
+  const result = await page.evaluate(() => {
+    // opacity/autoAlpha/filter fades were removed from this set once Chrome 151
+    // fixed crbug 521861819 (drawElementImage dropped promoted opacity layers
+    // mid-fade) — those now render correctly on the drawElement path. backdrop-filter
+    // and filter:blur stay gated by detectCssEffectRisk (architectural single-element
+    // capture limit, not 521861819). What remains here is the per-tween backstop for
+    // effects drawElementImage still cannot reproduce mid-animation: mix-blend-mode,
+    // CSS 3D transforms (crbug 522872457), clip-path, and mask.
+    const AT_RISK_PROPS = new Set([
+      "backdropFilter",
+      "backdrop-filter",
+      "mixBlendMode",
+      "mix-blend-mode",
+      "rotationX",
+      "rotationY",
+      "rotateX",
+      "rotateY",
+      "z",
+      "translateZ",
+      "clipPath",
+      "clip-path",
+      "maskImage",
+      "mask",
+    ]);
+
+    type AnyTween = {
+      startTime(): number;
+      duration(): number;
+      vars?: Record<string, unknown>;
+      getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+    };
+
+    function walkTimeline(
+      tl: AnyTween,
+      offset: number,
+      out: Array<{ start: number; end: number }>,
+    ): void {
+      if (typeof tl.getChildren !== "function") return;
+      for (const child of tl.getChildren(false, true, true)) {
+        const childStart = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
+        const childDur = typeof child.duration === "function" ? child.duration() : 0;
+        if (typeof child.getChildren === "function") {
+          walkTimeline(child, childStart, out);
+        } else {
+          const vars = child.vars || {};
+          if (Object.keys(vars).some((k) => AT_RISK_PROPS.has(k))) {
+            out.push({ start: childStart, end: childStart + childDur });
+          }
+        }
+      }
+    }
+
+    const w = window as unknown as {
+      __timelines?: Record<string, AnyTween>;
+      __hf?: { duration?: number };
+    };
+    const timelines = w.__timelines || {};
+    const intervals: Array<{ start: number; end: number }> = [];
+    for (const tl of Object.values(timelines)) {
+      if (tl && typeof tl.getChildren === "function") {
+        walkTimeline(tl, 0, intervals);
+      }
+    }
+    const duration = w.__hf?.duration ?? 0;
+    return { intervals, duration };
+  });
+
+  const { intervals, duration } = result as {
+    intervals: Array<{ start: number; end: number }>;
+    duration: number;
+  };
+  const frames = new Set<number>();
+  for (const { start, end } of intervals) {
+    const lo = Math.floor(start * fps) - 1;
+    const hi = Math.ceil(end * fps) + 1;
+    for (let f = Math.max(0, lo); f <= hi; f++) {
+      frames.add(f);
+    }
+  }
+  const totalFrames = Math.max(1, Math.ceil(duration * fps));
+  return { frames, totalFrames };
+}
+/**
+ * True for the drawElement `InvalidStateError: No cached paint record for element`
+ * thrown when a subtree element has no paint record for the current frame (display
+ * toggled / detached / freshly-shown at a clip-cut boundary). Per-frame, not
+ * whole-comp — callers fall back to screenshot for the single frame.
+ */
+function isNoCachedPaintRecordError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("No cached paint record");
+}
+
 async function captureFrameCore(
   session: CaptureSession,
   frameIndex: number,
@@ -1737,6 +2513,90 @@ async function captureFrameCore(
       if (result.hasDamage) session.beginFrameHasDamageCount++;
       else session.beginFrameNoDamageCount++;
       screenshotBuffer = result.buffer;
+    } else if (
+      session.captureMode === "drawelement" &&
+      session.clipBoundaryFrames?.has(frameIndex) &&
+      process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true"
+    ) {
+      // Lim 6 (serial path): proactively screenshotting clip-boundary frames is now
+      // OPT-IN (was default-on). It is net-harmful: drawElement renders most boundary
+      // frames correctly, but Page.captureScreenshot in drawElement mode captures the
+      // injected canvas (unpainted at render start → white; mid-render → ~1-frame
+      // stale), so the "fallback" REPLACES good frames with damaged ones (validated:
+      // 35e8fa9f 462→0 damaged frames, 4001da8e 11→0, when this is off). The two real
+      // boundary failure modes are now caught reactively below — the throw case by
+      // isNoCachedPaintRecordError, the silent-solid-black case by the small-frame
+      // blank-guard (a solid frame is a tiny JPEG) — without touching frames drawElement
+      // handles. Force the old behavior with HF_FAST_CAPTURE_BOUNDARY_SS=true. The worker
+      // path keeps proactive boundary-SS (it has no blank-guard); see
+      // captureFrameToBufferPipelined and docs/fast-capture-limitations.md.
+      screenshotBuffer = await pageScreenshotCapture(page, options);
+    } else if (session.captureMode === "drawelement") {
+      // Advance compositor state via BeginFrame when available (Linux headless-shell);
+      // on macOS the compositor advances naturally without BeginFrame.
+      if (session.beginFrameTimeTicks > 0) {
+        const client = await getCdpSession(page);
+        await client.send("HeadlessExperimental.beginFrame", {
+          frameTimeTicks: session.beginFrameTimeTicks + frameIndex * session.beginFrameIntervalMs,
+          interval: session.beginFrameIntervalMs,
+          noDisplayUpdates: false,
+          // no screenshot param — we capture via canvas
+        });
+      }
+      try {
+        screenshotBuffer = await captureDrawElementFrame(
+          page,
+          options.width,
+          options.height,
+          options.format ?? "jpeg",
+          options.quality ?? 80,
+          // Paint-event sync only without BeginFrame (macOS / screenshot-launched):
+          // under BeginFrame control the per-frame beginFrame above already painted
+          // a fresh snapshot, and no further paint would arrive during a wait.
+          session.beginFrameTimeTicks === 0,
+        );
+        // Silent-blank-drop guard: drawElement occasionally returns a blank/dropped
+        // frame WITHOUT throwing (paint-record miss; the throw case is handled below).
+        // Such a frame's JPEG is anomalously tiny vs the comp's running median (a blank
+        // 1080p frame ~5-9 KB; content frames 50 KB-1 MB). Re-capture via screenshot
+        // (ground truth) — harmless for legitimately simple frames (screenshot matches).
+        // Catches scattered intermittent drops (e.g. 4001da8e: 11 blanks in 9300 frames,
+        // 9.7 dB) that no static gate can see. PNG/transparent excluded (alpha sizing
+        // differs and that path is its own).
+        if ((options.format ?? "jpeg") !== "png" && process.env.HF_FORCE_DRAWELEMENT !== "1") {
+          const sizes = (session.deFrameSizes ??= []);
+          const sorted = sizes.length >= 12 ? [...sizes].sort((a, b) => a - b) : null;
+          const median = sorted ? (sorted[sorted.length >> 1] ?? 0) : 0;
+          const floor = Math.max(20000, median * 0.12);
+          if (screenshotBuffer.length < floor) {
+            console.log(
+              `[engine] fast capture: frame ${frameIndex} — drawElement frame anomalously ` +
+                `small (${screenshotBuffer.length}B < ${Math.round(floor)}B, likely a silent ` +
+                `paint-record drop); screenshot fallback (see fast-capture-limitations.md)`,
+            );
+            screenshotBuffer = await pageScreenshotCapture(page, options);
+          } else {
+            if (sizes.length >= 60) sizes.shift();
+            sizes.push(screenshotBuffer.length);
+          }
+        }
+      } catch (err) {
+        // drawElementImage throws `InvalidStateError: No cached paint record for
+        // element` when an element in the subtree has no paint record this frame
+        // (display toggled / detached / freshly-shown at a clip-cut boundary). This
+        // is a per-frame condition, not a whole-comp one — fall back to screenshot
+        // for THIS frame instead of aborting the render. See fast-capture-limitations.md.
+        if (isNoCachedPaintRecordError(err)) {
+          session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+          console.log(
+            `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
+              `screenshot fallback for this frame (see fast-capture-limitations.md)`,
+          );
+          screenshotBuffer = await pageScreenshotCapture(page, options);
+        } else {
+          throw err;
+        }
+      }
     } else {
       screenshotBuffer = await pageScreenshotCapture(page, options);
     }
@@ -1749,6 +2609,7 @@ async function captureFrameCore(
     session.capturePerf.beforeCaptureMs += beforeCaptureMs;
     session.capturePerf.screenshotMs += screenshotMs;
     session.capturePerf.totalMs += captureTimeMs;
+    session.capturePerf.frameMs.push(captureTimeMs);
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
     if (session.staticFrames) session.lastFrameBuffer = screenshotBuffer;
@@ -1772,19 +2633,32 @@ export async function captureFrame(
   frameIndex: number,
   time: number,
 ): Promise<CaptureResult> {
-  const { options, outputDir } = session;
   const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
     session,
     frameIndex,
     time,
   );
-
-  const ext = options.format === "png" ? "png" : "jpg";
-  const frameName = `frame_${String(frameIndex).padStart(6, "0")}.${ext}`;
-  const framePath = join(outputDir, frameName);
-  writeFileSync(framePath, buffer);
-
+  const framePath = writeCapturedFrame(session, frameIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
+}
+
+/**
+ * Write an already-captured frame buffer to the session's output dir using the
+ * canonical `frame_NNNNNN.{jpg,png}` naming. `fileIndex` is the ENCODER-facing
+ * index (0-based within the captured range), which may differ from the absolute
+ * composition frame index used for seeking/boundary lookups. Extracted so the
+ * disk worker-encode pipeline can write a buffer produced by
+ * `captureFrameToBufferPipelined` without duplicating the naming convention.
+ */
+export function writeCapturedFrame(
+  session: CaptureSession,
+  fileIndex: number,
+  buffer: Buffer,
+): string {
+  const ext = session.options.format === "png" ? "png" : "jpg";
+  const framePath = join(session.outputDir, `frame_${String(fileIndex).padStart(6, "0")}.${ext}`);
+  writeFileSync(framePath, buffer);
+  return framePath;
 }
 
 /**
@@ -1799,6 +2673,258 @@ export async function captureFrameToBuffer(
   const { buffer, captureTimeMs } = await captureFrameCore(session, frameIndex, time);
 
   return { buffer, captureTimeMs };
+}
+
+/**
+ * Pipelined drawElement frame capture for the worker-encode path.
+ *
+ * Performs seek prep + paint-wait + drawElementImage + composite +
+ * `createImageBitmap` + transfers the bitmap to the in-page encode worker.
+ * Returns `encodeResult` immediately (before the worker finishes encoding).
+ * The caller overlaps frame N's encode with frame N+1's produce phase.
+ *
+ * Requirements:
+ *  - `session.workerEncodeEnabled` must be true (set by initializeSession when
+ *    `config.enableDrawElementWorkerEncode` is true and mode resolved to drawelement).
+ *  - JPEG format only. PNG falls back to `captureFrameToBuffer`.
+ *  - macOS hardware GPU path (syncToPaintEvent=true, beginFrameTimeTicks=0).
+ *    BeginFrame (Linux) uses the standard synchronous path unchanged.
+ */
+export async function captureFrameToBufferPipelined(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+): Promise<{ encodeResult: Promise<Buffer>; captureTimeMs: number }> {
+  const { page, options } = session;
+  const startTime = Date.now();
+
+  // Task B: static-frame dedup (worker path). Reuse the prior frame's encode result
+  // and skip the seek + drawElement + encode entirely. Same predicate as the serial
+  // path; clip-cut frames are excluded from staticFrames so they always capture.
+  if (session.staticFrames?.has(frameIndex) && session.lastEncodeResult) {
+    // Reuse is valid only when EVERY frame in (lastEncodeResultFrame, i] is
+    // predicted-static — then all of them (and the reused buffer) share the
+    // same pixels. Sequential capture reduces to has(i) (gap = {i}); the
+    // interleaved parallel stride makes the gap N frames wide.
+    const lastIdx = session.lastEncodeResultFrame ?? frameIndex - 1;
+    let gapStatic = true;
+    for (let j = lastIdx + 1; j <= frameIndex; j++) {
+      if (!session.staticFrames.has(j)) {
+        gapStatic = false;
+        break;
+      }
+    }
+    if (gapStatic) {
+      session.staticDedupCount = (session.staticDedupCount ?? 0) + 1;
+      session.capturePerf.frames += 1;
+      // Advance the watermark on reuse too, not just on real captures — the
+      // gap-check above starts from lastEncodeResultFrame, so leaving it
+      // pinned to the last REAL capture makes every consecutive reuse rescan
+      // an ever-widening window instead of just the one new frame (review).
+      session.lastEncodeResultFrame = frameIndex;
+      return { encodeResult: session.lastEncodeResult, captureTimeMs: Date.now() - startTime };
+    }
+  }
+
+  try {
+    const { quantizedTime, seekMs, beforeCaptureMs } = await prepareFrameForCapture(
+      session,
+      frameIndex,
+      time,
+    );
+    void quantizedTime;
+
+    // Lim 6: clip-cut boundary frame — screenshot ONLY when opt-in, matching the serial
+    // path (captureFrameCore). Proactive boundary screenshots in drawElement mode are
+    // net-HARMFUL: with `<canvas layoutsubtree>` the child composition root is laid out
+    // but not painted to screen — only the canvas 2D bitmap is visible — so
+    // Page.captureScreenshot captures the injected canvas holding the LAST drawElement
+    // frame (stale by ≥1 scene at a hard cut), REPLACING a good frame with a stale one.
+    // Measured on 0531c45f: worker boundary frames showed the previous scene's video.
+    // Default OFF → boundary frames fall through to produceDrawElementFrame, which draws
+    // the CURRENT frame into the canvas. (Force old behavior with
+    // HF_FAST_CAPTURE_BOUNDARY_SS=true.) See captureFrameCore for the serial rationale.
+    if (
+      session.clipBoundaryFrames?.has(frameIndex) &&
+      process.env.HF_FAST_CAPTURE_BOUNDARY_SS === "true"
+    ) {
+      const buffer = await pageScreenshotCapture(page, options);
+      session.capturePerf.frames += 1;
+      session.capturePerf.seekMs += seekMs;
+      session.capturePerf.beforeCaptureMs += beforeCaptureMs;
+      {
+        const boundaryMs = Date.now() - startTime;
+        session.capturePerf.totalMs += boundaryMs;
+        session.capturePerf.frameMs.push(boundaryMs);
+      }
+      const boundaryResult = Promise.resolve(buffer);
+      if (session.staticFrames) {
+        session.lastEncodeResult = boundaryResult;
+        session.lastEncodeResultFrame = frameIndex;
+      }
+      return { encodeResult: boundaryResult, captureTimeMs: Date.now() - startTime };
+    }
+
+    // Worker-encode is gated to the macOS GPU path (beginFrameTimeTicks === 0,
+    // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
+    // BeginFrame branch present in the synchronous captureFrameCore is therefore
+    // unreachable here and intentionally omitted.
+    const { encodeResult } = await produceDrawElementFrame(
+      page,
+      options.width,
+      options.height,
+      options.quality ?? 80,
+      true,
+    );
+
+    const captureTimeMs = Date.now() - startTime;
+
+    session.capturePerf.frames += 1;
+    session.capturePerf.seekMs += seekMs;
+    session.capturePerf.beforeCaptureMs += beforeCaptureMs;
+    // screenshotMs reflects produce time only (encode is async, not tracked here)
+    session.capturePerf.screenshotMs += captureTimeMs - seekMs - beforeCaptureMs;
+    session.capturePerf.totalMs += captureTimeMs;
+    session.capturePerf.frameMs.push(captureTimeMs);
+
+    // Task B: retain this encode result so a following static frame can reuse it.
+    if (session.staticFrames) {
+      session.lastEncodeResult = encodeResult;
+      session.lastEncodeResultFrame = frameIndex;
+    }
+
+    return { encodeResult, captureTimeMs };
+  } catch (captureError) {
+    // Per-frame `No cached paint record`: fall back to screenshot for THIS frame
+    // instead of aborting the render (clip-cut boundary / freshly-shown element).
+    // The worker isn't involved for this frame; return a resolved encodeResult so
+    // the pipeline loop writes it like any other. See fast-capture-limitations.md.
+    if (isNoCachedPaintRecordError(captureError)) {
+      session.deNcprFallbacks = (session.deNcprFallbacks ?? 0) + 1;
+      console.log(
+        `[engine] fast capture: frame ${frameIndex} — No cached paint record; ` +
+          `screenshot fallback for this frame (see fast-capture-limitations.md)`,
+      );
+      const buffer = await pageScreenshotCapture(page, options);
+      return { encodeResult: Promise.resolve(buffer), captureTimeMs: Date.now() - startTime };
+    }
+    // Mirror captureFrameCore: capture per-frame diagnostics (frame-error
+    // PNG/HTML/JSON + console tail) before rethrowing so pipelined-path
+    // failures are debuggable like the serial path.
+    if (session.isInitialized) {
+      await captureFrameErrorDiagnostics(
+        session,
+        frameIndex,
+        time,
+        captureError instanceof Error ? captureError : new Error(String(captureError)),
+      );
+    }
+    throw captureError;
+  }
+}
+
+/**
+ * Verification-grade single-frame recapture for the producer's blank-frame
+ * guard. Unlike {@link captureFrameToBufferPipelined} it takes NO shortcuts
+ * and has NO fallbacks, both of which can return the WRONG FRAME's pixels at
+ * drain time:
+ *  - the static-dedup fast path returns session.lastEncodeResult, which by
+ *    drain time can hold a frame several indices AHEAD of the suspect frame;
+ *  - the per-frame "No cached paint record" screenshot fallback captures the
+ *    injected canvas — i.e. the LAST drawn drawElement frame, not this one.
+ * Any failure here throws; the caller treats that as verification failure and
+ * falls back the whole render (correct, never wrong-frame).
+ */
+export async function recaptureDrawElementFrameForVerify(
+  session: CaptureSession,
+  frameIndex: number,
+  time: number,
+): Promise<Buffer> {
+  const { page, options } = session;
+  if (!session.isInitialized) {
+    throw new Error("[FrameCapture] Session not initialized");
+  }
+  await prepareFrameForCapture(session, frameIndex, time);
+  const { encodeResult } = await produceDrawElementFrame(
+    page,
+    options.width,
+    options.height,
+    options.quality ?? 80,
+    true,
+  );
+  return encodeResult;
+}
+
+/**
+ * P6 prototype (HF_DE_BATCH): capture N consecutive frames in one CDP
+ * round-trip via {@link produceDrawElementFrameBatch}. The caller pre-plans the
+ * batch (consecutive frame indices, none static-dedup'd, none opt-in
+ * boundary-screenshot). On a mid-batch in-page failure the remaining frames are
+ * re-captured through {@link captureFrameToBufferPipelined}, which owns the
+ * per-frame screenshot-fallback semantics — so failure behavior is identical to
+ * the unbatched path, just discovered at batch granularity.
+ */
+export async function captureFramesBatchPipelined(
+  session: CaptureSession,
+  frameIndices: number[],
+  times: number[],
+): Promise<Array<{ frameIndex: number; encodeResult: Promise<Buffer> }>> {
+  const { page, options } = session;
+  if (!session.isInitialized) {
+    throw new Error("[FrameCapture] Session not initialized");
+  }
+  const startTime = Date.now();
+  const fps = fpsToNumber(options.fps);
+  const quantized = times.map((t) => quantizeTimeToFrame(t, fps));
+
+  const { encodeResults, failedAt, error } = await produceDrawElementFrameBatch(
+    page,
+    quantized,
+    options.width,
+    options.height,
+    options.quality ?? 80,
+  );
+
+  const okCount = failedAt === null ? frameIndices.length : failedAt;
+  const elapsed = Date.now() - startTime;
+  session.capturePerf.frames += okCount;
+  // Round-trips are fused — attribute the whole batch to produce time; each
+  // frame gets the batch mean for the per-frame sample series.
+  session.capturePerf.screenshotMs += elapsed;
+  session.capturePerf.totalMs += elapsed;
+  if (okCount > 0) {
+    const perFrame = elapsed / okCount;
+    for (let s2 = 0; s2 < okCount; s2++) session.capturePerf.frameMs.push(perFrame);
+  }
+
+  const results: Array<{ frameIndex: number; encodeResult: Promise<Buffer> }> = [];
+  for (let i = 0; i < okCount; i++) {
+    const frameIndex = frameIndices[i];
+    const encodeResult = encodeResults[i];
+    if (frameIndex === undefined || !encodeResult) break;
+    results.push({ frameIndex, encodeResult });
+  }
+
+  if (failedAt !== null) {
+    console.log(
+      `[engine] fast capture: batch produce failed at frame ` +
+        `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
+        `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
+    );
+    for (let i = failedAt; i < frameIndices.length; i++) {
+      const frameIndex = frameIndices[i];
+      const time = times[i];
+      if (frameIndex === undefined || time === undefined) break;
+      const { encodeResult } = await captureFrameToBufferPipelined(session, frameIndex, time);
+      results.push({ frameIndex, encodeResult });
+    }
+  }
+
+  // Task B: retain the last encode result so a following static frame can reuse it.
+  const last = results[results.length - 1];
+  if (session.staticFrames && last) session.lastEncodeResult = last.encodeResult;
+
+  return results;
 }
 
 /**
@@ -1902,6 +3028,9 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
   // Example: page release succeeds, browser release throws → pageReleased=true
   // but browserReleased=false → second call no-ops on page and retries browser.
   // This matches the orchestrator's intent for HDR cleanup.
+  if (session.workerEncodeEnabled && session.page && !session.pageReleased) {
+    cleanupDrawElementWorkerEncode(session.page);
+  }
   if (!session.pageReleased && session.page) {
     const pageClosed = await waitForCloseWithTimeout(session.page.close());
     if (!pageClosed) {
@@ -1940,6 +3069,7 @@ export function prepareCaptureSessionForReuse(
     beforeCaptureMs: 0,
     screenshotMs: 0,
     totalMs: 0,
+    frameMs: [],
   };
   session.beginFrameHasDamageCount = 0;
   session.beginFrameNoDamageCount = 0;
@@ -1959,6 +3089,139 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
   });
 }
 
+/**
+ * Ungated-release safety net, part 1: capture K screenshot ground-truth frames
+ * BEFORE the drawElement canvas is injected (the only window where a page
+ * screenshot shows the live DOM). The producer's drain compares each DE frame
+ * at these indices against its screenshot; a breach (or a blank frame that
+ * survives one retry) throws DrawElementVerificationError, and the orchestrator
+ * re-renders the whole job via the screenshot path.
+ *
+ * Env: HF_DE_VERIFY = sample count (default 4, clamp 0..8; 0 disables).
+ * Deterministic index selection: fixed fractions of the timeline, nudged off
+ * clip-cut boundaries (screenshot-vs-DE is legitimately ±1-frame desynced
+ * there — Lim 6). Skipped for tiny comps (<10 frames) and under
+ * HF_FORCE_DRAWELEMENT (debug escape hatch).
+ *
+ * False-positive bias is intentional: a nondeterministic comp may mismatch its
+ * init-time screenshot → the render falls back to the screenshot path (slower,
+ * never wrong). Cost when passing: ~K×(seek+screenshot) ≈ 150–300ms at init.
+ */
+/**
+ * Timeline fractions the self-verify samples. First k-1 evenly spaced, last
+ * pinned at 95%: late-onset damage (an end-of-comp reveal exposing pixels DE
+ * paints wrong) was invisible to the old (i+1)/(k+1) grid, whose final sample
+ * sat at 80% — measured miss: a body-gradient drop starting at ~79% of the
+ * timeline passed verification while the drained output bottomed at 30.9 dB.
+ */
+export function computeDeVerifySampleFractions(k: number): number[] {
+  if (k <= 0) return [];
+  if (k === 1) return [0.95];
+  return [...Array.from({ length: k - 1 }, (_, i) => (i + 1) / k), 0.95];
+}
+
+async function captureDeVerificationFrames(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  // Explicit HF_DE_VERIFY wins; otherwise the session's own sample count
+  // (raised by the parallel coordinator for multi-worker DE), then default 4.
+  const kRaw = Number(process.env.HF_DE_VERIFY ?? session.options.deVerifySamples ?? "4");
+  const k = Number.isFinite(kRaw) ? Math.max(0, Math.min(8, Math.floor(kRaw))) : 4;
+  if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
+  if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
+  const fps = fpsToNumber(session.options.fps);
+  // Prefer the producer-resolved duration (the range that will actually be
+  // drained). The page's raw __hf.duration can exceed it — timelines outrun
+  // their data-duration, and infinite-repeat GSAP reports a huge sentinel —
+  // and indices derived from it would never be drained, silently disarming
+  // verification for exactly the comps that need it.
+  const duration =
+    session.options.compositionDurationSeconds ??
+    (await page.evaluate(
+      () => (window as unknown as { __hf?: { duration?: number } }).__hf?.duration ?? 0,
+    ));
+  const totalFrames = Math.floor(duration * fps);
+  if (totalFrames < 10) return;
+  if (duration > 3600) {
+    // No producer duration and the page reports an implausible one.
+    logInitPhase(`drawElement self-verify skipped: implausible duration ${duration}s`);
+    return;
+  }
+  // Ground truth must show what the real capture paths would show: <video>
+  // pixels come from the onBeforeCapture injector. When this session has no
+  // injector (e.g. a probe session initialized before the render wires one
+  // up) a video comp's truth would screenshot black boxes and every sample
+  // would false-positive into the screenshot fallback — skip instead.
+  if (!session.onBeforeCapture) {
+    const hasVideos = await page.evaluate(() => document.querySelector("video") !== null);
+    if (hasVideos) {
+      logInitPhase("drawElement self-verify skipped: video comp without frame injector");
+      return;
+    }
+  }
+  const boundary = await computeClipBoundaryFrames(page, fps);
+  // Ascending order, and seek frame 0 first: GSAP .from()/overlapping tweens
+  // lazily record their start values on FIRST seek — scrubbing mid-timeline
+  // before the render's frame-0 seek corrupts those caches for the whole
+  // render (the detectCssEffectRisk lesson), and because DE frames and truth
+  // would share the corruption, PSNR would pass on the damaged output.
+  // Seeking 0 → ascending reproduces the render's own seek order.
+  const fractions = computeDeVerifySampleFractions(k);
+  const seekTo = async (t: number): Promise<void> => {
+    await page.evaluate((tt: number) => {
+      const hf = (
+        window as unknown as {
+          __hf?: { seek?: (x: number, options?: { suppressEvents?: boolean }) => void };
+        }
+      ).__hf;
+      if (hf && typeof hf.seek === "function") hf.seek(tt, { suppressEvents: true });
+    }, t);
+  };
+  await seekTo(quantizeTimeToFrame(0, fps));
+  // Force one frame so lazy tween initialization paints at t=0 state.
+  await pageScreenshotCapture(page, session.options);
+  const frames = new Map<number, Buffer>();
+  for (const f of fractions) {
+    let idx = Math.min(totalFrames - 1, Math.max(1, Math.round(totalFrames * f)));
+    // Nudge off clip-cut boundaries (±1-frame desync is legitimate there);
+    // if the nudge saturates on a boundary index, skip the sample entirely.
+    let guard = 0;
+    while (boundary.has(idx) && guard++ < 6) idx = Math.min(totalFrames - 1, idx + 2);
+    if (boundary.has(idx)) continue;
+    if (frames.has(idx)) continue;
+    const t = quantizeTimeToFrame(idx / fps, fps);
+    await seekTo(t);
+    // Video frame injection (same hook the real capture paths run) — without
+    // it, <video> elements screenshot black and every video comp would
+    // false-positive into the screenshot fallback.
+    if (session.onBeforeCapture) await session.onBeforeCapture(page, t);
+    // Double-capture: the first screenshot forces a frame, which is what runs
+    // rAF-driven callbacks (count-up text counters land a tick after seek()
+    // returns — a single immediate screenshot captures stale text and
+    // false-positives the verify: 3bea8c73 28.7dB vs a truth missing its stat
+    // values while the DE frame was correct). NOTE: waiting on rAF via
+    // evaluate instead deadlocks — headless only fires rAF when a frame is
+    // produced, and nothing produces one until a screenshot asks.
+    await pageScreenshotCapture(page, session.options);
+    frames.set(idx, await pageScreenshotCapture(page, session.options));
+  }
+  // Leave the page at frame 0 so the render's first seek starts from the
+  // same state as an unverified render.
+  await seekTo(quantizeTimeToFrame(0, fps));
+  session.deVerifyFrames = frames;
+  logInitPhase(
+    `drawElement self-verify armed: ${frames.size} ground-truth frame(s) @ [${[...frames.keys()].join(", ")}] of ${totalFrames}`,
+  );
+}
+
+function medianOf(samples: number[]): number {
+  if (samples.length === 0) return 0;
+  const sorted = [...samples].sort((a, b) => a - b);
+  return Math.round(sorted[Math.floor(sorted.length / 2)] ?? 0);
+}
+
 export function getCapturePerfSummary(session: CaptureSession): CapturePerfSummary {
   const frames = Math.max(1, session.capturePerf.frames);
   return {
@@ -1967,12 +3230,23 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgSeekMs: Math.round(session.capturePerf.seekMs / frames),
     avgBeforeCaptureMs: Math.round(session.capturePerf.beforeCaptureMs / frames),
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
+    p50TotalMs: medianOf(session.capturePerf.frameMs),
+    subTimelineWaitOutcome: session.subTimelineWaitOutcome,
     staticDedupReused: session.staticDedupCount ?? 0,
     staticDedupEnabled: session.staticDedupEnabled ?? false,
     // armed ⟺ a non-empty static set survived verification; predicted === its size.
     staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
     staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
+    beginFrameNoDamage: session.beginFrameNoDamageCount,
+    beginFrameHasDamage: session.beginFrameHasDamageCount,
+    captureMode: session.captureMode,
+    deGateReason: session.deGateReason,
+    deWorkerEncode: session.workerEncodeEnabled ?? false,
+    deVerifyArmed: session.deVerifyFrames?.size ?? 0,
+    deVerifyInitMs: session.deVerifyInitMs ?? 0,
+    deBoundaryFrames: session.clipBoundaryFrames?.size ?? 0,
+    deNcprFallbacks: session.deNcprFallbacks ?? 0,
   };
 }
 
@@ -2034,7 +3308,39 @@ const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
   /JavaScript heap out of memory/i,
 ];
 
+// The producer's deployed runtime is Bun (JavaScriptCore), not Node (V8) —
+// see `packages/gcp-cloud-run/Dockerfile`'s `CMD ["bun", "dist/server.js"]`.
+// JSC's own allocation-failure message for the equivalent single-oversized-
+// allocation RangeErrors above is the bare string "Out of memory" (verified:
+// `new Uint8Array(Number.MAX_SAFE_INTEGER)`, an unbounded `Set`, and
+// `"x".repeat(2**53)` all throw exactly this under Bun) — none of the V8
+// patterns above match it. This is exactly the substring the comment above
+// says NOT to match anywhere in the message (benign browser-console noise
+// like a WebGL `CONTEXT_LOST … out of memory` carries that phrase too), so
+// this checks the ENTIRE (trimmed) message equals it, not merely contains
+// it — a compound message with other text around the phrase still misses.
+const BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE = /^out of memory\.?$/i;
+
+// The parallel-DE capture path — the exact cohort the OOM-aware retry in
+// renderOrchestrator.ts targets — never reaches isMemoryExhaustionError with
+// a bare message: `executeParallelCapture`/`formatWorkerFailure`
+// (parallelCoordinator.ts) always wrap a worker's error as
+// "Worker N: <message>", optionally suffixed "; diagnostics: ..." and joined
+// with other failed workers' segments via "; ", all prefixed
+// "[Parallel] Capture failed: ". The exact-match check above is defeated by
+// that wrapping entirely (verified) — this pattern recovers the Bun OOM
+// signal by requiring "out of memory" appear immediately after "Worker N: "
+// and immediately before end-of-string, ";", or ".", i.e. as the WHOLE
+// worker-segment content, not merely somewhere inside it. This preserves the
+// exact-match property (no bare "out of memory" substring inside otherwise-
+// unrelated worker text, e.g. "Worker 2: WebGL context lost, out of memory
+// reported by driver" does NOT match) while surviving this codebase's own
+// error-flattening.
+const BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE = /\bworker \d+: out of memory\.?(?:;|$)/i;
+
 export function isMemoryExhaustionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
+  if (BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim())) return true;
+  if (BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(message)) return true;
   return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import type { TimelineElement } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
-import { getTimelineElementLabel } from "../utils/studioHelpers";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -58,7 +57,7 @@ function renderAudioClip(el: TimelineElement, pid: string, labelColor: string): 
   return createElement(AudioWaveform, {
     audioUrl,
     waveformUrl,
-    label: getTimelineElementLabel(el),
+    label: "",
     labelColor,
     trimStartFraction: start,
     trimEndFraction: end,
@@ -102,7 +101,7 @@ export function useRenderClipContent({
       if (compSrc) {
         return createElement(CompositionThumbnail, {
           previewUrl: `/api/projects/${pid}/preview/comp/${compSrc}`,
-          label: getTimelineElementLabel(el),
+          label: "",
           labelColor: style.label,
 
           seekTime: 0,
@@ -122,7 +121,7 @@ export function useRenderClipContent({
       if (activePreviewUrl && el.duration > 0) {
         return createElement(CompositionThumbnail, {
           previewUrl: activePreviewUrl,
-          label: getTimelineElementLabel(el),
+          label: "",
           labelColor: style.label,
 
           selector: el.selector,
@@ -144,7 +143,7 @@ export function useRenderClipContent({
           : `/api/projects/${pid}/preview/${el.src}`;
         return createElement(VideoThumbnail, {
           videoSrc: mediaSrc,
-          label: getTimelineElementLabel(el),
+          label: "",
           labelColor: style.label,
           duration: el.duration,
         });
@@ -153,7 +152,7 @@ export function useRenderClipContent({
       if (htmlPreviewEligible) {
         return createElement(CompositionThumbnail, {
           previewUrl: `/api/projects/${pid}/preview`,
-          label: getTimelineElementLabel(el),
+          label: "",
           labelColor: style.label,
 
           selector: el.selector,

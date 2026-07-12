@@ -61,19 +61,23 @@ function hasUnsafeHtmlAttributeOp(ops: PatchOperation[]): boolean {
   );
 }
 
+function hasChildScopedOp(ops: PatchOperation[]): boolean {
+  return ops.some((op) => op.childSelector !== undefined);
+}
+
 function hasTextContentOp(ops: PatchOperation[]): boolean {
   return ops.some((op) => op.type === "text-content");
 }
 
 function targetChildren(target: unknown): unknown[] | null {
   if (!target || typeof target !== "object" || !("children" in target)) return null;
-  const children = (target as { children?: unknown }).children;
+  const children = target.children;
   return Array.isArray(children) ? children : null;
 }
 
 function elementTag(element: unknown): string | null {
   if (!element || typeof element !== "object" || !("tag" in element)) return null;
-  const tag = (element as { tag?: unknown }).tag;
+  const tag = element.tag;
   return typeof tag === "string" ? tag.toLowerCase() : null;
 }
 
@@ -110,6 +114,8 @@ export function shouldUseSdkCutover(
     !!hfId &&
     ops.length > 0 &&
     ops.every((o) => CUTOVER_OP_TYPES.has(o.type)) &&
+    // SDK edit ops target only the element hfId; child-scoped patch ops need the server path.
+    !hasChildScopedOp(ops) &&
     !ops.some(mapsToReservedAttr) &&
     !hasUnsafeHtmlAttributeOp(ops)
   );

@@ -48,6 +48,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { formatBytes } from "./_formatBytes.js";
+import { HANDLER_BANNER } from "./_handlerBanner.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, "..");
@@ -239,20 +240,10 @@ async function bundleHandler(stagingDir: string): Promise<void> {
     sourcemap: false,
     entryPoints: [entry],
     outfile,
-    // Lambda's Node 22 runtime treats `.mjs` as ESM. Inject a real `require`
-    // via `createRequire` so esbuild's `__require` shim resolves to it
-    // instead of throwing "Dynamic require of <X> is not supported" on
-    // CommonJS modules in the dependency graph (postcss, etc. that ship
-    // top-level `require('path')` calls). The shim does
-    // `typeof require !== "undefined" ? require : <throwing-proxy>`, so
-    // making `require` a real value in module scope flips it onto the
-    // happy path.
+    // See HANDLER_BANNER (_handlerBanner.ts) for why the ESM bundle needs the
+    // CJS require/__filename/__dirname shims.
     banner: {
-      js: [
-        "// hyperframes-aws-lambda handler bundle",
-        'import { createRequire as __hf_createRequire } from "module";',
-        "const require = __hf_createRequire(import.meta.url);",
-      ].join("\n"),
+      js: HANDLER_BANNER,
     },
   });
   console.log(`[build-zip] bundled handler → ${outfile}`);

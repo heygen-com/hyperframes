@@ -9,7 +9,7 @@ pre-commit:
       # Auto-format and re-stage so the committed snapshot is always formatted.
       # Replaces --check which only reports — that left unformatted files in
       # commits when the hook ran after the amend snapshot was taken.
-      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add {staged_files}
+      run: bunx oxfmt --no-error-on-unmatched-pattern {staged_files} && git add -f {staged_files}
     skills-manifest:
       glob: "skills/**"
       # Regenerate the freshness fingerprint when a skill changes, then re-stage
@@ -38,6 +38,11 @@ pre-commit:
       # split paths containing spaces. It skips files under the limit, anything
       # routed through LFS, and registry/ assets. Tune via HF_MAX_NONLFS_KB.
       run: ./scripts/check-large-files.sh
+    tracked-artifacts:
+      # Keep ignored dependency trees and platform metadata out of commits.
+      # `git ls-files` observes the staged index, so staged removals pass and
+      # an accidental force-add fails before the commit is created.
+      run: bun run check:tracked-artifacts
     filesize:
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and

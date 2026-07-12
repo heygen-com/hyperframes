@@ -19,7 +19,7 @@ import { HyperframesApiError } from "./_gen/client.js";
  */
 const ERROR_CODE_HINTS: Record<string, string> = {
   hyperframes_project_too_large:
-    "The zip exceeded the 32 MB limit. Trim large media (or pre-host them and reference by URL), then try again.",
+    "The zip exceeded the 200 MB limit. Trim large media (or pre-host them and reference by URL), then try again.",
   hyperframes_render_not_found:
     "The render_id no longer exists — either soft-deleted or never created.",
   invalid_parameter:

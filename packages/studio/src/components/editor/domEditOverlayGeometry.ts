@@ -1,5 +1,6 @@
 import { type DomEditSelection, findElementForSelection } from "./domEditing";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
+import { hugRectForElement } from "./domEditOverlayCrop";
 
 export interface OverlayRect {
   left: number;
@@ -82,6 +83,19 @@ export function resolveDomEditCoordinateScale(input: {
     scaleX: sourceScaleX > 0 ? sourceScaleX : rootScaleX,
     scaleY: sourceScaleY > 0 ? sourceScaleY : rootScaleY,
   };
+}
+
+/** toOverlayRect, then shrunk to the element's visible (inset-cropped) region.
+ *  For consumers that reason about what's ON SCREEN — snap targets, marquee
+ *  hit-tests, display outlines. The selection box must keep the full rect
+ *  (it is the gesture coordinate basis). */
+export function toVisibleOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): OverlayRect | null {
+  const rect = toOverlayRect(overlayEl, iframe, element);
+  return rect ? { ...rect, ...hugRectForElement(rect, element) } : null;
 }
 
 export function toOverlayRect(

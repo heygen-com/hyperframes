@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -45,10 +46,14 @@ export default defineCommand({
       description: "Text to speak, or path to a .txt file",
       required: false,
     },
+    "text-file": {
+      type: "string",
+      description: "Read text from a .txt file (compatibility alias)",
+    },
     output: {
       type: "string",
       description: "Output file path (default: speech.wav in current directory)",
-      alias: "o",
+      alias: ["o", "out"],
     },
     voice: {
       type: "string",
@@ -76,6 +81,7 @@ export default defineCommand({
       default: false,
     },
   },
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── List voices mode ──────────────────────────────────────────────
     if (args.list) {
@@ -83,13 +89,14 @@ export default defineCommand({
     }
 
     // ── Resolve input text ────────────────────────────────────────────
-    if (!args.input) {
+    const input = args["text-file"] ?? args.input;
+    if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));
       process.exit(1);
     }
 
     let text: string;
-    const maybeFile = resolve(args.input);
+    const maybeFile = resolve(input);
 
     if (existsSync(maybeFile) && extname(maybeFile).toLowerCase() === ".txt") {
       text = readFileSync(maybeFile, "utf-8").trim();
@@ -98,7 +105,7 @@ export default defineCommand({
         process.exit(1);
       }
     } else {
-      text = args.input;
+      text = input;
     }
 
     if (!text.trim()) {

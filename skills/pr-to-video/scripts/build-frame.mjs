@@ -37,6 +37,7 @@ import {
   parseFonts,
   pickAccent,
   semanticColors,
+  STATUS_ROLE_KEY,
   UA_DEFAULT_COLORS,
 } from "./lib/tokens.mjs";
 
@@ -253,11 +254,7 @@ if (brandColors.length && presetColors.length) {
     let next;
     if (val === prDark) next = mapDark;
     else if (val === prLight) next = mapLight;
-    else if (
-      /(?:^|[-_])(?:positive|negative|success|error|warning|danger|good|bad|up|down)(?:[-_]|$)/i.test(
-        key,
-      )
-    )
+    else if (STATUS_ROLE_KEY.test(key))
       // semantic status colors (green/red …) — the HUE carries the meaning; never repaint.
       // MUST precede the accent checks: a preset's red "negative" is often its 2nd-most-chromatic
       // color and would otherwise be claimed as accent2 and recolored to the brand hue.

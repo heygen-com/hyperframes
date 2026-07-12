@@ -10,7 +10,7 @@ This file defines the story: what the video explains, in what order, and why eac
 2. `frame.md` — tone, type, design system (the shipped preset is **claude**: warm editorial, a serif that thinks, scarce coral, a navy code surface).
 3. `capture/extracted/visible-text.txt` — the assembled PR brief: title, meta (`base ← head · +N/−M across F files`), people, body, commits, changed files, and a budget-bounded set of **representative diff hunks**. This is your source of **information**.
 4. `capture/diff.patch` — the full unified diff, for deeper hunk selection than the brief's excerpt.
-5. `capture/extracted/people.json` — contributors (author / committers / reviewers / commenters), bot-filtered, each with an avatar in `assets/<login>.png` (for an optional credits close).
+5. `capture/extracted/people.json` — contributors (author / committers / reviewers / commenters), bot-filtered, each with an avatar in `assets/<login>.png` (for the credits close).
 
 ## Output
 
@@ -25,6 +25,8 @@ A diff is a list of edits. A video is a guided act of understanding.
 
 Do **not** narrate the diff file-by-file or read the PR description aloud — that is the single most common failure. **Explain the change** — and where the change has a runtime behavior, **show that behavior in motion** (a `mechanism` beat — see "Show the behavior" below), don't just display the lines that changed. Reorder, merge, omit, compress: surface the one change that matters and drop the incidental churn (lockfile bumps, formatting, generated files) unless it _is_ the story. Scene order comes from narrative design, not from the diff's file order or the commit list.
 
+**Value before evidence** (`../hyperframes-creative/references/story-spine.md`): the viewer-facing payoff — what the change unlocks, fixes, or speeds up — lands by the second beat; the diff and the mechanism are the **evidence** for that claim, never the opening. Implementation is the footnote of the story, not the spine.
+
 Default to a **plain, technical, unhurried developer voice** — accurate, specific, no hype, no marketing gloss. You are explaining a real change to engineers; respect their time and intelligence. `frame.md` (claude) tunes the voice toward considered and literary; it does not change the structure.
 
 ## PR archetypes
@@ -32,7 +34,7 @@ Default to a **plain, technical, unhurried developer voice** — accurate, speci
 Choose **one** archetype (or name a compound). Each is a complete path through understanding a change — do not splice phases from different archetypes.
 
 - **Changelog** — "here's what shipped." Hook naming the headline → **2–4 roughly co-equal change items** → ship/wrap. Best for release PRs, multi-change PRs, "what's new in vN." Items are parallel → `cut` / `push-slide` between them. Rule-of-three is strongest when changes compress. An item with a visible behavior can be a `mechanism` mini-demo instead of a bare `diff`.
-- **Feature-reveal** — "we built X; here's what it does." Hook (the new capability) → name it (`change`) → the new code typing on (`diff`) → **animate what it does (`mechanism`)** → why it matters (`impact`) → close. Best for a PR that adds **one notable feature**. The new code is the protagonist, but the `mechanism` beat is where the viewer _sees_ the feature work — not just reads its diff.
+- **Feature-reveal** — "here's what you can do now." Hook (the outcome the feature unlocks, in user language) → the payoff made concrete (`impact` — what now works) → name it (`change`) → the new code typing on (`diff`) → **animate what it does (`mechanism`)** → close (a callback to the promise). Best for a PR that adds **one notable feature**. The promise leads and the code proves it: `diff` and `mechanism` are the evidence for the opening claim — the viewer should already care before the first line of code appears.
 - **Fix-explainer** — "this was broken; here's the fix." Symptom/bug (`problem`) → **animate the broken behavior (`mechanism`)** → the fix as a before→after (`diff`) → **the behavior now working (`mechanism`)** or the result (`impact`). Best for bugfix PRs. Seeing the bug _happen_ and then _not_ happen is the turn — a stronger shape (tension → turn → relief) than the diff alone.
 - **Refactor-walkthrough** — "same behavior, better shape." Hook (the smell / the why) → old shape vs new shape (`before_after`) → **the structure untangling, same inputs → same outputs (`mechanism`)** → payoff (`evidence` — lines removed, perf delta, files touched). Best for refactors, perf, cleanups, migrations. A `mechanism` animation _proves_ "same behavior, better shape" far better than asserting it.
 
@@ -42,18 +44,18 @@ Choose **one** archetype (or name a compound). Each is a complete path through u
 
 Set each frame's `type` to one of these PR-native values. (The storyboard parser keeps `type` verbatim; it is a narrative + pacing label, not a hard enum.) Each maps to a claude frame treatment and a typical visual — so the type, the design, and the visual stay aligned end to end. Note `mechanism` is the **show-the-behavior** beat (an invented animated diagram), distinct from `diff` (show the code).
 
-| `type`         | The frame's job                                                                                                        | claude treatment (frame.md)                                        | typical visual (see code-vocabulary.md)                                                 |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `hook`         | The high-leverage opening 3–5s                                                                                         | Cover                                                              | — (or `code-3d-extrude` for a hero code moment)                                         |
-| `problem`      | The bug / smell / pain / why-care the PR resolves                                                                      | Statement or Pull-quote                                            | `code-highlight` (spotlight the offending line)                                         |
-| `change`       | Name the change / the feature / the PR itself                                                                          | Statement or Cover                                                 | —                                                                                       |
-| `diff`         | The change body — a before→after, a hunk, new code typed on                                                            | **Code Surface** (navy)                                            | `code-diff` / `code-morph` / `code-typing`                                              |
-| `before_after` | Explicit old-shape vs new-shape comparison (refactor/fix)                                                              | Code Surface (split / morph)                                       | `code-morph` / `code-diff`                                                              |
-| `mechanism`    | **Show what the change DOES at runtime** — the request retrying, the cache filling, serial→parallel, the race resolved | invented diagram on cream (hairline ink + one coral active marker) | **invented SVG/GSAP**; `flowchart` / `flowchart-vertical` / `data-chart` where they fit |
-| `impact`       | The payoff — what now works, what's now possible                                                                       | Number / Impact                                                    | `number-lockup` (no code block needed)                                                  |
-| `evidence`     | Concrete grounding — `+N/−M`, a passing test, a benchmark                                                              | Number / Impact                                                    | `code-diff` red→green / `number-lockup`                                                 |
-| `credits`      | Shipped-by close — the humans behind the change                                                                        | Closing                                                            | — (avatar row from `assets/<login>.png`)                                                |
-| `cta`          | The closing ask — pull it, upgrade, read the PR                                                                        | Closing                                                            | — (coral-callout)                                                                       |
+| `type`         | The frame's job                                                                                                             | claude treatment (frame.md)                                        | typical visual (see code-vocabulary.md)                                                 |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `hook`         | The high-leverage opening 3–5s                                                                                              | Cover                                                              | — (or `code-3d-extrude` for a hero code moment)                                         |
+| `problem`      | The bug / smell / pain / why-care the PR resolves                                                                           | Statement or Pull-quote                                            | `code-highlight` (spotlight the offending line)                                         |
+| `change`       | Name the change / the feature / the PR itself                                                                               | Statement or Cover                                                 | —                                                                                       |
+| `diff`         | The change body — a before→after, a hunk, new code typed on                                                                 | **Code Surface** (navy)                                            | `code-diff` / `code-morph` / `code-typing`                                              |
+| `before_after` | Explicit old-shape vs new-shape comparison (refactor/fix)                                                                   | Code Surface (split / morph)                                       | `code-morph` / `code-diff`                                                              |
+| `mechanism`    | **Show what the change DOES at runtime** — the request retrying, the cache filling, serial→parallel, the race resolved      | invented diagram on cream (hairline ink + one coral active marker) | **invented SVG/GSAP**; `flowchart` / `flowchart-vertical` / `data-chart` where they fit |
+| `impact`       | The payoff — what now works, what's now possible; opens the video as the promise (feature-reveal) or lands it as the result | Number / Impact                                                    | `number-lockup` (no code block needed)                                                  |
+| `evidence`     | Concrete grounding — `+N/−M`, a passing test, a benchmark                                                                   | Number / Impact                                                    | `code-diff` red→green / `number-lockup`                                                 |
+| `credits`      | Shipped-by close — the humans behind the change                                                                             | Closing                                                            | — (avatar row from `assets/<login>.png`)                                                |
+| `cta`          | The closing ask — pull it, upgrade, read the PR                                                                             | Closing                                                            | — (coral-callout)                                                                       |
 
 The body of a PR video **alternates `diff` (show the code that changed) with `mechanism` (show what it does at runtime)**, landing on `impact` / `evidence` (the result). A body that is all `diff` reads as code show-and-tell — the `mechanism` beat is what makes the change _legible_ and is the usual cure for a video that feels flat. Every PR has a change, so at least one `diff` (or `change`) frame always exists; most PRs also have a behavior worth animating.
 
@@ -61,17 +63,17 @@ The body of a PR video **alternates `diff` (show the code that changed) with `me
 
 The hook is the highest-leverage 3–5 seconds. Pick one:
 
-| Strategy               | When                                | Example                                                    |
-| ---------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| Shocking statistic     | The change quantifies the stakes    | "This PR deletes 1,200 lines." / "40% faster cold starts." |
-| Counterintuitive claim | The change contradicts intuition    | "We made the client slower — and that fixed it."           |
-| Pain validation        | The audience already feels the bug  | "Every deploy, the same flaky timeout."                    |
-| Concept announcement   | The change has a name worth landing | "Meet retry-with-backoff."                                 |
-| Before/after teaser    | The diff is the whole story         | "One line threw. Now it recovers."                         |
-| Stakes / consequence   | The "why care now" is a real cost   | "This crash hit every user on a flaky network."            |
-| Direct address         | The audience is clearly defined     | "If you've ever waited on a 5-minute CI run…"              |
+| Strategy               | When                                | Example                                                                |
+| ---------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| Shocking statistic     | The change quantifies the stakes    | "This PR deletes 1,200 lines." / "40% faster cold starts."             |
+| Counterintuitive claim | The change contradicts intuition    | "We made the client slower — and that fixed it."                       |
+| Pain validation        | The audience already feels the bug  | "Every deploy, the same flaky timeout."                                |
+| Concept announcement   | The change has a name worth landing | "Meet retry-with-backoff — flaky networks stop killing your requests." |
+| Before/after teaser    | The diff is the whole story         | "One line threw. Now it recovers."                                     |
+| Stakes / consequence   | The "why care now" is a real cost   | "This crash hit every user on a flaky network."                        |
+| Direct address         | The audience is clearly defined     | "If you've ever waited on a 5-minute CI run…"                          |
 
-Do not open with a generic repo/company description.
+Do not open with a generic repo/company description. Whatever the strategy, the hook speaks the **viewer's outcome language** (story-spine rule 1) — never file / function / identifier names; numbers only when they carry stakes ("40% faster"), not inventory ("23 files changed").
 
 ## Clarity / rhetoric technique catalog
 
@@ -100,7 +102,7 @@ Compound beats are often strongest: "Recognition _and_ relief" (a fix), "Curiosi
 A PR video's core is **2–5 body frames**, each advancing one change / one before→after / one item, building cumulatively. **Alternate `diff` (the code) with `mechanism` (the behavior)** — don't stack code surfaces:
 
 - **changelog:** a `diff` (or a `mechanism` mini-demo) per change item; parallel → default `cut` / `push-slide`.
-- **feature-reveal:** `change` (name it) → `diff` (the code, often typing/morphing on) → `mechanism` (animate it working) → `impact`.
+- **feature-reveal:** `impact` (the promise, concrete) → `change` (name it) → `diff` (the code, often typing/morphing on) → `mechanism` (animate it working) → a closing callback to the promise.
 - **fix-explainer:** `problem` (symptom) → `mechanism` (the bug happening) → `diff` (cause + fix, before→after) → `impact` (result, or a `mechanism` of it working).
 - **refactor-walkthrough:** `before_after` structure → `mechanism` (the structure untangling, behavior preserved) → an `evidence` numbers beat.
 
@@ -149,15 +151,22 @@ Plan **at least one `mechanism` beat** for any PR with a visible runtime behavio
 
 Name the mechanism in the frame's `scene` ("animate the request retrying: fire → 500 → backoff → 200, invented SVG flow") so Step 4 and the worker build it. The `diff` frame and the `mechanism` frame are **complementary** — the diff is the proof in code, the mechanism is the proof in motion; alternate them rather than stacking code surfaces.
 
-## Optional close: a credits / shipped-by scene
+## The close: a credits / shipped-by scene
 
-A PR is shipped by people. `capture/extracted/people.json` lists real contributors (bot-filtered), and Step 1 downloaded each avatar to `assets/<login>.png` (the `avatarFetched: true` entries — confirm with `ls assets/`). `reviewDecision` (e.g. `APPROVED`) is honest grounding.
+A PR is shipped by people, and every PR video closes with a `credits` frame naming them. `capture/extracted/people.json` lists real contributors (bot-filtered), and Step 1 downloaded each avatar to `assets/<login>.png` (the `avatarFetched: true` entries — confirm with `ls assets/`). `reviewDecision` (e.g. `APPROVED`) is honest grounding.
 
 > **The PR `author` only opened the PR — not necessarily who wrote the code.** A teammate often authors most commits. Lead the credits with `committer`s by `commitCount`, not the opener.
 
-You **may** add one closing `credits` frame naming the humans — an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 2–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. This is **optional and tasteful**: a one-line hotfix or a solo PR with no reviews doesn't need a credits roll; a feature or release the team rallied around earns one.
+The `credits` frame is an avatar row with names + roles + an "approved" check. On that frame only, set `asset_candidates` to 1–6 entries of `assets/<login>.png — <login>, <role>` (commit authors by `commitCount` first, then reviewers; only `avatarFetched: true` logins). The body stays code-only — avatars appear **only** on this close, never decorating a diff frame. The frame sits in the Step 3 proposal like any other, so the user can cut it there; skip it yourself only when no avatar was fetched.
 
 Every other frame has **no** `asset_candidates` (the visuals are invented downstream from `scene` + the diff).
+
+### Versions on the end card (cta / changelog)
+
+A `cta` ("upgrade to vN", "npm i pkg@N") or a changelog "what's new in vN" wants a real version — and **a version is the one fact you must never invent.** A PR carries no shipping version, so Step 1 resolves a best-effort one for MERGED PRs and writes it into `capture/extracted/visible-text.txt` as a `Shipped in: <version> (<source>)` meta line (mirrored in `capture/pr.json` as `shipped_version` / `version_source`). Use it:
+
+- **`Shipped in:` present** → use that exact version on the end card. A `version_source` of `unreleased` means the change is on the default branch but not yet in a tagged release — say "shipping in the next release" rather than pinning a tag.
+- **No `Shipped in:` line** (open PR, or no version resolvable) → **state the repo / PR URL only** ("read the PR at github.com/…", "pull it") and do **not** name or guess a version number.
 
 ## Per-frame length budget — ≤ 9 s, word count is the real measurement
 
@@ -200,12 +209,13 @@ The `credits` frame additionally carries an `asset_candidates:` line (see the cr
 
 - One archetype is named (compound only when explicit); the sequence is narrative-driven, not diff-order-driven.
 - The opening uses a named hook strategy; you do not read the PR description aloud.
+- The hook is in viewer-outcome language (no file / function / identifier names), and the video's `message` lands by beat 2 (story-spine).
 - Each frame has one job; the body builds cumulatively, **alternating `diff` (the code) with `mechanism` (the behavior)** + `impact` / `evidence` — not a single isolated body frame, and not an unbroken stack of code surfaces.
 - Every frame has `type` (PR-native), `persuasion` (a named technique), and `beat` (specific). The emotional arc matches the archetype (fix = frustration → relief; feature = curiosity → confidence).
 - Each `voiceover` is phrase-segmented into cues (each a piece Step 5 can reveal on), not one run-on clause; a candidate `blueprint:` is tagged from the role→blueprint menu where a proven shape fits (a code beat usually omits it — the `code-*` block is the shape).
 - **2–4 real diff hunks** featured, each a small legible snippet (not a whole file), each naming its `code-*` block in `scene`.
 - **At least one `mechanism` beat** animates what the change _does_ at runtime (an invented diagram, or a `flowchart` / `data-chart`), named in its `scene` — unless the PR genuinely has no visible behavior (a pure docs / config bump). The body is not an unbroken run of code surfaces.
 - Transitions use only registry names and repeat 2–3 types; frame 1 is `cut`.
-- `asset_candidates` is absent on every frame except an optional `credits` close (2–6 `assets/<login>.png` entries, `avatarFetched: true` only).
+- The video closes with a `credits` frame (skipped only when no avatar was fetched); `asset_candidates` is absent on every other frame (1–6 `assets/<login>.png` entries on the close, `avatarFetched: true` only).
 - Each `script` fits the budget — ≤ 19 words / ≤ 9 s default, ≤ 2 frames at the ≤ 26 / ≤ 12 s exception; `duration = ceil(word_count / 2.2)`, not a guess.
 - `SCRIPT.md` contains only locked spoken narration; silent frames are intentional and omitted from it.

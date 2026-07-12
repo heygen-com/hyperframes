@@ -44,7 +44,7 @@ gcloud builds submit . \
   --tag us-central1-docker.pkg.dev/PROJECT/hyperframes/hyperframes-render:v1
 
 # 2. Apply the module.
-cd node_modules/@hyperframes/gcp-cloud-run/terraform
+cd packages/gcp-cloud-run/terraform
 terraform init
 terraform apply \
   -var project_id=PROJECT \
@@ -96,4 +96,4 @@ examples/gcp-cloud-run/scripts/smoke.sh --project my-project --region us-central
 
 ## Supported formats
 
-Same as the distributed pipeline everywhere: `mp4` (H.264 / H.265), `mov` (ProRes), `webm` (VP9), and `png-sequence`. HDR mp4 is not supported in distributed mode.
+Same as the distributed pipeline everywhere: `mp4` (H.264 / H.265), `webm` (VP9), `mov` (ProRes), and `png-sequence`. HDR mp4 is not supported in distributed mode.

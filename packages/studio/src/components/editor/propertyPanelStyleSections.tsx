@@ -5,6 +5,7 @@ import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import {
   buildBoxShadowPresetValue,
   buildClipPathValue,
+  buildInsetClipPathSides,
   buildInsetClipPathValue,
   buildStrokeStyleUpdates,
   buildStrokeWidthStyleUpdates,
@@ -17,10 +18,12 @@ import {
   inferClipPathPreset,
   LABEL,
   normalizePanelPxValue,
+  parseInsetClipPathSides,
   parseNumericValue,
   parsePxMetricValue,
   RESPONSIVE_GRID,
   setCssFilterFunctionPx,
+  type ClipPathInsetSides,
   type BoxShadowPreset,
 } from "./propertyPanelHelpers";
 import {
@@ -35,6 +38,7 @@ import { ColorField } from "./propertyPanelColor";
 import { GradientField, ImageFillField } from "./propertyPanelFill";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
+// fallow-ignore-next-line complexity
 export function StyleSections({
   projectId,
   element,
@@ -86,7 +90,16 @@ export function StyleSections({
   const backdropBlurValue = getCssFilterFunctionPx(styles["backdrop-filter"], "blur");
   const clipPathValue = styles["clip-path"] || "none";
   const clipPathPreset = inferClipPathPreset(clipPathValue);
+  const parsedClipInsets = parseInsetClipPathSides(clipPathValue);
   const clipInsetValue = getClipPathInsetPx(clipPathValue);
+  const clipInsetSides = parsedClipInsets ?? {
+    top: clipInsetValue,
+    right: clipInsetValue,
+    bottom: clipInsetValue,
+    left: clipInsetValue,
+    radius: radiusValue,
+  };
+  const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
   const backgroundImage = styles["background-image"] ?? "none";
   const hasTextControls = isTextEditableSelection(element);
 
@@ -115,6 +128,19 @@ export function StyleSections({
         serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
+  };
+
+  const commitClipInsetSide = (side: keyof ClipPathInsetSides, nextValue: string) => {
+    const next = parsePxMetricValue(nextValue);
+    if (next == null) return;
+    const sides: ClipPathInsetSides = {
+      top: clipInsetSides.top,
+      right: clipInsetSides.right,
+      bottom: clipInsetSides.bottom,
+      left: clipInsetSides.left,
+    };
+    sides[side] = next;
+    onSetStyle("clip-path", buildInsetClipPathSides(sides, clipInsetSides.radius));
   };
 
   return (
@@ -344,6 +370,36 @@ export function StyleSections({
               }
             />
           </div>
+          {showClipInsetSides && (
+            <div className="grid gap-2">
+              <div className="grid grid-cols-4 gap-2">
+                <MetricField
+                  label="T"
+                  value={formatPxMetricValue(clipInsetSides.top)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("top", next)}
+                />
+                <MetricField
+                  label="R"
+                  value={formatPxMetricValue(clipInsetSides.right)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("right", next)}
+                />
+                <MetricField
+                  label="B"
+                  value={formatPxMetricValue(clipInsetSides.bottom)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("bottom", next)}
+                />
+                <MetricField
+                  label="L"
+                  value={formatPxMetricValue(clipInsetSides.left)}
+                  disabled={styleEditingDisabled}
+                  onCommit={(next) => commitClipInsetSide("left", next)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </Section>
 

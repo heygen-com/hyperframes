@@ -1,6 +1,4 @@
-import type { TimelineTrackStyle } from "./timelineTheme";
-
-import { memo, type ReactNode } from "react";
+import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { defaultTimelineTheme, getClipHandleOpacity, type TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCapabilities } from "./timelineEditing";
@@ -15,7 +13,6 @@ interface TimelineClipProps {
   hasCustomContent: boolean;
   capabilities: TimelineEditCapabilities;
   theme?: TimelineTheme;
-  trackStyle: TimelineTrackStyle;
   isComposition: boolean;
   onHoverStart: () => void;
   onHoverEnd: () => void;
@@ -27,6 +24,7 @@ interface TimelineClipProps {
   children?: ReactNode;
 }
 
+// fallow-ignore-next-line complexity
 export const TimelineClip = memo(function TimelineClip({
   el,
   pps,
@@ -37,7 +35,6 @@ export const TimelineClip = memo(function TimelineClip({
   hasCustomContent,
   capabilities,
   theme = defaultTimelineTheme,
-  trackStyle,
   isComposition,
   onHoverStart,
   onHoverEnd,
@@ -51,45 +48,43 @@ export const TimelineClip = memo(function TimelineClip({
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
-
-  const borderColor = isSelected
-    ? trackStyle.accent
-    : isHovered
-      ? theme.clipBorderHover
-      : theme.clipBorder;
-  const boxShadow = isDragging
-    ? theme.clipShadowDragging
-    : isSelected
-      ? `0 0 0 1px ${trackStyle.accent}80, 0 0 8px ${trackStyle.accent}25`
-      : isHovered
-        ? theme.clipShadowHover
-        : theme.clipShadow;
   const displayLabel = el.label || el.id || el.tag;
-  const showHandles = handleOpacity > 0.01;
+  const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
+  const showLabel = widthPx >= 40 || isSelected;
+  const showDefaultText = !hasCustomContent && (widthPx >= 40 || isSelected);
+  const startLabel = el.start.toFixed(1);
+  const endLabel = (el.start + el.duration).toFixed(1);
+  const clipClassName = [
+    "timeline-clip",
+    "absolute",
+    hasCustomContent ? "overflow-visible" : "overflow-hidden",
+    isSelected ? "is-selected" : "",
+    isHovered ? "is-hovered" : "",
+    isDragging ? "is-dragging" : "",
+    showDefaultText ? "" : "is-micro",
+  ]
+    .filter((className) => className.length > 0)
+    .join(" ");
+  const style: CSSProperties = {
+    left: leftPx,
+    width: widthPx,
+    top: clipY,
+    bottom: clipY,
+    borderRadius: theme.clipRadius,
+    zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
+    cursor: capabilities.canMove ? "grab" : "default",
+    transform: isDragging ? "translateY(-1px)" : undefined,
+  };
 
   return (
     <div
       data-clip="true"
-      className={
-        hasCustomContent
-          ? "absolute overflow-visible"
-          : "absolute flex items-center overflow-visible"
-      }
-      style={{
-        left: leftPx,
-        width: widthPx,
-        top: clipY,
-        bottom: clipY,
-        borderRadius: theme.clipRadius,
-        background: trackStyle.clip,
-        border: `1px solid ${borderColor}`,
-        boxShadow,
-        transition: "border-color 100ms, box-shadow 100ms",
-        zIndex: isDragging ? 20 : isSelected ? 10 : isHovered ? 5 : 1,
-        cursor: capabilities.canMove ? "grab" : "default",
-        transform: isDragging ? "translateY(-1px)" : undefined,
-        opacity: isDragging ? 0.92 : 1,
-      }}
+      data-el-id={el.key ?? el.id}
+      data-clip-start={el.start}
+      data-clip-end={el.start + el.duration}
+      data-clip-hidden={el.hidden ? "true" : undefined}
+      className={clipClassName}
+      style={style}
       title={
         isComposition
           ? `${el.compositionSrc} • Double-click to open`
@@ -102,22 +97,6 @@ export const TimelineClip = memo(function TimelineClip({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
     >
-      {/* Left accent stripe — wider + brighter for expanded sub-comp children */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: el.expandedParentStart !== undefined ? 4 : 3,
-          background: trackStyle.accent,
-          opacity: el.expandedParentStart !== undefined ? 0.8 : isSelected ? 0.7 : 0.3,
-          borderRadius: `${theme.clipRadius} 0 0 ${theme.clipRadius}`,
-          zIndex: 2,
-          pointerEvents: "none",
-        }}
-      />
       {/* Left trim handle */}
       {showHandles && capabilities.canTrimStart && (
         <div
@@ -134,6 +113,7 @@ export const TimelineClip = memo(function TimelineClip({
           }}
         >
           <div
+            className="timeline-clip__handle-bar"
             style={{
               position: "absolute",
               left: 4,
@@ -141,7 +121,7 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: trackStyle.accent,
+              background: "rgba(255, 255, 255, 0.55)",
               opacity: handleOpacity * 0.6,
             }}
           />
@@ -163,6 +143,7 @@ export const TimelineClip = memo(function TimelineClip({
           }}
         >
           <div
+            className="timeline-clip__handle-bar"
             style={{
               position: "absolute",
               right: 4,
@@ -170,11 +151,17 @@ export const TimelineClip = memo(function TimelineClip({
               bottom: 6,
               width: 2,
               borderRadius: 1,
-              background: trackStyle.accent,
+              background: "rgba(255, 255, 255, 0.55)",
               opacity: handleOpacity * 0.6,
             }}
           />
         </div>
+      )}
+      {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
+      {showDefaultText && (
+        <span className="timeline-clip__timecode">
+          {startLabel}-{endLabel}s
+        </span>
       )}
       {children}
     </div>

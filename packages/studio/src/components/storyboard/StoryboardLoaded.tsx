@@ -113,16 +113,33 @@ const SUB_VIEWS: Array<{ value: SubView; label: string }> = [
 ];
 
 function SubViewToggle({ value, onChange }: { value: SubView; onChange: (next: SubView) => void }) {
+  // Complete tabs contract: roving tabIndex + arrow-key navigation (the roles
+  // alone promised keyboard behavior the buttons didn't have).
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const currentIndex = SUB_VIEWS.findIndex((v) => v.value === value);
+    const delta = e.key === "ArrowRight" ? 1 : -1;
+    const next = SUB_VIEWS[(currentIndex + delta + SUB_VIEWS.length) % SUB_VIEWS.length];
+    if (next) onChange(next.value);
+  };
+
   return (
-    <div className="flex items-center gap-0.5 rounded-md bg-neutral-900 p-0.5" role="tablist">
+    <div
+      className="flex items-center gap-0.5 rounded-md bg-neutral-900 p-0.5"
+      role="tablist"
+      aria-label="Storyboard view"
+      onKeyDown={handleKeyDown}
+    >
       {SUB_VIEWS.map((option) => (
         <button
           key={option.value}
           type="button"
           role="tab"
           aria-selected={value === option.value}
+          tabIndex={value === option.value ? 0 : -1}
           onClick={() => onChange(option.value)}
-          className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+          className={`rounded px-3 py-1 text-xs font-medium transition-colors active:scale-[0.98] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${
             value === option.value
               ? "bg-neutral-700 text-neutral-100"
               : "text-neutral-400 hover:text-neutral-200"

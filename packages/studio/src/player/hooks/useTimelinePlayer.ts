@@ -44,6 +44,7 @@ import {
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
+import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 
 /**
  * Whether the derived elements differ from the current ones in any field that
@@ -127,6 +128,8 @@ export function useTimelinePlayer() {
     [setElements, setTimelineReady, setDuration],
   );
 
+  // Pre-existing dispatcher complexity — surfaced by this PR's line shifts, not new logic.
+  // fallow-ignore-next-line complexity
   const getAdapter = useCallback((): PlaybackAdapter | null => {
     try {
       const iframe = iframeRef.current;
@@ -209,6 +212,7 @@ export function useTimelinePlayer() {
   }, []);
 
   const startRAFLoop = useCallback(() => {
+    // fallow-ignore-next-line complexity
     const tick = () => {
       const adapter = getAdapter();
       if (adapter) {
@@ -475,6 +479,7 @@ export function useTimelinePlayer() {
     const src = iframe.src;
     const url = new URL(src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));
+    applyPreviewVariablesToUrl(url);
     iframe.src = url.toString();
   }, [saveSeekPosition]);
   const getAdapterRef = useRef(getAdapter);
@@ -484,6 +489,8 @@ export function useTimelinePlayer() {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
     const handleWindowKeyUp = (e: KeyboardEvent) => playbackKeyUpRef.current(e);
 
+    // Pre-existing message-router complexity — surfaced by line shifts, not new logic.
+    // fallow-ignore-next-line complexity
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       const ourIframe = iframeRef.current;

@@ -156,6 +156,13 @@ function extractTemplateInnerHtml(rawComp: string): string | null {
   return template ? template.innerHTML : null;
 }
 
+/** Attribute values read from the DOM are decoded — re-escape on rebuild or
+ *  quote-bearing values (data-composition-variables is a JSON array) shred
+ *  the wrapper's markup into bogus attributes. */
+function escapeAttrValue(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
 function extractElementAttrs(el: Element): string {
   const parts: string[] = [];
   for (let i = 0; i < el.attributes.length; i++) {
@@ -163,7 +170,7 @@ function extractElementAttrs(el: Element): string {
     if (attr.value === "") {
       parts.push(attr.name);
     } else {
-      parts.push(`${attr.name}="${attr.value}"`);
+      parts.push(`${attr.name}="${escapeAttrValue(attr.value)}"`);
     }
   }
   return parts.join(" ");
@@ -191,9 +198,18 @@ const NON_RENDERED_TAGS = new Set(["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE"
  * already render correctly are untouched.
  */
 function promoteTemplateCompositionId(rawComp: string, body: Element): void {
-  const templateCompositionId = rawComp.match(
-    /<template[^>]*\sdata-composition-id\s*=\s*["']([^"']+)["']/i,
-  )?.[1];
+  // Two-step match instead of one `[^>]*\s…` regex: the single-pattern form
+  // backtracks polynomially on crafted input (CodeQL js/polynomial-redos).
+  // Step 1 grabs each <template …> open tag (linear); step 2 finds the attr
+  // within that short tag text.
+  let templateCompositionId: string | undefined;
+  for (const tag of rawComp.matchAll(/<template\b[^>]*/gi)) {
+    const id = /\bdata-composition-id\s*=\s*["']([^"']+)["']/i.exec(tag[0] ?? "")?.[1];
+    if (id) {
+      templateCompositionId = id;
+      break;
+    }
+  }
   if (!templateCompositionId) return;
   if (body.querySelector("[data-composition-id]")) return;
 
@@ -241,11 +257,15 @@ export function buildSubCompositionHtml(
   compPath: string,
   runtimeUrl: string,
   baseHref?: string,
+  rawOverride?: string,
 ): string | null {
   const compFile = join(projectDir, compPath);
   if (!existsSync(compFile)) return null;
 
-  const rawComp = readFileSync(compFile, "utf-8");
+  // rawOverride lets the preview route thread the hf-id-stamped content in
+  // directly, so the build uses pinned ids even when the persist-to-disk write
+  // was skipped (read-only fs, concurrent-save TOCTOU guard).
+  const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
 
   let compHeadContent = "";
   let rewrittenContent: string;

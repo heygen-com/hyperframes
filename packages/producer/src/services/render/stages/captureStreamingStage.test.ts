@@ -19,11 +19,14 @@ let failInitializeSession = false;
 let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
+class DrawElementVerificationError extends Error {}
 
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
   convertTransfer: () => {},
   captureFrame: async () => {},
+  captureFrameToBufferPipelined: async () => ({ encodeResult: { buffer: Buffer.from("frame") } }),
+  captureFramesBatchPipelined: async () => [],
   captureFrameToBuffer: async () => {
     if (failCaptureFrameToBuffer) {
       throw new Error("captureFrameToBuffer failed");
@@ -31,13 +34,23 @@ mock.module("@hyperframes/engine", () => ({
     return { buffer: Buffer.from("frame"), captureTimeMs: 1 };
   },
   closeCaptureSession,
-  createCaptureSession: async () => ({ isInitialized: false, browserConsoleBuffer }),
+  completeDeferredDrawElementInit: async () => {},
+  createCaptureSession: async () => ({
+    isInitialized: false,
+    browserConsoleBuffer,
+    options: { captureBeyondViewport: false },
+    workerEncodeEnabled: false,
+  }),
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
     advanceTo: () => {},
   }),
   distributeFrames: () => [],
+  distributeFramesInterleaved: () => [],
+  DrawElementVerificationError,
   executeParallelCapture: async () => {},
+  getCapturePerfSummary: () => ({}),
+  getFfmpegBinary: () => "ffmpeg",
   initializeSession: async (session: { isInitialized: boolean }) => {
     if (failInitializeSession) {
       throw new Error(initializeSessionErrorMessage);
@@ -52,18 +65,27 @@ mock.module("@hyperframes/engine", () => ({
   }),
   initTransparentBackground: async () => {},
   prepareCaptureSessionForReuse: () => {},
+  recaptureDrawElementFrameForVerify: async () => Buffer.from("frame"),
   spawnStreamingEncoder,
+  writeCapturedFrame: async () => {},
 }));
 
 mock.module("@hyperframes/core", () => ({
   CANVAS_DIMENSIONS: {},
+  checkOutputResolutionCompatibility: () => ({ ok: true }),
   fpsToNumber: () => 30,
+  redactTelemetryString: (value: string) => value,
 }));
 
 mock.module("../../renderOrchestrator.js", () => ({
   closeHdrVideoFrameSource: () => {},
   createHdrPerfCollector: () => ({}),
   executeDiskCaptureWithAdaptiveRetry: async () => [],
+  resolveCompositeTransfer: () => "srgb",
+}));
+
+mock.module("../../hdrCompositor.js", () => ({
+  closeHdrVideoFrameSource: () => {},
   resolveCompositeTransfer: () => "srgb",
 }));
 
@@ -79,6 +101,7 @@ mock.module("./captureHdrResources.js", () => ({
 }));
 
 mock.module("./captureHdrFrameShared.js", () => ({
+  ensureFrameWritten: () => {},
   partitionTransitionFrames: () => new Set(),
   shouldUseHybridLayeredPath: () => false,
 }));

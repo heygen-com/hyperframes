@@ -107,7 +107,7 @@ describe("applySoftReload", () => {
     // async commit resolves. The rebuilt timeline must re-seek to the caller's
     // value, not the iframe's possibly-stale one.
     const { iframe, contentWindow } = buildMockIframe();
-    const result = applySoftReload(iframe, SCRIPT_TEXT, undefined, 0);
+    const result = applySoftReload(iframe, SCRIPT_TEXT, { currentTimeOverride: 0 });
     expect(result).toBe("applied");
     expect(contentWindow.__player.seek).toHaveBeenCalledWith(0);
   });
@@ -244,7 +244,7 @@ describe("applySoftReload", () => {
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
     const onAsyncFailure = vi.fn();
-    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, onAsyncFailure);
+    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, { onAsyncFailure });
 
     // Optimistically "applied" (script will run once the plugin loads) — and the
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
@@ -361,5 +361,89 @@ describe("ensureMotionPathPluginLoaded", () => {
     // A subsequent call can retry (plugin still absent, flag cleared).
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(2);
+  });
+});
+
+// The authored-opacity restore: before the script re-runs (and its tweens
+// re-capture bounds), every animated element's inline opacity must be put back
+// to its AUTHORED value — from the after-write file HTML when provided, else
+// from the parse-time stamp. Otherwise a runtime transient (the color-grading
+// hide's 0, a mid-flight tween value) becomes a permanent tween bound.
+describe("applySoftReload authored-opacity restore", () => {
+  function buildIframeWithTarget(el: HTMLElement, overrides: Record<string, unknown> = {}) {
+    const scriptEl = document.createElement("script");
+    scriptEl.textContent =
+      'const tl = gsap.timeline({ paused: true }); tl.to("#box", { opacity: 0.5 });';
+    const tl = {
+      kill: vi.fn(),
+      pause: vi.fn(),
+      getChildren: () => [{ targets: () => [el] }],
+    };
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set: vi.fn() },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: { root: tl } as Record<string, unknown>,
+      __player: { getTime: () => 2.0, seek: vi.fn() },
+      __hfStudioManualEditsApply: vi.fn(),
+      ...overrides,
+    };
+    const container = document.createElement("div");
+    container.appendChild(scriptEl);
+    // Intercept only POST-SETUP appends: simulate the re-run script
+    // repopulating __timelines (as in buildMockIframe).
+    const realAppendChild = container.appendChild.bind(container);
+    container.appendChild = <T extends Node>(node: T): T => {
+      const result = realAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.textContent?.includes("gsap.timeline")) {
+        contentWindow.__timelines.root = { kill: vi.fn(), pause: vi.fn() };
+      }
+      return result;
+    };
+    const contentDocument = {
+      querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [scriptEl] : []),
+      createElement: (tag: string) => document.createElement(tag),
+      body: container,
+      head: document.createElement("div"),
+    };
+    return { iframe: { contentWindow, contentDocument } as unknown as HTMLIFrameElement };
+  }
+
+  /** Run one restore cycle over `el` and return the final inline opacity. */
+  function restoreOpacity(el: HTMLElement, authoredHtml?: string): string {
+    const { iframe } = buildIframeWithTarget(el);
+    expect(applySoftReload(iframe, SCRIPT_TEXT, authoredHtml ? { authoredHtml } : {})).toBe(
+      "applied",
+    );
+    return el.style.getPropertyValue("opacity");
+  }
+
+  it("restores opacity from the after-write HTML (matched by data-hf-id)", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-id", "hf-1");
+    el.style.setProperty("opacity", "0", "important"); // the grading hide
+
+    const opacity = restoreOpacity(
+      el,
+      '<html><body><img data-hf-id="hf-1" style="opacity: 0.98"></body></html>',
+    );
+
+    expect(opacity).toBe("0.98");
+    expect(el.style.getPropertyPriority("opacity")).toBe("");
+  });
+
+  it("falls back to the parse-time stamp when no after-write HTML is given", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-authored-opacity", "0.75");
+    el.style.opacity = "0.123"; // mid-flight tween transient
+
+    expect(restoreOpacity(el)).toBe("0.75");
+  });
+
+  it("an empty stamp (authored none) removes the inline opacity", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-authored-opacity", "");
+    el.style.opacity = "0";
+
+    expect(restoreOpacity(el)).toBe("");
   });
 });

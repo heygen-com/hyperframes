@@ -1,6 +1,6 @@
 {
   "name": "Sub-composition #ID selector scoping",
-  "description": "Documents that sub-compositions using #ID selectors may render differently between preview and render due to the producer stripping the inner root element. Workaround: use [data-composition-id] selectors instead of #ID.",
+  "description": "Regression test for #1886: a sub-composition's authored root #ID selectors used to render differently between preview and render because the producer stripped the inner root element. The producer now preserves the authored root as a data-hf-inner-root wrapper (matching preview), and #ID selectors are rewritten to a [data-hf-authored-id] attribute on that wrapper, so #ID scoping round-trips correctly in both preview and render.",
   "tags": ["sub-composition", "regression", "selector"],
   "minPsnr": 20,
   "maxFrameFailures": 10,

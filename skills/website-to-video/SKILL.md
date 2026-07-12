@@ -1,9 +1,13 @@
 ---
 name: website-to-video
-description: "Capture a general website/URL and turn it into a HyperFrames video (site tour, showcase, or social clip from the site's own visuals). Uses headless Chrome screenshots + brand assets. Use when intent is general — portfolio/blog/landing-page showcase or social clip from the site. NOT for: product/SaaS launch or promo (→ /product-launch-video, even from a URL); topic explainer with no site (→ /faceless-explainer); GitHub PR (→ /pr-to-video); adding captions to existing video (→ /embedded-captions); short unnarrated page-highlight motion graphic (→ /motion-graphics). Unclear launch-vs-general-site? Ask one question or start at /hyperframes."
+description: "Capture a general website/URL and turn it into a video OF the site — tour, showcase, or social clip built from captured screenshots and the site's own brand assets. Use for portfolio / blog / docs / landing-page showcases. Not a product launch or promo, even from a URL (/product-launch-video). Unclear → /hyperframes."
 ---
 
-> **media-use**: Before sourcing audio/images, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog. Run `--adopt` first to register existing assets. See `/media-use` skill.
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update website-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+
+> **media-use**: Before sourcing audio/images/logos, call `/media-use` to resolve BGM/SFX/images from the HeyGen catalog and brand logos from their official sources. Run `--adopt` first to register existing assets. See `/media-use` skill.
+
+> **figma source**: If the URL is a figma.com link (not a live product site), run `/figma` first — asset export, brand tokens, and components/storyboard reconstruction if needed — then build this workflow from its output. Don't drive Figma via raw MCP tools directly: that skips SVG sanitization, `.media/manifest.jsonl` provenance, and brand-token `var()` binding, so a later brand change can't propagate without a full re-import.
 
 # Website to HyperFrames
 
@@ -17,9 +21,9 @@ Users say things like:
 - "Make a 30-second site tour / showcase from https://..."
 - "Capture our homepage and build a video from its own visuals"
 
-The workflow has 7 steps. Each produces an artifact that gates the next. By default it's collaborative — gates marked 💬 stop and ask the user. If the user signals autonomous mode ("decide for me", "surprise me"), 💬 user-preference gates are skipped; see step-2-brief.md for how that propagates.
+The workflow has 7 steps. Each produces an artifact that gates the next. By default it's collaborative — gates marked 💬 stop and ask the user. Mode semantics (signals, propagation, gate taxonomy) are canonical in `../hyperframes-core/references/brief-contract.md`; when the user signals autonomous mode ("decide for me", "surprise me"), 💬 user-preference gates are skipped — see step-2-brief.md for how that propagates through this workflow.
 
-**Autonomous mode is NOT "skip all gates."** Auto mode covers user-preference questions (TTS provider, voice, color emphasis, beat count, music yes/no, captions yes/no — where the agent decides on the user's behalf). It does NOT cover quality-verification gates. The following remain non-skippable in auto mode:
+**Autonomous mode is NOT "skip all gates"** (brief contract § 1). It covers user-preference questions (TTS provider, voice, color emphasis, beat count, music yes/no, captions yes/no — where the agent decides on the user's behalf). It does NOT cover quality-verification gates. The following remain non-skippable in auto mode:
 
 - Asset Audit (Step 3) — viewing contact sheets and justifying USE/SKIP for each asset
 - Per-beat HTML read (Step 5) — structured evidence block per beat
@@ -36,7 +40,7 @@ If you find yourself reasoning "auto mode says bias toward action, so I'll skip 
 
 Capture the site, then read the extracted data to understand the **brand and product** — what it does, who it's for, what voice it speaks in, what mood it lives in. The captured assets are a brand toolkit for later, not the building blocks the video is made from.
 
-**Show sign-in status before the brief** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../hyperframes-media` → Preflight for the canonical guidance.
+**Show sign-in status before the brief** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../media-use` → Preflight for the canonical guidance.
 
 **Gate:** Site summary printed — strategy-first (what the product does, who it's for, brand voice) before the asset / color / font inventory; sign-in status was shown (signed in, or continuing offline).
 
@@ -103,7 +107,7 @@ Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3,
 
 **Deliver something you're proud of.** Before handing off, ask yourself: would I post this on social media with my name on it? If not, fix what's wrong.
 
-**Gate:** `npx hyperframes lint` and `npx hyperframes validate` pass with zero errors, and the final response includes the active Studio project URL.
+**Gate:** `npx hyperframes check` pass with zero errors, and the final response includes the active Studio project URL.
 
 ---
 
@@ -113,13 +117,14 @@ Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3,
 
 Typical constraints by video type — use as a starting point, not a formula. Beat count should follow from the content and the narration, not from a target range.
 
-| Type                  | Typical duration | Duration driver    | Narration             |
-| --------------------- | ---------------- | ------------------ | --------------------- |
-| Social ad (IG/TikTok) | 10–15s           | Platform limit     | Optional              |
-| Product demo          | 30–60s           | Script length      | Full narration        |
-| Feature announcement  | 15–30s           | Feature complexity | Full narration        |
-| Brand reel            | 20–45s           | Music track        | Optional, music focus |
-| Launch teaser         | 10–20s           | Hook energy        | Minimal               |
+| Type                    | Typical duration | Duration driver    | Narration             |
+| ----------------------- | ---------------- | ------------------ | --------------------- |
+| Social clip (IG/TikTok) | 10–15s           | Platform limit     | Optional              |
+| Site walkthrough        | 30–60s           | Script length      | Full narration        |
+| Content announcement    | 15–30s           | Content complexity | Full narration        |
+| Brand reel              | 20–45s           | Music track        | Optional, music focus |
+
+(A product demo, feature announcement, or launch teaser that _sells_ the product belongs to `/product-launch-video` — see the routing note at the top.)
 
 Beat count is not in this table intentionally — it should come from the storyboard, not from "social ad = 3-4 beats." A social ad for a complex product might need 5 well-timed beats. A brand reel with one strong visual thesis might need 3.
 

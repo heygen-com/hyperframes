@@ -25,6 +25,15 @@ import { TimelineEditProvider } from "../contexts/TimelineEditContext";
 import type { BlockPreviewInfo } from "./sidebar/BlocksTab";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
 import type { GestureRecordingState } from "./editor/GestureRecordControl";
+import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
+import type {
+  TimelineGroupMoveChange,
+  TimelineGroupResizeChange,
+} from "../hooks/useTimelineGroupEditing";
+import {
+  formatTimelineAttributeNumber,
+  patchIframeDomTiming,
+} from "../hooks/timelineEditingHelpers";
 
 export interface StudioPreviewAreaProps {
   timelineToolbar: ReactNode;
@@ -58,6 +67,10 @@ export interface StudioPreviewAreaProps {
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
+  handleTimelineGroupMove: (changes: TimelineGroupMoveChange[]) => Promise<void> | void;
+  handleTimelineGroupResize: (changes: TimelineGroupResizeChange[]) => Promise<void> | void;
+  handleToggleTrackHidden: (track: number, hidden: boolean) => Promise<void> | void;
+  handleToggleElementHidden: (elementKey: string, hidden: boolean) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   handleRazorSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
@@ -83,6 +96,10 @@ export function StudioPreviewArea({
   handleTimelineFileDrop,
   handleTimelineElementMove,
   handleTimelineElementResize,
+  handleTimelineGroupMove,
+  handleTimelineGroupResize,
+  handleToggleTrackHidden,
+  handleToggleElementHidden,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
   handleRazorSplit,
@@ -132,6 +149,7 @@ export function StudioPreviewArea({
     handleDomGroupPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
+    handleDomStyleCommit,
     handleGsapRemoveKeyframe,
     handleGsapMoveKeyframeToPlayhead,
     handleGsapMoveKeyframe,
@@ -143,6 +161,9 @@ export function StudioPreviewArea({
     buildDomSelectionForTimelineElement,
     applyMarqueeSelection,
   } = useDomEditActionsContext();
+  const selectedElementId = usePlayerStore((s) => s.selectedElementId);
+  const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
+  const timelineElements = usePlayerStore((s) => s.elements);
 
   // fallow-ignore-next-line complexity
   const [snapPrefs, setSnapPrefs] = useState(() => {
@@ -155,11 +176,24 @@ export function StudioPreviewArea({
     };
   });
 
+  useTimelineSelectionPreviewSync({
+    selectedElementId,
+    selectedElementIds,
+    timelineElements,
+    domEditSelection,
+    domEditGroupSelections,
+    activeCompPath,
+    buildDomSelectionForTimelineElement,
+    applyDomSelection,
+    applyMarqueeSelection,
+  });
+
   // Resolve a timeline-diamond callback's clip-% to the keyframe's anim id + its
   // tween-relative percentage (shared by the delete/move keyframe callbacks): the
   // diamond reports a clip-% but the script ops key on the tween-%. Prefers the
   // anim in the keyframe's property group, falling back to the first keyframed one.
   const resolveKeyframeTarget = useCallback(
+    // fallow-ignore-next-line complexity
     (pct: number): { animId: string; tweenPct: number } | null => {
       const cached = usePlayerStore.getState().keyframeCache.get(domEditSelection?.id ?? "");
       const kf = cached?.keyframes.find((k) => Math.abs(k.percentage - pct) < 0.2);
@@ -172,18 +206,56 @@ export function StudioPreviewArea({
     [domEditSelection?.id, selectedGsapAnimations],
   );
 
+  const handleTimelineGroupMovePreview = useCallback(
+    (changes: TimelineGroupMoveChange[]) => {
+      for (const change of changes) {
+        patchIframeDomTiming(previewIframeRef.current, change.element, [
+          ["data-start", formatTimelineAttributeNumber(change.start)],
+        ]);
+      }
+    },
+    [previewIframeRef],
+  );
+
+  const handleTimelineGroupResizePreview = useCallback(
+    (changes: TimelineGroupResizeChange[]) => {
+      for (const change of changes) {
+        const attrs: Array<[string, string]> = [
+          ["data-start", formatTimelineAttributeNumber(change.start)],
+          ["data-duration", formatTimelineAttributeNumber(change.duration)],
+        ];
+        if (change.playbackStart != null) {
+          attrs.push([
+            change.element.playbackStartAttr === "playback-start"
+              ? "data-playback-start"
+              : "data-media-start",
+            formatTimelineAttributeNumber(change.playbackStart),
+          ]);
+        }
+        patchIframeDomTiming(previewIframeRef.current, change.element, attrs);
+      }
+    },
+    [previewIframeRef],
+  );
+
   // fallow-ignore-next-line complexity
   const timelineEditCallbacks = useMemo(
     () => ({
       onMoveElement: handleTimelineElementMove,
       onResizeElement: handleTimelineElementResize,
+      onMoveElements: handleTimelineGroupMove,
+      onResizeElements: handleTimelineGroupResize,
+      onPreviewMoveElements: handleTimelineGroupMovePreview,
+      onPreviewResizeElements: handleTimelineGroupResizePreview,
+      onToggleTrackHidden: handleToggleTrackHidden,
+      onToggleElementHidden: handleToggleElementHidden,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,
       onRazorSplit: handleRazorSplit,
       onRazorSplitAll: handleRazorSplitAll,
       onDeleteAllKeyframes: () => {
         // Hold the element where it is (collapse keyframes to a static set) rather
-        // than deleting the whole animation — deleting strands a stale GSAP base
+        // than deleting the whole animation, deleting strands a stale GSAP base
         // that the next drag adds to, flinging the element off-screen.
         const anim = selectedGsapAnimations.find((a) => a.keyframes);
         if (!anim) return;
@@ -203,8 +275,9 @@ export function StudioPreviewArea({
       // absolute time (via the clip's timing basis) and let resolveKeyframeRetime
       // decide: a drop inside the tween window is a plain move (re-key tween-%); a
       // drop past the boundary (last keyframe past the end, first before the start)
-      // resizes the tween — position/duration grow so the dragged keyframe lands at
+      // resizes the tween, position/duration grow so the dragged keyframe lands at
       // the drop while every other keyframe keeps its absolute time (value+ease too).
+      // fallow-ignore-next-line complexity
       onMoveKeyframe: (_elId: string, fromClipPct: number, toClipPct: number) => {
         const target = resolveKeyframeTarget(fromClipPct);
         const sel = domEditSelection;
@@ -275,6 +348,12 @@ export function StudioPreviewArea({
     [
       handleTimelineElementMove,
       handleTimelineElementResize,
+      handleTimelineGroupMove,
+      handleTimelineGroupMovePreview,
+      handleTimelineGroupResize,
+      handleTimelineGroupResizePreview,
+      handleToggleTrackHidden,
+      handleToggleElementHidden,
       handleBlockedTimelineEdit,
       handleTimelineElementSplit,
       handleRazorSplit,
@@ -316,7 +395,7 @@ export function StudioPreviewArea({
             onCompositionLoadingChange={setCompositionLoading}
             onCompositionChange={(compPath) => {
               // Sync activeCompPath when user drills down via timeline double-click
-              // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
+              // or navigates back via breadcrumb, keeps sidebar + thumbnails in sync.
               // Guard against no-op updates to prevent circular refresh cascades
               // between activeCompPath → compositionStack → onCompositionChange.
               if (compPath !== activeCompPath) {
@@ -375,6 +454,7 @@ export function StudioPreviewArea({
                     onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
                     onBoxSizeCommit={handleDomBoxSizeCommit}
                     onRotationCommit={handleDomRotationCommit}
+                    onStyleCommit={handleDomStyleCommit}
                     gridVisible={snapPrefs.gridVisible}
                     gridSpacing={snapPrefs.gridSpacing}
                     recordingState={recordingState}

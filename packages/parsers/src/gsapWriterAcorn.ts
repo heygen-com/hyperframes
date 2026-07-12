@@ -57,8 +57,14 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  const emitted = new Set(Object.keys(props));
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
+      // A key carried by both properties and extras (a set's parsed
+      // `immediateRender: true`) must emit once — properties win. Same
+      // dedupe shape as the recast twin (gsapParser.ts buildTweenStatementCode).
+      if (emitted.has(k)) continue;
+      emitted.add(k);
       entries.push(`${safeKey(k)}: ${valueToCode(v)}`);
     }
   }
@@ -263,10 +269,16 @@ function reconcileEditableProps(
   const overrides = nonEditableOverrides ?? {};
   const { entries, keys } = preservedEntries(objNode, source, isEditableVarKey, overrides);
   for (const [key, value] of Object.entries(overrides)) {
-    if (!keys.has(key)) entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    if (!keys.has(key)) {
+      keys.add(key);
+      entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    }
   }
   for (const [key, value] of Object.entries(newProps)) {
-    entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
+    // A non-editable key riding along in newProps (immediateRender read off
+    // live tween vars) is already preserved above — emitting it again writes
+    // `immediateRender: true, immediateRender: true` into the file.
+    if (!keys.has(key)) entries.push(`${safeKey(key)}: ${valueToCode(value)}`);
   }
   ms.overwrite(objNode.start, objNode.end, `{ ${entries.join(", ")} }`);
 }
@@ -299,6 +311,25 @@ function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
   if (!parsed.hasTimeline) return null;
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   return tlDecl?.end ?? (parsed.ast.end as number);
+}
+
+/**
+ * Line-start offset of the timeline declaration — where a global `gsap.set`
+ * must be inserted. A base set emitted AFTER the tween calls gets wiped on the
+ * next seek-driven rebuild: when a `from()` tween on the same target lazily
+ * initializes during a backwards render (the studio rebind's `progress(0.0001)`
+ * after a soft reload), GSAP reverts its internal isFromStart set, removing the
+ * whole inline `transform` — and the base set's x/y with it. Emitted BEFORE the
+ * timeline, the set is part of the pre-tween state the from() records, so every
+ * revert restores it instead. Returns null when no declaration exists.
+ */
+function findGlobalSetInsertionPoint(
+  parsed: ParsedGsapAcornForWrite,
+  script: string,
+): number | null {
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  if (!tlDecl) return null;
+  return script.lastIndexOf("\n", tlDecl.start) + 1;
 }
 
 // ── Public write API ─────────────────────────────────────────────────────────
@@ -368,6 +399,26 @@ export function updateAnimationInScript(
 
   if (updates.position !== undefined) {
     overwritePosition(ms, call, updates.position);
+  }
+
+  // Heal legacy scripts: a global `gsap.set` sitting after the timeline
+  // declaration is subject to the from()-init revert wipe (see
+  // findGlobalSetInsertionPoint) — relocate it above the declaration whenever
+  // it's touched, so the next nudge fixes files written before the reorder.
+  if (target.animation.method === "set" && target.animation.global) {
+    const globalSetPoint = findGlobalSetInsertionPoint(parsed, script);
+    const exprStmt = findEnclosingExpressionStatement(call.ancestors);
+    if (globalSetPoint !== null && exprStmt && exprStmt.start > globalSetPoint) {
+      const lineStart = script.lastIndexOf("\n", exprStmt.start) + 1;
+      const moveStart = /^\s*$/.test(script.slice(lineStart, exprStmt.start))
+        ? lineStart
+        : exprStmt.start;
+      const moveEnd =
+        exprStmt.end < script.length && script[exprStmt.end] === "\n"
+          ? exprStmt.end + 1
+          : exprStmt.end;
+      ms.move(moveStart, moveEnd, globalSetPoint);
+    }
   }
 
   return ms.toString();
@@ -455,16 +506,38 @@ export function addAnimationToScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return { script, id: "" };
 
-  const insertionPoint = findInsertionPoint(parsed);
-  if (insertionPoint === null) return { script, id: "" };
-
   const ms = new MagicString(script);
   const statementCode = buildTweenStatementCode(parsed.timelineVar, animation);
-  ms.appendLeft(insertionPoint, "\n" + statementCode);
+  const globalSetPoint =
+    animation.method === "set" && animation.global
+      ? findGlobalSetInsertionPoint(parsed, script)
+      : null;
+  if (globalSetPoint !== null) {
+    ms.appendLeft(globalSetPoint, statementCode + "\n");
+  } else {
+    const insertionPoint = findInsertionPoint(parsed);
+    if (insertionPoint === null) return { script, id: "" };
+    ms.appendLeft(insertionPoint, "\n" + statementCode);
+  }
 
   const result = ms.toString();
   const reParsed = parseGsapScriptAcornForWrite(result);
-  const newId = reParsed?.located[reParsed.located.length - 1]?.id ?? "";
+  // IDs are content-based, not positional — the new statement isn't necessarily
+  // the last located entry (a global set is inserted before the timeline).
+  // Diff against the pre-insert ids, counting duplicates.
+  const oldIdCounts = new Map<string, number>();
+  for (const entry of parsed.located) {
+    oldIdCounts.set(entry.id, (oldIdCounts.get(entry.id) ?? 0) + 1);
+  }
+  let newId = "";
+  for (const entry of reParsed?.located ?? []) {
+    const remaining = oldIdCounts.get(entry.id) ?? 0;
+    if (remaining === 0) {
+      newId = entry.id;
+      break;
+    }
+    oldIdCounts.set(entry.id, remaining - 1);
+  }
   return { script: result, id: newId };
 }
 

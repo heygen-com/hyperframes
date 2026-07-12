@@ -39,6 +39,12 @@ export interface AudioStageResult {
   hasAudio: boolean;
   /** Wall-clock ms for the audio mix phase. Zero-elements path is near-zero but always set. */
   audioProcessMs: number;
+  /**
+   * Set when `audios.length > 0` but the mix failed (`hasAudio` is `false`
+   * despite audio being expected) — the caller should surface this. `undefined`
+   * both when there was no audio to mix and when the mix succeeded.
+   */
+  audioError?: string;
 }
 
 export async function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
@@ -48,6 +54,7 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
   const stage3Start = Date.now();
   const audioOutputPath = join(workDir, "audio.aac");
   let hasAudio = false;
+  let audioError: string | undefined;
 
   if (audios.length > 0) {
     const audioResult = await processCompositionAudio(
@@ -63,8 +70,13 @@ export async function runAudioStage(input: AudioStageInput): Promise<AudioStageR
     assertNotAborted();
 
     hasAudio = audioResult.success;
+    // processCompositionAudio's error (per-element failures or the mix's own
+    // error) used to be discarded here — the caller only saw hasAudio flip to
+    // false with no explanation, so a real audio failure looked identical to
+    // "no audio was authored" and shipped a silent video-only render.
+    if (!hasAudio) audioError = audioResult.error ?? "audio mix failed for an unknown reason";
   }
   const audioProcessMs = Date.now() - stage3Start;
 
-  return { audioOutputPath, hasAudio, audioProcessMs };
+  return { audioOutputPath, hasAudio, audioProcessMs, audioError };
 }

@@ -7,11 +7,12 @@
  */
 
 import { spawn } from "child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
 import { decodeUrlPathVariants, MEDIA_DURATION_CLAMP_EPSILON_SECONDS } from "@hyperframes/core";
 import { trackChildProcess } from "../utils/processTracker.js";
+import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
   analyzeCompositionHdr,
@@ -19,17 +20,20 @@ import {
   type HdrTransfer,
 } from "../utils/hdr.js";
 import { downloadToTemp, isHttpUrl } from "../utils/urlDownloader.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
   FRAME_FILENAME_PREFIX,
-  ensureCacheEntryDir,
+  gcExtractionCache,
+  gcSweepDue,
   lookupCacheEntry,
-  markCacheEntryComplete,
+  partialCacheEntryDir,
+  publishCacheEntry,
   readKeyStat,
   rehydrateCacheEntry,
+  touchCacheEntry,
+  type CacheEntry,
   type CacheFrameFormat,
 } from "./extractionCache.js";
 
@@ -80,6 +84,15 @@ export interface ExtractionOptions {
   outputDir: string;
   quality?: number;
   format?: VideoFrameFormat;
+  sdrToHdrTransfer?: HdrTransfer;
+}
+
+const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
+const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
+const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv";
+
+function sdrToHdrTransformKey(transfer: HdrTransfer): string {
+  return `sdr2hdr-${transfer}`;
 }
 
 /**
@@ -87,19 +100,35 @@ export interface ExtractionOptions {
  *
  * Used by the producer to surface `perfSummary.videoExtractBreakdown` — without
  * this breakdown, a single `videoExtractMs` stage timing hides where cost lives
- * (HDR preflight, VFR preflight, per-video ffmpeg extract) when tuning renders.
+ * (HDR preflight, VFR classification, per-video ffmpeg extract) when tuning renders.
  *
  * Field semantics:
  *   - *Ms fields are wall-clock durations inside each phase.
  *   - *Count fields report how many sources triggered that phase.
  *   - extractMs wraps the parallel `extractVideoFramesRange` calls; it
  *     reflects max-across-parallel-workers, not sum.
- *   - hdrPreflightMs / vfrPreflightMs both include their probe-time sibling
- *     (hdrProbeMs / vfrProbeMs) for symmetric semantics. The probe-only fields
- *     are a finer decomposition, not a separate carve-out.
+ *   - hdrPreflightMs includes its probe-time sibling (hdrProbeMs); the
+ *     probe-only field is a finer decomposition, not a separate carve-out.
+ *   - vfrPreflightCount reports sources classified as VFR and routed through
+ *     the one-pass `-fps_mode cfr -r` extraction path. DEFINITION CHANGE:
+ *     before the one-pass refactor, vfrPreflightMs timed a per-source
+ *     VFR-to-CFR re-encode and could reach seconds; it now times only the
+ *     (promise-cached) classification probe and is expected to be ~0.
+ *     Dashboards alerting on vfrPreflightMs thresholds should key on
+ *     vfrPreflightCount or extractMs instead.
  */
 export interface ExtractionPhaseBreakdown {
   resolveMs: number;
+  /** Publishes that could not land atomically — the render still succeeded
+   *  from the partial dir, but future renders re-extract. A rising rate is
+   *  the first signal that warm renders are silently going cold. */
+  cachePublishFailures: number;
+  /** Entries evicted by the post-extraction LRU sweep. */
+  cacheGcEvictions: number;
+  /** Bytes reclaimed by the LRU sweep. */
+  cacheGcBytesFreed: number;
+  /** Aged .partial-* dirs (crashed writers) removed by the sweep. */
+  cacheAgedPartialsCleared: number;
   hdrProbeMs: number;
   hdrPreflightMs: number;
   hdrPreflightCount: number;
@@ -123,6 +152,8 @@ export interface ExtractionResult {
 export function parseVideoElements(html: string): VideoElement[] {
   const videos: VideoElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
 
   const videoEls = document.querySelectorAll("video[src]");
   let autoIdCounter = 0;
@@ -142,7 +173,12 @@ export function parseVideoElements(html: string): VideoElement[] {
     const mediaStartAttr = el.getAttribute("data-media-start");
     const hasAudioAttr = el.getAttribute("data-has-audio");
 
-    const start = startAttr ? parseFloat(startAttr) : 0;
+    // Resolve data-start, including relative references ("intro", "intro + 2")
+    // to another clip's end — the browser runtime resolves these but a raw
+    // parseFloat here would yield NaN, placing the clip at NaN so it composites
+    // blank in the final render. `startAttr` may be a plain number or a
+    // reference; the resolver handles both.
+    const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     // Derive end from data-end → data-start+data-duration → Infinity (natural duration).
     // The caller (htmlCompiler) clamps Infinity to the composition's absoluteEnd.
     let end = 0;
@@ -178,6 +214,8 @@ export interface ImageElement {
 export function parseImageElements(html: string): ImageElement[] {
   const images: ImageElement[] = [];
   const { document } = parseHTML(unwrapTemplate(html));
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
 
   const imgEls = document.querySelectorAll("img[src]");
   let autoIdCounter = 0;
@@ -194,7 +232,9 @@ export function parseImageElements(html: string): ImageElement[] {
     const endAttr = el.getAttribute("data-end");
     const durationAttr = el.getAttribute("data-duration");
 
-    const start = startAttr ? parseFloat(startAttr) : 0;
+    // Resolve relative data-start references (see parseVideoElements) so a
+    // referenced image start doesn't become NaN and drop the image from the render.
+    const start = startAttr ? resolveReferencedStart(document, el, startCache, visiting) : 0;
     let end = 0;
     if (endAttr) {
       end = parseFloat(endAttr);
@@ -267,11 +307,25 @@ export async function extractVideoFramesRange(
     // VideoToolbox tone-maps during decode; force output to bt709 SDR format
     vfFilters.push("format=nv12");
   }
-  vfFilters.push(`fps=${fps}`);
-  args.push("-vf", vfFilters.join(","));
+  if (!metadata.isVFR) {
+    vfFilters.push(`fps=${fps}`);
+  }
+  if (options.sdrToHdrTransfer) {
+    // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
+    // kept frames are converted. The remap is pointwise per-frame, so the
+    // output is identical either way for the SDR (BT.709, 8-bit) inputs this
+    // flag is set for. If format=nv12 (macOS HDR-source decode) ever combines
+    // with this flag, revisit: nv12 subsampling before a BT.2020 remap is an
+    // untested interaction (today the flags are mutually exclusive — the
+    // remap only applies to SDR sources, nv12 only to HDR sources).
+    vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
+  }
+  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
+  if (metadata.isVFR) args.push("-fps_mode", "cfr", "-r", String(fps));
 
   args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
-  if (format === "png") args.push("-compression_level", "6");
+  // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
+  if (format === "png") args.push("-compression_level", "1");
   args.push("-y", outputPattern);
 
   return new Promise((resolve, reject) => {
@@ -305,7 +359,14 @@ export async function extractVideoFramesRange(
         return;
       }
       if (code !== 0) {
-        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+        // With the SDR-to-HDR remap folded into this pass, a filter failure
+        // (e.g. an ffmpeg built without the colorspace filter) would otherwise
+        // surface as a generic extract error and the operator has to grep the
+        // filter chain to learn it was the HDR conversion. Attribute it.
+        const hdrPrefix = options.sdrToHdrTransfer
+          ? `SDR→HDR conversion failed (colorspace filter in extract pass, target ${options.sdrToHdrTransfer}): `
+          : "";
+        reject(new Error(`${hdrPrefix}FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
         return;
       }
 
@@ -339,76 +400,6 @@ export async function extractVideoFramesRange(
       }
     });
   });
-}
-
-/**
- * Convert an SDR (BT.709) video to BT.2020 wide-gamut so it can be composited
- * alongside HDR content without looking washed out.
- *
- * Uses FFmpeg's `colorspace` filter to remap BT.709 → BT.2020 (no real tone
- * mapping — just a primaries swap so the input fits inside the wider HDR
- * gamut), then re-tags the stream with the caller's target HDR transfer
- * function (PQ for HDR10, HLG for broadcast HDR). The output transfer must
- * match the dominant transfer of the surrounding HDR content; otherwise the
- * downstream encoder will tag the final video with the wrong curve.
- *
- * `startTime` and `duration` bound the re-encode to the segment the composition
- * actually uses. Without them a 30-minute screen recording that contributes a
- * 2-second clip was transcoded in full — a >100× waste for long sources.
- * Mirrors the segment-scope fix already applied to the VFR→CFR preflight.
- */
-async function convertSdrToHdr(
-  inputPath: string,
-  outputPath: string,
-  startTime: number,
-  duration: number,
-  targetTransfer: HdrTransfer,
-  signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<void> {
-  // Positive duration is required — FFmpeg's `-t 0` silently produces a 0-byte
-  // output that the downstream extractor then treats as a valid (empty) file.
-  if (duration <= 0) {
-    throw new Error(`convertSdrToHdr: duration must be positive (got ${duration})`);
-  }
-  const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
-
-  // smpte2084 = PQ (HDR10), arib-std-b67 = HLG.
-  const colorTrc = targetTransfer === "pq" ? "smpte2084" : "arib-std-b67";
-
-  const args = [
-    "-ss",
-    String(startTime),
-    "-i",
-    inputPath,
-    "-t",
-    String(duration),
-    "-vf",
-    "colorspace=all=bt2020:iall=bt709:range=tv",
-    "-color_primaries",
-    "bt2020",
-    "-color_trc",
-    colorTrc,
-    "-colorspace",
-    "bt2020nc",
-    "-c:v",
-    "libx264",
-    "-preset",
-    "fast",
-    "-crf",
-    "16",
-    "-c:a",
-    "copy",
-    "-y",
-    outputPath,
-  ];
-
-  const result = await runFfmpeg(args, { signal, timeout });
-  if (!result.success) {
-    throw new Error(
-      `SDR→HDR conversion failed (exit ${result.exitCode}): ${result.stderr.slice(-300)}`,
-    );
-  }
 }
 
 /**
@@ -456,60 +447,203 @@ export function resolveFrameFormat(
   return "jpg";
 }
 
-/**
- * Re-encode a VFR (variable frame rate) video segment to CFR so the downstream
- * fps filter can extract frames reliably. Screen recordings, phone videos, and
- * some webcams emit irregular timestamps that cause two failure modes:
- *   1. Output has fewer frames than expected (e.g. -ss 3 -t 4 produces 90
- *      frames instead of 120 @ 30fps). FrameLookupTable.getFrameAtTime then
- *      returns null for late timestamps and the caller freezes on the last
- *      valid frame.
- *   2. Large duplicate-frame runs where source PTS don't land on target
- *      timestamps.
- *
- * Only the [startTime, startTime+duration] window is re-encoded, so long
- * recordings aren't fully transcoded when only a short clip is used.
- */
-async function convertVfrToCfr(
-  inputPath: string,
-  outputPath: string,
-  targetFps: number,
-  startTime: number,
-  duration: number,
-  signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-): Promise<void> {
-  const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+type PreparedExtraction = {
+  video: VideoElement;
+  videoPath: string;
+  index: number;
+  metadata: VideoMetadata;
+  videoDuration: number;
+  format: CacheFrameFormat;
+  sdrToHdrTransfer?: HdrTransfer;
+  dedupeKey: string;
+};
 
-  const args = [
-    "-ss",
-    String(startTime),
-    "-i",
-    inputPath,
-    "-t",
-    String(duration),
-    "-fps_mode",
-    "cfr",
-    "-r",
-    String(targetFps),
-    "-c:v",
-    "libx264",
-    "-preset",
-    "fast",
-    "-crf",
-    "18",
-    "-c:a",
-    "copy",
-    "-y",
-    outputPath,
-  ];
+type CacheMissTarget = {
+  entry: CacheEntry;
+  srcPath: string;
+};
 
-  const result = await runFfmpeg(args, { signal, timeout });
-  if (!result.success) {
-    throw new Error(
-      `VFR→CFR conversion failed (exit ${result.exitCode}): ${result.stderr.slice(-300)}`,
-    );
+type UniqueExtractionMiss = {
+  work: PreparedExtraction;
+  cacheTarget?: CacheMissTarget;
+};
+
+type SupersetMemberPlan = {
+  miss: UniqueExtractionMiss;
+  offsetFrames: number;
+};
+
+type SupersetGroupPlan = {
+  groupId: string;
+  baseStart: number;
+  unionDuration: number;
+  members: SupersetMemberPlan[];
+};
+
+function extractedFrameFileNames(outputDir: string, format: CacheFrameFormat): string[] {
+  const suffix = `.${format}`;
+  return readdirSync(outputDir)
+    .filter((file) => file.startsWith(FRAME_FILENAME_PREFIX) && file.endsWith(suffix))
+    .sort();
+}
+
+function extractedFramesFromDirectory(
+  work: PreparedExtraction,
+  outputDir: string,
+  srcPath: string,
+  fps: number,
+): ExtractedFrames {
+  const framePattern = `${FRAME_FILENAME_PREFIX}%05d.${work.format}`;
+  const framePaths = new Map<number, string>();
+  extractedFrameFileNames(outputDir, work.format).forEach((file, index) => {
+    framePaths.set(index, join(outputDir, file));
+  });
+  return {
+    videoId: work.video.id,
+    srcPath,
+    outputDir,
+    framePattern,
+    fps,
+    totalFrames: framePaths.size,
+    metadata: work.metadata,
+    framePaths,
+  };
+}
+
+function frameFileName(frameNumber: number, format: CacheFrameFormat): string {
+  return `${FRAME_FILENAME_PREFIX}${String(frameNumber).padStart(5, "0")}.${format}`;
+}
+
+function linkOrCopyFrame(src: string, dest: string): void {
+  try {
+    linkSync(src, dest);
+  } catch {
+    copyFileSync(src, dest);
   }
+}
+
+function supersetGroupingKey(work: PreparedExtraction, fps: number): string {
+  return [work.videoPath, String(fps), work.format, work.sdrToHdrTransfer ?? ""].join("\0");
+}
+
+function isIntegralFrameOffset(offsetSeconds: number, fps: number): boolean {
+  const frames = offsetSeconds * fps;
+  return Math.abs(frames - Math.round(frames)) <= 1e-4;
+}
+
+function windowsOverlapOrTouch(misses: UniqueExtractionMiss[], baseStart: number): boolean {
+  const unionEnd = Math.max(
+    ...misses.map(({ work }) => work.video.mediaStart + work.videoDuration),
+  );
+  const unionDuration = unionEnd - baseStart;
+  const summedDuration = misses.reduce((sum, { work }) => sum + work.videoDuration, 0);
+  return unionDuration > 0 && unionDuration <= summedDuration + 1e-9;
+}
+
+function buildSupersetGroup(
+  groupId: string,
+  misses: UniqueExtractionMiss[],
+  fps: number,
+): SupersetGroupPlan | null {
+  if (misses.length < 2) return null;
+  const baseStart = Math.min(...misses.map(({ work }) => work.video.mediaStart));
+  if (!misses.every(({ work }) => isIntegralFrameOffset(work.video.mediaStart - baseStart, fps))) {
+    return null;
+  }
+  if (!windowsOverlapOrTouch(misses, baseStart)) return null;
+
+  const unionEnd = Math.max(
+    ...misses.map(({ work }) => work.video.mediaStart + work.videoDuration),
+  );
+  return {
+    groupId,
+    baseStart,
+    unionDuration: unionEnd - baseStart,
+    members: misses.map((miss) => ({
+      miss,
+      offsetFrames: Math.round((miss.work.video.mediaStart - baseStart) * fps),
+    })),
+  };
+}
+
+/**
+ * Partition one source's misses into overlap-connected components: sort by
+ * window start and cut wherever the next window starts past the running end.
+ * Without this, one disjoint outlier trim (e.g. [100..105] next to three
+ * overlapping trims at [0..11]) fails the union<=sum check for the whole
+ * bucket and every trim falls back to direct extraction.
+ */
+function overlapClusters(misses: UniqueExtractionMiss[]): UniqueExtractionMiss[][] {
+  const sorted = [...misses].sort((a, b) => a.work.video.mediaStart - b.work.video.mediaStart);
+  const clusters: UniqueExtractionMiss[][] = [];
+  let current: UniqueExtractionMiss[] = [];
+  let currentEnd = -Infinity;
+  for (const miss of sorted) {
+    const start = miss.work.video.mediaStart;
+    const end = start + miss.work.videoDuration;
+    if (current.length > 0 && start > currentEnd + 1e-9) {
+      clusters.push(current);
+      current = [];
+      currentEnd = -Infinity;
+    }
+    current.push(miss);
+    currentEnd = Math.max(currentEnd, end);
+  }
+  if (current.length > 0) clusters.push(current);
+  return clusters;
+}
+
+function planSupersetGroups(
+  misses: UniqueExtractionMiss[],
+  fps: number,
+): { groups: SupersetGroupPlan[]; direct: UniqueExtractionMiss[] } {
+  const bySource = new Map<string, UniqueExtractionMiss[]>();
+  for (const miss of misses) {
+    const key = supersetGroupingKey(miss.work, fps);
+    bySource.set(key, [...(bySource.get(key) ?? []), miss]);
+  }
+
+  const groups: SupersetGroupPlan[] = [];
+  const direct: UniqueExtractionMiss[] = [];
+  let groupIndex = 0;
+  for (const groupMisses of bySource.values()) {
+    for (const cluster of overlapClusters(groupMisses)) {
+      const group = buildSupersetGroup(`__superset-${groupIndex}`, cluster, fps);
+      if (group) {
+        groups.push(group);
+        groupIndex += 1;
+      } else {
+        direct.push(...cluster);
+      }
+    }
+  }
+  return { groups, direct };
+}
+
+function sliceSupersetMember(
+  member: SupersetMemberPlan,
+  superset: ExtractedFrames,
+  outputDir: string,
+  fps: number,
+): ExtractedFrames {
+  const { work } = member.miss;
+  rmSync(outputDir, { recursive: true, force: true });
+  mkdirSync(outputDir, { recursive: true });
+
+  // Sample-time correctness: member frame k uses superset frame
+  // offset_i + k, so its source time is
+  // baseStart + (offset_i + k) / fps = mediaStart_i + k / fps.
+  // The frame-alignment precondition is what makes offset_i integral.
+  const requestedFrames = Math.round(work.videoDuration * fps);
+  const availableFrames = Math.max(0, superset.totalFrames - member.offsetFrames);
+  const frameCount = Math.min(requestedFrames, availableFrames);
+  for (let i = 0; i < frameCount; i += 1) {
+    const sourceFrame = superset.framePaths.get(member.offsetFrames + i);
+    if (!sourceFrame) throw new Error(`superset frame ${member.offsetFrames + i} missing`);
+    linkOrCopyFrame(sourceFrame, join(outputDir, frameFileName(i + 1, work.format)));
+  }
+
+  return extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
 }
 
 /**
@@ -576,7 +710,9 @@ export async function extractAllVideoFrames(
   baseDir: string,
   options: ExtractionOptions,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "extractCacheDir">>,
+  config?: Partial<
+    Pick<EngineConfig, "ffmpegProcessTimeout" | "extractCacheDir" | "extractCacheMaxBytes">
+  >,
   compiledDir?: string,
 ): Promise<ExtractionResult> {
   const startTime = Date.now();
@@ -585,6 +721,10 @@ export async function extractAllVideoFrames(
   let totalFramesExtracted = 0;
   const breakdown: ExtractionPhaseBreakdown = {
     resolveMs: 0,
+    cachePublishFailures: 0,
+    cacheGcEvictions: 0,
+    cacheGcBytesFreed: 0,
+    cacheAgedPartialsCleared: 0,
     hdrProbeMs: 0,
     hdrPreflightMs: 0,
     hdrPreflightCount: 0,
@@ -647,8 +787,8 @@ export async function extractAllVideoFrames(
 
   // Snapshot the pre-preflight key inputs so the extraction cache keys on the
   // user-visible source (original path, original mediaStart, original segment
-  // bounds) rather than the workDir-local normalized file produced by
-  // Phase 2a/2b preflight. Without this, every render would write a new
+  // bounds) rather than the workDir-local normalized file produced by the
+  // HDR preflight. Without this, every render would write a new
   // normalized file with a fresh mtime → fresh cache key → perpetual misses.
   const cacheKeyInputs = resolvedVideos.map(({ video, videoPath }) => {
     const stat = readKeyStat(videoPath);
@@ -673,6 +813,12 @@ export async function extractAllVideoFrames(
     resolvedVideos.map(({ videoPath }) => extractMediaMetadata(videoPath)),
   );
   const videoColorSpaces = videoMetadata.map((m) => m.colorSpace);
+  // Canonical per-index record of the SDR-to-HDR transform decision. BOTH the
+  // cache key (transform discriminator) and the extraction options read from
+  // this array via the prepared work items — never set one side independently
+  // or cache lookups and written frames drift apart (the poisoning bug this
+  // field exists to fix).
+  const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map(() => undefined);
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
   const hdrPreflightStart = Date.now();
@@ -692,15 +838,14 @@ export async function extractAllVideoFrames(
     // for the whole render, and any source not on that curve is normalized to
     // it. If you need both transfers, render two separate compositions.
     const targetTransfer = hdrInfo.dominantTransfer;
-    const convertDir = join(options.outputDir, "_hdr_normalized");
-    mkdirSync(convertDir, { recursive: true });
 
     for (let i = 0; i < resolvedVideos.length; i++) {
       if (signal?.aborted) break;
       const cs = videoColorSpaces[i] ?? null;
       if (!isHdrColorSpaceUtil(cs)) {
-        // SDR video in a mixed timeline — convert to the dominant HDR transfer
-        // so the encoder tags the final video correctly (PQ vs HLG).
+        // SDR video in a mixed timeline — extract through a BT.709→BT.2020
+        // colorspace filter so the encoder tags the final video correctly
+        // (PQ vs HLG) without a separate normalized intermediate.
         const entry = resolvedVideos[i];
         const metadata = videoMetadata[i];
         if (!entry || !metadata) continue;
@@ -717,46 +862,16 @@ export async function extractAllVideoFrames(
           continue;
         }
 
-        // Scope the re-encode to the segment the composition actually uses.
-        // Long sources (e.g. 30-minute screen recordings) contributing short
-        // clips were transcoded in full pre-fix — a >100× waste.
-        let segDuration = entry.video.end - entry.video.start;
-        if (!Number.isFinite(segDuration) || segDuration <= 0) {
-          const sourceRemaining = metadata.durationSeconds - entry.video.mediaStart;
-          segDuration = sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
-        }
-
-        const convertedPath = join(convertDir, `${entry.video.id}_hdr.mp4`);
-        try {
-          await convertSdrToHdr(
-            entry.videoPath,
-            convertedPath,
-            entry.video.mediaStart,
-            segDuration,
-            targetTransfer,
-            signal,
-            config,
-          );
-          entry.videoPath = convertedPath;
-          // Segment-scoped re-encode starts the new file at t=0, so downstream
-          // extraction must seek from 0, not the original mediaStart. Shallow-copy
-          // to avoid mutating the caller's VideoElement (mirrors the VFR fix).
-          entry.video = { ...entry.video, mediaStart: 0 };
-          breakdown.hdrPreflightCount += 1;
-        } catch (err) {
-          errors.push({
-            videoId: entry.video.id,
-            error: `SDR→HDR conversion failed: ${err instanceof Error ? err.message : String(err)}`,
-          });
-        }
+        sdrToHdrTransfers[i] = targetTransfer;
+        breakdown.hdrPreflightCount += 1;
       }
     }
   }
   breakdown.hdrPreflightMs = Date.now() - hdrPreflightStart;
 
   // Remove HDR-preflight-skipped entries from every parallel array so Phase 2b
-  // (VFR) and Phase 3 (extract) don't re-process them. Iterate backwards to
-  // keep indices stable while splicing.
+  // (VFR classification) and Phase 3 (extract) don't re-process them. Iterate
+  // backwards to keep indices stable while splicing.
   if (hdrSkippedIndices.size > 0) {
     for (let i = resolvedVideos.length - 1; i >= 0; i--) {
       if (hdrSkippedIndices.has(i)) {
@@ -767,14 +882,14 @@ export async function extractAllVideoFrames(
         // with the other parallel arrays so Phase 3's `cacheKeyInputs[i]`
         // lookup doesn't point at a stale slot after the splice.
         cacheKeyInputs.splice(i, 1);
+        sdrToHdrTransfers.splice(i, 1);
       }
     }
   }
 
-  // Phase 2b: Re-encode VFR inputs to CFR so the fps filter in Phase 3 produces
-  // the expected frame count. Only the used segment is transcoded.
+  // Phase 2b: Keep VFR observability while routing VFR inputs through the
+  // one-pass CFR extraction path in Phase 3.
   const vfrPreflightStart = Date.now();
-  const vfrNormDir = join(options.outputDir, "_vfr_normalized");
   for (let i = 0; i < resolvedVideos.length; i++) {
     if (signal?.aborted) break;
     const entry = resolvedVideos[i];
@@ -782,60 +897,63 @@ export async function extractAllVideoFrames(
     const vfrProbeStart = Date.now();
     const metadata = await extractMediaMetadata(entry.videoPath);
     breakdown.vfrProbeMs += Date.now() - vfrProbeStart;
-    if (!metadata.isVFR) continue;
-
-    let segDuration = entry.video.end - entry.video.start;
-    if (!Number.isFinite(segDuration) || segDuration <= 0) {
-      const sourceRemaining = metadata.durationSeconds - entry.video.mediaStart;
-      segDuration = sourceRemaining > 0 ? sourceRemaining : metadata.durationSeconds;
-    }
-
-    mkdirSync(vfrNormDir, { recursive: true });
-    const normalizedPath = join(vfrNormDir, `${entry.video.id}_cfr.mp4`);
-    try {
-      await convertVfrToCfr(
-        entry.videoPath,
-        normalizedPath,
-        options.fps,
-        entry.video.mediaStart,
-        segDuration,
-        signal,
-        config,
-      );
-      entry.videoPath = normalizedPath;
-      // Segment-scoped re-encode starts the new file at t=0, so downstream
-      // extraction must seek from 0, not the original mediaStart. Shallow-copy
-      // to avoid mutating the caller's VideoElement.
-      entry.video = { ...entry.video, mediaStart: 0 };
-      breakdown.vfrPreflightCount += 1;
-    } catch (err) {
-      errors.push({
-        videoId: entry.video.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    if (metadata.isVFR) breakdown.vfrPreflightCount += 1;
   }
   breakdown.vfrPreflightMs = Date.now() - vfrPreflightStart;
 
   const phase3Start = Date.now();
-  const cacheRootDir = config?.extractCacheDir;
+  const configuredCacheRootDir = config?.extractCacheDir;
+  let cacheRootDir: string | undefined;
+  if (configuredCacheRootDir) {
+    try {
+      mkdirSync(configuredCacheRootDir, { recursive: true });
+      cacheRootDir = configuredCacheRootDir;
+    } catch {
+      process.stderr.write(
+        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not writable; caching disabled for this render\n`,
+      );
+    }
+  }
 
-  async function tryCachedExtract(
-    video: VideoElement,
-    videoPath: string,
-    videoDuration: number,
-    i: number,
-  ): Promise<ExtractedFrames | null> {
-    if (!cacheRootDir) return null;
-    const keyInput = cacheKeyInputs[i];
-    const probedMeta = videoMetadata[i];
-    if (!keyInput || !probedMeta) return null;
-    const cacheFormat = resolveFrameFormat(probedMeta, options.format);
+  function extractionError(videoId: string, err: unknown): { videoId: string; error: string } {
+    return { videoId, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  type PreparedExtractionResult =
+    | { work: PreparedExtraction }
+    | { error: { videoId: string; error: string } };
+
+  type ExtractionOutcome =
+    | { result: ExtractedFrames }
+    | { error: { videoId: string; error: string } };
+
+  function scopedExtractionOptions(work: PreparedExtraction): ExtractionOptions {
+    return { ...options, format: work.format, sdrToHdrTransfer: work.sdrToHdrTransfer };
+  }
+
+  function rehydratePublishedCache(work: PreparedExtraction, target: CacheMissTarget) {
+    const rehydrated = rehydrateCacheEntry(target.entry, {
+      videoId: work.video.id,
+      srcPath: target.srcPath,
+      fps: options.fps,
+      format: work.format,
+      metadata: work.metadata,
+    });
+    return { ...rehydrated, ownedByLookup: true };
+  }
+
+  function lookupCacheFor(work: PreparedExtraction): ExtractionOutcome | UniqueExtractionMiss {
+    if (!cacheRootDir) return { work };
+    const keyInput = cacheKeyInputs[work.index];
+    if (!keyInput) return { work };
+    const transform = work.sdrToHdrTransfer
+      ? sdrToHdrTransformKey(work.sdrToHdrTransfer)
+      : undefined;
 
     const keyDuration = resolveSegmentDuration(
       keyInput.end - keyInput.start,
       keyInput.mediaStart,
-      probedMeta,
+      work.metadata,
     );
     const lookup = lookupCacheEntry(cacheRootDir, {
       videoPath: keyInput.videoPath,
@@ -844,79 +962,239 @@ export async function extractAllVideoFrames(
       mediaStart: keyInput.mediaStart,
       duration: keyDuration,
       fps: options.fps,
-      format: cacheFormat,
+      format: work.format,
+      transform,
     });
 
-    if (lookup.hit) {
-      breakdown.cacheHits += 1;
-      const rehydrated = rehydrateCacheEntry(lookup.entry, {
-        videoId: video.id,
-        srcPath: keyInput.videoPath,
-        fps: options.fps,
-        format: cacheFormat,
-        metadata: probedMeta,
-      });
-      return { ...rehydrated, ownedByLookup: true };
+    if (!lookup.hit) {
+      breakdown.cacheMisses += 1;
+      return { work, cacheTarget: { entry: lookup.entry, srcPath: keyInput.videoPath } };
     }
 
-    breakdown.cacheMisses += 1;
-    ensureCacheEntryDir(lookup.entry);
-    const result = await extractVideoFramesRange(
-      videoPath,
-      video.id,
-      video.mediaStart,
-      videoDuration,
-      { ...options, format: cacheFormat },
-      signal,
-      config,
-      lookup.entry.dir,
-    );
-    // Mark complete only AFTER frames are on disk — a crash mid-extract
-    // leaves the entry un-sentineled so the next lookup re-extracts over it.
-    markCacheEntryComplete(lookup.entry);
-    return { ...result, ownedByLookup: true };
+    breakdown.cacheHits += 1;
+    touchCacheEntry(lookup.entry);
+    return {
+      result: rehydratePublishedCache(work, { entry: lookup.entry, srcPath: keyInput.videoPath }),
+    };
   }
 
-  const results = await Promise.all(
-    resolvedVideos.map(async ({ video, videoPath }, i) => {
+  async function extractDirectMiss(miss: UniqueExtractionMiss): Promise<ExtractedFrames> {
+    const { work, cacheTarget } = miss;
+    if (!cacheTarget) {
+      return extractVideoFramesRange(
+        work.videoPath,
+        work.video.id,
+        work.video.mediaStart,
+        work.videoDuration,
+        scopedExtractionOptions(work),
+        signal,
+        config,
+      );
+    }
+
+    const partialDir = partialCacheEntryDir(cacheTarget.entry);
+    mkdirSync(partialDir, { recursive: true });
+    const result = await extractVideoFramesRange(
+      work.videoPath,
+      work.video.id,
+      work.video.mediaStart,
+      work.videoDuration,
+      scopedExtractionOptions(work),
+      signal,
+      config,
+      partialDir,
+    );
+    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    if (!published.published) {
+      breakdown.cachePublishFailures += 1;
+      return { ...result, ownedByLookup: false };
+    }
+    return rehydratePublishedCache(work, cacheTarget);
+  }
+
+  async function executeDirectMiss(miss: UniqueExtractionMiss): Promise<ExtractionOutcome> {
+    try {
+      return { result: await extractDirectMiss(miss) };
+    } catch (err) {
+      return { error: extractionError(miss.work.video.id, err) };
+    }
+  }
+
+  function materializeSupersetMember(
+    member: SupersetMemberPlan,
+    superset: ExtractedFrames,
+  ): ExtractedFrames {
+    const { miss } = member;
+    const { work, cacheTarget } = miss;
+    if (!cacheTarget) {
+      return sliceSupersetMember(
+        member,
+        superset,
+        join(options.outputDir, work.video.id),
+        options.fps,
+      );
+    }
+
+    const partialDir = partialCacheEntryDir(cacheTarget.entry);
+    const sliced = sliceSupersetMember(member, superset, partialDir, options.fps);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    if (!published.published) {
+      breakdown.cachePublishFailures += 1;
+      return { ...sliced, ownedByLookup: false };
+    }
+    return rehydratePublishedCache(work, cacheTarget);
+  }
+
+  async function executeSupersetGroup(
+    group: SupersetGroupPlan,
+  ): Promise<Array<[string, ExtractionOutcome]>> {
+    const first = group.members[0]?.miss.work;
+    if (!first) return [];
+    // Hardlinks require source and destination on ONE filesystem. Cache-bound
+    // members link into partial dirs under cacheRootDir, which is commonly a
+    // different mount than the render's outputDir — extracting the superset
+    // next to the cache keeps linkSync viable there (the EXDEV copyFileSync
+    // fallback would silently multiply disk usage per member). The
+    // `.partial-` name puts crashed leftovers under the GC's aged-partial
+    // sweep.
+    const tempDir = cacheRootDir
+      ? join(cacheRootDir, `${group.groupId}.partial-${process.pid}`)
+      : join(options.outputDir, group.groupId);
+
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+      const superset = await extractVideoFramesRange(
+        first.videoPath,
+        group.groupId,
+        group.baseStart,
+        group.unionDuration,
+        scopedExtractionOptions(first),
+        signal,
+        config,
+        tempDir,
+      );
+      const outcomes: Array<[string, ExtractionOutcome]> = [];
+      for (const member of group.members) {
+        outcomes.push([
+          member.miss.work.dedupeKey,
+          { result: materializeSupersetMember(member, superset) },
+        ]);
+      }
+      return outcomes;
+    } catch (err) {
+      // On abort, the union failure is the cancellation itself — re-running
+      // every member through direct extraction would spawn N doomed ffmpeg
+      // processes. Surface the cancellation per member instead.
+      if (signal?.aborted) {
+        return group.members.map((member) => [
+          member.miss.work.dedupeKey,
+          { error: extractionError(member.miss.work.video.id, err) },
+        ]);
+      }
+      const fallback = await Promise.all(
+        group.members.map(
+          async (member) =>
+            [member.miss.work.dedupeKey, await executeDirectMiss(member.miss)] as [
+              string,
+              ExtractionOutcome,
+            ],
+        ),
+      );
+      return fallback;
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
+
+  const preparedExtractions: PreparedExtractionResult[] = await Promise.all(
+    resolvedVideos.map(async ({ video, videoPath }, index) => {
       if (signal?.aborted) {
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const probedMeta = videoMetadata[i] ?? (await extractMediaMetadata(videoPath));
+        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
         const videoDuration = resolveSegmentDuration(
           video.end - video.start,
           video.mediaStart,
-          probedMeta,
+          metadata,
         );
         if (video.end - video.start !== videoDuration) {
           video.end = video.start + videoDuration;
         }
 
-        const cached = await tryCachedExtract(video, videoPath, videoDuration, i);
-        if (cached) return { result: cached };
+        const format = resolveFrameFormat(metadata, options.format);
+        const sdrToHdrTransfer = sdrToHdrTransfers[index];
+        const dedupeKey = `${videoPath}\0${video.mediaStart}\0${videoDuration}\0${options.fps}\0${format}\0${sdrToHdrTransfer ?? ""}`;
 
-        const result = await extractVideoFramesRange(
-          videoPath,
-          video.id,
-          video.mediaStart,
-          videoDuration,
-          { ...options, format: resolveFrameFormat(probedMeta, options.format) },
-          signal,
-          config,
-        );
-
-        return { result };
-      } catch (err) {
         return {
-          error: {
-            videoId: video.id,
-            error: err instanceof Error ? err.message : String(err),
+          work: {
+            video,
+            videoPath,
+            index,
+            metadata,
+            videoDuration,
+            format,
+            sdrToHdrTransfer,
+            dedupeKey,
           },
         };
+      } catch (err) {
+        return { error: extractionError(video.id, err) };
       }
     }),
   );
+
+  const uniqueWorks = new Map<string, PreparedExtraction>();
+  for (const prepared of preparedExtractions) {
+    if ("work" in prepared && !uniqueWorks.has(prepared.work.dedupeKey)) {
+      uniqueWorks.set(prepared.work.dedupeKey, prepared.work);
+    }
+  }
+
+  const uniqueOutcomes = new Map<string, ExtractionOutcome>();
+  const cacheMisses: UniqueExtractionMiss[] = [];
+  for (const work of uniqueWorks.values()) {
+    const lookup = lookupCacheFor(work);
+    if ("work" in lookup) {
+      cacheMisses.push(lookup);
+    } else {
+      uniqueOutcomes.set(work.dedupeKey, lookup);
+    }
+  }
+
+  const supersetPlan = planSupersetGroups(cacheMisses, options.fps);
+  const directOutcomes = await Promise.all(
+    supersetPlan.direct.map(
+      async (miss) =>
+        [miss.work.dedupeKey, await executeDirectMiss(miss)] as [string, ExtractionOutcome],
+    ),
+  );
+  for (const [key, outcome] of directOutcomes) uniqueOutcomes.set(key, outcome);
+
+  const supersetOutcomes = await Promise.all(
+    supersetPlan.groups.map((group) => executeSupersetGroup(group)),
+  );
+  for (const groupOutcomes of supersetOutcomes) {
+    for (const [key, outcome] of groupOutcomes) uniqueOutcomes.set(key, outcome);
+  }
+
+  const results: ExtractionOutcome[] = preparedExtractions.map((prepared) => {
+    if ("error" in prepared) return prepared;
+    const outcome = uniqueOutcomes.get(prepared.work.dedupeKey);
+    if (!outcome)
+      return { error: extractionError(prepared.work.video.id, "missing extraction result") };
+    if ("error" in outcome) {
+      // A shared (deduped/superset) failure fans out to every element with the
+      // same key; annotate followers with the leader's videoId so N copies of
+      // one root failure are traceable to a single extraction in traces.
+      const isFollower = outcome.error.videoId !== prepared.work.video.id;
+      const message = isFollower
+        ? `[shared extraction, leader ${outcome.error.videoId}] ${outcome.error.error}`
+        : outcome.error.error;
+      return { error: { videoId: prepared.work.video.id, error: message } };
+    }
+    return { result: { ...outcome.result, videoId: prepared.work.video.id } };
+  });
 
   breakdown.extractMs = Date.now() - phase3Start;
 
@@ -928,6 +1206,21 @@ export async function extractAllVideoFrames(
       extracted.push(item.result);
       totalFramesExtracted += item.result.totalFrames;
     }
+  }
+
+  // Sweep when this render wrote something, plus a staleness fallback so a
+  // 100%-warm workload (misses never > 0) still reclaims space once a day.
+  const sweepDue =
+    breakdown.cacheMisses > 0 ||
+    (cacheRootDir !== undefined && gcSweepDue(cacheRootDir, GC_STALENESS_MS));
+  if (cacheRootDir && sweepDue) {
+    const gcStats = gcExtractionCache(cacheRootDir, {
+      maxBytes: config?.extractCacheMaxBytes ?? DEFAULT_CONFIG.extractCacheMaxBytes,
+      minAgeMs: EXTRACT_CACHE_MIN_AGE_MS,
+    });
+    breakdown.cacheGcEvictions = gcStats.evictedEntries;
+    breakdown.cacheGcBytesFreed = gcStats.evictedBytes;
+    breakdown.cacheAgedPartialsCleared = gcStats.agedPartialsRemoved;
   }
 
   return {

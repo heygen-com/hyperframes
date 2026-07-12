@@ -1,7 +1,9 @@
 ---
 name: talking-head-recut
-description: Package an existing talking-head / interview / podcast video by layering timed, designed GRAPHIC OVERLAY cards onto the playing video — titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript. The source video plays in full; the agent designs and writes each card's HTML in conversation, then renders to MP4 via hyperframes. Use when the user asks for graphic overlays, on-screen graphics / lower-thirds / data callouts / kinetic titles on a video, "package / dress up my video", "add overlay cards / graphic cards", or AI-composed graphic packaging of an existing video. NOT for plain subtitles (→ embedded-captions) or building a video from scratch (→ the creation workflows); when unsure overlays-vs-captions, see /hyperframes.
+description: Package an existing talking-head / interview / podcast video with timed, designed GRAPHIC OVERLAY cards — kinetic titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript, on a 16:9 / 9:16 / 4:5 canvas of your choice; the clip plays untouched underneath. Trigger on "graphic overlays", "on-screen graphics", "package / dress up my video". Not plain subtitles (/embedded-captions). Unclear → /hyperframes.
 ---
+
+> **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update talking-head-recut`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Talking Head Recut
 
@@ -293,7 +295,9 @@ Rules that apply to every channel:
   the parameters that materially affect the final output** (ratio,
   layout, style, cardCount).
 - If the user has already pre-approved defaults ("just use defaults",
-  "no need to ask", "auto-pick everything") or asked you not to ask — **skip
+  "no need to ask", "auto-pick everything"), asked you not to ask, or the
+  run carries an ongoing autonomous signal ("surprise me" / "decide for me" —
+  `../hyperframes-core/references/brief-contract.md` § 1) — **skip
   the question entirely** and use: `recommendedRatio`, `layout="stack"`
   (safest cross-ratio default), `style` chosen from transcript tone in
   the most neutral group (editorial/data), `autoCount`. Tell the user

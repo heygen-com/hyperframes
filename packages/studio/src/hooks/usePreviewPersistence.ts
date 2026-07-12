@@ -8,6 +8,7 @@ import {
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 // ── Types ──
@@ -77,6 +78,24 @@ function shouldReloadForStudioFileChange(
   return Date.now() - domEditSaveTimestampRef.current >= 4000;
 }
 
+// fallow-ignore-next-line complexity
+async function clearLegacyStudioMotionFile(
+  readOptionalProjectFile: (path: string) => Promise<string>,
+  writeProjectFile: (path: string, content: string) => Promise<void>,
+): Promise<void> {
+  const content = await readOptionalProjectFile(STUDIO_MOTION_PATH).catch(() => null);
+  if (!content) return;
+  try {
+    const parsed = JSON.parse(content) as { motions?: unknown[] };
+    if (!Array.isArray(parsed.motions) || parsed.motions.length === 0) return;
+  } catch {
+    return;
+  }
+  await writeProjectFile(STUDIO_MOTION_PATH, JSON.stringify({ version: 1, motions: [] })).catch(
+    () => {},
+  );
+}
+
 // ── Hook ──
 
 export function usePreviewPersistence({
@@ -135,6 +154,7 @@ export function usePreviewPersistence({
   }, []);
 
   const waitForPendingDomEditSaves = useCallback(async () => {
+    await flushStudioPendingEdits();
     await domEditSaveQueueRef.current?.waitForIdle();
   }, []);
 
@@ -185,20 +205,7 @@ export function usePreviewPersistence({
   // could still fire alongside the new seek-reapply runtime. Empty the file so
   // the legacy codepath no-ops.
   useMountEffect(() => {
-    _readOptionalProjectFile(STUDIO_MOTION_PATH)
-      .then((content) => {
-        if (!content) return;
-        try {
-          const parsed = JSON.parse(content) as { motions?: unknown[] };
-          if (!Array.isArray(parsed.motions) || parsed.motions.length === 0) return;
-        } catch {
-          return;
-        }
-        return _writeProjectFile(STUDIO_MOTION_PATH, JSON.stringify({ version: 1, motions: [] }));
-      })
-      .catch(() => {
-        /* best-effort migration — ignore failures */
-      });
+    void clearLegacyStudioMotionFile(_readOptionalProjectFile, _writeProjectFile);
   });
 
   // ── Listen for external file changes (HMR / SSE) ──
@@ -210,8 +217,10 @@ export function usePreviewPersistence({
           pendingTimelineEditPathRef,
           domEditSaveTimestampRef,
         )
-      )
+      ) {
+        // fallow-ignore-next-line code-duplication
         reloadPreview();
+      }
     };
     if (import.meta.hot) {
       import.meta.hot.on("hf:file-change", handler);

@@ -4,7 +4,7 @@
  */
 
 import { fpsToNumber } from "@hyperframes/core";
-import type { CapturePerfSummary } from "@hyperframes/engine";
+import type { CapturePerfSummary, SubTimelineWaitOutcome } from "@hyperframes/engine";
 import type { CaptureCalibrationSample, CaptureCostEstimate } from "./captureCost.js";
 import type {
   CaptureAttemptSummary,
@@ -14,6 +14,25 @@ import type {
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
 import type { RenderObservabilitySummary } from "./observability.js";
+
+/**
+ * Worst sub-composition timeline wait outcome across sessions: script_failure
+ * > timeout > ready. Shared by the success-path perf summary and the error
+ * path (a fail-fast can still be followed by an unrelated downstream
+ * failure, e.g. in `pollVideosReady` or encode — that render fires
+ * `render_error`, not `render_complete`, and should carry this too).
+ */
+export function worstSubTimelineWaitOutcome(
+  perfs: CapturePerfSummary[],
+): SubTimelineWaitOutcome | undefined {
+  const outcomes = perfs
+    .map((p) => p.subTimelineWaitOutcome)
+    .filter((o): o is SubTimelineWaitOutcome => !!o);
+  if (outcomes.length === 0) return undefined;
+  if (outcomes.includes("script_failure")) return "script_failure";
+  if (outcomes.includes("timeout")) return "timeout";
+  return "ready";
+}
 
 /**
  * Append each parallel worker's static-dedup perf into the render-level sink
@@ -35,6 +54,72 @@ export function pushWorkerDedupPerfs(
  * same composition); predicted/reused = SUM (each worker dedups its own frame
  * range); skipReason = the distinct reasons (sorted, `|`-joined) when not armed.
  */
+/**
+ * Collapse per-session capture perf + producer-side decisions into the
+ * render-level drawElement outcome. mode/gateReason |-join distinct values
+ * across workers (bounded cardinality); counters SUM.
+ */
+/** Orchestrator-supplied render-level drawElement outcome (one shape, used by
+ * both the aggregate function and buildRenderPerfSummary's input). */
+export interface DrawElementPerfInput {
+  compileGate?: string;
+  clampReason?: string;
+  workerInversion?: "inverted" | "reverted";
+  /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
+  preInversionWorkers?: number;
+  parallelRouter?: "routed" | "reverted";
+  /** Auto-resolved worker count before the router pinned it to 3 (set only when the router fired). */
+  preRouterWorkers?: number;
+  selfVerifyFallback: boolean;
+  fallbackReason?: string;
+  drainStats?: {
+    verifyChecked: number;
+    verifyMinDb?: number;
+    blankSuspects: number;
+    blankDeterministicAccepts: number;
+    blankRecaptures: number;
+  };
+}
+
+// Flat field mapping — branches are ?? fallbacks, not logic.
+// fallow-ignore-next-line complexity
+function aggregateDrawElement(
+  perfs: CapturePerfSummary[],
+  de: DrawElementPerfInput,
+): RenderPerfSummary["drawElement"] {
+  if (perfs.length === 0) return undefined;
+  const modes = [...new Set(perfs.map((p) => p.captureMode).filter(Boolean))].sort();
+  const gateReasons = [
+    ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
+  ].sort();
+  const drain = de.drainStats;
+  return {
+    mode: modes.join("|") || "unknown",
+    compileGate: de.compileGate,
+    clampReason: de.clampReason,
+    workerInversion: de.workerInversion ?? "none",
+    preInversionWorkers: de.preInversionWorkers,
+    parallelRouter: de.parallelRouter ?? "none",
+    preRouterWorkers: de.preRouterWorkers,
+    gateReason: gateReasons.length > 0 ? gateReasons.join("|") : undefined,
+    workerEncode: perfs.some((p) => p.deWorkerEncode),
+    verifyArmed: perfs.reduce((sum, p) => sum + (p.deVerifyArmed ?? 0), 0),
+    verifyChecked: drain?.verifyChecked ?? 0,
+    verifyMinDb:
+      drain?.verifyMinDb === undefined
+        ? undefined
+        : Math.round(Math.min(drain.verifyMinDb, 999) * 10) / 10,
+    verifyInitMs: perfs.reduce((sum, p) => sum + (p.deVerifyInitMs ?? 0), 0),
+    selfVerifyFallback: de.selfVerifyFallback,
+    fallbackReason: de.fallbackReason,
+    blankSuspects: drain?.blankSuspects ?? 0,
+    blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
+    blankRecaptures: drain?.blankRecaptures ?? 0,
+    boundaryFrames: perfs.reduce((sum, p) => sum + (p.deBoundaryFrames ?? 0), 0),
+    ncprFallbacks: perfs.reduce((sum, p) => sum + (p.deNcprFallbacks ?? 0), 0),
+  };
+}
+
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
@@ -54,6 +139,24 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
     skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
   };
+}
+
+/**
+ * Collapse per-session/per-worker BeginFrame damage counters into one
+ * render-level reuse outcome (SUM across workers — each worker ticks its own
+ * frame range). Both zero ⟺ no beginframe session ran (screenshot/drawElement
+ * sessions never increment these) → undefined, mirroring staticDedup's
+ * "undefined when it never engaged" contract. Also inherits `dedupPerfs`'
+ * retry semantics: a partial-capture retry resets the sink, so the sums cover
+ * only the final attempt's recaptured ranges (may be < totalFrames).
+ */
+function aggregateBeginFrameReuse(
+  perfs: CapturePerfSummary[],
+): RenderPerfSummary["beginFrameReuse"] {
+  const noDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameNoDamage ?? 0), 0);
+  const hasDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameHasDamage ?? 0), 0);
+  if (noDamageFrames + hasDamageFrames === 0) return undefined;
+  return { noDamageFrames, hasDamageFrames };
 }
 
 export function buildRenderPerfSummary(input: {
@@ -83,6 +186,7 @@ export function buildRenderPerfSummary(input: {
   peakHeapUsedBytes: number;
   /** Per-session/per-worker static-dedup perf; aggregated into `staticDedup`. */
   dedupPerfs: CapturePerfSummary[];
+  drawElement?: DrawElementPerfInput;
 }): RenderPerfSummary {
   return {
     renderId: input.job.id,
@@ -127,8 +231,21 @@ export function buildRenderPerfSummary(input: {
               input.totalFrames,
           )
         : undefined,
+    subTimelineWait: worstSubTimelineWaitOutcome(input.dedupPerfs),
+    captureP50Ms: (() => {
+      // Per-frame median from the engine's samples; when parallel workers
+      // report separately, take the busiest session's median.
+      const withSamples = input.dedupPerfs.filter((p) => (p.p50TotalMs ?? 0) > 0);
+      if (withSamples.length === 0) return undefined;
+      return withSamples.reduce((a, b) => (b.frames > a.frames ? b : a)).p50TotalMs;
+    })(),
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
+    drawElement: aggregateDrawElement(
+      input.dedupPerfs,
+      input.drawElement ?? { selfVerifyFallback: false },
+    ),
   };
 }

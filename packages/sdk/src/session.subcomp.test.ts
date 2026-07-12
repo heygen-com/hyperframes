@@ -13,7 +13,8 @@
 import { describe, it, expect } from "vitest";
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/core/hf-ids";
-import { resolveScoped, findById } from "./engine/model.js";
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core";
+import { resolveScoped, findById, isNewHostBoundary, bareId } from "./engine/model.js";
 import { parseMutable } from "./engine/model.js";
 import { buildRoots, flatElements } from "./document.js";
 import { openComposition } from "./session.js";
@@ -529,5 +530,129 @@ describe("scopedId stability across serialize/re-parse", () => {
       .map((e) => e.scopedId)
       .sort();
     expect(ids1).toEqual(ids2);
+  });
+});
+
+// ─── 7. isNewHostBoundary ──────────────────────────────────────────────────────
+
+describe("isNewHostBoundary", () => {
+  it("is true for a host with no ancestor dcf (top-level sub-comp host)", () => {
+    const doc = makeDoc(
+      inlinedHtml(`<div data-hf-id="hf-host" data-composition-file="sub.html"></div>`),
+    ) as unknown as Document;
+    const host = doc.querySelector('[data-hf-id="hf-host"]') as unknown as Element;
+    expect(isNewHostBoundary(host)).toBe(true);
+  });
+
+  it("is false for an element with no data-composition-file at all", () => {
+    const doc = makeDoc(inlinedHtml(`<div data-hf-id="hf-plain"></div>`)) as unknown as Document;
+    const el = doc.querySelector('[data-hf-id="hf-plain"]') as unknown as Element;
+    expect(isNewHostBoundary(el)).toBe(false);
+  });
+
+  it("is false for the outerHTML innerRoot (same dcf value as its host parent)", () => {
+    const doc = makeDoc(
+      inlinedHtml(`
+        <div data-hf-id="hf-host" data-composition-file="sub.html">
+          <div data-hf-id="hf-inner" data-composition-file="sub.html"></div>
+        </div>
+      `),
+    ) as unknown as Document;
+    const inner = doc.querySelector('[data-hf-id="hf-inner"]') as unknown as Element;
+    expect(isNewHostBoundary(inner)).toBe(false);
+  });
+
+  it("is true for a nested host with a DIFFERENT dcf from its parent", () => {
+    const doc = makeDoc(
+      inlinedHtml(`
+        <div data-hf-id="hf-outer" data-composition-file="outer.html">
+          <div data-hf-id="hf-inner-host" data-composition-file="inner.html"></div>
+        </div>
+      `),
+    ) as unknown as Document;
+    const innerHost = doc.querySelector('[data-hf-id="hf-inner-host"]') as unknown as Element;
+    expect(isNewHostBoundary(innerHost)).toBe(true);
+  });
+});
+
+// ─── 8. bareId ──────────────────────────────────────────────────────────────────
+
+describe("bareId", () => {
+  it("returns the leaf segment of a scoped id", () => {
+    expect(bareId("hf-host/hf-leaf")).toBe("hf-leaf");
+  });
+
+  it("returns a deeply nested id's leaf segment", () => {
+    expect(bareId("hf-a/hf-b/hf-c")).toBe("hf-c");
+  });
+
+  it("passes a bare id through unchanged", () => {
+    expect(bareId("hf-solo")).toBe("hf-solo");
+  });
+});
+
+// ─── 9. getRootElements — no descendant duplication ────────────────────────────
+
+describe("getRootElements", () => {
+  it("excludes descendants that getElements() also lists as top-level entries", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-panel">
+        <h1 data-hf-id="hf-title">Title</h1>
+      </div>
+      <p data-hf-id="hf-solo">solo</p>
+    `);
+    const comp = await openComposition(html);
+
+    // getElements() is flat: hf-title appears once nested under hf-panel AND
+    // once again as its own top-level entry.
+    const flatIds = comp.getElements().map((e) => e.id);
+    expect(flatIds).toContain("hf-title");
+    expect(flatIds).toContain("hf-panel");
+
+    // getRootElements() only returns true roots — hf-title is not one, since
+    // it's hf-panel's descendant.
+    const rootIds = comp.getRootElements().map((e) => e.id);
+    expect(rootIds).toEqual(["hf-panel", "hf-solo"]);
+    expect(comp.getRootElements().find((e) => e.id === "hf-panel")?.children[0]?.id).toBe(
+      "hf-title",
+    );
+  });
+
+  it("treats a sub-composition host as a root even though it has descendants", async () => {
+    const html = inlinedHtml(`
+      <div data-hf-id="hf-host" data-composition-file="sub.html">
+        <p data-hf-id="hf-leaf">inside</p>
+      </div>
+    `);
+    const comp = await openComposition(html);
+    expect(comp.getRootElements().map((e) => e.id)).toEqual(["hf-host"]);
+  });
+});
+
+// ─── 10. serialize({ stripRuntime }) ───────────────────────────────────────────
+
+describe("serialize({ stripRuntime })", () => {
+  const RUNTIME_SCRIPT =
+    '<script data-hyperframes-preview-runtime="1" src="https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js"></script>';
+
+  it("keeps the embedded runtime script by default", async () => {
+    const html = `<!DOCTYPE html><html><head>${RUNTIME_SCRIPT}</head><body><div data-hf-id="hf-a"></div></body></html>`;
+    const comp = await openComposition(html);
+    expect(comp.serialize()).toContain("hyperframe.runtime");
+  });
+
+  it("strips the embedded runtime script when stripRuntime is true", async () => {
+    const html = `<!DOCTYPE html><html><head>${RUNTIME_SCRIPT}</head><body><div data-hf-id="hf-a"></div></body></html>`;
+    const comp = await openComposition(html);
+    const out = comp.serialize({ stripRuntime: true });
+    expect(out).not.toContain("hyperframe.runtime");
+    expect(out).toContain('data-hf-id="hf-a"');
+  });
+
+  it("re-exports RUNTIME_BOOTSTRAP_ATTR from @hyperframes/core, matching the marker generators stamp", async () => {
+    expect(RUNTIME_BOOTSTRAP_ATTR).toBe("data-hyperframes-preview-runtime");
+    // The fixture's marker attribute above is authored by hand — confirm it's not
+    // drifted from the real constant a generator would actually stamp.
+    expect(RUNTIME_SCRIPT).toContain(RUNTIME_BOOTSTRAP_ATTR);
   });
 });

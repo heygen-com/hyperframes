@@ -218,12 +218,12 @@ interface FakeStyle {
 }
 
 interface FakeDomEl {
-  "data-hf-id": string;
-  "data-x": string | null;
-  "data-y": string | null;
+  _attrs: Record<string, string>;
   style: FakeStyle;
   isConnected: boolean;
   getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  hasAttribute(name: string): boolean;
   querySelector(sel: string): FakeDomEl | null;
 }
 
@@ -240,17 +240,21 @@ function fakeDomEl(id: string, dataX: string | null, dataY: string | null): Fake
       delete this._props[name];
     },
   };
+  const attrs: Record<string, string> = { "data-hf-id": id };
+  if (dataX !== null) attrs["data-x"] = dataX;
+  if (dataY !== null) attrs["data-y"] = dataY;
   const el: FakeDomEl = {
-    "data-hf-id": id,
-    "data-x": dataX,
-    "data-y": dataY,
+    _attrs: attrs,
     style,
     isConnected: true,
     getAttribute(name) {
-      if (name === "data-x") return this["data-x"];
-      if (name === "data-y") return this["data-y"];
-      if (name === "data-hf-id") return this["data-hf-id"];
-      return null;
+      return this._attrs[name] ?? null;
+    },
+    setAttribute(name, value) {
+      this._attrs[name] = value;
+    },
+    hasAttribute(name) {
+      return name in this._attrs;
     },
     querySelector(_sel: string) {
       return null;
@@ -316,6 +320,55 @@ describe("IframePreviewAdapter draft / commit / cancel", () => {
     });
   });
 
+  it("commitPreview mirrors the move onto the live element and applies the translate", () => {
+    const el = fakeDomEl("hf-abc", "100", "200");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), vi.fn());
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: -20 });
+    adapter.commitPreview();
+
+    expect(el.getAttribute("data-x")).toBe("130");
+    expect(el.getAttribute("data-y")).toBe("180");
+    // Baseline captured from the pre-drag values.
+    expect(el.getAttribute("data-hf-edit-base-x")).toBe("100");
+    expect(el.getAttribute("data-hf-edit-base-y")).toBe("200");
+    // Final translate = delta from the baseline, held without a reload.
+    expect(el.getAttribute("data-hf-edit-original-translate")).toBe("");
+    expect(el.style.getPropertyValue("translate")).toBe("30px -20px");
+
+    // A second drag composes from the committed state and keeps the baseline.
+    adapter.applyDraft("hf-abc", { dx: 10, dy: 10 });
+    expect(el.style.getPropertyValue("translate")).toBe("40px -10px");
+    adapter.commitPreview();
+    expect(el.getAttribute("data-x")).toBe("140");
+    expect(el.getAttribute("data-hf-edit-base-x")).toBe("100");
+    expect(el.style.getPropertyValue("translate")).toBe("40px -10px");
+  });
+
+  it("applyDraft translates the element live and cancelPreview restores it", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    el.style.setProperty("translate", "5px 6px");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), vi.fn());
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: -20 });
+    expect(el.style.getPropertyValue("translate")).toBe("35px -14px");
+
+    adapter.cancelPreview();
+    expect(el.style.getPropertyValue("translate")).toBe("5px 6px");
+    expect(el.getAttribute("data-hf-edit-base-x")).toBeNull();
+  });
+
+  it("cancelPreview removes a draft translate when there was none before", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    const adapter = createIframePreviewAdapter(fakeIframe(el), vi.fn());
+
+    adapter.applyDraft("hf-abc", { dx: 30 });
+    expect(el.style.getPropertyValue("translate")).toBe("30px 0px");
+
+    adapter.cancelPreview();
+    expect(el.style.getPropertyValue("translate")).toBe("");
+  });
+
   it("applyDraft reuses the cached element across repeated calls (no re-query)", () => {
     const el = fakeDomEl("hf-abc", "0", "0");
     let queryCount = 0;
@@ -344,30 +397,17 @@ describe("IframePreviewAdapter draft / commit / cancel", () => {
     adapter.commitPreview();
   });
 
-  it("cancelPreview clears draft vars without dispatching", () => {
+  it("cancelPreview reverts the draft translate without dispatching", () => {
     const dispatch = vi.fn();
     const el = fakeDomEl("hf-abc", "100", "200");
     const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
 
     adapter.applyDraft("hf-abc", { dx: 30, dy: 20 });
+    expect(el.style.getPropertyValue("translate")).toBe("30px 20px");
     adapter.cancelPreview();
 
     expect(dispatch).not.toHaveBeenCalled();
-    // CSS vars cleared
-    expect(el.style.getPropertyValue("--hf-studio-dx")).toBe("");
-    expect(el.style.getPropertyValue("--hf-studio-dy")).toBe("");
-  });
-
-  it("commitPreview clears draft vars after dispatching", () => {
-    const dispatch = vi.fn();
-    const el = fakeDomEl("hf-abc", "0", "0");
-    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
-
-    adapter.applyDraft("hf-abc", { dx: 10, dy: 5 });
-    adapter.commitPreview();
-
-    expect(el.style.getPropertyValue("--hf-studio-dx")).toBe("");
-    expect(el.style.getPropertyValue("--hf-studio-dy")).toBe("");
+    expect(el.style.getPropertyValue("translate")).toBe("");
   });
 
   it("second commitPreview after first is a no-op (draft cleared)", () => {
@@ -380,6 +420,60 @@ describe("IframePreviewAdapter draft / commit / cancel", () => {
     adapter.commitPreview();
 
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("switching applyDraft to a new id reverts the abandoned element", () => {
+    const elA = fakeDomEl("hf-a", "0", "0");
+    const elB = fakeDomEl("hf-b", "0", "0");
+    const iframe = {
+      contentDocument: {
+        querySelector(sel: string) {
+          return sel.includes("hf-a") ? elA : elB;
+        },
+      },
+    } as unknown as HTMLIFrameElement;
+    const adapter = createIframePreviewAdapter(iframe, vi.fn());
+
+    adapter.applyDraft("hf-a", { dx: 80, dy: 0 });
+    expect(elA.style.getPropertyValue("translate")).toBe("80px 0px");
+
+    adapter.applyDraft("hf-b", { dx: 10, dy: 10 });
+    // The abandoned element is restored; the delta does not carry over.
+    expect(elA.style.getPropertyValue("translate")).toBe("");
+    expect(elB.style.getPropertyValue("translate")).toBe("10px 10px");
+  });
+
+  it("commitPreview reverts the draft translate when dispatch throws", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    el.style.setProperty("translate", "5px 6px");
+    const dispatch = vi.fn(() => {
+      throw new Error("element_not_found");
+    });
+    const adapter = createIframePreviewAdapter(fakeIframe(el), dispatch);
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: 20 });
+    expect(() => adapter.commitPreview()).toThrow("element_not_found");
+    expect(el.style.getPropertyValue("translate")).toBe("5px 6px");
+    expect(el.getAttribute("data-hf-edit-base-x")).toBeNull();
+  });
+
+  it("cancelPreview does not promote a computed (stylesheet) translate to inline", () => {
+    const el = fakeDomEl("hf-abc", "0", "0");
+    // Simulate a stylesheet-authored translate visible only via computed style.
+    (el as unknown as { ownerDocument: unknown }).ownerDocument = {
+      defaultView: {
+        getComputedStyle: () => ({ getPropertyValue: () => "-50% -50%" }),
+      },
+    };
+    const adapter = createIframePreviewAdapter(fakeIframe(el), vi.fn());
+
+    adapter.applyDraft("hf-abc", { dx: 30, dy: 20 });
+    // Draft composes onto the computed baseline (calc for non-px units).
+    expect(el.style.getPropertyValue("translate")).toBe("calc(-50% + 30px) calc(-50% + 20px)");
+
+    adapter.cancelPreview();
+    // Inline translate removed — the stylesheet value stays authoritative.
+    expect(el.style.getPropertyValue("translate")).toBe("");
   });
 });
 

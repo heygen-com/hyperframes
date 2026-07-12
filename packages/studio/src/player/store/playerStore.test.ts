@@ -222,6 +222,98 @@ describe("usePlayerStore", () => {
     });
   });
 
+  describe("selectedElementIds", () => {
+    it("sets a multi-id selection with a coherent anchor", () => {
+      usePlayerStore.getState().setSelection(["el-1", "el-2", "el-3"], "el-2");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("falls back to the first selected id when the anchor is outside the set", () => {
+      usePlayerStore.getState().setSelection(["el-1", "el-2"], "missing");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
+      expect(state.selectedElementId).toBe("el-1");
+    });
+
+    it("single-click selection replaces the set with the selected id", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.setSelectedElementId("el-3");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-3"]);
+      expect(state.selectedElementId).toBe("el-3");
+    });
+
+    it("setSelectedElementId collapses to a single element even for a current member", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
+      // A genuine single selection (click) collapses the set, even if the id was a member.
+      store.setSelectedElementId("el-2");
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-2"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("setSelectionAnchor moves the anchor within a group without collapsing it", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
+      // A DOM->store echo during a group gesture only moves the anchor.
+      store.setSelectionAnchor("el-2");
+
+      let state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
+      expect(state.selectedElementId).toBe("el-2");
+
+      // A non-member anchor is a genuine new single selection.
+      store.setSelectionAnchor("outside");
+      state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["outside"]);
+      expect(state.selectedElementId).toBe("outside");
+    });
+
+    it("clearing single selection empties the set", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.setSelectedElementId(null);
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual([]);
+      expect(state.selectedElementId).toBeNull();
+    });
+
+    it("toggle adds and removes members while keeping the anchor in the set", () => {
+      const store = usePlayerStore.getState();
+      store.setSelectedElementId("el-1");
+      store.toggleSelectedElementId("el-2");
+
+      let state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
+      expect(state.selectedElementId).toBe("el-1");
+
+      store.toggleSelectedElementId("el-1");
+
+      state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual(["el-2"]);
+      expect(state.selectedElementId).toBe("el-2");
+    });
+
+    it("clearSelection empties the set and the anchor", () => {
+      const store = usePlayerStore.getState();
+      store.setSelection(["el-1", "el-2"], "el-2");
+      store.clearSelection();
+
+      const state = usePlayerStore.getState();
+      expect([...state.selectedElementIds]).toEqual([]);
+      expect(state.selectedElementId).toBeNull();
+    });
+  });
+
   describe("updateElement", () => {
     it("updates the start time of a specific element", () => {
       usePlayerStore.getState().setElements([

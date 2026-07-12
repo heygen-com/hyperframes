@@ -1,12 +1,12 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { CaptionPropertyPanel } from "../captions/components/CaptionPropertyPanel";
@@ -14,6 +14,9 @@ import { BlockParamsPanel } from "./editor/BlockParamsPanel";
 import { RenderQueue } from "./renders/RenderQueue";
 import { SlideshowPanel } from "./panels/SlideshowPanel";
 import type { SceneInfo } from "./panels/SlideshowPanel";
+import { VariablesPanel } from "./panels/VariablesPanel";
+import { PanelTabButton } from "./PanelTabButton";
+import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
 import type { BlockParam } from "@hyperframes/core/registry";
 import type { IframeWindow } from "../player/lib/playbackTypes";
@@ -21,12 +24,20 @@ import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailabil
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useSlideshowPersist } from "../hooks/useSlideshowPersist";
+import { DesignPanelPromoteProvider } from "./DesignPanelPromoteProvider";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 import { usePlayerStore } from "../player";
+import { waitForMediaJob } from "./studioMediaJobs";
+import {
+  applyColorGradingScopeUpdate,
+  EMPTY_COLOR_GRADING_SCOPE_RESULT,
+  type ColorGradingScope,
+} from "./studioColorGradingScope";
+import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 
 const MIN_INSPECTOR_SPLIT_PERCENT = 20;
 const MAX_INSPECTOR_SPLIT_PERCENT = 75;
@@ -52,6 +63,7 @@ export interface StudioRightPanelProps {
     kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
+  onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
 }
 
 // fallow-ignore-next-line complexity
@@ -66,9 +78,11 @@ export function StudioRightPanel({
   reloadPreview,
   domEditSaveTimestampRef,
   recordEdit,
+  onToggleElementHidden,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
+    setRightWidth,
     rightPanelTab,
     setRightPanelTab,
     rightInspectorPanes,
@@ -82,6 +96,7 @@ export function StudioRightPanel({
     previewIframeRef,
     projectId,
     activeCompPath,
+    showToast,
     compositionDimensions,
     waitForPendingDomEditSaves,
     renderQueue,
@@ -136,8 +151,10 @@ export function StudioRightPanel({
     projectDir,
     handleImportFiles,
     handleImportFonts,
+    refreshFileTree,
     readProjectFile,
     writeProjectFile,
+    fileTree,
   } = useFileManagerContext();
 
   // Discrete ops (toggle, reorder, add/delete, hotspot): persist immediately,
@@ -172,6 +189,14 @@ export function StudioRightPanel({
     startPercent: number;
     height: number;
   } | null>(null);
+  const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      backgroundRemovalAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const renderJobs = renderQueue.jobs as RenderJob[];
   const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
@@ -233,61 +258,159 @@ export function StudioRightPanel({
     splitDragRef.current = null;
   }, []);
 
-  const propertyPanel = (
-    <PropertyPanel
-      projectId={projectId}
-      projectDir={projectDir}
-      assets={assets}
-      element={domEditGroupSelections.length > 1 ? null : domEditSelection}
-      multiSelectCount={domEditGroupSelections.length}
-      copiedAgentPrompt={copiedAgentPrompt}
-      onClearSelection={clearDomSelection}
-      onUngroup={handleUngroupSelection}
-      onSetStyle={handleDomStyleCommit}
-      onSetAttribute={handleDomAttributeCommit}
-      onSetAttributeLive={handleDomAttributeLiveCommit}
-      onSetHtmlAttribute={handleDomHtmlAttributeCommit}
-      onSetManualOffset={handleDomPathOffsetCommit}
-      onSetManualSize={handleDomBoxSizeCommit}
-      onSetManualRotation={handleDomRotationCommit}
-      onSetText={handleDomTextCommit}
-      onSetTextFieldStyle={handleDomTextFieldStyleCommit}
-      onAddTextField={handleDomAddTextField}
-      onRemoveTextField={handleDomRemoveTextField}
-      onAskAgent={handleAskAgent}
-      onImportAssets={handleImportFiles}
-      fontAssets={fontAssets}
-      onImportFonts={handleImportFonts}
-      previewIframeRef={previewIframeRef}
-      gsapAnimations={selectedGsapAnimations}
-      gsapMultipleTimelines={gsapMultipleTimelines}
-      gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
-      onUpdateGsapProperty={handleGsapUpdateProperty}
-      onUpdateGsapMeta={handleGsapUpdateMeta}
-      onDeleteGsapAnimation={handleGsapDeleteAnimation}
-      onAddGsapProperty={handleGsapAddProperty}
-      onRemoveGsapProperty={handleGsapRemoveProperty}
-      onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
-      onAddGsapFromProperty={handleGsapAddFromProperty}
-      onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
-      onAddGsapAnimation={handleGsapAddAnimation}
-      onCommitAnimatedProperty={commitAnimatedProperty}
-      onCommitAnimatedProperties={commitAnimatedProperties}
-      onAddKeyframe={handleGsapAddKeyframe}
-      onRemoveKeyframe={handleGsapRemoveKeyframe}
-      onConvertToKeyframes={(animId, duration) =>
-        handleGsapConvertToKeyframes(animId, undefined, duration)
+  const handleApplyColorGradingScope = useCallback(
+    async (scope: ColorGradingScope, value: string | null) =>
+      applyColorGradingScopeUpdate({
+        scope,
+        value,
+        selectedSourceFile: domEditSelection?.sourceFile || activeCompPath || "index.html",
+        fileTree,
+        projectId,
+        domEditSaveTimestampRef,
+        waitForPendingDomEditSaves,
+        readProjectFile,
+        writeProjectFile,
+        recordEdit,
+        reloadPreview,
+        showToast,
+      }).catch((error) => {
+        showToast(
+          `Couldn't apply color grading: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+        return EMPTY_COLOR_GRADING_SCOPE_RESULT;
+      }),
+    [
+      activeCompPath,
+      domEditSaveTimestampRef,
+      domEditSelection?.sourceFile,
+      fileTree,
+      projectId,
+      readProjectFile,
+      recordEdit,
+      reloadPreview,
+      showToast,
+      waitForPendingDomEditSaves,
+      writeProjectFile,
+    ],
+  );
+
+  const handleRemoveBackground = useCallback(
+    // fallow-ignore-next-line complexity
+    async (
+      inputPath: string,
+      options: {
+        createBackgroundPlate?: boolean;
+        quality?: "fast" | "balanced" | "best";
+        onProgress?: (progress: BackgroundRemovalProgress) => void;
+      },
+    ) => {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            inputPath,
+            createBackgroundPlate: options.createBackgroundPlate === true,
+            quality: options.quality ?? "balanced",
+          }),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        jobId?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.jobId) {
+        throw new Error(data.error || `Background removal failed (${response.status})`);
       }
-      onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
-      onSetArcPath={handleSetArcPath}
-      onUpdateArcSegment={handleUpdateArcSegment}
-      onUnroll={handleUnroll}
-      onUpdateKeyframeEase={handleUpdateKeyframeEase}
-      onSetAllKeyframeEases={handleSetAllKeyframeEases}
-      recordingState={recordingState}
-      recordingDuration={recordingDuration}
-      onToggleRecording={onToggleRecording}
-    />
+      showToast("Removing background...", "info");
+      backgroundRemovalAbortRef.current?.abort();
+      const controller = new AbortController();
+      backgroundRemovalAbortRef.current = controller;
+      try {
+        const result = await waitForMediaJob(data.jobId, options.onProgress, controller.signal);
+        await refreshFileTree();
+        showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "info");
+        return result;
+      } finally {
+        if (backgroundRemovalAbortRef.current === controller) {
+          backgroundRemovalAbortRef.current = null;
+        }
+      }
+    },
+    [projectId, refreshFileTree, showToast],
+  );
+
+  const propertyPanel = (
+    <DesignPanelPromoteProvider
+      selection={domEditGroupSelections.length > 1 ? null : domEditSelection}
+      projectId={projectId}
+      activeCompPath={activeCompPath}
+      readProjectFile={readProjectFile}
+      writeProjectFile={writeProjectFile}
+      recordEdit={recordEdit}
+      reloadPreview={reloadPreview}
+      domEditSaveTimestampRef={domEditSaveTimestampRef}
+    >
+      <PropertyPanel
+        projectId={projectId}
+        projectDir={projectDir}
+        assets={assets}
+        element={domEditGroupSelections.length > 1 ? null : domEditSelection}
+        multiSelectCount={domEditGroupSelections.length}
+        copiedAgentPrompt={copiedAgentPrompt}
+        onClearSelection={clearDomSelection}
+        onToggleElementHidden={onToggleElementHidden}
+        onUngroup={handleUngroupSelection}
+        onSetStyle={handleDomStyleCommit}
+        onSetAttribute={handleDomAttributeCommit}
+        onSetAttributeLive={handleDomAttributeLiveCommit}
+        onApplyColorGradingScope={handleApplyColorGradingScope}
+        onSetHtmlAttribute={handleDomHtmlAttributeCommit}
+        onRemoveBackground={handleRemoveBackground}
+        onSetManualOffset={handleDomPathOffsetCommit}
+        onSetManualSize={handleDomBoxSizeCommit}
+        onSetManualRotation={handleDomRotationCommit}
+        onSetText={handleDomTextCommit}
+        onSetTextFieldStyle={handleDomTextFieldStyleCommit}
+        onAddTextField={handleDomAddTextField}
+        onRemoveTextField={handleDomRemoveTextField}
+        onAskAgent={handleAskAgent}
+        onImportAssets={handleImportFiles}
+        fontAssets={fontAssets}
+        onImportFonts={handleImportFonts}
+        previewIframeRef={previewIframeRef}
+        gsapAnimations={selectedGsapAnimations}
+        gsapMultipleTimelines={gsapMultipleTimelines}
+        gsapUnsupportedTimelinePattern={gsapUnsupportedTimelinePattern}
+        onUpdateGsapProperty={handleGsapUpdateProperty}
+        onUpdateGsapMeta={handleGsapUpdateMeta}
+        onDeleteGsapAnimation={handleGsapDeleteAnimation}
+        onAddGsapProperty={handleGsapAddProperty}
+        onRemoveGsapProperty={handleGsapRemoveProperty}
+        onUpdateGsapFromProperty={handleGsapUpdateFromProperty}
+        onAddGsapFromProperty={handleGsapAddFromProperty}
+        onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
+        onAddGsapAnimation={handleGsapAddAnimation}
+        onCommitAnimatedProperty={commitAnimatedProperty}
+        onCommitAnimatedProperties={commitAnimatedProperties}
+        onAddKeyframe={handleGsapAddKeyframe}
+        onRemoveKeyframe={handleGsapRemoveKeyframe}
+        onConvertToKeyframes={(animId, duration) =>
+          handleGsapConvertToKeyframes(animId, undefined, duration)
+        }
+        onSeekToTime={(t) => usePlayerStore.getState().requestSeek(t)}
+        onSetArcPath={handleSetArcPath}
+        onUpdateArcSegment={handleUpdateArcSegment}
+        onUnroll={handleUnroll}
+        onUpdateKeyframeEase={handleUpdateKeyframeEase}
+        onSetAllKeyframeEases={handleSetAllKeyframeEases}
+        recordingState={recordingState}
+        recordingDuration={recordingDuration}
+        onToggleRecording={onToggleRecording}
+      />
+    </DesignPanelPromoteProvider>
   );
 
   const renderQueuePanel = (
@@ -295,6 +418,11 @@ export function StudioRightPanel({
       jobs={renderJobs}
       projectId={projectId}
       onDelete={renderQueue.deleteRender}
+      onCancel={renderQueue.cancelRender}
+      loadError={renderQueue.loadError}
+      onRetryLoad={renderQueue.reloadRenders}
+      actionError={renderQueue.actionError}
+      onDismissActionError={renderQueue.dismissActionError}
       onClearCompleted={renderQueue.clearCompleted}
       onStartRender={async (format, quality, resolution, fps) => {
         await waitForPendingDomEditSaves();
@@ -306,6 +434,9 @@ export function StudioRightPanel({
           format,
           resolution,
           composition,
+          // Render what the user is previewing: active variable overrides
+          // from the Variables panel ride along (undefined = defaults).
+          variables: usePreviewVariablesStore.getState().values ?? undefined,
         });
       }}
       compositionDimensions={compositionDimensions}
@@ -316,81 +447,71 @@ export function StudioRightPanel({
   return (
     <>
       <div
-        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center"
+        role="separator"
+        aria-label="Resize inspector panel"
+        aria-orientation="vertical"
+        tabIndex={0}
+        className="group w-2 flex-shrink-0 cursor-col-resize flex items-center justify-center outline-none focus-visible:bg-studio-accent/20"
         style={{ touchAction: "none" }}
         onPointerDown={(e) => handlePanelResizeStart("right", e)}
         onPointerMove={handlePanelResizeMove}
         onPointerUp={handlePanelResizeEnd}
+        onPointerCancel={handlePanelResizeEnd}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          // Panel is right-anchored: ArrowLeft grows it, ArrowRight shrinks it.
+          const delta = e.key === "ArrowLeft" ? 16 : -16;
+          setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
+        }}
       >
         <div className="h-[52px] w-px bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
-        className="flex flex-col border-l border-neutral-800 bg-neutral-900 flex-shrink-0"
+        className="flex min-w-0 flex-shrink-0 flex-col overflow-hidden border-l border-neutral-800 bg-neutral-900"
         style={{ width: rightWidth }}
       >
         {captionEditMode ? (
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
-                  <Tooltip label="Element styles and properties" side="bottom">
-                    <button
-                      type="button"
-                      onClick={() => handleInspectorPaneButtonClick("design")}
-                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                        designPaneOpen
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                      }`}
-                    >
-                      Design
-                    </button>
-                  </Tooltip>
-                  <Tooltip label="Composition layer stack" side="bottom">
-                    <button
-                      type="button"
-                      onClick={() => handleInspectorPaneButtonClick("layers")}
-                      className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                        layersPaneOpen
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                      }`}
-                    >
-                      Layers
-                    </button>
-                  </Tooltip>
+                  <PanelTabButton
+                    label="Design"
+                    tooltip="Element styles and properties"
+                    active={designPaneOpen}
+                    onClick={() => handleInspectorPaneButtonClick("design")}
+                  />
+                  <PanelTabButton
+                    label="Layers"
+                    tooltip="Composition layer stack"
+                    active={layersPaneOpen}
+                    onClick={() => handleInspectorPaneButtonClick("layers")}
+                  />
                 </>
               )}
-              <Tooltip label="Render queue and exports" side="bottom">
-                <button
-                  type="button"
-                  onClick={() => setRightPanelTab("renders")}
-                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                    rightPanelTab === "renders"
-                      ? "bg-neutral-800 text-white"
-                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                  }`}
-                >
-                  {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
-                </button>
-              </Tooltip>
-              <Tooltip label="Slideshow branching editor" side="bottom">
-                <button
-                  type="button"
-                  onClick={() => setRightPanelTab("slideshow")}
-                  className={`h-8 rounded-xl px-3 text-[11px] font-medium transition-colors ${
-                    rightPanelTab === "slideshow"
-                      ? "bg-neutral-800 text-white"
-                      : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
-                  }`}
-                >
-                  Slideshow
-                </button>
-              </Tooltip>
+              <PanelTabButton
+                label={renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
+                tooltip="Render queue and exports"
+                active={rightPanelTab === "renders"}
+                onClick={() => setRightPanelTab("renders")}
+              />
+              <PanelTabButton
+                label="Slideshow"
+                tooltip="Slideshow branching editor"
+                active={rightPanelTab === "slideshow"}
+                onClick={() => setRightPanelTab("slideshow")}
+              />
+              <PanelTabButton
+                label="Variables"
+                tooltip="Template variables — declare, preview with values"
+                active={rightPanelTab === "variables"}
+                onClick={() => setRightPanelTab("variables")}
+              />
             </div>
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (
                 <BlockParamsPanel
                   blockName={activeBlockParams.blockName}
@@ -405,8 +526,15 @@ export function StudioRightPanel({
                   onPersist={onPersistSlideshow}
                   onPersistNotes={onPersistSlideshowNotes}
                 />
+              ) : rightPanelTab === "variables" ? (
+                <VariablesPanel
+                  sdkSession={sdkSession}
+                  reloadPreview={reloadPreview}
+                  domEditSaveTimestampRef={domEditSaveTimestampRef}
+                  recordEdit={recordEdit}
+                />
               ) : layersPaneOpen && designPaneOpen ? (
-                <div ref={splitContainerRef} className="flex h-full min-h-0 flex-col">
+                <div ref={splitContainerRef} className="flex h-full min-h-0 min-w-0 flex-col">
                   <div
                     className="min-h-[120px] overflow-hidden"
                     style={{ flexBasis: `${layersPanePercent}%`, flexShrink: 0 }}
@@ -432,6 +560,24 @@ export function StudioRightPanel({
                 <LayersPanel />
               ) : designPaneOpen ? (
                 propertyPanel
+              ) : inspectorTabActive ? (
+                // Inspector tab selected but no pane can render (panes toggled
+                // off, or inspector inactive during playback/recording): show an
+                // explanation instead of silently rendering the render queue
+                // under a highlighted inspector tab.
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                  <p className="text-xs text-neutral-500">
+                    Inspector is unavailable right now — select the Design or Layers pane above, or
+                    pause playback/recording to inspect elements.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setRightPanelTab("renders")}
+                    className="h-7 rounded-md border border-neutral-800 px-3 text-[11px] font-medium text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200 active:scale-[0.98]"
+                  >
+                    Show Renders
+                  </button>
+                </div>
               ) : (
                 renderQueuePanel
               )}

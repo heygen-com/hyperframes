@@ -3,7 +3,7 @@
 //
 // Reads a composition, seeks to N sample timestamps, walks the DOM for text
 // elements, measures the WCAG 2.1 contrast ratio between each element's
-// declared foreground color and the pixels behind it, and emits:
+// declared foreground color and the ACTUAL pixels behind it, and emits:
 //
 //   - contrast-report.json  (machine-readable, one entry per text element × sample)
 //   - contrast-overlay.png  (sprite grid; magenta=fail AA, yellow=pass AA only, green=AAA)
@@ -20,6 +20,28 @@
 // The composition directory must contain an index.html. Raw authoring HTML
 // works — the producer's file server auto-injects the runtime at serve time.
 // Exits 1 if any text element fails WCAG AA.
+//
+// Background sampling: each sample time is captured TWICE — once via the
+// producer's normal (video-accurate) captureFrameToBuffer for the overlay
+// image, and once via a plain page.screenshot() taken right after hiding
+// every candidate element's own text paint (color/fill → transparent,
+// layout-neutral). The second capture reveals the REAL composited pixels
+// that were directly behind the glyphs, which this script then samples
+// straight from each element's own bbox — no proximity heuristic needed.
+// This is deliberately NOT routed through captureFrameToBuffer: that
+// pipeline has a static-frame dedup cache keyed by frame index/time that
+// knows nothing about our DOM mutation and would happily hand back a
+// cached pre-mutation buffer. A direct page.screenshot() bypasses that
+// entirely and is the same technique validated in
+// packages/cli/src/commands/contrast-audit.browser.js.
+//
+// The previous approach sampled a 4px ring just OUTSIDE the bbox, which
+// breaks down whenever what's immediately outside the text differs from
+// what's actually behind it: a neighboring panel/component just past the
+// text's edge, a backdrop-filter-blurred glass panel sized only a couple
+// pixels larger than the text, or a translucent decoration that only
+// partially overlaps the ring (or sits entirely inside the bbox, never
+// touching the ring at all).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -77,8 +99,21 @@ try {
 
   for (let i = 0; i < times.length; i++) {
     const t = times[i];
+    // Visible frame — used only for the human-facing overlay image.
     const { buffer: pngBuf } = await captureFrameToBuffer(session, i, t);
-    const elements = await probeTextElements(session, t);
+
+    // Hides each candidate's own text paint and returns its selector/fg/bbox.
+    const candidates = await prepareTextElements(session);
+    let elements;
+    try {
+      // Deliberately session.page.screenshot(), not captureFrameToBuffer —
+      // see the header comment for why.
+      const hiddenB64 = await session.page.screenshot({ encoding: "base64", type: "png" });
+      elements = await measureAgainstHiddenTextFrame(hiddenB64, candidates);
+    } finally {
+      await restoreTextElements(session);
+    }
+
     const annotated = await annotateFrame(pngBuf, elements);
     overlayFrames.push({ t, png: annotated });
     for (const el of elements) allEntries.push({ time: t, ...el });
@@ -104,15 +139,23 @@ try {
   server.close();
 }
 
-// ─── DOM probe (runs in the page) ────────────────────────────────────────────
+// ─── DOM probe + text-hide (runs in the page) ────────────────────────────────
 
-async function probeTextElements(session, _t) {
-  // `session.page` is the Puppeteer Page owned by the capture session.
-  // We pass a pure function to `evaluate`: it walks the DOM and returns
-  // enough info for us to compute a ratio in Node using the frame buffer.
+// Walks the DOM for text-bearing elements, computes each one's foreground
+// paint, and hides that element's own text (color/fill → transparent,
+// !important, layout-neutral) so the caller's next screenshot reveals the
+// real pixels behind the glyphs. Returns the candidate list; call
+// restoreTextElements() afterward (in a finally) to undo the hide.
+async function prepareTextElements(session) {
   return await session.page.evaluate(() => {
     /** @type {Array<{selector: string, text: string, fg: [number,number,number,number], fontSize: number, fontWeight: number, bbox: {x:number,y:number,w:number,h:number}}>} */
     const out = [];
+    const restores = [];
+    // Registered BEFORE the walk starts and pushed to incrementally as each
+    // element is hidden: if something in the walk throws partway through,
+    // everything hidden so far is still reachable for restore instead of
+    // leaking hidden indefinitely.
+    window.__contrastReportRestores = restores;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
     const parseColor = (c) => {
       const m = c.match(/rgba?\(([^)]+)\)/);
@@ -120,6 +163,24 @@ async function probeTextElements(session, _t) {
       const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
       return [parts[0], parts[1], parts[2], parts[3] ?? 1];
     };
+    // Like parseColor, but returns null instead of defaulting to black when
+    // the value isn't a solid rgb()/rgba() color — e.g. SVG paint keywords
+    // such as "none"/"context-fill", or a gradient/pattern reference like
+    // 'url("#grad")'. Callers should fall back to another source of truth
+    // rather than trust a fabricated black.
+    const tryParseSolidColor = (c) => {
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (!m) return null;
+      const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
+      if (parts.some((v) => Number.isNaN(v))) return null;
+      return [parts[0], parts[1], parts[2], parts[3] ?? 1];
+    };
+    // SVG text (<text>, <tspan>, <textPath>) is painted via the `fill`
+    // property, not `color` — the two are independent CSS properties in
+    // SVG. A page can set `fill` without ever touching `color`, in which
+    // case getComputedStyle(el).color resolves to the inherited/initial
+    // value (often black) and does not reflect what's actually rendered.
+    const isSvgTextElement = (el) => !!el.ownerSVGElement;
     const selectorOf = (el) => {
       if (el.id) return `#${el.id}`;
       const cls = [...el.classList].slice(0, 2).join(".");
@@ -137,10 +198,45 @@ async function probeTextElements(session, _t) {
       if (parseFloat(cs.opacity) <= 0.01) continue;
       const rect = el.getBoundingClientRect();
       if (rect.width < 8 || rect.height < 8) continue;
+      const isSvgText = isSvgTextElement(el);
+      const fg = isSvgText
+        ? tryParseSolidColor(cs.fill) || parseColor(cs.color)
+        : parseColor(cs.color);
+      if (fg[3] <= 0.01) continue;
+
+      // A `transition` on color/fill would otherwise animate this hide
+      // instead of applying it instantly — the screenshot taken right after
+      // can catch a partially-transparent glyph mid-transition instead of a
+      // fully hidden one, contaminating the background sample. Force
+      // `transition: none` alongside color/fill so the hide is atomic.
+      const origTransition = el.style.getPropertyValue("transition");
+      const origTransitionPriority = el.style.getPropertyPriority("transition");
+      el.style.setProperty("transition", "none", "important");
+      const origColor = el.style.getPropertyValue("color");
+      const origColorPriority = el.style.getPropertyPriority("color");
+      el.style.setProperty("color", "transparent", "important");
+      let origFill = null;
+      let origFillPriority = null;
+      if (isSvgText) {
+        origFill = el.style.getPropertyValue("fill");
+        origFillPriority = el.style.getPropertyPriority("fill");
+        el.style.setProperty("fill", "transparent", "important");
+      }
+      restores.push({
+        el,
+        origTransition,
+        origTransitionPriority,
+        origColor,
+        origColorPriority,
+        origFill,
+        origFillPriority,
+        isSvgText,
+      });
+
       out.push({
         selector: selectorOf(el),
         text: el.textContent.trim().slice(0, 60),
-        fg: parseColor(cs.color),
+        fg,
         fontSize: parseFloat(cs.fontSize),
         fontWeight: Number(cs.fontWeight) || 400,
         bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
@@ -150,71 +246,101 @@ async function probeTextElements(session, _t) {
   });
 }
 
+async function restoreTextElements(session) {
+  await session.page.evaluate(() => {
+    const restores = window.__contrastReportRestores;
+    if (!restores) return;
+    for (const r of restores) {
+      if (r.origColor) r.el.style.setProperty("color", r.origColor, r.origColorPriority);
+      else r.el.style.removeProperty("color");
+      if (r.isSvgText) {
+        if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
+        else r.el.style.removeProperty("fill");
+      }
+      if (r.origTransition) {
+        r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
+      } else r.el.style.removeProperty("transition");
+    }
+    window.__contrastReportRestores = null;
+  });
+}
+
 // ─── Pixel sampling + WCAG math ──────────────────────────────────────────────
 
-async function annotateFrame(pngBuf, elements) {
-  const img = sharp(pngBuf);
-  const meta = await img.metadata();
-  const { width, height } = meta;
-  const raw = await img.ensureAlpha().raw().toBuffer();
+// Samples the REAL composited background directly inside each candidate's
+// own bbox, from a screenshot taken with every candidate's text hidden —
+// robust to panel edges, backdrop-filter blur, and translucent decoration
+// in ways a proximity-based ring outside the bbox isn't. Mirrors
+// packages/cli/src/commands/contrast-sample.ts's computeSampleRect /
+// sampleGridPoints (kept in sync, not imported — this script bootstraps
+// npm-published packages and can't reach into the cli package's sources).
+async function measureAgainstHiddenTextFrame(hiddenImgBase64, candidates) {
+  const raw = Buffer.from(hiddenImgBase64, "base64");
+  const img = sharp(raw);
+  const { width, height } = await img.metadata();
+  const pixels = await img.ensureAlpha().raw().toBuffer();
   const channels = 4;
 
   const measured = [];
-  for (const el of elements) {
-    if (isBBoxOutsideFrame(el.bbox, width, height)) continue;
-    const bg = sampleRingMedian(raw, width, height, channels, el.bbox);
+  for (const c of candidates) {
+    const bg = sampleBboxMedian(pixels, width, height, channels, c.bbox);
     if (!bg) continue;
-    const fg = compositeOver(el.fg, bg); // flatten any alpha against measured bg
+    const fg = compositeOver(c.fg, bg); // flatten any alpha against measured bg
     const ratio = wcagRatio(fg, bg);
-    const large = isLargeText(el.fontSize, el.fontWeight);
-    el.bg = bg;
-    el.ratio = +ratio.toFixed(2);
-    el.wcagAA = large ? ratio >= 3 : ratio >= 4.5;
-    el.wcagAALarge = ratio >= 3;
-    el.wcagAAA = large ? ratio >= 4.5 : ratio >= 7;
-    measured.push(el);
+    const large = isLargeText(c.fontSize, c.fontWeight);
+    measured.push({
+      selector: c.selector,
+      text: c.text,
+      fg,
+      fontSize: c.fontSize,
+      fontWeight: c.fontWeight,
+      bbox: c.bbox,
+      bg,
+      ratio: +ratio.toFixed(2),
+      wcagAA: large ? ratio >= 3 : ratio >= 4.5,
+      wcagAALarge: ratio >= 3,
+      wcagAAA: large ? ratio >= 4.5 : ratio >= 7,
+    });
   }
-  elements.length = 0;
-  elements.push(...measured);
+  return measured;
+}
 
+async function annotateFrame(pngBuf, elements) {
+  const { width, height } = await sharp(pngBuf).metadata();
   // Draw boxes + ratio labels as an SVG overlay (sharp composite).
-  const svg = buildOverlaySVG(measured, width, height);
+  const svg = buildOverlaySVG(elements, width, height);
   return await sharp(pngBuf)
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
     .png()
     .toBuffer();
 }
 
-function sampleRingMedian(raw, width, height, channels, bbox) {
-  // 4-px ring immediately outside the element bbox. Median of each channel.
+function sampleBboxMedian(raw, width, height, channels, bbox) {
+  // Sample the element's OWN box (glyphs are hidden in this frame), inset
+  // 1px on each side to dodge anti-aliased edge pixels, clamped to the
+  // frame bounds. A bounded grid, not a full scan, so a wide caption bar
+  // doesn't turn into thousands of samples.
+  const x0 = Math.max(0, Math.round(bbox.x) + 1);
+  const x1 = Math.min(width - 1, Math.round(bbox.x + bbox.w) - 1);
+  const y0 = Math.max(0, Math.round(bbox.y) + 1);
+  const y1 = Math.min(height - 1, Math.round(bbox.y + bbox.h) - 1);
+  if (x1 <= x0 || y1 <= y0) return null;
+
+  const stepX = Math.max(1, Math.floor((x1 - x0) / 12));
+  const stepY = Math.max(1, Math.floor((y1 - y0) / 6));
   const r = [],
     g = [],
     b = [];
-  const x0 = Math.max(0, Math.floor(bbox.x) - 4);
-  const x1 = Math.min(width - 1, Math.ceil(bbox.x + bbox.w) + 4);
-  const y0 = Math.max(0, Math.floor(bbox.y) - 4);
-  const y1 = Math.min(height - 1, Math.ceil(bbox.y + bbox.h) + 4);
-  const pushPixel = (x, y) => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    const i = (y * width + x) * channels;
-    r.push(raw[i]);
-    g.push(raw[i + 1]);
-    b.push(raw[i + 2]);
-  };
-  for (let x = x0; x <= x1; x++) {
-    pushPixel(x, y0);
-    pushPixel(x, y1);
-  }
-  for (let y = y0; y <= y1; y++) {
-    pushPixel(x0, y);
-    pushPixel(x1, y);
+  for (let y = y0; y <= y1; y += stepY) {
+    for (let x = x0; x <= x1; x += stepX) {
+      const i = (y * width + x) * channels;
+      r.push(raw[i]);
+      g.push(raw[i + 1]);
+      b.push(raw[i + 2]);
+    }
   }
   if (r.length === 0) return null;
   return [median(r), median(g), median(b), 1];
-}
-
-function isBBoxOutsideFrame(bbox, width, height) {
-  return bbox.x + bbox.w <= 0 || bbox.y + bbox.h <= 0 || bbox.x >= width || bbox.y >= height;
 }
 
 function median(arr) {

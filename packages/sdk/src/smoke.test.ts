@@ -10,7 +10,14 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { openComposition, ORIGIN_APPLY_PATCHES } from "./index.js";
+import {
+  openComposition,
+  ORIGIN_APPLY_PATCHES,
+  resolveScoped,
+  findById,
+  escapeHfId,
+  readVariableDefault,
+} from "./index.js";
 import { createMemoryAdapter } from "./adapters/memory.js";
 
 // ─── Fixture ─────────────────────────────────────────────────────────────────
@@ -311,5 +318,19 @@ describe("T3 embedded mode", () => {
     const comp2 = await openComposition(BASE_HTML, { overrides });
     expect(comp2.getElement("hf-title")?.inlineStyles.color).toBe("#0f0");
     expect(comp2.getElement("hf-body")?.text).toContain("Override text");
+  });
+});
+
+describe("engine helper exports (resolveScoped, findById, escapeHfId, readVariableDefault)", () => {
+  it("are importable from the public index and work against a live document", async () => {
+    // These operate on a Document directly, not the Composition — exercise them
+    // against a document parsed the same way the SDK parses internally.
+    const { document } = await import("linkedom").then((m) => m.parseHTML(BASE_HTML));
+    expect(findById(document as unknown as Document, "hf-title")).not.toBeNull();
+    expect(resolveScoped(document as unknown as Document, "hf-title")).not.toBeNull();
+    expect(escapeHfId('hf-"quoted"')).toBe('hf-\\"quoted\\"');
+    // readVariableDefault takes the declaration element (the <html>/root), not the Document.
+    const declEl = (document as unknown as Document).documentElement;
+    expect(readVariableDefault(declEl, "never-declared")).toBeUndefined();
   });
 });

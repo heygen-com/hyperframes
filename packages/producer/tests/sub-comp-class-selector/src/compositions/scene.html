@@ -1,0 +1,36 @@
+<template id="scene-template">
+  <div
+    id="scene-root"
+    class="scene-wrapper"
+    data-composition-id="scene"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div class="title">ISSUE 1847 REPRO</div>
+
+    <style>
+      .scene-wrapper {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        background: #111;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .scene-wrapper .title {
+        color: red;
+        font-size: 120px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        font-family: Impact, sans-serif;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene"] = gsap.timeline({ paused: true });
+    </script>
+  </div>
+</template>

@@ -149,6 +149,7 @@ function defaultBuildScopeSelector(compId: string): string {
  * 10. Remove `data-composition-src` from host
  * 11. Inject the content into the host element
  */
+// fallow-ignore-next-line complexity
 export function inlineSubCompositions(
   document: Document,
   hosts: Element[],
@@ -236,10 +237,14 @@ export function inlineSubCompositions(
     const scopeCompId = compId || inferredCompId;
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
 
-    // Variable merging (bundler feature)
+    // Variable merging (bundler feature). Read declared defaults from the
+    // document element (full-document sub-comps) AND the inner composition root
+    // (template/fragment sub-comps store their schema on the root div, not a
+    // synthetic <html>), then let per-instance host values override.
     if (readVariableDefaults && parseHostVariables && runtimeCompId) {
       const mergedVariables = {
         ...readVariableDefaults(compDoc.documentElement),
+        ...(innerRoot ? readVariableDefaults(innerRoot) : {}),
         ...parseHostVariables(hostEl),
       };
       if (Object.keys(mergedVariables).length > 0) {
@@ -247,20 +252,26 @@ export function inlineSubCompositions(
       }
     }
 
+    // Scope one sub-composition <style> body. scopeRootSelectors keeps the
+    // sub-comp's html/body/:root rules from clobbering the host document (they
+    // are remapped to the composition box); see compositionScoping.
+    const scopeSubStyle = (raw: string): string => {
+      const css = rewriteCssAssetUrls(raw, src);
+      return scopeCompId
+        ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
+            compoundAuthoredRoot: compoundAuthoredRoot === true,
+            scopeRootSelectors: true,
+          })
+        : css;
+    };
+
     // When a sub-composition is a full HTML document (no <template>), styles
     // and scripts in <head> are not part of contentDoc (which only has body
     // content). Extract them so backgrounds, positioning, fonts, and library
     // scripts (e.g. GSAP CDN) are not silently dropped.
     if (!contentRoot && compDoc.head) {
       for (const s of [...compDoc.head.querySelectorAll("style")]) {
-        const css = rewriteCssAssetUrls(s.textContent || "", src);
-        styles.push(
-          scopeCompId
-            ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-                compoundAuthoredRoot: compoundAuthoredRoot === true,
-              })
-            : css,
-        );
+        styles.push(scopeSubStyle(s.textContent || ""));
       }
       for (const s of [...compDoc.head.querySelectorAll("script")]) {
         const externalSrc = (s.getAttribute("src") || "").trim();
@@ -288,14 +299,7 @@ export function inlineSubCompositions(
 
     // Extract styles from content
     for (const s of [...contentDoc.querySelectorAll("style")]) {
-      const css = rewriteCssAssetUrls(s.textContent || "", src);
-      styles.push(
-        scopeCompId
-          ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-              compoundAuthoredRoot: compoundAuthoredRoot === true,
-            })
-          : css,
-      );
+      styles.push(scopeSubStyle(s.textContent || ""));
       s.remove();
     }
 
@@ -372,6 +376,16 @@ export function inlineSubCompositions(
       for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
+        if (!compId && inferredCompId) {
+          // Anonymous host: flattenInnerRoot strips data-composition-id,
+          // assuming the host already carries the composition's identity.
+          // When the host has none, nothing in the render DOM matches the
+          // composition's own root-styling CSS or self-referencing scripts
+          // (e.g. document.querySelector('[data-composition-id="X"]')).
+          // Restore it on the wrapper so both keep resolving, same as
+          // before flattening preserved it via outerHTML.
+          prepared.setAttribute("data-composition-id", inferredCompId);
+        }
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
         hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";

@@ -16,6 +16,7 @@ function createMockDeps() {
     onSetPlaybackRate: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
+    onSetRootDuration: vi.fn(),
     onEnablePickMode: vi.fn(),
     onDisablePickMode: vi.fn(),
   };
@@ -153,6 +154,13 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-playback-rate"));
     expect(deps.onSetPlaybackRate).toHaveBeenCalledWith(1);
+  });
+
+  it("dispatches set-root-duration command with numeric seconds", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-root-duration", { durationSeconds: "18.5" }));
+    expect(deps.onSetRootDuration).toHaveBeenCalledWith(18.5);
   });
 
   it("dispatches set-color-grading command with target and grading payload", () => {

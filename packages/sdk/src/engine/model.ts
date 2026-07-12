@@ -6,7 +6,11 @@
  */
 
 import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/core/hf-ids";
+import {
+  ensureHfIds,
+  isCompositionTemplate,
+  walkCompositionDescendants,
+} from "@hyperframes/core/hf-ids";
 
 export interface ParsedDocument {
   document: Document;
@@ -39,6 +43,42 @@ export function findById(document: Document, id: string): Element | null {
 
 export function escapeHfId(id: string): string {
   return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * querySelectorAll that also descends into COMPOSITION `<template>` subtrees
+ * (`data-composition-id` — the pattern the studio preview unwraps) — linkedom's
+ * querySelectorAll does not, so template-based sub-comp content would be
+ * unreachable for resolution/dispatch even though buildRoots models it.
+ *
+ * Implemented as a document-order DOM walk (not qsa + append) so duplicate-id
+ * tiebreaks resolve in TRUE document order — appending template matches after
+ * all top-level matches would make resolveScoped pick a different duplicate
+ * than the preview's unwrapped DOM does. Plain templates (runtime clone
+ * sources) are skipped, matching buildChildren and ensureHfIds.
+ *
+ * Throws like querySelectorAll on an invalid selector (Element.matches).
+ */
+export function querySelectorAllDeep(root: Document | Element, selector: string): Element[] {
+  const out: Element[] = [];
+  const start: Element | null =
+    "body" in root ? ((root as Document).body ?? null) : (root as Element);
+  const walk = (parent: Element): void => {
+    for (const child of Array.from(parent.children)) {
+      if (child.tagName.toLowerCase() === "template") {
+        if (isCompositionTemplate(child)) walk(child);
+        continue;
+      }
+      if (child.matches(selector)) out.push(child);
+      walk(child);
+    }
+  };
+  if (start) {
+    // When rooted at an Element (scoped-path step), the root itself is the
+    // context, not a candidate — only descendants match, like querySelectorAll.
+    walk(start);
+  }
+  return out;
 }
 
 /**
@@ -75,7 +115,7 @@ export function resolveScoped(document: Document, id: string): Element | null {
   // resolution agrees with getElement (scopedId === id wins over document order).
   if (parts.length === 1) {
     const escaped = escapeHfId(id);
-    const matches = Array.from(document.querySelectorAll(`[data-hf-id="${escaped}"]`));
+    const matches = querySelectorAllDeep(document, `[data-hf-id="${escaped}"]`);
     if (matches.length > 0) {
       return matches.find((el) => isCanonicalScope(el)) ?? matches[0] ?? null;
     }
@@ -84,20 +124,32 @@ export function resolveScoped(document: Document, id: string): Element | null {
     // (the id studio passes when targeting the sub-comp root). data-hf-id takes
     // precedence above; only when no hf-id matches do we treat the bare id as a
     // composition id, making comp-ids first-class resolvable addresses.
-    return document.querySelector(`[data-composition-id="${escaped}"]`);
+    return querySelectorAllDeep(document, `[data-composition-id="${escaped}"]`)[0] ?? null;
   }
 
   let context: Element | Document = document;
   for (const part of parts) {
     const escaped = escapeHfId(part);
     const found: Element | null =
-      context === document
-        ? (context as Document).querySelector(`[data-hf-id="${escaped}"]`)
-        : (context as Element).querySelector(`[data-hf-id="${escaped}"]`);
+      querySelectorAllDeep(context, `[data-hf-id="${escaped}"]`)[0] ?? null;
     if (!found) return null;
     context = found;
   }
   return context as Element;
+}
+
+/**
+ * Bare leaf id from a scoped hf-id ("hf-HOST/hf-LEAF" → "hf-LEAF"; a bare id
+ * passes through unchanged). The live DOM's `data-hf-id` attribute never
+ * carries the host-chain prefix, so a consumer holding a scopedId (from
+ * getElements()/getElement()) needs this to query the rendered DOM directly.
+ */
+export function bareId(scopedId: string): string {
+  const parts = scopedId.split("/");
+  // split() always returns >=1 element, so this never actually falls through at
+  // runtime — the fallback exists to satisfy noUncheckedIndexedAccess, not as a
+  // reachable safety net.
+  return parts[parts.length - 1] ?? scopedId;
 }
 
 /**
@@ -116,10 +168,25 @@ export function isNewHostBoundary(el: Element): boolean {
   return dcf !== parentDcf;
 }
 
+/**
+ * The element that carries composition-level declarations
+ * (`data-composition-variables`). Full-document comps use `<html>`; a wrapped
+ * template/fragment comp has a synthetic `<html>` that serialize() strips, so
+ * its declarations must live on the composition root div (where values/metadata
+ * already live) to survive save.
+ */
+export function declarationElement(document: Document, wrapped: boolean): Element | null {
+  if (wrapped) return findRoot(document);
+  return (document as Document & { documentElement?: Element }).documentElement ?? null;
+}
+
 export function findRoot(document: Document): Element | null {
   return (
     document.querySelector("[data-hf-root]") ??
     document.getElementById("stage") ??
+    // Descend into a composition <template> so a wrapped template sub-comp
+    // resolves to its inner [data-composition-id] root, not the <template> shell.
+    querySelectorAllDeep(document, "[data-composition-id]")[0] ??
     document.body?.firstElementChild ??
     null
   );
@@ -309,12 +376,28 @@ export function setStyleSheet(document: Document, css: string): void {
 
 // ─── GSAP script helpers ──────────────────────────────────────────────────────
 
+function findScriptElementsDeep(document: Document): Element[] {
+  const scripts: Element[] = [];
+  walkCompositionDescendants(document, (child) => {
+    if (child.tagName.toLowerCase() === "script") scripts.push(child);
+  });
+  return scripts;
+}
+
+function isGsapScriptText(text: string): boolean {
+  return text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger");
+}
+
+export function getGsapScripts(document: Document): string[] {
+  return findScriptElementsDeep(document)
+    .map((script) => script.textContent ?? "")
+    .filter(isGsapScriptText);
+}
+
 function findGsapScriptElement(document: Document): Element | null {
-  const scripts = document.querySelectorAll("script");
-  for (const script of Array.from(scripts)) {
+  for (const script of findScriptElementsDeep(document)) {
     const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("ScrollTrigger"))
-      return script as unknown as Element;
+    if (isGsapScriptText(text)) return script;
   }
   return null;
 }

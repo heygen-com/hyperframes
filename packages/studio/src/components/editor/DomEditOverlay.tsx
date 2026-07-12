@@ -1,11 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { type DomEditSelection } from "./domEditing";
+import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
 import { MarqueeOverlay } from "./MarqueeOverlay";
-import { groupAwareOverlayRect, resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
-import { collectDomEditLayerItems } from "./domEditingLayers";
-import { isElementComputedVisible } from "./domEditingElement";
+import { resolveDomEditGroupOverlayRect } from "./domEditOverlayGeometry";
 import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
@@ -20,6 +19,14 @@ import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
+import { DomEditCropHandles } from "./DomEditCropHandles";
+import { DomEditRotateHandle } from "./DomEditRotateHandle";
+import { hugRectForElement } from "./domEditOverlayCrop";
+import { useCropOverlay } from "../../hooks/useCropOverlay";
+import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
+import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
+import { useMountEffect } from "../../hooks/useMountEffect";
+import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -44,7 +51,7 @@ interface DomEditOverlayProps {
   allowCanvasMovement?: boolean;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
-    options?: { preferClipAncestor?: boolean },
+    options?: PreviewMouseDownOptions,
   ) => void;
   onCanvasPointerMove: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -68,6 +75,7 @@ interface DomEditOverlayProps {
     next: { width: number; height: number },
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
   gridVisible?: boolean;
   gridSpacing?: number;
   recordingState?: GestureRecordingState;
@@ -95,6 +103,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onGroupPathOffsetCommit,
   onBoxSizeCommit,
   onRotationCommit,
+  onStyleCommit,
   onMarqueeSelect,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -102,29 +111,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
-  // fallow-ignore-next-line complexity
-  const selectionShapeStyles = (() => {
-    const fallback = {
-      borderRadius: 8 as string | number,
-      clipPath: undefined as string | undefined,
-    };
-    if (!selection?.element) return fallback;
-    try {
-      const tag = selection.element.tagName.toLowerCase();
-      if (tag === "svg" || tag === "img" || tag === "video" || tag === "canvas") return fallback;
-      const win = selection.element.ownerDocument.defaultView;
-      if (!win) return fallback;
-      const cs = win.getComputedStyle(selection.element);
-      const br = cs.borderRadius;
-      const cp = cs.clipPath;
-      return {
-        borderRadius: br && br !== "0px" ? br : 4,
-        clipPath: cp && cp !== "none" ? cp : undefined,
-      };
-    } catch {
-      return fallback;
-    }
-  })();
+  const selectionShapeStyles = readDomEditSelectionShapeStyles(selection);
   const gestureRef = useRef<GestureState | null>(null);
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
@@ -150,6 +137,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onBoxSizeCommitRef.current = onBoxSizeCommit;
   const onRotationCommitRef = useRef(onRotationCommit);
   onRotationCommitRef.current = onRotationCommit;
+  const onStyleCommitRef = useRef(onStyleCommit);
+  onStyleCommitRef.current = onStyleCommit;
   const onBlockedMoveRef = useRef(onBlockedMove);
   onBlockedMoveRef.current = onBlockedMove;
   const onManualDragStartRef = useRef(onManualDragStart);
@@ -180,103 +169,58 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     rafPausedRef,
   });
 
-  const [compRect, setCompRect] = useState({
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-    scaleX: 1,
-    scaleY: 1,
+  const compRect = useDomEditCompositionRect({ iframeRef, overlayRef });
+  const compRectRef = useRef(compRect);
+  compRectRef.current = compRect;
+
+  const { hasCropInsets, cropOutlineInsetPx } = useCropOverlay({
+    selection,
+    overlayRect,
   });
-  useMountEffect(() => {
-    let frame = 0;
-    // fallow-ignore-next-line complexity
-    const update = () => {
-      frame = requestAnimationFrame(update);
-      const iframe = iframeRef.current;
-      const overlayEl = overlayRef.current;
-      if (!iframe || !overlayEl) return;
-      const iRect = iframe.getBoundingClientRect();
-      const oRect = overlayEl.getBoundingClientRect();
-      const left = iRect.left - oRect.left;
-      const top = iRect.top - oRect.top;
-      if (iRect.width <= 0 || iRect.height <= 0) return;
-      const doc = iframe.contentDocument;
-      const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
-      const dw = Number.parseFloat(root?.getAttribute("data-width") ?? "");
-      const dh = Number.parseFloat(root?.getAttribute("data-height") ?? "");
-      const scaleX = dw > 0 ? iRect.width / dw : 1;
-      const scaleY = dh > 0 ? iRect.height / dh : 1;
-      setCompRect((prev) => {
-        if (
-          Math.abs(prev.left - left) < 0.5 &&
-          Math.abs(prev.top - top) < 0.5 &&
-          Math.abs(prev.width - iRect.width) < 0.5 &&
-          Math.abs(prev.height - iRect.height) < 0.5 &&
-          Math.abs(prev.scaleX - scaleX) < 0.001 &&
-          Math.abs(prev.scaleY - scaleY) < 0.001
-        )
-          return prev;
-        return { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };
-      });
-    };
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
-  });
+  // Inset crops draw their own outline child; other clip shapes keep the raw mirror.
+  const boxClipPath = hasCropInsets ? undefined : selectionShapeStyles.clipPath;
+  const boxChromeClass = resolveBoxChromeClass(Boolean(cropOutlineInsetPx), boxClipPath);
 
   // Off-canvas element indicators — dashed outlines for elements positioned
   // outside the composition bounds so users can find them.
   const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  // fallow-ignore-next-line complexity
+  const offCanvasDirtyRef = useRef(true);
+  const offCanvasSigRef = useRef("");
+  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
+  const offCanvasObservedDocRef = useRef<Document | null>(null);
+
+  // Positions depend on live iframe layout, not selection — the selected-element
+  // suppression is a render-time filter, so selection/groupSelections stay out
+  // of the geometry walk.
+  useMountEffect(() =>
+    startOffCanvasIndicatorRefresh({
+      iframeRef,
+      overlayRef,
+      compRectRef,
+      activeCompositionPathRef,
+      dirtyRef: offCanvasDirtyRef,
+      sigRef: offCanvasSigRef,
+      observerRef: offCanvasObserverRef,
+      observedDocRef: offCanvasObservedDocRef,
+      elementsRef: offCanvasElementsRef,
+      setRects: setOffCanvasRects,
+    }),
+  );
+
+  // Switching compositions may not swap the iframe document (so the observer's
+  // doc-swap detection wouldn't fire) yet changes which elements are off-canvas.
+  // Force a recompute explicitly on comp change.
   useEffect(() => {
-    const iframe = iframeRef.current;
-    const overlay = overlayRef.current;
-    if (!iframe || !overlay || compRect.width <= 0) {
-      setOffCanvasRects([]);
-      return;
-    }
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-    const root = doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.body;
-    const acp = activeCompositionPath ?? "index.html";
-    const items = collectDomEditLayerItems(root, {
-      activeCompositionPath: acp,
-      isMasterView: !acp || acp === "index.html",
-    });
-    const rects: typeof offCanvasRects = [];
-    const elMap = new Map<string, HTMLElement>();
-    for (const item of items) {
-      if (!isElementComputedVisible(item.element)) continue;
-      // Groups use their members' union (where they actually render), so a group
-      // whose members sit inside the canvas isn't flagged off-canvas by a stale
-      // wrapper box.
-      const r = groupAwareOverlayRect(overlay, iframe, item.element);
-      if (!r) continue;
-      // Any edge crossing the composition border → gray-zone indicator (the
-      // in-canvas portion is clipped away below, so only the sliver shows).
-      const extendsOutsideComp =
-        r.left < compRect.left ||
-        r.left + r.width > compRect.left + compRect.width ||
-        r.top < compRect.top ||
-        r.top + r.height > compRect.top + compRect.height;
-      if (extendsOutsideComp) {
-        rects.push({ key: item.key, left: r.left, top: r.top, width: r.width, height: r.height });
-        elMap.set(item.key, item.element);
-      }
-    }
-    offCanvasElementsRef.current = elMap;
-    setOffCanvasRects(rects);
-    // Positions depend on layout, not selection — the selected-element
-    // suppression is a render-time filter, so selection/groupSelections stay
-    // out of the deps to avoid re-walking geometry on each selection change.
-  }, [iframeRef, compRect, activeCompositionPath]);
+    offCanvasDirtyRef.current = true;
+  }, [activeCompositionPath]);
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
     iframeRef,
     boxRef,
     selectionRef,
+    hoverSelectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
     gestureRef,
@@ -336,7 +280,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // Allow clicks anywhere on the overlay — GSAP-translated elements can
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
-    onCanvasMouseDown(event, { preferClipAncestor: false });
+    onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
     if (event.shiftKey) {
       suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
@@ -362,8 +306,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    // Start marquee if clicking on empty canvas (no element under pointer)
+    // Start marquee if clicking on empty canvas (no element under pointer).
+    // The hover selection is an ASYNC cache: on a fast click (or when the
+    // pointer was already resting over an element) it can still be empty while
+    // an element IS under the pointer — starting a marquee here would swallow
+    // the selection mousedown and the click would silently select nothing.
+    // Confirm emptiness with a fresh SYNCHRONOUS hit-test before committing.
     if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
+      const iframe = iframeRef.current;
+      const freshTarget = iframe
+        ? getPreviewTargetFromPointer(
+            iframe,
+            event.clientX,
+            event.clientY,
+            activeCompositionPathRef.current,
+          )
+        : null;
+      if (freshTarget) return;
       const overlayEl = overlayRef.current;
       if (overlayEl) {
         const oRect = overlayEl.getBoundingClientRect();
@@ -401,7 +360,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       event.stopPropagation();
       return;
     }
-    onCanvasMouseDown(event, { preferClipAncestor: false });
+    onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
   };
 
   const suppressBoxMouseDown = (e: React.MouseEvent) => {
@@ -433,13 +392,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
-          className="pointer-events-none absolute rounded-md border border-studio-accent/80 bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-          style={{
-            left: hoverRect.left,
-            top: hoverRect.top,
-            width: hoverRect.width,
-            height: hoverRect.height,
-          }}
+          className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+          style={hugRectForElement(hoverRect, hoverSelection.element)}
         />
       )}
       {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && compRect.width > 0 && (
@@ -448,7 +402,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             <div
               key={item.key}
               aria-hidden="true"
-              className="pointer-events-none absolute rounded-xl border border-studio-accent/70 bg-studio-accent/[0.03]"
+              className="pointer-events-none absolute rounded-xl border border-studio-accent/70"
               style={{
                 left: item.rect.left,
                 top: item.rect.top,
@@ -459,7 +413,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           ))}
           <div
             data-dom-edit-selection-box="true"
-            className="pointer-events-auto absolute rounded-xl border border-studio-accent bg-studio-accent/5 shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
+            className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
             style={{
               left: groupBounds.left,
               top: groupBounds.top,
@@ -479,41 +433,26 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
         <>
           {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
-            <div
-              className="pointer-events-none absolute"
-              style={{
-                left: overlayRect.left + overlayRect.width / 2,
-                top: overlayRect.top - 34,
-                width: 28,
-                height: 34,
-                transform: "translateX(-50%)",
+            <DomEditRotateHandle
+              overlayRect={overlayRect}
+              cropOutlineInsetPx={cropOutlineInsetPx}
+              onStartRotate={(e) => {
+                e.stopPropagation();
+                gestures.startGesture("rotate", e);
               }}
-            >
-              <div className="absolute left-1/2 top-3 bottom-0 w-px -translate-x-1/2 bg-studio-accent/60" />
-              <button
-                type="button"
-                className="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
-                style={{ cursor: "grab", touchAction: "none" }}
-                title="Rotate"
-                aria-label="Rotate selection"
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  gestures.startGesture("rotate", e);
-                }}
-              />
-            </div>
+            />
           )}
           <div
             key={selectionKey}
             ref={boxRef}
             data-dom-edit-selection-box="true"
-            className={`pointer-events-auto absolute rounded-md ${selectionShapeStyles.clipPath ? "shadow-[inset_0_0_0_2px_rgba(60,230,172,0.6)]" : "border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"} bg-studio-accent/5`}
+            className={`pointer-events-auto absolute rounded-md ${boxChromeClass}`}
             style={{
               left: overlayRect.left,
               top: overlayRect.top,
               width: overlayRect.width,
               height: overlayRect.height,
-              clipPath: selectionShapeStyles.clipPath,
+              clipPath: boxClipPath,
               cursor:
                 allowCanvasMovement && selection.capabilities.canApplyManualOffset
                   ? "move"
@@ -538,10 +477,28 @@ export const DomEditOverlay = memo(function DomEditOverlay({
             onMouseDown={suppressBoxMouseDown}
             onClick={handleBoxClick}
           >
+            {cropOutlineInsetPx && (
+              <div
+                className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+                style={{
+                  left: cropOutlineInsetPx.left,
+                  top: cropOutlineInsetPx.top,
+                  right: cropOutlineInsetPx.right,
+                  bottom: cropOutlineInsetPx.bottom,
+                }}
+              />
+            )}
             {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
               <div
                 className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
-                style={{ cursor: "se-resize", touchAction: "none" }}
+                style={{
+                  cursor: "se-resize",
+                  touchAction: "none",
+                  ...(cropOutlineInsetPx && {
+                    right: cropOutlineInsetPx.right - 6,
+                    bottom: cropOutlineInsetPx.bottom - 6,
+                  }),
+                }}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   gestures.startGesture("resize", e);
@@ -549,6 +506,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               />
             )}
           </div>
+          {selection.capabilities.canCrop && groupSelections.length <= 1 && (
+            <DomEditCropHandles
+              selection={selection}
+              overlayRect={overlayRect}
+              onStyleCommit={onStyleCommitRef.current}
+            />
+          )}
         </>
       )}
       {childRects.length > 0 &&

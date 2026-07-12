@@ -117,13 +117,13 @@ Render your Hyperframes [compositions](/concepts/compositions) to MP4, MOV, WebM
 |------|--------|---------|-------------|
 | `--output` | path | `renders/<name>.mp4` | Output file path |
 | `--format` | mp4, mov, webm, gif, png-sequence | mp4 | Output format (see [Transparent Video](#transparent-video) below) |
-| `--fps` | 24, 30, 60 | 30 | Frames per second |
+| `--fps` | 1-240 or rational (e.g. `30000/1001`) | 30 | Frames per second |
 | `--gif-loop` | 0-65535 | 0 | GIF loop count. `0` loops forever |
 | `--quality` | draft, standard, high | standard | Encoding quality preset |
 | `--crf` | 0–51 | — | Override CRF (lower = higher quality). Cannot combine with `--video-bitrate` |
 | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target bitrate encoding. Cannot combine with `--crf` |
 | `--video-frame-format` | auto, jpg, png | auto | Source video frame extraction format. Use `png` for UI recordings, screen captures, and color-sensitive source videos |
-| `--workers` | 1-8 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
+| `--workers` | 1-24 or `auto` | auto | Parallel render workers (see [Workers](#workers) below) |
 | `--max-concurrent-renders` | 1-10 | 2 | Max simultaneous renders via the producer server (see [Concurrent Renders](#concurrent-renders) below) |
 | `--batch` | path | — | JSON array of variable rows (or `{ "rows": [...] }`), rendering one output per row |
 | `--batch-concurrency` | integer | 1 | Maximum batch rows to render at once |
@@ -197,16 +197,16 @@ Each render worker launches a **separate Chrome browser process** to capture fra
 
 ### Default behavior
 
-By default, Hyperframes uses **half of your CPU cores, capped at 4**:
+By default, Hyperframes uses **CPU cores minus 2** (reserving headroom for FFmpeg encoding and your other applications):
 
 | Machine | CPU cores | Default workers |
 |---------|-----------|----------------|
-| MacBook Air (M1) | 8 | 4 |
-| MacBook Pro (M3) | 12 | 4 (capped) |
+| MacBook Air (M1) | 8 | 6 |
+| MacBook Pro (M3) | 12 | 10 |
 | 4-core laptop | 4 | 2 |
 | 2-core VM | 2 | 1 |
 
-This is intentionally conservative. Each worker spawns its own Chrome process, so the per-worker overhead is significant. Fewer workers avoids resource contention with FFmpeg encoding and your other applications.
+Each worker spawns its own Chrome process (~256 MB RAM), so the per-worker overhead is significant. The maximum is 24 workers (hard ceiling).
 
 ### Choosing a worker count
 
@@ -218,7 +218,7 @@ npx hyperframes render --workers 1 --output output.mp4
 npx hyperframes render --workers auto --output output.mp4
 
 # Maximum parallelism (use with caution on laptops)
-npx hyperframes render --workers 8 --output output.mp4
+npx hyperframes render --workers 24 --output output.mp4
 ```
 
 <Tip>

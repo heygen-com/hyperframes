@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serveStaticProjectHtml, type StaticProjectServer } from "./staticProjectServer.js";
@@ -64,5 +64,48 @@ describe("serveStaticProjectHtml range support", () => {
     const res = await fetch(`${url}tone.wav`, { headers: { Range: "bytes=99-200" } });
     expect(res.status).toBe(416);
     expect(res.headers.get("content-range")).toBe(`bytes */${body.length}`);
+  });
+});
+
+describe("serveStaticProjectHtml asset roots", () => {
+  const extraDirs: string[] = [];
+  const mk = (): string => {
+    const d = mkdtempSync(join(tmpdir(), "hf-static-root-"));
+    extraDirs.push(d);
+    return d;
+  };
+  afterEach(() => {
+    for (const d of extraDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("serves files from an extra asset root when the project dir lacks them", async () => {
+    // extra root (e.g. localized-assets temp dir) resolves same-origin
+    const projectDir = mk();
+    const assetDir = mk();
+    mkdirSync(join(assetDir, "_remote_media"), { recursive: true });
+    writeFileSync(join(assetDir, "_remote_media", "img.jpg"), "PIXELS");
+    server = await serveStaticProjectHtml(projectDir, "<html></html>", undefined, [assetDir]);
+
+    const res = await fetch(`${server.url}_remote_media/img.jpg`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("PIXELS");
+  });
+
+  it("prefers the project dir over an asset root for the same path", async () => {
+    const projectDir = mk();
+    const assetDir = mk();
+    writeFileSync(join(projectDir, "a.txt"), "PROJECT");
+    writeFileSync(join(assetDir, "a.txt"), "ASSET");
+    server = await serveStaticProjectHtml(projectDir, "<html></html>", undefined, [assetDir]);
+
+    const res = await fetch(`${server.url}a.txt`);
+    expect(await res.text()).toBe("PROJECT");
+  });
+
+  it("404s a path present in no root", async () => {
+    const projectDir = mk();
+    server = await serveStaticProjectHtml(projectDir, "<html></html>", undefined, [mk()]);
+    const res = await fetch(`${server.url}nope.txt`);
+    expect(res.status).toBe(404);
   });
 });

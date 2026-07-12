@@ -8,6 +8,7 @@ import {
   realpathSync,
   mkdirSync,
   copyFileSync,
+  unlinkSync,
 } from "node:fs";
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import type { ViteDevServer } from "vite";
@@ -15,6 +16,8 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type StudioApiAdapter,
+  type BackgroundRemovalRender,
+  createBackgroundRemovalJob,
   createProjectSignature,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
@@ -32,7 +35,10 @@ export function isPathWithin(parentDir: string, childPath: string): boolean {
 
 export function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAdapter {
   let _bundler:
-    | ((dir: string, options?: { runtime?: "inline" | "placeholder" }) => Promise<string>)
+    | ((
+        dir: string,
+        options?: { runtime?: "inline" | "placeholder"; inlineColorGradingLuts?: boolean },
+      ) => Promise<string>)
     | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -42,6 +48,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           format: string;
           renderBodyScripts?: string[];
           outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
+          variables?: Record<string, unknown>;
         }) => unknown;
         executeRenderJob: (
           job: unknown,
@@ -162,7 +169,7 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
     async bundle(dir: string) {
       const bundler = await getBundler();
       if (!bundler) return null;
-      let html = await bundler(dir, { runtime: "placeholder" });
+      let html = await bundler(dir, { runtime: "placeholder", inlineColorGradingLuts: false });
       html = html.replace(
         'data-hyperframes-preview-runtime="1" src=""',
         `data-hyperframes-preview-runtime="1" src="${this.runtimeUrl}"`,
@@ -199,14 +206,31 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
     rendersDir: () => resolve(dataDir, "../renders"),
 
     startRender(opts): RenderJobState {
+      const abortController = new AbortController();
       const state: RenderJobState = {
         id: opts.jobId,
         status: "rendering",
         progress: 0,
         outputPath: opts.outputPath,
+        cancel: () => abortController.abort(),
       };
 
       const startTime = Date.now();
+      const removeCancelledOutput = () => {
+        // User-initiated cancel: not a failure. Remove any output so the
+        // cancelled job doesn't resurrect in the render history.
+        state.status = "cancelled";
+        for (const fp of [
+          opts.outputPath,
+          opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json"),
+        ]) {
+          try {
+            if (existsSync(fp)) unlinkSync(fp);
+          } catch {
+            /* ignore */
+          }
+        }
+      };
       // fallow-ignore-next-line complexity
       (async () => {
         try {
@@ -223,12 +247,25 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
             ...(opts.composition ? { entryFile: opts.composition } : {}),
+            ...(opts.variables ? { variables: opts.variables } : {}),
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(job, opts.project.dir, opts.outputPath, onProgress);
+          await executeRenderJob(
+            job,
+            opts.project.dir,
+            opts.outputPath,
+            onProgress,
+            abortController.signal,
+          );
+          if (abortController.signal.aborted) {
+            // Cancel landed just as the render finished: honor the cancel the
+            // route already reported instead of resurrecting a completed job.
+            removeCancelledOutput();
+            return;
+          }
           state.status = "complete";
           state.progress = 100;
           const metaPath = opts.outputPath.replace(/\.(mp4|webm|mov)$/, ".meta.json");
@@ -237,6 +274,10 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
             JSON.stringify({ status: "complete", durationMs: Date.now() - startTime }),
           );
         } catch (err) {
+          if (abortController.signal.aborted) {
+            removeCancelledOutput();
+            return;
+          }
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
           try {
@@ -249,6 +290,16 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       })();
 
       return state;
+    },
+
+    startBackgroundRemoval(opts) {
+      return createBackgroundRemovalJob(opts, async (renderOpts) => {
+        const mod = await server.ssrLoadModule(
+          resolve(__dirname, "../cli/src/background-removal/pipeline.ts"),
+        );
+        const render = mod.render as BackgroundRemovalRender;
+        return render(renderOpts);
+      });
     },
 
     async generateThumbnail(opts) {

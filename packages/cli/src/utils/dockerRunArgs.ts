@@ -22,9 +22,9 @@ export interface DockerRunArgsInput {
    * resolves to the host architecture via `resolveDockerPlatform()`. Pinning
    * to `linux/amd64` on an arm64 host (the legacy default) forces qemu
    * emulation of chrome-headless-shell, which segfaults or stalls on Apple
-   * Silicon — see issue #1193. Native `linux/arm64` falls back to the
-   * system chromium baked into the image at the cost of byte-for-byte
-   * parity with amd64 renders.
+   * Silicon — see issue #1193. Native `linux/arm64` uses Playwright's pinned
+   * arm64 chrome-headless-shell baked into the image at the cost of
+   * byte-for-byte parity with amd64 renders.
    */
   platform?: string;
   options: DockerRenderOptions;
@@ -56,6 +56,8 @@ export interface DockerRenderOptions {
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
   outputResolution?: string;
   pageSideCompositing?: boolean;
+  /** EXPERIMENTAL. drawElementImage frame capture; forwarded as `--experimental-fast-capture`. */
+  experimentalFastCapture?: boolean;
   /**
    * Puppeteer page-navigation timeout, in milliseconds. Forwarded to the
    * in-container CLI as `--browser-timeout <seconds>` (the CLI takes
@@ -144,6 +146,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.entryFile ? ["--composition", options.entryFile] : []),
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
     ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),
+    ...(options.experimentalFastCapture ? ["--experimental-fast-capture"] : []),
     ...(options.pageNavigationTimeoutMs != null
       ? ["--browser-timeout", String(options.pageNavigationTimeoutMs / 1000)]
       : []),

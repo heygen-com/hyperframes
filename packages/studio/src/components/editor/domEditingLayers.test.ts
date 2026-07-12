@@ -4,10 +4,26 @@ import {
   collectDomEditLayerItems,
   resolveDomEditSelection,
   buildDomEditPatchTarget,
+  buildTextFieldChildLocator,
   readHfId,
 } from "./domEditingLayers";
+import type { DomEditTextField } from "./domEditingTypes";
 
 const opts = { activeCompositionPath: "index.html", isMasterView: true, skipSourceProbe: true };
+
+function textField(overrides: Partial<DomEditTextField> = {}): DomEditTextField {
+  return {
+    key: "child:0:span",
+    label: "Text 1",
+    value: "Hello",
+    tagName: "span",
+    attributes: [],
+    inlineStyles: {},
+    computedStyles: {},
+    source: "child",
+    ...overrides,
+  };
+}
 
 describe("buildDomEditPatchTarget", () => {
   it("includes hfId when selection has hfId", () => {
@@ -170,5 +186,41 @@ describe("resolveDomEditSelection — data-hf-group capture", () => {
     // Drill-in is non-sticky: clicking outside the active group exits it and
     // resolves the clicked element normally (rather than selecting nothing).
     expect(selection?.id).toBe("outside");
+  });
+});
+
+describe("buildTextFieldChildLocator", () => {
+  it("locates a child field using its DOM-derived sourceChildIndex", () => {
+    const fields = [textField({ key: "child:0:span", sourceChildIndex: 0 })];
+
+    expect(buildTextFieldChildLocator(fields, "child:0:span")).toEqual({
+      childSelector: ":scope > span",
+      childIndex: 0,
+    });
+  });
+
+  it("fails closed for a synthetic child field with no sourceChildIndex", () => {
+    // A field built by buildDefaultDomEditTextField (e.g. "add text field")
+    // has never been read back from the live DOM, so its true position among
+    // same-tag siblings is unknown. Guessing it by counting same-tag "child"
+    // fields elsewhere in the array can silently point at the wrong element.
+    const fields = [
+      textField({ key: "child:0:span", sourceChildIndex: 0 }),
+      textField({ key: "child:new:1", tagName: "span" }),
+    ];
+
+    expect(buildTextFieldChildLocator(fields, "child:new:1")).toBeNull();
+  });
+
+  it("returns null for a self-sourced field", () => {
+    const fields = [textField({ key: "self:0:div", source: "self", sourceChildIndex: 0 })];
+
+    expect(buildTextFieldChildLocator(fields, "self:0:div")).toBeNull();
+  });
+
+  it("returns null for an unknown field key", () => {
+    const fields = [textField({ key: "child:0:span", sourceChildIndex: 0 })];
+
+    expect(buildTextFieldChildLocator(fields, "missing")).toBeNull();
   });
 });

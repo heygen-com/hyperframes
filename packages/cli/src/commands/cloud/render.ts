@@ -6,8 +6,11 @@
  *      `--url`).
  *   2. Zip the project (reuses `createPublishArchive` so the
  *      file-ignore set matches the existing `publish` command exactly).
- *   3. Upload the zip via `POST /v3/assets` (multipart) — the server
- *      branches on the detected `application/zip` MIME.
+ *   3. Upload the zip via the direct-to-S3 flow: `POST /v3/assets/
+ *      direct-uploads` returns a presigned URL, we PUT the zip bytes
+ *      to it, then `POST /v3/assets/{asset_id}/complete` finalizes.
+ *      Cap: 200 MB. See `../../cloud/upload.ts` for the three-step
+ *      contract. (The legacy `POST /v3/assets` proxy path was 32 MB.)
  *   4. Submit the render via `POST /v3/hyperframes/renders` with a
  *      `project: {type:"asset_id", asset_id}` shape.
  *   5. If `--no-wait`: print the `render_id` and exit immediately.
@@ -53,6 +56,7 @@ import {
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
+import { uploadZipViaDirectUpload } from "../../cloud/upload.js";
 import { colorStatus } from "../../cloud/statusColor.js";
 import type {
   CreateHyperframesRenderRequest,
@@ -552,22 +556,27 @@ async function maybeUploadProject(
 
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Uploading to /v3/assets`);
+    console.log(`${c.accent("◆")}  Uploading (direct-to-S3)`);
   }
   const uploadStart = Date.now();
   let uploaded;
   try {
-    uploaded = await client.uploadAsset({
-      file: archive.buffer,
+    uploaded = await uploadZipViaDirectUpload({
+      client,
+      bytes: archive.buffer,
       filename: `${project.name}.zip`,
-      // Tag the multipart part with application/zip so downstream
-      // proxies / WAFs / any server-side path that keys off the
-      // part Content-Type see the intended type. The asset
-      // controller currently sniffs magic bytes from the file
-      // bytes, so this is belt-and-suspenders today; without it,
-      // FormData defaults to application/octet-stream.
-      mimeType: "application/zip",
       idempotencyKey,
+      onProgress: !asJson
+        ? (ev) => {
+            if (ev.phase === "initialize") {
+              console.log(c.dim(`   initializing…`));
+            } else if (ev.phase === "upload" && ev.percent === 0) {
+              console.log(c.dim(`   uploading to S3…`));
+            } else if (ev.phase === "complete") {
+              console.log(c.dim(`   finalizing…`));
+            }
+          }
+        : undefined,
     });
   } catch (err) {
     reportApiError("Upload failed", err);

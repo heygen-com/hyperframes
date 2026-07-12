@@ -39,7 +39,7 @@ import {
 import type {
   HyperframeLintResult,
   HyperframeLintFinding,
-  HyperframeLintSeverity,   // "error" | "warning"
+  HyperframeLintSeverity,   // "error" | "warning" | "info"
   HyperframeLinterOptions,
   ProjectLintResult,
 } from '@hyperframes/lint';
@@ -74,7 +74,7 @@ const result: ProjectLintResult = await lintProject('./my-composition');
 // result.totalErrors, result.totalWarnings, result.results[]
 //   each result entry: { file, result: HyperframeLintResult }
 
-if (shouldBlockRender(result)) {
+if (shouldBlockRender(false, false, result.totalErrors, result.totalWarnings)) {
   throw new Error(`Lint found ${result.totalErrors} blocking error(s)`);
 }
 ```

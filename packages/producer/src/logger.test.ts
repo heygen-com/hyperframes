@@ -1,13 +1,59 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createConsoleLogger, defaultLogger } from "./logger.js";
 import type { LogLevel, ProducerLogger } from "./logger.js";
 
+// `isLevelEnabled` is optional on ProducerLogger, so every call site guards
+// it with `?.`; pulled out once so the loops below stay single-branch.
+function isLevelEnabledSafe(
+  log: Pick<ProducerLogger, "isLevelEnabled">,
+  level: LogLevel,
+): boolean | undefined {
+  return log.isLevelEnabled?.(level);
+}
+
+// Shared by the isLevelEnabled matrix cases below: assert a threshold's
+// enabled levels report true and its disabled levels report false.
+function assertLevelEnabledMatrix(
+  log: Pick<ProducerLogger, "isLevelEnabled">,
+  enabled: ReadonlyArray<LogLevel>,
+  disabled: ReadonlyArray<LogLevel>,
+): void {
+  for (const lvl of enabled) {
+    expect(isLevelEnabledSafe(log, lvl)).toBe(true);
+  }
+  for (const lvl of disabled) {
+    expect(isLevelEnabledSafe(log, lvl)).toBe(false);
+  }
+}
+
+// The `isLevelEnabled?.("debug") ?? true` call-site gate pattern itself,
+// isolated so runGatedDebugLoop's own branch count stays at "loop + if".
+function isDebugGated(log: Pick<ProducerLogger, "isLevelEnabled">): boolean {
+  return log.isLevelEnabled?.("debug") ?? true;
+}
+
+// Shared by the call-site gate cases below: run the `isLevelEnabled?.("debug")
+// ?? true` pattern callers use to skip expensive meta construction, the
+// exact number of times the test needs, so each test asserts only the
+// pattern's outcome (buildCount / logged calls) and not the loop mechanics.
+function runGatedDebugLoop(
+  log: Pick<ProducerLogger, "debug" | "isLevelEnabled">,
+  iterations: number,
+  buildMeta: () => Record<string, unknown>,
+): void {
+  for (let i = 0; i < iterations; i++) {
+    if (isDebugGated(log)) {
+      log.debug("evt", buildMeta());
+    }
+  }
+}
+
 describe("createConsoleLogger", () => {
-  // We capture calls to console.{log,warn,error} via `mock` so we can
+  // We capture calls to console.{log,warn,error} via `vi.fn` so we can
   // assert what would have been printed without polluting test output.
-  let logSpy: ReturnType<typeof mock>;
-  let warnSpy: ReturnType<typeof mock>;
-  let errorSpy: ReturnType<typeof mock>;
+  let logSpy: ReturnType<typeof vi.fn>;
+  let warnSpy: ReturnType<typeof vi.fn>;
+  let errorSpy: ReturnType<typeof vi.fn>;
   let origLog: typeof console.log;
   let origWarn: typeof console.warn;
   let origError: typeof console.error;
@@ -16,9 +62,9 @@ describe("createConsoleLogger", () => {
     origLog = console.log;
     origWarn = console.warn;
     origError = console.error;
-    logSpy = mock(() => {});
-    warnSpy = mock(() => {});
-    errorSpy = mock(() => {});
+    logSpy = vi.fn();
+    warnSpy = vi.fn();
+    errorSpy = vi.fn();
     console.log = logSpy as unknown as typeof console.log;
     console.warn = warnSpy as unknown as typeof console.warn;
     console.error = errorSpy as unknown as typeof console.error;
@@ -30,6 +76,43 @@ describe("createConsoleLogger", () => {
     console.error = origError;
   });
 
+  // All four levels are stderr-bound (console.error/console.warn); console.log
+  // (stdout) must never be touched, since producer runs inside CLI commands
+  // whose stdout is a machine-readable contract (e.g. `validate --json`).
+  describe("stdout/stderr routing", () => {
+    it("info and debug write to console.error (stderr), never console.log (stdout)", () => {
+      const log = createConsoleLogger("debug");
+      log.info("info-msg");
+      log.debug("debug-msg");
+
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls.map((c) => c[0])).toEqual([
+        "[INFO] info-msg",
+        "[DEBUG] debug-msg",
+      ]);
+    });
+
+    it("warn and error keep their pre-existing channels (console.warn / console.error)", () => {
+      const log = createConsoleLogger("debug");
+      log.warn("warn-msg");
+      log.error("error-msg");
+
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0]?.[0]).toBe("[WARN] warn-msg");
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[ERROR] error-msg");
+    });
+
+    it("console.log is never called at any level", () => {
+      const log = createConsoleLogger("debug");
+      log.debug("d");
+      log.info("i");
+      log.warn("w");
+      log.error("e");
+
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe("level filtering", () => {
     it("level=info drops debug, keeps info/warn/error", () => {
       const log = createConsoleLogger("info");
@@ -38,12 +121,12 @@ describe("createConsoleLogger", () => {
       log.warn("warn-msg");
       log.error("error-msg");
 
-      expect(logSpy.mock.calls.length).toBe(1);
-      expect(logSpy.mock.calls[0]?.[0]).toBe("[INFO] info-msg");
+      // info + error both route to console.error now (info: stderr routing, error: always stderr).
+      expect(errorSpy.mock.calls.length).toBe(2);
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[INFO] info-msg");
+      expect(errorSpy.mock.calls[1]?.[0]).toBe("[ERROR] error-msg");
       expect(warnSpy.mock.calls.length).toBe(1);
       expect(warnSpy.mock.calls[0]?.[0]).toBe("[WARN] warn-msg");
-      expect(errorSpy.mock.calls.length).toBe(1);
-      expect(errorSpy.mock.calls[0]?.[0]).toBe("[ERROR] error-msg");
     });
 
     it("level=debug keeps all four levels", () => {
@@ -53,12 +136,12 @@ describe("createConsoleLogger", () => {
       log.warn("w");
       log.error("e");
 
-      // info + debug both go to console.log
-      expect(logSpy.mock.calls.length).toBe(2);
-      expect(logSpy.mock.calls[0]?.[0]).toBe("[DEBUG] d");
-      expect(logSpy.mock.calls[1]?.[0]).toBe("[INFO] i");
+      // debug + info + error all go to console.error
+      expect(errorSpy.mock.calls.length).toBe(3);
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[DEBUG] d");
+      expect(errorSpy.mock.calls[1]?.[0]).toBe("[INFO] i");
+      expect(errorSpy.mock.calls[2]?.[0]).toBe("[ERROR] e");
       expect(warnSpy.mock.calls.length).toBe(1);
-      expect(errorSpy.mock.calls.length).toBe(1);
     });
 
     it("level=warn drops info and debug, keeps warn/error", () => {
@@ -68,9 +151,9 @@ describe("createConsoleLogger", () => {
       log.warn("w");
       log.error("e");
 
-      expect(logSpy.mock.calls.length).toBe(0);
-      expect(warnSpy.mock.calls.length).toBe(1);
       expect(errorSpy.mock.calls.length).toBe(1);
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[ERROR] e");
+      expect(warnSpy.mock.calls.length).toBe(1);
     });
 
     it("level=error drops everything except error", () => {
@@ -80,7 +163,6 @@ describe("createConsoleLogger", () => {
       log.warn("w");
       log.error("e");
 
-      expect(logSpy.mock.calls.length).toBe(0);
       expect(warnSpy.mock.calls.length).toBe(0);
       expect(errorSpy.mock.calls.length).toBe(1);
     });
@@ -90,8 +172,8 @@ describe("createConsoleLogger", () => {
       log.debug("d");
       log.info("i");
 
-      expect(logSpy.mock.calls.length).toBe(1);
-      expect(logSpy.mock.calls[0]?.[0]).toBe("[INFO] i");
+      expect(errorSpy.mock.calls.length).toBe(1);
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[INFO] i");
     });
   });
 
@@ -100,14 +182,14 @@ describe("createConsoleLogger", () => {
       const log = createConsoleLogger("info");
       log.info("hello", { a: 1, b: "two" });
 
-      expect(logSpy.mock.calls[0]?.[0]).toBe('[INFO] hello {"a":1,"b":"two"}');
+      expect(errorSpy.mock.calls[0]?.[0]).toBe('[INFO] hello {"a":1,"b":"two"}');
     });
 
     it("emits message only when meta is omitted", () => {
       const log = createConsoleLogger("info");
       log.info("plain");
 
-      expect(logSpy.mock.calls[0]?.[0]).toBe("[INFO] plain");
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[INFO] plain");
     });
 
     it("does not invoke JSON.stringify when level is filtered out", () => {
@@ -123,7 +205,7 @@ describe("createConsoleLogger", () => {
       };
       // Should not throw — debug is below the info threshold.
       log.debug("trap", trap as unknown as Record<string, unknown>);
-      expect(logSpy.mock.calls.length).toBe(0);
+      expect(errorSpy.mock.calls.length).toBe(0);
     });
   });
 
@@ -158,12 +240,7 @@ describe("createConsoleLogger", () => {
     for (const { threshold, enabled, disabled } of cases) {
       it(`level=${threshold} reports enabled levels correctly`, () => {
         const log = createConsoleLogger(threshold);
-        for (const lvl of enabled) {
-          expect(log.isLevelEnabled?.(lvl)).toBe(true);
-        }
-        for (const lvl of disabled) {
-          expect(log.isLevelEnabled?.(lvl)).toBe(false);
-        }
+        assertLevelEnabledMatrix(log, enabled, disabled);
       });
     }
 
@@ -178,14 +255,10 @@ describe("createConsoleLogger", () => {
         return { expensive: true };
       };
 
-      for (let i = 0; i < 100; i++) {
-        if (log.isLevelEnabled?.("debug") ?? true) {
-          log.debug("hot-loop", buildMeta());
-        }
-      }
+      runGatedDebugLoop(log, 100, buildMeta);
 
       expect(buildCount).toBe(0);
-      expect(logSpy.mock.calls.length).toBe(0);
+      expect(errorSpy.mock.calls.length).toBe(0);
     });
 
     it("call-site gate runs the meta builder when debug is enabled", () => {
@@ -196,14 +269,10 @@ describe("createConsoleLogger", () => {
         return { iter: buildCount };
       };
 
-      for (let i = 0; i < 5; i++) {
-        if (log.isLevelEnabled?.("debug") ?? true) {
-          log.debug("loop", buildMeta());
-        }
-      }
+      runGatedDebugLoop(log, 5, buildMeta);
 
       expect(buildCount).toBe(5);
-      expect(logSpy.mock.calls.length).toBe(5);
+      expect(errorSpy.mock.calls.length).toBe(5);
     });
 
     it("custom logger without isLevelEnabled falls back to running the meta builder (`?? true`)", () => {
@@ -224,11 +293,7 @@ describe("createConsoleLogger", () => {
         return { i: buildCount };
       };
 
-      for (let i = 0; i < 3; i++) {
-        if (customLog.isLevelEnabled?.("debug") ?? true) {
-          customLog.debug("evt", buildMeta());
-        }
-      }
+      runGatedDebugLoop(customLog, 3, buildMeta);
 
       expect(buildCount).toBe(3);
       expect(calls).toHaveLength(3);
@@ -242,8 +307,8 @@ describe("createConsoleLogger", () => {
       defaultLogger.info("default-info");
       defaultLogger.debug("default-debug");
 
-      expect(logSpy.mock.calls.length).toBe(1);
-      expect(logSpy.mock.calls[0]?.[0]).toBe("[INFO] default-info");
+      expect(errorSpy.mock.calls.length).toBe(1);
+      expect(errorSpy.mock.calls[0]?.[0]).toBe("[INFO] default-info");
     });
 
     it("exposes isLevelEnabled gating debug at info threshold", () => {

@@ -5,7 +5,11 @@
 
 import { rmSync } from "node:fs";
 import { freemem } from "node:os";
-import { type CaptureSession, closeCaptureSession } from "@hyperframes/engine";
+import {
+  type CaptureSession,
+  type SubTimelineWaitOutcome,
+  closeCaptureSession,
+} from "@hyperframes/engine";
 import type { FileServerHandle } from "../fileServer.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import type { HdrDiagnostics, RenderJob } from "../renderOrchestrator.js";
@@ -82,6 +86,7 @@ export function buildRenderErrorDetails(input: {
   perfStages: Record<string, number>;
   hdrDiagnostics: HdrDiagnostics;
   observability?: RenderObservabilitySummary;
+  subTimelineWait?: SubTimelineWaitOutcome;
 }): NonNullable<RenderJob["errorDetails"]> {
   const errorMessage = normalizeErrorMessage(input.error);
   const errorStack = input.error instanceof Error ? input.error.stack : undefined;
@@ -99,5 +104,6 @@ export function buildRenderErrorDetails(input: {
         ? { ...input.hdrDiagnostics }
         : undefined,
     observability: input.observability,
+    subTimelineWait: input.subTimelineWait,
   };
 }

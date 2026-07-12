@@ -41,6 +41,11 @@ const GROUPS: Group[] = [
       ["inspect", "Inspect rendered visual layout across the timeline"],
       ["keyframes", "Inspect keyframes and render onion-shot diagnostics"],
       ["snapshot", "Capture key frames as PNG screenshots for visual verification"],
+      [
+        "grade-compare",
+        "Render candidate color grades onto a reference frame as one labeled comparison PNG",
+      ],
+      ["compare", "Render composition variants into one labeled comparison sheet"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["docs", "View inline documentation in the terminal"],

@@ -28,6 +28,7 @@ export function isElementComputedVisible(el: HTMLElement): boolean {
 
 const VISUAL_LEAF_TAGS = new Set(["img", "video", "canvas", "svg", "audio"]);
 
+// fallow-ignore-next-line complexity
 function hasVisualPresence(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return false;
@@ -236,9 +237,13 @@ export function isLargeRasterDomEditSelection(
 
 // ─── Element finders ──────────────────────────────────────────────────────────
 
+type FindElementSelection = Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex"> & {
+  sourceFile?: string;
+};
+
 export function findElementForSelection(
   doc: Document,
-  selection: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile">,
+  selection: FindElementSelection,
   activeCompositionPath: string | null = null,
 ): HTMLElement | null {
   if (selection.hfId) {
@@ -259,6 +264,7 @@ export function findElementForSelection(
 
   if (!selection.selector) return null;
 
+  // fallow-ignore-next-line code-duplication
   if (selection.selector.startsWith(".") && selection.selectorIndex != null) {
     const matches = querySelectorAllSafely(doc, selection.selector).filter(
       (candidate): candidate is HTMLElement =>
@@ -270,6 +276,7 @@ export function findElementForSelection(
     return matches[selection.selectorIndex] ?? null;
   }
 
+  // fallow-ignore-next-line code-duplication
   const matches = querySelectorAllSafely(doc, selection.selector).filter(
     (candidate): candidate is HTMLElement =>
       isHtmlElement(candidate) &&

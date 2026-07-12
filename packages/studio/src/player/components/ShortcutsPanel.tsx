@@ -61,6 +61,13 @@ const SHORTCUT_SECTIONS = [
     ],
   },
   {
+    title: "Crop",
+    hints: [
+      { key: "Drag edge", label: "Crop a side" },
+      { key: "Drag center", label: "Reposition the crop" },
+    ],
+  },
+  {
     title: "Panels",
     hints: [
       { key: "⌘1", label: "Compositions tab" },

@@ -103,6 +103,68 @@ describe("ensureHfIds", () => {
 // once ids are persisted to source (pinning) AND the behavior for truly unpinned
 // HTML (no data-hf-id in the input — unreachable in production after write-back
 // landed in R7 Task 1-2, but still the correct contract for that path).
+describe("ensureHfIds — template-inner minting", () => {
+  // linkedom's querySelectorAll does not descend into <template>, so extract
+  // ids by regex over the serialized output instead of the DOM-walk helper.
+  const rawIds = (html: string) => [...html.matchAll(/data-hf-id="([^"]+)"/g)].map((m) => m[1]);
+
+  it("mints ids on elements inside a <template> (template itself stays unstamped)", () => {
+    const html = doc(
+      `<template data-composition-id="t"><div class="clip" data-start="0" data-end="3">Hi</div><p>x</p></template>`,
+    );
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(2); // div + p, not the template
+    expect(out).not.toMatch(/<template[^>]*data-hf-id/);
+  });
+
+  it("template-inner ids equal the ids minted for the same content unwrapped (preview parity)", () => {
+    const inner = `<div class="clip" data-start="0" data-end="3">Hi</div><p>x</p>`;
+    const wrapped = ensureHfIds(doc(`<template data-composition-id="t">${inner}</template>`));
+    const unwrapped = ensureHfIds(doc(inner));
+    expect(rawIds(wrapped)).toEqual(rawIds(unwrapped));
+  });
+
+  it("pins existing template-inner ids and seeds them against fresh mints", () => {
+    const html = doc(
+      `<template data-composition-id="t"><div data-hf-id="hf-keep">a</div><p>b</p></template>`,
+    );
+    const out = ensureHfIds(html);
+    expect(out).toContain('data-hf-id="hf-keep"');
+    expect(new Set(rawIds(out)).size).toBe(2);
+  });
+
+  it("descends nested composition templates", () => {
+    const html = doc(
+      `<template data-composition-id="a"><div>a</div><template data-composition-id="b"><span>b</span></template></template>`,
+    );
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(2); // div + span
+  });
+
+  it("does NOT stamp inside a plain <template> (runtime clone-source)", () => {
+    // A plain template's content is cloned N times into the live DOM at
+    // runtime; a persisted inner id would be duplicated across every clone.
+    const html = doc(`<div class="stage">x</div><template><li class="row">item</li></template>`);
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(1); // only the stage div
+    expect(out).not.toMatch(/<li[^>]*data-hf-id/);
+  });
+
+  it("does NOT stamp inside a plain template nested in a composition template", () => {
+    const html = doc(
+      `<template data-composition-id="t"><div>a</div><template><li>clone-src</li></template></template>`,
+    );
+    const out = ensureHfIds(html);
+    expect(rawIds(out)).toHaveLength(1); // only the div
+    expect(out).not.toMatch(/<li[^>]*data-hf-id/);
+  });
+
+  it("is idempotent for template-inner ids", () => {
+    const once = ensureHfIds(doc(`<template data-composition-id="t"><div>a</div></template>`));
+    expect(ensureHfIds(once)).toBe(once);
+  });
+});
+
 describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
   it("pinned id survives a content edit (the §3 write-back guarantee)", () => {
     // Element already carries data-hf-id in source (as it would after write-back).

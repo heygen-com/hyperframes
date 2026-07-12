@@ -12,6 +12,7 @@ export { queryByAttr } from "./utils/cssSelector.js";
 // path helpers live behind the ./asset-paths subpath to keep this entry
 // browser-safe.
 export { decodeUrlPathVariants } from "./utils/urlPath.js";
+export { scanVariableUsage, type VariableUsageScan } from "./variableUsage.js";
 export {
   FONT_ALIAS_MAP,
   FONT_ALIAS_KEYS,

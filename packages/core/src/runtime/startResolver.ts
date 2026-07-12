@@ -1,26 +1,10 @@
 import type { RuntimeTimelineLike } from "./types";
 import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
+import { parseNumeric, parseStartExpression } from "./startExpression";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
-
-type ReferenceExpression =
-  | {
-      kind: "absolute";
-      value: number;
-    }
-  | {
-      kind: "reference";
-      refId: string;
-      offset: number;
-    };
-
-function parseNumeric(value: string | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function parseDurationAttr(element: Element): number | null {
   return parseNumeric(element.getAttribute("data-duration"));
@@ -36,25 +20,6 @@ function parseAuthoredDurationAttr(element: Element): number | null {
 
 function parseAuthoredEndAttr(element: Element): number | null {
   return parseNumeric(element.getAttribute(AUTHORED_END_ATTR));
-}
-
-function parseStartExpression(raw: string | null | undefined): ReferenceExpression | null {
-  const normalized = (raw ?? "").trim();
-  if (!normalized) return null;
-  const absolute = parseNumeric(normalized);
-  if (absolute != null) {
-    return { kind: "absolute", value: absolute };
-  }
-  const referenceMatch = normalized.match(/^([A-Za-z0-9_.:-]+)(?:\s*([+-])\s*([0-9]*\.?[0-9]+))?$/);
-  if (!referenceMatch) return null;
-  const refId = (referenceMatch[1] ?? "").trim();
-  if (!refId) return null;
-  const sign = referenceMatch[2] ?? "+";
-  const offsetRaw = referenceMatch[3] ?? "0";
-  const parsedOffset = Number.parseFloat(offsetRaw);
-  const offsetMagnitude = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
-  const offset = sign === "-" ? -offsetMagnitude : offsetMagnitude;
-  return { kind: "reference", refId, offset };
 }
 
 export function createRuntimeStartTimeResolver(params: {
@@ -161,15 +126,20 @@ export function createRuntimeStartTimeResolver(params: {
         // If this element is a loaded composition inner root (has data-composition-id
         // but no data-start), walk up to the host parent which carries the actual
         // timing. This happens when the host uses a different data-composition-id
-        // than the loaded file — e.g. host="montage" but file has "scene-10".
-        // Check both data-composition-src (runtime) and data-composition-id (bundled,
-        // where data-composition-src is stripped after inlining).
+        // than the loaded file — e.g. host="montage" but file has "scene-10", or
+        // when the host itself has no data-composition-id at all (an "anonymous"
+        // host) and the composition's own id was restored onto the inlined wrapper.
+        // Check data-composition-src (runtime, not yet inlined), data-composition-id
+        // (bundled/compiled host with its own id), and data-composition-file (the
+        // marker every inlined host gets, compiled or bundled, once
+        // data-composition-src is stripped — covers the anonymous-host case).
         if (element.hasAttribute("data-composition-id")) {
           const parent = element.parentElement;
           if (
             parent &&
             (parent.hasAttribute("data-composition-src") ||
-              parent.hasAttribute("data-composition-id"))
+              parent.hasAttribute("data-composition-id") ||
+              parent.hasAttribute("data-composition-file"))
           ) {
             const parentStart = resolveStartForElementInternal(parent, fallback);
             startCache.set(element, parentStart);

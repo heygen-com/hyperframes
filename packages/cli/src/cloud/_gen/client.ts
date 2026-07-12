@@ -5,6 +5,10 @@
  * experiment-framework to regenerate.
  */
 import type {
+  CompleteAssetUploadRequest,
+  CompleteAssetUploadResponse,
+  CreateAssetUploadRequest,
+  CreateAssetUploadResponse,
   CreateHyperframesRenderRequest,
   CreateHyperframesRenderResponse,
   DeleteHyperframesRenderResponse,
@@ -221,6 +225,43 @@ export class HyperframesCloudClient {
       path: "/v3/assets",
       multipart: fd,
       idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  /**
+   * Create Asset Upload
+   *
+   * Begin a direct-to-S3 upload. Returns an asset_id and a presigned upload_url; PUT the file bytes to upload_url, then call POST /v3/assets/{asset_id}/complete. Unlike POST /v3/assets (which proxies the bytes), this never sends the file through the API.
+   */
+  async createAssetUpload(args: {
+    body: CreateAssetUploadRequest;
+    idempotencyKey?: string;
+    signal?: AbortSignal;
+  }): Promise<CreateAssetUploadResponse> {
+    return await this.request<CreateAssetUploadResponse>({
+      method: "POST",
+      path: "/v3/assets/direct-uploads",
+      body: args.body,
+      idempotencyKey: args.idempotencyKey,
+      signal: args.signal,
+    });
+  }
+
+  /**
+   * Complete Asset Upload
+   *
+   * Finalize a direct-to-S3 upload into a reusable asset. Call after the upload PUT returns 200. Idempotent: repeated calls return the same finalized asset.
+   */
+  async completeAssetUpload(args: {
+    asset_id: string;
+    body: CompleteAssetUploadRequest;
+    signal?: AbortSignal;
+  }): Promise<CompleteAssetUploadResponse> {
+    return await this.request<CompleteAssetUploadResponse>({
+      method: "POST",
+      path: `/v3/assets/${encodeURIComponent(args.asset_id)}/complete`,
+      body: args.body,
       signal: args.signal,
     });
   }

@@ -13,7 +13,7 @@ import { EventEmitter } from "events";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildStreamingArgs,
@@ -475,9 +475,17 @@ async function resolveWithin<T>(promise: Promise<T>, ms = 100): Promise<T | "tim
 }
 
 describe("spawnStreamingEncoder lifecycle and cleanup", () => {
+  const originalPath = process.env.PATH;
+
+  beforeEach(() => {
+    process.env.PATH = "";
+  });
+
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("child_process");
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
   });
 
   it("returns a success result when ffmpeg exits cleanly after close()", async () => {
@@ -895,5 +903,25 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("createFrameReorderBuffer abort (interleaved parallel drain)", () => {
+  it("rejects parked waiters so a failed worker cannot deadlock its peers", async () => {
+    const buf = createFrameReorderBuffer(0, 100);
+    const parked = buf.waitForFrame(5);
+    const err = new Error("verify failed");
+    buf.abort(err);
+    await expect(parked).rejects.toThrow("verify failed");
+    // Future waiters reject immediately too.
+    await expect(buf.waitForFrame(6)).rejects.toThrow("verify failed");
+    await expect(buf.waitForAllDone()).rejects.toThrow("verify failed");
+  });
+
+  it("in-order waiters still resolve before an abort", async () => {
+    const buf = createFrameReorderBuffer(0, 10);
+    await expect(buf.waitForFrame(0)).resolves.toBeUndefined();
+    buf.advanceTo(1);
+    await expect(buf.waitForFrame(1)).resolves.toBeUndefined();
   });
 });

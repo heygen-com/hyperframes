@@ -7,7 +7,7 @@ HyperFrames is a seek-driven runtime. Build one paused timeline per composition,
 ```javascript
 const tl = gsap.timeline({
   paused: true,
-  defaults: { duration: 0.5, ease: "power2.out" },
+  defaults: { duration: 0.5, ease: "power3.out" },
 });
 
 tl.to(".a", { x: 100 }).to(".b", { y: 50 }).to(".c", { opacity: 0 });

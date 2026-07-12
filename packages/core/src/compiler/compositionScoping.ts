@@ -1,6 +1,7 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
+const INNER_ROOT_ATTR = "data-hf-inner-root";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -96,12 +97,22 @@ function normalizeAuthoredRootIdSelector(selector: string, authoredRootId?: stri
   );
 }
 
+/** The composition's own box: the host when it renders content directly, or the
+ *  flattened inner root when one is preserved below the host. Used both for a
+ *  bare composition-root selector and for remapped document-level selectors.
+ *  Relies on `:has()` (Chrome 105 / Safari 15.4 / Firefox 121) — an existing
+ *  baseline for the bare-root case, noted here for new callers. */
+function compositionBoxSelector(scope: string): string {
+  return `${scope}:not(:has([${INNER_ROOT_ATTR}])), ${scope} > [${INNER_ROOT_ATTR}]`;
+}
+
 function scopeSelector(
   selector: string,
   scope: string,
   compositionId: string,
   authoredRootId?: string | null,
   compoundAuthoredRoot?: boolean,
+  scopeRootSelectors?: boolean,
 ): string {
   const selectorWithoutAuthoredRootId = normalizeAuthoredRootIdSelector(selector, authoredRootId);
   const selectorWithoutRootTiming = normalizeCompositionRootSelector(
@@ -111,12 +122,38 @@ function scopeSelector(
   );
   const trimmed = selectorWithoutRootTiming.trim();
   if (!trimmed) return selector;
-  if (/^(html|body|:root|\*)$/i.test(trimmed)) return selector;
+  if (trimmed === "*") return selector;
+  if (/^(html|body|:root)$/i.test(trimmed)) {
+    // A mounted/inlined sub-comp's document-level selectors must not style the
+    // PARENT (a sub-comp `body { width/height/overflow }` would clobber the host
+    // <body> and clip the preview/render). Remap to the comp's own box. A
+    // top-level compile (scopeRootSelectors falsy) legitimately owns the document.
+    //
+    // Coverage is intentionally BARE-only: compound forms (`body.dark`,
+    // `body[data-theme]`, `body:hover`, `html body`, `:root .x`) fall through to
+    // general scoping below. That is byte-identical to pre-fix behavior — those
+    // selectors never matched the parent <body> (it has no data-composition-id),
+    // so there was no clobber to fix. The bare forms are the ones that actually
+    // caused the parent-body clobber, which is what this remap targets.
+    return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
+  }
   const compositionIdPattern = new RegExp(
     `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
   );
   if (compositionIdPattern.test(trimmed)) {
+    const isRootBoxSelector = trimmed.replace(compositionIdPattern, "").trim() === "";
+    if (isRootBoxSelector) {
+      // A bare root selector styles the composition's own box (flex/grid/
+      // position/padding). When flattenInnerRoot preserves the authored root
+      // as a wrapper below `scope` (see prepareFlattenedInnerRoot), that
+      // wrapper is the element real children are laid out in, not `scope`
+      // itself, so the box styling must land there instead. It must land on
+      // exactly one of the two: applying it to both compounds any additive
+      // property (padding, margin, non-zero transform) since the wrapper
+      // sits nested inside the host and would inherit the effect twice.
+      return compositionBoxSelector(scope);
+    }
     return selectorWithoutRootTiming.replace(compositionIdPattern, scope);
   }
   const leading = selectorWithoutRootTiming.match(/^\s*/)?.[0] ?? "";
@@ -168,7 +205,7 @@ export function scopeCssToComposition(
   compositionId: string,
   scopeSelectorOverride?: string,
   authoredRootId?: string | null,
-  options?: { compoundAuthoredRoot?: boolean },
+  options?: { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean },
 ): string {
   const trimmedCompositionId = compositionId.trim();
   if (!css || !trimmedCompositionId) return css;
@@ -186,6 +223,7 @@ export function scopeCssToComposition(
         trimmedCompositionId,
         authoredRootId,
         options?.compoundAuthoredRoot,
+        options?.scopeRootSelectors,
       ),
     );
   });
@@ -383,6 +421,16 @@ export function wrapScopedCompositionScript(
     ? new Proxy(window, {
         get: function(target, prop, receiver) {
           if (prop === "__timelines") return __hfGetTimelineRegistry();
+          // Inside a sub-composition, __hyperframes is passed as a bare script
+          // param bound to the SCOPED variant (per-comp getVariables). But
+          // authors routinely write the documented window.__hyperframes.
+          // getVariables() form, which would otherwise fall through to the host
+          // page's base __hyperframes and return the WRONG (or empty) variables
+          // for this instance. Route it to the scoped variant too so both
+          // spellings resolve to this composition's own variables.
+          // (__hfScopedHyperframes is a hoisted var assigned below, before any
+          // sub-comp script -- the only code that reads this -- runs.)
+          if (prop === "__hyperframes") return __hfScopedHyperframes;
           return Reflect.get(target, prop, target);
         },
         set: function(target, prop, value, receiver) {
@@ -499,4 +547,25 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
 
 export function wrapInlineScriptWithErrorBoundary(source: string, errorLabel: string): string {
   return `(function(){ try { Function(${JSON.stringify(source)}).call(window); } catch (_err) { console.error(${JSON.stringify(errorLabel)}, _err); } })();`;
+}
+
+/**
+ * Build the statement that populates `window.__hfVariablesByComp` — the table
+ * the scoped `getVariables` above reads. Returns `null` when there are no
+ * per-instance values.
+ *
+ * The WRITER lives next to the READER (the scoped `getVariables` in
+ * `wrapScopedCompositionScript`) on purpose: every compile path that wraps the
+ * reader MUST also emit this writer before the sub-comp scripts run. The
+ * render compiler (`htmlCompiler`) inlined the reader scripts but never emitted
+ * the writer while the preview bundler (`htmlBundler`) did, so
+ * `getVariables()` returned `{}` only during render — parametrized sub-comps
+ * silently shipped blank/default text in the final MP4 while snapshot QA passed
+ * (issue #2064). Both callers now share this one builder so they can't drift.
+ */
+export function buildVariablesByCompScript(
+  variablesByComp: Record<string, Record<string, unknown>>,
+): string | null {
+  if (!variablesByComp || Object.keys(variablesByComp).length === 0) return null;
+  return `window.__hfVariablesByComp = Object.assign({}, window.__hfVariablesByComp || {}, ${JSON.stringify(variablesByComp)});`;
 }

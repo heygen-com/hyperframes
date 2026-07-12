@@ -196,6 +196,51 @@ export async function sdkTimingPersist(
   }
 }
 
+export async function sdkTimingBatchPersist(
+  changes: Array<{
+    hfId: string;
+    timingUpdate: { start?: number; duration?: number; trackIndex?: number };
+  }>,
+  targetPath: string,
+  sdkSession: Composition | null | undefined,
+  deps: CutoverDeps,
+  options?: CutoverOptions,
+): Promise<boolean> {
+  const timingSrc = deps.readProjectFile;
+  for (const change of changes) {
+    void recordResolverParity(
+      sdkSession,
+      change.hfId,
+      "setTiming",
+      timingSrc ? () => timingSrc(targetPath) : undefined,
+    );
+  }
+  if (!STUDIO_SDK_CUTOVER_ENABLED) return false;
+  if (!sdkSession || wrongCompositionFile(deps, targetPath)) return false;
+  if (changes.some((change) => !sdkSession.getElement(change.hfId))) return false;
+  try {
+    const serializedBefore = sdkSession.serialize();
+    sdkSession.batch(() => {
+      for (const change of changes) sdkSession.setTiming(change.hfId, change.timingUpdate);
+    });
+    const after = sdkSession.serialize();
+    if (after === serializedBefore) return false;
+    const undoBefore = await captureOnDiskBefore(deps, targetPath, serializedBefore);
+    await persistSdkSerialize(after, targetPath, undoBefore, deps, options);
+    trackStudioEvent("sdk_cutover_success", {
+      hfId: changes[0]?.hfId ?? null,
+      opCount: changes.length,
+    });
+    return true;
+  } catch (err) {
+    trackStudioEvent("sdk_cutover_fallback", {
+      hfId: changes[0]?.hfId ?? null,
+      error: String(err),
+    });
+    return false;
+  }
+}
+
 type SdkGsapTweenOp =
   | { kind: "add"; target: string; spec: GsapTweenSpec }
   | { kind: "set"; animationId: string; properties: Partial<GsapTweenSpec> }

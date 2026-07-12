@@ -57,7 +57,74 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].id).toBe("text-1");
     expect(result.clips[0].start).toBe(1);
     expect(result.clips[0].duration).toBe(3);
+    expect(result.clips[0].track).toBe(0);
     expect(result.clips[0].kind).toBe("element");
+  });
+
+  it("parses inline z-index for timeline clips", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "layered";
+    clip.style.zIndex = "11";
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "4");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips[0].zIndex).toBe(11);
+  });
+
+  it("uses zero z-index sentinel when a timeline clip has no inline z-index", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const clip = document.createElement("div");
+    clip.id = "auto-layer";
+    clip.setAttribute("data-start", "0");
+    clip.setAttribute("data-duration", "4");
+    root.appendChild(clip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips[0].zIndex).toBe(0);
+  });
+
+  it("assigns stacking context ids from root and nearest sub-composition", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const rootClip = document.createElement("div");
+    rootClip.id = "root-layer";
+    rootClip.setAttribute("data-start", "0");
+    rootClip.setAttribute("data-duration", "5");
+    root.appendChild(rootClip);
+
+    const scene = document.createElement("div");
+    scene.id = "scene-host";
+    scene.setAttribute("data-composition-id", "scene");
+    scene.setAttribute("data-start", "0");
+    scene.setAttribute("data-duration", "5");
+    root.appendChild(scene);
+
+    const nestedClip = document.createElement("div");
+    nestedClip.id = "nested-layer";
+    nestedClip.setAttribute("data-start", "0");
+    nestedClip.setAttribute("data-duration", "2");
+    scene.appendChild(nestedClip);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    const rootLayer = result.clips.find((clip) => clip.id === "root-layer");
+    const nestedLayer = result.clips.find((clip) => clip.id === "nested-layer");
+
+    expect(rootLayer?.stackingContextId).toBe("main");
+    expect(nestedLayer?.stackingContextId).toBe("scene");
   });
 
   it("identifies video clips by tag", () => {

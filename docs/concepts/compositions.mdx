@@ -131,7 +131,7 @@ HyperFrames does not automatically bind `data-var-*` attributes into your compos
 
 The supported pattern is:
 
-1. Declare the variables once on the sub-comp's `<html>` root with `data-composition-variables` (id + type + default).
+1. Declare the variables once on the sub-comp's composition root with `data-composition-variables` (id + type + default) — the `<html>` element for a full-document composition, or the `[data-composition-id]` root element for a template / fragment sub-composition.
 2. Pass per-instance values on each composition host with `data-variable-values`.
 3. Read the resolved values inside the composition with `window.__hyperframes.getVariables()`. The runtime layers the host's `data-variable-values` over the declared defaults on a per-instance basis, so the same source can be embedded multiple times with different values.
 

@@ -15,6 +15,7 @@ import {
   initializeSession,
   closeCaptureSession,
   captureFrame,
+  captureFrameToBufferPipelined,
   captureFrameToBuffer,
   getCapturePerfSummary,
   type CaptureSession,
@@ -42,6 +43,13 @@ export interface WorkerTask {
    * calculation still uses the absolute frame index.
    */
   outputFrameOffset?: number;
+  /**
+   * Frame stride for interleaved distribution (HF_DE_PARALLEL_STREAM spike):
+   * the worker captures startFrame, startFrame+stride, … < endFrame. Default 1
+   * (contiguous range). Interleaving keeps the ordered streaming writer's
+   * reorder window at O(workerCount) frames instead of O(totalFrames/N).
+   */
+  frameStride?: number;
 }
 
 export interface WorkerResult {
@@ -235,6 +243,34 @@ export function distributeFrames(
 }
 
 /**
+ * Interleaved (round-robin) distribution: worker i captures frames
+ * i, i+N, i+2N, …. Seek-based capture makes stride access free (every frame
+ * is an absolute seek), and the streaming reorder window shrinks from
+ * totalFrames/N to N — contiguous chunks serialize workers behind the
+ * ordered writer (worker 1's first frame waits for ALL of worker 0's).
+ * HF_DE_PARALLEL_STREAM spike; disk-path capture keeps contiguous chunks.
+ */
+export function distributeFramesInterleaved(
+  totalFrames: number,
+  workerCount: number,
+  workDir: string,
+  rangeStart: number = 0,
+): WorkerTask[] {
+  const tasks: WorkerTask[] = [];
+  for (let i = 0; i < workerCount && i < totalFrames; i++) {
+    tasks.push({
+      workerId: i,
+      startFrame: rangeStart + i,
+      endFrame: rangeStart + totalFrames,
+      frameStride: workerCount,
+      outputDir: join(workDir, `worker-${i}`),
+      outputFrameOffset: rangeStart,
+    });
+  }
+  return tasks;
+}
+
+/**
  * Decide whether a parallel worker should run the per-worker SwiftShader
  * assertion. Gated to worker 0 only: workers within a chunk share the same
  * Chrome binary, flags, and OS/driver state, so one verification per chunk
@@ -244,24 +280,89 @@ export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineC
   return config?.browserGpuMode === "software" && workerId === 0;
 }
 
+// fallow-ignore-next-line complexity
 async function captureFrameRange(
   session: CaptureSession,
   task: WorkerTask,
   captureOptions: CaptureOptions,
   signal: AbortSignal | undefined,
   onFrameCaptured: ((workerId: number, frameIndex: number) => void) | undefined,
-  onFrameBuffer: ((frameIndex: number, buffer: Buffer) => Promise<void>) | undefined,
+  onFrameBuffer:
+    | ((frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>)
+    | undefined,
 ): Promise<number> {
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
-  for (let i = task.startFrame; i < task.endFrame; i++) {
+  const stride = task.frameStride ?? 1;
+  // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
+  // k's in-page worker encode overlaps frame k+stride's produce phase — the
+  // same shape as the sequential worker-encode loop. Only engaged when the
+  // session's encode worker initialized (drawElement mode) and frames stream
+  // back via onFrameBuffer; the ordered writer's waitForFrame provides the
+  // cross-worker backpressure (each worker runs at most `stride` frames ahead).
+  // NOTE: this branch fires for any stride, but production only ever reaches
+  // it via HF_DE_PARALLEL_STREAM, which always uses interleaved distribution
+  // (stride = workerCount). The stride=1 (contiguous) path through here is
+  // validation-only — exercised by tests wiring onFrameBuffer with a
+  // contiguous multi-worker task, not a shape real renders take. Don't
+  // "simplify" the flag checks around this without accounting for that.
+  if (onFrameBuffer && session.workerEncodeEnabled) {
+    const dbg = process.env.HF_DE_PAR_DEBUG === "1";
+    const dbgT0 = Date.now();
+    const dbgWin = 40 * stride;
+    let prev: { idx: number; encodeResult: Promise<Buffer> } | null = null;
+    for (let i = task.startFrame; i < task.endFrame; i += stride) {
+      if (signal?.aborted) throw new Error("Parallel worker cancelled");
+      const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
+      if (dbg && i < task.startFrame + dbgWin) {
+        console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
+      }
+      const { encodeResult } = await captureFrameToBufferPipelined(session, i - outputOffset, time);
+      // Marks the promise "handled" for Node's unhandled-rejection detector
+      // without affecting the real `await prev.encodeResult` below — if a
+      // later iteration throws (abort, downstream writeFrame failure) before
+      // this frame's encode is drained, it's abandoned rather than awaited,
+      // and would otherwise surface as an unhandled rejection during teardown.
+      encodeResult.catch(() => {});
+      if (dbg && i < task.startFrame + dbgWin) {
+        console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} kicked`);
+      }
+      if (prev) {
+        if (dbg && prev.idx < task.startFrame + dbgWin) {
+          console.log(
+            `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} await-encode`,
+          );
+        }
+        const buf = await prev.encodeResult;
+        if (dbg && prev.idx < task.startFrame + dbgWin) {
+          console.log(
+            `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} encoded ${buf.length}B`,
+          );
+        }
+        await onFrameBuffer(prev.idx, buf, session);
+        if (dbg && prev.idx < task.startFrame + dbgWin) {
+          console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} written`);
+        }
+        framesCaptured++;
+        if (onFrameCaptured) onFrameCaptured(task.workerId, prev.idx);
+      }
+      prev = { idx: i, encodeResult };
+    }
+    if (prev) {
+      await onFrameBuffer(prev.idx, await prev.encodeResult, session);
+      framesCaptured++;
+      if (onFrameCaptured) onFrameCaptured(task.workerId, prev.idx);
+    }
+    return framesCaptured;
+  }
+  for (let i = task.startFrame; i < task.endFrame; i += stride) {
     if (signal?.aborted) throw new Error("Parallel worker cancelled");
     const time = (i * captureOptions.fps.den) / captureOptions.fps.num;
     const fileFrameIdx = i - outputOffset;
 
     if (onFrameBuffer) {
       const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
-      await onFrameBuffer(i, buffer);
+      await onFrameBuffer(i, buffer, session);
     } else {
       await captureFrame(session, fileFrameIdx, time);
     }
@@ -278,7 +379,7 @@ async function executeWorkerTask(
   createBeforeCaptureHook: () => BeforeCaptureHook | null,
   signal?: AbortSignal,
   onFrameCaptured?: (workerId: number, frameIndex: number) => void,
-  onFrameBuffer?: (frameIndex: number, buffer: Buffer) => Promise<void>,
+  onFrameBuffer?: (frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>,
   config?: Partial<EngineConfig>,
   parallel?: boolean,
 ): Promise<WorkerResult> {
@@ -309,11 +410,19 @@ async function executeWorkerTask(
       createBeforeCaptureHook(),
       workerConfig,
     );
+    if (process.env.HF_DE_PAR_DEBUG === "1") {
+      console.log(`[par:w${task.workerId}] session created`);
+    }
     // Worker-0-only SwiftShader assertion — see `shouldVerifyWorkerGpu` and #955.
     if (shouldVerifyWorkerGpu(task.workerId, workerConfig)) {
       await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
     }
     await initializeSession(session);
+    if (process.env.HF_DE_PAR_DEBUG === "1") {
+      console.log(
+        `[par:w${task.workerId}] init done (mode=${session.captureMode} workerEncode=${session.workerEncodeEnabled === true})`,
+      );
+    }
     framesCaptured = await captureFrameRange(
       session,
       task,
@@ -350,6 +459,24 @@ async function executeWorkerTask(
   }
 }
 
+/**
+ * drawElement self-verify sample count for multi-worker capture. Each worker
+ * arms the same shared sample grid but drains only ~1/N of it, and N
+ * concurrent hardware-GPU browsers are exactly where compositor-tile damage
+ * shows up (wild 0.7.52 black-slab report) — so density rises with worker
+ * count: 4 base + 2 per extra worker, clamped to the verify path's max of 8.
+ * A caller-set value passes through untouched, and explicit HF_DE_VERIFY
+ * still overrides inside the session.
+ */
+export function resolveParallelDeVerifySamples(
+  callerValue: number | undefined,
+  workerCount: number,
+): number | undefined {
+  if (callerValue !== undefined) return callerValue;
+  if (workerCount <= 1) return undefined;
+  return Math.min(8, 4 + 2 * (workerCount - 1));
+}
+
 export async function executeParallelCapture(
   serverUrl: string,
   workDir: string,
@@ -358,10 +485,18 @@ export async function executeParallelCapture(
   createBeforeCaptureHook: () => BeforeCaptureHook | null,
   signal?: AbortSignal,
   onProgress?: (progress: ParallelProgress) => void,
-  onFrameBuffer?: (frameIndex: number, buffer: Buffer) => Promise<void>,
+  onFrameBuffer?: (frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>,
   config?: Partial<EngineConfig>,
 ): Promise<WorkerResult[]> {
-  const totalFrames = tasks.reduce((sum, t) => sum + (t.endFrame - t.startFrame), 0);
+  // `endFrame - startFrame` is the correct per-task frame count for contiguous
+  // tasks (stride 1), but for interleaved tasks (stride = workerCount) each
+  // task spans nearly the full range while only actually capturing 1/stride
+  // of it — dividing by stride here matches the loop in `captureFrameRange`
+  // (`i += stride`) so progress doesn't plateau at ~1/workerCount.
+  const totalFrames = tasks.reduce(
+    (sum, t) => sum + Math.ceil((t.endFrame - t.startFrame) / (t.frameStride ?? 1)),
+    0,
+  );
   const workerProgress = new Map<number, number>();
 
   for (const task of tasks) workerProgress.set(task.workerId, 0);
@@ -382,12 +517,20 @@ export async function executeParallelCapture(
   };
 
   const parallel = tasks.length > 1;
+  const deVerifySamples = resolveParallelDeVerifySamples(
+    captureOptions.deVerifySamples,
+    tasks.length,
+  );
+  const workerCaptureOptions: CaptureOptions =
+    deVerifySamples === captureOptions.deVerifySamples
+      ? captureOptions
+      : { ...captureOptions, deVerifySamples };
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
         task,
         serverUrl,
-        captureOptions,
+        workerCaptureOptions,
         createBeforeCaptureHook,
         signal,
         onFrameCaptured,

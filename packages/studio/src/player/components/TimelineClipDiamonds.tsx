@@ -1,10 +1,12 @@
 import { memo, useRef, useState } from "react";
 import { BEAT_BAND_H } from "./BeatStrip";
 import {
+  clampToNeighbors,
   KEYFRAME_DRAG_THRESHOLD_PX,
   previewClipPct,
   resolveKeyframeDrag,
 } from "../../components/editor/keyframeDrag";
+import { snapKeyframePctToBeat } from "./timelineEditing";
 
 interface KeyframeEntry {
   percentage: number;
@@ -28,6 +30,14 @@ interface TimelineClipDiamondsProps {
   /** Beat-dot strip is shown on this track → shrink diamonds + drop them into
    *  the bottom half so they clear the strip at the top. */
   beatsActive?: boolean;
+  /** Composition-time beat positions (same source the beat strip renders from).
+   *  When present and `beatsActive`, a dragged keyframe snaps to the nearest beat. */
+  beatTimes?: number[];
+  /** Clip start / duration (seconds) + pixels-per-second, needed to map a
+   *  dragged keyframe's clip-% to composition time for beat snapping. */
+  clipStart?: number;
+  clipDurationSeconds?: number;
+  pixelsPerSecond?: number;
   accentColor: string;
   isSelected: boolean;
   currentPercentage: number;
@@ -71,6 +81,10 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   clipWidthPx,
   clipHeightPx,
   beatsActive,
+  beatTimes,
+  clipStart = 0,
+  clipDurationSeconds = 0,
+  pixelsPerSecond = 1,
   accentColor,
   isSelected,
   currentPercentage,
@@ -120,6 +134,20 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   const baseColor = isSelected ? accentColor : "#a3a3a3";
   const baseOpacity = isSelected ? 0.4 : 0.25;
   const canDrag = isSelected && !!onMoveKeyframe;
+
+  // Snap a dragged keyframe's clip-% to the nearest beat (within ~8px), then
+  // re-clamp to neighbours so the snap can't cross a sibling keyframe. No-op
+  // when the beat strip isn't active for this track or no beats are loaded.
+  const snapClipPctToBeat = (clipPct: number, draggedIndex: number): number => {
+    if (!beatsActive || !beatTimes || beatTimes.length === 0) return clipPct;
+    const snapped = snapKeyframePctToBeat(
+      { start: clipStart, duration: clipDurationSeconds },
+      clipPct,
+      beatTimes,
+      pixelsPerSecond,
+    );
+    return clampToNeighbors(snapped, sortedClipPcts, draggedIndex);
+  };
 
   return (
     <div
@@ -195,14 +223,17 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
           if (d.moved) {
             setPreview({
               kfKey,
-              clipPct: previewClipPct({
-                pointerDownX: d.startX,
-                pointerMoveX: e.clientX,
-                clipWidthPx,
-                draggedClipPct: d.fromClipPct,
-                draggedIndex: i,
-                sortedClipPcts,
-              }),
+              clipPct: snapClipPctToBeat(
+                previewClipPct({
+                  pointerDownX: d.startX,
+                  pointerMoveX: e.clientX,
+                  clipWidthPx,
+                  draggedClipPct: d.fromClipPct,
+                  draggedIndex: i,
+                  sortedClipPcts,
+                }),
+                i,
+              ),
             });
           }
         };
@@ -238,7 +269,7 @@ export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
             if (e.shiftKey) onShiftClickKeyframe?.(elementId, kf.percentage);
             else onClickKeyframe?.(kf.percentage);
           } else if (res.kind === "move" && res.toClipPct != null) {
-            onMoveKeyframe?.(elementId, d.fromClipPct, res.toClipPct);
+            onMoveKeyframe?.(elementId, d.fromClipPct, snapClipPctToBeat(res.toClipPct, i));
             // A retime still targeted this exact diamond — park/select it at its
             // new position, same as a plain click, or a drag that actually moved
             // something looks identical to one that silently did nothing.

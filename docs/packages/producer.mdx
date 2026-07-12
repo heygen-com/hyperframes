@@ -75,8 +75,8 @@ import { createRenderJob } from '@hyperframes/producer';
 const job = createRenderJob({
   fps: 30,                   // integer, or { num: 30000, den: 1001 } for NTSC
   quality: 'standard',       // 'draft', 'standard', or 'high'
-  format: 'mp4',             // 'mp4', 'webm', 'mov', or 'png-sequence'
-  workers: 4,                // Parallel render workers (1-8)
+  format: 'mp4',             // 'mp4', 'webm', 'mov', 'gif', or 'png-sequence'
+  workers: 4,                // Parallel render workers (1-24, or omit for auto)
   useGpu: false,             // GPU-accelerated encoding
   debug: false,              // Debug logging
 });
@@ -104,20 +104,20 @@ When `format: 'webm'`:
 
 #### HDR Output
 
-Set `hdr: true` to enable HDR detection. The producer probes every video and image source for BT.2020 / PQ / HLG color tagging — if any HDR source is found, the output uses H.265 10-bit BT.2020 with HDR10 static metadata. SDR-only compositions are unaffected.
+Set `hdrMode` to control HDR behavior. The producer probes every video and image source for BT.2020 / PQ / HLG color tagging — if any HDR source is found and the mode allows it, the output uses H.265 10-bit BT.2020 with HDR10 static metadata. SDR-only compositions are unaffected.
 
 ```typescript
 const job = createRenderJob({
   fps: 30,
   quality: 'standard',
   format: 'mp4',
-  hdr: true,
+  hdrMode: 'auto',           // 'auto' | 'force-hdr' | 'force-sdr'
 });
 
 await executeRenderJob(job, './my-video', './output.mp4');
 ```
 
-When `hdr: true`:
+When `hdrMode` is `'auto'` or `'force-hdr'`:
 - Sources are probed via `ffprobe`; PQ takes precedence over HLG when both are present
 - HDR videos and images are extracted as 16-bit linear-light pixels and composited natively
 - SDR DOM overlays are converted from sRGB → BT.2020 before being layered on top

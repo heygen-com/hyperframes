@@ -27,15 +27,25 @@ import type {
   PersistErrorEvent,
   SelectionProxy,
   ElementHandle,
+  VariableUsageReport,
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
-import { buildRoots, flatElements } from "./document.js";
+import { buildRoots, flatElements, parsedAnimationIds } from "./document.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScript, resolveScoped } from "./engine/model.js";
+import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
+import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
+import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
+import {
+  readDeclaredDefaults,
+  validateVariables,
+  scanVariableUsage,
+} from "@hyperframes/core/variables";
+import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
+import { readVariableDeclarations } from "./engine/variableModel.js";
 import { serializeDocument } from "./engine/serialize.js";
 import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
@@ -65,6 +75,11 @@ export interface OpenCompositionOptions {
 
 // ─── Implementation ───────────────────────────────────────────────────────────
 
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 class CompositionImpl implements Composition {
   private readonly parsed: ParsedDocument;
   private readonly persist: PersistAdapter | undefined;
@@ -75,6 +90,8 @@ class CompositionImpl implements Composition {
 
   /** Lazily-built element snapshot, invalidated on every mutation. */
   private elementsCache: ElementSnapshot[] | null = null;
+  /** Lazily-built root snapshot (getRootElements), invalidated alongside elementsCache. */
+  private rootsCache: ElementSnapshot[] | null = null;
 
   private currentSelection: string[] = [];
 
@@ -149,30 +166,238 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "setVariableValue", id, value });
   }
 
+  // ── #2098 CRUD conveniences — thin aliases over the canonical surface below.
+  // They delegate so the per-file declaration-element scope (template/fragment
+  // sub-comps included) is resolved in exactly one place.
+  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined {
+    return this.getVariableValues()[id] as
+      | string
+      | number
+      | boolean
+      | FontValue
+      | ImageValue
+      | undefined;
+  }
+
+  listVariables(): CompositionVariable[] {
+    return this.getVariableDeclarations();
+  }
+
+  removeVariable(id: string): void {
+    this.dispatch({ type: "removeVariable", id });
+  }
+
+  // ── Canonical declaration edit ops (this stack) ──
+  // declareVariable unified onto the {declaration} op payload (#2098 used
+  // {decl}); the method signature is identical, so #2098 callers are unaffected.
+  declareVariable(declaration: CompositionVariable): void {
+    this.dispatch({ type: "declareVariable", declaration });
+  }
+
+  updateVariableDeclaration(id: string, declaration: CompositionVariable): void {
+    this.dispatch({ type: "updateVariableDeclaration", id, declaration });
+  }
+
+  removeVariableDeclaration(id: string): void {
+    this.dispatch({ type: "removeVariableDeclaration", id });
+  }
+
+  getVariableDeclarations(): CompositionVariable[] {
+    return readVariableDeclarations(declarationElement(this.parsed.document, this.parsed.wrapped));
+  }
+
+  getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown> {
+    // THIS composition's own declared defaults (loose extraction: any entry with
+    // a string id + a `default` key, even ones the strict declaration parser
+    // drops) spread under the overrides. Scope note: this reads the composition's
+    // single declaration element only — NOT a union of every `[data-composition-
+    // variables]` in the document. The runtime's getVariables()
+    // (core/runtime/getVariables.ts) additionally walks inlined sub-composition
+    // declarers because it operates on the bundled multi-composition document;
+    // the SDK models one composition file, so per-file scope is intended.
+    const defaults = readDeclaredDefaults(
+      declarationElement(this.parsed.document, this.parsed.wrapped),
+    );
+    return { ...defaults, ...(overrides ?? {}) };
+  }
+
+  validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[] {
+    return validateVariables(values, this.getVariableDeclarations());
+  }
+
+  /**
+   * Script scans are content-keyed (same rationale as _gsapLabelCache): the
+   * panel recomputes usage on every preview reload, and unchanged script text
+   * is the common case — never pay a second acorn parse for identical input.
+   */
+  private _variableUsageScanCache = new Map<string, ReturnType<typeof scanVariableUsage>>();
+
+  // Scan/merge dispatcher — same complexity class as the suppressed
+  // variableUsage.ts classifiers it drives.
+  // fallow-ignore-next-line complexity
+  getVariableUsage(): VariableUsageReport {
+    const usedIds: string[] = [];
+    const seen = new Set<string>();
+    let scanIncomplete = false;
+    const freshCache = new Map<string, ReturnType<typeof scanVariableUsage>>();
+    // Inline scripts only — external src scripts aren't part of the document model.
+    for (const script of Array.from(this.parsed.document.querySelectorAll("script"))) {
+      if (script.getAttribute("src")) continue;
+      const text = script.textContent ?? "";
+      // Direct global reads (window.__hfVariables / __hfVariablesByComp) are
+      // invisible to the getVariables() scanner — the report must degrade to
+      // a lower bound instead of confidently claiming declarations unused.
+      if (text.includes("__hfVariables")) scanIncomplete = true;
+      if (!text.includes("getVariables")) continue; // cheap pre-filter before an acorn parse
+      const scan = this._variableUsageScanCache.get(text) ?? scanVariableUsage(text);
+      freshCache.set(text, scan);
+      scanIncomplete = scanIncomplete || scan.scanIncomplete;
+      for (const id of scan.usedIds) {
+        if (!seen.has(id)) {
+          seen.add(id);
+          usedIds.push(id);
+        }
+      }
+    }
+    // Declarative bindings (data-var-src / data-var-text) are direct reads.
+    for (const el of Array.from(
+      this.parsed.document.querySelectorAll("[data-var-src], [data-var-text]"),
+    )) {
+      for (const attr of ["data-var-src", "data-var-text"]) {
+        const id = el.getAttribute(attr)?.trim();
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          usedIds.push(id);
+        }
+      }
+    }
+    this._variableUsageScanCache = freshCache;
+    const declaredIds = this.getVariableDeclarations().map((d) => d.id);
+    // The CSS compat channel counts as usage: a variable consumed only via
+    // var(--id) in stylesheets or inline styles must not be badged unused
+    // (removing it also removes the --{id} root prop and breaks the binding).
+    const cssText = this._collectCssText();
+    // Match var(--id) only at a custom-property-name boundary: the id must be
+    // followed by whitespace, a comma (fallback), or the closing paren — so id
+    // "foo" is NOT counted as used by an unrelated var(--foo-header). Ids are
+    // regex-escaped because a value read from disk may predate can()'s
+    // /^[A-Za-z_][A-Za-z0-9_-]*$/ enforcement and carry metacharacters.
+    const cssUsed = (id: string) =>
+      new RegExp(`var\\(\\s*--${escapeRegExp(id)}[\\s,)]`).test(cssText);
+    const declaredSet = new Set(declaredIds);
+    return {
+      usedIds,
+      unusedDeclarations: declaredIds.filter((id) => !seen.has(id) && !cssUsed(id)),
+      undeclaredReads: usedIds.filter((id) => !declaredSet.has(id)),
+      scanIncomplete,
+    };
+  }
+
+  /** All stylesheet + inline-style text, for var(--id) consumption checks. */
+  private _collectCssText(): string {
+    const cssParts: string[] = [];
+    for (const styleEl of Array.from(this.parsed.document.querySelectorAll("style"))) {
+      cssParts.push(styleEl.textContent ?? "");
+    }
+    for (const el of Array.from(this.parsed.document.querySelectorAll("[style]"))) {
+      cssParts.push(el.getAttribute("style") ?? "");
+    }
+    return cssParts.join("\n");
+  }
+
+  setPreviewVariables(values: Record<string, unknown> | null): boolean {
+    if (!this.preview?.setPreviewVariables) return false;
+    this.preview.setPreviewVariables(values);
+    return true;
+  }
+
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
 
   /**
-   * Cache of parsed GSAP labels keyed by EXACT script text. extractGsapLabels does
-   * a full acorn parse; caching avoids re-parsing on repeated getElementTimings reads
-   * when the script is unchanged. The content (not reference) key means any script
-   * edit changes the text and invalidates the cache, so renumbered tweens never yield
-   * stale label positions.
+   * Cache of parsed GSAP labels keyed by the ordered list of EXACT script texts.
+   * extractGsapLabels does a full acorn parse; caching avoids re-parsing on repeated
+   * getElementTimings reads when the scripts are unchanged.
    */
-  private _gsapLabelCache: { script: string; labels: ReturnType<typeof extractGsapLabels> } | null =
-    null;
+  private _gsapLabelCache: {
+    scripts: string[];
+    labels: ReturnType<typeof extractGsapLabels>;
+  } | null = null;
 
   // fallow-ignore-next-line complexity
   getElementTimings(): Record<HfId, ElementTimingSnapshot> {
-    const script = getGsapScript(this.parsed.document);
+    const scripts = getGsapScripts(this.parsed.document);
 
-    // Extract all addLabel("name", position) calls from the GSAP script (see cache note above).
+    // Extract all addLabel("name", position) calls from every GSAP script.
     let allLabels: ReturnType<typeof extractGsapLabels>;
-    if (script && this._gsapLabelCache?.script === script) {
-      allLabels = this._gsapLabelCache.labels;
+    const cachedScripts = this._gsapLabelCache?.scripts;
+    const cacheMatches =
+      cachedScripts?.length === scripts.length &&
+      cachedScripts.every((script, index) => script === scripts[index]);
+    if (cacheMatches) {
+      allLabels = this._gsapLabelCache?.labels ?? [];
     } else {
-      allLabels = script ? extractGsapLabels(script) : [];
-      this._gsapLabelCache = script ? { script, labels: allLabels } : null;
+      allLabels = scripts.flatMap((script) => extractGsapLabels(script));
+      this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
+
+    // Resolve a `data-start` that's a relative-timing REFERENCE ("intro", "intro + 2" —
+    // parseStartExpression's grammar) into an absolute second, recursively against the
+    // referenced element's own resolved start + duration. A plain numeric data-start keeps
+    // the old parseFloat path unchanged — this only touches the case that used to silently
+    // resolve to 0 (parseFloat("intro + 2") is NaN). Node-safe static counterpart of the
+    // runtime's own resolver (runtime/startResolver.ts): no live GSAP timeline to fall back
+    // on, so an unauthored sub-composition duration still resolves to 0, same as before.
+    //
+    // refId is always a BARE id (the reference grammar has no scope syntax), resolved via
+    // resolveScoped's bare-id rule: prefer the canonical top-level match, else document
+    // order. An element inside a sub-composition referencing a bare id that also exists at
+    // the top level resolves to the TOP-LEVEL one, not a same-scope sibling — this matches
+    // the runtime's own resolver (also a global, not scope-aware, lookup), so the two stay
+    // consistent, but it means a bare-id collision across scopes is a real footgun for
+    // authored content.
+    const startCache = new Map<Element, number>();
+    const visiting = new Set<Element>();
+    // Split out of resolveStart so its own branching stays low — this is the ONE
+    // path that recurses + calls resolveDuration, kept here so that's visible at a
+    // glance rather than buried inside resolveStart's try block.
+    const resolveReferenceStart = (refId: string, offset: number): number => {
+      const target = resolveScoped(this.parsed.document, refId);
+      if (!target) return 0;
+      return Math.max(0, resolveStart(target) + (resolveDuration(target) ?? 0) + offset);
+    };
+    const resolveStart = (el: Element): number => {
+      const cached = startCache.get(el);
+      if (cached !== undefined) return cached;
+      if (visiting.has(el)) return 0; // reference cycle — fail safe, don't loop
+      visiting.add(el);
+      let resolved: number;
+      try {
+        const startStr = el.getAttribute("data-start");
+        const expr = parseStartExpression(startStr);
+        if (expr?.kind === "reference") {
+          resolved = resolveReferenceStart(expr.refId, expr.offset);
+        } else if (expr?.kind === "absolute") {
+          resolved = expr.value;
+        } else {
+          resolved = startStr !== null ? parseFloat(startStr) : 0;
+        }
+      } finally {
+        visiting.delete(el);
+      }
+      const finite = Number.isFinite(resolved) ? resolved : 0;
+      startCache.set(el, finite);
+      return finite;
+    };
+    // Same preference as handleSetTiming: prefer data-duration, fall back to end - start.
+    const resolveDuration = (el: Element): number | null => {
+      const durationStr = el.getAttribute("data-duration");
+      const durationAttr = durationStr !== null ? parseFloat(durationStr) : null;
+      if (durationAttr !== null && Number.isFinite(durationAttr)) return durationAttr;
+      const endStr = el.getAttribute("data-end");
+      const endAttr = endStr !== null ? parseFloat(endStr) : null;
+      if (endAttr !== null && Number.isFinite(endAttr)) return endAttr - resolveStart(el);
+      return null;
+    };
 
     const result: Record<HfId, ElementTimingSnapshot> = {};
     const elements = this.getElements();
@@ -180,27 +405,11 @@ class CompositionImpl implements Composition {
       const domEl = resolveScoped(this.parsed.document, el.scopedId);
       if (!domEl) continue;
 
-      const startStr = domEl.getAttribute("data-start");
-      const endStr = domEl.getAttribute("data-end");
-      const durationStr = domEl.getAttribute("data-duration");
+      const enterAt = resolveStart(domEl);
+      const duration = resolveDuration(domEl);
+      if (duration === null) continue; // no timing info — skip non-timed elements
 
-      // Same preference as handleSetTiming: prefer data-duration, fall back to end - start.
-      const start = startStr !== null ? parseFloat(startStr) : 0;
-      const durationAttr = durationStr !== null ? parseFloat(durationStr) : null;
-      const endAttr = endStr !== null ? parseFloat(endStr) : null;
-
-      let duration: number;
-      if (durationAttr !== null && Number.isFinite(durationAttr)) {
-        duration = durationAttr;
-      } else if (endAttr !== null && Number.isFinite(endAttr)) {
-        duration = endAttr - start;
-      } else {
-        // No timing info — skip non-timed elements.
-        continue;
-      }
-
-      const enterAt = Number.isFinite(start) ? start : 0;
-      const exitAt = enterAt + (Number.isFinite(duration) ? duration : 0);
+      const exitAt = enterAt + duration;
 
       // Labels whose position falls within [enterAt, exitAt] (end-inclusive: a
       // label exactly at exitAt is treated as within the element's window).
@@ -307,6 +516,21 @@ class CompositionImpl implements Composition {
     return [...this.elementsCache];
   }
 
+  /**
+   * Top-level elements only (each still carrying its full descendant subtree via
+   * `.children`) — unlike `getElements()`, no element appears twice. Consumers building a
+   * tree view (a layer panel) want this, not `getElements()`: that method's flat list
+   * includes every descendant a second time as its own top-level entry, since each
+   * snapshot in it still carries its children. `buildRoots` already computes true roots
+   * internally for `getElements()` to flatten — this just returns them unflattened.
+   * Cached like elementsCache — a layer panel calling this every render tick shouldn't
+   * repay the DOM walk each time.
+   */
+  getRootElements(): ElementSnapshot[] {
+    this.rootsCache ??= buildRoots(this.parsed.document);
+    return [...this.rootsCache];
+  }
+
   getElement(id: HfId): ElementSnapshot | null {
     // Accept both bare ids (top-level) and scoped ids (sub-composition elements).
     // Match by scopedId first (canonical); bare-id fallback keeps top-level compat
@@ -332,6 +556,14 @@ class CompositionImpl implements Composition {
         })
         .map((el) => el.scopedId)
     );
+  }
+
+  getAllAnimationIds(): Set<string> {
+    const ids = new Set<string>();
+    for (const script of getGsapScripts(this.parsed.document)) {
+      for (const id of parsedAnimationIds(script)) ids.add(id);
+    }
+    return ids;
   }
 
   // ── Selection API ────────────────────────────────────────────────────────────
@@ -396,6 +628,7 @@ class CompositionImpl implements Composition {
     }
 
     this.elementsCache = null;
+    this.rootsCache = null;
 
     // Update override-set from forward patches
     for (const p of forward) {
@@ -500,6 +733,7 @@ class CompositionImpl implements Composition {
             applyPatchesToDocument(this.parsed, [...this.batchInverse].reverse());
             this.overrides = { ...this.batchOverridesSnapshot };
             this.elementsCache = null;
+            this.rootsCache = null;
           }
           this.resetBatchState();
           // Empty no-op batch: fire changeHandlers (parity with dispatch)
@@ -562,8 +796,14 @@ class CompositionImpl implements Composition {
 
   // ── Serialization ────────────────────────────────────────────────────────────
 
-  serialize(): string {
-    return serializeDocument(this.parsed);
+  serialize(opts?: { stripRuntime?: boolean }): string {
+    const html = serializeDocument(this.parsed);
+    // Newer agent-generated compositions embed hyperframe.runtime.iife.js in their own
+    // HTML. Any host driving its own clock (not just an editing iframe — anything that
+    // owns seeking/playback itself) must not let that runtime self-init: it races the
+    // host's first seek and resets the timeline to t=0. Opt-in (default false) since a
+    // host playing the composition normally wants the runtime.
+    return opts?.stripRuntime ? stripEmbeddedRuntimeScripts(html) : html;
   }
 
   // ── T3 embedded-mode extras ──────────────────────────────────────────────────
@@ -582,6 +822,7 @@ class CompositionImpl implements Composition {
     // Emit a patch event so subscribers stay in sync.
     applyPatchesToDocument(this.parsed, patches);
     this.elementsCache = null;
+    this.rootsCache = null;
 
     // Update override-set
     for (const p of patches) {

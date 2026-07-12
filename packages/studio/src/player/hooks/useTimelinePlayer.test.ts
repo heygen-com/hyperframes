@@ -243,7 +243,10 @@ describe("buildStandaloneRootTimelineElement", () => {
         iframeSrc: "http://127.0.0.1:4173/api/projects/demo/preview/comp/scenes/hero.html?_t=123",
         selector: '[data-composition-id="hero"]',
       }),
-    ).toEqual({
+      // toMatchObject (not toEqual): asserts the selector/source metadata this
+      // test is about, without re-pinning the full element shape (stacking
+      // metadata like hasExplicitZIndex is covered in timelineDOM.test.ts).
+    ).toMatchObject({
       id: "hero",
       label: "hero",
       key: 'scenes/hero.html:[data-composition-id="hero"]:0',

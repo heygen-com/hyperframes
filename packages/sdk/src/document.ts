@@ -9,9 +9,16 @@
  */
 
 import { parseHTML } from "linkedom";
-import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
-import { findRoot, getElementStyles, getOwnText, isNewHostBoundary } from "./engine/model.js";
+import {
+  findRoot,
+  getElementStyles,
+  getGsapScripts,
+  getOwnText,
+  isNewHostBoundary,
+  querySelectorAllDeep,
+} from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
 
 // Tags that carry no editable content and must not enter the element tree.
@@ -61,25 +68,79 @@ function parseLocatedCached(script: string): Array<{ id: string; selector: strin
  */
 function buildAnimationIdMap(document: Document): Map<string, string[]> {
   const map = new Map<string, string[]>();
-  const script = extractGsapScript(document);
-  if (!script) return map;
-  for (const { id, selector } of parseLocatedCached(script)) {
-    if (!selector) continue;
-    let matches: Element[] = [];
-    try {
-      matches = Array.from(document.querySelectorAll(selector));
-    } catch {
-      continue; // selector not valid for querySelectorAll — skip
-    }
-    for (const el of matches) {
-      const hfId = el.getAttribute("data-hf-id");
-      if (!hfId) continue;
-      const list = map.get(hfId);
-      if (list) list.push(id);
-      else map.set(hfId, [id]);
+  for (const script of getGsapScripts(document)) {
+    for (const { id, selector } of parseLocatedCached(script)) {
+      appendAnimationIdsForSelector(map, document, id, selector);
     }
   }
   return map;
+}
+
+function appendAnimationIdsForSelector(
+  map: Map<string, string[]>,
+  document: Document,
+  animationId: string,
+  selector: string,
+): void {
+  if (!selector) return;
+
+  let matches: Element[];
+  try {
+    matches = querySelectorAllDeep(document, selector);
+  } catch {
+    return; // selector not valid for querySelectorAll — skip
+  }
+
+  for (const el of matches) {
+    const hfId = el.getAttribute("data-hf-id");
+    if (!hfId) continue;
+    const list = map.get(hfId);
+    if (list) list.push(animationId);
+    else map.set(hfId, [animationId]);
+  }
+}
+
+/**
+ * Every GSAP tween id `parseLocatedCached` finds in the script, with no DOM
+ * matching at all — the same id space the server-side script ops
+ * (removeAllKeyframesFromScript et al.) resolve against. Unlike
+ * buildAnimationIdMap's per-element map, this never drops an id just because
+ * its selector doesn't currently CSS-match a live element — that gap is what
+ * caused a false animation_not_found divergence in the resolver-shadow
+ * tripwire (a tween on a renamed/duplicate/scoped selector still resolves on
+ * the server, which reads the script directly).
+ */
+export function parsedAnimationIds(script: string): Set<string> {
+  return new Set(parseLocatedCached(script).map(({ id }) => id));
+}
+
+/**
+ * Build the element list for a parent's children, treating a COMPOSITION
+ * template (`<template data-composition-id>`) as a TRANSPARENT container: its
+ * inner elements are spliced in at the template's position, the template
+ * itself gets no node. This mirrors the studio preview, which unwraps exactly
+ * that pattern into the served body — so template-based sub-comps expose the
+ * same elements (and hf-ids) here as the timeline reads from the live preview
+ * DOM. A plain <template> (runtime clone-source) stays fully excluded: its
+ * inert interior is not editable and its content is duplicated at runtime.
+ */
+function buildChildren(
+  parent: Element,
+  scopePrefix: string,
+  animationIdsByHfId: Map<string, string[]>,
+): HyperFramesElement[] {
+  const out: HyperFramesElement[] = [];
+  for (const child of Array.from(parent.children)) {
+    if (child.tagName.toLowerCase() === "template") {
+      if (isCompositionTemplate(child)) {
+        out.push(...buildChildren(child, scopePrefix, animationIdsByHfId));
+      }
+      continue;
+    }
+    const built = buildElement(child, scopePrefix, animationIdsByHfId);
+    if (built) out.push(built);
+  }
+  return out;
 }
 
 // fallow-ignore-next-line complexity
@@ -129,11 +190,7 @@ function buildElement(
     start !== null && endAttr !== null ? Math.max(0, parseFloat(endAttr) - start) : null;
   const trackIndex = trackAttr !== null ? parseInt(trackAttr, 10) : null;
 
-  const children: HyperFramesElement[] = [];
-  for (const child of Array.from(el.children)) {
-    const built = buildElement(child, childPrefix, animationIdsByHfId);
-    if (built) children.push(built);
-  }
+  const children = buildChildren(el, childPrefix, animationIdsByHfId);
 
   return {
     id,
@@ -153,16 +210,7 @@ function buildElement(
 
 // fallow-ignore-next-line complexity
 function extractGsapScript(doc: Document): string | null {
-  // GSAP script is the first <script> tag whose text references gsap. Marker
-  // set must match studio sdkShadow.ts isGsapScriptBody so both pick the same
-  // script from a given composition.
-  for (const script of Array.from(doc.querySelectorAll("script"))) {
-    const text = script.textContent ?? "";
-    if (text.includes("gsap") || text.includes("__timelines") || text.includes("ScrollTrigger")) {
-      return text;
-    }
-  }
-  return null;
+  return getGsapScripts(doc)[0] ?? null;
 }
 
 function extractStyles(doc: Document): string | null {
@@ -201,15 +249,8 @@ function extractDuration(doc: Document): number | null {
  */
 export function buildRoots(document: Document): HyperFramesElement[] {
   const body = document.body;
-  const roots: HyperFramesElement[] = [];
-  const animationIdsByHfId = buildAnimationIdMap(document);
-  if (body) {
-    for (const child of Array.from(body.children)) {
-      const built = buildElement(child, "", animationIdsByHfId);
-      if (built) roots.push(built);
-    }
-  }
-  return roots;
+  if (!body) return [];
+  return buildChildren(body, "", buildAnimationIdMap(document));
 }
 
 /**

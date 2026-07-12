@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { getSystemTotalMb } from "@hyperframes/engine";
 import {
   detectAgentRuntime,
+  detectAgentHints,
   detectSandboxRuntime,
   type AgentRuntime,
   type SandboxRuntime,
@@ -49,6 +50,16 @@ export interface SystemMeta {
    * null when no agent is detected.
    */
   agent_runtime: AgentRuntime;
+  /**
+   * New-agent discovery signals for the agent_runtime=null bucket, so an agent
+   * we have no rule for surfaces on its own instead of vanishing into null.
+   * All three are null on a classified event (agent_runtime != null) and on a
+   * plain shell with no markers. See `detectAgentHints` in agent_runtime.ts for
+   * the fields and the privacy contract.
+   */
+  agent_hint: string | null;
+  term_program: string | null;
+  agent_env_hints: string | null;
 }
 
 let cached: SystemMeta | null = null;
@@ -63,6 +74,14 @@ export function getSystemMeta(): SystemMeta {
   const cpuInfo = cpus();
   const firstCpu = cpuInfo[0] ?? null;
 
+  // Only compute discovery hints for the unclassified bucket — a known agent
+  // needs no hint, and gating keeps them off the ~80%+ of classified events.
+  const agent_runtime = detectAgentRuntime();
+  const hints =
+    agent_runtime === null
+      ? detectAgentHints()
+      : { agent_hint: null, term_program: null, agent_env_hints: null };
+
   cached = {
     os_release: release(),
     cpu_count: cpuInfo.length,
@@ -75,7 +94,10 @@ export function getSystemMeta(): SystemMeta {
     is_wsl: detectWSL(),
     is_tty: Boolean(process.stdout?.isTTY),
     sandbox_runtime: detectSandboxRuntime(),
-    agent_runtime: detectAgentRuntime(),
+    agent_runtime,
+    agent_hint: hints.agent_hint,
+    term_program: hints.term_program,
+    agent_env_hints: hints.agent_env_hints,
   };
   return cached;
 }

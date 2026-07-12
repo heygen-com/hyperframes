@@ -63,7 +63,7 @@ function offlineEngineLines(engines?: OfflineEngineLine[]): string[] {
  * so it's left to the docs — not dangled here as a command a fresh machine
  * can't run. Names the local fallback so "no key" never reads as a failure,
  * and never steers users toward a per-repo `.env`. Mirrors the
- * hyperframes-media skill's Preflight section.
+ * media-use skill's Preflight section.
  */
 export function buildUnconfiguredLines(
   ctx: UnconfiguredContext,

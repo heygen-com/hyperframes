@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { STUDIO_GSAP_PANEL_ENABLED } from "../components/editor/manualEditingAvailability";
 import { usePlayerStore } from "../player";
+import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
 import { useGsapAnimationsForElement, usePopulateKeyframeCacheForFile } from "./useGsapTweenCache";
 import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
@@ -170,13 +171,14 @@ export function useDomEditWiring({
 
   useEffect(() => {
     if (!domEditSelection?.id) return;
-    const { selectedElementId, elements, setSelectedElementId } = usePlayerStore.getState();
-    const matchKey = elements.find(
-      (el) => el.domId === domEditSelection.id || el.id === domEditSelection.id,
-    );
-    const key = matchKey ? (matchKey.key ?? matchKey.id) : null;
-    if (key && key !== selectedElementId) setSelectedElementId(key);
-  }, [domEditSelection?.id]);
+    const { selectedElementId, elements, setSelectionAnchor } = usePlayerStore.getState();
+    // Resolve through the canonical resolver (source-file + ancestor + active-comp
+    // fallback) rather than a narrow domId/id match, so a sub-composition selection
+    // maps to the same clip the rest of the selection pipeline picks. Use the
+    // anchor-only setter: this is a DOM->store echo and must not collapse a group.
+    const key = resolveTimelineIdForSelection(domEditSelection, elements, activeCompPath);
+    if (key && key !== selectedElementId) setSelectionAnchor(key);
+  }, [domEditSelection, activeCompPath]);
 
   // ── GSAP cache sync ──
 

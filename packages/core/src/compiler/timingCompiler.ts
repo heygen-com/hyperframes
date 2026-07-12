@@ -78,6 +78,29 @@ function injectAttr(tag: string, attr: string, value: string): string {
   return tag.replace(/>$/, ` ${attr}="${value}">`);
 }
 
+// Real media/timing elements never live inside comments, <script>, or <style>.
+// The tag regexes below aren't comment-aware, so a comment that merely mentions
+// `<video>`/`<audio>` gets rewritten as if it were a real element (issue #1938).
+// Mask those inert regions with placeholders (no `<`, so the tag regexes skip
+// them) before scanning, then restore them verbatim.
+const INERT_REGION_RE =
+  /<!--[\s\S]*?-->|<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>/gi;
+
+// The NUL delimiters must stay as \u0000 escapes: raw 0x00 bytes make this file
+// binary to git and are corrupted by Bun's transpiler when bundled (issue #2139).
+function maskInertRegions(html: string): { masked: string; restore: (s: string) => string } {
+  const stash: string[] = [];
+  const masked = html.replace(INERT_REGION_RE, (region) => {
+    const token = `\u0000HFMASK${stash.length}\u0000`;
+    stash.push(region);
+    return token;
+  });
+  const restore = (s: string): string =>
+    // oxlint-disable-next-line no-control-regex -- NUL cannot appear in HTML, which is what makes it a safe mask delimiter
+    s.replace(/\u0000HFMASK(\d+)\u0000/g, (_, i) => stash[Number(i)] ?? "");
+  return { masked, restore };
+}
+
 // ── Core compilation ─────────────────────────────────────────────────────
 
 function compileTag(
@@ -146,6 +169,9 @@ export function compileTimingAttrs(html: string): CompilationResult {
   let nextVideoId = 0;
   let nextAudioId = 0;
 
+  const { masked, restore } = maskInertRegions(html);
+  html = masked;
+
   // Process <video ...> tags
   html = html.replace(/<video[^>]*>/gi, (match) => {
     const { tag, unresolved: u } = compileTag(match, true, () => nextVideoId++);
@@ -182,7 +208,7 @@ export function compileTimingAttrs(html: string): CompilationResult {
     return match;
   });
 
-  return { html, unresolved };
+  return { html: restore(html), unresolved };
 }
 
 /**
@@ -230,6 +256,7 @@ function escapeRegex(str: string): string {
 export function extractResolvedMedia(html: string): ResolvedMediaElement[] {
   const resolved: ResolvedMediaElement[] = [];
 
+  html = maskInertRegions(html).masked;
   const mediaRegex = /<(?:video|audio)[^>]*>/gi;
   let match: RegExpExecArray | null;
   while ((match = mediaRegex.exec(html)) !== null) {

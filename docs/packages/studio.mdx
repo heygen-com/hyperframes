@@ -54,7 +54,7 @@ The studio has two entry points:
 | `@hyperframes/studio` | React components, hooks, and types |
 | `@hyperframes/studio/tailwind-preset` | Tailwind CSS preset for studio styling |
 
-Peer dependencies: `react` (18 or 19), `react-dom` (18 or 19), `zustand` (4 or 5).
+Peer dependencies: `react` (19), `react-dom` (19), `zustand` (4 or 5).
 
 ## Components
 
@@ -83,10 +83,8 @@ import {
   Player,
   PlayerControls,
   Timeline,
-  PreviewPanel,
-  AgentActivityTrack,
 } from '@hyperframes/studio';
-import type { AgentActivity, TimelineElement, ActiveEdits } from '@hyperframes/studio';
+import type { TimelineElement } from '@hyperframes/studio';
 
 // Embed the preview player
 <Player />
@@ -96,12 +94,6 @@ import type { AgentActivity, TimelineElement, ActiveEdits } from '@hyperframes/s
 
 // Timeline editor with scrubber
 <Timeline />
-
-// Preview display area
-<PreviewPanel />
-
-// Activity visualization track (for agent workflows)
-<AgentActivityTrack activities={activities} />
 ```
 
 ### Editor Components
@@ -138,7 +130,8 @@ Manages player state and playback control:
 import { useTimelinePlayer } from '@hyperframes/studio';
 
 const player = useTimelinePlayer();
-// player.play(), player.pause(), player.seek(time), player.stepForward(), player.stepBackward()
+// player.play(), player.pause(), player.togglePlay(), player.seek(time)
+// player.refreshPlayer(), player.saveSeekPosition(), player.resetPlayer()
 ```
 
 ### `usePlayerStore`
@@ -155,17 +148,6 @@ const store = usePlayerStore();
 const display = formatTime(liveTime.current);
 ```
 
-### `useCodeEditor`
-
-Code editor state and editing functions:
-
-```typescript
-import { useCodeEditor } from '@hyperframes/studio';
-
-const editor = useCodeEditor();
-// editor.code, editor.setCode(), editor.diff, editor.onChange()
-```
-
 ### `useElementPicker`
 
 Element selection from the preview:
@@ -173,8 +155,10 @@ Element selection from the preview:
 ```typescript
 import { useElementPicker } from '@hyperframes/studio';
 
-const picker = useElementPicker();
-// picker.selectedElement, picker.selectElement(id), picker.clearSelection()
+const picker = useElementPicker(iframeRef);
+// picker.isPickMode, picker.pickedElement
+// picker.enablePick(), picker.disablePick(), picker.clearPick()
+// picker.setStyle(prop, value), picker.setDataAttr(name, value), picker.setTextContent(text)
 ```
 
 ## Features

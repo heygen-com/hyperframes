@@ -30,21 +30,27 @@ function renderToolbar() {
 describe("TimelineToolbar — auto-keyframe toggle (#1808)", () => {
   it("renders enabled (pressed) by default with no selection", () => {
     const { host, root } = renderToolbar();
-    const btn = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    const btn = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Auto-record manual edits as keyframes"]',
+    );
     expect(btn).not.toBeNull();
+    expect(btn?.getAttribute("aria-pressed")).toBe("true");
     act(() => root.unmount());
   });
 
   it("flips autoKeyframeEnabled in the store when clicked", () => {
     const { host, root } = renderToolbar();
-    const btn = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')!;
+    const btn = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Auto-record manual edits as keyframes"]',
+    );
+    if (!btn) throw new Error("auto-keyframe toggle not rendered");
 
     act(() => {
       btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     expect(usePlayerStore.getState().autoKeyframeEnabled).toBe(false);
-    expect(host.querySelector('button[aria-pressed="false"]')).not.toBeNull();
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
 });

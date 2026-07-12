@@ -178,6 +178,39 @@ describe("createRuntimeStartTimeResolver", () => {
       expect(resolver.resolveStartForElement(video)).toBe(54);
     });
 
+    it("walks up to the host's data-start when the inner root has none (host has its own data-composition-id)", () => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", "montage");
+      host.setAttribute("data-start", "10");
+      document.body.appendChild(host);
+
+      const innerRoot = document.createElement("div");
+      innerRoot.setAttribute("data-composition-id", "scene-10");
+      host.appendChild(innerRoot);
+
+      const resolver = createRuntimeStartTimeResolver({});
+      expect(resolver.resolveStartForElement(innerRoot)).toBe(10);
+    });
+
+    it("walks up to the host's data-start via data-composition-file (anonymous host, post-inlining)", () => {
+      // A host mounted via data-composition-src with no data-composition-id of
+      // its own. After inlining, data-composition-src is stripped and replaced
+      // with data-composition-file, and the composition's own id is restored
+      // onto the wrapper (which has no data-start of its own).
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-file", "compositions/reveal1.html");
+      host.setAttribute("data-start", "4.619");
+      document.body.appendChild(host);
+
+      const wrapper = document.createElement("div");
+      wrapper.setAttribute("data-composition-id", "reveal1");
+      wrapper.setAttribute("data-hf-inner-root", "true");
+      host.appendChild(wrapper);
+
+      const resolver = createRuntimeStartTimeResolver({});
+      expect(resolver.resolveStartForElement(wrapper)).toBe(4.619);
+    });
+
     it("keeps nested references in the host composition timeline", () => {
       const host = document.createElement("div");
       host.id = "slide-5";

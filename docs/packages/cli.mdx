@@ -520,6 +520,34 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
+    ### `check`
+
+    The browser verification gate: everything the old `validate` → `inspect` → `snapshot` loop did, in **one** command with one browser session:
+
+    ```bash
+    npx hyperframes check [dir]
+    npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+    npx hyperframes check [dir] --snapshots    # annotated overview frames + per-finding crops
+    npx hyperframes check [dir] --at 1.5,4,7.25
+    npx hyperframes check [dir] --strict       # exit non-zero on warnings too
+    ```
+
+    `check` runs the linter first (browser skipped entirely on lint errors), then loads the bundled composition once and sweeps one seek grid running every audit per sample: runtime console errors and failed requests, layout defects (overflow, clipping, held overlaps, occlusion), `*.motion.json` sidecar assertions, and WCAG AA contrast.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Aggregated machine-readable envelope; every finding carries selector, `data-*` identity, source file, bbox, and sample time |
+    | `--snapshots` | Write overview frames (annotated with labeled finding boxes when there are errors) plus `finding-NN-<code>.png` crops |
+    | `--samples` / `--at` / `--at-transitions` | Control the seek grid (default 9 samples; `--at-transitions` adds tween boundaries) |
+    | `--tolerance` | Allowed overflow in px before reporting (default 2) |
+    | `--timeout` | Initial settle budget in ms (default 3000) |
+    | `--no-contrast` | Skip the WCAG audit while iterating |
+    | `--strict` | Exit non-zero on warnings too (default: only errors) |
+    | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate: flags content whose center sits inside the fractional band (optional `severity`, `seek`) |
+    | `--frame-check` | Opt-in media out-of-frame detection (img/svg/video/canvas) |
+
+    Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static`.
+
     ### `beats`
 
     Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
@@ -548,6 +576,8 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
 
     ### `inspect`
+
+    <Warning>Deprecated: use [`check`](#check) — it covers this layout sweep plus runtime, motion, and contrast in one browser session. `inspect` keeps working and marks `_meta.deprecated: true` in JSON output.</Warning>
 
     Inspect rendered visual layout across the composition timeline:
 
@@ -667,8 +697,10 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | Flag | Values | Default | Description |
     |------|--------|---------|-------------|
     | `--output` | path | `renders/<name>.mp4` | Output file path |
-    | `--format` | mp4, webm, mov, png-sequence | mp4 | Output format (WebM/MOV render with transparency; png-sequence writes a directory of RGBA PNGs) |
-    | `--fps` | 24, 30, 60 | 30 | Frames per second |
+    | `--composition, -c` | path | `index.html` | Render a specific composition file instead of `index.html` |
+    | `--format` | mp4, webm, mov, gif, png-sequence | mp4 | Output format (WebM/MOV render with transparency; gif for inline embeds; png-sequence writes a directory of RGBA PNGs) |
+    | `--fps` | 1-240 or rational (e.g. `30000/1001`) | 30 | Frames per second |
+    | `--gif-loop` | 0-65535 | 0 | GIF loop count (`0` = loop forever). Only applies with `--format gif` |
     | `--quality` | draft, standard, high | standard | Encoding quality preset (drives CRF/bitrate) |
     | `--crf` | 0-51 | — | Override encoder CRF (lower = higher quality). Mutually exclusive with `--video-bitrate` |
     | `--video-bitrate` | e.g. `10M`, `5000k` | — | Target video bitrate. Mutually exclusive with `--crf` |
@@ -676,7 +708,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--resolution` | landscape, portrait, landscape-4k, portrait-4k, square, square-4k (aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`) | — | Output resolution preset. Supersamples a smaller composition via Chrome `deviceScaleFactor` so the screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not supported with `--hdr`. See [4K Rendering](/guides/4k-rendering) |
     | `--hdr` | — | off | Force HDR output even if no HDR sources are detected. MP4 only. See [HDR Rendering](/guides/hdr) |
     | `--sdr` | — | off | Force SDR output even if HDR sources are detected |
-    | `--workers` | 1-8 | 4 | Parallel render workers |
+    | `--workers` | 1-24 or `auto` | auto | Parallel render workers (auto = CPU cores minus 2) |
     | `--low-memory-mode` / `--no-low-memory-mode` | — | auto (≤ 8 GB RAM) | Force the low-memory safe render profile on or off. Safe mode pins to 1 worker, uses screenshot capture, and skips auto-worker calibration so the pipeline doesn't launch multiple concurrent Chrome instances on constrained machines. Auto-detection reads **host** RAM (`os.totalmem()`), not cgroup/container limits — containerised or serverless callers (incl. `--docker`) should set `PRODUCER_LOW_MEMORY_MODE` explicitly. Env fallback `PRODUCER_LOW_MEMORY_MODE`. |
     | `--gpu` | — | off | GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV) |
     | `--browser-gpu` / `--no-browser-gpu` | — | on locally, off in Docker | Use or opt out of host GPU acceleration for local Chrome/WebGL capture |
@@ -905,7 +937,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     npx hyperframes telemetry status
     ```
 
-    Telemetry collects command names, render performance, render checkpoint/error names, aggregate browser diagnostic counts, browser initialization duration and tween count, aggregate video extraction workload counts (such as extracted frame count and VFR preflight count), example choices, and system info — including a coarse environment fingerprint (OS, kernel string, CPU/memory shape, sandbox runtime such as gVisor or Docker, and the *name* of a coding agent driving the CLI when one is detected, e.g. `claude_code` / `codex` / `cursor`). The agent name is derived from the existence of well-known environment variables; their values are never read. Telemetry redacts local paths and URL query strings from render error/checkpoint messages and does **not** collect project names, video content, environment variable values, or personally identifiable information. Disable with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
+    Telemetry collects command names, render performance, render checkpoint/error names, aggregate browser diagnostic counts, browser initialization duration and tween count, aggregate video extraction workload counts (such as extracted frame count and VFR preflight count), example choices, and system info — including a coarse environment fingerprint (OS, kernel string, CPU/memory shape, sandbox runtime such as gVisor or Docker, and the *name* of a coding agent driving the CLI when one is detected, e.g. `claude_code` / `codex` / `cursor`). The agent name is derived from the existence of well-known environment variables; their values are never read. Telemetry redacts local paths and URL query strings from render error/checkpoint messages and does **not** collect project names, video content, or environment variable values. It collects no personally identifiable information until you sign in: when you authenticate with `hyperframes auth login`, your HeyGen account email (or your username, if your account has no email) is linked to your usage so CLI activity can be associated with your account (and your prior anonymous usage is stitched to it). Nothing else personal is collected, and this only happens after you choose to sign in. Disable all telemetry with `HYPERFRAMES_NO_TELEMETRY=1` or the command above.
 
     See [Feedback Collection](/guides/feedback) for how the periodic post-render prompt and Studio feedback bar work, what data they collect, and how to opt out.
 
@@ -930,7 +962,7 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     | `--codex` | Install to Codex CLI (`~/.codex/skills/`) |
     | `--cursor` | Install to Cursor (`.cursor/skills/` in current project) |
 
-    Skills are fetched from GitHub: the `/hyperframes` entry skill (routes "make me a video" to a workflow), the composition contract and Tailwind v4 browser-runtime guidance (`/hyperframes-core`), all animation including the GSAP / Anime.js / CSS / Lottie / Three.js / WAAPI / TypeGPU runtime adapters (`/hyperframes-animation`), creative direction (`/hyperframes-creative`), media preprocessing (`/hyperframes-media`), registry block/component wiring (`/hyperframes-registry`), and the video workflows. The `init` command also offers to install skills automatically after scaffolding a project.
+    Skills are fetched from GitHub: the `/hyperframes` entry skill (routes "make me a video" to a workflow), the composition contract and Tailwind v4 browser-runtime guidance (`/hyperframes-core`), all animation including the GSAP / Anime.js / CSS / Lottie / Three.js / WAAPI / TypeGPU runtime adapters (`/hyperframes-animation`), creative direction (`/hyperframes-creative`), media preprocessing (`/media-use`), registry block/component wiring (`/hyperframes-registry`), and the video workflows. The `init` command also offers to install skills automatically after scaffolding a project.
 
     #### Troubleshooting: `fatal: active post-checkout hook found during git clone`
 

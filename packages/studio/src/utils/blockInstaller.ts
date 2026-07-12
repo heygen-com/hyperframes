@@ -8,6 +8,7 @@ import { collectHtmlIds } from "./studioHelpers";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
+import { extendRootDurationInSource } from "./rootDuration";
 
 function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
   try {
@@ -163,20 +164,7 @@ export async function addBlockToProject(
       ].join("\n");
 
       let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
-
-      const newEnd = start + duration;
-      const rootDurMatch = patchedContent.match(
-        /(<[^>]*data-composition-id="[^"]*"[^>]*data-duration=")([^"]*)(")/,
-      );
-      if (rootDurMatch) {
-        const rootDur = parseFloat(rootDurMatch[2]!);
-        if (newEnd > rootDur) {
-          patchedContent = patchedContent.replace(
-            rootDurMatch[0],
-            `${rootDurMatch[1]}${formatTimelineAttributeNumber(newEnd)}${rootDurMatch[3]}`,
-          );
-        }
-      }
+      patchedContent = extendRootDurationInSource(patchedContent, start + duration);
 
       await saveProjectFilesWithHistory({
         projectId,

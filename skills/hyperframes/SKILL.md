@@ -3,7 +3,7 @@ name: hyperframes
 description: >
   READ THIS FIRST for any request to make, create, edit, animate, or render a
   video, animation, or motion graphic — a promo, explainer, captioned clip,
-  title card, overlay, or any composition. HyperFrames renders video from HTML;
+  title card, overlay, slideshow / interactive deck, or any composition. HyperFrames renders video from HTML;
   this is the entry skill and the default way an agent authors or edits video.
   It routes the request to the right specialized workflow and points to the
   HyperFrames domain skills, so read it before any other video or animation
@@ -19,22 +19,22 @@ metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-r
 
 HyperFrames **renders video from HTML** — a composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework. The full authoring contract lives in `/hyperframes-core`; read it before writing composition HTML.
 
-Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (pick a workflow for any "make me a video" request).
+Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (pick a workflow for any "make me a…" request — usually a video, but also a navigable deck or a composition port). The split is ownership, not output type: a **workflow owns an end-to-end deliverable** (its own project dir, gated steps, sub-agents, final artifact); a **domain skill is a capability layer** a workflow pulls in mid-flight and never owns the task.
 
 ## Capability map — the domain skills
 
-Atomic capabilities you load **on demand** — not full video workflows. For "make me a video", use the intent router below.
+Atomic capabilities you load **on demand** — not full workflows; they never own the end-to-end task. For "make me a…" intent, use the intent router below.
 
-| You want to…                                                                                                                                                            | Skill                    |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                                               | `/hyperframes-core`      |
-| **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU)                              | `/hyperframes-animation` |
-| **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics | `/hyperframes-keyframes` |
-| **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                       | `/hyperframes-creative`  |
-| **Media** — TTS voiceover, background music, transcription, background removal, captions                                                                                | `/hyperframes-media`     |
-| **Media resolve** — find + freeze BGM, SFX, images, icons from HeyGen catalog into `.media/` with manifest tracking                                                     | `/media-use`             |
-| **CLI dev loop** — init, lint, validate, inspect, preview, render, publish, doctor                                                                                      | `/hyperframes-cli`       |
-| **Install registry blocks / components** (`hyperframes add`)                                                                                                            | `/hyperframes-registry`  |
+| You want to…                                                                                                                                                             | Skill                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| **Author / edit an HTML composition** — the `data-*` contract, clips, tracks, sub-compositions, variables                                                                | `/hyperframes-core`      |
+| **Animate** — atomic motion, scene blueprints, transitions, runtime adapters (GSAP / Lottie / Three.js / Anime.js / CSS / WAAPI / TypeGPU)                               | `/hyperframes-animation` |
+| **Author seek-safe keyframes** — GSAP timelines, CSS keyframes, Anime.js, WAAPI, FLIP, paths, masks, SVG morph/draw, 3D depth, plus `hyperframes keyframes` diagnostics  | `/hyperframes-keyframes` |
+| **Creative direction** — `frame.md` / `design.md`, palettes, typography, narration, beat planning, audio-reactive                                                        | `/hyperframes-creative`  |
+| **Media** — resolve/generate BGM, SFX, image, icon, brand logo, voice, color grade, LUT; TTS voiceover, transcription, background removal, captions; cross-project reuse | `/media-use`             |
+| **CLI dev loop** — init, lint, check, snapshot, preview, render, publish, doctor                                                                                         | `/hyperframes-cli`       |
+| **Install registry blocks / components** (`hyperframes add`)                                                                                                             | `/hyperframes-registry`  |
+| **Import Figma content** — assets, tokens, components, storyboards→reconstructed motion (REST/CLI); Motion (MCP), shaders (MCP source / native export)                   | `/figma`                 |
 
 ---
 
@@ -47,24 +47,27 @@ This section knows only the top-level workflows; it does not load their internal
 Routing needs to know **what the video is about** — its input and subject. If that's unspecified ("make a video about our thing" with no URL, product, topic, or asset), ask before entering any workflow — committing to a workflow IS the routing decision. At most two questions:
 
 - **Input** — a product (URL / brief), a general website, a GitHub PR, a topic to explain, or an existing talking-head video?
+- **Figma source** — if the input is a figma.com URL, `/figma` extracts assets/tokens/(components/storyboard) first, regardless of which workflow below is chosen for the video's shape; that workflow then builds from `/figma`'s output — never by driving Figma via raw MCP tools directly (skips SVG sanitization, provenance, and brand-token binding).
 
-**Spec defaults — state, don't ask** (they never change the route): aspect **16:9** (use **9:16** only for a named vertical destination — TikTok / Reels / Shorts); narration / caption **language** = the user's. The chosen workflow re-confirms its own specifics at its first step.
+**Mode** — if the request carries an ongoing autonomous signal ("surprise me", "decide for me", "just build it"), note it and pass it into the workflow: the whole run goes autonomous and no later step re-asks. With no signal, the workflow asks the mode as its first brief question. Default is collaborative. (`/motion-graphics` is autonomous by design.) Semantics: `hyperframes-core` → `references/brief-contract.md`.
+
+**Spec defaults — state, don't ask** (they never change the route): **aspect** derives from the destination — social feed (X / LinkedIn / Instagram) → square **1:1**, TikTok / Reels / Shorts → **9:16**, YouTube / embed / unknown → **16:9**; narration / caption **language** = the user's. The chosen workflow re-confirms its own specifics at its first step (field semantics: `hyperframes-core` → `references/brief-contract.md`).
 
 ## Workflow cheat-sheet
 
-| Workflow                   | Use it for                                                                                                                                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/product-launch-video`    | **Selling a product** (SaaS, app, company / product site) — from a URL, brief, or script → a **promo**. The default for any commercial URL, even if the site is only named.                         |
-| `/website-to-video`        | **Showing a site itself** — a tour / showcase built from the site's own screenshots. For non-commercial sites (portfolio, blog, docs, personal, event), or when the user wants a tour, not a promo. |
-| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                       |
-| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                               |
-| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                               |
-| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                              |
-| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** — kinetic type, a stat / chart hit, a logo sting, a lower-third overlay                                                                          |
-| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                              |
-| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                          |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                      |
-| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                       |
+| Workflow                   | Use it for                                                                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | **Selling a product** (SaaS, app, company / product site) — from a URL, brief, or script → a **promo**. The default for any commercial URL, even if the site is only named.                                                                         |
+| `/website-to-video`        | **Showing a site itself** — a tour / showcase built from the site's own screenshots. For non-commercial sites (portfolio, blog, docs, personal, event), or when the user wants a tour, not a promo.                                                 |
+| `/faceless-explainer`      | **Explaining a topic / concept** from text — no product, no URL; every visual is LLM-invented                                                                                                                                                       |
+| `/pr-to-video`             | A **GitHub PR / code change** → changelog / feature-reveal / fix / refactor explainer                                                                                                                                                               |
+| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched)                                                                                                                                                               |
+| `/talking-head-recut`      | Packaging an existing talking-head video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes                                                                                                              |
+| `/motion-graphics`         | A short (~under 10s), **unnarrated** piece where the **motion _is_ the message** — kinetic type, a stat / chart hit, a logo sting, an animated map, an animated tweet / headline, a **standalone** lower-third / overlay (MP4 or transparent alpha) |
+| `/music-to-video`          | A **music track** → a **beat-synced** video — lyric video, slideshow, or kinetic promo; the music drives pacing (optional user images / videos cut onto the beat grid)                                                                              |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragments, branching, hotspots; output is a navigable **deck**, not a rendered video                                                                                          |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, a static loop / poster, a custom composition                                                                                                                                                      |
+| `/remotion-to-hyperframes` | **Porting an existing Remotion (React) composition** to HyperFrames (migration, not creation)                                                                                                                                                       |
 
 **Disambiguation (only where confusable):**
 
@@ -75,23 +78,30 @@ Routing needs to know **what the video is about** — its input and subject. If 
 - **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. An explicit "slideshow" request proceeds directly; an adjacent trigger ("deck / slides / presentation / convert this page") makes `/slideshow` confirm it's a slideshow before authoring, and switch to the appropriate non-slideshow workflow if not.
 - **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
 
-## If the matched workflow isn't installed
+## After picking — guarantee the workflow is installed
 
-Once you've picked a workflow, check it's actually available to you. If the matched workflow skill isn't installed, don't fall back to guessing — tell the user to install it first:
+Once you've picked a workflow, run the update step **before reading its skill** — workflow skills install on demand, so the one you matched may not be on this machine yet (its trigger phrases live in this router precisely so you can route to skills that aren't installed):
 
-- **Just this workflow:** `npx skills add heygen-com/hyperframes --skill <workflow-name>` (e.g. `--skill pr-to-video` — bare name, no leading `/`).
-- **All workflows at once:** `npx skills add heygen-com/hyperframes --all` (core + every workflow, skips the picker).
+```bash
+npx hyperframes skills update <workflow-name>
+```
 
-After they run it, re-read the workflow's skill and continue.
+Bare name, no leading `/` — e.g. `npx hyperframes skills update pr-to-video`. Naming a skill guarantees it **plus the core domain skills** every workflow depends on are installed and current: a fast no-op when everything already is, a targeted install of just the missing/stale skills when not — never the full set. Then read the workflow's skill and continue. The same command works for an on-demand domain skill from the capability map (e.g. `npx hyperframes skills update figma`).
+
+If the command fails, surface its error to the user instead of improvising the workflow from memory. Manual fallback (no HyperFrames CLI available): `npx skills add heygen-com/hyperframes --skill <workflow-name>`; everything at once: `npx skills add heygen-com/hyperframes --all`.
 
 ## Keeping skills current
 
-HyperFrames skills are versioned. `npx hyperframes init` checks the installed skills against the latest on GitHub and installs/refreshes the **full** set whenever anything is out of date or missing — so a freshly init'd project always has the complete, latest set (and re-running init on an up-to-date project is a no-op). The check is a quick GitHub round-trip; offline (or rate-limited) it falls back to installing after a short timeout, so init never hard-fails on a network hiccup. The creation workflows scaffold with `init`, so starting a new project always runs this check and pulls our latest skills from GitHub when they're stale. The `--skip-skills` flag is currently neutered (a temporary measure while the skills.sh registry catches up): passing it no longer skips the check, so every `init` checks GitHub. CI/tests opt out via the `HYPERFRAMES_SKIP_SKILLS=1` env var.
+HyperFrames skills are versioned and install **lazily**: the core set eagerly, the workflows on first use.
+
+- **Core set** — this router, the `hyperframes-*` domain skills, and `media-use`. `npx hyperframes init` (which every creation workflow runs when scaffolding) checks GitHub and refreshes the core set plus anything else already installed. It never _expands_ the install — workflow skills you haven't used are not pulled. Re-running init on an up-to-date machine is a no-op; offline (or rate-limited) it degrades gracefully and never hard-fails. The `--skip-skills` flag is currently neutered (a temporary measure while the skills.sh registry catches up); CI/tests opt out via the `HYPERFRAMES_SKIP_SKILLS=1` env var.
+- **Workflow skills** — installed and refreshed at trigger time by the update step above (`skills update <workflow-name>`).
 
 If a task is behaving unexpectedly, or before a long build, confirm the installed skills are current:
 
-- **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when anything is outdated **or missing**).
-- **Update:** `npx hyperframes skills update` — pulls the full set to the latest, **installing any not yet present** (same as init's install step).
+- **Check:** `npx hyperframes skills check` (add `--json` for a machine-readable verdict; exits non-zero when anything installed is outdated or the core set is incomplete — workflow skills not yet installed are reported as _available on demand_, not as a failure).
+- **Update:** `npx hyperframes skills update` — refreshes the core set plus everything installed to the latest, and removes skills no longer published. Without names it never installs workflows you haven't used; naming skills (`skills update <name…>`) additionally installs those.
+- **Full set, explicitly:** `npx hyperframes skills` (or `npx skills add heygen-com/hyperframes --all`).
 
 The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` run detects stale skills.
 
@@ -123,8 +133,8 @@ The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` 
 
 ### `/embedded-captions`
 
-- **Input:** An existing **talking-head video** (MP4) to caption — actual footage, not a URL or brief. Transcribed locally (Whisper, no API key) and matted (RVM) so the subject can occlude captions.
-- **Output:** the same footage **untouched**, with a caption layer — **Standard** (verbatim lower-third rail + an embedded climax behind the subject) or **Cinematic** (every caption composited behind the subject). Any length.
+- **Input:** An existing **talking-head video** (MP4) to caption — actual footage, not a URL or brief. Transcribed and matted locally (no API key) so the subject can occlude captions.
+- **Output:** the same footage **untouched**, with a caption layer — one visual identity picked from its catalog (36, from a quiet verbatim rail to full VFX constitutions); the subject occludes the embedded captions. Any length.
 - **Triggers:** "add captions / subtitles to this video", "captions behind the subject", "cinematic captions for my clip".
 
 ### `/talking-head-recut`
@@ -135,7 +145,7 @@ The CLI also surfaces a one-line reminder when a `render` / `lint` / `validate` 
 
 ### `/motion-graphics`
 
-- **Input:** A short, design-led motion graphic where the **motion is the message** — typically under ~10s, no narration. Genres: kinetic typography, a stat / number count-up, a chart hit, a logo sting, a lower-third / overlay, or a search-driven page / tweet / headline shot.
+- **Input:** A short, design-led motion graphic where the **motion is the message** — typically under ~10s, no narration. Genres: kinetic typography, a stat / number count-up, a chart hit, a logo sting, a lower-third / overlay, an animated map (regions / routes / zoom-to-place), a search-driven page / tweet / news-article shot, or asset-fusion (a real image's geometry becomes the chart).
 - **Output:** a short motion graphic → MP4 or a **transparent overlay** (alpha WebM / MOV) for a lower-third / callout.
 - **Triggers:** "an 8s logo sting", "animate this stat", "a kinetic-type intro", "turn this tweet into a motion graphic", "a transparent lower-third overlay".
 

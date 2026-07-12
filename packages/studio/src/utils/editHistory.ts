@@ -13,6 +13,8 @@ export interface EditHistoryEntry {
   label: string;
   kind: EditHistoryKind;
   coalesceKey?: string;
+  /** Per-entry coalesce window override (ms). Falls back to the reducer default. */
+  coalesceMs?: number;
   createdAt: number;
   files: Record<string, EditHistoryFileSnapshot>;
 }
@@ -35,6 +37,7 @@ export interface BuildEditHistoryEntryInput {
   label: string;
   kind?: EditHistoryKind;
   coalesceKey?: string;
+  coalesceMs?: number;
   now: number;
   files: Record<string, { before: string; after: string }>;
 }
@@ -99,6 +102,7 @@ export function buildEditHistoryEntry(input: BuildEditHistoryEntryInput): EditHi
     label: input.label,
     kind: input.kind ?? "manual",
     coalesceKey: input.coalesceKey,
+    coalesceMs: input.coalesceMs,
     createdAt: input.now,
     files,
   };
@@ -111,7 +115,9 @@ export function pushEditHistoryEntry(
 ): EditHistoryState {
   if (Object.keys(entry.files).length === 0) return state;
 
-  const coalesceMs = options?.coalesceMs ?? DEFAULT_COALESCE_MS;
+  // The incoming entry's own window wins so a caller can guarantee a merge even when a
+  // slow async step (e.g. a server GSAP rewrite) sits between the two records.
+  const coalesceMs = entry.coalesceMs ?? options?.coalesceMs ?? DEFAULT_COALESCE_MS;
   const maxEntries = options?.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const previous = state.undo[state.undo.length - 1];
   let undo = state.undo;

@@ -24,18 +24,6 @@ describe("manual editing availability", () => {
     expect(availability.STUDIO_INSPECTOR_PANELS_ENABLED).toBe(true);
   });
 
-  it("keeps color grading off by default", async () => {
-    const availability = await loadAvailabilityWithEnv({});
-    expect(availability.STUDIO_COLOR_GRADING_ENABLED).toBe(false);
-  });
-
-  it("enables color grading with an explicit env flag", async () => {
-    const availability = await loadAvailabilityWithEnv({
-      VITE_STUDIO_ENABLE_COLOR_GRADING: "1",
-    });
-    expect(availability.STUDIO_COLOR_GRADING_ENABLED).toBe(true);
-  });
-
   it("disables preview selection when the inspector panel flag is explicitly off", async () => {
     const availability = await loadAvailabilityWithEnv({
       VITE_STUDIO_ENABLE_INSPECTOR_PANELS: "0",

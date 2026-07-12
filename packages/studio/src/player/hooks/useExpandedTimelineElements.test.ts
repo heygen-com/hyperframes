@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildExpandedElements } from "./useExpandedTimelineElements";
+import {
+  buildExpandedElements,
+  resolveTimelineExpansionRawId,
+} from "./useExpandedTimelineElements";
 import { buildTimelineElementKey } from "../lib/timelineElementHelpers";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip } from "../lib/playbackTypes";
@@ -19,8 +22,14 @@ const clip = (over: Partial<ClipManifestClip>): ClipManifestClip => ({
   ...over,
 });
 
-const el = (over: Partial<TimelineElement>): TimelineElement =>
-  ({ id: "x", start: 0, duration: 1, track: 0, tag: "div", ...over }) as TimelineElement;
+const el = (over: Partial<TimelineElement>): TimelineElement => ({
+  id: "x",
+  start: 0,
+  duration: 1,
+  track: 0,
+  tag: "div",
+  ...over,
+});
 
 describe("buildExpandedElements", () => {
   it("rebases a 1-level child onto its sub-comp host (start + sourceFile)", () => {
@@ -42,6 +51,7 @@ describe("buildExpandedElements", () => {
     expect(child.sourceFile).toBe("stats.html");
   });
 
+  // fallow-ignore-next-line code-duplication
   it("rebases a 2-level child onto its NESTED host, not the top-level scene", () => {
     // top host A@10 (a.html) embeds host B@12 (b.html); child C lives in b.html.
     // Edits must rebase onto B (12 / b.html), not A (10 / a.html).
@@ -65,6 +75,7 @@ describe("buildExpandedElements", () => {
     expect(child.sourceFile).toBe("b.html"); // B's file, not a.html
   });
 
+  // fallow-ignore-next-line code-duplication
   it("rebases a 3-level child onto its deepest host, not intermediate or top", () => {
     // A@10 (a.html) → B@12 (b.html) → C@13 (c.html); leaf D lives in c.html.
     // Edits must rebase onto C (13 / c.html), not B (12 / b.html) or A (10 / a.html).
@@ -164,5 +175,101 @@ describe("buildExpandedElements", () => {
     expect(pills[0]!.sourceFile).toBe("scene.html");
     // The host row is replaced by its children.
     expect(out.some((e) => e.domId === "scene-host")).toBe(false);
+  });
+});
+
+describe("resolveTimelineExpansionRawId", () => {
+  it("returns null when paused inside a childless top-level clip", () => {
+    const manifest = [clip({ id: "title", start: 0, duration: 4 })];
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: false,
+        currentTime: 2,
+        manifest,
+        parentMap: new Map(),
+      }),
+    ).toBeNull();
+  });
+
+  it("auto-expands an active composition with children when paused and nothing is selected", () => {
+    const manifest = [
+      clip({ id: "scene", start: 1, duration: 5 }),
+      clip({ id: "headline", start: 1.5, duration: 2 }),
+    ];
+    const parentMap = new Map([["headline", "scene"]]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: false,
+        currentTime: 2,
+        manifest,
+        parentMap,
+      }),
+    ).toBe("scene");
+  });
+
+  it("auto-expands the innermost active nested composition when paused", () => {
+    const manifest = [
+      clip({ id: "outer", start: 0, duration: 10 }),
+      clip({ id: "inner", start: 2, duration: 5 }),
+      clip({ id: "leaf", start: 3, duration: 1 }),
+    ];
+    const parentMap = new Map([
+      ["inner", "outer"],
+      ["leaf", "inner"],
+    ]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: false,
+        currentTime: 3.5,
+        manifest,
+        parentMap,
+      }),
+    ).toBe("inner");
+  });
+
+  it("does not auto-expand an active composition while playing", () => {
+    const manifest = [
+      clip({ id: "scene", start: 0, duration: 5 }),
+      clip({ id: "headline", start: 1, duration: 2 }),
+    ];
+    const parentMap = new Map([["headline", "scene"]]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: null,
+        isPlaying: true,
+        currentTime: 2,
+        manifest,
+        parentMap,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps selected elements ahead of paused active composition auto-expansion", () => {
+    const manifest = [
+      clip({ id: "scene", start: 0, duration: 6 }),
+      clip({ id: "headline", start: 1, duration: 2 }),
+      clip({ id: "caption", start: 4, duration: 1 }),
+    ];
+    const parentMap = new Map([
+      ["headline", "scene"],
+      ["caption", "scene"],
+    ]);
+
+    expect(
+      resolveTimelineExpansionRawId({
+        selectedElementId: "caption",
+        isPlaying: false,
+        currentTime: 1.5,
+        manifest,
+        parentMap,
+      }),
+    ).toBe("caption");
   });
 });

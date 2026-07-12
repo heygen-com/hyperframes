@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.7.26",
+  "version": "0.7.54",
   "description": "",
   "repository": {
     "type": "git",
@@ -73,7 +73,7 @@
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",
-    "puppeteer-core": "^24.40.0",
+    "puppeteer-core": "^25.2.1",
     "tailwindcss": "^3.4.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",

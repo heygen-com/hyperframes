@@ -77,6 +77,77 @@ ${headContent}
 }
 
 describe("core rules", () => {
+  it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1280" data-height="720"></div>
+  <iframe srcdoc="<script>const child = gsap.timeline({ paused: true }); child.to(&quot;#x&quot;, { opacity: 1 });</script>"></iframe>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const rootTl = gsap.timeline({ paused: true });
+    window.__timelines["root"] = rootTl;
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find((finding) => finding.code === "invalid_inline_script_syntax"),
+    ).toBeUndefined();
+    expect(
+      result.findings.find((finding) => finding.code === "gsap_timeline_not_registered"),
+    ).toBeUndefined();
+  });
+
+  it("does not lint elements embedded inside an iframe srcdoc attribute", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="root" data-width="1280" data-height="720"></div>
+  <iframe srcdoc='<video src="child.mp4" data-start="0"></video>'></iframe>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(
+      result.findings.find(
+        (finding) => finding.elementId === undefined && finding.message.includes("<video"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("warns when an id starts with a digit and is unsafe in a hash selector", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="123-frame"></div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((item) => item.code === "id_requires_css_escape");
+
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("123-frame");
+    expect(finding?.fixHint).toContain("CSS.escape");
+  });
+
+  it("accepts ids that start with a letter", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="frame-123"></div>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.find((item) => item.code === "id_requires_css_escape")).toBeUndefined();
+  });
+
   it("reports error when root is missing data-composition-id", async () => {
     const html = `
 <html><body>
@@ -112,6 +183,37 @@ describe("core rules", () => {
     expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
   });
 
+  it("skips a leading <svg> defs block when detecting the composition root", async () => {
+    // Regression: two independent reports of a leading <svg><defs><filter>...
+    // block (icon/gradient/filter plumbing referenced via url(#id) elsewhere)
+    // getting mistaken for the composition root, since findRootTag returned
+    // the first non-script/style/meta/link/title body child unconditionally.
+    // The <svg> here carries no composition markers, so it must be skipped in
+    // favor of the real root that follows it.
+    const html = `
+<html><body>
+  <svg width="0" height="0" style="position:absolute">
+    <defs><filter id="glow"><feGaussianBlur stdDeviation="4" /></filter></defs>
+  </svg>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>window.__timelines = window.__timelines || {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+  });
+
+  it("still treats an <svg> as the root when it carries composition markers itself", async () => {
+    const html = `
+<html><body>
+  <svg id="root" data-composition-id="c1" data-width="1920" data-height="1080"></svg>
+  <script>window.__timelines = window.__timelines || {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_missing_composition_id")).toBeUndefined();
+    expect(result.findings.find((f) => f.code === "root_missing_dimensions")).toBeUndefined();
+  });
+
   it("reports error when timeline registry is missing", async () => {
     const html = `
 <html><body>
@@ -123,6 +225,15 @@ describe("core rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "missing_timeline_registry");
     expect(finding).toBeDefined();
+  });
+
+  it("allows a timeline-free root that explicitly declares data-no-timeline", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-no-timeline data-width="1920" data-height="1080" data-duration="5"></div>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_timeline_registry")).toBeUndefined();
   });
 
   it("does not flag missing_timeline_registry on a sub-composition (inherits from host)", async () => {

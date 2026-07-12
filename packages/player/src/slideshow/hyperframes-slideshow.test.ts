@@ -932,30 +932,86 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     el.remove();
   });
 
-  it("present() opens a new window with mode=audience and sets presenter attribute", () => {
-    const openCalls: { url: string; target: string }[] = [];
-    vi.spyOn(window, "open").mockImplementation((url, target) => {
-      openCalls.push({ url: String(url), target: String(target) });
-      return null;
+  type AudienceTabClick = { href: string; target: string; rel: string };
+
+  function spyAudienceTabClicks(): AudienceTabClick[] {
+    const clicks: AudienceTabClick[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      function (this: HTMLAnchorElement) {
+        clicks.push({ href: this.href, target: this.target, rel: this.rel });
+      },
+    );
+    return clicks;
+  }
+
+  function mockUserActivation(isActive: boolean): () => void {
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, "userActivation");
+    Object.defineProperty(navigator, "userActivation", {
+      configurable: true,
+      value: { isActive },
     });
+    return () => {
+      if (descriptor) {
+        Object.defineProperty(navigator, "userActivation", descriptor);
+      } else {
+        const nav = navigator as unknown as { userActivation?: unknown };
+        delete nav.userActivation;
+      }
+    };
+  }
+
+  it("present() opens an audience TAB with noopener/noreferrer", () => {
+    const tabClicks = spyAudienceTabClicks();
 
     const { el } = makePresenterEl();
     el.present();
 
-    expect(openCalls.length).toBe(1);
-    expect(openCalls[0].url).toContain("mode=audience");
-    expect(openCalls[0].target).toBe("_blank");
+    expect(tabClicks).toHaveLength(1);
+    expect(tabClicks[0].href).toContain("mode=audience");
+    expect(tabClicks[0].target).toBe("_blank");
+    expect(tabClicks[0].rel).toContain("noopener");
+    expect(tabClicks[0].rel).toContain("noreferrer");
     expect(el.getAttribute("data-hf-presenting")).toBe("true");
 
     el.remove();
   });
 
+  it("present() puts mode=audience in the query even when the page URL has a #fragment", () => {
+    const tabClicks = spyAudienceTabClicks();
+    location.hash = "#intro";
+
+    const { el } = makePresenterEl();
+    el.present();
+
+    expect(tabClicks).toHaveLength(1);
+    // String concat onto location.href would produce "...#intro?mode=audience",
+    // leaving location.search empty in the opened tab (unsynced presenter boot).
+    expect(new URL(tabClicks[0].href).searchParams.get("mode")).toBe("audience");
+
+    location.hash = "";
+    el.remove();
+  });
+
+  it("present() aborts (no presenter state) without user activation", () => {
+    const restoreUserActivation = mockUserActivation(false);
+    const tabClicks = spyAudienceTabClicks();
+
+    const { el } = makePresenterEl();
+    try {
+      el.present();
+
+      // No audience tab → must not flip into presenter layout (there is no
+      // exit-presenter affordance; the element would be stuck until reload).
+      expect(tabClicks).toHaveLength(0);
+      expect(el.getAttribute("data-hf-presenting")).toBeNull();
+    } finally {
+      restoreUserActivation();
+      el.remove();
+    }
+  });
+
   it("built-in nav present button opens presenter mode and then hides itself", () => {
-    const openCalls: { url: string; target: string }[] = [];
-    vi.spyOn(window, "open").mockImplementation((url, target) => {
-      openCalls.push({ url: String(url), target: String(target) });
-      return null;
-    });
+    const tabClicks = spyAudienceTabClicks();
 
     const { el } = makePresenterEl();
     const presentBtn = el.querySelector("[data-hf-present]") as HTMLButtonElement;
@@ -963,8 +1019,8 @@ describe("<hyperframes-slideshow> presenter mode", () => {
 
     presentBtn.click();
 
-    expect(openCalls).toHaveLength(1);
-    expect(openCalls[0].url).toContain("mode=audience");
+    expect(tabClicks).toHaveLength(1);
+    expect(tabClicks[0].href).toContain("mode=audience");
     expect(el.getAttribute("data-hf-presenting")).toBe("true");
     expect(el.querySelector("[data-hf-present]")).toBeNull();
 
@@ -972,28 +1028,86 @@ describe("<hyperframes-slideshow> presenter mode", () => {
   });
 
   it("P shortcut opens presenter mode from the shared component", () => {
-    const openCalls: { url: string; target: string }[] = [];
-    vi.spyOn(window, "open").mockImplementation((url, target) => {
-      openCalls.push({ url: String(url), target: String(target) });
-      return null;
-    });
+    const tabClicks = spyAudienceTabClicks();
 
     const { el } = makePresenterEl();
     el.focus();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "P" }));
 
-    expect(openCalls).toHaveLength(1);
-    expect(openCalls[0].url).toContain("mode=audience");
+    expect(tabClicks).toHaveLength(1);
+    expect(tabClicks[0].href).toContain("mode=audience");
     expect(el.getAttribute("data-hf-presenting")).toBe("true");
 
     el.remove();
   });
 
-  it("present() rebroadcasts the current position for a newly opened audience window", async () => {
+  it("arrow keydown inside the composition iframe still drives the deck", () => {
+    // Interactive decks move focus into the player iframe on click; keydowns
+    // there never reach the top window's listener. The component forwards them.
+    const el = document.createElement("hyperframes-slideshow") as any;
+    document.body.appendChild(el);
+    const iframe = document.createElement("iframe");
+    el.appendChild(iframe);
+    let nexts = 0;
+    el.__setControllerForTest({
+      next: () => {
+        nexts++;
+      },
+      prev: () => {},
+      goToSlide: () => {},
+      onChange: () => () => {},
+      counter: { index: 1, total: 3 },
+      breadcrumb: [{ id: "main", label: "Main deck" }],
+      currentSlide: { hotspots: [] },
+      nextSlide: null,
+      get position() {
+        return MAIN_POS;
+      },
+    });
+
+    el.attachIframeKeyForwarding({ iframeElement: iframe });
+    iframe.contentWindow?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(nexts).toBe(1);
+
+    // Text-entry targets inside the iframe must NOT navigate (duck-typed guard —
+    // iframe-realm elements are not instanceof this realm's classes).
+    const doc = iframe.contentDocument;
+    if (doc) {
+      const input = doc.createElement("input");
+      doc.body.appendChild(input);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(nexts).toBe(1);
+    }
+
+    el.remove();
+  });
+
+  it("warns once when iframe key forwarding is unavailable", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const el = document.createElement("hyperframes-slideshow") as any;
+    document.body.appendChild(el);
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentWindow", {
+      configurable: true,
+      get() {
+        throw new DOMException("Blocked by origin policy", "SecurityError");
+      },
+    });
+
+    el.attachIframeKeyForwarding({ iframeElement: iframe });
+    iframe.dispatchEvent(new Event("load"));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("cross-origin");
+
+    el.remove();
+  });
+
+  it("present() rebroadcasts the current position for a newly opened audience tab", async () => {
     const received: unknown[] = [];
     const spy = new BroadcastChannel(slideshowChannelName());
     spy.onmessage = (e: MessageEvent) => received.push(e.data);
-    vi.spyOn(window, "open").mockImplementation(() => null);
+    spyAudienceTabClicks();
 
     const { el } = makePresenterEl();
     el.present();

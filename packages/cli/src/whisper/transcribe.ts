@@ -206,6 +206,21 @@ function prepareAudio(audioPath: string): string {
 }
 
 /**
+ * Map a ggml model file-stem to whisper.cpp's `--dtw` alignment-heads preset.
+ *
+ * The two mostly coincide, so the stem was long passed straight to `--dtw` — but
+ * they diverge for the large family: the model files are hyphenated
+ * (`ggml-large-v3.bin`) while the DTW presets are dotted (`large.v3`,
+ * `large.v3.turbo`). `--dtw large-v3` makes whisper-cli abort with
+ * "unknown DTW preset 'large-v3'", surfacing as "Transcription failed". The
+ * tiny/base/small/medium (+`.en`) families have no hyphen, so `-`→`.` is a no-op
+ * for them and correct for the large family.
+ */
+export function dtwPresetForModel(model: string): string {
+  return model.replace(/-/g, ".");
+}
+
+/**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
 // fallow-ignore-next-line complexity
@@ -281,7 +296,7 @@ export async function transcribe(
     "--output-file",
     outputBase,
     "--dtw",
-    effectiveModel,
+    dtwPresetForModel(effectiveModel),
     "--suppress-nst",
   ];
   if (detectedLanguage) {

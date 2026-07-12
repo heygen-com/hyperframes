@@ -56,6 +56,100 @@ export interface AssetUrl {
 }
 
 /**
+ * Finalize a presigned upload (POST /v3/assets/{asset_id}/complete).
+ */
+export interface CompleteAssetUploadRequest {
+  /**
+   * Optional SHA256 (hex) cross-check.
+   */
+  checksum_sha256?: string | null;
+}
+
+/**
+ * Result of finalizing an upload.
+ */
+export interface CompleteAssetUploadResponse {
+  /**
+   * The reusable asset identifier.
+   */
+  asset_id: string;
+  /**
+   * Public URL of the finalized asset.
+   */
+  url: string;
+  /**
+   * MIME type detected from the stored bytes.
+   */
+  mime_type: string;
+  /**
+   * Size of the stored object in bytes.
+   */
+  size_bytes: number;
+  /**
+   * Asset status, e.g. 'processing'.
+   */
+  status: "processing";
+}
+
+/**
+ * Request to begin a presigned direct-to-S3 upload (POST
+ * /v3/assets/direct-uploads).
+ */
+export interface CreateAssetUploadRequest {
+  /**
+   * Original filename for reference/metadata. The stored object's extension is
+   * derived from content_type.
+   */
+  filename: string;
+  /**
+   * Declared MIME type (e.g. 'video/mp4', 'image/png', 'audio/mpeg',
+   * 'application/pdf', 'application/zip'). Verified against the stored bytes at
+   * completion.
+   */
+  content_type: string;
+  /**
+   * Exact byte size of the file. Signed into the upload URL so it cannot be
+   * exceeded.
+   */
+  size_bytes: number;
+  /**
+   * Optional SHA256 of the file as hex. When provided, S3 enforces it on upload.
+   */
+  checksum_sha256?: string | null;
+}
+
+/**
+ * Presigned upload instructions.
+ */
+export interface CreateAssetUploadResponse {
+  /**
+   * Reusable asset identifier. Becomes usable after POST
+   * /v3/assets/{asset_id}/complete.
+   */
+  asset_id: string;
+  /**
+   * Presigned S3 URL. PUT the raw file bytes here.
+   */
+  upload_url: string;
+  /**
+   * Headers that must be sent verbatim on the PUT request.
+   */
+  upload_headers: Record<string, unknown>;
+  /**
+   * Seconds until the upload URL expires.
+   */
+  expires_in_seconds: number;
+  /**
+   * Maximum allowed upload size in bytes.
+   */
+  max_bytes: number;
+  /**
+   * Upload lifecycle status. Always 'pending_upload' here.
+   */
+  status: "pending_upload";
+}
+
+/**
  * Request body for POST /v3/hyperframes/renders.
  */
 export interface CreateHyperframesRenderRequest {

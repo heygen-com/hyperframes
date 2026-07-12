@@ -1,3 +1,24 @@
+import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
+
+/**
+ * Cross-referenced variable usage for a whole composition: the per-script
+ * static scans merged and compared against the declared schema.
+ */
+export interface VariableUsageReport {
+  /** Variable ids read by composition scripts (static analysis, first-seen order). */
+  usedIds: string[];
+  /** Declared ids never read by any script. */
+  unusedDeclarations: string[];
+  /** Ids read by scripts but missing from data-composition-variables. */
+  undeclaredReads: string[];
+  /**
+   * True when any script accesses variables opaquely (computed keys, escaping
+   * values object…) — usedIds is then a lower bound and unusedDeclarations
+   * may be false positives.
+   */
+  scanIncomplete: boolean;
+}
+
 // ─── Document model ───────────────────────────────────────────────────────────
 
 /** Full DOM-level view of one editable element. Built by the SDK adaptation layer. */
@@ -110,11 +131,16 @@ export type EditOp =
     }
   | { type: "setClassStyle"; selector: string; styles: Record<string, string | null> }
   | { type: "setCompositionMetadata"; width?: number; height?: number; duration?: number }
+  | { type: "declareVariable"; declaration: CompositionVariable }
+  | { type: "updateVariableDeclaration"; id: string; declaration: CompositionVariable }
+  | { type: "removeVariableDeclaration"; id: string }
   | {
       type: "setVariableValue";
       id: string;
       value: string | number | boolean | FontValue | ImageValue;
     }
+  // #2098 alias op — remove-by-id, kept for its shipped session.removeVariable().
+  | { type: "removeVariable"; id: string }
   | { type: "addGsapTween"; target: HfId; tween: GsapTweenSpec }
   | { type: "setGsapTween"; animationId: string; properties: Partial<GsapTweenSpec> }
   | {
@@ -406,6 +432,75 @@ export interface Composition {
   addElement(parent: HfId | null, index: number, html: string): HfId;
   setVariableValue(id: string, value: string | number | boolean | FontValue | ImageValue): void;
   /**
+   * Current `default` value for a declared variable, or undefined if
+   * undeclared/unset. Convenience over getVariableValues() (kept from #2098).
+   */
+  getVariableValue(id: string): string | number | boolean | FontValue | ImageValue | undefined;
+  /**
+   * Every declared variable's full schema (id/type/label/default/…), or [] when
+   * none. Alias of getVariableDeclarations() (kept from #2098's surface).
+   */
+  listVariables(): CompositionVariable[];
+  /** Remove a variable's declaration — alias of removeVariableDeclaration(). */
+  removeVariable(id: string): void;
+  /**
+   * Declare a new variable in `data-composition-variables`. No-ops when the
+   * id is already declared (see can() for the E_DUPLICATE_VARIABLE check);
+   * creates the attribute when the composition has none yet.
+   */
+  declareVariable(declaration: CompositionVariable): void;
+  /**
+   * Replace an existing declaration wholesale (label, type, constraints,
+   * default — the id itself is immutable; rename = remove + declare). When
+   * the default changes to/from a scalar, the `--{id}` CSS compat custom
+   * property on the root is kept in sync, mirroring setVariableValue.
+   */
+  updateVariableDeclaration(id: string, declaration: CompositionVariable): void;
+  /**
+   * Remove a declaration (and the last one removes the whole attribute).
+   * Also clears the `--{id}` CSS compat custom property if present.
+   */
+  removeVariableDeclaration(id: string): void;
+  /**
+   * Read the typed variable declarations from `data-composition-variables`
+   * (the canonical schema — same filter the render pipeline uses; malformed
+   * entries are dropped). Read-only — does not dispatch.
+   */
+  getVariableDeclarations(): CompositionVariable[];
+  /**
+   * Resolve this composition's variable values: its declared defaults merged
+   * with `overrides` (overrides win, undeclared override keys pass through).
+   * Read-only — does not dispatch.
+   *
+   * Scope: reads THIS composition file's own declaration element, not a union of
+   * every `[data-composition-variables]` in a bundled document. The runtime's
+   * `getVariables()` additionally walks inlined sub-composition declarers because
+   * it runs on the fully-bundled document; the SDK models one composition file,
+   * so per-file scope is intentional (and is what Studio needs to predict a
+   * single file's `--variables` payload). For the common single-`<html>`
+   * composition the two agree; they diverge only when sub-comp declarers are
+   * inlined into one document.
+   */
+  getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown>;
+  /**
+   * Validate a values map against the declared schema. Returns undeclared /
+   * type-mismatch / enum-out-of-range issues (same checks as the CLI's
+   * `--strict-variables`). Read-only — does not dispatch.
+   */
+  validateVariableValues(values: Record<string, unknown>): VariableValidationIssue[];
+  /**
+   * Cross-reference the declared schema against a static scan of every inline
+   * composition script (getVariables() reads). Read-only — does not dispatch.
+   */
+  getVariableUsage(): VariableUsageReport;
+  /**
+   * Apply variable values to the preview surface (ephemeral — never written
+   * to the document; use setVariableValue to persist a default). Pass null to
+   * restore declared defaults. No-op when the preview adapter doesn't
+   * implement setPreviewVariables; returns whether the adapter handled it.
+   */
+  setPreviewVariables(values: Record<string, unknown> | null): boolean;
+  /**
    * Read enter/exit times and GSAP labels for every timed element (WS-C).
    * Derives enterAt/exitAt using the same data-duration vs data-end preference
    * as handleSetTiming (data-duration wins; data-end − data-start as fallback).
@@ -461,8 +556,17 @@ export interface Composition {
 
   // ── Query API (F1) ─────────────────────────────────────────────────────────
   getElements(): ElementSnapshot[];
+  /** Top-level elements only, each carrying its full subtree — no id appears twice. */
+  getRootElements(): ElementSnapshot[];
   getElement(id: HfId): ElementSnapshot | null;
   find(query: FindQuery): string[];
+  /**
+   * Every GSAP tween id parsed from the composition's script, regardless of
+   * whether its target selector currently matches a live DOM element. See
+   * parsedAnimationIds in document.ts for why this differs from the
+   * per-element animationIds on ElementSnapshot.
+   */
+  getAllAnimationIds(): Set<string>;
 
   // ── Selection API ──────────────────────────────────────────────────────────
   /** Sugar: resolves getSelection() → explicit ops at call time */
@@ -491,7 +595,8 @@ export interface Composition {
   on(event: "persist:error", handler: (event: PersistErrorEvent) => void): () => void;
 
   // ── Serialization ──────────────────────────────────────────────────────────
-  serialize(): string;
+  /** stripRuntime removes an embedded preview-runtime script — for a host driving its own clock. */
+  serialize(opts?: { stripRuntime?: boolean }): string;
 
   // ── T3 embedded-mode extras ────────────────────────────────────────────────
   /** Current override-set — serialize for host storage */

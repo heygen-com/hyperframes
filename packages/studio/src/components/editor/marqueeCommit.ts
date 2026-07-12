@@ -1,10 +1,11 @@
+// fallow-ignore-file code-duplication
 import { useCallback, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
-import { toOverlayRect } from "./domEditOverlayGeometry";
+import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
 
 interface MarqueeState {
   startX: number;
@@ -57,7 +58,7 @@ function collectMarqueeHits(
     const el = item.element;
     if (!isElementComputedVisible(el)) continue;
     if (coversComposition(el.getBoundingClientRect(), viewport)) continue;
-    const overlayRect = toOverlayRect(overlayEl, iframe, el);
+    const overlayRect = toVisibleOverlayRect(overlayEl, iframe, el);
     if (!overlayRect) continue;
     const r: Rect = {
       left: overlayRect.left,

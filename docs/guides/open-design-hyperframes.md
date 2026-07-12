@@ -38,9 +38,9 @@ od:
 
 This skill teaches Open Design to emit a **valid first draft** of a
 [HyperFrames](https://github.com/heygen-com/hyperframes) composition — plain
-HTML + CSS + a paused GSAP timeline. The CLI (`npx hyperframes render
-index.html`) turns the HTML into an MP4. You author the HTML; the user runs
-the render locally.
+HTML + CSS + a paused GSAP timeline. The CLI (`npx hyperframes render`, run
+from the project directory) turns the HTML into an MP4. You author the HTML;
+the user runs the render locally.
 
 **HyperFrames replaces the default video-artifact workflow.** Do NOT emit a
 React/Babel composition, do NOT call other prototype skills, do NOT use the

@@ -29,6 +29,7 @@ import {
   blitHdrImageLayer,
   blitHdrVideoLayer,
   closeHdrVideoFrameSource,
+  selectDomLayerShowIds,
 } from "../../hdrCompositor.js";
 import {
   type HdrPerfCollector,
@@ -234,10 +235,11 @@ export async function captureSceneIntoBuffer(a: CaptureSceneArgs): Promise<void>
       );
     }
   }
-  const showIds = Array.from(sceneIds);
+  const showIds = selectDomLayerShowIds(Array.from(sceneIds), stackingInfo);
   const hideIds = stackingInfo
     .map((e) => e.id)
     .filter((id) => !sceneIds.has(id) || nativeHdrIds.has(id));
+  if (showIds.length === 0) return;
   if (hdrPerf) hdrPerf.domLayerCaptures += 1;
   await timeHdrPhaseAsync(hdrPerf, "domMaskApplyMs", () =>
     applyDomLayerMask(session.page, showIds, hideIds),

@@ -10,7 +10,7 @@ with only the climax(es) promoted to embed. Rail is not a fallback — it's the 
 
 > **Implementation note.** A dedicated rail renderer is the next build step. The rail is a
 > plain `fg` caption track and maps cleanly onto hyperframes' native caption pipeline
-> (`hyperframes-media` captions) — prefer reusing that over hand-rolling. Until wired, render
+> (`media-use` captions) — prefer reusing that over hand-rolling. Until wired, render
 > the rail as a simple `data-caption-layer="fg"` composition (no matte overlay for these caps).
 
 ## Position & safe area

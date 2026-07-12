@@ -18,6 +18,7 @@ export type RuntimeBridgeControlAction =
   | "set-media-output-muted"
   | "set-native-media-sync-disabled"
   | "set-web-audio-media-disabled"
+  | "set-root-duration"
   | "stop-media"
   | "flash-elements";
 
@@ -28,6 +29,7 @@ export type RuntimeBridgeControlMessage = {
   frame?: number;
   muted?: boolean;
   volume?: number;
+  durationSeconds?: number;
   disabled?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
@@ -51,6 +53,8 @@ export type RuntimeTimelineClip = {
   start: number;
   duration: number;
   track: number;
+  zIndex: number;
+  stackingContextId: string | null;
   kind: "video" | "audio" | "image" | "element" | "composition";
   tagName: string | null;
   compositionId: string | null;
@@ -212,7 +216,7 @@ export type RuntimePlayer = {
   play: () => void;
   pause: () => void;
   seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
-  renderSeek: (timeSeconds: number) => void;
+  renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;
@@ -220,23 +224,42 @@ export type RuntimePlayer = {
   getPlaybackRate: () => number;
 };
 
+export type RuntimeSeekOptions = {
+  suppressEvents?: boolean;
+};
+
+export type RuntimeTimelineChildLike = {
+  targets?: () => unknown[];
+  vars?: unknown;
+  startTime?: () => number;
+  duration?: () => number;
+  parent?: RuntimeTimelineChildLike;
+};
+
 export type RuntimeTimelineLike = {
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, suppressEvents?: boolean) => void;
-  totalTime?: (timeSeconds: number, suppressEvents?: boolean) => void;
+  seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;
   add: (timeline: RuntimeTimelineLike, startAtSeconds: number) => void;
   paused: (paused?: boolean) => void;
   timeScale?: (rate: number) => void;
   set: (target: RuntimeGsapSetTarget, vars: RuntimeGsapSetVars, atSeconds?: number) => void;
+  getChildren?: (
+    nested?: boolean,
+    tweens?: boolean,
+    timelines?: boolean,
+    ignoreBeforeTime?: number,
+  ) => RuntimeTimelineChildLike[];
 };
 
 export type RuntimeDeterministicAdapter = {
   name: string;
   discover: () => void;
-  seek: (ctx: { time: number }) => void;
+  seek: (ctx: { time: number; suppressEvents?: boolean }) => void;
   pause: () => void;
   play?: () => void;
   revert?: () => void;

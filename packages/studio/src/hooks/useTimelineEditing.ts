@@ -1,5 +1,3 @@
-// Pre-existing-complex timeline hook (DOM patch + GSAP position shift/scale +
-// playback-start resolution).
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import type { TimelineElement } from "../player";
@@ -20,51 +18,33 @@ import {
   collectHtmlIds,
   resolveDroppedAssetDuration,
 } from "../utils/studioHelpers";
-import type { EditHistoryKind } from "../utils/editHistory";
 import {
+  applyTimelineStackingReorder,
   buildPatchTarget,
   patchIframeDomTiming,
-  resolveResizePlaybackStart,
   persistTimelineEdit,
   readFileContent,
-  applyPatchByTarget,
+  foldedShiftGsapMutation,
+  foldedScaleGsapMutation,
   formatTimelineAttributeNumber,
-  shiftGsapPositions,
-  scaleGsapPositions,
+  finishTimelineTimingFallback,
+  extendRootDurationIfNeeded,
+  buildTimelineMoveTimingPatch,
+  buildTimelineResizeTimingPatch,
 } from "./timelineEditingHelpers";
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
+import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
+import {
+  useTimelineElementVisibilityEditing,
+  useTimelineTrackVisibilityEditing,
+} from "./timelineTrackVisibility";
+import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { sdkTimingPersist } from "../utils/sdkCutover";
-import type { Composition } from "@hyperframes/sdk";
+import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
-// ── Types ──
-
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
-
-interface UseTimelineEditingOptions {
-  projectId: string | null;
-  activeCompPath: string | null;
-  timelineElements: TimelineElement[];
-  showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  recordEdit: (input: RecordEditInput) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  reloadPreview: () => void;
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
-  pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
-  uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
-  isRecordingRef?: React.RefObject<boolean>;
-  /** Stage 7 §3.2: SDK session for routing timing ops through setTiming. */
-  sdkSession?: Composition | null;
-  /** Resync the SDK session after a server-authoritative timeline write. */
-  forceReloadSdkSession?: () => void;
-}
-
-// ── Hook ──
+type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
+  stackingReorder?: TimelineStackingReorderIntent | null;
+};
 
 export function useTimelineEditing({
   projectId,
@@ -81,6 +61,7 @@ export function useTimelineEditing({
   isRecordingRef,
   sdkSession,
   forceReloadSdkSession,
+  handleDomZIndexReorderCommitRef,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
@@ -117,7 +98,6 @@ export function useTimelineEditing({
           }),
         )
         .then(() => {
-          // Server wrote the file; resync the stale in-memory SDK doc.
           forceReloadSdkSession?.();
         });
       editQueueRef.current = queued.catch((error) => {
@@ -136,68 +116,99 @@ export function useTimelineEditing({
       forceReloadSdkSession,
     ],
   );
+  const groupEditing = useTimelineGroupEditing({
+    activeCompPath,
+    domEditSaveTimestampRef,
+    editQueueRef,
+    forceReloadSdkSession,
+    isRecordingRef,
+    pendingTimelineEditPathRef,
+    previewIframeRef,
+    projectIdRef,
+    recordEdit,
+    reloadPreview,
+    sdkSession,
+    showToast,
+    writeProjectFile,
+  });
 
-  // fallow-ignore-next-line complexity
   const handleTimelineElementMove = useCallback(
     // fallow-ignore-next-line complexity
-    (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
-      patchIframeDomTiming(previewIframeRef.current, element, [
-        ["data-start", formatTimelineAttributeNumber(updates.start)],
-        ["data-track-index", String(updates.track)],
-      ]);
+    (element: TimelineElement, updates: TimelineMoveUpdates) => {
       const targetPath = element.sourceFile || activeCompPath || "index.html";
+      const startChanged = updates.start !== element.start;
+
+      if (startChanged) {
+        patchIframeDomTiming(previewIframeRef.current, element, [
+          ["data-start", formatTimelineAttributeNumber(updates.start)],
+        ]);
+      }
+
+      const reorderDone = applyTimelineStackingReorder({
+        element,
+        stackingReorder: updates.stackingReorder,
+        timelineElements,
+        iframe: previewIframeRef.current,
+        activeCompPath,
+        commit: handleDomZIndexReorderCommitRef?.current,
+      });
+
+      if (!startChanged) return reorderDone;
+
       const buildMovePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
-        let patched = applyPatchByTarget(original, target, {
-          type: "attribute",
-          property: "start",
-          value: formatTimelineAttributeNumber(updates.start),
-        });
-        return applyPatchByTarget(patched, target, {
-          type: "attribute",
-          property: "track-index",
-          value: String(updates.track),
-        });
+        return buildTimelineMoveTimingPatch(original, target, updates.start, element.duration);
       };
-      // Server-path fallback (no SDK session): persist the attr patch, then
-      // shift GSAP tween positions on the server and reload the preview — the
-      // SDK path folds both into setTiming, but the fallback must do them
-      // explicitly or the clip moves while its GSAP tweens stay put + the
-      // preview never refreshes. coalesceKey mirrors the SDK branch so undo
-      // granularity is identical on either path.
       const coalesceKey = `timeline-move:${element.hfId ?? element.id}`;
       const moveFallback = () =>
         enqueueEdit(element, "Move timeline clip", buildMovePatches, coalesceKey).then(() => {
           const pid = projectIdRef.current;
           const delta = updates.start - element.start;
-          if (delta !== 0 && element.domId && pid) {
-            return shiftGsapPositions(pid, targetPath, element.domId, delta)
-              .then(() => reloadPreview())
-              .catch((err) => console.error("[Timeline] Failed to shift GSAP positions", err));
-          }
-          return reloadPreview();
-        });
-      if (sdkSession && element.hfId) {
-        return sdkTimingPersist(
-          element.hfId,
-          targetPath,
-          { start: updates.start, trackIndex: updates.track },
-          sdkSession,
-          {
-            editHistory: { recordEdit },
-            writeProjectFile,
+          const domId = element.domId;
+          return finishTimelineTimingFallback({
+            iframe: previewIframeRef.current,
+            needsExtension,
+            rootDurationSeconds: updates.start + element.duration,
             reloadPreview,
-            domEditSaveTimestampRef,
-            compositionPath: activeCompPath,
-            // Capture on-disk bytes as the undo `before` so undoing a timing move
-            // restores the file verbatim, not a normalized full-DOM re-emit.
-            readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
-          },
-          { label: "Move timeline clip", coalesceKey },
-        ).then((handled) => {
-          if (!handled) return moveFallback();
+            gsapMutation:
+              delta !== 0 && domId && pid
+                ? foldedShiftGsapMutation({
+                    projectId: pid,
+                    targetPath,
+                    domId,
+                    delta,
+                    label: "Move timeline clip",
+                    coalesceKey,
+                    recordEdit,
+                  })
+                : undefined,
+            onGsapError: (err) => console.error("[Timeline] Failed to shift GSAP positions", err),
+          });
         });
-      }
-      return moveFallback();
+      const needsExtension = extendRootDurationIfNeeded(updates.start + element.duration);
+      return reorderDone.then(() => {
+        if (sdkSession && element.hfId && !needsExtension) {
+          return sdkTimingPersist(
+            element.hfId,
+            targetPath,
+            { start: updates.start },
+            sdkSession,
+            {
+              editHistory: { recordEdit },
+              writeProjectFile,
+              reloadPreview,
+              domEditSaveTimestampRef,
+              compositionPath: activeCompPath,
+              // Capture on-disk bytes as the undo `before` so undoing a timing move
+              // restores the file verbatim, not a normalized full-DOM re-emit.
+              readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
+            },
+            { label: "Move timeline clip", coalesceKey },
+          ).then((handled) => {
+            if (!handled) return moveFallback();
+          });
+        }
+        return moveFallback();
+      });
     },
     [
       previewIframeRef,
@@ -208,10 +219,11 @@ export function useTimelineEditing({
       writeProjectFile,
       reloadPreview,
       domEditSaveTimestampRef,
+      timelineElements,
+      handleDomZIndexReorderCommitRef,
     ],
   );
 
-  // fallow-ignore-next-line complexity
   const handleTimelineElementResize = useCallback(
     // fallow-ignore-next-line complexity
     (
@@ -235,60 +247,44 @@ export function useTimelineEditing({
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs);
       const targetPath = element.sourceFile || activeCompPath || "index.html";
       const buildResizePatches: PersistTimelineEditInput["buildPatches"] = (original, target) => {
-        const pbs = resolveResizePlaybackStart(original, target, element, updates);
-        let patched = applyPatchByTarget(original, target, {
-          type: "attribute",
-          property: "start",
-          value: formatTimelineAttributeNumber(updates.start),
-        });
-        patched = applyPatchByTarget(patched, target, {
-          type: "attribute",
-          property: "duration",
-          value: formatTimelineAttributeNumber(updates.duration),
-        });
-        if (pbs) {
-          patched = applyPatchByTarget(patched, target, {
-            type: "attribute",
-            property: pbs.attrName,
-            value: formatTimelineAttributeNumber(pbs.value),
-          });
-        }
-        return patched;
+        return buildTimelineResizeTimingPatch(original, target, element, updates);
       };
-      // SDK path: skip when a playback-start adjustment is needed (setTiming has no pbs field).
-      // The second clause fires because trimming the start of a clip that has a
-      // playback-start attribute implicitly shifts that in-point — which the SDK
-      // setTiming op can't express — so those resizes must take the server path.
       const hasPbsAdjustment =
         updates.playbackStart != null ||
         (updates.start !== element.start && element.playbackStart != null);
       // Server-path fallback: after persisting the attr patch, scale GSAP tween
-      // positions/durations on the server and reload the preview. The SDK path
-      // folds both into setTiming; the fallback must do them explicitly or the
-      // clip resizes while its GSAP tweens keep their old timing + the preview
-      // never refreshes. coalesceKey mirrors the SDK branch for undo parity.
+      // positions/durations on the server. Extending edits can keep the iframe
+      // live unless a GSAP source rewrite needs a fresh run.
       const coalesceKey = `timeline-resize:${element.hfId ?? element.id}`;
       const timingChanged =
         updates.start !== element.start || updates.duration !== element.duration;
+      const needsExtension = extendRootDurationIfNeeded(updates.start + updates.duration);
       const resizeFallback = () =>
         enqueueEdit(element, "Resize timeline clip", buildResizePatches, coalesceKey).then(() => {
           const pid = projectIdRef.current;
-          if (timingChanged && element.domId && pid) {
-            return scaleGsapPositions(
-              pid,
-              targetPath,
-              element.domId,
-              element.start,
-              element.duration,
-              updates.start,
-              updates.duration,
-            )
-              .then(() => reloadPreview())
-              .catch((err) => console.error("[Timeline] Failed to scale GSAP positions", err));
-          }
-          return reloadPreview();
+          const domId = element.domId;
+          return finishTimelineTimingFallback({
+            iframe: previewIframeRef.current,
+            needsExtension,
+            rootDurationSeconds: updates.start + updates.duration,
+            reloadPreview,
+            gsapMutation:
+              timingChanged && domId && pid
+                ? foldedScaleGsapMutation({
+                    projectId: pid,
+                    targetPath,
+                    domId,
+                    from: { start: element.start, duration: element.duration },
+                    to: { start: updates.start, duration: updates.duration },
+                    label: "Resize timeline clip",
+                    coalesceKey,
+                    recordEdit,
+                  })
+                : undefined,
+            onGsapError: (err) => console.error("[Timeline] Failed to scale GSAP positions", err),
+          });
         });
-      if (sdkSession && element.hfId && !hasPbsAdjustment) {
+      if (sdkSession && element.hfId && !hasPbsAdjustment && !needsExtension) {
         return sdkTimingPersist(
           element.hfId,
           targetPath,
@@ -322,6 +318,34 @@ export function useTimelineEditing({
       domEditSaveTimestampRef,
     ],
   );
+
+  const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
+
+  const handleToggleElementHidden = useTimelineElementVisibilityEditing({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    domEditSaveTimestampRef,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    forceReloadSdkSession,
+  });
 
   // fallow-ignore-next-line complexity
   const handleTimelineElementDelete = useCallback(
@@ -562,6 +586,8 @@ export function useTimelineEditing({
   return {
     handleTimelineElementMove,
     handleTimelineElementResize,
+    handleToggleTrackHidden,
+    handleToggleElementHidden,
     handleTimelineElementDelete,
     handleTimelineElementSplit: handleRazorSplit,
     handleRazorSplit,
@@ -569,5 +595,6 @@ export function useTimelineEditing({
     handleTimelineAssetDrop,
     handleTimelineFileDrop,
     handleBlockedTimelineEdit,
+    ...groupEditing,
   };
 }

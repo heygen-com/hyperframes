@@ -12,11 +12,13 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
     pause: () => {
       state.paused = true;
     },
-    seek: (time: number) => {
-      state.time = time;
+    seek: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
-    totalTime: (time: number) => {
-      state.time = time;
+    totalTime: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
     time: () => state.time,
     duration: () => state.duration,
@@ -776,6 +778,52 @@ describe("initSandboxRuntimeModular", () => {
     expect(bottomBand.style.visibility).toBe("hidden");
   });
 
+  it("forces data-hidden timed elements out of layout until the attribute is removed", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const hiddenClip = document.createElement("div");
+    hiddenClip.style.position = "absolute";
+    hiddenClip.setAttribute("data-start", "2");
+    hiddenClip.setAttribute("data-duration", "4");
+    hiddenClip.setAttribute("data-hidden", "");
+    root.appendChild(hiddenClip);
+
+    window.__timelines = {
+      main: createMockTimeline(10),
+    };
+
+    initSandboxRuntimeModular();
+
+    const player = window.__player;
+    expect(player).toBeDefined();
+
+    player?.seek(0);
+    expect(hiddenClip.style.display).toBe("none");
+
+    player?.seek(3);
+    expect(hiddenClip.style.display).toBe("none");
+
+    player?.seek(7);
+    expect(hiddenClip.style.display).toBe("none");
+
+    hiddenClip.removeAttribute("data-hidden");
+
+    player?.seek(3);
+    expect(hiddenClip.style.visibility).toBe("visible");
+    expect(hiddenClip.style.display).toBe("");
+
+    player?.seek(7);
+    expect(hiddenClip.style.visibility).toBe("hidden");
+    expect(hiddenClip.style.display).toBe("");
+  });
+
   it("does not stamp Studio timing on GSAP targets inside authored timed clips", () => {
     withStudioIframe(() => {
       const root = document.createElement("div");
@@ -983,6 +1031,78 @@ describe("initSandboxRuntimeModular", () => {
 
     // The hook host should be visible at t=0.5
     expect(hookHost.style.visibility).toBe("visible");
+  });
+
+  it("keeps the root GSAP render nudge for normal frames but not silent probes", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
+    const rootTimeline = createMockTimeline(10);
+    const originalTotalTime = rootTimeline.totalTime;
+    rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
+      seekCalls.push({ time, suppressEvents });
+      return originalTotalTime?.(time, suppressEvents);
+    };
+
+    window.__timelines = { main: rootTimeline };
+    initSandboxRuntimeModular();
+    seekCalls.length = 0;
+
+    window.__player?.renderSeek(2);
+
+    expect(seekCalls).toEqual([
+      { time: 2, suppressEvents: false },
+      { time: 2.001, suppressEvents: true },
+      { time: 2, suppressEvents: true },
+    ]);
+
+    seekCalls.length = 0;
+    window.__player?.renderSeek(3, { suppressEvents: true });
+
+    expect(seekCalls).toEqual([{ time: 3, suppressEvents: true }]);
+  });
+
+  it("does not nudge root GSAP timelines that contain zero-duration callbacks", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
+    const rootTimeline = createMockTimeline(10);
+    const originalTotalTime = rootTimeline.totalTime;
+    rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
+      seekCalls.push({ time, suppressEvents });
+      return originalTotalTime?.(time, suppressEvents);
+    };
+    Object.assign(rootTimeline, {
+      getChildren: () => [
+        {
+          vars: { onComplete: () => {} },
+          duration: () => 0,
+          totalDuration: () => 0,
+        },
+      ],
+    });
+
+    window.__timelines = { main: rootTimeline };
+    initSandboxRuntimeModular();
+    seekCalls.length = 0;
+
+    window.__player?.renderSeek(2);
+
+    expect(seekCalls).toEqual([{ time: 2, suppressEvents: false }]);
   });
 
   it("shows pip video at global start time even when host composition starts late", () => {
@@ -1636,6 +1756,26 @@ describe("initSandboxRuntimeModular", () => {
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  it("keeps a usable bound timeline when the registry entry is replaced", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-start="0" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    const originalTimeline = createMockTimeline(5);
+    window.__timelines = { root: originalTimeline };
+    initSandboxRuntimeModular();
+
+    const replacementTimeline = createMockTimeline(8);
+    window.__timelines.root = replacementTimeline;
+    for (let frame = 0; frame < 60; frame += 1) raf.step(16);
+
+    expect(window.__player?.getDuration()).toBe(5);
   });
 
   // applyClipLayout force-absolutizes authored root-level timed clips so they

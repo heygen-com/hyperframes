@@ -1,7 +1,3 @@
-/**
- * Layer items, text fields, capabilities, selection resolution, and patch operations
- * for dom editing.
- */
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import {
   resolveEditingAffordances,
@@ -36,10 +32,18 @@ import {
 } from "./domEditingElement";
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 
-// ─── Text fields ────────────────────────────────────────────────────────────
-
 export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
+}
+
+function sameTagChildIndex(el: HTMLElement): number {
+  let index = 0;
+  let sibling = el.previousElementSibling;
+  while (sibling) {
+    if (sibling.tagName === el.tagName) index += 1;
+    sibling = sibling.previousElementSibling;
+  }
+  return index;
 }
 
 function getTextFieldLabel(
@@ -57,6 +61,7 @@ function buildTextField(
   index: number,
   total: number,
   source: "self" | "child",
+  sourceChildIndex?: number,
 ): DomEditTextField {
   const tagName = el.tagName.toLowerCase();
   const key = el.getAttribute("data-hf-text-key") ?? `${source}:${index}:${tagName}`;
@@ -74,6 +79,7 @@ function buildTextField(
     inlineStyles: getInlineStyles(el),
     computedStyles: getCuratedComputedStyles(el),
     source,
+    ...(sourceChildIndex == null ? {} : { sourceChildIndex }),
   };
 }
 
@@ -105,7 +111,9 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
           });
           childIdx++;
         } else if (isHtmlElement(node) && isEditableTextLeaf(node)) {
-          fields.push(buildTextField(node, childIdx, childElements.length, "child"));
+          fields.push(
+            buildTextField(node, childIdx, childElements.length, "child", sameTagChildIndex(node)),
+          );
           childIdx++;
         }
       }
@@ -113,7 +121,7 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
     }
 
     return childElements.map((child, index) =>
-      buildTextField(child, index, childElements.length, "child"),
+      buildTextField(child, index, childElements.length, "child", sameTagChildIndex(child)),
     );
   }
 
@@ -172,14 +180,30 @@ export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): 
   };
 }
 
-// ─── Capabilities ────────────────────────────────────────────────────────────
+export interface DomEditChildLocator {
+  childSelector: string;
+  childIndex: number;
+}
 
-/**
- * Build the geometry/capability half of EditableElementFacts. Section inputs
- * (text/timing/animation) are irrelevant to capability resolution, so they are
- * zeroed here. Shared by the wrapper and the live-selection path so the two
- * fact-construction sites can't disagree.
- */
+export function buildTextFieldChildLocator(
+  fields: DomEditTextField[],
+  fieldKey: string,
+): DomEditChildLocator | null {
+  const field = fields.find((candidate) => candidate.key === fieldKey);
+  if (!field || field.source !== "child") return null;
+  // sourceChildIndex is only absent for a synthetic field that was never read
+  // back from the live DOM (e.g. one built by buildDefaultDomEditTextField).
+  // Guessing its position by counting same-tag "child" fields elsewhere in
+  // the array is unreliable and can silently locate the wrong element — fail
+  // closed instead so the caller falls back to the unsupported-structure path.
+  if (field.sourceChildIndex == null) return null;
+
+  return {
+    childSelector: `:scope > ${field.tagName}`,
+    childIndex: field.sourceChildIndex,
+  };
+}
+
 function capabilityFacts(geometry: {
   hasStableTarget: boolean;
   tag: string;
@@ -276,8 +300,11 @@ async function probeSourceElement(
       },
     );
     if (!response.ok) return true;
-    const data = (await response.json()) as { exists?: boolean };
-    return data.exists !== false;
+    const data = await response.json();
+    if (data && typeof data === "object" && "exists" in data && data.exists === false) {
+      return false;
+    }
+    return true;
   } catch {
     return true;
   }
@@ -475,19 +502,28 @@ export function collectDomEditLayerItems(
 
 // ─── Patch operations ────────────────────────────────────────────────────────
 
-export function buildDomEditStylePatchOperation(property: string, value: string): PatchOperation {
+export function buildDomEditStylePatchOperation(
+  property: string,
+  value: string | null,
+  childLocator?: DomEditChildLocator,
+): PatchOperation {
   return {
     type: "inline-style",
     property,
     value,
+    ...childLocator,
   };
 }
 
-export function buildDomEditTextPatchOperation(value: string): PatchOperation {
+export function buildDomEditTextPatchOperation(
+  value: string,
+  childLocator?: DomEditChildLocator,
+): PatchOperation {
   return {
     type: "text-content",
     property: "text",
     value,
+    ...childLocator,
   };
 }
 

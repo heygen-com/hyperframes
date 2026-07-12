@@ -146,6 +146,30 @@ describe("font rules", () => {
       expect(findings).toHaveLength(0);
     });
 
+    it("does not flag a system font declared via @font-face src: local()", async () => {
+      // Regression: two independent reports of this rule hard-erroring on OS
+      // system fonts (Hiragino Sans, Microsoft YaHei) that have no downloadable
+      // file. src: local(...) already satisfies the check (extractFontFaceFamilies
+      // only looks at the font-family declaration, not the src value) — the gap
+      // was that the fixHint didn't mention this as an option.
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @font-face { font-family: 'Microsoft YaHei'; src: local('Microsoft YaHei'); }
+          body { font-family: 'Microsoft YaHei', sans-serif; }
+        </style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("fixHint mentions the local() pattern for system fonts", async () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'GT Walsheim', sans-serif; }</style>
+      </div>`;
+      const findings = await findByCode(html, "font_family_without_font_face");
+      expect(findings[0]!.fixHint).toContain("local(");
+    });
+
     it("does not flag generic font families", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: monospace; }</style>

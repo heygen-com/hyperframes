@@ -245,7 +245,7 @@ export function buildTimelineElementIdentity(params: {
   return { id, key };
 }
 
-export function getTimelineElementIdentity(element: TimelineElement): string {
+export function getTimelineElementIdentity(element: { key?: string | null; id: string }): string {
   return element.key ?? element.id;
 }
 

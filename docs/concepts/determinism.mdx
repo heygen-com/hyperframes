@@ -14,7 +14,7 @@ The rendering pipeline is frame-by-frame and seek-driven. No realtime playback i
     The [engine](/packages/engine) computes the time for each frame using integer math: `time = floor(frame) / fps`. There is no wall-clock dependency -- rendering is entirely decoupled from real time.
   </Step>
   <Step title="Seek">
-    The [frame adapter](/concepts/frame-adapters) receives a `seekFrame(frame)` call and deterministically positions all animations, DOM state, and canvas content to the exact frame. The adapter's `renderSeek` pauses all [GSAP](/guides/gsap-animation) timelines and seeks them to the computed time.
+    The [frame adapter](/concepts/frame-adapters) receives a `seekFrame(frame)` call and deterministically positions all animations, DOM state, and canvas content to the exact frame. The adapter pauses all [GSAP](/guides/gsap-animation) timelines and seeks them to the computed time.
   </Step>
   <Step title="Capture">
     Chrome's `HeadlessExperimental.beginFrame` API captures the pixel buffer for the current frame. This is a single, atomic operation -- no partial paints or race conditions.

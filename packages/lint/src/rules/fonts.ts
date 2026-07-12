@@ -232,7 +232,10 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         "Text will fall back to a generic font, producing incorrect typography in the video.",
       fixHint:
         "Add @font-face { font-family: '...'; src: url('capture/assets/fonts/...woff2'); } " +
-        "for each font family, pointing to the captured .woff2 files.",
+        "for each font family, pointing to the captured .woff2 files. For an OS-bundled " +
+        "system font (e.g. Hiragino Sans, Microsoft YaHei) that has no downloadable file, " +
+        "use src: local('Exact Font Name') instead — the declaration alone satisfies this " +
+        "check without needing a font file.",
     });
     return findings;
   },

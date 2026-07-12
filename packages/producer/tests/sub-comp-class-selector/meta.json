@@ -1,0 +1,12 @@
+{
+  "name": "Sub-composition authored-root class selector scoping",
+  "description": "Regression test for issue #1847 / PR #1886 (the exact reported repro): a sub-composition's authored root carries its own class (not just an id), styled via a descendant selector anchored on that class (`.scene-wrapper .title`). This diverged between preview and render because the producer discarded the authored root element entirely, so no element in the render DOM ever carried the class. The producer now preserves the authored root as a data-hf-inner-root wrapper (matching preview), so the class-based selector resolves identically in both.",
+  "tags": ["sub-composition", "regression", "selector"],
+  "minPsnr": 20,
+  "maxFrameFailures": 10,
+  "minAudioCorrelation": 0.0,
+  "maxAudioLagWindows": 120,
+  "renderConfig": {
+    "fps": 24
+  }
+}

@@ -60,7 +60,7 @@ You know these rules but you violate them. Stop.
 - **Don't pair two sans-serifs.** You do this constantly — one for headlines, one for body. Cross the boundary: serif + sans, or sans + mono.
 - **One expressive font per scene.** You pick two interesting fonts trying to make it "better." One performs, one recedes.
 - **Weight contrast must be extreme.** You default to 400 vs 700. Video needs 300 vs 900. The difference must be visible in motion at a glance.
-- **Video sizes, not web sizes.** Body: 20px minimum. Headlines: 60px+. Data labels: 16px. You will try to use 14px. Don't.
+- **Video sizes, not web sizes.** Full-screen viewing (YouTube / website embed): body 20px minimum, headlines 60px+, data labels 16px. **In-feed viewing** (destination = X / LinkedIn / Instagram feed — `hyperframes-core/references/brief-contract.md` § 2): the video plays small inside a scrolling feed, so scale up — body ≥32px, headlines ≥90px, data labels ≥24px (first-pass values; calibrate against real renders). You will try to use 14px. Don't.
 
 ## What You Don't Do Without Being Told
 

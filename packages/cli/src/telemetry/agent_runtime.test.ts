@@ -330,6 +330,83 @@ describe("detectAgentRuntime — Windsurf / Cline / Gemini CLI / Crush", () => {
   });
 });
 
+describe("detectAgentHints — new-agent discovery signals", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(() => {
+    stripVendorEnv();
+    // stripVendorEnv clears TERM_PROGRAM; also clear the value-captured generics
+    // and any hint-shaped keys a test sets so assertions stay deterministic.
+    delete process.env["AGENT"];
+    delete process.env["AI_AGENT"];
+  });
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it("reads AGENT as the agent_hint (self-identification convention), lowercased", async () => {
+    process.env["AGENT"] = "Crush";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBe("crush");
+  });
+
+  it("falls back to AI_AGENT when AGENT is unset", async () => {
+    process.env["AI_AGENT"] = "goose";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBe("goose");
+  });
+
+  it("drops an overlong secret-looking AGENT value rather than leaking it", async () => {
+    process.env["AGENT"] = "sk-ant-api03-THIS-IS-A-LONG-SECRET-LOOKING-VALUE-xyz";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBeNull();
+  });
+
+  // The short-slug allowlist alone accepts these; the credential-shape guard
+  // (prefixes + long alnum runs) is what actually enforces the privacy claim.
+  it.each([
+    ["sk-ant-api03", "token prefix"],
+    ["AKIAIOSFODNN7EXAMPLE", "AWS access key id (prefix + long run)"],
+    ["github_pat_abc", "GitHub PAT prefix"],
+    ["ghp_0123456789abcdef", "GitHub token prefix"],
+    ["ya29.a0veryrealtoken", "Google OAuth prefix"],
+    ["deadbeefdeadbeef01", "18-char unbroken token body"],
+  ])("drops short credential-shaped AGENT value %s (%s)", async (value) => {
+    process.env["AGENT"] = value;
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBeNull();
+  });
+
+  it("still captures a real multi-segment agent name (no over-rejection)", async () => {
+    process.env["AGENT"] = "gemini_managed_agent";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBe("gemini_managed_agent");
+  });
+
+  it("captures TERM_PROGRAM as the editor/terminal hint", async () => {
+    process.env["TERM_PROGRAM"] = "zed";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().term_program).toBe("zed");
+  });
+
+  it("surfaces an unknown agent-ish env KEY in agent_env_hints", async () => {
+    process.env["FOO_AGENT_SESSION_ID"] = "whatever-value";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints).toContain("FOO_AGENT_SESSION_ID");
+  });
+
+  it("excludes SSH/GPG agent false-friends from agent_env_hints", async () => {
+    process.env["SSH_AGENT_PID"] = "12345";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints ?? "").not.toContain("SSH_AGENT");
+  });
+
+  it("does NOT match ENCODING keys (PYTHONIOENCODING) — no bare CODING token", async () => {
+    process.env["PYTHONIOENCODING"] = "utf-8";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints ?? "").not.toContain("ENCODING");
+  });
+});
+
 describe("detectSandboxRuntime — file-system path", () => {
   beforeEach(() => {
     vi.resetModules();

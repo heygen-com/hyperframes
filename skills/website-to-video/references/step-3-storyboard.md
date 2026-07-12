@@ -542,15 +542,17 @@ After writing the storyboard AND the script, present BOTH to the user for review
 
 ### How to Present
 
-Summarize the plan clearly. Don't dump the full STORYBOARD.md — give the user a beat-by-beat overview they can scan in 30 seconds:
+Summarize the plan clearly. Don't dump the full STORYBOARD.md — give the user a beat-by-beat overview they can scan in 30 seconds. Per `../../hyperframes-creative/references/story-spine.md` § 3, the summary is a proposal: open by echoing the strategy line, and give every beat a `why:` traced to the message:
 
-> **Here's what I've planned for your [duration] [type]:**
+> **This video tells [audience] that [message].** Here's the plan for your [duration] [type]:
 >
-> **Beat 1 (0:00–0:04):** [one sentence — what happens visually + what the narration says]
-> **Beat 2 (0:04–0:10):** [one sentence]
-> **Beat 3 (0:10–0:18):** [one sentence] _(hero beat — 3D MacBook reveal with bloom effect)_
-> ...
-> **Beat N (closing):** [one sentence — CTA/logo]
+> | Beat          | On screen + narration                                              | Why                                     |
+> | ------------- | ------------------------------------------------------------------ | --------------------------------------- |
+> | 1 (0:00–0:04) | [one sentence — what happens visually + what the narration says]   | [the beat's job, traced to the message] |
+> | 2 (0:04–0:10) | [one sentence]                                                     | […]                                     |
+> | 3 (0:10–0:18) | [one sentence] _(hero beat — 3D MacBook reveal with bloom effect)_ | […]                                     |
+> | …             | …                                                                  | …                                       |
+> | N (closing)   | [one sentence — CTA/logo]                                          | […]                                     |
 >
 > **Style:** [dimension summary — e.g., "Cinematic pacing, dark mood, dramatic transitions for hero, clean for the rest"]
 > **Narration:** [first and last line of the script]

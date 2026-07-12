@@ -154,6 +154,11 @@ describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
     expect(result.error).toContain("FFmpeg exited with code 143");
     expect(result.error).toContain("terminated by timeout");
     expect(result.error).toContain(encodeTimeoutMessage(1000));
+    // Regression: the timeout message used to just state what happened, leaving
+    // the user to independently discover FFMPEG_ENCODE_TIMEOUT_MS and
+    // PRODUCER_ENABLE_CHUNKED_ENCODE (both already existed) on their own.
+    expect(result.error).toContain("FFMPEG_ENCODE_TIMEOUT_MS");
+    expect(result.error).toContain("PRODUCER_ENABLE_CHUNKED_ENCODE");
   });
 
   it("keeps non-timeout ffmpeg failures unchanged", async () => {

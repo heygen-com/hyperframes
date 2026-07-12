@@ -44,7 +44,17 @@ export interface EncoderPreset {
 
 function appendEncodeTimeoutMessage(error: string, timedOut: boolean, timeoutMs: number): string {
   if (!timedOut) return error;
-  return `${error}\nFFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms)`;
+  // Two independent reports of this exact timeout, both resolved by env vars
+  // that already exist but aren't named anywhere the user would see them at
+  // the point of failure — they had to go find FFMPEG_ENCODE_TIMEOUT_MS and
+  // PRODUCER_ENABLE_CHUNKED_ENCODE themselves. Name both here instead of
+  // just stating what happened.
+  return (
+    `${error}\nFFmpeg killed after exceeding ffmpegEncodeTimeout (${timeoutMs} ms). ` +
+    "Long or high-frame-count renders may need more time: set FFMPEG_ENCODE_TIMEOUT_MS " +
+    "to a higher value (ms), or set PRODUCER_ENABLE_CHUNKED_ENCODE=true to encode in " +
+    "smaller chunks instead of one long-running ffmpeg process."
+  );
 }
 
 function isAacSidecar(audioPath: string): boolean {
