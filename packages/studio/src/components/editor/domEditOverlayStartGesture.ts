@@ -20,7 +20,9 @@ import {
 } from "./manualEdits";
 import {
   type OverlayRect,
+  elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
+  overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
@@ -178,7 +180,29 @@ export function startGesture(
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    // Center-anchored corner resize (CapCut model): the element scales about its
+    // CENTER, which stays planted. All four corners behave identically, so EVERY
+    // corner needs the manual-offset member that translates the element to re-pin
+    // its center per frame (the memberless else-branch is only a defensive fallback
+    // if member creation fails, e.g. the element can't take a manual offset).
+    const needsAnchorOffset = kind === "resize" && sel.capabilities.canApplyManualOffset;
+    if (needsAnchorOffset) {
+      const result = createManualOffsetDragMember({
+        key: selectionCacheKey(sel),
+        selection: sel,
+        element: sel.element,
+        rect,
+      });
+      if (result.ok) {
+        pathOffsetMember = result.member;
+        initialPathOffset = result.member.initialPathOffset;
+        manualEditDragToken = result.member.gestureToken;
+      } else {
+        manualEditDragToken = beginStudioManualEditGesture(sel.element);
+      }
+    } else {
+      manualEditDragToken = beginStudioManualEditGesture(sel.element);
+    }
   }
 
   const overlayBounds = overlayEl?.getBoundingClientRect();
@@ -186,6 +210,17 @@ export function startGesture(
   const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
   const iframe = opts.iframeRef.current;
+
+  // For a center-anchored corner resize, capture the element's rendered CENTER (the
+  // centroid of its four real, rotation-aware corners) now, so per-frame anchoring
+  // can pin that exact point instead of an axis-aligned width/height delta (which
+  // only holds the center still when the element grows symmetrically from an
+  // unrotated layout box). Present whenever an anchor member exists (all corners).
+  let resizeFixedCenterStart: { x: number; y: number } | undefined;
+  if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
+    const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
+    if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
+  }
   const snapContext =
     (kind === "drag" || kind === "resize") && overlayEl && iframe
       ? collectSnapContext({
@@ -224,6 +259,8 @@ export function startGesture(
     resizeAnchor,
     manualEditDragToken,
     snapContext,
+    resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
+    resizeFixedCenterStart,
   };
   return true;
 }

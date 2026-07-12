@@ -461,6 +461,12 @@
     "ignore": [
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/hooks/useDomEditWiring.ts",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
+      "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
+      // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
+      // studio-dnd pr22 removes this with the final config.
       "packages/studio/src/components/StudioPreviewArea.tsx",
       // TEMP(studio-dnd): coexistence-window clone (extraction vs still-live original);
       // studio-dnd pr22 removes this with the final config.
