@@ -140,7 +140,6 @@ export function buildPatchTarget(element: {
   return null;
 }
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
-
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
@@ -160,7 +159,6 @@ export function findTimelineElementInIframe(
     return null;
   }
 }
-
 export function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
@@ -174,7 +172,6 @@ export function patchIframeDomTiming(
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
 }
-
 function postRootDurationToPreview(
   iframe: HTMLIFrameElement | null,
   durationSeconds: number,
@@ -191,7 +188,6 @@ function postRootDurationToPreview(
     "*",
   );
 }
-
 // fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,
