@@ -386,6 +386,14 @@ export function dtwPresetForModel(model: string): string {
   return model.replace(/-/g, ".");
 }
 
+export function initialModelForLanguage(model: string, language?: string): string {
+  const baseLanguage = language?.trim().toLowerCase().split(/[-_]/, 1)[0];
+  if (baseLanguage && baseLanguage !== "en" && model.endsWith(".en")) {
+    return model.slice(0, -3);
+  }
+  return model;
+}
+
 /**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
@@ -395,7 +403,7 @@ export async function transcribe(
   outputDir: string,
   options?: TranscribeOptions,
 ): Promise<TranscribeResult> {
-  const model = options?.model ?? DEFAULT_MODEL;
+  const model = initialModelForLanguage(options?.model ?? DEFAULT_MODEL, options?.language);
 
   // 1. Ensure whisper binary
   options?.onProgress?.("Checking whisper...");
