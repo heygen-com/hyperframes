@@ -235,3 +235,13 @@ describe("template shell style sources", () => {
     expect(findings.some((finding) => finding.code === "texture_mask_asset_not_found")).toBe(true);
   });
 });
+
+describe("shipped example projects", () => {
+  it("keeps play-mode free of blocking lint errors", async () => {
+    const playModeDir = join(import.meta.dirname, "../../../registry/examples/play-mode");
+
+    const { totalErrors } = await lintProject(playModeDir);
+
+    expect(totalErrors).toBe(0);
+  });
+});

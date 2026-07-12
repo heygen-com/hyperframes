@@ -7,7 +7,7 @@
   >
     <div id="stats-container">
       <!-- Moment 1: 47% NEED MOTION GRAPHICS -->
-      <div id="moment-1" class="moment" style="opacity: 0; transform: scale(0) rotate(8deg)">
+      <div id="moment-1" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg blue-bg"></div>
           <div class="sticker-content white-bg blue-border">
@@ -22,12 +22,12 @@
         ></div>
         <div
           class="shape pill lime-bg"
-          style="bottom: -30px; right: -50px; width: 120px; height: 40px; transform: rotate(-15deg)"
+          style="bottom: -30px; right: -50px; width: 120px; height: 40px"
         ></div>
       </div>
 
       <!-- Moment 2: 62% STRUGGLE WITH STATIC CONTENT -->
-      <div id="moment-2" class="moment" style="opacity: 0; transform: scale(0) rotate(-5deg)">
+      <div id="moment-2" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg white-bg"></div>
           <div class="sticker-content blue-bg white-border">
@@ -53,7 +53,7 @@
       </div>
 
       <!-- Moment 3: 75% LACK EDITING SKILLS -->
-      <div id="moment-3" class="moment" style="opacity: 0; transform: scale(0) rotate(3deg)">
+      <div id="moment-3" class="moment" style="opacity: 0">
         <div class="sticker-stack">
           <div class="sticker-bg pink-bg"></div>
           <div class="sticker-content white-bg pink-border">
@@ -64,13 +64,7 @@
         <!-- Decorative shapes -->
         <div
           class="shape pill blue-bg"
-          style="
-            top: -30px;
-            left: 50%;
-            transform: translateX(-50%) rotate(5deg);
-            width: 150px;
-            height: 45px;
-          "
+          style="top: -30px; left: 50%; width: 150px; height: 45px"
         ></div>
         <div
           class="shape circle yellow-bg"
@@ -120,7 +114,6 @@
       [data-composition-id="stats"] #moment-3 {
         bottom: 100px; /* Below A-roll when centered */
         left: 50%;
-        transform: translateX(-50%);
         width: 800px;
       }
 
@@ -285,6 +278,18 @@
         const t2 = getWordTime("Sixty-two") || 4.659;
         const t3 = getWordTime("three") || 8.88;
 
+        // Keep all transform state in GSAP so later scale/y tweens compose
+        // with the authored rotation and centering instead of replacing it.
+        tl.set("#moment-1", { scale: 0, rotation: 8, transformOrigin: "center center" }, 0);
+        tl.set("#moment-2", { scale: 0, rotation: -5, transformOrigin: "center center" }, 0);
+        tl.set(
+          "#moment-3",
+          { scale: 0, rotation: 3, xPercent: -50, transformOrigin: "center center" },
+          0,
+        );
+        tl.set("#moment-1 .pill", { rotation: -15 }, 0);
+        tl.set("#moment-3 .pill", { xPercent: -50, rotation: 5 }, 0);
+
         // Moment 1 Animation (approx 5s)
         tl.to(
           "#moment-1",
@@ -293,7 +298,6 @@
             scale: 1,
             duration: 0.8,
             ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-1", { transformOrigin: "center center" }),
           },
           t1,
         );
@@ -318,7 +322,6 @@
             scale: 1,
             duration: 0.8,
             ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-2", { transformOrigin: "center center" }),
           },
           t2,
         );
@@ -343,7 +346,6 @@
             scale: 1,
             duration: 0.8,
             ease: "elastic.out(1, 0.6)",
-            onStart: () => gsap.set("#moment-3", { transformOrigin: "center center" }),
           },
           t3,
         );

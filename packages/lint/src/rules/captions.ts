@@ -28,6 +28,22 @@ function extractArrayLiteral(src: string, varMatch: RegExpExecArray): string | n
   return null;
 }
 
+/** Match the Studio caption parser's supported JavaScript-array normalization. */
+function parseTranscriptArrayLiteral(arrayLiteral: string): unknown {
+  try {
+    return JSON.parse(arrayLiteral);
+  } catch {
+    let normalized = arrayLiteral;
+    normalized = normalized.replace(/'((?:[^'\\]|\\.)*)'/g, (_match, inner: string) => {
+      const escaped = inner.replace(/\\'/g, "'").replace(/"/g, '\\"');
+      return `"${escaped}"`;
+    });
+    normalized = normalized.replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":');
+    normalized = normalized.replace(/,(\s*[}\]])/g, "$1");
+    return JSON.parse(normalized);
+  }
+}
+
 export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // caption_exit_missing_hard_kill
   ({ scripts, styles, options, rootCompositionId }) => {
@@ -130,17 +146,15 @@ export const captionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
       const transcriptJson = varStart ? extractArrayLiteral(allScript, varStart) : null;
       if (transcriptJson) {
         try {
-          JSON.parse(transcriptJson);
+          parseTranscriptArrayLiteral(transcriptJson);
         } catch {
           findings.push({
             code: "caption_transcript_parse_error",
             severity: "error",
-            message:
-              "Inline TRANSCRIPT array is not valid JSON. The studio caption editor may fail " +
-              "to parse it. Common cause: unquoted property keys with apostrophes in text.",
+            message: "Inline TRANSCRIPT array cannot be parsed by the Studio caption editor.",
             fixHint:
-              'Use JSON-quoted keys: { "text": "don\'t", "start": 0, "end": 1 } instead of ' +
-              '{ text: "don\'t", start: 0, end: 1 }.',
+              'Use plain word objects such as { text: "don\'t", start: 0, end: 1 } with ' +
+              "string text and numeric start/end values.",
           });
         }
       }

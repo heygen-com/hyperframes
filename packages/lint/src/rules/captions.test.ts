@@ -142,6 +142,38 @@ describe("caption rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("accepts formatter-normalized transcript objects with unquoted keys", async () => {
+    const html = `<html><body>
+      <div data-composition-id="captions" data-width="1920" data-height="1080">
+        <div class="caption-group"></div>
+        <script>
+          const TRANSCRIPT = [
+            { text: "don't", start: 0, end: 0.5 },
+            { text: "stop", start: 0.5, end: 1 },
+          ];
+        </script>
+      </div>
+    </body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.some((f) => f.code === "caption_transcript_parse_error")).toBe(false);
+  });
+
+  it("still rejects transcript syntax unsupported by the Studio parser", async () => {
+    const html = `<html><body>
+      <div data-composition-id="captions" data-width="1920" data-height="1080">
+        <div class="caption-group"></div>
+        <style>.caption-group { position: absolute; }</style>
+        <script>const TRANSCRIPT = [{ ...word }];</script>
+      </div>
+    </body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+
+    expect(result.findings.some((f) => f.code === "caption_transcript_parse_error")).toBe(true);
+  });
+
   it("warns when caption container uses position: relative", async () => {
     const html = `
 <html><body>
