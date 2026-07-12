@@ -12,7 +12,6 @@ import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelectio
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { extendRootDurationInSource } from "../utils/rootDuration";
-
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
   // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
@@ -21,7 +20,6 @@ function isHTMLElement(element: Element | null): element is HTMLElement {
   const Ctor = element.ownerDocument?.defaultView?.HTMLElement ?? globalThis.HTMLElement;
   return element instanceof Ctor;
 }
-
 /**
  * Resolve a timeline vertical move to a z-index stacking reorder and commit it
  * through the shared layers-panel reorder path. Reads live sibling z-index from
@@ -42,10 +40,8 @@ export function applyTimelineStackingReorder(input: {
 }): Promise<void> {
   // Audio has no visual stacking; a vertical drag on it must never write z-index.
   if (input.element.tag === "audio") return Promise.resolve();
-
   const intent = input.stackingReorder ?? null;
   if (intent == null || intent.zIndexChanges.length === 0) return Promise.resolve();
-
   // Resolve each change's live element from the change's OWN locator (the intent
   // is self-contained), falling back to the top-level element list. Sub-comp
   // children aren't in `timelineElements`, so a list-only lookup would miss them.
@@ -68,7 +64,6 @@ export function applyTimelineStackingReorder(input: {
     sourceFile: string;
     key: string;
   }> = [];
-
   for (const change of intent.zIndexChanges) {
     const sibling = siblingByKey.get(change.key);
     const domId = change.domId ?? sibling?.domId;
@@ -87,11 +82,9 @@ export function applyTimelineStackingReorder(input: {
       key: change.key,
     });
   }
-
   if (commitEntries.length === 0) return Promise.resolve();
   return input.commit?.(commitEntries) ?? Promise.resolve();
 }
-
 /**
  * Remove the keyframes currently selected in the player store from the active
  * element's GSAP animation. Reads selection lazily so it stays correct when
@@ -110,16 +103,13 @@ export function deleteSelectedKeyframes(session: {
     session.handleGsapRemoveKeyframe(animation.id, pct);
   }
 }
-
 export function extendRootDurationIfNeeded(newEnd: number): boolean {
   const store = usePlayerStore.getState();
   if (newEnd <= store.duration) return false;
   store.setDuration(newEnd);
   return true;
 }
-
 // ── Types ──
-
 export interface RecordEditInput {
   label: string;
   kind: EditHistoryKind;
@@ -128,7 +118,6 @@ export interface RecordEditInput {
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
 }
-
 export function buildPatchTarget(element: {
   domId?: string;
   hfId?: string;
@@ -151,7 +140,6 @@ export function buildPatchTarget(element: {
   }
   return null;
 }
-
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
 
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
