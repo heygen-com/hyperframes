@@ -49,6 +49,7 @@ import {
   buildMotionPatches,
   buildClearMotionPatches,
 } from "./manualEditsDomPatches";
+import { applyStudioBoxSize, applyStudioPathOffset } from "./manualEditsDom";
 
 /* ── helpers ── */
 
@@ -264,6 +265,52 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedBoxEl();
     assertClearCoversKeys(buildBoxSizePatches(e), buildClearBoxSizePatches(e));
+  });
+});
+
+/* ── Combined box-size + path-offset (anchored-corner resize) ──────────────── */
+
+describe("anchored-corner combined patch: [...buildBoxSizePatches, ...buildPathOffsetPatches]", () => {
+  // NW/NE/SW resize commits size AND anchor offset in ONE persist. The two
+  // builders read the same already-mutated element and are concatenated; this
+  // is only safe if their {type,property} keys are disjoint (no builder
+  // overwrites the other's op when the source patcher applies them in order).
+  it("concatenation of both builders emits disjoint {type,property} keys (no collision)", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const keys = combined.map(opKey);
+    expect(new Set(keys).size, `duplicate {type,property} key in combined patch: ${keys}`).toBe(
+      keys.length,
+    );
+  });
+
+  it("combined patch carries BOTH markers so a soft-reload re-hydrates size and offset together", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const has = (property: string) =>
+      combined.some((op) => op.type === "attribute" && op.property === property);
+    expect(has(STUDIO_BOX_SIZE_ATTR)).toBe(true);
+    expect(has(STUDIO_PATH_OFFSET_ATTR)).toBe(true);
+  });
+
+  it("order is size-first: every box-size op precedes every path-offset op", () => {
+    const e = div();
+    applyStudioBoxSize(e, { width: 300, height: 200 });
+    applyStudioPathOffset(e, { x: 10, y: 20 });
+
+    const boxKeys = new Set(buildBoxSizePatches(e).map(opKey));
+    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
+    const lastBoxIdx = combined.reduce((acc, op, i) => (boxKeys.has(opKey(op)) ? i : acc), -1);
+    const firstOffsetIdx = combined.findIndex(
+      (op) => op.type === "attribute" && op.property === STUDIO_PATH_OFFSET_ATTR,
+    );
+    expect(firstOffsetIdx).toBeGreaterThan(lastBoxIdx);
   });
 });
 

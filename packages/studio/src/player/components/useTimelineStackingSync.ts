@@ -54,7 +54,7 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
   );
 
   const applyStackingPatches = useCallback(
-    (patches: StackingPatch[]) => {
+    (patches: StackingPatch[], coalesceKey?: string) => {
       if (!handleDomZIndexReorderCommit) return;
       const entries = patches.flatMap((p) => {
         const el = expandedElementsRef.current.find((e) => (e.key ?? e.id) === p.key);
@@ -71,7 +71,7 @@ export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStac
           },
         ];
       });
-      if (entries.length) handleDomZIndexReorderCommit(entries);
+      if (entries.length) return handleDomZIndexReorderCommit(entries, coalesceKey);
     },
     [handleDomZIndexReorderCommit, resolveIframeElement, zSyncActiveCompPath, expandedElementsRef],
   );

@@ -3,6 +3,7 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 import { classifyZone, normalizeToZones } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import { getTimelineEditCapabilities } from "./timelineEditing";
+import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -20,7 +21,11 @@ export interface DragCommitDeps {
    *  `coalesceKey`, when supplied, tags the resulting "Move timeline clips"
    *  history entry so it merges with the lane change's z-reorder entry (see the
    *  lane-change branch below). */
-  onMoveElements?: (edits: TimelineMoveEdit[], coalesceKey?: string) => Promise<void> | void;
+  onMoveElements?: (
+    edits: TimelineMoveEdit[],
+    coalesceKey?: string,
+    operation?: TimelineMoveOperation,
+  ) => Promise<void> | void;
   /**
    * The current multi-selection (store.selectedElementIds). When the dragged
    * clip is part of a multi-selection (size > 1), the WHOLE selection moves by
@@ -90,6 +95,7 @@ function persistMoveEdits(
   edits: TimelineMoveEdit[],
   deps: DragCommitDeps,
   coalesceKey?: string,
+  operation: TimelineMoveOperation = "timing",
 ): Promise<boolean> {
   if (edits.length === 0) return Promise.resolve(true);
   const { updateElement, onMoveElement, onMoveElements } = deps;
@@ -107,7 +113,7 @@ function persistMoveEdits(
   }));
   for (const e of edits) updateElement(keyOf(e.element), e.updates);
   const persisted = onMoveElements
-    ? onMoveElements(edits, coalesceKey)
+    ? onMoveElements(edits, coalesceKey, operation)
     : Promise.all(edits.map((e) => Promise.resolve(onMoveElement?.(e.element, e.updates))));
   return Promise.resolve(persisted).then(
     () => true,
@@ -242,7 +248,7 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     keyOf(e) === dragKey ? { ...e, start: drag.previewStart, track: drag.previewTrack } : e,
   );
   const multiKeys = multi ? multi.keys : null;
-  void persistMoveEdits(edits, deps, coalesceKey).then((moved) => {
+  void persistMoveEdits(edits, deps, coalesceKey, "lane-reorder").then((moved) => {
     if (moved && isVertical) {
       syncStackingForEdit(
         candidate,
@@ -299,7 +305,7 @@ function commitTrackInsert(
   }
 
   const coalesceKey = `clip-lane-move:${laneChangeGestureSeq++}`;
-  void persistMoveEdits(edits, deps, coalesceKey).then((moved) => {
+  void persistMoveEdits(edits, deps, coalesceKey, "track-insert").then((moved) => {
     // Skip the z-sync when the insert produced NO move edits (e.g. every clip in
     // the set is locked/implicit and gets filtered out). persistMoveEdits resolves
     // `true` for an empty batch so the caller's serialization proceeds, but firing

@@ -107,30 +107,48 @@ export function toVisibleOverlayRect(
 }
 
 /**
- * The element's live transform rotation, in DEGREES (screen/CSS convention, CW
- * positive), decomposed from its computed transform matrix (rotation = atan2(b, a)).
- * GSAP folds rotation and scale into the same matrix; this reads rotation only.
- * Returns 0 when the transform is "none" or unmeasurable — callers treat 0 as
- * axis-aligned. Skew is ignored (does not affect atan2(b, a)).
+ * getComputedStyle(element).transform decomposed into a DOMMatrix, read ONCE.
+ * Shared by orientedOverlayRect's rotation gate and elementCornerOverlayPoints
+ * so a single measurement pass serves both — constructing this twice per frame
+ * (one read per consumer) was redundant work; see orientedOverlayRect below.
  */
-function readElementRotationDegrees(iframe: HTMLIFrameElement, element: HTMLElement): number {
-  const win = iframe.contentWindow;
-  if (!win) return 0;
+interface ElementTransformSnapshot {
+  matrix: DOMMatrix;
+  cs: CSSStyleDeclaration;
+}
+
+function readElementTransformSnapshot(
+  win: Window,
+  element: HTMLElement,
+): ElementTransformSnapshot | null {
   const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
-  if (!DOMMatrixCtor) return 0;
-  const transform = win.getComputedStyle(element).transform;
-  if (!transform || transform === "none") return 0;
-  let matrix: DOMMatrix;
+  if (!DOMMatrixCtor) return null;
+  const cs = win.getComputedStyle(element);
   try {
-    matrix = new DOMMatrixCtor(transform);
+    const matrix = new DOMMatrixCtor(cs.transform === "none" ? "" : cs.transform);
+    return { matrix, cs };
   } catch {
-    return 0;
+    return null;
   }
+}
+
+/**
+ * The element's live transform rotation, in DEGREES (screen/CSS convention, CW
+ * positive), decomposed from its transform matrix (rotation = atan2(b, a)).
+ * GSAP folds rotation and scale into the same matrix; this reads rotation only.
+ * Skew is ignored (does not affect atan2(b, a)).
+ */
+function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
   const a = Number.isFinite(matrix.a) ? matrix.a : 1;
   const b = Number.isFinite(matrix.b) ? matrix.b : 0;
   const deg = (Math.atan2(b, a) * 180) / Math.PI;
   return Number.isFinite(deg) ? deg : 0;
 }
+
+/** Below this, orientedOverlayRect treats the element as unrotated and returns
+ *  the AABB directly (see its doc comment) — tight enough to only swallow
+ *  matrix-decomposition floating-point noise, never an actual rotation. */
+const ROTATION_GATE_EPSILON_DEG = 1e-4;
 
 /** iframe→overlay mapping basis shared by every overlay-geometry function. */
 interface OverlayRootScale {
@@ -185,12 +203,14 @@ function computeOverlayRootScale(
   };
 }
 
-export function toOverlayRect(
+function toOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
 ): OverlayRect | null {
-  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  const scale =
+    precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   if (!scale) return null;
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
@@ -220,6 +240,14 @@ export function toOverlayRect(
  *  fixed: NW grabs the top-left, so the bottom-right (se) is the anchor, etc. */
 export type FixedCorner = "nw" | "ne" | "sw" | "se";
 
+/** Distance between two overlay-px corner points — the edge-length math
+ *  orientedOverlayRect uses to turn corners into a width/height. Exported so a
+ *  caller already holding raw corners (e.g. a resize gesture mid-measurement)
+ *  can derive the same dimensions without a second orientedOverlayRect call. */
+export function cornerEdgeLength(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
 /**
  * The centroid (rendered center) of the four transformed corners from
  * `elementCornerOverlayPoints`, in overlay px. This is the element's true rotation
@@ -247,15 +275,16 @@ export function elementCornerOverlayPoints(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
+  precomputedScale?: OverlayRootScale | null,
+  precomputedTransform?: ElementTransformSnapshot | null,
 ): Record<FixedCorner, { x: number; y: number }> | null {
   const win = iframe.contentWindow;
   const doc = iframe.contentDocument;
   if (!win || !doc) return null;
-  const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
   const DOMPointCtor = (win as Window & typeof globalThis).DOMPoint;
-  if (!DOMMatrixCtor || !DOMPointCtor) return null;
+  if (!DOMPointCtor) return null;
 
-  const scale = computeOverlayRootScale(overlayEl, iframe, doc);
+  const scale = precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, doc);
   if (!scale) return null;
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
@@ -266,18 +295,14 @@ export function elementCornerOverlayPoints(
   // BCR by matching the AABB of the transformed corners to the real BCR — the
   // constant offset cancels in the before/after difference the caller takes, but
   // we resolve it fully here so callers can also read absolute overlay positions.
-  const cs = win.getComputedStyle(element);
+  const transform = precomputedTransform ?? readElementTransformSnapshot(win, element);
+  if (!transform) return null;
+  const { matrix, cs } = transform;
   const w = element.offsetWidth;
   const h = element.offsetHeight;
   const originParts = cs.transformOrigin.split(" ").map((p) => Number.parseFloat(p));
   const ox = Number.isFinite(originParts[0]!) ? originParts[0]! : w / 2;
   const oy = Number.isFinite(originParts[1]!) ? originParts[1]! : h / 2;
-  let matrix: DOMMatrix;
-  try {
-    matrix = new DOMMatrixCtor(cs.transform === "none" ? "" : cs.transform);
-  } catch {
-    return null;
-  }
   const rel = (lx: number, ly: number): { x: number; y: number } => {
     const p = matrix.transformPoint(new DOMPointCtor(lx - ox, ly - oy));
     return { x: p.x, y: p.y };
@@ -321,20 +346,35 @@ export function elementCornerOverlayPoints(
  * AABB and OBB coincide), so unrotated chrome is pixel-identical to today.
  *
  * Returns the plain AABB rect (angle 0) when the corner geometry can't be measured.
+ *
+ * Rotation gate: an unrotated element's OBB is numerically identical to its AABB
+ * (the comment above), so a cheap rotation read decides up front whether the
+ * (much pricier) corner-transform pass runs at all — for the overwhelming
+ * majority of selections, which aren't rotated, this call is just `toOverlayRect`
+ * plus one getComputedStyle/DOMMatrix read. The root scale and the transform
+ * snapshot are each computed once per call and threaded into both the rotation
+ * read and the corner math, instead of every helper re-measuring independently.
  */
 export function orientedOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
   element: HTMLElement,
 ): OverlayRect | null {
-  const base = toOverlayRect(overlayEl, iframe, element);
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  if (!scale) return null;
+  const base = toOverlayRect(overlayEl, iframe, element, scale);
   if (!base) return null;
-  const corners = elementCornerOverlayPoints(overlayEl, iframe, element);
+
+  const win = iframe.contentWindow;
+  const transform = win ? readElementTransformSnapshot(win, element) : null;
+  const angle = transform ? rotationDegreesFromMatrix(transform.matrix) : 0;
+  if (Math.abs(angle) < ROTATION_GATE_EPSILON_DEG) return base;
+
+  const corners = elementCornerOverlayPoints(overlayEl, iframe, element, scale, transform);
   if (!corners) return base;
-  const angle = readElementRotationDegrees(iframe, element);
   // Unrotated edge lengths (in overlay px): nw→ne is the width, nw→sw the height.
-  const width = Math.hypot(corners.ne.x - corners.nw.x, corners.ne.y - corners.nw.y);
-  const height = Math.hypot(corners.sw.x - corners.nw.x, corners.sw.y - corners.nw.y);
+  const width = cornerEdgeLength(corners.nw, corners.ne);
+  const height = cornerEdgeLength(corners.nw, corners.sw);
   const centerX = (corners.nw.x + corners.se.x) / 2;
   const centerY = (corners.nw.y + corners.se.y) / 2;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {

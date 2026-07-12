@@ -171,6 +171,7 @@ export function useElementLifecycleOps({
         sourceFile: string;
         key?: string;
       }>,
+      gestureCoalesceKey?: string,
     ) => {
       if (entries.length === 0) return Promise.resolve();
       // Resolver shadow (telemetry-only, decoupled from cutover): record whether
@@ -178,7 +179,9 @@ export function useElementLifecycleOps({
       onReorderShadow?.(
         entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
       );
-      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      const coalesceKey =
+        gestureCoalesceKey ??
+        `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
       const saves: Array<Promise<void>> = [];
       const rollbacks: Array<() => void> = [];
       for (let i = 0; i < entries.length; i++) {
@@ -222,7 +225,7 @@ export function useElementLifecycleOps({
           commitPositionPatchToHtml(
             {
               element: entry.element,
-              id: entry.id ?? null,
+              id: entry.id ?? undefined,
               hfId: readHfId(entry.element),
               selector: entry.selector,
               selectorIndex: entry.selectorIndex,

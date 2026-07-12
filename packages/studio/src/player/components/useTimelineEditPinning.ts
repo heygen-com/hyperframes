@@ -8,6 +8,7 @@ interface UseTimelineEditPinningInput {
   onMoveElement: TimelineEditCallbacks["onMoveElement"];
   onMoveElements: TimelineEditCallbacks["onMoveElements"];
   onResizeElement: TimelineEditCallbacks["onResizeElement"];
+  onResizeElements: TimelineEditCallbacks["onResizeElements"];
   onFileDrop: TimelineDropCallbacks["onFileDrop"];
   onAssetDrop: TimelineDropCallbacks["onAssetDrop"];
   onBlockDrop: TimelineDropCallbacks["onBlockDrop"];
@@ -24,6 +25,7 @@ export function useTimelineEditPinning({
   onMoveElement,
   onMoveElements,
   onResizeElement,
+  onResizeElements,
   onFileDrop,
   onAssetDrop,
   onBlockDrop,
@@ -68,6 +70,15 @@ export function useTimelineEditPinning({
       }),
     [onResizeElement, pinZoomBeforeEdit],
   );
+  const pinnedOnResizeElements = useMemo(
+    () =>
+      onResizeElements &&
+      ((...args: Parameters<typeof onResizeElements>) => {
+        pinZoomBeforeEdit();
+        return onResizeElements(...args);
+      }),
+    [onResizeElements, pinZoomBeforeEdit],
+  );
   const pinnedOnFileDrop = useMemo(
     () =>
       onFileDrop &&
@@ -102,6 +113,7 @@ export function useTimelineEditPinning({
     pinnedOnMoveElement,
     pinnedOnMoveElements,
     pinnedOnResizeElement,
+    pinnedOnResizeElements,
     pinnedOnFileDrop,
     pinnedOnAssetDrop,
     pinnedOnBlockDrop,

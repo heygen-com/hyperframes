@@ -88,37 +88,13 @@
     // the sync-hyperframes-codegen.yml workflow; complexity/dead-code
     // findings on this file are not actionable from this repo.
     "packages/cli/src/cloud/_gen/**",
-    // TEMP(studio-dnd): rebuilt Ular modules intentionally remain unwired until
-    // the follow-up Studio shell cutover lands. Keep their exact payload without
-    // treating the coexistence copies as production dead code or duplication.
-    "packages/studio/src/components/EditorShell.tsx",
-    "packages/studio/src/components/nle/AssetPreviewOverlay.tsx",
-    "packages/studio/src/components/nle/NLEContext.tsx",
-    "packages/studio/src/components/nle/PreviewOverlays.tsx",
-    "packages/studio/src/components/nle/PreviewPane.tsx",
-    "packages/studio/src/components/nle/TimelinePane.tsx",
-    "packages/studio/src/components/nle/useTimelineEditCallbacks.ts",
-    "packages/studio/src/components/sidebar/AssetCard.tsx",
-    "packages/studio/src/hooks/useTimelineEditingDrops.ts",
   ],
   "ignoreExports": [
-    // TEMP(studio-dnd): public helpers consumed by the remaining shell-cutover
-    // payloads after this rebuilt stack.
+    // Part of useTimelineEditing's inferred public return type; consumers invoke
+    // handleTimelineGroupResize without importing the change type directly.
     {
-      "file": "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
-      "exports": ["overlayCornersCentroid", "elementCornerOverlayPoints", "orientedOverlayRect"],
-    },
-    {
-      "file": "packages/studio/src/components/editor/manualOffsetDrag.ts",
-      "exports": ["applyManualOffsetNudgeDraft", "applyManualOffsetNudgeCommit"],
-    },
-    {
-      "file": "packages/studio/src/hooks/timelineEditingGsap.ts",
-      "exports": ["patchIframeRootDuration", "shiftGsapPositionsBatch", "syncTimingEditPreview"],
-    },
-    {
-      "file": "packages/studio/src/hooks/timelineEditingHelpers.ts",
-      "exports": ["patchIframeRootDuration", "shiftGsapPositionsBatch", "syncTimingEditPreview"],
+      "file": "packages/studio/src/hooks/useTimelineGroupEditing.ts",
+      "exports": ["TimelineGroupResizeChange"],
     },
     {
       "file": "packages/studio/src/player/components/timelineGroupEditing.ts",
@@ -379,15 +355,6 @@
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
     "ignore": [
-      // TEMP(studio-dnd): coexistence implementations and parallel test cases
-      // retained verbatim from the rebuilt Ular payload until shell cutover.
-      "packages/studio/src/player/components/ImageThumbnail.test.tsx",
-      "packages/studio/src/player/components/VideoThumbnail.test.tsx",
-      "packages/studio/src/hooks/timelineEditingHelpers.ts",
-      "packages/studio/src/hooks/useBlockHandlers.ts",
-      "packages/studio/src/utils/blockInstaller.ts",
-      "packages/studio/src/utils/timelineAssetDrop.ts",
-      "packages/studio/src/hooks/useAnimatedPropertyCommit.test.tsx",
       // sourcePatcher.ts: pre-existing internal clones between the inline-style
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
@@ -513,13 +480,6 @@
     // complexity pre-dates the computed-timeline work. Exempted at file level
     // rather than refactored as scope creep.
     "ignore": [
-      // TEMP(studio-dnd): inherited/high-complexity helpers touched by the
-      // exact rebuilt payload; refactoring them is outside this recovery PR.
-      "packages/studio/src/player/lib/timelineIframeHelpers.ts",
-      "packages/studio/src/player/hooks/usePlaybackKeyboard.ts",
-      "packages/studio/src/player/lib/timelineElementHelpers.ts",
-      "packages/studio/src/components/editor/manualOffsetDrag.ts",
-      "packages/studio/src/components/editor/domEditOverlayGeometry.ts",
       // sourcePatcher.ts: resolveSourceFile / splitInlineStyleDeclarations /
       // patch*InTag pre-date this PR; only the PatchOperation type gained two
       // optional fields, but the line-shift fingerprint re-flags the inherited

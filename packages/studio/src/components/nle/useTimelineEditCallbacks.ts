@@ -11,6 +11,7 @@ import {
 import { resolveTweenStart, resolveTweenDuration } from "../../utils/globalTimeCompiler";
 import { resolveClipTimingBasis } from "../../hooks/useGsapTweenCache";
 import { resolveKeyframeRetime } from "../editor/keyframeRetime";
+import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 
 export interface TimelineEditCallbackDeps {
   handleTimelineElementMove: (
@@ -19,11 +20,14 @@ export interface TimelineEditCallbackDeps {
   ) => Promise<void> | void;
   handleTimelineElementsMove: (
     edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    coalesceKey?: string,
+    operation?: TimelineMoveOperation,
   ) => Promise<void> | void;
   handleTimelineElementResize: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
+  handleTimelineGroupResize: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   handleToggleTrackHidden: (track: number, hidden: boolean) => Promise<void> | void;
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
@@ -42,6 +46,7 @@ export function useTimelineEditCallbacks({
   handleTimelineElementMove,
   handleTimelineElementsMove,
   handleTimelineElementResize,
+  handleTimelineGroupResize,
   handleToggleTrackHidden,
   handleBlockedTimelineEdit,
   handleTimelineElementSplit,
@@ -85,6 +90,7 @@ export function useTimelineEditCallbacks({
       onMoveElement: handleTimelineElementMove,
       onMoveElements: handleTimelineElementsMove,
       onResizeElement: handleTimelineElementResize,
+      onResizeElements: handleTimelineGroupResize,
       onToggleTrackHidden: handleToggleTrackHidden,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,
@@ -186,6 +192,7 @@ export function useTimelineEditCallbacks({
       handleTimelineElementMove,
       handleTimelineElementsMove,
       handleTimelineElementResize,
+      handleTimelineGroupResize,
       handleToggleTrackHidden,
       handleBlockedTimelineEdit,
       handleTimelineElementSplit,

@@ -6,6 +6,69 @@ import { TimelineResizeDivider } from "./TimelineResizeDivider";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
 import { useNLEContext } from "./NLEContext";
+import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+
+type TimelineMoveEdit = {
+  element: TimelineElement;
+  updates: Pick<TimelineElement, "start" | "track">;
+};
+
+export function forwardRebasedTimelineMoveElements(
+  edits: TimelineMoveEdit[],
+  coalesceKey: string | undefined,
+  operation: TimelineMoveOperation | undefined,
+  onMoveElements: (
+    edits: TimelineMoveEdit[],
+    coalesceKey?: string,
+    operation?: TimelineMoveOperation,
+  ) => Promise<void> | void,
+) {
+  return onMoveElements(
+    edits.map(({ element, updates }) => {
+      const basis = element.expandedParentStart;
+      if (basis === undefined) return { element, updates };
+      return {
+        element: { ...element, id: element.domId ?? element.id, start: element.start - basis },
+        updates: { ...updates, start: Math.max(0, updates.start - basis) },
+      };
+    }),
+    coalesceKey,
+    operation,
+  );
+}
+
+type TimelineResizeChange = {
+  element: TimelineElement;
+  start: number;
+  duration: number;
+  playbackStart?: number;
+};
+
+export function forwardRebasedTimelineResizeElements(
+  changes: TimelineResizeChange[],
+  options: { coalesceKey?: string } | undefined,
+  onResizeElements: (
+    changes: TimelineResizeChange[],
+    options?: { coalesceKey?: string },
+  ) => Promise<void> | void,
+) {
+  return onResizeElements(
+    changes.map((change) => {
+      const basis = change.element.expandedParentStart;
+      if (basis === undefined) return change;
+      return {
+        ...change,
+        element: {
+          ...change.element,
+          id: change.element.domId ?? change.element.id,
+          start: change.element.start - basis,
+        },
+        start: Math.max(0, change.start - basis),
+      };
+    }),
+    options,
+  );
+}
 
 export interface TimelinePaneProps {
   /** Slot rendered above the timeline tracks (toolbar with split, delete, zoom) */
@@ -61,7 +124,7 @@ export function TimelinePane({
   // Move/resize/split come from the timeline edit context, not props — the
   // wrappers below intercept expanded clips and must call the *real* handlers.
   // (Delete is a direct prop; it stays that way.)
-  const { onMoveElement, onMoveElements, onResizeElement, onSplitElement } =
+  const { onMoveElement, onMoveElements, onResizeElement, onResizeElements, onSplitElement } =
     useTimelineEditContext();
 
   // An expanded sub-comp child reaches the normal edit handlers in its own
@@ -95,18 +158,18 @@ export function TimelinePane({
   const handleMoveElements = useCallback(
     (
       edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
-    ) =>
-      onMoveElements?.(
-        edits.map(({ element, updates }) => {
-          const basis = element.expandedParentStart;
-          if (basis === undefined) return { element, updates };
-          return {
-            element: toLocalElement(element, basis),
-            updates: { ...updates, start: Math.max(0, updates.start - basis) },
-          };
-        }),
-      ),
-    [onMoveElements, toLocalElement],
+      coalesceKey?: string,
+      operation?: TimelineMoveOperation,
+    ) => {
+      // Match the sibling handlers: report the telemetry when the batch touches at
+      // least one expanded sub-comp child (the clips being rebased to local coords).
+      if (edits.some(({ element }) => element.expandedParentStart !== undefined)) {
+        trackStudioExpandedClipEdit({ action: "move" });
+      }
+      if (!onMoveElements) return;
+      return forwardRebasedTimelineMoveElements(edits, coalesceKey, operation, onMoveElements);
+    },
+    [onMoveElements],
   );
 
   const handleResizeElement = useCallback(
@@ -123,6 +186,25 @@ export function TimelinePane({
       });
     },
     [onResizeElement, toLocalElement],
+  );
+
+  const handleResizeElements = useCallback(
+    (
+      changes: Array<{
+        element: TimelineElement;
+        start: number;
+        duration: number;
+        playbackStart?: number;
+      }>,
+      options?: { coalesceKey?: string },
+    ) => {
+      if (!onResizeElements) return;
+      if (changes.some(({ element }) => element.expandedParentStart !== undefined)) {
+        trackStudioExpandedClipEdit({ action: "resize" });
+      }
+      return forwardRebasedTimelineResizeElements(changes, options, onResizeElements);
+    },
+    [onResizeElements],
   );
 
   const handleDeleteElement = useCallback(
@@ -184,6 +266,7 @@ export function TimelinePane({
             onMoveElement={handleMoveElement}
             onMoveElements={handleMoveElements}
             onResizeElement={handleResizeElement}
+            onResizeElements={handleResizeElements}
             onBlockedEditAttempt={onBlockedEditAttempt}
             onSplitElement={handleSplitElement}
             onSelectElement={onSelectTimelineElement}

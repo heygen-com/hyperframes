@@ -76,6 +76,10 @@ export interface TimelineElement {
 export type ZoomMode = "fit" | "manual";
 type TimelineTool = "select" | "razor";
 
+export interface SelectElementOptions {
+  preserveSet?: boolean;
+}
+
 function resolveElementSelection(
   ids: Iterable<string>,
   anchor?: string | null,
@@ -180,7 +184,7 @@ interface PlayerState {
   setTimelineReady: (ready: boolean) => void;
   setBeatDragging: (dragging: boolean) => void;
   setElements: (elements: TimelineElement[]) => void;
-  setSelectedElementId: (id: string | null) => void;
+  setSelectedElementId: (id: string | null, options?: SelectElementOptions) => void;
   /** Move the selection anchor within an active multi-selection without collapsing it. */
   setSelectionAnchor: (id: string | null) => void;
   updateElement: (
@@ -462,9 +466,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   // A genuine single selection: always collapse the set to just this element. User
   // intent (timeline click, preview click via applyDomSelection) flows here; DOM sync
   // echoes that must preserve a group go through setSelectionAnchor instead.
-  setSelectedElementId: (id) =>
+  setSelectedElementId: (id, options) =>
     set((s) => {
-      const selectedElementIds = id ? new Set([id]) : new Set<string>();
+      const preserveSet = Boolean(options?.preserveSet && id && s.selectedElementIds.has(id));
+      const selectedElementIds = preserveSet
+        ? new Set(s.selectedElementIds)
+        : options?.preserveSet
+          ? new Set<string>()
+          : id
+            ? new Set([id])
+            : new Set<string>();
       // Selecting a different element drops any active keyframe selection — otherwise
       // a stale activeKeyframePct from a prior diamond click would force the next drag
       // to "modify" a keyframe on the new element. A diamond click sets the pct AFTER

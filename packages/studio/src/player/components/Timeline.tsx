@@ -56,6 +56,7 @@ export const Timeline = memo(function Timeline({
   onMoveElement: onMoveElementOverride,
   onMoveElements: onMoveElementsOverride,
   onResizeElement: onResizeElementOverride,
+  onResizeElements: onResizeElementsOverride,
   onBlockedEditAttempt: onBlockedEditAttemptOverride,
   onSplitElement: onSplitElementOverride,
   onSelectElement,
@@ -65,6 +66,7 @@ export const Timeline = memo(function Timeline({
     onMoveElement,
     onMoveElements,
     onResizeElement,
+    onResizeElements,
     onBlockedEditAttempt,
     onSplitElement,
     onRazorSplitAll,
@@ -77,6 +79,7 @@ export const Timeline = memo(function Timeline({
     onMoveElement: onMoveElementOverride,
     onMoveElements: onMoveElementsOverride,
     onResizeElement: onResizeElementOverride,
+    onResizeElements: onResizeElementsOverride,
     onBlockedEditAttempt: onBlockedEditAttemptOverride,
     onSplitElement: onSplitElementOverride,
   });
@@ -230,6 +233,7 @@ export const Timeline = memo(function Timeline({
     pinnedOnMoveElement,
     pinnedOnMoveElements,
     pinnedOnResizeElement,
+    pinnedOnResizeElements,
     pinnedOnFileDrop,
     pinnedOnAssetDrop,
     pinnedOnBlockDrop,
@@ -239,6 +243,7 @@ export const Timeline = memo(function Timeline({
     onMoveElement,
     onMoveElements,
     onResizeElement,
+    onResizeElements,
     onFileDrop,
     onAssetDrop,
     onBlockDrop,
@@ -264,6 +269,7 @@ export const Timeline = memo(function Timeline({
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
     onResizeElement: pinnedOnResizeElement,
+    onResizeElements: pinnedOnResizeElements,
     onBlockedEditAttempt,
     setShowPopover,
     setRangeSelectionRef,
@@ -568,7 +574,6 @@ export const Timeline = memo(function Timeline({
           />
         )}
       </div>
-
       <TimelineOverlays
         theme={theme}
         showShortcutHint={showShortcutHint}

@@ -36,6 +36,7 @@ export function applyTimelineStackingReorder(input: {
   iframe: HTMLIFrameElement | null;
   activeCompPath: string | null;
   commit: TimelineZIndexReorderCommit | null | undefined;
+  coalesceKey?: string;
 }): Promise<void> {
   // Audio has no visual stacking; a vertical drag on it must never write z-index.
   if (input.element.tag === "audio") return Promise.resolve();
@@ -82,7 +83,7 @@ export function applyTimelineStackingReorder(input: {
     });
   }
   if (commitEntries.length === 0) return Promise.resolve();
-  return input.commit?.(commitEntries) ?? Promise.resolve();
+  return input.commit?.(commitEntries, input.coalesceKey) ?? Promise.resolve();
 }
 /**
  * Remove the keyframes currently selected in the player store from the active
@@ -220,22 +221,26 @@ export function buildTimelineMoveTimingPatch(
   target: PatchTarget,
   start: number,
   duration: number,
+  track?: number,
 ): string {
-  // Coexistence-window guard: a caller resolving the legacy context handler can
-  // receive the new engine's {element, updates} change shape and read a field
-  // that doesn't exist — start arrives undefined/NaN and would be serialized as
-  // data-start="NaN" into the file. Never persist a non-finite timing value.
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
       `[Timeline] buildTimelineMoveTimingPatch: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
     );
     return original;
   }
-  const patched = applyPatchByTarget(original, target, {
+  let patched = applyPatchByTarget(original, target, {
     type: "attribute",
     property: "start",
     value: formatTimelineAttributeNumber(start),
   });
+  if (track != null && Number.isFinite(track)) {
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "track-index",
+      value: formatTimelineAttributeNumber(track),
+    });
+  }
   return extendRootDurationInSource(patched, start + duration);
 }
 
@@ -589,12 +594,6 @@ export function foldedScaleGsapMutation(input: {
     });
 }
 
-// Re-export applyPatchByTarget for use in the hook (avoids double import in callers)
 export { applyPatchByTarget, formatTimelineAttributeNumber };
 
-export {
-  patchDocumentRootDuration,
-  patchIframeRootDuration,
-  shiftGsapPositionsBatch,
-  syncTimingEditPreview,
-} from "./timelineEditingGsap";
+export { patchDocumentRootDuration } from "./timelineEditingGsap";
