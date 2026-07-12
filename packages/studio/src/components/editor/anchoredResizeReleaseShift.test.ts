@@ -8,7 +8,7 @@ import {
 } from "./manualEditsDom";
 import { buildBoxSizePatches, buildPathOffsetPatches } from "./manualEditsDomPatches";
 import { createManualOffsetDragMember, applyManualOffsetDragCommit } from "./manualOffsetDrag";
-import { computeNextResizeAnchor } from "./useDomEditOverlayGestures";
+import { computeNextResizeAnchor } from "./domEditResizeLocal";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 

@@ -47,25 +47,13 @@ import {
   resolveDomEditRotationGesture,
   resolveResizeCenterAnchorOffset,
 } from "./domEditOverlayGestures";
-import { resolveCenterResizeSize } from "./domEditResizeLocal";
+import { computeNextResizeAnchor, resolveCenterResizeSize } from "./domEditResizeLocal";
 import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
-
-/** Per-frame anchored-resize center accumulator: ADD the residual center correction
- *  (fixedStart − fixedNow) onto the previous anchor so the pin CONVERGES instead of
- *  oscillating (fa4f39168). Pure; exported for the release-shift characterization tests. */
-export function computeNextResizeAnchor(
-  prev: { dx: number; dy: number } | undefined,
-  fixedStart: { x: number; y: number },
-  fixedNow: { x: number; y: number },
-): { dx: number; dy: number } {
-  const base = prev ?? { dx: 0, dy: 0 };
-  return { dx: base.dx + (fixedStart.x - fixedNow.x), dy: base.dy + (fixedStart.y - fixedNow.y) };
-}
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -486,7 +474,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         applyStudioRotation(sel.element, finalRotation);
       }
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
-        .catch(() => {
+        .catch((error) => {
+          console.error("rotate commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
@@ -548,7 +537,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       void Promise.resolve(
         opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined),
       )
-        .catch(() => {
+        .catch((error) => {
+          console.error("resize commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
