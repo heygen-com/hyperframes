@@ -62,6 +62,7 @@ export function injectRuntime(html: string): string {
 
 const ASSET_CONTENT_TYPES: Record<string, string> = {
   js: "application/javascript",
+  mjs: "application/javascript",
   css: "text/css",
   json: "application/json",
   png: "image/png",
