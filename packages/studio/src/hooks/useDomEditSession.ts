@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
@@ -38,7 +38,7 @@ export interface UseDomEditSessionParams {
   compositionLoading: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   showToast: (message: string, tone?: "error" | "info") => void;

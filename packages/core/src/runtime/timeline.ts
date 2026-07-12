@@ -51,60 +51,6 @@ function maxDefinedNumber(...values: Array<number | null>): number | null {
   return Math.max(...finite);
 }
 
-/**
- * When multiple content kinds share the same track number, split them
- * onto separate tracks so the timeline UI shows distinct rows.
- *
- * Preferred kind order (top → bottom): composition, video, image, element, audio.
- * Tracks that contain only one kind are left untouched.
- */
-const KIND_ORDER: Record<string, number> = {
-  composition: 0,
-  video: 1,
-  image: 2,
-  element: 3,
-  audio: 4,
-};
-
-function normalizeTrackAssignments(clips: RuntimeTimelineClip[]): void {
-  if (clips.length === 0) return;
-
-  // Group clips by their raw track number and detect which tracks have mixed kinds
-  const trackKinds = new Map<number, Set<string>>();
-  for (const clip of clips) {
-    const kinds = trackKinds.get(clip.track) ?? new Set();
-    kinds.add(clip.kind);
-    trackKinds.set(clip.track, kinds);
-  }
-
-  const hasMixedTracks = Array.from(trackKinds.values()).some((kinds) => kinds.size > 1);
-  if (!hasMixedTracks) return;
-
-  // Build new contiguous track numbers, splitting mixed tracks by kind
-  let nextTrack = 0;
-  const newTrackMap = new Map<string, number>(); // "origTrack:kind" → newTrack
-
-  const sortedTracks = [...trackKinds.keys()].sort((a, b) => a - b);
-  for (const track of sortedTracks) {
-    const kinds = trackKinds.get(track)!;
-    if (kinds.size === 1) {
-      newTrackMap.set(`${track}:${[...kinds][0]}`, nextTrack++);
-    } else {
-      // Split by kind in preferred order
-      const sorted = [...kinds].sort((a, b) => (KIND_ORDER[a] ?? 99) - (KIND_ORDER[b] ?? 99));
-      for (const kind of sorted) {
-        newTrackMap.set(`${track}:${kind}`, nextTrack++);
-      }
-    }
-  }
-
-  for (const clip of clips) {
-    const key = `${clip.track}:${clip.kind}`;
-    const newTrack = newTrackMap.get(key);
-    if (newTrack != null) clip.track = newTrack;
-  }
-}
-
 function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null {
   const raw = String(rawValue ?? "").trim();
   if (!raw) return null;
@@ -638,11 +584,12 @@ export function collectRuntimeTimelinePayload(params: {
     }
   }
 
-  // ── Track normalization ────────────────────────────────────────────────
-  // When multiple content kinds (composition, audio, video, …) share the same
-  // data-track-index value, split them onto separate tracks so the timeline UI
-  // shows distinct rows for each kind.
-  normalizeTrackAssignments(clips);
+  // Track assignment honors the authored data-track-index verbatim: a clip stays
+  // on the track it was placed on, regardless of kind. (Previously mixed-kind
+  // tracks were split onto separate rows, but that renumbered tracks — breaking
+  // "drop a clip onto an existing track" and causing the written track to drift
+  // from the displayed one on every move. Track index is display-only; render
+  // never reads it, so honoring it verbatim is the correct NLE behavior.)
 
   for (const compositionNode of compositionNodes) {
     if (compositionNode === root) continue;

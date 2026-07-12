@@ -61,13 +61,20 @@ Peer dependencies: `react` (19), `react-dom` (19), `zustand` (4 or 5).
 ### Layout
 
 ```typescript
-import { NLELayout, NLEPreview, CompositionBreadcrumb } from '@hyperframes/studio';
+import { EditorShell, NLEPreview, CompositionBreadcrumb } from '@hyperframes/studio';
 import type { CompositionLevel } from '@hyperframes/studio';
 
-// Main NLE (Non-Linear Editor) layout container
-<NLELayout>
-  {/* Preview, timeline, and editor panels */}
-</NLELayout>
+// Main NLE (Non-Linear Editor) layout container. It arranges the sidebar
+// (`left`), inspector (`right`), preview, and timeline, and takes the editor
+// callbacks (timeline edits, drops, clip rendering) as props — see StudioApp
+// for a fully wired setup.
+<EditorShell
+  left={sidebar}
+  right={inspector}
+  timelineToolbar={toolbar}
+  renderClipContent={renderClip}
+  /* …timeline edit / drop / delete handlers */
+/>
 
 // Preview panel
 <NLEPreview />

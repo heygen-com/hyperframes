@@ -220,97 +220,58 @@ describe("usePlayerStore", () => {
       usePlayerStore.getState().setSelectedElementId(null);
       expect(usePlayerStore.getState().selectedElementId).toBeNull();
     });
-  });
 
-  describe("selectedElementIds", () => {
-    it("sets a multi-id selection with a coherent anchor", () => {
-      usePlayerStore.getState().setSelection(["el-1", "el-2", "el-3"], "el-2");
-
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
-      expect(state.selectedElementId).toBe("el-2");
-    });
-
-    it("falls back to the first selected id when the anchor is outside the set", () => {
-      usePlayerStore.getState().setSelection(["el-1", "el-2"], "missing");
-
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
-      expect(state.selectedElementId).toBe("el-1");
-    });
-
-    it("single-click selection replaces the set with the selected id", () => {
+    it("collapses a stale multi-select set when single-selecting", () => {
       const store = usePlayerStore.getState();
-      store.setSelection(["el-1", "el-2"], "el-2");
-      store.setSelectedElementId("el-3");
-
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-3"]);
-      expect(state.selectedElementId).toBe("el-3");
+      store.setSelectedElementIds(new Set(["a", "b", "c"]));
+      store.setSelectedElementId("a");
+      expect(usePlayerStore.getState().selectedElementId).toBe("a");
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
     });
 
-    it("setSelectedElementId collapses to a single element even for a current member", () => {
+    it("collapses the multi-select set even when re-selecting the same primary", () => {
       const store = usePlayerStore.getState();
-      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
-      // A genuine single selection (click) collapses the set, even if the id was a member.
-      store.setSelectedElementId("el-2");
-
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-2"]);
-      expect(state.selectedElementId).toBe("el-2");
+      store.setSelectedElementId("a");
+      store.setSelectedElementIds(new Set(["a", "b"]));
+      store.setSelectedElementId("a");
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
     });
 
-    it("setSelectionAnchor moves the anchor within a group without collapsing it", () => {
+    it("clears the multi-select set on deselect (canvas delete nulls the primary)", () => {
       const store = usePlayerStore.getState();
-      store.setSelection(["el-1", "el-2", "el-3"], "el-1");
-      // A DOM->store echo during a group gesture only moves the anchor.
-      store.setSelectionAnchor("el-2");
-
-      let state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2", "el-3"]);
-      expect(state.selectedElementId).toBe("el-2");
-
-      // A non-member anchor is a genuine new single selection.
-      store.setSelectionAnchor("outside");
-      state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["outside"]);
-      expect(state.selectedElementId).toBe("outside");
-    });
-
-    it("clearing single selection empties the set", () => {
-      const store = usePlayerStore.getState();
-      store.setSelection(["el-1", "el-2"], "el-2");
+      store.setSelectedElementId("a");
+      store.setSelectedElementIds(new Set(["a", "b"]));
       store.setSelectedElementId(null);
-
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+      expect(usePlayerStore.getState().selectedElementId).toBeNull();
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
     });
 
-    it("toggle adds and removes members while keeping the anchor in the set", () => {
+    it("keeps an additive set written AFTER the primary (marquee ordering)", () => {
       const store = usePlayerStore.getState();
-      store.setSelectedElementId("el-1");
-      store.toggleSelectedElementId("el-2");
-
-      let state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-1", "el-2"]);
-      expect(state.selectedElementId).toBe("el-1");
-
-      store.toggleSelectedElementId("el-1");
-
-      state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual(["el-2"]);
-      expect(state.selectedElementId).toBe("el-2");
+      // Marquee commits primary first (collapses), then repopulates the set.
+      store.setSelectedElementId("a");
+      store.setSelectedElementIds(new Set(["a", "b", "c"]));
+      expect(usePlayerStore.getState().selectedElementId).toBe("a");
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(3);
     });
 
-    it("clearSelection empties the set and the anchor", () => {
+    it("preserves the multi-select set when preserveSet is passed (late marquee primary)", () => {
       const store = usePlayerStore.getState();
-      store.setSelection(["el-1", "el-2"], "el-2");
-      store.clearSelection();
+      store.setSelectedElementId("a");
+      store.setSelectedElementIds(new Set(["a", "b", "c"]));
+      // A late async primary resolution re-selects a MEMBER of the live set.
+      store.setSelectedElementId("a", { preserveSet: true });
+      expect(usePlayerStore.getState().selectedElementId).toBe("a");
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(3);
+    });
 
-      const state = usePlayerStore.getState();
-      expect([...state.selectedElementIds]).toEqual([]);
-      expect(state.selectedElementId).toBeNull();
+    it("still collapses without preserveSet even when the primary is a member", () => {
+      const store = usePlayerStore.getState();
+      store.setSelectedElementId("a");
+      store.setSelectedElementIds(new Set(["a", "b", "c"]));
+      // Default (no opt-out) must keep the data-loss guard intact.
+      store.setSelectedElementId("a");
+      expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
     });
   });
 
@@ -333,6 +294,17 @@ describe("usePlayerStore", () => {
       usePlayerStore.getState().setElements(original);
       usePlayerStore.getState().updateElement("nonexistent", { start: 10 });
       expect(usePlayerStore.getState().elements[0].start).toBe(0);
+    });
+
+    it("syncs zIndex so the reverse z→lane mapping reads fresh store z", () => {
+      usePlayerStore.getState().setElements([
+        { id: "el-1", tag: "div", start: 0, duration: 5, track: 0, zIndex: 1 },
+        { id: "el-2", tag: "div", start: 0, duration: 5, track: 1, zIndex: 2 },
+      ]);
+      usePlayerStore.getState().updateElement("el-1", { zIndex: 9 });
+      const elements = usePlayerStore.getState().elements;
+      expect(elements[0].zIndex).toBe(9);
+      expect(elements[1].zIndex).toBe(2); // unchanged
     });
 
     it("prefers the stable element key when duplicate ids exist", () => {

@@ -375,6 +375,7 @@ export function TimelineLanes({
                               pointerOffsetY: e.clientY - rect.top,
                               previewStart: el.start,
                               previewTrack: el.track,
+                              desiredTrack: el.track,
                               insertRow: null,
                               snapTime: null,
                               snapType: null,

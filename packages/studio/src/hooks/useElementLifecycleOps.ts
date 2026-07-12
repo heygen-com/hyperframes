@@ -17,6 +17,29 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
+/**
+ * Resolve the store timeline-element key for a z-reorder entry. Callers pass the
+ * live DOM node plus best-effort id/selector, not the store key, so match against
+ * the store's elements (hf-id first, then dom id, then selector+index). Returns
+ * null when the element isn't a tracked clip (e.g. a runtime-generated sibling).
+ */
+function resolveReorderStoreKey(entry: {
+  element: HTMLElement;
+  id?: string;
+  selector?: string;
+  selectorIndex?: number;
+}): string | null {
+  const els = usePlayerStore.getState().elements;
+  const hfId = readHfId(entry.element);
+  const match =
+    (hfId ? els.find((el) => el.hfId === hfId) : undefined) ??
+    (entry.id ? els.find((el) => el.domId === entry.id || el.id === entry.id) : undefined) ??
+    (entry.selector
+      ? els.find((el) => el.selector === entry.selector && el.selectorIndex === entry.selectorIndex)
+      : undefined);
+  return match ? (match.key ?? match.id) : null;
+}
+
 interface UseElementLifecycleOpsParams {
   activeCompPath: string | null;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -35,7 +58,7 @@ interface UseElementLifecycleOpsParams {
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    options: { label: string; coalesceKey: string; coalesceMs?: number; skipRefresh?: boolean },
   ) => Promise<void>;
   /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
   onElementDeleted?: (selection: DomEditSelection) => void;
@@ -159,98 +182,89 @@ export function useElementLifecycleOps({
   // ponytail: z-index reorder writes inline-style patches via commitPositionPatchToHtml →
   // persistDomEditOperations → onTrySdkPersist, so it is already SDK-cut-over as setStyle.
   // No SDK reorder/reparent op exists; DOM sibling order stays server-authoritative if ever needed.
-  const handleDomZIndexReorderCommit = useCallback(
-    // fallow-ignore-next-line complexity
+  // Commit one z-reorder entry: mutate the live element's z (and `position`, so a
+  // static element can stack), sync the store z, then persist the inline-style
+  // patch. skipRefresh — the element is already restacked optimistically, so a
+  // reload would only blank the iframe (matches the property-panel convention).
+  const commitZReorderEntry = useCallback(
     (
-      entries: Array<{
+      entry: {
         element: HTMLElement;
         zIndex: number;
         id?: string;
         selector?: string;
         selectorIndex?: number;
         sourceFile: string;
-        key?: string;
-      }>,
+      },
+      coalesceKey: string,
+      coalesceMs?: number,
     ) => {
-      if (entries.length === 0) return Promise.resolve();
+      entry.element.style.zIndex = String(entry.zIndex);
+      const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
+        { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
+      ];
+      try {
+        const win = entry.element.ownerDocument?.defaultView;
+        if (win && win.getComputedStyle(entry.element).position === "static") {
+          entry.element.style.position = "relative";
+          patches.push({ type: "inline-style", property: "position", value: "relative" });
+        }
+      } catch {
+        /* cross-origin or detached — skip */
+      }
+      // Sync the store's z with the just-committed value. Display lanes are
+      // track-derived and unaffected, but the canvas paint order and the explicit
+      // vertical stacking sync read store z; skipRefresh skips the rediscover
+      // reload, so without this write the two sources disagree.
+      const storeKey = resolveReorderStoreKey(entry);
+      if (storeKey) {
+        usePlayerStore.getState().updateElement(storeKey, { zIndex: entry.zIndex });
+      }
+      void commitPositionPatchToHtml(
+        {
+          element: entry.element,
+          // Absent id must stay `undefined`, never `null`: the DOM-patch value
+          // guard (findUnsafeDomPatchValues) rejects a null anywhere except an
+          // operation value, so coercing an id-less element (e.g. a caption
+          // `.sub` div, or a duplicate-id element that resolved by selector) to
+          // `null` here bricked the whole z-reorder. undefined is dropped on the
+          // wire and the server matches via hfId / selector + selectorIndex.
+          id: entry.id ?? undefined,
+          hfId: readHfId(entry.element),
+          selector: entry.selector,
+          selectorIndex: entry.selectorIndex,
+          sourceFile: entry.sourceFile,
+        } as unknown as DomEditSelection,
+        patches,
+        { label: "Reorder layers", coalesceKey, coalesceMs, skipRefresh: true },
+      ).catch(() => undefined);
+    },
+    [commitPositionPatchToHtml],
+  );
+
+  const handleDomZIndexReorderCommit = useCallback(
+    (
+      entries: Array<Parameters<typeof commitZReorderEntry>[0]>,
+      // Optional override: the timeline lane-change drag passes its shared
+      // per-gesture key so this z-reorder entry merges with the move entry into
+      // one undo step. Absent (canvas menu / LayersPanel) ⇒ derive the usual key.
+      coalesceKeyOverride?: string,
+    ) => {
+      if (entries.length === 0) return;
       // Resolver shadow (telemetry-only, decoupled from cutover): record whether
       // the SDK resolves each reordered element — the reorderElements op's targets.
       onReorderShadow?.(
         entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
       );
-      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
-      const saves: Array<Promise<void>> = [];
-      const rollbacks: Array<() => void> = [];
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        const priorZIndex = entry.element.style.zIndex;
-        const priorPosition = entry.element.style.position;
-        const priorStoreEntry = entry.key
-          ? usePlayerStore.getState().elements.find((el) => (el.key ?? el.id) === entry.key)
-          : undefined;
-        let positionChanged = false;
-        entry.element.style.zIndex = String(entry.zIndex);
-        const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
-          { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
-        ];
-        try {
-          const win = entry.element.ownerDocument?.defaultView;
-          if (win && win.getComputedStyle(entry.element).position === "static") {
-            entry.element.style.position = "relative";
-            positionChanged = true;
-            patches.push({ type: "inline-style", property: "position", value: "relative" });
-          }
-        } catch {
-          /* cross-origin or detached — skip */
-        }
-        if (entry.key) {
-          usePlayerStore
-            .getState()
-            .updateElement(entry.key, { zIndex: entry.zIndex, hasExplicitZIndex: true });
-        }
-        rollbacks.push(() => {
-          entry.element.style.zIndex = priorZIndex;
-          if (positionChanged) entry.element.style.position = priorPosition;
-          if (entry.key && priorStoreEntry) {
-            usePlayerStore.getState().updateElement(entry.key, {
-              zIndex: priorStoreEntry.zIndex,
-              hasExplicitZIndex: priorStoreEntry.hasExplicitZIndex,
-            });
-          }
-        });
-        saves.push(
-          commitPositionPatchToHtml(
-            {
-              element: entry.element,
-              id: entry.id ?? null,
-              hfId: readHfId(entry.element),
-              selector: entry.selector,
-              selectorIndex: entry.selectorIndex,
-              sourceFile: entry.sourceFile,
-            } as unknown as DomEditSelection,
-            patches,
-            {
-              label: "Reorder layers",
-              coalesceKey,
-              skipRefresh: i < entries.length - 1,
-            },
-          ),
-        );
+      const coalesceKey =
+        coalesceKeyOverride ??
+        `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      for (const entry of entries) {
+        // Match the move side's widened window when merging a lane-change gesture.
+        commitZReorderEntry(entry, coalesceKey, coalesceKeyOverride ? 5000 : undefined);
       }
-      // Resolves once every z-index patch is persisted so a same-file timing write
-      // can be ordered after it (see applyTimelineStackingReorder callers).
-      return Promise.allSettled(saves).then((settled) => {
-        const rejected = settled.find(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        if (rejected) {
-          for (const rollback of rollbacks) rollback();
-          return Promise.reject(rejected.reason);
-        }
-        return undefined;
-      });
     },
-    [commitPositionPatchToHtml, onReorderShadow],
+    [commitZReorderEntry, onReorderShadow],
   );
 
   return {

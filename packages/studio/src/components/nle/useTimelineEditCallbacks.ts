@@ -19,6 +19,7 @@ export interface TimelineEditCallbackDeps {
   ) => Promise<void> | void;
   handleTimelineElementsMove: (
     edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    coalesceKey?: string,
   ) => Promise<void> | void;
   handleTimelineElementResize: (
     element: TimelineElement,

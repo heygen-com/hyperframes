@@ -20,7 +20,6 @@ interface UseStudioUrlStateParams {
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   rightPanelTab: RightPanelTab;
   rightCollapsed: boolean;
-  timelineVisible: boolean;
   activeCompPathHydrated: boolean;
   domEditSelection: DomEditSelection | null;
   buildDomSelectionFromTarget: (
@@ -66,7 +65,6 @@ export function useStudioUrlState({
   previewIframeRef,
   rightPanelTab,
   rightCollapsed,
-  timelineVisible,
   activeCompPathHydrated,
   domEditSelection,
   buildDomSelectionFromTarget,
@@ -91,12 +89,12 @@ export function useStudioUrlState({
       currentTime: stableTimeRef.current,
       rightPanelTab,
       rightCollapsed,
-      timelineVisible,
+      timelineVisible: null,
       selection: hydratedSelectionRef.current
         ? toPersistedSelection(domEditSelection)
         : pendingSelectionRef.current,
     }),
-    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab, timelineVisible],
+    [activeCompPath, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
   // Resolve a URL selection to a live element and apply it. Shared by the initial
