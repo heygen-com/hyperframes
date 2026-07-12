@@ -520,6 +520,12 @@ async function collectContrast(
     );
     const finished = raw.flatMap(parseFinishedContrast);
     const entries = joinContrastEntries(finished, prepared);
+    // __contrastAuditFinish restores the text paint hidden by prepare. The
+    // measurement screenshot intentionally has glyphs removed so contrast
+    // can sample the pixels behind them; never persist that image as visual
+    // QA evidence. Capture the restored page for the overview instead.
+    const overviewShot = await page.screenshot({ encoding: "base64", type: "png" });
+    if (typeof overviewShot !== "string") throw new Error("Overview screenshot was not base64");
     // Contrast failures are only known once measurement above completes, so
     // they're appended to the layout-derived annotations passed in by the
     // pipeline rather than being requested up front.
@@ -527,7 +533,7 @@ async function collectContrast(
       ...layoutAnnotations,
       ...contrastFailureAnnotations(entries, layoutAnnotations.length),
     ];
-    const pngBase64 = await captureOverviewShot(page, annotations, measurementShot);
+    const pngBase64 = await captureOverviewShot(page, annotations, overviewShot);
     return { entries, pngBase64 };
   } finally {
     await page
