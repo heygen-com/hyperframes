@@ -98,3 +98,11 @@ auto-drop, historically always clean).
   visibility decision, M's product calls (lane order for non-overlap = RESOLVED by stable-track;
   tight-gap z fallback still open).
 - Watch: Miguel's agent must stay off the repo until the fleet is resolved.
+
+## 7. POST-HANDOFF UPDATE (minutes later — final state at session end)
+"Continuation" PRs (#2279, #2285–#2287, by Miguel's agent) landed roughly layers pr06–pr11 — BUT
+tree-checks show at least pr08's timelineZones.ts and the pr10 test landed as STALE versions
+(pre-final-wave content). pr12–pr25 entirely absent from main. Consequence: DO NOT trust main's
+file presence as layer-completeness — diff against consolidated-tip is the only truth, and merging
+consolidated-tip content both finishes the remaining layers AND repairs the stale copies.
+consolidated-tip was rebased onto main BEFORE these continuations — rebase it again first thing.
