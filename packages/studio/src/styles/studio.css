@@ -141,6 +141,22 @@ body {
   opacity: 1;
 }
 
+/* Audio clips read as a distinct kind — a persistent violet tint vs the teal-
+   accented visual clips — so the audio zone at the bottom is visually separate
+   at a glance (the timeline's kinds: visual on top, audio below). */
+.timeline-clip.is-audio {
+  background-color: rgba(167, 139, 250, 0.16);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+.timeline-clip.is-audio.is-hovered {
+  background-color: rgba(167, 139, 250, 0.24);
+}
+
+.timeline-clip.is-audio.is-dragging {
+  background-color: rgba(60, 52, 84, 0.96);
+}
+
 .timeline-clip.is-hovered {
   background-color: rgba(255, 255, 255, 0.09);
 }
@@ -158,7 +174,18 @@ body {
 }
 
 .timeline-clip.is-dragging {
+  /* Solid background so the picked-up clip reads clearly while dragging — audio
+     clips (waveform drawn on a separate layer) would otherwise look transparent. */
+  background-color: rgba(38, 42, 52, 0.96);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Keep the white selection outline while dragging (a plain box-shadow alone gets
+   overridden by .is-dragging's drop shadow, so re-state both together). */
+.timeline-clip.is-selected.is-dragging {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .timeline-clip[data-active].is-selected.is-dragging {
