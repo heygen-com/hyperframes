@@ -32,6 +32,7 @@ const GROUPS: Group[] = [
   {
     title: "Project",
     commands: [
+      ["check", "Run all composition quality checks"],
       ["lint", "Validate a composition for common mistakes"],
       [
         "validate",

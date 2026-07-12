@@ -27,6 +27,13 @@ describe("CLI command registration", () => {
     );
   });
 
+  it("shows check in root help when deprecated commands recommend it", () => {
+    const loaders = commandLoaderBlock();
+
+    expect(loaders).toMatch(/\bcheck:\s*\(\)\s*=>\s*import\("\.\/commands\/check\.js"\)/);
+    expect(helpSource).toContain('["check", "Run all composition quality checks"]');
+  });
+
   // A command actively reconciling skills (`skills check`/`skills update`)
   // must not also nudge the user to go reconcile skills — that nudge is
   // either redundant (it just ran) or misleading (a stale cached count from
