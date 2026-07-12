@@ -1,5 +1,35 @@
-import { describe, it, expect } from "vitest";
-import { WhisperUnavailableError, isWhisperUnavailable } from "./manager.js";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { findWhisper, WhisperUnavailableError, isWhisperUnavailable } from "./manager.js";
+
+const originalPath = process.env["PATH"];
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  process.env["PATH"] = originalPath;
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  tempDirs.length = 0;
+});
+
+describe("findWhisper", () => {
+  it.runIf(process.platform !== "win32")(
+    "does not mistake Python openai-whisper for whisper.cpp",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hyperframes-whisper-path-"));
+      tempDirs.push(dir);
+      const pythonWhisper = join(dir, "whisper");
+      writeFileSync(pythonWhisper, "#!/bin/sh\necho 'OpenAI Whisper Python CLI'\n");
+      chmodSync(pythonWhisper, 0o755);
+      process.env["PATH"] = `${dir}:/usr/bin:/bin`;
+
+      const result = findWhisper();
+
+      expect(result?.executablePath).not.toBe(pythonWhisper);
+    },
+  );
+});
 
 describe("isWhisperUnavailable", () => {
   it("recognizes WhisperUnavailableError instances", () => {

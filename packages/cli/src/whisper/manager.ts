@@ -67,10 +67,11 @@ function findFromEnv(): WhisperResult | undefined {
 }
 
 function findFromSystem(): WhisperResult | undefined {
-  for (const name of ["whisper-cli", "whisper"]) {
-    const path = whichBinary(name);
-    if (path) return { executablePath: path, source: "system" };
-  }
+  // `whisper` is also the executable installed by Python's openai-whisper
+  // package. It accepts a different flag set from whisper.cpp, so treating it
+  // as a compatible fallback causes transcription to fail after discovery.
+  const path = whichBinary("whisper-cli");
+  if (path) return { executablePath: path, source: "system" };
 
   // Check brew paths directly on macOS
   if (platform() === "darwin") {
