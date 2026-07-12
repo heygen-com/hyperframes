@@ -3266,6 +3266,11 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /Failed to launch the browser process/i,
   /Navigation timeout of \d+ ms exceeded/i,
   /ECONNREFUSED/i,
+  // Chromium can briefly invalidate even a localhost connection when Windows
+  // reports an adapter/route change. A fresh capture session succeeds once the
+  // network stack settles, so treat this like the other bounded navigation
+  // retries instead of failing the render immediately.
+  /net::ERR_NETWORK_CHANGED/i,
   // pollHfReady's own timeout — thrown when window.__renderReady never flips
   // true within playerReadyTimeout. "Runtime ready: false" means init simply
   // didn't finish in time (commonly a slow/contended host, e.g. several
