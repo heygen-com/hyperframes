@@ -130,7 +130,7 @@ interface DomEditSelectionChromeProps {
 
 // Oriented selection chrome: a rotation wrapper spanning the overlay, rotated by
 // the element's live angle about the selection box CENTER. Its children (border
-// box, corner dots, rotate handle, crop pills) keep their existing
+// box, corner dots, and rotate handle) keep their existing
 // overlay-absolute positions — rotating the whole plane about the box center
 // lands them on the element's real transformed corners for free. At angle 0 the
 // transform is a no-op, so the chrome is pixel-identical.
@@ -151,94 +151,100 @@ export function DomEditSelectionChrome({
   onBoxClick,
 }: DomEditSelectionChromeProps) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0"
-      style={{
-        transformOrigin: `${overlayRect.left + overlayRect.width / 2}px ${overlayRect.top + overlayRect.height / 2}px`,
-        transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
-      }}
-    >
-      {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
-        <DomEditRotateHandle
-          overlayRect={overlayRect}
-          cropOutlineInsetPx={cropOutlineInsetPx}
-          onStartRotate={(e) => {
-            e.stopPropagation();
-            gestures.startGesture("rotate", e);
-          }}
-        />
-      )}
+    <>
       <div
-        key={selectionKey}
-        ref={boxRef}
-        data-dom-edit-selection-box="true"
-        className={`pointer-events-auto absolute rounded-md ${boxChromeClass}`}
+        className="pointer-events-none absolute inset-0"
         style={{
-          left: overlayRect.left,
-          top: overlayRect.top,
-          width: overlayRect.width,
-          height: overlayRect.height,
-          clipPath: boxClipPath,
-          cursor:
-            allowCanvasMovement && selection.capabilities.canApplyManualOffset ? "move" : "default",
+          transformOrigin: `${overlayRect.left + overlayRect.width / 2}px ${overlayRect.top + overlayRect.height / 2}px`,
+          transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
         }}
-        onPointerDown={(e) => {
-          if (!allowCanvasMovement || e.shiftKey) return;
-          if (selection.capabilities.canApplyManualOffset) {
-            gestures.startGesture("drag", e);
-            return;
-          }
-          e.preventDefault();
-          e.stopPropagation();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          blockedMoveRef.current = {
-            pointerId: e.pointerId,
-            startX: e.clientX,
-            startY: e.clientY,
-            notified: false,
-          };
-        }}
-        onMouseDown={onBoxMouseDown}
-        onClick={onBoxClick}
       >
-        {cropOutlineInsetPx && (
-          <div
-            className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-            style={{
-              left: cropOutlineInsetPx.left,
-              top: cropOutlineInsetPx.top,
-              right: cropOutlineInsetPx.right,
-              bottom: cropOutlineInsetPx.bottom,
+        {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
+          <DomEditRotateHandle
+            overlayRect={overlayRect}
+            cropOutlineInsetPx={cropOutlineInsetPx}
+            onStartRotate={(e) => {
+              e.stopPropagation();
+              gestures.startGesture("rotate", e);
             }}
           />
         )}
-      </div>
-      {/* Resize-handle dots rendered as siblings of the selection box, not
+        <div
+          key={selectionKey}
+          ref={boxRef}
+          data-dom-edit-selection-box="true"
+          className={`pointer-events-auto absolute rounded-md ${boxChromeClass}`}
+          style={{
+            left: overlayRect.left,
+            top: overlayRect.top,
+            width: overlayRect.width,
+            height: overlayRect.height,
+            clipPath: boxClipPath,
+            cursor:
+              allowCanvasMovement && selection.capabilities.canApplyManualOffset
+                ? "move"
+                : "default",
+          }}
+          onPointerDown={(e) => {
+            if (!allowCanvasMovement || e.shiftKey) return;
+            if (selection.capabilities.canApplyManualOffset) {
+              gestures.startGesture("drag", e);
+              return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            blockedMoveRef.current = {
+              pointerId: e.pointerId,
+              startX: e.clientX,
+              startY: e.clientY,
+              notified: false,
+            };
+          }}
+          onMouseDown={onBoxMouseDown}
+          onClick={onBoxClick}
+        >
+          {cropOutlineInsetPx && (
+            <div
+              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+              style={{
+                left: cropOutlineInsetPx.left,
+                top: cropOutlineInsetPx.top,
+                right: cropOutlineInsetPx.right,
+                bottom: cropOutlineInsetPx.bottom,
+              }}
+            />
+          )}
+        </div>
+        {/* Resize-handle dots rendered as siblings of the selection box, not
           children, so they paint strictly above the box border. Each handle
           is positioned relative to the overlay container using the
           overlayRect origin, matching the old child-relative offsets. */}
-      {allowCanvasMovement &&
-        selection.capabilities.canApplyManualSize &&
-        RESIZE_HANDLE_DEFS.map((def) =>
-          def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
-            <div
-              key={def.handle}
-              className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
-              style={{
-                ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
-                // Cursor rotates with the object: bucket the corner's base
-                // diagonal + element rotation into the 8 CSS resize cursors.
-                cursor: resolveRotatedResizeCursor(def.handle, overlayRect.angle ?? 0),
-              }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                gestures.startGesture("resize", e, { resizeHandle: def.handle });
-              }}
-            >
-              <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
-            </div>
-          ),
-        )}
+        {allowCanvasMovement &&
+          selection.capabilities.canApplyManualSize &&
+          RESIZE_HANDLE_DEFS.map((def) =>
+            def.handle !== "se" && !selection.capabilities.canApplyManualOffset ? null : (
+              <div
+                key={def.handle}
+                className="pointer-events-auto absolute flex h-4 w-4 items-center justify-center"
+                style={{
+                  ...resizeHandleStyle(def, overlayRect, cropOutlineInsetPx ?? undefined),
+                  // Cursor rotates with the object: bucket the corner's base
+                  // diagonal + element rotation into the 8 CSS resize cursors.
+                  cursor: resolveRotatedResizeCursor(def.handle, overlayRect.angle ?? 0),
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  gestures.startGesture("resize", e, { resizeHandle: def.handle });
+                }}
+              >
+                <div className="pointer-events-none h-[12px] w-[12px] rounded-full border-[1.5px] border-studio-accent bg-white shadow-[0_0_3px_rgba(0,0,0,0.45)]" />
+              </div>
+            ),
+          )}
+      </div>
+      {/* Crop owns its element-local oriented frame. Keep it outside the chrome's
+          rotated plane or a rotated selection applies the angle twice. */}
       {selection.capabilities.canCrop && groupSelectionCount <= 1 && (
         <DomEditCropHandles
           selection={selection}
@@ -246,6 +252,6 @@ export function DomEditSelectionChrome({
           onStyleCommit={onStyleCommit}
         />
       )}
-    </div>
+    </>
   );
 }

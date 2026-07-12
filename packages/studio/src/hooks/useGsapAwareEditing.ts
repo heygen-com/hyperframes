@@ -38,6 +38,7 @@ export interface UseGsapAwareEditingParams {
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
+    offset?: { x: number; y: number },
   ) => Promise<void>;
   // GSAP script commit ops (from useGsapScriptCommits)
   addGsapAnimation: (
@@ -148,9 +149,14 @@ export function useGsapAwareEditing({
   );
 
   const handleGsapAwareBoxSizeCommit = useCallback(
-    async (selection: DomEditSelection, next: { width: number; height: number }) => {
+    async (
+      selection: DomEditSelection,
+      next: { width: number; height: number },
+      offset?: { x: number; y: number },
+    ) => {
       if (gsapCommitMutation) {
         try {
+          const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
           const handled = await tryGsapResizeIntercept(
             selection,
             next,
@@ -159,13 +165,29 @@ export function useGsapAwareEditing({
             gsapCommitMutation,
             makeFetchFallback(selection),
           );
-          if (handled) return;
+          if (handled) {
+            // Scale-route resize already settles the live drop rect and persists
+            // its residual position inside tryGsapResizeIntercept. Width/height
+            // resize does not, so persist the anchored-corner offset once through
+            // the canonical GSAP drag channel.
+            if (offset && !scaleRoute) {
+              await tryGsapDragIntercept(
+                selection,
+                offset,
+                selectedGsapAnimations,
+                previewIframeRef.current,
+                gsapCommitMutation,
+                makeFetchFallback(selection),
+              );
+            }
+            return;
+          }
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
           throw error;
         }
       }
-      return handleDomBoxSizeCommit(selection, next);
+      return handleDomBoxSizeCommit(selection, next, offset);
     },
     [
       handleDomBoxSizeCommit,
