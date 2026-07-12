@@ -405,6 +405,22 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain('src="vendor/effect-plugin.js"');
   });
 
+  it("preserves local module scripts and their import base URL", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="1"></div>
+        <script type="module" src="./module.js"></script>
+      </body></html>`,
+      "module.js": `import { value } from "./value.js"; window.result = value;`,
+      "value.js": `export const value = "loaded";`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(/<script\b[^>]*\btype="module"[^>]*\bsrc="\.\/module\.js"/);
+    expect(bundled).not.toContain('import { value } from "./value.js"');
+  });
+
   it("preserves local sub-composition script order before inline scene scripts", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
