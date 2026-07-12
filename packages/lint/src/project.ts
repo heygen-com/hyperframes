@@ -217,6 +217,9 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
       const html = readFileSync(filePath, "utf-8");
       const compSrcPath = `compositions/${file}`;
       allHtmlSources.push({ html, compSrcPath });
+      // Registry components are pasteable snippets installed under this
+      // reserved directory, not independently renderable compositions.
+      if (file === "components" || file.startsWith("components/")) continue;
       // Mountable fragments (figma component imports, registry snippets) are
       // not standalone compositions — composition-root rules don't apply.
       // Anchored to the file's ROOT element so a real composition that merely

@@ -26,6 +26,21 @@ async function lintWithFragment(name: string, html: string) {
 }
 
 describe("snippet fragment exemption", () => {
+  it("skips registry snippets installed under compositions/components", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-component-lint-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), INDEX);
+    mkdirSync(join(dir, "compositions", "components"), { recursive: true });
+    writeFileSync(
+      join(dir, "compositions", "components", "grain-overlay.html"),
+      '<div id="grain-overlay"><div class="grain-texture"></div></div>',
+    );
+
+    const result = await lintProject(dir);
+
+    expect(result.results.map((entry) => entry.file)).toEqual(["index.html"]);
+  });
+
   it("skips composition-root rules for files whose ROOT carries data-hf-snippet", async () => {
     const findings = await lintWithFragment(
       "frag.html",
