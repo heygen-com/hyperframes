@@ -603,7 +603,12 @@ export function findMissingFrameRanges(
 
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     const framePath = join(framesDir, formatCaptureFrameName(frameIndex, frameExt));
-    const missing = !existsSync(framePath);
+    // A capture worker can leave a zero/one-byte placeholder behind when it
+    // exits between creating the destination and writing the image. FFmpeg's
+    // image2 demuxer treats that as end-of-sequence but still exits 0, which
+    // used to let a truncated video be reported as successful. Real JPEG and
+    // PNG captures are necessarily larger than their 8-byte file signatures.
+    const missing = !existsSync(framePath) || statSync(framePath).size <= 8;
     if (missing && rangeStart === null) {
       rangeStart = frameIndex;
     } else if (!missing && rangeStart !== null) {
