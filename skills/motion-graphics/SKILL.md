@@ -33,7 +33,7 @@ A short design-led motion graphic. **Asset-first**: decide the asset strategy an
 | plan     | subagent — **decide search?** + classify + asset strategy             | `shot-plan.json` (draft: category, `asset_needs` queries, brief) | `agents/director.md` (Part 1) |
 | source ◇ | Bash — media-use resolve (**skip if `asset_needs` is empty**)         | `assets/` + `assets/index.md`                                    | `phases/source/guide.md`      |
 | design   | subagent — shot design around resolved assets                         | `shot-plan.json` (final: block(s) + layout + motion + positions) | `agents/director.md` (Part 2) |
-| build    | subagent — reuse-first composition                                    | `compositions/index.html`                                        | `agents/builder.md`           |
+| build    | subagent — reuse-first composition                                    | `index.html`                                                     | `agents/builder.md`           |
 | render   | Bash — `hyperframes render` (MP4, or `--format webm/mov` for overlay) | `renders/video.mp4`                                              | Step 5                        |
 | verify   | Bash — `lint` / `inspect` -> repair subagent on failure               | (fixes in place)                                                 | `agents/finalize.md`          |
 
@@ -122,7 +122,7 @@ Dispatch a subagent (prompt = `agents/director.md` Part 2 + dispatch context inc
 
 ### Step 4 — Build (subagent: Builder, reuse-first)
 
-Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output `compositions/index.html` honoring the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic).
+Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot-plan.json`, `catalog-map.md`, the category's `module.md`, `references/motion-vocabulary.md`, `references/builder-contract.md`). **Reuse-first**: `npx hyperframes add <block>` + customize in place; hand-author only gaps + the asset-fusion affordance. Output `index.html` at the project root so the default `hyperframes check .` and `hyperframes render .` commands target the finished film. Honor the HF contract (paused GSAP timeline on `window.__timelines`, `class="clip"` + stable ids, `tl.seek(0)`, deterministic).
 
 ### Step 5 — Render (Bash)
 
@@ -151,13 +151,13 @@ Flags live in the `hyperframes-cli` skill (`references/preview-render.md`).
 
 ## Resume table
 
-| State                                                    | Continue from            |
-| -------------------------------------------------------- | ------------------------ |
-| no `shot-plan.json`                                      | Step 1 (plan)            |
-| `shot-plan.json` has `asset_needs`, no `assets/`         | Step 2 (source)          |
-| `shot-plan.json` final, no `compositions/index.html`     | Step 3/4 (design+build)  |
-| `compositions/index.html` exists, no `renders/video.mp4` | Step 5 (render) + Step 6 |
-| `renders/video.mp4` exists                               | Report + stop            |
+| State                                            | Continue from            |
+| ------------------------------------------------ | ------------------------ |
+| no `shot-plan.json`                              | Step 1 (plan)            |
+| `shot-plan.json` has `asset_needs`, no `assets/` | Step 2 (source)          |
+| `shot-plan.json` final, no `index.html`          | Step 3/4 (design+build)  |
+| `index.html` exists, no `renders/video.mp4`      | Step 5 (render) + Step 6 |
+| `renders/video.mp4` exists                       | Report + stop            |
 
 ## Design notes (maintainers — execution does not read this)
 
@@ -170,7 +170,7 @@ Flags live in the `hyperframes-cli` skill (`references/preview-render.md`).
     hyperframes.json  context.log
     shot-plan.json            # the IR (Director output)
     assets/  assets/index.md  # media-use output (if sourced)
-    compositions/index.html   # Builder output
+    index.html                # Builder output and default CLI target
     renders/video.mp4
   ```
 - **Registration:** in `hyperframes` router — add the "design-led short motion graphic" intent + Workflow description; carve the motion-graphics triggers out of `/general-video`; add reverse Do-NOT-use edges. See `motion-graphics-genre.md` §5-7.
