@@ -843,6 +843,10 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
+    // Module scripts can contain static imports whose resolution is relative
+    // to the script URL. Folding their source into a classic inline script
+    // both drops module semantics and changes the import base URL.
+    if ((el.getAttribute("type") || "").trim().toLowerCase() === "module") continue;
     const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
