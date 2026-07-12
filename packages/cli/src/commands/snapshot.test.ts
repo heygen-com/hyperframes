@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeSnapshotTimes, parseZoomScale, tailFrameTime } from "./snapshot.js";
+import {
+  computeSnapshotTimes,
+  parseZoomScale,
+  requireSnapshotFfmpeg,
+  tailFrameTime,
+} from "./snapshot.js";
 
 // --zoom's crop-region math (selector bbox + padding + clamp, exact region
 // form, no-match error) is owned by and tested in
@@ -77,5 +82,17 @@ describe("parseZoomScale (--zoom-scale)", () => {
     expect(parseZoomScale("abc")).toBe(3);
     expect(parseZoomScale("0")).toBe(3);
     expect(parseZoomScale("-1")).toBe(3);
+  });
+});
+
+describe("requireSnapshotFfmpeg", () => {
+  it("rejects video snapshot extraction when FFmpeg is unavailable", () => {
+    expect(() => requireSnapshotFfmpeg(undefined)).toThrow(
+      /FFmpeg is required to extract video frames for snapshots/,
+    );
+  });
+
+  it("preserves the resolved FFmpeg executable", () => {
+    expect(requireSnapshotFfmpeg("C:\\tools\\ffmpeg.exe")).toBe("C:\\tools\\ffmpeg.exe");
   });
 });
