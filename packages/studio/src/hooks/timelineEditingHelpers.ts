@@ -596,4 +596,9 @@ export function foldedScaleGsapMutation(input: {
 // Re-export applyPatchByTarget for use in the hook (avoids double import in callers)
 export { applyPatchByTarget, formatTimelineAttributeNumber };
 
-export { patchDocumentRootDuration, patchIframeRootDuration, shiftGsapPositionsBatch, syncTimingEditPreview } from "./timelineEditingGsap";
+export {
+  patchDocumentRootDuration,
+  patchIframeRootDuration,
+  shiftGsapPositionsBatch,
+  syncTimingEditPreview,
+} from "./timelineEditingGsap";
