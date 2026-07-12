@@ -11,6 +11,8 @@ import { mountReactHarness } from "./domSelectionTestHarness";
 const mocks = vi.hoisted(() => ({
   resize: vi.fn(),
   drag: vi.fn(),
+  readPosition: vi.fn(),
+  setPosition: vi.fn(),
 }));
 
 vi.mock("./gsapResizeIntercept", () => ({ tryGsapResizeIntercept: mocks.resize }));
@@ -18,6 +20,10 @@ vi.mock("./gsapRuntimeBridge", () => ({
   tryGsapDragIntercept: mocks.drag,
   tryGsapRotationIntercept: vi.fn(),
 }));
+vi.mock("./gsapPositionDetection", () => ({
+  readGsapPositionFromIframe: mocks.readPosition,
+}));
+vi.mock("../utils/elementGsap", () => ({ setElementGsapPosition: mocks.setPosition }));
 vi.mock("./useAnimatedPropertyCommit", () => ({
   useAnimatedPropertyCommit: () => ({
     commitAnimatedProperty: vi.fn(),
@@ -89,6 +95,36 @@ describe("useGsapAwareEditing anchored resize", () => {
     expect(h.fallback).not.toHaveBeenCalled();
     expect(mocks.drag).toHaveBeenCalledTimes(1);
     expect(mocks.drag.mock.calls[0]![1]).toEqual({ x: -50, y: -25 });
+    act(() => h.root.unmount());
+  });
+
+  it("settles the live GSAP position before the deferred anchor persist resolves", async () => {
+    let resolveDrag!: (handled: boolean) => void;
+    const pendingDrag = new Promise<boolean>((resolve) => {
+      resolveDrag = resolve;
+    });
+    mocks.resize.mockResolvedValue(true);
+    mocks.drag.mockReturnValue(pendingDrag);
+    mocks.readPosition.mockReturnValue({ x: 120.4, y: 80.2 });
+    const h = mountResizeHandler([]);
+    h.selection.element.setAttribute("data-hf-drag-gsap-base-x", "120.4");
+    h.selection.element.setAttribute("data-hf-drag-gsap-base-y", "80.2");
+    h.selection.element.setAttribute("data-hf-drag-initial-offset-x", "0");
+    h.selection.element.setAttribute("data-hf-drag-initial-offset-y", "0");
+
+    let commit!: Promise<void>;
+    act(() => {
+      commit = h.resize(h.selection, { width: 300, height: 200 }, { x: -50.2, y: -25.6 });
+    });
+    await vi.waitFor(() => expect(mocks.drag).toHaveBeenCalledTimes(1));
+
+    expect(mocks.setPosition).toHaveBeenCalledWith(h.selection.element, 70, 55);
+    expect(mocks.setPosition.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.drag.mock.invocationCallOrder[0]!,
+    );
+
+    resolveDrag(true);
+    await act(() => commit);
     act(() => h.root.unmount());
   });
 

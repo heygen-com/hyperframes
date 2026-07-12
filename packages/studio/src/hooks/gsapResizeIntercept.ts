@@ -24,7 +24,7 @@ import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { pickClosestToPlayhead, readGsapPositionFromIframe } from "./gsapPositionDetection";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
-import { selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 import { resolveGroupTween, POSITION_CHANNELS } from "./gsapRuntimeBridge";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
@@ -68,17 +68,17 @@ export async function tryGsapResizeIntercept(
   );
 
   let anim = resolved?.anim ?? null;
-  if (!anim || anim.method === "set") {
+  if (!anim || isInstantHold(anim)) {
     const sel = selectorFromSelection(selection);
     if (!sel) return false;
-    const sizeSet = anim?.method === "set" ? anim : findSizeSetAnimation(animations, sel);
+    const sizeSet = anim ?? findSizeSetAnimation(animations, sel);
 
     // If the element is animated (has a real tween, not just a static size
     // hold), keyframe the size at the playhead so other keyframes keep theirs —
     // instead of a global set that resizes every frame.
     if (resizeGroup === "size") {
       const animatedTween = pickClosestToPlayhead(
-        animations.filter((a) => a.method !== "set" && resolveTweenDuration(a) > 0),
+        animations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
       );
       if (animatedTween) {
         const handled = await commitKeyframedSizeFromResize(
@@ -99,6 +99,9 @@ export async function tryGsapResizeIntercept(
     });
     return true;
   }
+
+  const tweenDuration = resolveTweenDuration(anim);
+  if (tweenDuration <= 0) return false;
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
@@ -249,7 +252,7 @@ export async function tryGsapResizeIntercept(
 
   const ct = usePlayerStore.getState().currentTime;
   const ts = resolveTweenStart(anim);
-  const td = resolveTweenDuration(anim);
+  const td = tweenDuration;
   const outsideRange = ts !== null && td > 0 && (ct < ts - 0.01 || ct > ts + td + 0.01); // Convert flat tweens to keyframes only for in-range resizes.
   // Outside-range uses the extend path which handles everything atomically.
   if (!outsideRange) {

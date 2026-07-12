@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
+import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { usePlayerStore } from "../player/store/playerStore";
 
 /**
@@ -177,6 +177,44 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
 
     const staleLogged = logSpy.mock.calls.some((c) => String(c[1] ?? "").includes("stale parse"));
     expect(staleLogged).toBe(false);
+  });
+});
+
+describe("tryGsapRotationIntercept — instant holds", () => {
+  it("updates a duration-zero fromTo hold instead of converting it to keyframes", async () => {
+    const rotationHold = {
+      id: "#puck-b-fromTo-0-rotation",
+      targetSelector: "#puck-b",
+      propertyGroup: "rotation",
+      method: "fromTo",
+      fromProperties: { rotation: 0 },
+      properties: { rotation: 30 },
+      position: 0,
+      resolvedStart: 0,
+      duration: 0,
+    } as unknown as GsapAnimation;
+    const commitMutation = vi.fn();
+
+    const handled = await tryGsapRotationIntercept(
+      selection,
+      75,
+      [rotationHold],
+      null,
+      commitMutation,
+    );
+
+    expect(handled).toBe(true);
+    expect(commitMutation).toHaveBeenCalledTimes(1);
+    expect(commitMutation.mock.calls[0]![1]).toEqual({
+      type: "update-property",
+      animationId: rotationHold.id,
+      property: "rotation",
+      value: 75,
+    });
+    const types = commitMutation.mock.calls.map(([, mutation]) => mutation.type);
+    expect(types).not.toContain("convert-to-keyframes");
+    expect(types).not.toContain("add-keyframe");
+    expect(types).not.toContain("add");
   });
 });
 

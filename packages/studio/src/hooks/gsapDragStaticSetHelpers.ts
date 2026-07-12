@@ -1,6 +1,6 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { RuntimeTweenChange, SetPatchProps } from "./gsapRuntimePatch";
+import { isInstantHold } from "./gsapShared";
 
 /** The shape of an `update-property` mutation a static-set nudge POSTs. */
 interface UpdatePropertyMutation {
@@ -61,7 +61,8 @@ function findPositionSetAnimation(
  * remove-all-keyframes leaves behind) is a held position too, and the next drag
  * must UPDATE it in place rather than append a second `gsap.set` that fights it
  * (the duplicate-position-write bug). Only zero-duration holds qualify — a
- * live-duration `to`/`from` is NOT a static hold (and in the static path it's a
+ * live-duration tween and a duration-zero `from` are NOT static holds (and in
+ * the static path they're a
  * stale/phantom parse: re-committing it would resurrect a just-deleted tween).
  * A keyframed zero-duration `to` is ALSO a static hold (a drag-path corruption
  * artifact) and must be recognized so the static commit normalizes it.
@@ -75,10 +76,7 @@ export function findExistingPositionWrite(
   if (set) return set;
   return (
     animations.find(
-      (a) =>
-        a.targetSelector === selector &&
-        a.propertyGroup === "position" &&
-        resolveTweenDuration(a) === 0,
+      (a) => a.targetSelector === selector && a.propertyGroup === "position" && isInstantHold(a),
     ) ?? null
   );
 }
@@ -89,7 +87,7 @@ export function findRotationSetAnimation(
 ): GsapAnimation | null {
   return (
     animations.find(
-      (a) => a.method === "set" && a.targetSelector === selector && "rotation" in a.properties,
+      (a) => isInstantHold(a) && a.targetSelector === selector && "rotation" in a.properties,
     ) ?? null
   );
 }
@@ -101,7 +99,7 @@ export function findSizeSetAnimation(
   return (
     animations.find(
       (a) =>
-        a.method === "set" &&
+        isInstantHold(a) &&
         a.targetSelector === selector &&
         ("width" in a.properties || "height" in a.properties),
     ) ?? null

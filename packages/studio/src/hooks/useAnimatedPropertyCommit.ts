@@ -14,7 +14,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeBridge";
 import type { SetPatchProps } from "./gsapRuntimePatch";
-import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
 import { roundTo3 } from "../utils/rounding";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
@@ -161,8 +161,8 @@ async function commitSetProps(
 /**
  * Static element (no keyframes on ANY of its tweens): persist the 3D props as a
  * `tl.set` — NEVER keyframes. Mirrors manual drag / resize / rotate, which `tl.set`
- * a static element instead of animating it. Updates an existing `set` in place, or
- * creates a dedicated `set` at position 0 when the element has none.
+ * a static element instead of animating it. Updates an existing same-group static
+ * hold in place, or creates a dedicated `set` at position 0 when the element has none.
  */
 async function commitStaticSet(
   selection: DomEditSelection,
@@ -172,12 +172,12 @@ async function commitStaticSet(
   commit: Commit,
 ): Promise<void> {
   if (!selector) return;
-  // One commit per PROPERTY GROUP, each into a set that owns that group — never a
-  // flat `to`/`from`, and never a foreign-group set (a width edit used to merge
-  // into the element's position set, producing a mixed set the split machinery
-  // exists to prevent). Within a group everything batches into ONE commit: a
-  // set's id is group-derived, so a per-prop loop would shift the id mid-way and
-  // 404 the next update.
+  // One commit per PROPERTY GROUP, each into a static write that owns that group —
+  // never a live tween, and never a foreign-group write (a width edit used to
+  // merge into the element's position set, producing a mixed write the split
+  // machinery exists to prevent). Within a group everything batches into ONE
+  // commit: a write's id is group-derived, so a per-prop loop would shift the id
+  // mid-way and 404 the next update.
   const byGroup = new Map<string, [string, number | string][]>();
   for (const entry of propEntries) {
     const group = classifyPropertyGroup(entry[0]);
@@ -185,24 +185,24 @@ async function commitStaticSet(
     batch.push(entry);
     byGroup.set(group, batch);
   }
-  const sets = animations.filter((a) => a.method === "set" && a.targetSelector === selector);
+  const staticWrites = animations.filter((a) => isInstantHold(a) && a.targetSelector === selector);
   // Resolve every group's target BEFORE committing anything, and coalesce
-  // groups that land on the SAME set into one commit: the `sets` snapshot is
-  // captured once, so if two groups resolved to one legacy mixed set, a first
+  // groups that land on the SAME write into one commit: the snapshot is captured
+  // once, so if two groups resolved to one legacy mixed write, a first
   // commit could re-shape it server-side and leave the second chasing a stale
   // id (404 on legacy pre-split files).
-  const byTargetSet = new Map<GsapAnimation, [string, number | string][]>();
+  const byTargetWrite = new Map<GsapAnimation, [string, number | string][]>();
   const newSetBatches: [string, number | string][][] = [];
   for (const [group, batch] of byGroup) {
-    const existingSet = findGroupOwningSet(sets, group);
-    if (existingSet) {
-      byTargetSet.set(existingSet, [...(byTargetSet.get(existingSet) ?? []), ...batch]);
+    const existingWrite = findGroupOwningStaticWrite(staticWrites, group);
+    if (existingWrite) {
+      byTargetWrite.set(existingWrite, [...(byTargetWrite.get(existingWrite) ?? []), ...batch]);
     } else {
       newSetBatches.push(batch);
     }
   }
-  for (const [targetSet, batch] of byTargetSet) {
-    await commitSetProps(selection, targetSet, batch, selector, animations, commit);
+  for (const [targetWrite, batch] of byTargetWrite) {
+    await commitSetProps(selection, targetWrite, batch, selector, animations, commit);
   }
   // Fresh adds don't reshape existing sets, so their ids can't go stale.
   for (const batch of newSetBatches) {
@@ -211,14 +211,19 @@ async function commitStaticSet(
 }
 
 /**
- * The set that owns a property group: one already dedicated to the group wins;
- * else a mixed set that already carries a property of the group (merging
- * same-group values there beats spawning a second writer for the channel).
+ * The static write that owns a property group: one already dedicated to the
+ * group wins; else a mixed write that already carries a property of the group
+ * (merging same-group values there beats spawning a second writer for the channel).
  */
-function findGroupOwningSet(sets: GsapAnimation[], group: string): GsapAnimation | undefined {
+function findGroupOwningStaticWrite(
+  staticWrites: GsapAnimation[],
+  group: string,
+): GsapAnimation | undefined {
   return (
-    sets.find((a) => a.propertyGroup === group) ??
-    sets.find((a) => Object.keys(a.properties).some((k) => classifyPropertyGroup(k) === group))
+    staticWrites.find((a) => a.propertyGroup === group) ??
+    staticWrites.find((a) =>
+      Object.keys(a.properties).some((k) => classifyPropertyGroup(k) === group),
+    )
   );
 }
 
@@ -445,8 +450,8 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         }
 
         // Existing static hold on a NON-animated element — merge the props into the
-        // `set` in place (maybeAutoKeyframeSet no-ops when nothing else is keyframed).
-        if (anim?.method === "set") {
+        // same write (maybeAutoKeyframeSet no-ops when nothing else is keyframed).
+        if (anim && isInstantHold(anim)) {
           await commitSetProps(
             selection,
             anim,

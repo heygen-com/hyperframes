@@ -12,7 +12,7 @@ import type { GsapAnimation, GsapPercentageKeyframe } from "@hyperframes/core/gs
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fetchParsedAnimations, getAnimationsForElement } from "./useGsapTweenCache";
-import { selectorFromSelection, computeElementPercentage } from "./gsapShared";
+import { selectorFromSelection, computeElementPercentage, isInstantHold } from "./gsapShared";
 import {
   resolveTweenStart,
   resolveTweenDuration,
@@ -395,8 +395,8 @@ export function useEnableKeyframes(
     // the curve.
     const arcAnim = anims.find((a) => a.arcPath);
     const kfAnim = anims.find((a) => a.keyframes && !a.arcPath);
-    const setAnim = anims.find((a) => a.method === "set" && !a.keyframes && !a.arcPath);
-    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && a.method !== "set");
+    const setAnim = anims.find((a) => isInstantHold(a) && !a.keyframes && !a.arcPath);
+    const flatAnim = anims.find((a) => !a.keyframes && !a.arcPath && !isInstantHold(a));
 
     if (arcAnim) {
       await applyArcWaypointAtPlayhead(session, sel, arcAnim, t, iframe);

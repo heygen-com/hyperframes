@@ -12,12 +12,16 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { computeDraggedGsapPosition } from "./draggedGsapPosition";
+import { readGsapPositionFromIframe } from "./gsapPositionDetection";
+import { selectorFromSelection } from "./gsapShared";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
 import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
+import { setElementGsapPosition } from "../utils/elementGsap";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 
 export interface UseGsapAwareEditingParams {
@@ -171,6 +175,19 @@ export function useGsapAwareEditing({
             // resize does not, so persist the anchored-corner offset once through
             // the canonical GSAP drag channel.
             if (offset && !scaleRoute) {
+              const selector = selectorFromSelection(selection);
+              if (selector) {
+                const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+                  x: 0,
+                  y: 0,
+                };
+                const { newX, newY } = computeDraggedGsapPosition(
+                  selection.element,
+                  offset,
+                  gsapPos,
+                );
+                setElementGsapPosition(selection.element, newX, newY);
+              }
               await tryGsapDragIntercept(
                 selection,
                 offset,

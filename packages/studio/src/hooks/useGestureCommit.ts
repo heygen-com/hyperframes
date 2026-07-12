@@ -12,6 +12,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
+import { isInstantHold } from "./gsapShared";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -175,9 +176,9 @@ export function useGestureCommit({
           ? allAnims.find((a) => a.propertyGroup === "position" && a.targetSelector === selector)
           : undefined;
         if (existingPositionTween) {
-          if (existingPositionTween.method === "set") {
-            // A `set` is a static hold, not a tween to merge into — replace it with
-            // the recorded motion (which already starts from the set's position).
+          if (isInstantHold(existingPositionTween)) {
+            // An instant hold is not a tween to merge into — replace it with the
+            // recorded motion (which already starts from the held position).
             await liveSession.commitMutation(
               {
                 type: "replace-with-keyframes",

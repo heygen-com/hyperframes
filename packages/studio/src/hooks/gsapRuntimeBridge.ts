@@ -26,7 +26,7 @@ import {
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import { selectorFromSelection } from "./gsapShared";
+import { isInstantHold, selectorFromSelection } from "./gsapShared";
 import {
   findGsapPositionAnimation,
   pickClosestToPlayhead,
@@ -211,7 +211,7 @@ export async function tryGsapDragIntercept(
   const hasKeyframedPosTween = !!posAnim?.keyframes && resolveTweenDuration(posAnim) > 0;
   if (!hasNonHold && !hasKeyframedPosTween) {
     const existingSet =
-      posAnim && posAnim.method === "set" && posAnim.targetSelector === selector
+      posAnim && isInstantHold(posAnim) && posAnim.targetSelector === selector
         ? posAnim
         : findExistingPositionWrite(resolvedAnimations, selector);
     await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
@@ -300,8 +300,8 @@ export async function tryGsapRotationIntercept(
   // mirroring the static position set. Idempotent: re-rotate updates an existing
   // rotation set in place, else add a new one. This replaces the old
   // `--hf-studio-rotation` CSS-var fallback (the same dual-channel bug class).
-  if (!anim) {
-    const existingSet = findRotationSetAnimation(resolvedAnimations, selector);
+  if (!anim || isInstantHold(anim)) {
+    const existingSet = anim ?? findRotationSetAnimation(resolvedAnimations, selector);
     await commitStaticGsapRotation(selection, newRotation, selector, existingSet, {
       commitMutation,
       fetchAnimations: fetchFallbackAnimations,

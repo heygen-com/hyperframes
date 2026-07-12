@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import { computeCurrentPercentage } from "./gsapDragCommit";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 
 afterEach(() => {
@@ -68,6 +69,79 @@ function keyframedScaleFixture(): GsapAnimation {
     },
   } as unknown as GsapAnimation;
 }
+
+it("replaces a duration-zero size hold instead of converting it to keyframes", async () => {
+  const el = document.createElement("div");
+  el.id = "box";
+  document.body.append(el);
+  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  const instantSizeHold = {
+    id: "#box-to-0-size",
+    targetSelector: "#box",
+    propertyGroup: "size",
+    method: "to",
+    properties: { width: 150, height: 150 },
+    position: 0,
+    resolvedStart: 0,
+    duration: 0,
+    extras: { immediateRender: "__raw:true" },
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  const handled = await tryGsapResizeIntercept(
+    selection,
+    { width: 344, height: 344 },
+    [instantSizeHold],
+    null,
+    commitMutation,
+  );
+
+  expect(handled).toBe(true);
+  expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).toEqual(["delete", "add"]);
+  expect(commitMutation.mock.calls[0]![1]).toEqual({
+    type: "delete",
+    animationId: "#box-to-0-size",
+  });
+  expect(commitMutation.mock.calls[1]![1]).toMatchObject({
+    type: "add",
+    targetSelector: "#box",
+    method: "set",
+    properties: { width: 344, height: 344 },
+  });
+  expect(commitMutation).not.toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ type: "convert-to-keyframes" }),
+    expect.anything(),
+  );
+  expect(commitMutation).not.toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ type: "add-keyframe" }),
+    expect.anything(),
+  );
+});
+
+it("computes a finite zero percentage for a zero-duration tween", () => {
+  const animation = {
+    id: "#box-to-0-size",
+    targetSelector: "#box",
+    propertyGroup: "size",
+    method: "to",
+    properties: { width: 150 },
+    resolvedStart: 1,
+    duration: 0,
+  } as unknown as GsapAnimation;
+  const selection = {
+    id: "box",
+    selector: "#box",
+    element: document.createElement("div"),
+  } as DomEditSelection;
+  usePlayerStore.setState({ currentTime: 5 });
+
+  const percentage = computeCurrentPercentage(selection, animation);
+
+  expect(Number.isFinite(percentage)).toBe(true);
+  expect(percentage).toBe(0);
+});
 
 /** Drive one resize through the intercept, returning every committed mutation. */
 async function runResize(

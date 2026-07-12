@@ -33,6 +33,19 @@ export const PROPERTY_DEFAULTS: Record<string, number> = {
   height: 100,
 };
 
+/**
+ * A timeline write that applies an instantaneous value and then holds it.
+ * `set()` is always a hold; authored `to()` / `fromTo()` tweens are holds only
+ * when their resolved duration is exactly zero.
+ */
+export function isInstantHold(animation: GsapAnimation): boolean {
+  return (
+    animation.method === "set" ||
+    ((animation.method === "to" || animation.method === "fromTo") &&
+      resolveTweenDuration(animation) === 0)
+  );
+}
+
 // ── Selector resolution ───────────────────────────────────────────────────────
 
 /**
@@ -61,6 +74,7 @@ export function computeElementPercentage(
   if (animation) {
     const start = resolveTweenStart(animation);
     const duration = resolveTweenDuration(animation);
+    if (duration <= 0) return 0;
     if (start !== null) {
       return absoluteToPercentage(currentTime, start, duration);
     }
