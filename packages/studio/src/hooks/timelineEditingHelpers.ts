@@ -1,4 +1,3 @@
-import { applySoftReload } from "../utils/gsapSoftReload";
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { applyPatchByTarget, readAttributeByTarget } from "../utils/sourcePatcher";
 import {
