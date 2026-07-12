@@ -7,7 +7,6 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
@@ -181,14 +180,26 @@ export function NLEProvider({
   // Composition ID → file path map from raw index.html
   const compIdToSrcRef = useRef(compIdToSrc);
   compIdToSrcRef.current = compIdToSrc;
+  const onCompIdToSrcChangeRef = useRef(onCompIdToSrcChange);
+  onCompIdToSrcChangeRef.current = onCompIdToSrcChange;
 
-  useMountEffect(() => {
-    fetch(`/api/projects/${projectId}/files/index.html`)
+  useEffect(() => {
+    const controller = new AbortController();
+    let current = true;
+    const emptyMap = new Map<string, string>();
+    setCompIdToSrc(emptyMap);
+    setCompositionSourceMap(emptyMap);
+    onCompIdToSrcChangeRef.current?.(emptyMap);
+
+    fetch(`/api/projects/${projectId}/files/index.html`, {
+      signal: controller.signal,
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then((data: { content?: string }) => {
+        if (!current) return;
         const html = data.content || "";
         const map = new Map<string, string>();
         const re =
@@ -203,14 +214,19 @@ export function NLEProvider({
         // Let DOM source-resolution recover a subcomposition element's source file
         // (the runtime drops the linkage when inlining — see getSourceFileForElement).
         setCompositionSourceMap(map);
-        onCompIdToSrcChange?.(map);
+        onCompIdToSrcChangeRef.current?.(map);
       })
       .catch((err: unknown) => {
+        if (!current || controller.signal.aborted) return;
         // Non-fatal: drill-down still works via the iframe DOM scan; without
         // the map only source-file resolution for sub-comps degrades.
         console.warn("[studio] Couldn't load composition source map from index.html:", err);
       });
-  });
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, [projectId, setCompIdToSrc]);
 
   // Patch elements with compositionSrc whenever elements or compIdToSrc change.
   // eslint-disable-next-line no-restricted-syntax

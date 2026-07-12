@@ -4,6 +4,10 @@ import { classifyZone, normalizeToZones } from "./timelineZones";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import { getTimelineEditCapabilities } from "./timelineEditing";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+import {
+  beginTimelineOptimisticGesture,
+  isLatestTimelineOptimisticGesture,
+} from "./timelineOptimisticRevision";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -111,6 +115,10 @@ function persistMoveEdits(
     start: e.element.start,
     track: e.element.track,
   }));
+  const revision = beginTimelineOptimisticGesture(
+    updateElement,
+    edits.map((edit) => keyOf(edit.element)),
+  );
   for (const e of edits) updateElement(keyOf(e.element), e.updates);
   const persisted = onMoveElements
     ? onMoveElements(edits, coalesceKey, operation)
@@ -118,7 +126,11 @@ function persistMoveEdits(
   return Promise.resolve(persisted).then(
     () => true,
     (error) => {
-      for (const p of prev) updateElement(p.key, { start: p.start, track: p.track });
+      for (const p of prev) {
+        if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
+          updateElement(p.key, { start: p.start, track: p.track });
+        }
+      }
       console.error("[Timeline] Failed to persist clip edits", error);
       return false;
     },
@@ -147,7 +159,10 @@ function insertTrackValue(trackOrder: number[], insertRow: number): number {
 function resolveMultiSelection(
   drag: DraggedClipState,
   deps: DragCommitDeps,
-): { keys: ReadonlySet<string>; movedStart: (e: TimelineElement) => number } | null {
+): {
+  keys: ReadonlySet<string>;
+  movedStart: (e: TimelineElement) => number;
+} | null {
   const { elements, selectedKeys } = deps;
   const dragKey = keyOf(drag.element);
   if (!selectedKeys || selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return null;
@@ -202,16 +217,22 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     if (multi) {
       const edits: TimelineMoveEdit[] = elements
         .filter((e) => multi.keys.has(keyOf(e)))
-        .map((e) => ({ element: e, updates: { start: multi.movedStart(e), track: e.track } }))
+        .map((e) => ({
+          element: e,
+          updates: { start: multi.movedStart(e), track: e.track },
+        }))
         .filter((e) => e.updates.start !== e.element.start);
       void persistMoveEdits(edits, deps);
       return;
     }
     const updates = { start: drag.previewStart, track: drag.element.track };
     const prev = { start: drag.element.start, track: drag.element.track };
+    const revision = beginTimelineOptimisticGesture(updateElement, [dragKey]);
     updateElement(dragKey, updates);
     Promise.resolve(onMoveElement?.(drag.element, updates)).catch((error) => {
-      updateElement(dragKey, prev);
+      if (isLatestTimelineOptimisticGesture(updateElement, revision, dragKey)) {
+        updateElement(dragKey, prev);
+      }
       console.error("[Timeline] Failed to persist clip edit", error);
     });
     return;
@@ -274,7 +295,10 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
 function commitTrackInsert(
   drag: DraggedClipState,
   deps: DragCommitDeps,
-  multi: { keys: ReadonlySet<string>; movedStart: (e: TimelineElement) => number } | null,
+  multi: {
+    keys: ReadonlySet<string>;
+    movedStart: (e: TimelineElement) => number;
+  } | null,
 ): void {
   const { elements, trackOrder } = deps;
   const dragKey = keyOf(drag.element);

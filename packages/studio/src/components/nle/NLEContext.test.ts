@@ -23,7 +23,11 @@ async function mountNleProvider(props: {
 // Re-render NLEProvider into an existing root and settle effects.
 async function renderNleProvider(
   root: Root,
-  props: { projectId: string; refreshKey?: number },
+  props: {
+    projectId: string;
+    refreshKey?: number;
+    onCompIdToSrcChange?: (map: Map<string, string>) => void;
+  },
 ): Promise<void> {
   await act(async () => {
     root.render(React.createElement(NLEProvider, props, React.createElement("div")));
@@ -81,6 +85,58 @@ describe("NLEProvider — asset preview scoping", () => {
     await renderNleProvider(root, { projectId: "project-a", refreshKey: 1 });
 
     expect(useAssetPreviewStore.getState().previewAsset).toBe("assets/photo.png");
+
+    act(() => root.unmount());
+    host.remove();
+  });
+});
+
+describe("NLEProvider — composition source-map scoping", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("clears the old map and ignores a late project-A response after switching to B", async () => {
+    let resolveA!: (response: Response) => void;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("project-a")) {
+        return new Promise<Response>((resolve) => {
+          resolveA = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          content: '<div data-composition-id="b-comp" data-composition-src="compositions/b.html">',
+        }),
+      } as Response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const observed: Array<Map<string, string>> = [];
+    const onChange = (map: Map<string, string>) => observed.push(new Map(map));
+    const { host, root } = await mountNleProvider({
+      projectId: "project-a",
+      onCompIdToSrcChange: onChange,
+    });
+
+    await renderNleProvider(root, {
+      projectId: "project-b",
+      onCompIdToSrcChange: onChange,
+    });
+    await act(async () => Promise.resolve());
+
+    expect(observed.filter((map) => map.size === 0)).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/project-b/files/index.html", {
+      signal: expect.any(AbortSignal),
+    });
+    expect(observed.at(-1)).toEqual(new Map([["b-comp", "compositions/b.html"]]));
+
+    resolveA({
+      ok: true,
+      json: async () => ({
+        content: '<div data-composition-id="a-comp" data-composition-src="compositions/a.html">',
+      }),
+    } as Response);
+    await act(async () => Promise.resolve());
+    expect(observed.at(-1)).toEqual(new Map([["b-comp", "compositions/b.html"]]));
 
     act(() => root.unmount());
     host.remove();

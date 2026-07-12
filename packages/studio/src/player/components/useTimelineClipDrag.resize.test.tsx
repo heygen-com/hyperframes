@@ -11,7 +11,16 @@ import { mountReactHarness } from "../../hooks/domSelectionTestHarness";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function el(id: string, over: Partial<TimelineElement> = {}): TimelineElement {
-  return { id, key: id, tag: "video", start: 0, duration: 2, track: 0, domId: id, ...over };
+  return {
+    id,
+    key: id,
+    tag: "video",
+    start: 0,
+    duration: 2,
+    track: 0,
+    domId: id,
+    ...over,
+  };
 }
 
 afterEach(() => {
@@ -19,7 +28,11 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
-function renderResizeHarness(elements: TimelineElement[], selected: string[]) {
+function renderResizeHarness(
+  elements: TimelineElement[],
+  selected: string[],
+  options: { wireGroupResize?: boolean } = {},
+) {
   usePlayerStore.getState().setElements(elements);
   usePlayerStore.setState({ timelineSnapEnabled: false });
   usePlayerStore.getState().setSelectedElementIds(new Set(selected));
@@ -37,7 +50,7 @@ function renderResizeHarness(elements: TimelineElement[], selected: string[]) {
       durationRef: { current: 100 },
       trackOrderRef: { current: [0, 1] },
       onResizeElement,
-      onResizeElements,
+      onResizeElements: options.wireGroupResize === false ? undefined : onResizeElements,
       setShowPopover: vi.fn(),
       setRangeSelectionRef: { current: vi.fn() },
     });
@@ -123,6 +136,29 @@ describe("useTimelineClipDrag — single-clip resize (unchanged path)", () => {
     expect(h.storeById("b").duration).toBe(2); // untouched
     h.unmount();
   });
+
+  it("does not let an older rejected resize roll back a newer optimistic gesture", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const a = el("a", { start: 0, duration: 2 });
+    const h = renderResizeHarness([a], []);
+    let rejectFirst!: (error: Error) => void;
+    h.onResizeElement
+      .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => (rejectFirst = reject)))
+      .mockResolvedValueOnce(undefined);
+
+    h.startResize(a, "end");
+    h.movePointer(50);
+    await h.dropPointer();
+    h.startResize(a, "end");
+    h.movePointer(100);
+    await h.dropPointer();
+    rejectFirst(new Error("older resize failed"));
+    await act(async () => Promise.resolve());
+
+    expect(h.storeById("a").duration).toBe(3);
+    errorSpy.mockRestore();
+    h.unmount();
+  });
 });
 
 describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
@@ -166,6 +202,23 @@ describe("useTimelineClipDrag — multi-select group resize (restored)", () => {
     expect(h.storeById("b").duration).toBe(3);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
+    h.unmount();
+  });
+
+  it("rolls the whole group back when no atomic resize callback is wired", async () => {
+    const a = el("a", { start: 0, duration: 2 });
+    const b = el("b", { start: 5, duration: 3 });
+    const h = renderResizeHarness([a, b], ["a", "b"], {
+      wireGroupResize: false,
+    });
+    h.startResize(a, "end");
+    h.movePointer(50);
+    expect(h.storeById("b").duration).toBe(3.5);
+
+    await h.dropPointer();
+    expect(h.storeById("a").duration).toBe(2);
+    expect(h.storeById("b").duration).toBe(3);
+    expect(h.onResizeElement).not.toHaveBeenCalled();
     h.unmount();
   });
 

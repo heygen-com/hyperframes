@@ -28,6 +28,11 @@ import type {
   ResizingClipState,
   BlockedClipState,
 } from "./timelineClipDragTypes";
+import {
+  beginTimelineOptimisticGesture,
+  rollbackLatestTimelineOptimisticGesture,
+} from "./timelineOptimisticRevision";
+import { commitTimelineGroupResize } from "./timelineGroupResizeCommit";
 
 export type {
   DraggedClipState,
@@ -48,7 +53,10 @@ interface UseTimelineClipDragInput {
     updates: Pick<TimelineElement, "start" | "track">,
   ) => Promise<void> | void;
   onMoveElements?: (
-    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    edits: Array<{
+      element: TimelineElement;
+      updates: Pick<TimelineElement, "start" | "track">;
+    }>,
   ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
@@ -121,7 +129,10 @@ export function useTimelineClipDrag({
     beatTimes: [],
     enabled: true,
   });
-  snapContextRef.current = { beatTimes: adjustedBeatTimes, enabled: timelineSnapEnabled };
+  snapContextRef.current = {
+    beatTimes: adjustedBeatTimes,
+    enabled: timelineSnapEnabled,
+  };
   const elementsRef = useRef(elements);
   elementsRef.current = elements;
 
@@ -204,7 +215,10 @@ export function useTimelineClipDrag({
   onStackingPatchesRef.current = onStackingPatches;
 
   const clipDragScrollRaf = useRef(0);
-  const clipDragPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const clipDragPointerRef = useRef<{
+    clientX: number;
+    clientY: number;
+  } | null>(null);
 
   // Recompute the dragged-clip preview for a pointer position. The heavy lifting
   // (move + snap + group clamp + drop placement) is a tested pure function so
@@ -259,7 +273,13 @@ export function useTimelineClipDrag({
           resize.edge,
         );
         session = members
-          ? { grabbedKey, edge: resize.edge, members, changes: [], hasChanged: false }
+          ? {
+              grabbedKey,
+              edge: resize.edge,
+              members,
+              changes: [],
+              hasChanged: false,
+            }
           : null;
         groupResizeRef.current = session;
       }
@@ -397,37 +417,6 @@ export function useTimelineClipDrag({
     };
 
     /* ── pointerup commit handlers (dispatched by drag/resize/blocked) ──── */
-    const commitGroupResize = (session: TimelineGroupResizeSession) => {
-      if (!session.hasChanged) return;
-      const changes = session.changes;
-      // The grabbed clip's timing lived only in resizingClip state during preview,
-      // so write EVERY member (grabbed included) to the store now, then persist.
-      for (const c of changes) {
-        updateElement(c.key, {
-          start: c.start,
-          duration: c.duration,
-          playbackStart: c.playbackStart,
-        });
-      }
-      const persist = onResizeElementsRef.current;
-      if (!persist) return;
-      const coalesceKey = `clip-group-resize:${changes.map((c) => c.key).join(":")}`;
-      Promise.resolve(
-        persist(
-          changes.map((c) => ({
-            element: c.element,
-            start: c.start,
-            duration: c.duration,
-            playbackStart: c.playbackStart,
-          })),
-          { coalesceKey },
-        ),
-      ).catch((error) => {
-        restoreGroupResizeMembers(session, true);
-        console.error("[Timeline] Failed to persist group clip resize", error);
-      });
-    };
-
     const commitResizePointerUp = (resize: ResizingClipState) => {
       resizingClipRef.current = null;
       setResizingClip(null);
@@ -443,7 +432,7 @@ export function useTimelineClipDrag({
       clearSuppressedClick();
 
       if (groupSession) {
-        commitGroupResize(groupSession);
+        commitTimelineGroupResize(groupSession, updateElement, onResizeElementsRef.current);
         return;
       }
 
@@ -453,7 +442,9 @@ export function useTimelineClipDrag({
         resize.previewPlaybackStart !== resize.element.playbackStart;
       if (!hasChanged) return;
 
-      updateElement(resize.element.key ?? resize.element.id, {
+      const resizeKey = resize.element.key ?? resize.element.id;
+      const revision = beginTimelineOptimisticGesture(updateElement, [resizeKey]);
+      updateElement(resizeKey, {
         start: resize.previewStart,
         duration: resize.previewDuration,
         playbackStart: resize.previewPlaybackStart,
@@ -466,11 +457,16 @@ export function useTimelineClipDrag({
           playbackStart: resize.previewPlaybackStart,
         }),
       ).catch((error) => {
-        updateElement(resize.element.key ?? resize.element.id, {
-          start: resize.element.start,
-          duration: resize.element.duration,
-          playbackStart: resize.element.playbackStart,
-        });
+        rollbackLatestTimelineOptimisticGesture(updateElement, revision, [
+          {
+            key: resizeKey,
+            updates: {
+              start: resize.element.start,
+              duration: resize.element.duration,
+              playbackStart: resize.element.playbackStart,
+            },
+          },
+        ]);
         console.error("[Timeline] Failed to persist clip resize", error);
       });
     };
