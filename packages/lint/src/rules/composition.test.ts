@@ -823,6 +823,15 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
+    it("does not warn for Studio-serialized entity-encoded JSON", async () => {
+      const html = `<html><body>
+<div data-composition-src="card.html" data-variable-values="{&quot;title&quot;:&quot;R&amp;D&quot;,&quot;count&quot;:3}"></div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "invalid_variable_values_json");
+      expect(finding).toBeUndefined();
+    });
+
     it("does not warn when data-variable-values is absent", async () => {
       const html = `<html><body>
 <div data-composition-src="card.html"></div>

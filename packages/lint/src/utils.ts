@@ -194,7 +194,18 @@ export function readJsonAttr(tagSource: string, attr: string): string | null {
     new RegExp(`(?<![\\w-])${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"),
   );
   if (!match) return null;
-  return match[1] ?? match[2] ?? null;
+  const value = match[1] ?? match[2] ?? null;
+  if (value == null) return null;
+
+  // Studio serializes edited attributes with double quotes and escapes JSON's
+  // inner quotes as HTML entities. Decode the attribute value the same way a
+  // browser does before handing it to JSON.parse.
+  return value
+    .replace(/&quot;|&#34;|&#x22;/gi, '"')
+    .replace(/&apos;|&#39;|&#x27;/gi, "'")
+    .replace(/&lt;|&#60;|&#x3c;/gi, "<")
+    .replace(/&gt;|&#62;|&#x3e;/gi, ">")
+    .replace(/&amp;|&#38;|&#x26;/gi, "&");
 }
 
 export function collectCompositionIds(tags: OpenTag[]): Set<string> {
