@@ -4,6 +4,13 @@ import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrde
 import { resolveTimelineLayerStackingMove } from "./timelineLayerDrag";
 import { shouldShowTimelineLayerGroupHeader } from "./TimelineLayerGroupHeader";
 import type { TimelineStackingElement, TimelineStackingReorderIntent } from "./timelineStacking";
+import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
+
+export {
+  getTimelineEditCapabilities,
+  hasPatchableTimelineTarget,
+} from "./timelineEditCapabilities";
+export type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 
 import {
   applyClipStartTrimDelta,
@@ -245,12 +252,6 @@ export interface TimelinePromptElement {
   track: number;
 }
 
-export interface TimelineEditCapabilities {
-  canMove: boolean;
-  canTrimStart: boolean;
-  canTrimEnd: boolean;
-}
-
 export type BlockedTimelineEditIntent = "move" | "resize-start" | "resize-end";
 
 export interface TimelineRangeSelection {
@@ -360,59 +361,6 @@ export function selectTimelineElementsInMarquee({
     rowTop = rowBottom;
   }
   return selected;
-}
-
-function isDeterministicTimelineWindow(input: {
-  tag: string;
-  compositionSrc?: string;
-  playbackStartAttr?: "media-start" | "playback-start";
-  sourceDuration?: number;
-}): boolean {
-  if (input.compositionSrc) return true;
-  if (input.playbackStartAttr != null) return true;
-  if (
-    input.sourceDuration != null &&
-    Number.isFinite(input.sourceDuration) &&
-    input.sourceDuration > 0
-  ) {
-    return true;
-  }
-  const normalizedTag = input.tag.toLowerCase();
-  return ["video", "audio", "img"].includes(normalizedTag);
-}
-
-export function hasPatchableTimelineTarget(input: { domId?: string; selector?: string }): boolean {
-  return Boolean(input.domId || input.selector);
-}
-
-export function getTimelineEditCapabilities(input: {
-  tag: string;
-  duration: number;
-  domId?: string;
-  selector?: string;
-  compositionSrc?: string;
-  playbackStart?: number;
-  playbackStartAttr?: "media-start" | "playback-start";
-  sourceDuration?: number;
-  timingSource?: "authored" | "implicit";
-  timelineLocked?: boolean;
-}): TimelineEditCapabilities {
-  if (input.timingSource === "implicit" || input.timelineLocked) {
-    return {
-      canMove: false,
-      canTrimStart: false,
-      canTrimEnd: false,
-    };
-  }
-
-  const canPatch = hasPatchableTimelineTarget(input);
-  const hasFiniteDuration = Number.isFinite(input.duration) && input.duration > 0;
-  const hasDeterministicWindow = isDeterministicTimelineWindow(input);
-  return {
-    canMove: canPatch && (hasDeterministicWindow || hasFiniteDuration),
-    canTrimEnd: canPatch && hasFiniteDuration,
-    canTrimStart: canPatch && hasFiniteDuration,
-  };
 }
 
 export function resolveBlockedTimelineEditIntent(input: {

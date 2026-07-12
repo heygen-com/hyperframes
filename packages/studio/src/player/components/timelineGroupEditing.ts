@@ -1,6 +1,6 @@
 import { roundToCenti } from "../../utils/rounding";
 import type { TimelineElement } from "../store/playerStore";
-import { getTimelineEditCapabilities } from "./timelineEditing";
+import { getTimelineEditCapabilities } from "./timelineEditCapabilities";
 
 const DEFAULT_TIMELINE_MIN_DURATION = 0.1;
 const ABSOLUTE_TIMELINE_MIN_DURATION = 0.05;
@@ -13,7 +13,7 @@ function roundTimelineTime(value: number): number {
   return roundToCenti(value);
 }
 
-function resolveTimelineMinDuration(minDuration?: number): number {
+export function resolveTimelineMinDuration(minDuration?: number): number {
   return Math.max(ABSOLUTE_TIMELINE_MIN_DURATION, minDuration ?? DEFAULT_TIMELINE_MIN_DURATION);
 }
 
@@ -35,7 +35,7 @@ interface TimelineStartTrimClip {
  * media in-point (`playbackStart / playbackRate`); right-bounded by `minDuration`.
  * Returned deltas are unrounded — callers round with their own centisecond helper.
  */
-function clipStartTrimDeltaBounds(
+export function clipStartTrimDeltaBounds(
   clip: TimelineStartTrimClip,
   minStart: number,
   minDuration: number,
@@ -54,7 +54,7 @@ function clipStartTrimDeltaBounds(
  * duration by the same amount, and shifts the media in-point by the delta scaled to
  * the playback rate (clamped at 0).
  */
-function applyClipStartTrimDelta(
+export function applyClipStartTrimDelta(
   clip: TimelineStartTrimClip,
   delta: number,
 ): { start: number; duration: number; playbackStart?: number } {
@@ -78,12 +78,40 @@ export interface TimelineGroupTimingMember {
 
 export type TimelineGroupResizeEdge = "start" | "end";
 
+export interface TimelineGroupMoveResult {
+  delta: number;
+  members: Array<Pick<TimelineGroupTimingMember, "start" | "duration">>;
+}
+
 export interface TimelineGroupResizeResult {
   delta: number;
   members: Array<Pick<TimelineGroupTimingMember, "start" | "duration" | "playbackStart">>;
 }
 
-function clampTimelineGroupResizeDelta(
+function clampTimelineGroupMoveDelta(
+  rawDelta: number,
+  members: readonly TimelineGroupTimingMember[],
+): number {
+  if (members.length === 0) return 0;
+  const minDelta = Math.max(...members.map((member) => -member.start));
+  return roundTimelineTime(Math.max(rawDelta, minDelta));
+}
+
+export function resolveTimelineGroupMove(
+  members: readonly TimelineGroupTimingMember[],
+  rawDelta: number,
+): TimelineGroupMoveResult {
+  const delta = clampTimelineGroupMoveDelta(rawDelta, members);
+  return {
+    delta,
+    members: members.map((member) => ({
+      start: roundTimelineTime(member.start + delta),
+      duration: member.duration,
+    })),
+  };
+}
+
+export function clampTimelineGroupResizeDelta(
   rawDelta: number,
   members: readonly TimelineGroupTimingMember[],
   edge: TimelineGroupResizeEdge,
