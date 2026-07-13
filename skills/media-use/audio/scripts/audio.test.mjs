@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,51 @@ import { resolveSfx } from "./lib/sfx.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const sfxLibDir = join(HERE, "..", "assets", "sfx"); // same offset the engine uses
+
+test("explicit offline TTS provider bypasses expired HeyGen OAuth", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-expired-auth-"));
+  const configDir = join(dir, "config");
+  const requestPath = join(dir, "audio_request.json");
+  const outPath = join(dir, "audio_meta.json");
+  const engine = join(HERE, "audio.mjs");
+  try {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "credentials"),
+      JSON.stringify({
+        oauth: { access_token: "expired", expires_at: "2000-01-01T00:00:00Z" },
+      }),
+    );
+    writeFileSync(
+      requestPath,
+      JSON.stringify({ provider: "kokoro", lines: [], bgm: { mode: "none" } }),
+    );
+    const env = { ...process.env, HEYGEN_CONFIG_DIR: configDir };
+    delete env.HEYGEN_API_KEY;
+    delete env.HYPERFRAMES_API_KEY;
+    const result = spawnSync(
+      process.execPath,
+      [
+        engine,
+        "--request",
+        requestPath,
+        "--hyperframes",
+        dir,
+        "--out",
+        outPath,
+        "--only",
+        "tts",
+        "--provider",
+        "kokoro",
+      ],
+      { encoding: "utf8", env },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(readFileSync(outPath, "utf8")).tts_provider, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("bundled SFX library resolves from the relocated path", async () => {
   assert.ok(existsSync(join(sfxLibDir, "manifest.json")), "moved manifest is present");

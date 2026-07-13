@@ -111,8 +111,9 @@ const speed = Number(speedOverride ?? request.speed ?? 1.0) || 1.0;
 
 // ── env + HeyGen availability (the single switch) ─────────────────────────────
 loadEnvFromDir(hyperframesDir);
-const heygenOK = heygenCredential() !== null;
-const headers = heygenOK ? heygenAuthHeaders() : null;
+const heygenCred = heygenCredential();
+const headers = heygenCred?.headers ? heygenAuthHeaders() : null;
+const heygenOK = headers !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
 const prev = existsSync(outPath) ? JSON.parse(readFileSync(outPath, "utf8")) : {};

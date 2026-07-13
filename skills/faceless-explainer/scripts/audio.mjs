@@ -125,6 +125,7 @@ function runGenerate(argv) {
   const storyboardPath = resolve(flag(argv, "storyboard", join(hyperframesDir, "STORYBOARD.md")));
   const scriptPath = resolve(flag(argv, "script", join(hyperframesDir, "SCRIPT.md")));
   const outPath = resolve(flag(argv, "out", join(hyperframesDir, "audio_meta.json")));
+  const provider = flag(argv, "provider", process.env.HF_TTS_PROVIDER || "auto");
   const userVoice = flag(argv, "voice", null);
   const speed = Number(flag(argv, "speed", "1.0")) || 1.0;
 
@@ -144,7 +145,7 @@ function runGenerate(argv) {
   // strict here (no wait-bgm step downstream).
   const query = (g.extra && g.extra.music) || g.message || g.arc || "calm cinematic underscore";
   const request = {
-    provider: "auto",
+    provider,
     speed,
     lines,
     bgm: { mode: "retrieve", query, blob: g.message || "", arc: g.arc || "" },

@@ -22,7 +22,7 @@ import { pythonInvocation } from "./python.mjs";
 
 // ── provider detection ────────────────────────────────────────────────────────
 export function heygenAvailable() {
-  return heygenCredential() !== null;
+  return heygenCredential()?.headers != null;
 }
 export function elevenlabsAvailable() {
   if (!process.env.ELEVENLABS_API_KEY) return false;
