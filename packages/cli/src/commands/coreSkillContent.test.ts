@@ -24,3 +24,15 @@ describe("hyperframes-core contract docs", () => {
     expect(brief).not.toContain("`lint` / `validate` / `inspect`");
   });
 });
+
+describe("media-use TTS documentation", () => {
+  it("does not advertise flags unsupported by the published tts command", () => {
+    const tts = read("skills", "media-use", "audio", "references", "tts.md");
+    const captions = read("skills", "media-use", "audio", "references", "tts-to-captions.md");
+
+    expect(tts).not.toMatch(/hyperframes tts[^\n]*--provider/);
+    expect(tts).not.toMatch(/hyperframes tts[^\n]*--words/);
+    expect(captions).not.toMatch(/hyperframes tts[^\n]*--provider/);
+    expect(captions).toContain("heygen-tts.mjs");
+  });
+});
