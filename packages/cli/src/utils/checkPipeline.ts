@@ -84,11 +84,11 @@ export const DEFAULT_CHECK_OPTIONS: CheckOptions = {
   snapshots: false,
 };
 
-/** Pick at most five evenly-strided points from the already-merged layout grid. */
+/** Check every point in the default layout grid; cap unusually dense grids at nine. */
 export function selectContrastTimes(grid: number[]): number[] {
-  if (grid.length <= 5) return [...grid];
-  return Array.from({ length: 5 }, (_, index) => {
-    const selected = Math.floor((index * (grid.length - 1)) / 4);
+  if (grid.length <= 9) return [...grid];
+  return Array.from({ length: 9 }, (_, index) => {
+    const selected = Math.floor((index * (grid.length - 1)) / 8);
     return grid[selected] ?? grid[0] ?? 0;
   });
 }

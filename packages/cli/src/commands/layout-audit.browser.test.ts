@@ -145,6 +145,34 @@ describe("layout-audit.browser", () => {
     expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(true);
   });
 
+  it("flags nowrap text that outgrows its own authored width", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline">99999999999999</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 80, width: 220, height: 64 }),
+        text: rect({ left: 40, top: 80, width: 436, height: 64 }),
+      },
+      { headline: { width: "220px", whiteSpace: "nowrap" } },
+    );
+    const headline = document.getElementById("headline")!;
+    Object.defineProperty(headline, "clientWidth", { value: 220 });
+    Object.defineProperty(headline, "scrollWidth", { value: 436 });
+    installAuditScript();
+
+    expect(runAudit()).toContainEqual(
+      expect.objectContaining({
+        code: "text_box_overflow",
+        selector: "#headline",
+        containerSelector: "#headline",
+      }),
+    );
+  });
+
   it("keeps auditing visible descendants beyond the second element", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">

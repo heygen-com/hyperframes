@@ -419,6 +419,34 @@
     };
   }
 
+  function visibleNowrapOverflowIssue(element, time, tolerance) {
+    const style = getComputedStyle(element);
+    if (clipsOverflow(style) || style.whiteSpace !== "nowrap") return null;
+    const overflowX = element.scrollWidth - element.clientWidth;
+    if (overflowX <= tolerance) return null;
+    const rect = toRect(element.getBoundingClientRect());
+    const overflow = { right: round(overflowX) };
+    return {
+      code: "text_box_overflow",
+      severity: "error",
+      time,
+      selector: selectorFor(element),
+      containerSelector: selectorFor(element),
+      text: textContentFor(element),
+      message: "Non-wrapping text extends outside its authored width.",
+      rect: textRectFor(element) || rect,
+      containerRect: rect,
+      overflow,
+      fixHint: textOverflowFixHint(
+        textRectFor(element) || rect,
+        rect,
+        overflow,
+        parsePx(style.fontSize),
+        "the text box",
+      ),
+    };
+  }
+
   // An ancestor (up to and including `stopAt`) that clips its overflow makes any
   // text spilling past it invisible — that clipping IS the layout mechanism
   // (odometer/ticker reels, masked windows), not a defect to report.
@@ -878,6 +906,8 @@
       if (!hasOwnTextCandidate(element)) continue;
       const clipped = clippedTextIssue(element, time, tolerance);
       if (clipped) issues.push(clipped);
+      const visibleNowrapOverflow = visibleNowrapOverflowIssue(element, time, tolerance);
+      if (visibleNowrapOverflow) issues.push(visibleNowrapOverflow);
       issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
       const occluded = occludedTextIssue(element, time);
       if (occluded) issues.push(occluded);

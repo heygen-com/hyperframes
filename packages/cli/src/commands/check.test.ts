@@ -311,9 +311,9 @@ function runtimeError(): CheckFinding {
 }
 
 describe("contrast sample selection", () => {
-  it("chooses five evenly distributed grid points including both ends", () => {
+  it("checks every point in the default nine-sample layout grid", () => {
     expect(selectContrastTimes([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5])).toEqual([
-      0.5, 2.5, 4.5, 6.5, 8.5,
+      0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
     ]);
     expect(selectContrastTimes([1, 2, 3])).toEqual([1, 2, 3]);
   });
@@ -950,15 +950,19 @@ describe("check pipeline", () => {
     });
     const { report } = await runScenario(captured, { snapshots: true }, { writeSnapshot: writer });
 
-    expect(report.snapshots.times).toEqual([0.5, 2.5, 4.5, 6.5, 8.5]);
+    expect(report.snapshots.times).toEqual([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5]);
     expect(report.snapshots.files).toEqual([
       "snapshots/frame-00-at-0.5s.png",
-      "snapshots/frame-01-at-2.5s.png",
-      "snapshots/frame-02-at-4.5s.png",
-      "snapshots/frame-03-at-6.5s.png",
-      "snapshots/frame-04-at-8.5s.png",
+      "snapshots/frame-01-at-1.5s.png",
+      "snapshots/frame-02-at-2.5s.png",
+      "snapshots/frame-03-at-3.5s.png",
+      "snapshots/frame-04-at-4.5s.png",
+      "snapshots/frame-05-at-5.5s.png",
+      "snapshots/frame-06-at-6.5s.png",
+      "snapshots/frame-07-at-7.5s.png",
+      "snapshots/frame-08-at-8.5s.png",
     ]);
-    expect(writer).toHaveBeenCalledTimes(5);
+    expect(writer).toHaveBeenCalledTimes(9);
 
     const absentWriter = vi.fn(async () => "unused.png");
     await runScenario(fakeDriver(), { snapshots: false }, { writeSnapshot: absentWriter });
