@@ -177,7 +177,14 @@ function escapeHtmlAttr(value) {
 
 function approvedVideoAttrs(attrs) {
   const forwarded = [];
-  for (const name of ["id", "src", "poster", "preload", "aria-label"]) {
+  for (const name of [
+    "id",
+    "src",
+    "poster",
+    "preload",
+    "aria-label",
+    "data-media-start",
+  ]) {
     const value = attrValueFrom(attrs, name);
     if (value !== null) forwarded.push(`${name}="${escapeHtmlAttr(value)}"`);
   }
