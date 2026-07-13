@@ -73,12 +73,22 @@ function mergeTransactionOptions(calls: BufferedCommit[]): CommitMutationOptions
   return reloadCall ? { ...options, softReload: true } : { ...options, skipReload: true };
 }
 
-async function dispatchBufferedCommits(calls: BufferedCommit[]): Promise<void> {
+/**
+ * Dispatch a transaction's buffered commits and return the number of preview
+ * reloads that ACTUALLY happened — a batch collapses every buffered softReload
+ * into one reload, so reload telemetry reflects the real cost, not the count of
+ * softReload requests.
+ */
+function reloadsRequested(calls: BufferedCommit[]): number {
+  return calls.filter(({ options }) => options.softReload).length;
+}
+
+async function dispatchBufferedCommits(calls: BufferedCommit[]): Promise<number> {
   const first = calls[0];
-  if (!first) return;
+  if (!first) return 0;
   if (calls.length === 1) {
     await first.dispatch(first.selection, first.mutation, first.options);
-    return;
+    return reloadsRequested(calls);
   }
   const canBatch = calls.every(
     ({ dispatch, selection }) =>
@@ -89,11 +99,13 @@ async function dispatchBufferedCommits(calls: BufferedCommit[]): Promise<void> {
       calls.map(({ selection, mutation, options }) => ({ selection, mutation, options })),
       mergeTransactionOptions(calls),
     );
-    return;
+    // One server write, one reload — the reload count collapses with the batch.
+    return reloadsRequested(calls) > 0 ? 1 : 0;
   }
   for (const { dispatch, selection, mutation, options } of calls) {
     await dispatch(selection, mutation, options);
   }
+  return reloadsRequested(calls);
 }
 
 /**
@@ -123,7 +135,6 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   const commit: TxCommit = (commitMutation) => {
     const wrapped: CommitMutation = (selection, mutation, options) => {
       mutationCount += 1;
-      if (options.softReload) reloadCount += 1;
       bufferedCommits.push({
         dispatch: commitMutation,
         selection,
@@ -139,7 +150,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   return tx
     .persist(commit)
     .then(async () => {
-      await dispatchBufferedCommits(bufferedCommits);
+      reloadCount = await dispatchBufferedCommits(bufferedCommits);
       const durationMs = Math.round(performance.now() - startedAt);
       traceCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {

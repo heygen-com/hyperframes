@@ -109,6 +109,34 @@ describe("runGestureTransaction", () => {
     now.mockRestore();
   });
 
+  it("reports one reload when a batch collapses two softReload commits", async () => {
+    const element = document.createElement("div");
+    const selection = { element, id: "clip", sourceFile: "index.html" } as DomEditSelection;
+    const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+    underlying.batch = vi.fn<NonNullable<CommitMutation["batch"]>>().mockResolvedValue(undefined);
+
+    // Both a resize's size and offset persists request softReload; the batch is
+    // one write and one reload, so telemetry must report reload_count 1, not 2.
+    await runGestureTransaction({
+      element,
+      label: "Resize layer",
+      settle: vi.fn(),
+      persist: async (commit) => {
+        const commitMutation = commit(underlying);
+        await commitMutation(selection, { type: "size" }, { label: "Resize", softReload: true });
+        await commitMutation(selection, { type: "offset" }, { label: "Move", softReload: true });
+      },
+      restore: vi.fn(),
+      skipPixelAssert: true,
+    });
+
+    expect(underlying.batch).toHaveBeenCalledTimes(1);
+    expect(trackStudioEventMock).toHaveBeenCalledWith(
+      "commit_transaction",
+      expect.objectContaining({ mutation_count: 2, reload_count: 1 }),
+    );
+  });
+
   it("falls back to sequential dispatch when the commit has no batch capability", async () => {
     const element = document.createElement("div");
     const selection = { element, id: "clip" } as DomEditSelection;
