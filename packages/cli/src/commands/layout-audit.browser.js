@@ -665,13 +665,39 @@
     if (style.backgroundImage && style.backgroundImage !== "none") {
       if (style.backgroundImage.includes("url(")) return true;
       // A gradient only occludes as much as its colours — a 4%-alpha grid/scrim must not count.
-      imageAlpha = gradientMaxAlpha(style.backgroundImage);
+      imageAlpha = gradientLayersAlpha(style.backgroundImage);
     }
     const colorValue = isTransparentColor(style.backgroundColor)
       ? 0
       : colorAlpha(style.backgroundColor);
     // Layers composite: a 0.5 gradient over a 0.5 background colour paints at ~0.75.
     return 1 - (1 - imageAlpha) * (1 - colorValue) > 0.6;
+  }
+
+  // background-image layers stack: two 0.5-alpha gradients paint at 1-(1-.5)^2 = .75.
+  function gradientLayersAlpha(backgroundImage) {
+    let combined = 0;
+    for (const layer of splitTopLevelCommas(backgroundImage)) {
+      combined = 1 - (1 - combined) * (1 - gradientMaxAlpha(layer));
+    }
+    return combined;
+  }
+
+  function splitTopLevelCommas(value) {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      else if (ch === "," && depth === 0) {
+        parts.push(value.slice(start, i));
+        start = i + 1;
+      }
+    }
+    parts.push(value.slice(start));
+    return parts;
   }
 
   function gradientMaxAlpha(backgroundImage) {
