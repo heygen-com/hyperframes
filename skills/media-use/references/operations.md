@@ -244,28 +244,35 @@ heygen video create --wait -d '{
 }'
 ```
 
-Optional body fields: `title`, `resolution` (`4k`/`1080p`/`720p`), `aspect_ratio`,
-`remove_background`, `background` (solid color or image), `voice_settings`
-(`speed` 0.5–1.5, `pitch` -50..+50, `locale`), and `callback_url`/`callback_id`
-for webhooks. For a still you'll reuse across many scripts, create a **Photo
-Avatar** once instead (below). Ledger the result with
-`resolve --from <downloaded.mp4> --type video`. Docs:
+Common optional fields: `title`, `resolution` (`4k`/`1080p`/`720p`),
+`aspect_ratio`, `remove_background`, `background`, `voice_settings`,
+`motion_prompt` + `expressiveness` (photo-avatar animation), and
+`callback_url`/`callback_id` for webhooks. Don't hardcode these from memory: the
+CLI self-documents the full, current body with
+`heygen video create --request-schema` (a discriminated union keyed on `type`),
+so read the schema rather than trusting a stale field list. For a still you'll
+reuse across many scripts, create a **Photo Avatar** once instead (below). Ledger
+the result with `resolve --from <downloaded.mp4> --type video`. Docs:
 <https://developers.heygen.com/image-to-video>.
 
 ### Other HeyGen generative use cases
 
-All reachable through the `heygen` CLI (`video create -d '{...}'` body variants,
-or the dedicated subcommands already in the transform table above). Reach for
-these when a composition needs a real presenter, a dub, or a designed clip that
-LTX/avatar don't cover:
+All reachable through the installed `heygen` CLI (verified v0.3.0): either
+`video create -d '{...}'` body variants (keyed on `type`) or the dedicated
+subcommands. There is no capability gap that would need the raw API, and every
+command prints its exact input with `--request-schema`, so this table is a
+pointer, not a spec. Reach for these when a composition needs a real presenter, a
+dub, or a designed clip that LTX/avatar don't cover:
 
-| Use case                     | Reach it via                     | What it does                                                                   | Docs                                 |
-| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------ |
-| Photo Avatar / talking photo | `video create` (photo-avatar id) | Reusable avatar from one still image; animates the face + lip-syncs any script | `photo-avatar`                       |
-| Digital Twin (video avatar)  | `video create` (`type:"avatar"`) | Lifelike avatar trained from real footage; speaks any script                   | `generate-avatar-video`              |
-| Video translation            | `heygen video-translate`         | Translate + voice-clone + lip-sync a video across 30+ languages                | `docs/video-translate`               |
-| Lipsync / dub                | `heygen lipsync`                 | Replace or dub audio on an existing video with fresh lip-sync                  | `lipsync-speed`, `lipsync-precision` |
-| Voice design                 | `heygen` voice tools             | Describe a voice, get up to 3 matching options (then use as `voice_id`)        | `docs/voices/design-voices`          |
+| Use case                      | Reach it via                               | What it does                                                                          | Docs                                 |
+| ----------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------ |
+| Photo Avatar / talking photo  | `avatar create` + `avatar looks`           | Create a reusable avatar from one still, then drive it via `video create` type avatar | `photo-avatar`                       |
+| Digital Twin (video avatar)   | `video create` (`type:"avatar"`)           | Lifelike avatar trained from real footage; speaks any script                          | `generate-avatar-video`              |
+| Cinematic avatar (prompt-gen) | `video create` (`type:"cinematic_avatar"`) | Prompt + 1-3 avatar/reference assets → generated clip (Seedance); no script/voice     | `avatar-v`                           |
+| Video translation             | `heygen video-translate`                   | Translate + voice-clone + lip-sync a video across 30+ languages                       | `docs/video-translate`               |
+| Lipsync / dub                 | `heygen lipsync`                           | Replace or dub audio on an existing video with fresh lip-sync                         | `lipsync-speed`, `lipsync-precision` |
+| Short clips from long video   | `heygen ai-clipping`                       | Turn long-form footage into ready-to-share short clips with captions                  | `ai-clipping`                        |
+| Voice design / clone          | `heygen voice`                             | Describe or clone a voice, then use its id as `voice_id`                              | `docs/voices/design-voices`          |
 
 Doc slugs are under `https://developers.heygen.com/`. Prefer HyperFrames'
 own compositions for motion graphics / data-viz / title cards (that's what this
