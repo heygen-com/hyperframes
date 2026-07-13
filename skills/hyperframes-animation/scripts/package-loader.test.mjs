@@ -5,9 +5,44 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { resolveNpmSpawnCommand } from "./package-loader.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENV = "HYPERFRAMES_SKILL_PKG_VERSION";
+
+test("resolveNpmSpawnCommand routes Windows npm through node and npm-cli.js", () => {
+  const npmCli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+  const node = "C:\\Program Files\\nodejs\\node.exe";
+  const resolved = resolveNpmSpawnCommand(
+    ["install", "@hyperframes/producer@0.7.55", "value & calc"],
+    "win32",
+    { npm_execpath: npmCli, npm_node_execpath: node },
+    node,
+    (path) => path === npmCli,
+  );
+
+  assert.deepEqual(resolved, {
+    cmd: node,
+    args: [npmCli, "install", "@hyperframes/producer@0.7.55", "value & calc"],
+    opts: { stdio: "inherit", windowsHide: true },
+  });
+  assert.equal(resolved.opts.shell, undefined);
+});
+
+test("resolveNpmSpawnCommand finds npm-cli.js beside node for direct Windows runs", () => {
+  const node = "C:\\Program Files\\nodejs\\node.exe";
+  const npmCli = "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js";
+  const resolved = resolveNpmSpawnCommand(
+    ["install", "@hyperframes/producer@0.7.55"],
+    "win32",
+    {},
+    node,
+    (path) => path === npmCli,
+  );
+
+  assert.equal(resolved?.cmd, node);
+  assert.deepEqual(resolved?.args, [npmCli, "install", "@hyperframes/producer@0.7.55"]);
+});
 
 // (a) env override wins — no ancestor lookup, exact version echoed back.
 test("hyperframesPackageSpec: env override wins", async () => {
