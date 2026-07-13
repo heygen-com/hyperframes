@@ -1392,6 +1392,7 @@ interface AuditIssue {
   containerSelector?: string;
   overflow?: Record<string, number>;
   message?: string;
+  fixHint?: string;
   coveredFraction?: number;
 }
 
