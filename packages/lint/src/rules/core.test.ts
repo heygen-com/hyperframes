@@ -421,6 +421,23 @@ body {
     expect(finding).toBeUndefined();
   });
 
+  it("does not treat a head tag literal inside a body script comment as document markup", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `
+    <div>Scene content</div>
+    <script>
+      // Keep the real document <head> untouched.
+      window.__sceneReady = true;
+    </script>
+`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeUndefined();
+  });
+
   it("reports error when CSS text leaks before the composition root", async () => {
     const html = compositionWithBodyPrefix(`
   .orphan {

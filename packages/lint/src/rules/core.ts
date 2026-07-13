@@ -60,6 +60,8 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
 
 const HEAD_BLOCKS_TO_IGNORE_PATTERN =
   /<(?:style|script|template|title|noscript)\b[^>]*>[\s\S]*?<\/(?:style|script|template|title|noscript)(?:\s[^>]*)?>/gi;
+const HEAD_MARKUP_PROTECTED_BLOCK_PATTERN =
+  /<(style|script|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
 const HTML_TAG_PATTERN = /<[^>]+>/g;
 const HEAD_CONTENT_PATTERN = /<head\b[^>]*>([\s\S]*?)(?:<\/head>|<body\b|$)/gi;
 const AFTER_HEAD_BEFORE_BODY_PATTERN = /<\/head(?:\s[^>]*)?>([\s\S]*?)(?=<body\b|$)/gi;
@@ -76,6 +78,13 @@ const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
 interface SourceRange {
   start: number;
   end: number;
+}
+
+function findSourceRanges(source: string, pattern: RegExp): SourceRange[] {
+  return [...source.matchAll(pattern)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
 }
 
 function findCodeFenceLeak(headWithoutValidBlocks: string): string | null {
@@ -107,8 +116,10 @@ function findLeakedTextInHeadContent(headContent: string): string | null {
 }
 
 function findLeakedTextInHead(rawSource: string): string | null {
+  const protectedRanges = findSourceRanges(rawSource, HEAD_MARKUP_PROTECTED_BLOCK_PATTERN);
   const headMatches = [...rawSource.matchAll(HEAD_CONTENT_PATTERN)];
   for (const match of headMatches) {
+    if (isInsideSourceRange(match.index, protectedRanges)) continue;
     const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
     if (leakedText) return leakedText;
   }
@@ -137,11 +148,7 @@ function findLeakedTextBeforeCompositionRoot(
 }
 
 function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
-  const ranges: SourceRange[] = [];
-  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN)) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return ranges;
+  return findSourceRanges(source, VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN);
 }
 
 function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
