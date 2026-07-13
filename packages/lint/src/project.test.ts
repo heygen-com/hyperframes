@@ -235,3 +235,36 @@ describe("template shell style sources", () => {
     expect(findings.some((finding) => finding.code === "texture_mask_asset_not_found")).toBe(true);
   });
 });
+
+describe("duplicate_audio_track", () => {
+  async function duplicateAudioFindings(audioMarkup: string): Promise<HyperframeLintFinding[]> {
+    const project = makeProject(`<html><body>
+      <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="20">
+        ${audioMarkup}
+      </div>
+      <script>window.__timelines = {};</script>
+    </body></html>`);
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "duplicate_audio_track");
+  }
+
+  it("does not infer overlap when same-track clips omit data-duration", async () => {
+    const findings = await duplicateAudioFindings(`
+      <audio id="first" src="voice.wav" data-track-index="0" data-start="0"></audio>
+      <audio id="second" src="voice.wav" data-track-index="0" data-start="10"></audio>
+    `);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still reports overlap when explicit clip durations overlap", async () => {
+    const findings = await duplicateAudioFindings(`
+      <audio id="first" src="voice.wav" data-track-index="0" data-start="0" data-duration="12"></audio>
+      <audio id="second" src="voice.wav" data-track-index="0" data-start="10" data-duration="5"></audio>
+    `);
+
+    expect(findings).toHaveLength(1);
+  });
+});

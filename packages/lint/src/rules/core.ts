@@ -107,12 +107,14 @@ function findLeakedTextInHeadContent(headContent: string): string | null {
 }
 
 function findLeakedTextInHead(rawSource: string): string | null {
-  const headMatches = [...rawSource.matchAll(HEAD_CONTENT_PATTERN)];
-  for (const match of headMatches) {
-    const leakedText = findLeakedTextInHeadContent(match[1] ?? "");
-    if (leakedText) return leakedText;
-  }
-  return null;
+  const headPattern = new RegExp(HEAD_CONTENT_PATTERN.source, "i");
+  const match = headPattern.exec(rawSource);
+  if (!match) return null;
+
+  const bodyIndex = rawSource.search(/<body\b/i);
+  if (bodyIndex >= 0 && match.index > bodyIndex) return null;
+
+  return findLeakedTextInHeadContent(match[1] ?? "");
 }
 
 function findLeakedTextBetweenHeadAndBody(rawSource: string): string | null {

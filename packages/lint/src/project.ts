@@ -503,11 +503,11 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
       const startStr = extractAttr(tag, "data-start");
       const durStr = extractAttr(tag, "data-duration");
       const src = extractAttr(tag, "src") ?? "unknown";
-      if (!trackStr || !startStr) continue;
+      if (!trackStr || !startStr || !durStr) continue;
 
       const trackIndex = parseInt(trackStr, 10);
       const start = parseFloat(startStr);
-      const duration = durStr ? parseFloat(durStr) : Infinity;
+      const duration = parseFloat(durStr);
       const key = `${src}:${start}:${duration}:${trackIndex}`;
       if (seen.has(key)) continue;
       seen.add(key);

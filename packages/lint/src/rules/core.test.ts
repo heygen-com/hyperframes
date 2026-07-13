@@ -464,6 +464,17 @@ body {
     expect(finding).toBeUndefined();
   });
 
+  it("does not treat a head tag literal inside a template script comment as document head", async () => {
+    const html = compositionWithBodyPrefix(
+      "",
+      `<template><script>// Explain the literal <head> marker.</script></template>`,
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "head_leaked_text");
+
+    expect(finding).toBeUndefined();
+  });
+
   it("does not report CSS-looking educational text inside the composition root", async () => {
     const html = compositionWithBodyPrefix(
       "",
