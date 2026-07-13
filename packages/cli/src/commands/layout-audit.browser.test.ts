@@ -745,6 +745,45 @@ describe("contrast-audit.browser background sampling", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ selector: "#label", wcagAA: true, bg: "rgb(10,10,10)" });
   });
+
+  it("accepts outlined text when its stroke has adequate background contrast", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="caption">Outlined white caption</div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          webkitTextStrokeWidth: "8px",
+          webkitTextStrokeColor: "rgb(0, 0, 0)",
+          fontSize: "40px",
+          fontWeight: "700",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("caption")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 300, height: 60 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript();
+
+    const result = await runContrastAudit();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      selector: "#caption",
+      fg: "rgb(0,0,0)",
+      bg: "rgb(255,255,255)",
+      wcagAA: true,
+    });
+  });
 });
 
 // Both blocks overlap heavily; only the exemption on block A should suppress

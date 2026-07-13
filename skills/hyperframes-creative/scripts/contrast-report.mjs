@@ -203,6 +203,8 @@ async function prepareTextElements(session) {
         ? tryParseSolidColor(cs.fill) || parseColor(cs.color)
         : parseColor(cs.color);
       if (fg[3] <= 0.01) continue;
+      const strokeWidth = parseFloat(cs.webkitTextStrokeWidth || "0");
+      const stroke = strokeWidth > 0 ? tryParseSolidColor(cs.webkitTextStrokeColor || "") : null;
 
       // A `transition` on color/fill would otherwise animate this hide
       // instead of applying it instantly — the screenshot taken right after
@@ -222,6 +224,13 @@ async function prepareTextElements(session) {
         origFillPriority = el.style.getPropertyPriority("fill");
         el.style.setProperty("fill", "transparent", "important");
       }
+      let origStrokeColor = null;
+      let origStrokeColorPriority = null;
+      if (stroke && stroke[3] > 0.01) {
+        origStrokeColor = el.style.getPropertyValue("-webkit-text-stroke-color");
+        origStrokeColorPriority = el.style.getPropertyPriority("-webkit-text-stroke-color");
+        el.style.setProperty("-webkit-text-stroke-color", "transparent", "important");
+      }
       restores.push({
         el,
         origTransition,
@@ -230,6 +239,9 @@ async function prepareTextElements(session) {
         origColorPriority,
         origFill,
         origFillPriority,
+        origStrokeColor,
+        origStrokeColorPriority,
+        hasStroke: !!stroke && stroke[3] > 0.01,
         isSvgText,
       });
 
@@ -237,6 +249,7 @@ async function prepareTextElements(session) {
         selector: selectorOf(el),
         text: el.textContent.trim().slice(0, 60),
         fg,
+        stroke: stroke && stroke[3] > 0.01 ? stroke : null,
         fontSize: parseFloat(cs.fontSize),
         fontWeight: Number(cs.fontWeight) || 400,
         bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
@@ -256,6 +269,15 @@ async function restoreTextElements(session) {
       if (r.isSvgText) {
         if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
         else r.el.style.removeProperty("fill");
+      }
+      if (r.hasStroke) {
+        if (r.origStrokeColor) {
+          r.el.style.setProperty(
+            "-webkit-text-stroke-color",
+            r.origStrokeColor,
+            r.origStrokeColorPriority,
+          );
+        } else r.el.style.removeProperty("-webkit-text-stroke-color");
       }
       if (r.origTransition) {
         r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
@@ -285,8 +307,16 @@ async function measureAgainstHiddenTextFrame(hiddenImgBase64, candidates) {
   for (const c of candidates) {
     const bg = sampleBboxMedian(pixels, width, height, channels, c.bbox);
     if (!bg) continue;
-    const fg = compositeOver(c.fg, bg); // flatten any alpha against measured bg
-    const ratio = wcagRatio(fg, bg);
+    let fg = compositeOver(c.fg, bg); // flatten any alpha against measured bg
+    let ratio = wcagRatio(fg, bg);
+    if (c.stroke) {
+      const stroke = compositeOver(c.stroke, bg);
+      const strokeRatio = wcagRatio(stroke, bg);
+      if (strokeRatio > ratio) {
+        fg = stroke;
+        ratio = strokeRatio;
+      }
+    }
     const large = isLargeText(c.fontSize, c.fontWeight);
     measured.push({
       selector: c.selector,

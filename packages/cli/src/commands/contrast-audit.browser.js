@@ -210,6 +210,9 @@ window.__contrastAuditPrepare = function () {
     var isSvgText = isSvgTextElement(el);
     var fg = isSvgText ? tryParseSolidColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
     if (fg[3] <= 0.01) continue;
+    var strokeWidth = parseFloat(cs.webkitTextStrokeWidth || "0");
+    var stroke = strokeWidth > 0 ? tryParseSolidColor(cs.webkitTextStrokeColor || "") : null;
+    if (stroke && stroke[3] <= 0.01) stroke = null;
 
     var fontSize = parseFloat(cs.fontSize);
     var fontWeight = Number(cs.fontWeight) || 400;
@@ -241,6 +244,13 @@ window.__contrastAuditPrepare = function () {
       origFillPriority = el.style.getPropertyPriority("fill");
       el.style.setProperty("fill", "transparent", "important");
     }
+    var origStrokeColor = null,
+      origStrokeColorPriority = null;
+    if (stroke) {
+      origStrokeColor = el.style.getPropertyValue("-webkit-text-stroke-color");
+      origStrokeColorPriority = el.style.getPropertyPriority("-webkit-text-stroke-color");
+      el.style.setProperty("-webkit-text-stroke-color", "transparent", "important");
+    }
     restores.push({
       el: el,
       origTransition: origTransition,
@@ -249,6 +259,9 @@ window.__contrastAuditPrepare = function () {
       origColorPriority: origColorPriority,
       origFill: origFill,
       origFillPriority: origFillPriority,
+      origStrokeColor: origStrokeColor,
+      origStrokeColorPriority: origStrokeColorPriority,
+      hasStroke: !!stroke,
       isSvgText: isSvgText,
     });
 
@@ -256,6 +269,7 @@ window.__contrastAuditPrepare = function () {
       selector: selectorOf(el),
       text: (el.textContent || "").trim().slice(0, 50),
       fg: fg,
+      stroke: stroke,
       fontSize: fontSize,
       fontWeight: fontWeight,
       large: large,
@@ -276,6 +290,15 @@ function __contrastAuditRestoreAll() {
     if (r.isSvgText) {
       if (r.origFill) r.el.style.setProperty("fill", r.origFill, r.origFillPriority);
       else r.el.style.removeProperty("fill");
+    }
+    if (r.hasStroke) {
+      if (r.origStrokeColor)
+        r.el.style.setProperty(
+          "-webkit-text-stroke-color",
+          r.origStrokeColor,
+          r.origStrokeColorPriority,
+        );
+      else r.el.style.removeProperty("-webkit-text-stroke-color");
     }
     if (r.origTransition)
       r.el.style.setProperty("transition", r.origTransition, r.origTransitionPriority);
@@ -383,6 +406,23 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
     var compB = Math.round(fg[2] * fg[3] + bgB * (1 - fg[3]));
 
     var ratio = +wcagRatio(compR, compG, compB, bgR, bgG, bgB).toFixed(2);
+
+    // A solid text stroke is part of the visible glyph paint. Use whichever
+    // of fill or stroke provides the stronger edge contrast, rather than
+    // failing readable outlined captions based on fill alone.
+    if (c.stroke) {
+      var stroke = c.stroke;
+      var strokeR = Math.round(stroke[0] * stroke[3] + bgR * (1 - stroke[3]));
+      var strokeG = Math.round(stroke[1] * stroke[3] + bgG * (1 - stroke[3]));
+      var strokeB = Math.round(stroke[2] * stroke[3] + bgB * (1 - stroke[3]));
+      var strokeRatio = +wcagRatio(strokeR, strokeG, strokeB, bgR, bgG, bgB).toFixed(2);
+      if (strokeRatio > ratio) {
+        compR = strokeR;
+        compG = strokeG;
+        compB = strokeB;
+        ratio = strokeRatio;
+      }
+    }
 
     out.push({
       time: time,
