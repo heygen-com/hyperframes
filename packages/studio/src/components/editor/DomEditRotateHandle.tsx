@@ -31,7 +31,8 @@ export function DomEditRotateHandle({
         height: 22,
         transform: "translateX(-50%)",
         touchAction: "none",
-        cursor: "default",
+        // Closed-hand grab cursor: this handle is grabbed and dragged to rotate.
+        cursor: "grabbing",
       }}
       title="Rotate"
       aria-label="Rotate selection"
