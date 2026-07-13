@@ -635,6 +635,68 @@ describe("contrast-audit.browser clip-path visibility", () => {
     expect(selectors).not.toContain("#rail-label");
   });
 
+  it("excludes intentionally occluded text from contrast reports", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline" data-layout-allow-occlusion>Covered copy</div>
+        <div id="cover"></div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "32px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("headline")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 100, top: 100, width: 400, height: 40 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      document.getElementById("cover");
+
+    installContrastScript();
+
+    expect(await runContrastAudit()).toEqual([]);
+  });
+
+  it("still audits visible text that allows occlusion", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline" data-layout-allow-occlusion>Visible copy</div>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "32px",
+          fontWeight: "400",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("headline")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 100, top: 100, width: 400, height: 40 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      document.getElementById("headline");
+
+    installContrastScript();
+
+    const entries = await runContrastAudit();
+    expect(entries.map((entry) => entry.selector)).toContain("#headline");
+  });
+
   it("excludes text that has left the canvas from contrast reports", async () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
