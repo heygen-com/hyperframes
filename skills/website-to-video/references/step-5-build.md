@@ -188,10 +188,12 @@ If the storyboard says "slow" or "cinematic": build each beat as a sub-compositi
 
 For videos with sub-composition beats and scene transitions, `index.html` MUST use `HyperShader.init()`. This is the entire scene orchestration layer. Do NOT try to use registry block sub-compositions (e.g. `compositions/domain-warp-dissolve.html`) for transitions — those are standalone showcase demos, not how HyperShader works in multi-scene compositions.
 
-Copy the local shader build first:
+Install the separately published runtime package and copy its browser bundle into the project. Do not copy from `packages/shader-transitions` — that path exists only inside a HyperFrames source checkout and is absent from the public `hyperframes` CLI package.
 
 ```bash
-cp packages/shader-transitions/dist/index.global.js <project-dir>/hyper-shader-local.js
+cd <project-dir>
+npm install --no-save --package-lock=false @hyperframes/shader-transitions
+cp node_modules/@hyperframes/shader-transitions/dist/index.global.js hyper-shader-local.js
 ```
 
 Full working `index.html` pattern — every field matters:

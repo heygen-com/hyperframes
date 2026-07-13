@@ -137,7 +137,7 @@ npx hyperframes catalog --type block 2>/dev/null | head -40
 
 There might be VFX blocks available (vfx-liquid-glass, vfx-iphone-device, vfx-shatter, vfx-portal, etc.), use them for hero treatments instead of basic perspective tilt. You need to install any you want with `npx hyperframes add <name>`. Don't use too many shaders — maximum 2 per video unless user wants differently.
 
-**Shader transitions — block name ≠ shader name.** When you run the commands above and see `domain-warp-dissolve` in `registry/blocks/`, the HyperShader runtime name is `domain-warp` (without "-dissolve"). After installing a block, open its showcase HTML (`compositions/<block-name>.html`) and find the actual shader name used in `HyperShader.init()`. That is what you put in the storyboard. Then delete the showcase file — it's a demo only and will pollute your compositions/ directory with lint warnings.
+**Shader transitions — block name ≠ shader name.** Registry showcase blocks are standalone demos, not the reusable HyperShader runtime, and their HTML may implement the effect directly without calling `HyperShader.init()`. Use the canonical block-to-shader mapping in `skills/hyperframes-registry/references/discovery.md` when writing the storyboard. For example, the `domain-warp-dissolve` block maps to the `domain-warp` runtime name. Installing a showcase is optional visual reference only; if you install one, remove its composition afterward so it does not create unrelated lint warnings.
 
 ## Asset Audit — REQUIRED before writing beats (non-skippable)
 
@@ -303,8 +303,9 @@ Each beat is a WORLD, not a layout. Write what the viewer EXPERIENCES before you
 - **Mechanical:** TYPES ON, CLICKS, LOCKS IN, SNAPS, STEPS
 
 **Transition decision matrix** — shader vs CSS vs hard cut:
-| Shader transition for | CSS crossfade for | Hard cut for |
-|---|---|---|
+
+| Shader transition for                     | CSS crossfade for                                 | Hard cut for                                      |
+| ----------------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
 | Hero reveals, logo unveils, "wow" moments | Continuous motion between beats, editorial pacing | Rapid-fire lists, percussive edits, comedy timing |
 
 1–2 shader transitions per video (hero + CTA). Too many flatten their impact. Mix shader and CSS crossfade in one HyperShader composition by omitting `shader` on any transition entry.
