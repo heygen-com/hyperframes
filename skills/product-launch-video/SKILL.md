@@ -1,6 +1,6 @@
 ---
 name: product-launch-video
-description: "Turn any website URL, pasted script, or brief into a video — a product launch / promo (SaaS promos, feature reveals, product demos, app and company launches), or a site tour / showcase built from the site's own captured screens (the tour angle: portfolio, blog, docs, personal, event sites, or any 'show the site as-is' ask). Every website input starts here; selling it is a promo angle, showing it is the tour angle, and the intent layer locks the choice into BRIEF.md. Unclear → /hyperframes."
+description: "Turn a product or marketing URL, pasted script, or brief into a product launch / promo video — SaaS promos, feature reveals, product demos, app and company launches. Use when the user wants to market, launch, promote, or reveal a product; the default for any commercial URL. Site tours / showcases of a website route here too — the brief carries the show-it-as-is intent. Unclear → /hyperframes."
 ---
 
 > **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update product-launch-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
@@ -11,11 +11,9 @@ description: "Turn any website URL, pasted script, or brief into a video — a p
 
 # Product Launch to HyperFrames
 
-Use this skill to capture a website, understand its brand, and build a video from it frame by frame in HyperFrames — a **promo** that sells the product, or a **tour** that shows the site as-is.
+Use this skill to capture a product, understand its brand, plan a launch video, and build it frame by frame in HyperFrames.
 
-> **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue to the next step. This skill owns **every website input**: a product being marketed, launched, promoted, or revealed (the promo angles, including "promo for our site"), and a site being shown as-is — portfolio, blog, docs, personal, event, or "turn this website into a video" (the **tour angle**). Route other intents elsewhere: a topic explainer with no site -> `/faceless-explainer`; a GitHub PR -> `/pr-to-video`; captions on existing footage -> `/embedded-captions`; a short unnarrated motion graphic -> `/motion-graphics`. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
-
-**Two angles, one door.** The `angle` in `BRIEF.md` decides the pipeline: the promo angles run Steps 0–6 below; **tour / showcase** — the video is made of the site's own captured screens, not composed scenes — runs Step 0 (Setup) and Step 1 (capture) below, then hands the rest of the run to [references/tour/workflow.md](references/tour/workflow.md).
+> **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue to the next step. This skill is for a **product being marketed, launched, promoted, or revealed**, including requests such as "promo for our site" when the purpose is promotional. A site tour / showcase ask stays here too: `BRIEF.md` carries the show-it-as-is intent, and the captured screens become the assets the video features. Route other intents elsewhere: a topic explainer with no product -> `/faceless-explainer`; a GitHub PR -> `/pr-to-video`; captions on existing footage -> `/embedded-captions`; a short unnarrated motion graphic -> `/motion-graphics`. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
 You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the gate types and how `BRIEF.md`'s `flow`/`storyboard` derive the mode that governs the Step 3/4/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 

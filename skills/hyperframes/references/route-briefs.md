@@ -12,9 +12,9 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 ## `/product-launch-video`
 
-- **Must-haves:** **angle** — the first fork: **selling it** (promo story shapes from the site's / brief's own positioning) or **showing it as-is** (tour / showcase — the video is built from the site's own captured screens); recommend from the request's own words, then the promo shapes when selling · **length** — 30–90s sweet spot, scaled to the material · **destination** — as above.
-- **Conditional:** the tour angle adds **what to show** — the whole site, or specific pages/sections the user cares about; a pasted script/brief adds **`VO_MODE`** (verbatim or restructured?); a script that only names a site adds **capture?** — crawl it for brand + assets (default), or text-only / "don't scrape" (no-capture mode, promo angles only — a preset supplies the design system).
-- **Deferred (announce, tour angle):** the message and narrative arc are settled at the tour pipeline's Step 2, after capture — the site's real content grounds the recommendation.
+- **First, sell or show?** One question when the request doesn't say: market the product (a promo), or show the site as-is (a tour / showcase)? A show-it answer is **intent, not a different pipeline**: write it into `BRIEF.md` (`## Intent` / `## Customizations` — "feature the site's own captured screens as the video's assets") and the workflow's normal steps carry it — the captured screens become the featured `asset_candidates`.
+- **Must-haves:** **angle** — story shapes from the site's / brief's own positioning, recommend one with its basis · **length** — 30–90s sweet spot, scaled to the material · **destination** — as above.
+- **Conditional:** a show-it-as-is ask adds **what to show** — the whole site, or specific pages/sections (into `BRIEF.md`'s body); a pasted script/brief adds **`VO_MODE`** (verbatim or restructured?); a script that only names a site adds **capture?** — crawl it for brand + assets (default), or text-only / "don't scrape" (no-capture mode, a preset supplies the design system).
 - **Run-shape:** both.
 
 ## `/pr-to-video`

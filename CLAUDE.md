@@ -18,7 +18,7 @@ Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fe
 
 ### Creation workflows
 
-- `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase built from the site's own captured screens (the tour angle); up to ~3 min (sweet spot ~30-90s).
+- `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase featuring the site's own captured screens; up to ~3 min (sweet spot ~30-90s).
 - `/faceless-explainer` — arbitrary text, **no URL and no website capture** → faceless explainer, up to ~3 min (sweet spot ~30-90s); every visual is LLM-invented (typography / abstract graphics / diagram / data-viz).
 - `/pr-to-video` — a GitHub PR (URL / `owner/repo#N` / "this PR") → code-change explainer, up to ~3 min (changelog / feature reveal / fix / refactor). A PR link, not a product website.
 - `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).

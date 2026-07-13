@@ -12,7 +12,7 @@ npx skills add heygen-com/hyperframes
 
 **Creation workflows** route through one entry skill — read `/hyperframes` first: it orients you to the whole surface, confirms the brief up front (the intent layer), and maps "make me a…" intent — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`) — to a concrete workflow. Consult it before invoking a specific workflow:
 
-- `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase built from the site's own captured screens (the tour angle); up to ~3 min (sweet spot ~30-90s).
+- `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase featuring the site's own captured screens; up to ~3 min (sweet spot ~30-90s).
 - `/faceless-explainer` — arbitrary text, **no URL and no website capture** → faceless explainer, up to ~3 min (sweet spot ~30-90s); every visual is LLM-invented (typography / abstract graphics / diagram / data-viz).
 - `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).
 - `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, pip) synced to the transcript; the clip plays unchanged underneath, footage untouched. For plain captions/subtitles → `/embedded-captions`.
