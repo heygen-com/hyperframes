@@ -24,6 +24,7 @@ This skill is the **technical contract** — how to build one hyperframes projec
 | `references/storyboard-format.md`    | author a `STORYBOARD.md` plan (+ the parsed manifest)                                                                   |
 | `references/review-loop.md`          | run the plan → sketch → build review passes on a live board — shared by every storyboard-planning workflow              |
 | `references/brief-contract.md`       | conduct a creation workflow's intake — interaction mode (collaborative / autonomous), shared brief fields, asking rules |
+| `references/brief-format.md`         | author `BRIEF.md` — the confirmed intent document a workflow's Setup writes and every later step reads                  |
 | `references/script-format.md`        | author the optional `SCRIPT.md` locked narration                                                                        |
 | `references/subagent-dispatch.md`    | map subagent dispatch verbs (parallel fan-out / background / wait) to your harness                                      |
 | `references/tailwind.md`             | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                            |
