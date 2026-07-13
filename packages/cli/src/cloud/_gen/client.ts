@@ -204,7 +204,7 @@ export class HyperframesCloudClient {
   /**
    * Upload Asset
    *
-   * Uploads a file (image, video, audio, or PDF) and returns an asset_id for use in other endpoints. Max 32 MB. Supported types: png, jpeg, mp4, webm, mp3, wav, pdf.
+   * Uploads a file (image, video, audio, PDF, or SRT subtitle) and returns an asset_id for use in other endpoints. Max 32 MB. Supported types: png, jpeg, mp4, webm, mp3, wav, pdf, srt.
    */
   async uploadAsset(args: {
     file: Blob | Buffer | Uint8Array;
