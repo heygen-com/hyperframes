@@ -95,15 +95,12 @@ export default defineCommand({
       process.exit(1);
     }
 
-    // Default to the directory containing the input file so transcript.json
-    // lands next to narration.wav regardless of where the command is run from.
-    // Explicit --dir overrides this (e.g. for import mode targeting a project dir).
-    const dir = resolve(args.dir ?? dirname(inputPath));
     const ext = extname(inputPath).toLowerCase();
 
     // ── Import mode: convert existing transcript ──────────────────────────
     const isImport = ext === ".json" || ext === ".srt" || ext === ".vtt";
     const to = parseExportFormat(args.to, args.json);
+    const dir = resolve(args.dir ?? (to ? dirname(inputPath) : process.cwd()));
 
     if (to) {
       if (!isImport) {

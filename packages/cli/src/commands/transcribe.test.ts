@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { writeFileSync, readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WhisperUnavailableError } from "../whisper/manager.js";
@@ -97,6 +97,21 @@ Render video. Built for agents.
       wordCount: 2,
       outputPath,
     });
+  });
+
+  it("writes transcript.json to the current project directory by default", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-transcribe-test-"));
+    dirs.push(projectDir);
+    const assetDir = join(projectDir, "assets", "audio");
+    mkdirSync(assetDir, { recursive: true });
+    const input = join(assetDir, "sample.srt");
+    writeFileSync(input, "1\n00:00:00,000 --> 00:00:01,000\nHello\n");
+    vi.spyOn(process, "cwd").mockReturnValue(projectDir);
+
+    await transcribeCmd.run!({ args: { input, json: true } } as never);
+
+    expect(existsSync(join(projectDir, "transcript.json"))).toBe(true);
+    expect(existsSync(join(assetDir, "transcript.json"))).toBe(false);
   });
 
   it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {
