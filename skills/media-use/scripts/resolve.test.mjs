@@ -7,6 +7,7 @@ import {
   mkdirSync,
   existsSync,
   readdirSync,
+  chmodSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -129,6 +130,81 @@ function test(name, fn) {
 }
 
 // --- manifest cache hit ---
+
+test("bundled SFX resolve without HeyGen on PATH", () => {
+  setup();
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: tmp },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.match(parsed.advisory?.message ?? "", /Install: curl -fsSL/);
+  assert.ok(existsSync(join(tmp, parsed.path)));
+  cleanup();
+});
+
+function writeFakeHeygen(body, exitCode = 0) {
+  const binDir = join(tmp, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const command = join(binDir, "heygen");
+  writeFileSync(command, `#!/bin/sh\n${body}\nexit ${exitCode}\n`);
+  chmodSync(command, 0o755);
+  return binDir;
+}
+
+test("bundled SFX advises update when the HeyGen CLI is outdated", () => {
+  setup();
+  const binDir = writeFakeHeygen('echo "heygen v0.1.5 does not support --headers" >&2', 1);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.match(parsed.advisory?.message ?? "", /heygen update/);
+  cleanup();
+});
+
+test("bundled SFX does not advise installation after a healthy catalog miss", () => {
+  setup();
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.equal(parsed.advisory, undefined);
+  cleanup();
+});
+
+test("explicit local bundled SFX resolution does not advise installation", () => {
+  for (const extraArgs of [["--local-only"], ["--provider", "bundled.sfx"]]) {
+    setup();
+    const result = spawnResolve(
+      ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json", ...extraArgs],
+      { env: { HOME: tmp, PATH: tmp } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.provenance.provider, "bundled.sfx");
+    assert.equal(parsed.advisory, undefined);
+    cleanup();
+  }
+});
+
+test("human bundled fallback prints the install hint once", () => {
+  setup();
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp], {
+    env: { HOME: tmp, PATH: tmp },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr.match(/Install: curl -fsSL/g)?.length, 1);
+  assert.match(result.stdout, /resolved sfx_001/);
+  cleanup();
+});
 
 test("project manifest hit skips providers", () => {
   setup();

@@ -213,6 +213,61 @@ it("round-trips the browser script's raw contrast candidates back into finish", 
   }
 });
 
+it("captures check overview snapshots after contrast restores hidden text", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture(`<div id="headline">Readable copy</div>`);
+  const root = document.querySelector("[data-composition-id]");
+  const headline = document.querySelector<HTMLElement>("#headline");
+  if (!root || !headline) throw new Error("Contrast fixture failed to mount");
+  vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
+  vi.spyOn(headline, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 50, 300, 40));
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    () =>
+      ({
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        color: "rgb(255,255,255)",
+        fill: "",
+        clipPath: "none",
+        fontSize: "32px",
+        fontWeight: "700",
+      }) as unknown as CSSStyleDeclaration,
+  );
+
+  const page = fakePage();
+  const injectScript = page.addScriptTag;
+  page.addScriptTag = vi.fn(async (arg: { content: string }) => {
+    await injectScript(arg);
+    const w = window as unknown as {
+      __contrastAuditFinish?: (...args: unknown[]) => Promise<unknown>;
+      __contrastAuditRestoreIfPending?: () => void;
+    };
+    if (w.__contrastAuditFinish) {
+      w.__contrastAuditFinish = async () => {
+        w.__contrastAuditRestoreIfPending?.();
+        return [];
+      };
+    }
+  });
+  page.screenshot = vi.fn(async () =>
+    headline.style.getPropertyValue("color") === "transparent"
+      ? "text-hidden-base64"
+      : "text-visible-base64",
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: true, snapshots: true },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(page.screenshot).toHaveBeenCalledTimes(2);
+  expect(result.screenshots[0]?.pngBase64).toBe("text-visible-base64");
+});
+
 it("carries validate's clip-duration audit into the runtime findings", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();

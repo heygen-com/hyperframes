@@ -942,22 +942,26 @@
   // actually moved anything and the whole audit run is unreliable. Deliberately
   // a single opaque string (not a structured array) since Node only ever needs
   // equality, not per-element diffing.
-  // Pixel-only canvas motion (a 2D/WebGL canvas repainting without any element
-  // moving) is invisible to a geometry+opacity fingerprint and false-positived
-  // sweep_static (wild report: 4K WebGL comp needed a transparent moving DOM
-  // sentinel to pass). Downsample each visible canvas to 8x8 and fold its
-  // pixels into the fingerprint. Tainted/zero-sized/unreadable canvases hash
-  // to a constant — no worse than today, never a new false NEGATIVE for
-  // DOM-motion comps.
-  function canvasPixelHash(canvas) {
+  // Pixel-only media motion (a 2D/WebGL canvas repainting or a playing video
+  // without any element moving) is invisible to a geometry+opacity fingerprint
+  // and false-positives sweep_static. Downsample each visible canvas/video to
+  // 8x8 and fold its pixels into the fingerprint. Tainted, zero-sized, or
+  // unreadable media hashes to a constant — no worse than geometry-only
+  // detection and never a new false negative for DOM-motion compositions.
+  // Media inside iframes is intentionally outside this fingerprint: it lives
+  // in a separate document, and cross-origin frames are inaccessible under SOP.
+  function mediaPixelHash(element) {
     try {
-      if (!canvas.width || !canvas.height) return "x";
+      const rect = element.getBoundingClientRect();
+      const sourceWidth = element.videoWidth || element.width || rect.width;
+      const sourceHeight = element.videoHeight || element.height || rect.height;
+      if (!sourceWidth || !sourceHeight) return "x";
       const off = document.createElement("canvas");
       off.width = 8;
       off.height = 8;
       const ctx = off.getContext("2d");
       if (!ctx) return "x";
-      ctx.drawImage(canvas, 0, 0, 8, 8);
+      ctx.drawImage(element, 0, 0, 8, 8);
       const data = ctx.getImageData(0, 0, 8, 8).data;
       let hash = 0;
       for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
@@ -980,9 +984,9 @@
       const opacity = round(opacityChain(element));
       return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
     });
-    for (const canvas of root.querySelectorAll("canvas")) {
-      if (!isVisibleElement(canvas)) continue;
-      parts.push(`c:${canvasPixelHash(canvas)}`);
+    for (const media of root.querySelectorAll("canvas, video")) {
+      if (!isVisibleElement(media)) continue;
+      parts.push(`p:${mediaPixelHash(media)}`);
     }
     return parts.join("|");
   };

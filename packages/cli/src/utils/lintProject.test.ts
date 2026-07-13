@@ -876,6 +876,43 @@ describe("texture_mask_asset_not_found", () => {
 });
 
 describe("multiple_root_compositions", () => {
+  it("scopes lint to an explicit render composition entry", async () => {
+    const project = makeProject(validHtml());
+    const standalone = join(project, "standalone.html");
+    writeFileSync(standalone, validHtml("standalone"));
+
+    const { totalErrors, results } = await lintProject(project, standalone);
+
+    expect(totalErrors).toBe(0);
+    expect(results.map((result) => result.file)).toEqual(["standalone.html"]);
+    expect(
+      results[0]?.result.findings.find((finding) => finding.code === "multiple_root_compositions"),
+    ).toBeUndefined();
+  });
+
+  it("reports findings from an explicit render composition entry", async () => {
+    const project = makeProject(validHtml());
+    const standalone = join(project, "standalone.html");
+    writeFileSync(standalone, htmlWithMissingMediaId());
+
+    const { totalErrors, results } = await lintProject(project, standalone);
+
+    expect(totalErrors).toBeGreaterThan(0);
+    expect(results[0]?.result.findings.some((finding) => finding.code === "media_missing_id")).toBe(
+      true,
+    );
+  });
+
+  it("rejects an explicit render composition entry outside the project", async () => {
+    const project = makeProject(validHtml());
+    const outsideDir = tmpProject("outside-entry");
+    dirs.push(outsideDir);
+    const outsideEntry = join(outsideDir, "standalone.html");
+    writeFileSync(outsideEntry, validHtml("standalone"));
+
+    await expect(lintProject(project, outsideEntry)).rejects.toThrow(/outside.*project/i);
+  });
+
   it("fires when two HTML files have data-composition-id", async () => {
     const project = makeProject(validHtml());
     writeFileSync(

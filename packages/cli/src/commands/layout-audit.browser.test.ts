@@ -31,6 +31,38 @@ describe("layout-audit.browser", () => {
     clearGeometryCollector();
   });
 
+  it("changes the sweep fingerprint when visible video pixels advance", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <video id="footage"></video>
+      </div>
+    `;
+    installGeometry({
+      root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+      footage: rect({ left: 0, top: 0, width: 640, height: 360 }),
+    });
+
+    let pixelValue = 20;
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    getContextSpy.mockReturnValue({
+      drawImage() {},
+      getImageData() {
+        return { data: new Uint8ClampedArray(8 * 8 * 4).fill(pixelValue) };
+      },
+    } as unknown as CanvasRenderingContext2D);
+
+    installAuditScript();
+    const collect = (window as unknown as { __hyperframesLayoutGeometry: () => string })
+      .__hyperframesLayoutGeometry;
+    const before = collect();
+    pixelValue = 220;
+    const after = collect();
+
+    expect(after).not.toBe(before);
+  });
+
   it("uses authored canvas dimensions when the root bounding rect is degenerate", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">

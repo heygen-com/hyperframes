@@ -180,8 +180,16 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
-export async function lintProject(projectDir: string): Promise<ProjectLintResult> {
-  const indexPath = resolve(projectDir, "index.html");
+export async function lintProject(
+  projectDir: string,
+  entryFile?: string,
+): Promise<ProjectLintResult> {
+  const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
+  if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
+    throw new Error(`Explicit lint entry is outside the project directory: ${entryFile}`);
+  }
+  const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
+  const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
   const results: Array<{ file: string; result: HyperframeLintResult }> = [];
   let totalErrors = 0;
   let totalWarnings = 0;
@@ -190,16 +198,16 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
   const rootHtml = readFileSync(indexPath, "utf-8");
   const rootResult = await lintHyperframeHtml(rootHtml, {
     filePath: indexPath,
-    externalStyles: collectExternalStyles(projectDir, rootHtml),
+    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
   });
-  results.push({ file: "index.html", result: rootResult });
+  results.push({ file: rootFile, result: rootResult });
   totalErrors += rootResult.errorCount;
   totalWarnings += rootResult.warningCount;
   totalInfos += rootResult.infoCount;
 
-  const allHtmlSources: HtmlSource[] = [{ html: rootHtml }];
+  const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const compositionsDir = resolve(projectDir, "compositions");
-  if (existsSync(compositionsDir)) {
+  if (!entryFile && existsSync(compositionsDir)) {
     const collectHtmlFiles = (dir: string, rel: string): string[] => {
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -239,7 +247,7 @@ export async function lintProject(projectDir: string): Promise<ProjectLintResult
     ...lintAudioSrcNotFound(projectDir, allHtmlSources),
     ...lintMissingLocalAsset(projectDir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
-    ...lintMultipleRootCompositions(projectDir),
+    ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
     ...lintDuplicateAudioTracks(allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
   ];

@@ -230,7 +230,7 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
 
   const writeAllFrames = (framesDir: string, totalFrames: number): void => {
     for (let i = 0; i < totalFrames; i++) {
-      writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "x");
+      writeFileSync(join(framesDir, formatCaptureFrameName(i, "jpg")), "captured-frame");
     }
   };
 
@@ -431,6 +431,7 @@ describe("shouldUseStreamingEncode", () => {
   const streamingEnabledConfig = {
     enableStreamingEncode: true,
     streamingEncodeMaxDurationSeconds: 240,
+    lowMemoryMode: false,
   };
 
   it("enables streaming for default single-worker video renders", () => {
@@ -472,6 +473,12 @@ describe("shouldUseStreamingEncode", () => {
         120.001,
       ),
     ).toBe(false);
+  });
+
+  it("keeps long single-worker renders streaming in low-memory mode", () => {
+    expect(
+      shouldUseStreamingEncode({ ...streamingEnabledConfig, lowMemoryMode: true }, "mp4", 1, 411),
+    ).toBe(true);
   });
 });
 
@@ -1432,13 +1439,28 @@ describe("adaptive missing-frame retry helpers", () => {
   it("finds contiguous missing frame ranges from captured disk frames", () => {
     const framesDir = makeFramesDir();
     for (const frameIndex of [0, 1, 4]) {
-      writeFileSync(join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`), "x");
+      writeFileSync(
+        join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`),
+        "captured-frame",
+      );
     }
 
     expect(findMissingFrameRanges(6, framesDir, "jpg")).toEqual([
       { startFrame: 2, endFrame: 4 },
       { startFrame: 5, endFrame: 6 },
     ]);
+  });
+
+  it("retries a worker placeholder instead of accepting a truncated sequence", () => {
+    const framesDir = makeFramesDir();
+    for (let frameIndex = 0; frameIndex < 4; frameIndex++) {
+      writeFileSync(
+        join(framesDir, `frame_${String(frameIndex).padStart(6, "0")}.jpg`),
+        frameIndex === 2 ? "x" : "captured-frame",
+      );
+    }
+
+    expect(findMissingFrameRanges(4, framesDir, "jpg")).toEqual([{ startFrame: 2, endFrame: 3 }]);
   });
 
   it("builds retry batches that cap active workers per attempt", () => {
