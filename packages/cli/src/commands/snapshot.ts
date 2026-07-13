@@ -159,7 +159,11 @@ export function computeSnapshotTimes(
   const round = (t: number) => Math.round(t * 1000) / 1000;
 
   if (opts.at?.length) {
-    const times = opts.at.map(round);
+    // `--at` is an evidence contract: callers may pass exact fractional-frame
+    // boundaries (for example 101 / 30). Do not normalize their requested
+    // positions; rounding to milliseconds can move a transition sample to the
+    // other side of the boundary.
+    const times = [...opts.at];
     // Only append if the user didn't already sample at/near the readable tail.
     const hasTail = times.some((t) => Math.abs(t - tail) < 0.05 || t >= duration);
     if (includeEnd && duration > 0 && !hasTail) {

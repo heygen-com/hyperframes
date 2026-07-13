@@ -62,6 +62,16 @@ describe("computeSnapshotTimes (FINDING [7]: tail is always captured)", () => {
     expect(times).toEqual([1, 2]);
     expect(appendedTail).toBe(false);
   });
+
+  it("preserves exact explicit transition timestamps", () => {
+    const exactTransition = 3.3666666666666667;
+    const { times } = computeSnapshotTimes(8, {
+      frames: 5,
+      at: [exactTransition],
+      includeEnd: false,
+    });
+    expect(times).toEqual([exactTransition]);
+  });
 });
 
 describe("parseZoomScale (--zoom-scale)", () => {
