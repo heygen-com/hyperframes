@@ -525,6 +525,8 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       selector: "#node",
       containerSelector: "#diagram",
     });
+    expect(issues[0]?.message).toContain("computed in a different frame");
+    expect(issues[0]?.fixHint).toContain("offset parent's frame");
   });
 
   it("respects the allow-overflow opt-out and skips fixed elements", () => {
@@ -586,8 +588,58 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.find((issue) => issue.selector === "#hero")).toMatchObject({
       severity: "warning",
       overflow: { right: 280 },
+      message: "Painted panel extends outside the composition canvas.",
     });
+    expect(issues.find((issue) => issue.selector === "#hero")?.fixHint).toContain(
+      "data-layout-allow-overflow",
+    );
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
+  });
+
+  it("flags a painted hero whose box breaches while its direct text stays in-bounds", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        text: rect({ left: 1450, top: 340, width: 200, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toHaveLength(1);
+    expect(issues.filter((issue) => issue.code === "canvas_overflow")).toEqual([]);
+  });
+
+  it("leaves a breaching panel to canvas_overflow when its own text breaches too", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Very long breaching title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        text: rect({ left: 1450, top: 340, width: 700, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toEqual([]);
+    expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
   });
 
   it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
@@ -624,6 +676,8 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     // The marker tip path is skipped outright; only the detached line reports.
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ severity: "warning", selector: "#detached" });
+    expect(issues[0]?.message).toContain("drawn into an SVG with a different origin");
+    expect(issues[0]?.fixHint).toContain("Subtract the SVG's own rect");
   });
 
   it("skips svgs and paths without connector intent", () => {

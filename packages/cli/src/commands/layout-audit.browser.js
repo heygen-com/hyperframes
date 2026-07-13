@@ -915,7 +915,12 @@
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
       if (escapedElements.has(element)) continue;
-      if (hasOwnTextCandidate(element)) continue;
+      // Ownership is geometric, not elemental: skip only when the element's own text ALSO breaches
+      // (canvas_overflow owns that); a painted box breaching around in-bounds text is a panel finding.
+      if (hasOwnTextCandidate(element)) {
+        const textRect = textRectFor(element);
+        if (textRect && overflowFor(textRect, rootRect, floor)) continue;
+      }
       const rect = toRect(element.getBoundingClientRect());
       if (rectArea(rect) >= rootArea * 0.95) continue;
       // Fully off-canvas paints nothing — that is a parked entrance, not drift.
@@ -998,6 +1003,7 @@
     const painted = [];
     const rootArea = rectArea(rootRect);
     for (const element of Array.from(root.querySelectorAll("*"))) {
+      // Known blind spot: anchors living inside an SVG (<image>, foreignObject) are not counted.
       if (element.closest("svg") || !isVisibleElement(element)) continue;
       const opaque =
         RASTER_TAGS.has(element.tagName) || hasOpaqueBackground(getComputedStyle(element));
