@@ -1605,7 +1605,8 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
   let result = html;
-  const embedded = new Set<string>();
+  const embeddedPaths = new Set<string>();
+  const dataUriByAbsolutePath = new Map<string, string>();
 
   let styleMatch: RegExpExecArray | null;
   while ((styleMatch = styleBlockRe.exec(html)) !== null) {
@@ -1618,19 +1619,23 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
       let urlMatch: RegExpExecArray | null;
       while ((urlMatch = urlRe.exec(block)) !== null) {
         const localPath = urlMatch[1];
-        if (!localPath || embedded.has(localPath)) continue;
+        if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir)) continue;
         if (!existsSync(absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
-          const buffer = readFileSync(absPath);
-          const dataUri = await toDataUri(buffer, ext);
+          let dataUri = dataUriByAbsolutePath.get(absPath);
+          if (!dataUri) {
+            const buffer = readFileSync(absPath);
+            dataUri = await toDataUri(buffer, ext);
+            dataUriByAbsolutePath.set(absPath, dataUri);
+            defaultLogger.info(
+              `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
+            );
+          }
           result = result.replaceAll(localPath, dataUri);
-          embedded.add(localPath);
-          defaultLogger.info(
-            `[Compiler] Embedded local font file: ${localPath} (${(buffer.length / 1024).toFixed(0)} KB → data URI)`,
-          );
+          embeddedPaths.add(localPath);
         } catch {
           // File read or compression failed — keep the original path
         }

@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { defaultLogger } from "../logger.js";
 import {
   collectExternalAssets,
   compileForRender,
@@ -855,6 +856,40 @@ describe("system-primary font normalization", () => {
     const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
     expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
     expect(rootStyle).toContain("font-family: Inter, sans-serif");
+  });
+});
+
+describe("local font embedding", () => {
+  it("embeds one font file once when sub-compositions use equivalent relative paths", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-local-font-dedupe-"));
+    const assetsDir = join(projectDir, "assets");
+    mkdirSync(assetsDir, { recursive: true });
+    writeFileSync(join(assetsDir, "shared.woff2"), "fake-woff2");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "A"; src: url("assets/shared.woff2"); }
+  @font-face { font-family: "B"; src: url("./assets/shared.woff2"); }
+  @font-face { font-family: "C"; src: url("assets/../assets/shared.woff2"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+
+    const originalInfo = defaultLogger.info;
+    const embeddedMessages: string[] = [];
+    defaultLogger.info = (message) => {
+      if (message.includes("Embedded local font file")) embeddedMessages.push(message);
+    };
+
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } finally {
+      defaultLogger.info = originalInfo;
+    }
+
+    expect(embeddedMessages).toHaveLength(1);
   });
 });
 
