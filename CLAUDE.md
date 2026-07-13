@@ -4,11 +4,11 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
+This repo ships 19 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover.
 
 ```bash
 npx skills add heygen-com/hyperframes --full-depth              # interactive picker
-npx skills add heygen-com/hyperframes --all --full-depth        # install all 20 (skips picker)
+npx skills add heygen-com/hyperframes --all --full-depth        # install all 19 (skips picker)
 npx skills add heygen-com/hyperframes --skill <name> --full-depth  # just one (bare name, no leading slash)
 ```
 
@@ -18,8 +18,7 @@ Keep `--full-depth`: it installs the current `main`. Without it, `skills add` fe
 
 ### Creation workflows
 
-- `/product-launch-video` — a **product** URL (or a pre-written script / text brief in no-capture mode) → product launch / promo video, up to ~3 min (sweet spot ~30-90s).
-- `/website-to-video` — a **general** website / URL → a video _of_ the site (tour / showcase / social clip from captured screenshots + assets); for a product **launch / promo**, use `/product-launch-video`.
+- `/product-launch-video` — any **website** URL (or a pre-written script / text brief in no-capture mode) → a product launch / promo video, or a site tour / showcase built from the site's own captured screens (the tour angle); up to ~3 min (sweet spot ~30-90s).
 - `/faceless-explainer` — arbitrary text, **no URL and no website capture** → faceless explainer, up to ~3 min (sweet spot ~30-90s); every visual is LLM-invented (typography / abstract graphics / diagram / data-viz).
 - `/pr-to-video` — a GitHub PR (URL / `owner/repo#N` / "this PR") → code-change explainer, up to ~3 min (changelog / feature reveal / fix / refactor). A PR link, not a product website.
 - `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).
@@ -51,7 +50,7 @@ When adding a new skill, or substantially renaming / repurposing an existing one
 2. The scaffolded project template `packages/cli/src/templates/_shared/CLAUDE.md` + `AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. The two template files must stay byte-identical.
 3. If the skill changes the routing surface for "make a video" requests, also update the capability map and intent router in `skills/hyperframes/SKILL.md` — that's the canonical router agents read first.
 4. Mirror the Router / Creation workflows / Domain skills grouping across all surfaces so a skill always lives in the same column.
-5. Skill count appears in the README and CLAUDE.md intro lines ("20 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
+5. Skill count appears in the README and CLAUDE.md intro lines ("19 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.
 

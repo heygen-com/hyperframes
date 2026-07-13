@@ -663,24 +663,24 @@ Control bridge actions: play, pause, seek, set-muted, set-playback-rate, enable-
 
 ## 22. Skills available — 16
 
-| Skill                     | Purpose                                                                 |
-| ------------------------- | ----------------------------------------------------------------------- |
-| hyperframes               | Core framework skill (composition authoring)                            |
-| hyperframes-cli           | All CLI commands as an agent skill                                      |
-| media-use                 | Media workflows (TTS, transcribe, captions integration)                 |
-| hyperframes-registry      | Installing blocks/components                                            |
-| hyperframes-contrast      | WCAG audit (scripts/contrast-report.mjs)                                |
-| hyperframes-animation-map | Per-tween bbox + flags report                                           |
-| website-to-video          | Capture → DESIGN.md → brief → storyboard+script → VO → build → validate |
-| remotion-to-hyperframes   | Migration patterns + API map + CustomEase                               |
-| gsap                      | GSAP API + plugins reference                                            |
-| animejs                   | Anime.js v4 patterns                                                    |
-| css-animations            | @keyframes patterns                                                     |
-| waapi                     | Web Animations API                                                      |
-| lottie                    | Lottie integration                                                      |
-| three                     | Three.js + deterministic seek                                           |
-| tailwind                  | Tailwind browser runtime v4                                             |
-| contribute-catalog        | Adding blocks to registry                                               |
+| Skill                       | Purpose                                                                                 |
+| --------------------------- | --------------------------------------------------------------------------------------- |
+| hyperframes                 | Core framework skill (composition authoring)                                            |
+| hyperframes-cli             | All CLI commands as an agent skill                                                      |
+| media-use                   | Media workflows (TTS, transcribe, captions integration)                                 |
+| hyperframes-registry        | Installing blocks/components                                                            |
+| hyperframes-contrast        | WCAG audit (scripts/contrast-report.mjs)                                                |
+| hyperframes-animation-map   | Per-tween bbox + flags report                                                           |
+| product-launch-video (tour) | Capture → DESIGN.md → brief → storyboard+script → VO → build → validate — this pipeline |
+| remotion-to-hyperframes     | Migration patterns + API map + CustomEase                                               |
+| gsap                        | GSAP API + plugins reference                                                            |
+| animejs                     | Anime.js v4 patterns                                                                    |
+| css-animations              | @keyframes patterns                                                                     |
+| waapi                       | Web Animations API                                                                      |
+| lottie                      | Lottie integration                                                                      |
+| three                       | Three.js + deterministic seek                                                           |
+| tailwind                    | Tailwind browser runtime v4                                                             |
+| contribute-catalog          | Adding blocks to registry                                                               |
 
 ---
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// w2h-verify.mjs — verification report for a website-to-video project.
+// w2h-verify.mjs — verification report for a site-tour build (product-launch-video, tour angle).
 //
 // Computes quality signals the agent cannot fudge. Each check is designed to
 // catch a specific failure mode observed across three real agent debriefs.
@@ -10,7 +10,7 @@
 // paste alongside.
 //
 // Usage:
-//   node skills/website-to-video/scripts/w2h-verify.mjs <project-dir>
+//   node skills/product-launch-video/scripts/w2h-verify.mjs <project-dir>
 //
 // Exit codes:
 //   0 = all gates pass

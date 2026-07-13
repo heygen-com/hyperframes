@@ -234,7 +234,7 @@ fi
 say "Verifying skill installation..."
 
 ROUTER="hyperframes"
-WORKFLOWS=(product-launch-video website-to-video faceless-explainer embedded-captions \
+WORKFLOWS=(product-launch-video faceless-explainer embedded-captions \
            talking-head-recut pr-to-video motion-graphics general-video \
            remotion-to-hyperframes slideshow)
 DOMAIN=(hyperframes-core hyperframes-creative hyperframes-animation hyperframes-cli media-use hyperframes-registry)
@@ -276,6 +276,6 @@ echo "  • \"explain how transformers work as a faceless explainer video\" → 
 echo "  • \"make a video from this PR: owner/repo#123\"                    → pr-to-video"
 echo "  • \"add lower-thirds / overlay cards to ./clip.mp4\"               → talking-head-recut"
 echo "  • \"add captions/subtitles to ./clip.mp4\"                         → embedded-captions"
-echo "  • \"turn https://your-site.com/ into a site tour video\"           → website-to-video"
+echo "  • \"turn https://your-site.com/ into a site tour video\"           → product-launch-video (tour angle)"
 echo "  • \"a logo reveal / title card / data montage\"                    → general-video"
 echo ""

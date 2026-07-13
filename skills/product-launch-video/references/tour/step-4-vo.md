@@ -223,7 +223,7 @@ After the narration is generated and transcribed, ask the user:
 > - **Yes** — per-word captions synced to the narration. Great for social media (most viewers watch on mute) and accessibility.
 > - **No** — narration audio only, no text overlay.
 
-If yes, captions are built as a separate composition (`compositions/captions.html`) in Step 5. The `transcript.json` drives the timing — each word appears/highlights as it's spoken. Read [the captions reference](../../hyperframes/references/captions.md) for styling options (scale-pop, typewriter, fade+slide, etc.) and positioning rules.
+If yes, captions are built as a separate composition (`compositions/captions.html`) in Step 5. The `transcript.json` drives the timing — each word appears/highlights as it's spoken. Read [the captions reference](../../../../media-use/audio/references/tts-to-captions.md) for styling options (scale-pop, typewriter, fade+slide, etc.) and positioning rules.
 
 ## Save timing data for Step 5
 

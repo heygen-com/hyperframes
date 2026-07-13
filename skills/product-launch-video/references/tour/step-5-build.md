@@ -20,9 +20,9 @@ Load the `hyperframes` skill — it has the rules for data attributes, timeline 
 ## 1. Copy SFX to project
 
 ```bash
-cp -r skills/website-to-video/assets/sfx/ <project-dir>/sfx/
+cp -r skills/product-launch-video/assets/sfx/ <project-dir>/sfx/
 # If skill is installed elsewhere:
-find . -path "*/website-to-video/assets/sfx" -exec cp -r {} <project-dir>/sfx/ \;
+find . -path "*/product-launch-video/assets/sfx" -exec cp -r {} <project-dir>/sfx/ \;
 ```
 
 ## 2. Build the root index.html
@@ -301,7 +301,7 @@ Build the composition for Beat N. Save to compositions/beat-N-name.html.
 FIRST: Locate and read the beat-builder guide. Your CWD is the project directory, so
 the skill lives outside it — run this to find it:
 
-  find "$HOME" -path '*/website-to-video/references/beat-builder-guide.md' -maxdepth 10 2>/dev/null | head -1
+  find "$HOME" -path '*/product-launch-video/references/tour/beat-builder-guide.md' -maxdepth 10 2>/dev/null | head -1
 
 Read that file end to end. It has your full workflow, all rules, easing vocabulary,
 and file references. Follow its workflow exactly:

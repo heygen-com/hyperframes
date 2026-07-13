@@ -59,7 +59,7 @@ Each capability picks the **first available provider** in order; the last is alw
 | **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
 | **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
 | **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
-| **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | — (optional; for [website-to-video](/guides/website-to-video)) |
+| **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | — (optional; for [website capture](/guides/website-to-video)) |
 
 Run `npx hyperframes doctor` to check which local dependencies are installed. The media skills also run `hyperframes auth status` as a preflight before generating, so you always know whether a run will use HeyGen or a local engine before it starts.
 

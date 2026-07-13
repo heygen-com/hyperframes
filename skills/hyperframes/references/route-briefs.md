@@ -12,8 +12,9 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 ## `/product-launch-video`
 
-- **Must-haves:** **angle** — story shapes from the site's / brief's own positioning, recommend one with its basis · **length** — 30–90s sweet spot, scaled to the material · **destination** — as above.
-- **Conditional:** a pasted script/brief adds **`VO_MODE`** (verbatim or restructured?); a script that only names a site adds **capture?** — crawl it for brand + assets (default), or text-only / "don't scrape" (no-capture mode, a preset supplies the design system).
+- **Must-haves:** **angle** — the first fork: **selling it** (promo story shapes from the site's / brief's own positioning) or **showing it as-is** (tour / showcase — the video is built from the site's own captured screens); recommend from the request's own words, then the promo shapes when selling · **length** — 30–90s sweet spot, scaled to the material · **destination** — as above.
+- **Conditional:** the tour angle adds **what to show** — the whole site, or specific pages/sections the user cares about; a pasted script/brief adds **`VO_MODE`** (verbatim or restructured?); a script that only names a site adds **capture?** — crawl it for brand + assets (default), or text-only / "don't scrape" (no-capture mode, promo angles only — a preset supplies the design system).
+- **Deferred (announce, tour angle):** the message and narrative arc are settled at the tour pipeline's Step 2, after capture — the site's real content grounds the recommendation.
 - **Run-shape:** both.
 
 ## `/pr-to-video`
@@ -42,12 +43,6 @@ Field semantics and question rules: `hyperframes-core/references/brief-contract.
 
 - **Must-haves** (the former Discovery, for open-ended requests only — a specific ask like "a title card with our logo" skips them): **audience** — developers / executives / general consumers? · **platform** — social (15s) / website hero / product demo / internal? (this is `destination` by another name) · **priority** — motion quality / content accuracy / brand fidelity / speed? · **variations** — one best shot, or 2–3 meaningfully different options?
 - **Run-shape:** storyboard — yes; companion — general-video **is** the companion host, so the question only matters when it was reached as the fallback route (ask it; a companion answer simply stays here with the full toolbox).
-
-## `/website-to-video`
-
-- **Must-haves:** **audience** — who should the tour convince? · **destination / format** — as above · **what to show** — the whole site, or specific pages/sections the user cares about.
-- **Deferred (announce):** **message and narrative arc** are confirmed at its Step 2, after capture — recommendations need the site's real content in hand. The capture step's API-key opt-in (AI asset descriptions) also stays with capture.
-- **Run-shape:** both.
 
 ## `/music-to-video`
 

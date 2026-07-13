@@ -51,7 +51,7 @@ The skills teach agents the HyperFrames production loop: plan the video, write v
 
 ## Skills
 
-HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
+HyperFrames ships 19 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
 
 Run `npx skills add heygen-com/hyperframes --full-depth` for the interactive picker, `npx skills add heygen-com/hyperframes --all --full-depth` to install all 20 at once (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name> --full-depth` for just one (bare name, no leading `/`). Keep `--full-depth` — it installs the current `main`; without it `skills add` fetches the skills.sh blob, which lags by hours.
 
@@ -65,19 +65,18 @@ Installs stay lean after that: `npx hyperframes init` keeps the **core set** fre
 
 ### Creation workflows
 
-| Skill                      | Use when                                                                                                                                                                                                                     |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/product-launch-video`    | Marketing / launching / promoting a **product** — from its URL, a brief, or a script (even if the site is only named). Up to ~3 min (sweet spot 30-90s).                                                                     |
-| `/website-to-video`        | Turning a **general website** into a video — site tour, portfolio / landing-page showcase, social clip from the site's own visuals.                                                                                          |
-| `/faceless-explainer`      | **Explaining a topic / concept** from arbitrary text — no product, no URL, no website capture; every visual is LLM-invented (typography / abstract / diagram / data-viz).                                                    |
-| `/pr-to-video`             | A **GitHub pull request** (PR URL, `owner/repo#N` ref, or "this PR") → changelog / feature-reveal / fix / refactor explainer, read via the `gh` CLI.                                                                         |
-| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched) — verbatim rail, embedded climax behind the subject, or pure-cinematic embed.                                                          |
-| `/talking-head-recut`      | Packaging an existing talking-head / interview / podcast video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes, side panels, PiP.                                              |
-| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** (~under 10s) — kinetic type, stat / chart hit, logo sting, lower-third, animated tweet / headline. MP4 or transparent overlay.                                            |
-| `/music-to-video`          | A **music track** (audio file, or video to pull audio from) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                                                             |
-| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video.                                     |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback, and the home of companion mode (co-create with the full toolbox). |
-| `/remotion-to-hyperframes` | **Porting an existing Remotion** (React) composition's source to HyperFrames HTML. One-way migration, not creation.                                                                                                          |
+| Skill                      | Use when                                                                                                                                                                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/product-launch-video`    | Any **website** — marketing / launching / promoting a product (from its URL, a brief, or a script), or a site tour / showcase / social clip built from the site's own visuals (the tour angle). Up to ~3 min (sweet spot 30-90s). |
+| `/faceless-explainer`      | **Explaining a topic / concept** from arbitrary text — no product, no URL, no website capture; every visual is LLM-invented (typography / abstract / diagram / data-viz).                                                         |
+| `/pr-to-video`             | A **GitHub pull request** (PR URL, `owner/repo#N` ref, or "this PR") → changelog / feature-reveal / fix / refactor explainer, read via the `gh` CLI.                                                                              |
+| `/embedded-captions`       | Adding **captions / subtitles** to an existing talking-head video (footage untouched) — verbatim rail, embedded climax behind the subject, or pure-cinematic embed.                                                               |
+| `/talking-head-recut`      | Packaging an existing talking-head / interview / podcast video with **designed graphic overlays** — lower-thirds, data callouts, kinetic titles, pull-quotes, side panels, PiP.                                                   |
+| `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** (~under 10s) — kinetic type, stat / chart hit, logo sting, lower-third, animated tweet / headline. MP4 or transparent overlay.                                                 |
+| `/music-to-video`          | A **music track** (audio file, or video to pull audio from) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                                                                  |
+| `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video.                                          |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback, and the home of companion mode (co-create with the full toolbox).      |
+| `/remotion-to-hyperframes` | **Porting an existing Remotion** (React) composition's source to HyperFrames HTML. One-way migration, not creation.                                                                                                               |
 
 ### Domain skills (loaded on demand)
 
@@ -115,7 +114,7 @@ Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/showcase) for f
 - PR walkthroughs with animated code diffs, narration, and captions
 - Data visualizations, chart races, and map animations
 - Social videos with kinetic captions, overlays, and music
-- Docs-to-video, PDF-to-video, and website-to-video explainers
+- Docs-to-video, PDF-to-video, and site-tour explainers
 - Reusable motion graphics for automated content pipelines
 
 ## Frame.md
