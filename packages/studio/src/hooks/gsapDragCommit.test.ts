@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it, beforeEach } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
@@ -5,6 +7,7 @@ import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import {
   commitStaticGsapPosition,
   commitStaticGsapRotation,
+  commitStaticGsapSize,
   findExistingPositionWrite,
   parkPlayheadOnKeyframe,
   type GsapDragCommitCallbacks,
@@ -280,7 +283,7 @@ const existingRotationSet = (): GsapAnimation =>
 describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
   beforeEach(() => usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null }));
 
-  it("attaches an instantPatch to BOTH coalesced commits, each derived from its own mutation", async () => {
+  it("updates an existing set atomically and derives its instantPatch from that mutation", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
     await commitStaticGsapPosition(
@@ -292,49 +295,22 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
       callbacks,
     );
 
-    expect(commits).toHaveLength(2);
-    // First (x) commit is the intermediate skipReload one — it now carries an
-    // instantPatch for just {x}, so if the SECOND POST fails the preview still
-    // reflects the x that DID persist (no reload, instant feedback).
-    expect(commits[0].options.skipReload).toBe(true);
-    expect(commits[0].options.instantPatch).toEqual({
-      selector: "#puck-a",
-      change: { kind: "set", props: { x: -50 } },
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation).toEqual({
+      type: "update-properties",
+      animationId: "#puck-a-set",
+      properties: { x: -50, y: 30 },
     });
-    // Final (y) commit triggers the reload and carries the full {x,y} patch.
-    expect(commits[1].options.softReload).toBe(true);
-    expect(commits[1].options.instantPatch).toEqual({
+    expect(commits[0].options.softReload).toBe(true);
+    expect(commits[0].options.instantPatch).toEqual({
       selector: "#puck-a",
       change: { kind: "set", props: { x: -50, y: 30 } },
     });
-  });
-
-  it("derives each instantPatch's props from the value in the SAME mutation that's POSTed", async () => {
-    const { commits, callbacks } = optionRecordingCallbacks();
-
-    await commitStaticGsapPosition(
-      selection(),
-      { x: -50, y: 30 },
-      { x: 0, y: 0 },
-      "#puck-a",
-      existingPositionSet(),
-      callbacks,
-    );
-
-    // The patch values must equal the mutation values — they're read out of the
-    // same object, so a clean mutation can't ship alongside a stale patch.
-    const xMutation = commits[0].mutation as { property: string; value: number };
-    const yMutation = commits[1].mutation as { property: string; value: number };
-    const xPatch = commits[0].options.instantPatch as {
+    const mutation = commits[0].mutation as { properties: Record<string, number> };
+    const patch = commits[0].options.instantPatch as {
       change: { props: Record<string, number> };
     };
-    const yPatch = commits[1].options.instantPatch as {
-      change: { props: Record<string, number> };
-    };
-    expect(xPatch.change.props[xMutation.property]).toBe(xMutation.value);
-    expect(yPatch.change.props[yMutation.property]).toBe(yMutation.value);
-    // The y commit's combined patch also carries the x mutation's value.
-    expect(yPatch.change.props[xMutation.property]).toBe(xMutation.value);
+    expect(patch.change.props).toEqual(mutation.properties);
   });
 
   it("ADDS a global gsap.set with a global-set instantPatch (off-timeline, no flash)", async () => {
@@ -355,6 +331,86 @@ describe("commitStaticGsapPosition — instantPatch (value-only set)", () => {
     expect((commits[0].mutation as { global?: boolean }).global).toBe(true);
     const patch = commits[0].options.instantPatch as { change: { kind: string } } | undefined;
     expect(patch?.change.kind).toBe("global-set");
+  });
+
+  it("creates one undo entry when updating an existing static position set", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapPosition(
+      selection(),
+      { x: -50, y: 30 },
+      { x: 0, y: 0 },
+      "#puck-a",
+      existingPositionSet(),
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(1);
+  });
+});
+
+const existingSizeSet = (): GsapAnimation =>
+  ({
+    id: "#puck-a-size-set",
+    targetSelector: "#puck-a",
+    method: "set",
+    properties: { width: 100, height: 80 },
+  }) as unknown as GsapAnimation;
+
+describe("commitStaticGsapSize", () => {
+  it("updates an existing set with one update-properties mutation", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapSize(
+      selection(),
+      { width: 300.4, height: 199.6 },
+      "#puck-a",
+      existingSizeSet(),
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation).toEqual({
+      type: "update-properties",
+      animationId: "#puck-a-size-set",
+      properties: { width: 300, height: 200 },
+    });
+    expect(commits.map((commit) => commit.mutation.type)).not.toContain("delete");
+    expect(commits.map((commit) => commit.mutation.type)).not.toContain("add");
+  });
+
+  it("adds exactly one set when no existing size set exists", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapSize(
+      selection(),
+      { width: 300, height: 200 },
+      "#puck-a",
+      null,
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(1);
+    expect(commits[0].mutation).toMatchObject({
+      type: "add",
+      targetSelector: "#puck-a",
+      method: "set",
+      properties: { width: 300, height: 200 },
+    });
+  });
+
+  it("creates one undo entry for an existing static size set", async () => {
+    const { commits, callbacks } = optionRecordingCallbacks();
+
+    await commitStaticGsapSize(
+      selection(),
+      { width: 300, height: 200 },
+      "#puck-a",
+      existingSizeSet(),
+      callbacks,
+    );
+
+    expect(commits).toHaveLength(1);
   });
 });
 
@@ -386,7 +442,7 @@ describe("static position hold recognition + heal (frozen duration-0 keyframed t
     expect(found?.id).toBe("#puck-a-frozen");
   });
 
-  it("commitStaticGsapPosition heals a keyframed hold by delete + clean add-set (never update-property)", async () => {
+  it("heals a keyframed hold with one transaction ordered add before delete", async () => {
     const { commits, callbacks } = optionRecordingCallbacks();
 
     await commitStaticGsapPosition(
@@ -399,11 +455,55 @@ describe("static position hold recognition + heal (frozen duration-0 keyframed t
     );
 
     const types = commits.map((c) => c.mutation.type);
-    // Can't update-property into keyframes — must delete the frozen tween and
-    // write a clean static set, so the element becomes freely movable.
-    expect(types).toEqual(["delete", "add"]);
-    expect(types).not.toContain("update-property");
-    expect((commits[1].mutation as { method?: string }).method).toBe("set");
+    expect(types).toEqual(["add", "delete"]);
+    expect(types).not.toContain("update-properties");
+    expect((commits[0].mutation as { method?: string }).method).toBe("set");
+    expect(commits[0].options.coalesceKey).toBe(commits[1].options.coalesceKey);
+    expect(commits[0].options.coalesceKey).toMatch(/^tx:Move layer:\d+$/);
+  });
+
+  it("keeps the original hold when the replacement add fails", async () => {
+    const mutationTypes: string[] = [];
+    const callbacks: GsapDragCommitCallbacks = {
+      commitMutation: async (_selection, mutation) => {
+        mutationTypes.push(mutation.type as string);
+        throw new Error("add failed");
+      },
+    };
+
+    await expect(
+      commitStaticGsapPosition(
+        selection(),
+        { x: -50, y: 30 },
+        { x: 0, y: 0 },
+        "#puck-a",
+        keyframedZeroDurationHold(),
+        callbacks,
+      ),
+    ).rejects.toThrow("add failed");
+    expect(mutationTypes).toEqual(["add"]);
+  });
+
+  it("leaves a recoverable duplicate when delete fails after the replacement add", async () => {
+    let holdCount = 1;
+    const callbacks: GsapDragCommitCallbacks = {
+      commitMutation: async (_selection, mutation) => {
+        if (mutation.type === "add") holdCount += 1;
+        if (mutation.type === "delete") throw new Error("delete failed");
+      },
+    };
+
+    await expect(
+      commitStaticGsapPosition(
+        selection(),
+        { x: -50, y: 30 },
+        { x: 0, y: 0 },
+        "#puck-a",
+        keyframedZeroDurationHold(),
+        callbacks,
+      ),
+    ).rejects.toThrow("delete failed");
+    expect(holdCount).toBe(2);
   });
 });
 

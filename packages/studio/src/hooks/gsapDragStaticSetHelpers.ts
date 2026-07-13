@@ -16,7 +16,7 @@ interface UpdatePropertyMutation {
  * value the source write didn't (one source of truth). Each mutation contributes
  * its `{property: value}` channel to the patch's props.
  */
-export function setPatchFromUpdateProperties(
+function setPatchFromUpdateProperties(
   selector: string,
   mutations: UpdatePropertyMutation[],
   global = false,

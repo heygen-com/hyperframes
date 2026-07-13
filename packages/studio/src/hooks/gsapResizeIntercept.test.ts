@@ -70,7 +70,7 @@ function keyframedScaleFixture(): GsapAnimation {
   } as unknown as GsapAnimation;
 }
 
-it("replaces a duration-zero size hold instead of converting it to keyframes", async () => {
+it("updates a duration-zero size hold in place instead of converting it to keyframes", async () => {
   const el = document.createElement("div");
   el.id = "box";
   document.body.append(el);
@@ -97,15 +97,10 @@ it("replaces a duration-zero size hold instead of converting it to keyframes", a
   );
 
   expect(handled).toBe(true);
-  expect(commitMutation.mock.calls.map(([, mutation]) => mutation.type)).toEqual(["delete", "add"]);
+  expect(commitMutation).toHaveBeenCalledTimes(1);
   expect(commitMutation.mock.calls[0]![1]).toEqual({
-    type: "delete",
+    type: "update-properties",
     animationId: "#box-to-0-size",
-  });
-  expect(commitMutation.mock.calls[1]![1]).toMatchObject({
-    type: "add",
-    targetSelector: "#box",
-    method: "set",
     properties: { width: 344, height: 344 },
   });
   expect(commitMutation).not.toHaveBeenCalledWith(

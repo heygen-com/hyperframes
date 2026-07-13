@@ -15,6 +15,12 @@ export interface GestureTransaction {
 }
 
 let transactionCounter = 0;
+const transactionCommits = new WeakSet<CommitMutation>();
+
+/** Whether a commit function already belongs to an active gesture transaction. */
+export function isGestureTransactionCommit(commitMutation: CommitMutation): boolean {
+  return transactionCommits.has(commitMutation);
+}
 
 function readPixelRect(element: HTMLElement): PixelRect {
   const { x, y, width, height } = element.getBoundingClientRect();
@@ -67,10 +73,18 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   console.info("[hf-commit] settled", { label: tx.label, coalesceKey });
 
   const before = !tx.skipPixelAssert ? readPixelRect(tx.element) : null;
-  const commit: TxCommit = (commitMutation) => (selection, mutation, options) => {
-    mutationCount += 1;
-    if (options.softReload) reloadCount += 1;
-    return commitMutation(selection, mutation, transactionOptions(options, coalesceKey, tx.label));
+  const commit: TxCommit = (commitMutation) => {
+    const wrapped: CommitMutation = (selection, mutation, options) => {
+      mutationCount += 1;
+      if (options.softReload) reloadCount += 1;
+      return commitMutation(
+        selection,
+        mutation,
+        transactionOptions(options, coalesceKey, tx.label),
+      );
+    };
+    transactionCommits.add(wrapped);
+    return wrapped;
   };
 
   return tx

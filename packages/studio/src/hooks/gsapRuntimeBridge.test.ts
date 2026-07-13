@@ -90,7 +90,7 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     expect(mutation.type).not.toBe("add-keyframe");
   });
 
-  it("forwards instantPatch on BOTH coalesced commits when updating an existing static set", async () => {
+  it("forwards one complete instantPatch when atomically updating an existing static set", async () => {
     const commitMutation = vi.fn();
     const iframe = fakeIframe("puck-b", []); // runtime empty → STATIC path
     // An existing position-hold `set` for the selector → update-in-place (not add).
@@ -113,16 +113,14 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     );
 
     expect(handled).toBe(true);
-    // The coalesced update-property pair both carry an instantPatch so a partial
-    // (second-POST) failure still leaves the preview patched for what persisted:
-    // the x commit patches {x}, the final y commit patches the full {x,y}.
-    const updates = commitMutation.mock.calls.filter(([, m]) => m.type === "update-property");
-    expect(updates).toHaveLength(2);
-    expect(updates[0][2].instantPatch).toEqual({
-      selector: "#puck-b",
-      change: { kind: "set", props: { x: -50 } },
+    const updates = commitMutation.mock.calls.filter(([, m]) => m.type === "update-properties");
+    expect(updates).toHaveLength(1);
+    expect(updates[0][1]).toEqual({
+      type: "update-properties",
+      animationId: "#puck-b-set",
+      properties: { x: -50, y: 30 },
     });
-    expect(updates[1][2].instantPatch).toEqual({
+    expect(updates[0][2].instantPatch).toEqual({
       selector: "#puck-b",
       change: { kind: "set", props: { x: -50, y: 30 } },
     });
@@ -154,9 +152,9 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
     );
 
     expect(handled).toBe(true);
-    // In-place update (2 coalesced update-property), NOT an `add`/`add-keyframe`.
+    // One atomic in-place update, NOT an `add`/`add-keyframe`.
     const types = commitMutation.mock.calls.map(([, m]) => m.type);
-    expect(types.every((t: string) => t === "update-property")).toBe(true);
+    expect(types).toEqual(["update-properties"]);
     expect(types).not.toContain("add");
     expect(types).not.toContain("add-keyframe");
   });

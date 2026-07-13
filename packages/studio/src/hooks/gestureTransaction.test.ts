@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
-import { runGestureTransaction } from "./gestureTransaction";
+import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -86,6 +86,25 @@ describe("runGestureTransaction", () => {
       pixel_asserted: false,
     });
     now.mockRestore();
+  });
+
+  it("identifies transaction-owned commit wrappers without marking their underlying commit", async () => {
+    const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+    let wrapped: CommitMutation | null = null;
+
+    await runGestureTransaction({
+      element: document.createElement("div"),
+      label: "Move layer",
+      settle: vi.fn(),
+      persist: async (commit) => {
+        wrapped = commit(underlying);
+      },
+      restore: vi.fn(),
+      skipPixelAssert: true,
+    });
+
+    expect(isGestureTransactionCommit(underlying)).toBe(false);
+    expect(isGestureTransactionCommit(wrapped!)).toBe(true);
   });
 
   it("restores exactly once and rethrows a persist failure", async () => {
