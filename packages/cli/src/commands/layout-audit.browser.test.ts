@@ -853,6 +853,19 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("ignores a video beneath pointer-transparent text that is painted on top", () => {
+    const issues = auditOcclusionScene({
+      headlineAttrs: 'style="pointer-events: none"',
+      overlayTag: "video",
+      overlayStyle: {},
+      topmostId: "overlay",
+      topmostWhenHeadlineHitTestableId: "headline",
+    });
+
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+    expect(document.getElementById("headline")?.style.pointerEvents).toBe("none");
+  });
+
   it("ignores low-opacity overlays such as scrims and grain", () => {
     const issues = auditOcclusionScene({
       overlayStyle: { backgroundColor: "rgb(10, 10, 10)", opacity: "0.3" },
@@ -957,19 +970,24 @@ function auditCoverageScene(options: {
 
 function auditOcclusionScene(options: {
   headlineAttrs?: string;
+  overlayTag?: "div" | "video";
   overlayStyle: Partial<Record<string, string>>;
   topmostId: string;
+  topmostWhenHeadlineHitTestableId?: string;
 }): ReturnType<typeof runAudit> {
+  const overlay =
+    options.overlayTag === "video" ? '<video id="overlay"></video>' : '<div id="overlay"></div>';
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
       <div id="headline" ${options.headlineAttrs ?? ""}>Headline copy</div>
-      <div id="overlay"></div>
+      ${overlay}
     </div>
   `;
   installOcclusionGeometry({
     styleOverrides: { overlay: options.overlayStyle },
     headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
     topmostId: options.topmostId,
+    topmostWhenHeadlineHitTestableId: options.topmostWhenHeadlineHitTestableId,
   });
   installAuditScript();
   return runAudit();
@@ -979,6 +997,7 @@ function installOcclusionGeometry(options: {
   styleOverrides: Record<string, Partial<Record<string, string>>>;
   headlineTextRect: DOMRect;
   topmostId: string;
+  topmostWhenHeadlineHitTestableId?: string;
 }): void {
   const baseStyle: Record<string, string> = {
     display: "block",
@@ -1008,6 +1027,7 @@ function installOcclusionGeometry(options: {
     const id = (element as Element).id;
     return {
       ...baseStyle,
+      pointerEvents: (element as HTMLElement).style.pointerEvents || "auto",
       ...(options.styleOverrides[id] ?? {}),
     } as unknown as CSSStyleDeclaration;
   });
@@ -1033,8 +1053,13 @@ function installOcclusionGeometry(options: {
     } as unknown as Range;
   });
 
-  (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
-    document.getElementById(options.topmostId);
+  (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+    const headline = document.getElementById("headline");
+    if (headline?.style.pointerEvents === "auto" && options.topmostWhenHeadlineHitTestableId) {
+      return document.getElementById(options.topmostWhenHeadlineHitTestableId);
+    }
+    return document.getElementById(options.topmostId);
+  };
 }
 
 function installAuditScript(): void {

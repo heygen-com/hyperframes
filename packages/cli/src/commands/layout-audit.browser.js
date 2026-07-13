@@ -717,13 +717,36 @@
     return !!ctx && ctx === preserve3dContext(b);
   }
 
+  // elementFromPoint intentionally skips pointer-events:none content, even
+  // though that content still paints. Caption rails commonly disable pointer
+  // events while sitting above a background video, so probe the text with hit
+  // testing temporarily enabled and restore its authored inline style.
+  function paintedElementFromPoint(element, x, y) {
+    if (getComputedStyle(element).pointerEvents !== "none") {
+      return document.elementFromPoint(x, y);
+    }
+    const property = "pointer-events";
+    const previousValue = element.style.getPropertyValue(property);
+    const previousPriority = element.style.getPropertyPriority(property);
+    element.style.setProperty(property, "auto", "important");
+    try {
+      return document.elementFromPoint(x, y);
+    } finally {
+      if (previousValue) {
+        element.style.setProperty(property, previousValue, previousPriority);
+      } else {
+        element.style.removeProperty(property);
+      }
+    }
+  }
+
   // The opaque element painted over (x, y), or null when the topmost element
   // there is related to the text, non-opaque, sharing a 3D context with it, or
   // part of a transient crossfade overlap.
   // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
     if (typeof document.elementFromPoint !== "function") return null;
-    const hit = document.elementFromPoint(x, y);
+    const hit = paintedElementFromPoint(element, x, y);
     if (!isForeignElement(element, hit)) return null;
     if (sharedPreserve3d(element, hit)) return null;
     if (!isOpaqueOccluder(hit)) return null;
