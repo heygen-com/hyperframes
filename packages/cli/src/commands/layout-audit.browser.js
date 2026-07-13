@@ -659,9 +659,36 @@
   }
 
   function hasOpaqueBackground(style) {
-    if (style.backgroundImage && style.backgroundImage !== "none") return true;
+    if (style.backgroundImage && style.backgroundImage !== "none") {
+      if (style.backgroundImage.includes("url(")) return true;
+      // A gradient only occludes as much as its colours — a 4%-alpha grid/scrim must not count.
+      if (gradientMaxAlpha(style.backgroundImage) > 0.6) return true;
+    }
     if (isTransparentColor(style.backgroundColor)) return false;
     return colorAlpha(style.backgroundColor) > 0.6;
+  }
+
+  function gradientMaxAlpha(backgroundImage) {
+    const colors = backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b/g);
+    if (!colors) return 1; // named colours we cannot parse — keep the old (opaque) behaviour
+    let max = 0;
+    for (const color of colors) {
+      if (color === "transparent") continue;
+      if (color.startsWith("#")) {
+        const hex = color.slice(1);
+        max = Math.max(
+          max,
+          hex.length === 4
+            ? parseInt(hex[3] + hex[3], 16) / 255
+            : hex.length === 8
+              ? parseInt(hex.slice(6), 16) / 255
+              : 1,
+        );
+      } else {
+        max = Math.max(max, colorAlpha(color));
+      }
+    }
+    return max;
   }
 
   const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
@@ -754,18 +781,45 @@
   // reads very differently from a label buried under an overlay. Still
   // returns the first opaque element found, for `containerSelector`.
   function occlusionCoverage(element, textRect) {
-    let occluder = null;
-    let hits = 0;
-    for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
-      const y = textRect.top + textRect.height * yFraction;
-      for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
-        const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
-        if (!hit) continue;
-        hits += 1;
-        if (!occluder) occluder = hit;
+    // pointer-events:none text is invisible to elementFromPoint — restore hit-testing for the probe.
+    const restore = restoreHitTesting(element);
+    try {
+      let occluder = null;
+      let hits = 0;
+      for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
+        const y = textRect.top + textRect.height * yFraction;
+        for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
+          const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+          if (!hit) continue;
+          hits += 1;
+          if (!occluder) occluder = hit;
+        }
       }
+      return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
+    } finally {
+      restore();
     }
-    return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
+  }
+
+  function restoreHitTesting(element) {
+    if (getComputedStyle(element).pointerEvents !== "none") return () => {};
+    const previous = element.style.getPropertyValue("pointer-events");
+    const priority = element.style.getPropertyPriority("pointer-events");
+    element.style.setProperty("pointer-events", "auto", "important");
+    return () => {
+      if (previous) element.style.setProperty("pointer-events", previous, priority);
+      else element.style.removeProperty("pointer-events");
+    };
+  }
+
+  // No text ink is on screen while every text-bearing node sits at opacity 0 (entrance not started).
+  function hasVisibleTextInk(element) {
+    const nodes = [element, ...element.querySelectorAll("*")];
+    for (const node of nodes) {
+      if (directTextNodes(node).length === 0) continue;
+      if (opacityChain(node) >= 0.2) return true;
+    }
+    return false;
   }
 
   // Catches the blind spot the overflow checks miss: text that fits its box
@@ -775,6 +829,7 @@
   // cover on a paragraph is usually a styling artifact, not a reading defect.
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
+    if (!hasVisibleTextInk(element)) return null;
     const textRect = textRectFor(element);
     if (!textRect) return null;
     const text = textContentFor(element);
