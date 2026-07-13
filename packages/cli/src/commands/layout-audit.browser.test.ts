@@ -494,10 +494,10 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     clearGeometryCollector();
   });
 
-  it("flags a positioned element rendering mostly outside its positioning ancestor", () => {
+  it("flags a positioned element rendering far outside its offset parent", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-        <div id="diagram"><div id="node"></div><div id="badge"></div></div>
+        <div id="diagram"><div id="node"></div><div id="badge"></div><div id="callout"></div></div>
       </div>
     `;
     installGeometry(
@@ -506,16 +506,19 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         diagram: rect({ left: 610, top: 130, width: 700, height: 700 }),
         node: rect({ left: 1490, top: 170, width: 160, height: 160 }),
         badge: rect({ left: 580, top: 160, width: 120, height: 120 }),
+        callout: rect({ left: 700, top: 60, width: 160, height: 56 }),
       },
       {
-        diagram: { position: "relative" },
         node: { position: "absolute" },
         badge: { position: "absolute" },
+        callout: { position: "absolute" },
       },
     );
-
+    installOffsetParents({ node: "diagram", badge: "diagram", callout: "diagram" });
     installAuditScript();
-    const issues = runAudit().filter((issue) => issue.code === "positioned_out_of_parent");
+
+    const issues = runAudit().filter((issue) => issue.code === "escaped_container");
+    // The node is 180px away in a foreign frame; the badge overlaps its parent; the callout hangs 14px above it.
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
       severity: "warning",
@@ -524,32 +527,67 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     });
   });
 
-  it("flags a painted panel crossing the canvas and skips unpainted decoration", () => {
+  it("respects the allow-overflow opt-out and skips fixed elements", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-        <div id="panel"></div>
-        <div id="glow"></div>
+        <div id="diagram">
+          <div id="node" data-layout-allow-overflow></div>
+          <div id="hud"></div>
+        </div>
       </div>
     `;
     installGeometry(
       {
         root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
-        panel: rect({ left: 1700, top: 600, width: 300, height: 300 }),
-        glow: rect({ left: 1800, top: 0, width: 400, height: 400 }),
+        diagram: rect({ left: 610, top: 130, width: 700, height: 700 }),
+        node: rect({ left: 1490, top: 170, width: 160, height: 160 }),
+        hud: rect({ left: 24, top: 900, width: 200, height: 100 }),
       },
       {
-        panel: { backgroundColor: "rgb(20, 20, 30)", paddingTop: "16px" },
+        node: { position: "absolute" },
+        hud: { position: "fixed" },
       },
     );
-
+    installOffsetParents({ node: "diagram", hud: "diagram" });
     installAuditScript();
-    const issues = runAudit().filter((issue) => issue.code === "box_out_of_canvas");
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({
+
+    expect(runAudit().filter((issue) => issue.code === "escaped_container")).toEqual([]);
+  });
+
+  it("flags painted panels crossing the canvas, hero-sized as warning and bleeds as info", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero"></div>
+        <div id="bleed"></div>
+        <div id="glow"></div>
+        <div id="parked"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        bleed: rect({ left: -150, top: -150, width: 300, height: 300 }),
+        glow: rect({ left: 1800, top: 0, width: 400, height: 400 }),
+        parked: rect({ left: 2200, top: 300, width: 600, height: 400 }),
+      },
+      {
+        // Paint alone qualifies — a flat solid panel with no padding/border is still content.
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+        bleed: { backgroundColor: "rgb(200, 180, 120)" },
+        parked: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
+    // The unpainted glow and the fully off-canvas parked entrance stay silent.
+    expect(issues).toHaveLength(2);
+    expect(issues.find((issue) => issue.selector === "#hero")).toMatchObject({
       severity: "warning",
-      selector: "#panel",
-      overflow: { right: 80 },
+      overflow: { right: 280 },
     });
+    expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
   });
 
   it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
@@ -558,6 +596,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         <div id="n1"></div>
         <div id="n2"></div>
         <svg id="connector-svg">
+          <defs><marker id="arrow"><path id="tip" d="M 0 0 L 8 4 L 0 8" /></marker></defs>
           <path id="detached" class="connector-line" d="M 980 580 L 380 280" />
           <path id="anchored" class="connector-line" d="M 900 353 L 300 53" />
         </svg>
@@ -575,9 +614,14 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         n2: { backgroundColor: "rgb(30, 40, 50)" },
       },
     );
-
+    // Screen CTM translates svg user space by the svg's offset (80, 227): the detached path's
+    // start (980, 580) renders at (1060, 807) — 147px below #n1's box — while the anchored
+    // path's start (900, 353) renders at (980, 580), inside #n1.
+    installConnectorGeometry({ e: 80, f: 227 });
     installAuditScript();
+
     const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    // The marker tip path is skipped outright; only the detached line reports.
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ severity: "warning", selector: "#detached" });
   });
@@ -587,7 +631,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
         <div id="n1"></div>
         <div id="n2"></div>
-        <svg id="art"><path id="squiggle" d="M 10 10 L 200 200" /></svg>
+        <svg id="knowledge-overflow"><path id="squiggle" d="M 10 10 L 200 200" /></svg>
       </div>
     `;
     installGeometry(
@@ -595,15 +639,17 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
         n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
         n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
-        art: rect({ left: 1400, top: 100, width: 400, height: 400 }),
+        "knowledge-overflow": rect({ left: 1400, top: 100, width: 400, height: 400 }),
       },
       {
         n1: { backgroundColor: "rgb(30, 40, 50)" },
         n2: { backgroundColor: "rgb(30, 40, 50)" },
       },
     );
-
+    installConnectorGeometry({ e: 0, f: 0 });
     installAuditScript();
+
+    // "knowledge-overflow" contains conn-family substrings only across word boundaries — no match.
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 });
@@ -1157,6 +1203,45 @@ function installOcclusionGeometry(options: {
 
   (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
     document.getElementById(options.topmostId);
+}
+
+function installOffsetParents(map: Record<string, string>): void {
+  for (const [childId, parentId] of Object.entries(map)) {
+    const child = document.getElementById(childId);
+    const parent = document.getElementById(parentId);
+    if (child && parent) Object.defineProperty(child, "offsetParent", { value: parent });
+  }
+}
+
+interface CtmTranslate {
+  e: number;
+  f: number;
+}
+
+// happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
+function installConnectorGeometry(translate: CtmTranslate): void {
+  const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
+  for (const svg of Array.from(document.querySelectorAll("svg"))) {
+    Object.defineProperty(svg, "createSVGPoint", {
+      value: () => ({
+        x: 0,
+        y: 0,
+        matrixTransform(m: typeof matrix) {
+          return { x: this.x * m.a + this.y * m.c + m.e, y: this.x * m.b + this.y * m.d + m.f };
+        },
+      }),
+    });
+    for (const path of Array.from(svg.querySelectorAll("path"))) {
+      const numbers = (path.getAttribute("d")?.match(/-?\d*\.?\d+/g) || []).map(Number);
+      const start = { x: numbers[0] ?? 0, y: numbers[1] ?? 0 };
+      const end = { x: numbers[numbers.length - 2] ?? 0, y: numbers[numbers.length - 1] ?? 0 };
+      Object.defineProperty(path, "getTotalLength", { value: () => 100 });
+      Object.defineProperty(path, "getPointAtLength", {
+        value: (length: number) => (length === 0 ? start : end),
+      });
+      Object.defineProperty(path, "getScreenCTM", { value: () => matrix });
+    }
+  }
 }
 
 function installAuditScript(): void {

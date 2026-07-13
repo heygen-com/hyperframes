@@ -841,88 +841,112 @@
     };
   }
 
-  function positioningAncestor(element, root) {
-    for (let current = element.parentElement; current; current = current.parentElement) {
-      if (current === root || current === document.body) return null;
-      if (getComputedStyle(current).position !== "static") return current;
-    }
-    return null;
+  // Attachment allowance: callouts/tooltips legitimately hang near (not inside) their anchor.
+  const ESCAPE_INTERSECTION_FRACTION = 0.3;
+  const ESCAPE_MIN_CHILD_AREA = 2500;
+
+  function edgeGap(child, parent) {
+    const dx = Math.max(parent.left - child.right, 0, child.left - parent.right);
+    const dy = Math.max(parent.top - child.bottom, 0, child.top - parent.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
-  // A positioned child rendering mostly outside its positioning ancestor is a coordinate-frame mistake, not a layout choice.
-  function positionedOutOfParentIssues(root, time) {
+  // An absolute element rendering far outside its offset parent was positioned in the wrong frame.
+  function escapedContainerIssues(root, time) {
     const issues = [];
+    const flagged = new Set();
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
-      const position = getComputedStyle(element).position;
-      if (position !== "absolute" && position !== "fixed") continue;
-      const parent = positioningAncestor(element, root);
-      if (!parent || !isVisibleElement(parent)) continue;
+      if (getComputedStyle(element).position !== "absolute") continue;
+      const parent = element.offsetParent;
+      if (!parent || parent === document.body || parent === root || !isVisibleElement(parent)) {
+        continue;
+      }
       const childRect = toRect(element.getBoundingClientRect());
-      if (rectArea(childRect) < 2500) continue;
+      if (rectArea(childRect) < ESCAPE_MIN_CHILD_AREA) continue;
       const parentRect = toRect(parent.getBoundingClientRect());
-      if (intersectionArea(childRect, parentRect) >= rectArea(childRect) * 0.3) continue;
+      const visible = intersectionArea(childRect, parentRect);
+      if (visible >= rectArea(childRect) * ESCAPE_INTERSECTION_FRACTION) continue;
+      // Fully detached but hugging the parent = a callout/tooltip; touching yet mostly outside = drift.
+      const allowance = Math.max(48, Math.min(childRect.width, childRect.height) / 2);
+      if (visible <= 0 && edgeGap(childRect, parentRect) <= allowance) continue;
+      flagged.add(element);
       issues.push({
-        code: "positioned_out_of_parent",
+        code: "escaped_container",
         severity: "warning",
         time,
         selector: selectorFor(element),
         containerSelector: selectorFor(parent),
         text: textContentFor(element),
         message:
-          "Positioned element renders mostly outside its positioning ancestor — its coordinates were likely computed in a different frame (canvas/viewport pixels).",
+          "Positioned element renders far outside its offset parent — its coordinates were likely computed in a different frame (canvas/viewport pixels).",
         rect: childRect,
         containerRect: parentRect,
         fixHint:
-          "Compute left/top in the positioning ancestor's frame (subtract its rect), or mark intentional placement with data-layout-allow-overflow.",
+          "Compute left/top in the offset parent's frame (subtract its rect), or mark intentional placement with data-layout-allow-overflow.",
       });
     }
-    return issues;
+    return { issues, flagged };
   }
 
-  function isContentBox(element) {
-    if (FRAME_MEDIA_TAGS.has(element.tagName)) return false;
+  function isPaintedPanel(element) {
+    if (FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) return false;
     const style = getComputedStyle(element);
-    return hasPaint(style) && hasMeaningfulBoxStyle(style);
+    // pointer-events:none is the decorative-layer convention (spotlights, grain, vignettes).
+    if (style.pointerEvents === "none") return false;
+    return hasPaint(style);
   }
 
-  // Painted boxes breaching the canvas: text is canvas_overflow's, media is frame_out_of_frame's, panels were nobody's.
-  function boxCanvasOverflowIssues(root, rootRect, time) {
+  // Canvas-breach floor: entrance nudges stay quiet; matches the connector threshold scale.
+  const PANEL_BREACH_FLOOR_PX = 24;
+  const PANEL_BREACH_FLOOR_FRACTION = 0.025;
+  // A hero-sized panel stuck on the edge is drift; a small painted bleed is usually decoration.
+  const PANEL_HERO_AREA_FRACTION = 0.1;
+
+  // Painted panels breaching the canvas: text is canvas_overflow's, media is frame_out_of_frame's, panels were nobody's.
+  function panelOutOfCanvasIssues(root, rootRect, time, escapedElements) {
     const issues = [];
-    const floor = Math.max(24, Math.min(rootRect.width, rootRect.height) * 0.025);
+    const floor = Math.max(
+      PANEL_BREACH_FLOOR_PX,
+      Math.min(rootRect.width, rootRect.height) * PANEL_BREACH_FLOOR_FRACTION,
+    );
     const rootArea = rectArea(rootRect);
     const flagged = new Set();
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
+      if (escapedElements.has(element)) continue;
       if (hasOwnTextCandidate(element)) continue;
       const rect = toRect(element.getBoundingClientRect());
       if (rectArea(rect) >= rootArea * 0.95) continue;
+      // Fully off-canvas paints nothing — that is a parked entrance, not drift.
+      if (intersectionArea(rect, rootRect) <= 0) continue;
       const overflow = overflowFor(rect, rootRect, floor);
-      if (!overflow || !isContentBox(element)) continue;
+      if (!overflow || !isPaintedPanel(element)) continue;
       if (element.parentElement && flagged.has(element.parentElement)) {
         flagged.add(element);
         continue;
       }
       flagged.add(element);
       issues.push({
-        code: "box_out_of_canvas",
-        severity: "warning",
+        code: "panel_out_of_canvas",
+        severity: rectArea(rect) >= rootArea * PANEL_HERO_AREA_FRACTION ? "warning" : "info",
         time,
         selector: selectorFor(element),
         containerSelector: selectorFor(root),
         text: textContentFor(element).slice(0, 48),
-        message: "Element box extends outside the composition canvas.",
+        message: "Painted panel extends outside the composition canvas.",
         rect,
         containerRect: rootRect,
         overflow,
         fixHint:
-          "Move the element inward, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+          "Move the panel inward, or mark intentional off-canvas animation with data-layout-allow-overflow.",
       });
     }
     return issues;
   }
 
-  const CONNECTOR_NAME = /conn|arrow|edge|link|flow|wire/i;
+  const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
+  const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
 
   function connectorNameFor(element) {
     const className =
@@ -930,31 +954,35 @@
     return `${element.id || ""} ${className}`;
   }
 
-  // Endpoints from an absolute-command path `d`; relative/H/V/closed paths bail to null.
-  function pathEndpointsFor(d) {
-    if (!d || /[a-z]/.test(d.replace(/e[+-]?\d+/gi, "")) || /[HVZ]/.test(d)) return null;
-    const numbers = (d.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi) || []).map(Number);
-    if (numbers.length < 4 || numbers.some((value) => !Number.isFinite(value))) return null;
-    return {
-      start: { x: numbers[0], y: numbers[1] },
-      end: { x: numbers[numbers.length - 2], y: numbers[numbers.length - 1] },
+  // Screen-space endpoints via the browser: getScreenCTM covers viewBox, preserveAspectRatio and group transforms.
+  function pathScreenEndpoints(svg, path) {
+    if (
+      typeof path.getTotalLength !== "function" ||
+      typeof path.getPointAtLength !== "function" ||
+      typeof path.getScreenCTM !== "function" ||
+      typeof svg.createSVGPoint !== "function"
+    ) {
+      return null;
+    }
+    let total;
+    try {
+      total = path.getTotalLength();
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(total) || total <= 0) return null;
+    const matrix = path.getScreenCTM();
+    if (!matrix) return null;
+    const toScreen = (local) => {
+      const point = svg.createSVGPoint();
+      point.x = local.x;
+      point.y = local.y;
+      const mapped = point.matrixTransform(matrix);
+      return { x: mapped.x, y: mapped.y };
     };
-  }
-
-  function svgUserToScreen(svg, svgRect, point) {
-    const viewBox = (svg.getAttribute("viewBox") || "")
-      .trim()
-      .split(/[\s,]+/)
-      .map(Number);
-    const hasViewBox =
-      viewBox.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0;
-    const scaleX = hasViewBox ? svgRect.width / viewBox[2] : 1;
-    const scaleY = hasViewBox ? svgRect.height / viewBox[3] : 1;
-    const minX = hasViewBox ? viewBox[0] : 0;
-    const minY = hasViewBox ? viewBox[1] : 0;
     return {
-      x: svgRect.left + (point.x - minX) * scaleX,
-      y: svgRect.top + (point.y - minY) * scaleY,
+      start: toScreen(path.getPointAtLength(0)),
+      end: toScreen(path.getPointAtLength(total)),
     };
   }
 
@@ -966,23 +994,22 @@
 
   // Solid, compact elements a connector could plausibly anchor to.
   function connectorAnchorRects(root, rootRect) {
-    const rects = [];
+    const compact = [];
+    const painted = [];
     const rootArea = rectArea(rootRect);
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (element.closest("svg") || !isVisibleElement(element)) continue;
+      const opaque =
+        RASTER_TAGS.has(element.tagName) || hasOpaqueBackground(getComputedStyle(element));
+      if (!opaque && !textContentFor(element)) continue;
       const rect = toRect(element.getBoundingClientRect());
       const area = rectArea(rect);
-      if (area < 400 || area > rootArea * 0.15) continue;
-      if (
-        !RASTER_TAGS.has(element.tagName) &&
-        !textContentFor(element) &&
-        !hasOpaqueBackground(getComputedStyle(element))
-      ) {
-        continue;
-      }
-      rects.push(rect);
+      if (area < 400) continue;
+      // Containment tier: large opaque targets only — a text-bearing wrapper contains its own diagram's endpoints.
+      if (opaque && area <= rootArea * 0.6) painted.push({ rect, element });
+      if (area <= rootArea * 0.15) compact.push(rect);
     }
-    return rects;
+    return { compact, painted };
   }
 
   function isConnectorPath(svg, path) {
@@ -992,41 +1019,46 @@
     );
   }
 
-  // A connector line whose BOTH endpoints land far from every anchorable element is drawn in the wrong frame.
+  // A connector whose BOTH endpoints land far from every anchorable element was drawn in the wrong frame.
+  // min over the two endpoints is intentional: a half-attached connector is a design choice, not frame drift.
   function connectorDetachmentIssues(root, rootRect, time) {
     const issues = [];
     let anchors = null;
     const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
     for (const svg of Array.from(root.querySelectorAll("svg"))) {
       if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
-      const svgRect = toRect(svg.getBoundingClientRect());
       for (const path of Array.from(svg.querySelectorAll("path"))) {
+        if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
         if (!isConnectorPath(svg, path)) continue;
-        const endpoints = pathEndpointsFor(path.getAttribute("d"));
+        const endpoints = pathScreenEndpoints(svg, path);
         if (!endpoints) continue;
         if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
-        if (anchors.length < 2) return issues;
-        const start = svgUserToScreen(svg, svgRect, endpoints.start);
-        const end = svgUserToScreen(svg, svgRect, endpoints.end);
-        const gap = Math.min(
-          Math.min(...anchors.map((rect) => distanceToRect(start, rect))),
-          Math.min(...anchors.map((rect) => distanceToRect(end, rect))),
+        if (anchors.compact.length < 2) return issues;
+        const attached = (point) =>
+          anchors.painted.some(
+            (anchor) => !anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0,
+          ) || anchors.compact.some((rect) => distanceToRect(point, rect) <= threshold);
+        if (attached(endpoints.start) || attached(endpoints.end)) continue;
+        const gap = Math.round(
+          Math.min(
+            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.start, rect))),
+            Math.min(...anchors.compact.map((rect) => distanceToRect(endpoints.end, rect))),
+          ),
         );
-        if (gap <= threshold) continue;
         issues.push({
           code: "connector_detached",
           severity: "warning",
           time,
           selector: selectorFor(path),
           containerSelector: selectorFor(svg),
-          message: `Connector path endpoints are ${Math.round(gap)}px from the nearest anchorable element — measured coordinates were likely drawn into an SVG with a different origin.`,
+          message: `Connector path endpoints are ${gap}px from the nearest anchorable element — measured coordinates were likely drawn into an SVG with a different origin.`,
           rect: toRect({
-            left: Math.min(start.x, end.x),
-            top: Math.min(start.y, end.y),
-            right: Math.max(start.x, end.x),
-            bottom: Math.max(start.y, end.y),
-            width: Math.abs(end.x - start.x),
-            height: Math.abs(end.y - start.y),
+            left: Math.min(endpoints.start.x, endpoints.end.x),
+            top: Math.min(endpoints.start.y, endpoints.end.y),
+            right: Math.max(endpoints.start.x, endpoints.end.x),
+            bottom: Math.max(endpoints.start.y, endpoints.end.y),
+            width: Math.abs(endpoints.end.x - endpoints.start.x),
+            height: Math.abs(endpoints.end.y - endpoints.start.y),
           }),
           fixHint:
             "Subtract the SVG's own rect when converting measured coordinates, and keep the SVG a direct child of the stage.",
@@ -1127,8 +1159,9 @@
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));
-    issues.push(...positionedOutOfParentIssues(root, time));
-    issues.push(...boxCanvasOverflowIssues(root, rootRect, time));
+    const escaped = escapedContainerIssues(root, time);
+    issues.push(...escaped.issues);
+    issues.push(...panelOutOfCanvasIssues(root, rootRect, time, escaped.flagged));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     return issues;
   };
