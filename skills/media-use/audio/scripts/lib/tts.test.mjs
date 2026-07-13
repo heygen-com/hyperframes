@@ -9,7 +9,30 @@ import {
   synthesizeOne,
   synthesizeHeygen,
   synthResult,
+  buildKokoroTtsArgs,
 } from "./tts.mjs";
+
+test("forwards a non-default speed to the Kokoro CLI", () => {
+  const args = buildKokoroTtsArgs({
+    textPath: "/tmp/narration.txt",
+    voiceId: "am_michael",
+    wavRel: "audio/narration.wav",
+    lang: "en",
+    speed: 1.15,
+  });
+
+  assert.deepEqual(args, [
+    "hyperframes",
+    "tts",
+    "/tmp/narration.txt",
+    "--voice",
+    "am_michael",
+    "--output",
+    "audio/narration.wav",
+    "--speed",
+    "1.15",
+  ]);
+});
 
 test("parseFfmpegDurationBanner reads ffmpeg's stderr Duration line", () => {
   const stderr = [
