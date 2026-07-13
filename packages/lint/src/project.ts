@@ -185,6 +185,9 @@ export async function lintProject(
   entryFile?: string,
 ): Promise<ProjectLintResult> {
   const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
+  if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
+    throw new Error(`Explicit lint entry is outside the project directory: ${entryFile}`);
+  }
   const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
   const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
   const results: Array<{ file: string; result: HyperframeLintResult }> = [];
