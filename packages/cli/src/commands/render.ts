@@ -8,6 +8,7 @@ import {
 } from "../utils/variables.js";
 import {
   parseGifLoopArg,
+  hasExplicitCompositionArg,
   resolveBrowserTimeoutMsArg,
   resolveCompositionEntryArg,
   resolveDefaultFpsArg,
@@ -388,12 +389,7 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
-    const compositionArg = args.composition?.trim();
-    const hasExplicitComposition =
-      compositionArg != null &&
-      compositionArg !== "" &&
-      compositionArg !== "." &&
-      compositionArg !== "./";
+    const hasExplicitComposition = hasExplicitCompositionArg(args.composition);
     const project = resolveProject(args.dir, { requireIndex: !hasExplicitComposition });
 
     // ── Resolve composition entry file ─────────────────────────────────────

@@ -1,5 +1,8 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -1062,6 +1065,42 @@ describe("render fps arg definition", () => {
     const fpsArg = args.fps;
     expect(fpsArg).toBeDefined();
     expect(fpsArg?.default).toBeUndefined();
+  });
+});
+
+describe("render command explicit composition", () => {
+  it("renders an explicit composition from a project with no index.html", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-explicit-"));
+    const outputPath = join(projectDir, "out.mp4");
+    writeFileSync(
+      join(projectDir, "standalone.html"),
+      `<html><body>
+        <div data-composition-id="standalone" data-width="1920" data-height="1080" data-duration="1"></div>
+        <script>window.__timelines = { standalone: gsap.timeline({ paused: true }) };</script>
+      </body></html>`,
+    );
+    vi.useFakeTimers();
+
+    try {
+      const command = (await import("./render.js")).default;
+      await command.run?.({
+        args: {
+          dir: projectDir,
+          composition: "standalone.html",
+          output: outputPath,
+          quiet: true,
+          quality: "standard",
+          format: "mp4",
+        },
+      } as never);
+
+      expect(producerState.createdJobs.at(-1)).toMatchObject({
+        entryFile: "standalone.html",
+      });
+    } finally {
+      vi.clearAllTimers();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });
 
