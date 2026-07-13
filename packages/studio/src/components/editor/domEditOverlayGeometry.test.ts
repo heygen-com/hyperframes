@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   orientedOverlayRect,
+  orientedGroupAwareOverlayRect,
   overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
@@ -152,6 +153,13 @@ describe("orientedOverlayRect — rotation gate (perf fix, V15 18a/18b)", () => 
     el.style.transform = ROTATE_30DEG_MATRIX;
     const rect = orientedOverlayRect(overlayEl, iframe, el);
     expect(rect).not.toBeNull();
+    expect(rect!.angle).toBeCloseTo(30, 3);
+  });
+
+  it("preserves an ordinary element's rotation through the group-aware entry point", () => {
+    const { overlayEl, iframe, el } = buildHarness();
+    el.style.transform = ROTATE_30DEG_MATRIX;
+    const rect = orientedGroupAwareOverlayRect(overlayEl, iframe, el);
     expect(rect!.angle).toBeCloseTo(30, 3);
   });
 

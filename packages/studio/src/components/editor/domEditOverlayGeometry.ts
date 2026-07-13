@@ -477,6 +477,17 @@ export function groupAwareOverlayRect(
   return { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY };
 }
 
+/** Groups stay axis-aligned unions; ordinary elements keep their oriented box. */
+export function orientedGroupAwareOverlayRect(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  el: HTMLElement,
+): OverlayRect | null {
+  return el.hasAttribute("data-hf-group")
+    ? groupAwareOverlayRect(overlayEl, iframe, el)
+    : orientedOverlayRect(overlayEl, iframe, el);
+}
+
 export function filterNestedDomEditGroupItems<T extends { element: HTMLElement }>(items: T[]): T[] {
   return items.filter(
     (item) => !items.some((other) => other !== item && other.element.contains(item.element)),

@@ -223,10 +223,9 @@ export function DomEditCropHandles({
     setDragging(false);
     if (!gesture.didMove) return;
     // Commit to the file. The commit path re-applies the value to the live
-    // element, so re-lift afterwards to keep showing the full content + dim while
-    // the element stays selected. Re-lift on both fulfilment and rejection so a
-    // failed commit still restores the crop-mode presentation (and the rejection
-    // is handled rather than left unhandled).
+    // element synchronously, so re-lift in the same turn to keep showing the full
+    // content + dim while selected. Re-lift again on rejection so a failed commit
+    // still restores crop-mode presentation without an unhandled rejection.
     const el = selection.element;
     const reLift = () => {
       if (liftedRef.current) el.style.setProperty("clip-path", "none");
@@ -237,12 +236,16 @@ export function DomEditCropHandles({
       state.insets.right > 0 ||
       state.insets.bottom > 0 ||
       state.insets.left > 0;
-    void Promise.resolve(onStyleCommit?.("clip-path", committedValue)).then(() => {
+    const commit = onStyleCommit?.("clip-path", committedValue);
+    // handleDomStyleCommit applies the persisted value to the live element
+    // synchronously before its first await. Restore the crop-mode lift in this
+    // same turn so the browser never paints that intermediate cropped state.
+    reLift();
+    void Promise.resolve(commit).then(() => {
       // Only a landed commit makes the rebuilt inset the restore value; a
       // failed one keeps restoring the pre-lift clip. Store the value itself —
       // by deselect time, render state describes the next selection.
       committedClipRef.current = cropped ? committedValue : "";
-      reLift();
     }, reLift);
   };
 

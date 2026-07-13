@@ -13,7 +13,7 @@ import {
   groupOverlayItemsEqual,
   isElementVisibleForOverlay,
   groupAwareOverlayRect,
-  orientedOverlayRect,
+  orientedGroupAwareOverlayRect,
   rectsEqual,
   resolveElementForOverlay,
   selectionCacheKey,
@@ -164,9 +164,7 @@ export function useDomEditOverlayRects({
           // (a cheap per-call check) and only pays for the full corner-transform
           // measurement when the element is actually rotated — this RAF loop runs
           // every frame for any single selection, so that gate matters here most.
-          const nextRect = el.hasAttribute("data-hf-group")
-            ? groupAwareOverlayRect(overlayEl, iframe, el)
-            : orientedOverlayRect(overlayEl, iframe, el);
+          const nextRect = orientedGroupAwareOverlayRect(overlayEl, iframe, el);
           setOverlayRect(nextRect);
           const descendants = el.querySelectorAll("*");
           if (descendants.length > 0 && descendants.length <= 60) {
@@ -251,7 +249,7 @@ export function useDomEditOverlayRects({
         return;
       }
 
-      setHoverRect(groupAwareOverlayRect(overlayEl, iframe, hoverEl));
+      setHoverRect(orientedGroupAwareOverlayRect(overlayEl, iframe, hoverEl));
     };
 
     frame = requestAnimationFrame(update);

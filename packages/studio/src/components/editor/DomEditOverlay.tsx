@@ -487,7 +487,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           aria-hidden="true"
           data-dom-edit-hover-box="true"
           className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-          style={hugRectForElement(hoverRect, hoverSelection.element)}
+          style={{
+            ...hugRectForElement(hoverRect, hoverSelection.element),
+            transform: hoverRect.angle ? `rotate(${hoverRect.angle}deg)` : undefined,
+          }}
         />
       )}
       {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && compRect.width > 0 && (

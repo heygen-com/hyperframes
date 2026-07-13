@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { DomEditCropHandles } from "./DomEditCropHandles";
@@ -33,7 +33,10 @@ function makeEl(id: string, clip: string): HTMLElement {
   return el;
 }
 
-function render(el: HTMLElement): { root: Root; rerender: (next: HTMLElement) => void } {
+function render(
+  el: HTMLElement,
+  onStyleCommit: (property: string, value: string) => Promise<void> | void = () => undefined,
+): { root: Root; rerender: (next: HTMLElement) => void } {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -43,7 +46,7 @@ function render(el: HTMLElement): { root: Root; rerender: (next: HTMLElement) =>
         <DomEditCropHandles
           selection={selectionFor(target)}
           overlayRect={overlayRect}
-          onStyleCommit={() => undefined}
+          onStyleCommit={onStyleCommit}
         />,
       );
     });
@@ -82,5 +85,73 @@ describe("DomEditCropHandles clip lift/restore", () => {
     expect(a.style.getPropertyValue("clip-path")).toBe("circle(50% at 50% 50%)");
     act(() => root.unmount());
     expect(a.style.getPropertyValue("clip-path")).toBe("circle(50% at 50% 50%)");
+  });
+
+  it("re-lifts synchronously after the commit path re-applies the cropped value", async () => {
+    const a = makeEl("a", "inset(10px)");
+    let resolveCommit: (() => void) | undefined;
+    const pendingCommit = new Promise<void>((resolve) => {
+      resolveCommit = resolve;
+    });
+    const onStyleCommit = vi.fn((property: string, value: string) => {
+      a.style.setProperty(property, value);
+      return pendingCommit;
+    });
+    const { root } = render(a, onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]');
+    expect(handle).toBeTruthy();
+
+    act(() =>
+      handle!.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 100 }),
+      ),
+    );
+    act(() =>
+      handle!.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 80 }),
+      ),
+    );
+    act(() =>
+      handle!.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 80 }),
+      ),
+    );
+
+    expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
+    expect(a.style.getPropertyValue("clip-path")).toBe("none");
+    resolveCommit?.();
+    await act(async () => pendingCommit);
+    act(() => root.unmount());
+    expect(a.style.getPropertyValue("clip-path")).toBe("inset(10px 30px 10px 10px)");
+  });
+
+  it("re-lifts when the crop commit rejects", async () => {
+    const a = makeEl("a", "inset(10px)");
+    const onStyleCommit = vi.fn((property: string, value: string) => {
+      a.style.setProperty(property, value);
+      return Promise.reject(new Error("persist failed"));
+    });
+    const { root } = render(a, onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]');
+
+    act(() =>
+      handle!.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientX: 100 }),
+      ),
+    );
+    act(() =>
+      handle!.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, pointerId: 2, clientX: 80 }),
+      ),
+    );
+    await act(async () => {
+      handle!.dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerId: 2, clientX: 80 }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(a.style.getPropertyValue("clip-path")).toBe("none");
+    act(() => root.unmount());
   });
 });
