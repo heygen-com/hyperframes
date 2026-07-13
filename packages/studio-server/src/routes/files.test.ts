@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files";
@@ -36,6 +44,14 @@ function createAdapter(projectDir: string): StudioApiAdapter {
       outputPath: "/tmp/out.mp4",
     }),
   };
+}
+
+function postElementPatchBatch(app: Hono, file: string, patches: unknown[]): Promise<Response> {
+  return app.request(`http://localhost/projects/demo/file-mutations/patch-elements-batch/${file}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ patches }),
+  });
 }
 
 describe("registerFileRoutes", () => {
@@ -116,13 +132,13 @@ describe("registerFileRoutes", () => {
         }),
       },
     );
+    expect(response.status).toBe(200);
     const payload = (await response.json()) as {
       changed?: boolean;
       path?: string;
       backupPath?: string;
     };
 
-    expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     expect(payload.path).toBe("index.html");
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
@@ -130,6 +146,96 @@ describe("registerFileRoutes", () => {
       '<div id="title">Before</div>',
     );
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
+  });
+
+  it("applies an ordered element patch batch with one file write", async () => {
+    const projectDir = createProjectDir();
+    const original =
+      '<div id="back" style="z-index: 1">Back</div><div id="front" style="z-index: 2">Front</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "back" },
+        operations: [{ type: "inline-style", property: "z-index", value: "2" }],
+      },
+      {
+        target: { id: "front" },
+        operations: [{ type: "inline-style", property: "z-index", value: "1" }],
+      },
+    ]);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      matched?: boolean[];
+      content?: string;
+      backupPath?: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.changed).toBe(true);
+    expect(payload.matched).toEqual([true, true]);
+    expect(payload.content).toBe(readFileSync(join(projectDir, "index.html"), "utf-8"));
+    expect(payload.content).toContain('id="back" style="z-index: 2"');
+    expect(payload.content).toContain('id="front" style="z-index: 1"');
+    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(original);
+    expect(readdirSync(join(projectDir, ".hyperframes", "backup"))).toHaveLength(1);
+  });
+
+  it("returns changed false without writing for a no-op element patch batch", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="title" style="z-index: 4">Title</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "title" },
+        operations: [{ type: "inline-style", property: "z-index", value: "4" }],
+      },
+    ]);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      matched?: boolean[];
+      content?: string;
+      backupPath?: string;
+    };
+
+    expect(payload.changed).toBe(false);
+    expect(payload.matched).toEqual([true]);
+    expect(payload.content).toBe(original);
+    expect(payload.backupPath).toBeUndefined();
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
+  });
+
+  it("rejects an unsafe value anywhere in an element patch batch without writing", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="first">First</div><div id="second">Second</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "first" },
+        operations: [{ type: "inline-style", property: "z-index", value: "2" }],
+      },
+      {
+        target: { id: "second", selectorIndex: Number.NaN },
+        operations: [{ type: "inline-style", property: "z-index", value: "1" }],
+      },
+    ]);
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error?: string; fields?: string[] };
+
+    expect(payload.error).toContain("unsafe values");
+    expect(payload.fields).toContain("body.target.selectorIndex");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
   // A realistic sub-composition: markup + GSAP wrapped in a <template>, tweens

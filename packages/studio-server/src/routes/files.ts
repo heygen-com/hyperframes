@@ -161,6 +161,25 @@ type MutationTarget = {
   selectorIndex?: number;
 };
 
+interface ElementPatchRequest {
+  target: MutationTarget;
+  operations: PatchOperation[];
+}
+
+function foldElementPatches(
+  originalContent: string,
+  patches: ElementPatchRequest[],
+): { content: string; matched: boolean[] } {
+  let content = originalContent;
+  const matched: boolean[] = [];
+  for (const patch of patches) {
+    const result = patchElementInHtml(content, patch.target, patch.operations);
+    content = result.html;
+    matched.push(result.matched);
+  }
+  return { content, matched };
+}
+
 /** Write `next` to `absPath` only if it differs from `original`, returning a standardized change response. */
 function writeIfChanged(
   c: RouteContext,
@@ -1926,6 +1945,58 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       changed: true,
       matched,
       content: patched,
+      path: ctx.filePath,
+      backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
+    });
+  });
+
+  api.post("/projects/:id/file-mutations/patch-elements-batch/*", async (c) => {
+    const ctx = await resolveFileMutationContext(c, adapter, "patch-elements-batch");
+    if ("error" in ctx) return ctx.error;
+
+    const body = (await c.req.json().catch(() => null)) as {
+      patches?: ElementPatchRequest[];
+    } | null;
+    if (
+      !body ||
+      !Array.isArray(body.patches) ||
+      body.patches.length === 0 ||
+      body.patches.some(
+        (patch) =>
+          !patch?.target || !Array.isArray(patch.operations) || patch.operations.length === 0,
+      )
+    ) {
+      return c.json({ error: "patches with target and operations required" }, 400);
+    }
+    const unsafeFields = body.patches.flatMap((patch) => findUnsafeDomPatchValues(patch));
+    if (unsafeFields.length > 0) {
+      return rejectUnsafeMutationValues(c, unsafeFields);
+    }
+
+    let originalContent: string;
+    try {
+      originalContent = readFileSync(ctx.absPath, "utf-8");
+    } catch {
+      return c.json({ error: "not found" }, 404);
+    }
+    const result = foldElementPatches(originalContent, body.patches);
+    if (result.content === originalContent) {
+      return c.json({
+        ok: true,
+        changed: false,
+        matched: result.matched,
+        content: originalContent,
+        path: ctx.filePath,
+      });
+    }
+    const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${ctx.filePath}: ${backup.error}`);
+    writeFileSync(ctx.absPath, result.content, "utf-8");
+    return c.json({
+      ok: true,
+      changed: true,
+      matched: result.matched,
+      content: result.content,
       path: ctx.filePath,
       backupPath: backupPathForResponse(ctx.project.dir, backup.backupPath),
     });
