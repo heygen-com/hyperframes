@@ -795,8 +795,9 @@
           : [];
     for (const hit of stack) {
       if (!isForeignElement(element, hit)) return null;
-      if (sharedPreserve3d(element, hit)) return null;
-      if (isCrossSceneTransitionOverlap(element, hit)) return null;
+      // Pair-specific exemptions excuse this hit only; keep walking for deeper occluders.
+      if (sharedPreserve3d(element, hit)) continue;
+      if (isCrossSceneTransitionOverlap(element, hit)) continue;
       if (isOpaqueOccluder(hit)) return hit;
     }
     return null;

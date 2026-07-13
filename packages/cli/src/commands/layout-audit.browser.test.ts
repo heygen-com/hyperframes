@@ -831,6 +831,7 @@ describe("layout-audit.browser occlusion", () => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
     delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+    delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint;
     delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
     clearGeometryCollector();
   });
@@ -940,6 +941,30 @@ describe("layout-audit.browser occlusion", () => {
       topmostId: "overlay",
     });
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("walks past a transparent layer sharing the text's 3D context to a deeper occluder", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="stage">
+          <div id="headline">Headline copy</div>
+          <div id="decor"></div>
+        </div>
+        <div id="panel"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        stage: { transformStyle: "preserve-3d" },
+        panel: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "decor",
+    });
+    (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () =>
+      ["decor", "panel"].map((id) => document.getElementById(id) as Element);
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
   });
 
   it("composites stacked translucent gradient layers (two 0.5-alpha layers occlude)", () => {
