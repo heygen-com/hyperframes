@@ -35,6 +35,7 @@ export {
   localizeRemoteImageSources,
   localizeRemoteFontFaces,
 } from "./services/htmlCompiler.js";
+export { injectDeterministicFontFaces } from "./services/deterministicFonts.js";
 
 // ── Frame capture (lower-level) ─────────────────────────────────────────────
 export {

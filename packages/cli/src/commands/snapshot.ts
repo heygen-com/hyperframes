@@ -180,6 +180,15 @@ export function computeSnapshotTimes(
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
+export async function prepareSnapshotHtml(projectDir: string): Promise<string> {
+  const [{ bundleToSingleHtml }, { injectDeterministicFontFaces }] = await Promise.all([
+    import("@hyperframes/core/compiler"),
+    import("@hyperframes/producer"),
+  ]);
+  const bundledHtml = await bundleToSingleHtml(projectDir);
+  return injectDeterministicFontFaces(bundledHtml);
+}
+
 async function captureSnapshots(
   projectDir: string,
   opts: {
@@ -193,11 +202,9 @@ async function captureSnapshots(
     zoomScale?: number;
   },
 ): Promise<string[]> {
-  const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-
   const numFrames = opts.frames ?? 5;
 
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await prepareSnapshotHtml(projectDir);
   const server = await serveStaticProjectHtml(projectDir, html);
 
   const savedPaths: string[] = [];
