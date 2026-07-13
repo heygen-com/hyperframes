@@ -298,6 +298,7 @@ function collectClipStartBoundariesByComposition(
   const boundaries = new Map<string, Set<number>>();
 
   for (const tag of tags) {
+    if (tag.name === "audio") continue;
     if (!getClipTagClasses(tag)) continue;
     const compositionId = findContainingCompositionId(tag, ranges);
     if (!compositionId) continue;

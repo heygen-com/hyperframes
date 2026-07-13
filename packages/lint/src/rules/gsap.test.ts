@@ -1005,6 +1005,28 @@ describe("GSAP rules", () => {
     expect(finding?.message).toContain("3.00s");
   });
 
+  it("does not treat an audio clip start as a visual scene boundary", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080" data-start="0" data-duration="6">
+    <div id="scene-a" class="clip" data-start="0" data-duration="6" data-track-index="0">
+      <h1 id="headline">Visual beat</h1>
+    </div>
+    <audio class="clip" src="impact.wav" data-start="3" data-duration="0.5"></audio>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#headline", { opacity: 0, duration: 0.3 }, 2.7);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_exit_missing_hard_kill");
+    expect(finding).toBeUndefined();
+  });
+
   it("gsap_exit_missing_hard_kill points at the inner-wrapper pattern when the exiting selector is a clip element", async () => {
     // Regression: a tl.set hard kill on a clip-classed selector is exactly what
     // gsap_animates_clip_element then errors on — the two rules must not give
