@@ -24,11 +24,16 @@ function readPixelRect(element: HTMLElement): PixelRect {
 function transactionOptions(
   options: CommitMutationOptions,
   coalesceKey: string,
+  label: string,
 ): CommitMutationOptions {
+  // The transaction owns the undo label: every wrapped mutation records under
+  // `label`, so the coalesced entry reads as the gesture (e.g. "Resize layer")
+  // rather than whichever sub-mutation happened to land last (the offset
+  // persist's "Move layer").
   const { coalesceKey: _coalesceKey, skipReload: _skipReload, softReload, ...rest } = options;
   return softReload
-    ? { ...rest, softReload: true, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY }
-    : { ...rest, skipReload: true, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY };
+    ? { ...rest, label, softReload: true, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY }
+    : { ...rest, label, skipReload: true, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY };
 }
 
 function pixelDelta(before: PixelRect, after: PixelRect): PixelRect {
@@ -65,7 +70,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   const commit: TxCommit = (commitMutation) => (selection, mutation, options) => {
     mutationCount += 1;
     if (options.softReload) reloadCount += 1;
-    return commitMutation(selection, mutation, transactionOptions(options, coalesceKey));
+    return commitMutation(selection, mutation, transactionOptions(options, coalesceKey, tx.label));
   };
 
   return tx

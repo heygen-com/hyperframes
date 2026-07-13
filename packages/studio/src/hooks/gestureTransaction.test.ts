@@ -74,6 +74,10 @@ describe("runGestureTransaction", () => {
     expect(firstOptions.softReload).toBeUndefined();
     expect(lastOptions).toMatchObject({ softReload: true });
     expect(lastOptions.skipReload).toBeUndefined();
+    // The transaction owns the undo label — the per-mutation "First"/"Last"
+    // labels are overridden so the coalesced entry reads "Resize layer".
+    expect(firstOptions.label).toBe("Resize layer");
+    expect(lastOptions.label).toBe("Resize layer");
     expect(trackStudioEventMock).toHaveBeenCalledWith("commit_transaction", {
       label: "Resize layer",
       mutation_count: 2,
