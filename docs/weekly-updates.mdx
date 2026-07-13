@@ -9,3 +9,40 @@ Weekly HyperFrames highlights across releases, examples, docs, and community upd
 For exact versioned release notes, see the [Changelog](/changelog).
 
 {/* New weekly digest entries are prepended by `bun run changelog:weekly --from YYYY-MM-DD --to YYYY-MM-DD --write`. */}
+
+<Update
+  label="Week of July 6, 2026"
+  description="Weekly digest - July 6, 2026 - July 13, 2026"
+  tags={["Weekly update", "Highlights"]}
+>
+
+The big story this week is a full Studio revamp. Variables and reusable template sub-compositions landed, the media tools grew, and rendering got faster and more reliable.
+
+## Features
+
+- **Studio revamp:** The Studio editor was rebuilt with cleaner internals and a refreshed timeline. ([df29fa7a5](https://github.com/heygen-com/hyperframes/commit/df29fa7a5e43203a989a2ed00c00b5f0e45cee4c), [#2291](https://github.com/heygen-com/hyperframes/pull/2291))
+- **Lane-based timeline:** Clips now live in stacking lanes, snap to edges and the playhead, and move or resize as a group. ([44ffe4b41](https://github.com/heygen-com/hyperframes/commit/44ffe4b41f991c8866d310b760cc17597d5e0434), [#2279](https://github.com/heygen-com/hyperframes/pull/2279), [345f715c3](https://github.com/heygen-com/hyperframes/commit/345f715c3f7a88c61522a87818880b7a0dbe784c), [#2269](https://github.com/heygen-com/hyperframes/pull/2269))
+- **Variables in Studio and the SDK:** Bind element properties to variables, preview values live, and read or update them through new SDK APIs. ([839881a98](https://github.com/heygen-com/hyperframes/commit/839881a98e21d83a567dc670a2b21fe400e0c558), [#2047](https://github.com/heygen-com/hyperframes/pull/2047), [fcbd4cb0f](https://github.com/heygen-com/hyperframes/commit/fcbd4cb0f61f063b252fe583f6643252bcf2118d), [#2046](https://github.com/heygen-com/hyperframes/pull/2046))
+- **Reusable template sub-compositions:** A sub-composition takes per-instance variables, so one template renders many variants. ([5ebc5bb10](https://github.com/heygen-com/hyperframes/commit/5ebc5bb10f4895375a5fa5e4976f80cf920a773e), [#2070](https://github.com/heygen-com/hyperframes/pull/2070))
+- **Media tools:** Color grading comes to Studio, and you can generate media with free HeyGen usage straight from the CLI. ([57b3c7898](https://github.com/heygen-com/hyperframes/commit/57b3c7898783d8baec71cc55f39cee553a6f2534), [#2041](https://github.com/heygen-com/hyperframes/pull/2041), [cdb8d736f](https://github.com/heygen-com/hyperframes/commit/cdb8d736f19c9d39b3fec51e6363c68895b28fe4), [#2065](https://github.com/heygen-com/hyperframes/pull/2065))
+- **Faster rendering:** DrawElement fast-capture is on by default with a runtime safety net, and frames batch per CDP round-trip. ([ec06f4bf8](https://github.com/heygen-com/hyperframes/commit/ec06f4bf895d811b3b1cf140e53e79244bbd1f9a), [#1998](https://github.com/heygen-com/hyperframes/pull/1998), [d5ecb013d](https://github.com/heygen-com/hyperframes/commit/d5ecb013d71763891b8092c4bc081bb12b3d4782), [#1928](https://github.com/heygen-com/hyperframes/pull/1928))
+
+## Fixes
+
+- **Fonts:** Local font embedding is deduped by resolved path. ([994050310](https://github.com/heygen-com/hyperframes/commit/9940503102c1f26e2ef8f43e75c013b555883696), [#2317](https://github.com/heygen-com/hyperframes/pull/2317))
+- **Software-GPU video:** Renders no longer clip the bottom edge. ([de95daa09](https://github.com/heygen-com/hyperframes/commit/de95daa096d9f75860472dfc4742cf5a8769a807), [#2300](https://github.com/heygen-com/hyperframes/pull/2300))
+- **WebM alpha:** A render now warns when it silently drops the alpha channel. ([f5f94a949](https://github.com/heygen-com/hyperframes/commit/f5f94a949524c804b1961da2471689c8ce6e60c0), [#2044](https://github.com/heygen-com/hyperframes/pull/2044))
+- **Long encodes:** The render timeout scales for long video encodes. ([9d91c2a23](https://github.com/heygen-com/hyperframes/commit/9d91c2a23ee129add021fecea7e3e4d3cbab1f94), [#2244](https://github.com/heygen-com/hyperframes/pull/2244))
+- **Windows:** Frame extraction falls back to copying when a symlink hits EPERM. ([00b96d2ea](https://github.com/heygen-com/hyperframes/commit/00b96d2eaab071e65a02452b0416088866a2c451), [#1959](https://github.com/heygen-com/hyperframes/pull/1959))
+- **Capture integrity:** Incomplete captured frames are rejected instead of shipped. ([995885484](https://github.com/heygen-com/hyperframes/commit/995885484ff88ac8cc1863bbe61ebbd9ab5a2368), [#2293](https://github.com/heygen-com/hyperframes/pull/2293))
+
+## Docs & Examples
+
+- Fixed 53 inaccuracies across the documentation. ([52d586dd3](https://github.com/heygen-com/hyperframes/commit/52d586dd31cfcc2d436d046f71907c2655617552), [#1976](https://github.com/heygen-com/hyperframes/pull/1976))
+- Corrected render examples that passed a file as the project directory. ([ab129023d](https://github.com/heygen-com/hyperframes/commit/ab129023de03f4d98f3bb4ad01c2aeb60da21e50), [#1974](https://github.com/heygen-com/hyperframes/pull/1974))
+- Documented check as the canonical verification gate. ([cf7c1d760](https://github.com/heygen-com/hyperframes/commit/cf7c1d7609cb7816eaaa5e6651d53dd3873de162))
+- Documented variables, attachSync, and the id and animation-id utilities in the SDK canvas guide. ([f169d5fad](https://github.com/heygen-com/hyperframes/commit/f169d5fad6e2372f6238824d79ea64769dc90476))
+- Added a Modal deployment template to the deploy guide. ([bb423dd21](https://github.com/heygen-com/hyperframes/commit/bb423dd217f92767962a39a25b14d42b0b612dee), [#2069](https://github.com/heygen-com/hyperframes/pull/2069))
+
+For exact versioned release notes, see the [Changelog](/changelog).
+</Update>
