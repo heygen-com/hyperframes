@@ -109,12 +109,21 @@ test("a changed value restarts provenance instead of inheriting confirmations", 
 
 test("project tier overrides a promoted user-tier value", () => {
   withSandbox(({ projectA, projectB }) => {
-    recordPreference({ projectDir: projectA, key: "mode", value: "collaborative" });
-    recordPreference({ projectDir: projectB, key: "mode", value: "collaborative" });
-    recordPreference({ projectDir: projectA, key: "mode", value: "autonomous" });
+    recordPreference({ projectDir: projectA, key: "storyboard", value: "yes" });
+    recordPreference({ projectDir: projectB, key: "storyboard", value: "yes" });
+    recordPreference({ projectDir: projectA, key: "storyboard", value: "no" });
     const merged = mergedPreferences(projectA);
-    assert.equal(merged.mode.value, "autonomous");
-    assert.equal(merged.mode.source, "project");
+    assert.equal(merged.storyboard.value, "no");
+    assert.equal(merged.storyboard.source, "project");
+  });
+});
+
+test("the retired mode key is rejected", () => {
+  withSandbox(({ projectA }) => {
+    assert.throws(
+      () => recordPreference({ projectDir: projectA, key: "mode", value: "collaborative" }),
+      /unknown preference key/,
+    );
   });
 });
 

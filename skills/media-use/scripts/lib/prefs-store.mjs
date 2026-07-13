@@ -29,7 +29,6 @@ export const PREFERENCE_KEYS = [
   "language",
   "flow",
   "storyboard",
-  "mode",
   "voice",
   "style_preset",
 ];

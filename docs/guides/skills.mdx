@@ -7,7 +7,7 @@ HyperFrames ships AI agent skills via [vercel-labs/skills](https://github.com/ve
 
 The skills split into three groups:
 
-- **Router** — the entry skill that picks a workflow for any "make me a…" request — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`).
+- **Router** — the entry skill that confirms the brief up front (the intent layer) and picks a workflow for any "make me a…" request — usually a video, but also a navigable deck (`/slideshow`) or a composition port (`/remotion-to-hyperframes`).
 - **Creation workflows** — one per input shape (URL, PR, music track, captions, etc.). Each owns its task end-to-end: project setup, gated steps, and the final deliverable. Read by the router; you can also invoke directly if you already know which one fits.
 - **Domain skills** — atomic capabilities (animation, media, CLI, registry) the workflows compose against; they never own the end-to-end task. Load one when you need that specific layer.
 
@@ -68,7 +68,7 @@ The single entry point. Read `/hyperframes` before invoking anything else — it
 
 | Skill          | Use when                                                                                                                                                                                                  |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/hyperframes` | **Read first** for any request to make / create / edit / animate / render a video, animation, or motion graphic. Capability map for the domain skills and intent router for the creation workflows below. |
+| `/hyperframes` | **Read first** for any request to make / create / edit / animate / render a video, animation, or motion graphic. Capability map for the domain skills, the intent layer that confirms every creation brief up front, and intent router for the creation workflows below. |
 
 ## Creation workflows
 
@@ -85,7 +85,7 @@ One workflow per input shape. The router (`/hyperframes`) picks one of these for
 | `/motion-graphics`         | A short, **unnarrated, design-led motion graphic** (~under 10s) — kinetic type, stat / chart hit, logo sting, lower-third, animated tweet / headline. MP4 or transparent overlay.       |
 | `/music-to-video`          | A **music track** (audio file, or video to pull audio from) → a **beat-synced** video — lyric, slideshow, or kinetic promo; music drives pacing.                                        |
 | `/slideshow`               | A **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video. |
-| `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback.                              |
+| `/general-video`           | **Anything else** — longer or multi-scene pieces, brand / sizzle reel, title card, static loop, freeform composition. Input- and length-agnostic fallback, and the home of companion mode (co-create with the full toolbox).                              |
 | `/remotion-to-hyperframes` | **Porting an existing Remotion** (React) composition's source to HyperFrames HTML. One-way migration, not creation.                                                                     |
 
 ## Domain skills (loaded on demand)
