@@ -624,15 +624,18 @@ describe("materializeExtractedFramesForCompiledDir", () => {
   });
 
   // fallow-ignore-next-line code-duplication
-  it("falls back to copying frames when symlinkSync fails with EPERM (Windows, no Developer Mode)", () => {
-    // Windows without Developer Mode/Administrator rejects symlink creation with
-    // EPERM — high/standard-quality renders failed here while draft worked. The
-    // helper must degrade to a recursive copy instead of throwing.
+  it("falls back to copying frames only when both the symlink and the junction fail (EPERM, no link support)", () => {
+    // Windows without Developer Mode/Administrator rejects a plain symlink with
+    // EPERM. The helper first tries a junction; when that ALSO fails with a
+    // capability error (a mount with no link support at all — SMB/exFAT), it
+    // must degrade to a recursive copy instead of throwing. Both the plain
+    // symlink and the junction attempt must precede the copy.
     const compiledDir = win32.resolve("C:\\compiled");
     const outputDir = win32.resolve("D:\\cache\\abc123");
     const framePath = win32.join(outputDir, "frame_000001.jpg");
     const extracted = createExtractedFrames(outputDir, framePath);
     const copies: Array<{ src: string; dest: string; recursive: boolean }> = [];
+    const linkAttempts: Array<{ type: "junction" | undefined }> = [];
 
     // fallow-ignore-next-line code-duplication
     materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
@@ -640,7 +643,8 @@ describe("materializeExtractedFramesForCompiledDir", () => {
       fileSystem: {
         existsSync: () => false,
         mkdirSync: () => undefined,
-        symlinkSync: () => {
+        symlinkSync: (_target, _path, type) => {
+          linkAttempts.push({ type });
           const err: NodeJS.ErrnoException = new Error("EPERM: operation not permitted, symlink");
           err.code = "EPERM";
           throw err;
@@ -652,9 +656,50 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     });
 
     const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    // Plain symlink first, then a junction, then the copy.
+    expect(linkAttempts).toEqual([{ type: undefined }, { type: "junction" }]);
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
     expect(extracted.outputDir).toBe(linkPath);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("stages via a junction (no copy) when a plain symlink is rejected but the junction succeeds (Windows, no Developer Mode)", () => {
+    // The common Windows-without-Developer-Mode case: a plain directory symlink
+    // needs privilege and is rejected (EPERM), but a junction needs none. The
+    // helper must stage the dir with the junction at link speed and NOT fall
+    // through to a full recursive copy of every frame.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+    const junctions: Array<{ target: string; path: string }> = [];
+
+    // fallow-ignore-next-line code-duplication
+    materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+      pathModule: win32,
+      fileSystem: {
+        existsSync: () => false,
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path, type) => {
+          if (type !== "junction") {
+            const err: NodeJS.ErrnoException = new Error("EPERM: operation not permitted, symlink");
+            err.code = "EPERM";
+            throw err;
+          }
+          junctions.push({ target, path });
+        },
+        cpSync: () => {
+          throw new Error("junction fast-path should not invoke cpSync");
+        },
+      },
+    });
+
+    const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
+    expect(junctions).toEqual([{ target: outputDir, path: linkPath }]);
+    expect(extracted.outputDir).toBe(linkPath);
+    expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+    expect(extracted.framePaths.get(0)).not.toContain(outputDir);
   });
 
   it("rethrows a non-permission symlink error instead of masking it with a copy", () => {
@@ -728,10 +773,11 @@ describe("materializeExtractedFramesForCompiledDir", () => {
   });
 
   // fallow-ignore-next-line code-duplication
-  it("falls back to copying when symlinkSync fails with UNKNOWN (some Windows privilege denials)", () => {
-    // Some Windows builds surface a no-symlink-privilege denial as an
-    // UNKNOWN-coded error rather than EPERM/EACCES — it must still degrade to a
-    // copy, not hard-fail the render.
+  it("falls back to copying when both the symlink and the junction fail with UNKNOWN (some Windows privilege denials)", () => {
+    // Some Windows builds surface a no-link-privilege denial as an UNKNOWN-coded
+    // error rather than EPERM/EACCES. When both the plain symlink and the
+    // junction fall over this way, the helper must still degrade to a copy, not
+    // hard-fail the render.
     const compiledDir = win32.resolve("C:\\compiled");
     const outputDir = win32.resolve("D:\\cache\\abc123");
     const framePath = win32.join(outputDir, "frame_000001.jpg");
@@ -758,6 +804,38 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     const linkPath = win32.join(compiledDir, "__hyperframes_video_frames", "video-1");
     expect(copies).toEqual([{ src: outputDir, dest: linkPath, recursive: true }]);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
+  });
+
+  // fallow-ignore-next-line code-duplication
+  it("propagates a non-capability junction error (does not mask it with a copy)", () => {
+    // If the plain symlink is a privilege error but the junction attempt fails
+    // for a genuine reason (here ENOSPC), that must surface — silently copying
+    // would hide a real disk problem.
+    const compiledDir = win32.resolve("C:\\compiled");
+    const outputDir = win32.resolve("D:\\cache\\abc123");
+    const framePath = win32.join(outputDir, "frame_000001.jpg");
+    const extracted = createExtractedFrames(outputDir, framePath);
+
+    expect(() =>
+      materializeExtractedFramesForCompiledDir([extracted], compiledDir, {
+        pathModule: win32,
+        fileSystem: {
+          existsSync: () => false,
+          mkdirSync: () => undefined,
+          symlinkSync: (_target, _path, type) => {
+            const err: NodeJS.ErrnoException =
+              type === "junction"
+                ? new Error("ENOSPC: no space left, junction")
+                : new Error("EPERM: operation not permitted, symlink");
+            err.code = type === "junction" ? "ENOSPC" : "EPERM";
+            throw err;
+          },
+          cpSync: () => {
+            throw new Error("must not fall back to copy for a non-capability junction error");
+          },
+        },
+      }),
+    ).toThrow(/ENOSPC/);
   });
 
   // fallow-ignore-next-line code-duplication
