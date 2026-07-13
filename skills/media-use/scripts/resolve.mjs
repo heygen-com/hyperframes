@@ -19,8 +19,6 @@ import { findGlobalBySha } from "./lib/cache.mjs";
 import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
-
-const INGEST_TYPES = [...listTypes(), "video"];
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
 import {
   freezeLibraryLut,
@@ -36,6 +34,8 @@ import {
   flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
+
+const INGEST_TYPES = [...listTypes(), "video"];
 
 // resolve shells `fetch`/`freezeUrl` and modern ESM; 18 is the floor where those
 // exist without flags. Named so the --doctor node check verifies something real
