@@ -562,6 +562,8 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         <div id="hero"></div>
         <div id="bleed"></div>
         <div id="glow"></div>
+        <div id="spotlight"></div>
+        <div id="goldframe"></div>
         <div id="parked"></div>
       </div>
     `;
@@ -571,20 +573,29 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
         bleed: rect({ left: -150, top: -150, width: 300, height: 300 }),
         glow: rect({ left: 1800, top: 0, width: 400, height: 400 }),
+        spotlight: rect({ left: 560, top: -216, width: 800, height: 1200 }),
+        goldframe: rect({ left: 660, top: -150, width: 620, height: 820 }),
         parked: rect({ left: 2200, top: 300, width: 600, height: 400 }),
       },
       {
         // Paint alone qualifies — a flat solid panel with no padding/border is still content.
         hero: { backgroundColor: "rgb(20, 20, 30)" },
         bleed: { backgroundColor: "rgb(200, 180, 120)" },
+        // Gradient-only paint is decoration; a border is content even with pointer-events:none.
+        spotlight: {
+          backgroundImage: "radial-gradient(ellipse at top, rgba(212,175,55,0.15), transparent)",
+        },
+        goldframe: { borderTopWidth: "10px", borderBottomWidth: "10px" },
         parked: { backgroundColor: "rgb(20, 20, 30)" },
       },
     );
     installAuditScript();
 
     const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
-    // The unpainted glow and the fully off-canvas parked entrance stay silent.
-    expect(issues).toHaveLength(2);
+    // The unpainted glow, gradient-only spotlight, and fully off-canvas parked entrance stay silent.
+    expect(issues).toHaveLength(3);
+    expect(issues.some((issue) => issue.selector === "#goldframe")).toBe(true);
+    expect(issues.some((issue) => issue.selector === "#spotlight")).toBe(false);
     expect(issues.find((issue) => issue.selector === "#hero")).toMatchObject({
       severity: "warning",
       overflow: { right: 280 },

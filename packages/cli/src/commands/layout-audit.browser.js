@@ -892,9 +892,19 @@
   function isPaintedPanel(element) {
     if (FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) return false;
     const style = getComputedStyle(element);
-    // pointer-events:none is the decorative-layer convention (spotlights, grain, vignettes).
-    if (style.pointerEvents === "none") return false;
-    return hasPaint(style);
+    const image = style.backgroundImage || "none";
+    // Gradient-only paint is decoration (spotlights, textures, vignettes); url() images, solid fills and borders are content.
+    if (image.includes("url(")) return true;
+    if (!isTransparentColor(style.backgroundColor) && colorAlpha(style.backgroundColor) > 0.05) {
+      return true;
+    }
+    return (
+      parsePx(style.borderTopWidth) +
+        parsePx(style.borderRightWidth) +
+        parsePx(style.borderBottomWidth) +
+        parsePx(style.borderLeftWidth) >
+      0
+    );
   }
 
   // Canvas-breach floor: entrance nudges stay quiet; matches the connector threshold scale.
