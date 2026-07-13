@@ -65,6 +65,21 @@ describe("parseGsapScriptAcorn — computed timelines", () => {
     expect(animations.map((a) => a.provenance?.kind)).toEqual(["loop", "loop", "loop"]);
   });
 
+  it("keeps DOM target bindings distinct across bounded loop iterations", () => {
+    const { animations } = parseGsapScriptAcorn(`
+      const tl = gsap.timeline();
+      for (let i = 0; i < 2; i++) {
+        const card = document.getElementById("caption-card-" + i);
+        tl.to(card, { opacity: 1, duration: 1 }, i * 0.5);
+      }
+    `);
+
+    expect(animations.map((animation) => animation.targetSelector)).toEqual([
+      "#caption-card-0",
+      "#caption-card-1",
+    ]);
+  });
+
   it("leaves a literal-position composition unchanged (regression)", () => {
     const { animations } = parseGsapScriptAcorn(`
       const tl = gsap.timeline();

@@ -870,6 +870,28 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("does not treat a visible container as painted text when its only text child is hidden", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="caption-container"><span id="caption">Hidden caption</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        caption: { opacity: "0" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+      textRectElementId: "caption-container",
+    });
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
   it("carries the fully-covered fraction when the occluder hits every probe point", () => {
     const occluded = auditOcclusionScene({
       overlayStyle: { backgroundColor: "rgb(10, 10, 10)" },
@@ -979,6 +1001,7 @@ function installOcclusionGeometry(options: {
   styleOverrides: Record<string, Partial<Record<string, string>>>;
   headlineTextRect: DOMRect;
   topmostId: string;
+  textRectElementId?: string;
 }): void {
   const baseStyle: Record<string, string> = {
     display: "block",
@@ -1025,7 +1048,7 @@ function installOcclusionGeometry(options: {
         selected = node;
       },
       getClientRects() {
-        return (selected as Element | null)?.id === "headline"
+        return (selected as Element | null)?.id === (options.textRectElementId ?? "headline")
           ? ([options.headlineTextRect] as unknown as DOMRectList)
           : ([] as unknown as DOMRectList);
       },

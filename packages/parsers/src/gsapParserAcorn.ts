@@ -39,6 +39,7 @@ const QUERY_METHODS = new Set(["querySelector", "querySelectorAll"]);
 const ITERATION_METHODS = new Set(["forEach", "map"]);
 const SCOPE_NODE_TYPES = new Set([
   "Program",
+  "BlockStatement",
   "FunctionDeclaration",
   "FunctionExpression",
   "ArrowFunctionExpression",
