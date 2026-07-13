@@ -86,7 +86,7 @@ export function OffCanvasIndicators({
                 role="button"
                 tabIndex={0}
                 aria-label={`Select off-canvas element ${r.key}`}
-                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/60 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
+                className="pointer-events-auto absolute inset-0 border-2 border-dashed border-studio-accent/30 rounded-md cursor-pointer hover:border-studio-accent hover:bg-studio-accent/10 transition-colors"
                 style={clipOutside ? { clipPath: clipOutside } : undefined}
                 title={`Off-canvas: ${r.key} — click to select`}
                 onClick={handleClick}
