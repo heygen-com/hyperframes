@@ -744,6 +744,27 @@
     return Number.isFinite(pixels) ? pixels : freeSpace / 2;
   }
 
+  function objectPositionOffsets(value, freeX, freeY) {
+    const tokens = String(value || "50% 50%")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2);
+    let x = "50%";
+    let y = "50%";
+    if (tokens.length === 1) {
+      if (tokens[0] === "top" || tokens[0] === "bottom") y = tokens[0];
+      else x = tokens[0];
+    } else {
+      for (const token of tokens) {
+        if (token === "top" || token === "bottom") y = token;
+        else if (token === "left" || token === "right") x = token;
+        else if (x === "50%") x = token;
+        else y = token;
+      }
+    }
+    return { x: objectPositionOffset(x, freeX), y: objectPositionOffset(y, freeY) };
+  }
+
   // Return the alpha painted by an <img> at a viewport point. `null` means the
   // browser would not let us inspect the image (not loaded or cross-origin), in
   // which case callers preserve the conservative opaque fallback.
@@ -774,11 +795,13 @@
 
     const paintedWidth = sourceWidth * scaleX;
     const paintedHeight = sourceHeight * scaleY;
-    const positions = (style.objectPosition || "50% 50%").trim().split(/\s+/);
-    const offsetX = objectPositionOffset(positions[0], rect.width - paintedWidth);
-    const offsetY = objectPositionOffset(positions[1] || positions[0], rect.height - paintedHeight);
-    const localX = x - rect.left - offsetX;
-    const localY = y - rect.top - offsetY;
+    const offsets = objectPositionOffsets(
+      style.objectPosition,
+      rect.width - paintedWidth,
+      rect.height - paintedHeight,
+    );
+    const localX = x - rect.left - offsets.x;
+    const localY = y - rect.top - offsets.y;
     if (localX < 0 || localY < 0 || localX >= paintedWidth || localY >= paintedHeight) return 0;
 
     try {

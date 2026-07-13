@@ -1216,6 +1216,14 @@ describe("layout-audit.browser occlusion", () => {
     expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
   });
 
+  it("does not treat object-fit letterboxing as image occlusion", () => {
+    const issues = auditImageOcclusionScene(255, {
+      objectFit: "contain",
+      headlineTextRect: rect({ left: 50, top: 500, width: 200, height: 80 }),
+    });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
   it("respects the data-layout-allow-occlusion opt-out", () => {
     const issues = auditOcclusionScene({
       headlineAttrs: "data-layout-allow-occlusion",
@@ -1486,7 +1494,10 @@ function auditOcclusionScene(options: {
   return runAudit();
 }
 
-function auditImageOcclusionScene(alpha: number): ReturnType<typeof runAudit> {
+function auditImageOcclusionScene(
+  alpha: number,
+  options: { objectFit?: string; headlineTextRect?: DOMRect } = {},
+): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
       <div id="headline">Headline copy</div>
@@ -1506,8 +1517,9 @@ function auditImageOcclusionScene(alpha: number): ReturnType<typeof runAudit> {
     getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([0, 0, 0, alpha]) })),
   } as unknown as CanvasRenderingContext2D);
   installOcclusionGeometry({
-    styleOverrides: { overlay: { objectFit: "fill" } },
-    headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+    styleOverrides: { overlay: { objectFit: options.objectFit ?? "fill" } },
+    headlineTextRect:
+      options.headlineTextRect ?? rect({ left: 200, top: 500, width: 600, height: 80 }),
     topmostId: "overlay",
   });
   overlay.getBoundingClientRect = () => rect({ left: 0, top: 0, width: 1920, height: 1080 });
