@@ -462,7 +462,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     );
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
-      if (file === "caption-skin.html") continue;
+      if (file === "caption-skin.html" || file === "rail.html") continue;
       const content = readFileSync(join(projectDir, file), "utf-8");
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);

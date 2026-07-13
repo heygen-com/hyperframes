@@ -951,6 +951,19 @@ describe("multiple_root_compositions", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("ignores root-level rail.html generated for embedded-caption compositing", async () => {
+    const project = makeProject(validHtml());
+    writeFileSync(
+      join(project, "rail.html"),
+      '<div data-composition-id="rail" data-width="1080" data-height="1920" data-duration="10"></div>',
+    );
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (f) => f.code === "multiple_root_compositions",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("ignores macOS AppleDouble HTML metadata files", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project, "._index.html"), validHtml());
