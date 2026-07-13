@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { usePlayerStore } from "../player";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
@@ -11,12 +12,21 @@ import { mountReactHarness } from "./domSelectionTestHarness";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  usePlayerStore.getState().setElements([]);
+  vi.unstubAllGlobals();
 });
+
+interface PositionPatchOptions {
+  label: string;
+  coalesceKey: string;
+  coalesceMs?: number;
+  skipRefresh?: boolean;
+}
 
 type CommitPositionPatch = (
   selection: DomEditSelection,
   patches: PatchOperation[],
-  options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+  options: PositionPatchOptions,
 ) => Promise<void>;
 
 type ReorderCommit = (
@@ -27,15 +37,16 @@ type ReorderCommit = (
     selector?: string;
     selectorIndex?: number;
     sourceFile: string;
+    key?: string;
   }>,
   coalesceKeyOverride?: string,
-) => void;
+) => Promise<void>;
 
 /** Render the hook, capturing every selection handed to commitPositionPatchToHtml. */
 function renderReorderHook(
   capturedSelections: DomEditSelection[],
   onReady: (commit: ReorderCommit) => void,
-  capturedOptions: Array<{ label: string; coalesceKey: string; skipRefresh?: boolean }> = [],
+  capturedOptions: PositionPatchOptions[] = [],
 ) {
   function Harness() {
     const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
@@ -44,13 +55,13 @@ function renderReorderHook(
       writeProjectFile: vi.fn(async () => {}),
       domEditSaveTimestampRef: { current: 0 },
       editHistory: { recordEdit: vi.fn(async () => {}) },
-      projectIdRef: { current: "demo" },
+      projectIdRef: { current: null },
       reloadPreview: vi.fn(),
       clearDomSelection: vi.fn(),
       commitPositionPatchToHtml: (async (
         selection: DomEditSelection,
         _patches: PatchOperation[],
-        options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+        options: PositionPatchOptions,
       ) => {
         capturedSelections.push(selection);
         capturedOptions.push(options);
@@ -144,6 +155,141 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
 
     expect(capturedOptions).toHaveLength(1);
     expect(capturedOptions[0]?.coalesceKey).toBe("clip-lane-move:7");
+    act(() => root.unmount());
+  });
+
+  it("uses one infinite coalescing window for every element in a reorder", async () => {
+    const elements = ["clip-a", "clip-b", "clip-c"].map((id) => {
+      const element = document.createElement("div");
+      element.id = id;
+      document.body.appendChild(element);
+      return element;
+    });
+    const capturedOptions: PositionPatchOptions[] = [];
+    let commit: ReorderCommit | undefined;
+    const root = renderReorderHook([], (fn) => (commit = fn), capturedOptions);
+
+    await act(async () => {
+      await commit!(
+        elements.map((element, index) => ({
+          element,
+          zIndex: index + 1,
+          id: element.id,
+          sourceFile: "index.html",
+        })),
+        "clip-lane-move:atomic",
+      );
+    });
+
+    expect(capturedOptions).toHaveLength(3);
+    expect(
+      capturedOptions.map(({ coalesceKey, coalesceMs }) => ({ coalesceKey, coalesceMs })),
+    ).toEqual(
+      Array.from({ length: 3 }, () => ({
+        coalesceKey: "clip-lane-move:atomic",
+        coalesceMs: Infinity,
+      })),
+    );
+    act(() => root.unmount());
+  });
+
+  it("restores live, store, disk, and history state after a partial reorder failure", async () => {
+    const originalContent = '<div id="clip-a"></div><div id="clip-b"></div><div id="clip-c"></div>';
+    const partiallyReorderedContent =
+      '<div id="clip-a" style="z-index: 3"></div><div id="clip-b"></div><div id="clip-c" style="z-index: 1"></div>';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ content: originalContent }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ content: partiallyReorderedContent }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const writeProjectFile = vi.fn(async () => {});
+    const recordEdit = vi.fn(async () => {});
+    const forceReloadSdkSession = vi.fn();
+    const originalError = new Error("second patch failed");
+    const elements = ["clip-a", "clip-b", "clip-c"].map((id, index) => {
+      const element = document.createElement("div");
+      element.id = id;
+      element.style.zIndex = String(index + 10);
+      document.body.appendChild(element);
+      return element;
+    });
+    usePlayerStore.getState().setElements(
+      elements.map((element, index) => ({
+        id: element.id,
+        tag: "div",
+        start: 0,
+        duration: 1,
+        track: index,
+        zIndex: index + 10,
+        hasExplicitZIndex: false,
+      })),
+    );
+
+    let commit: ReorderCommit | undefined;
+    function Harness() {
+      const { handleDomZIndexReorderCommit } = useElementLifecycleOps({
+        activeCompPath: "index.html",
+        showToast: vi.fn(),
+        writeProjectFile,
+        domEditSaveTimestampRef: { current: 0 },
+        editHistory: { recordEdit },
+        projectIdRef: { current: "demo" },
+        reloadPreview: vi.fn(),
+        clearDomSelection: vi.fn(),
+        forceReloadSdkSession,
+        commitPositionPatchToHtml: vi.fn(async (selection: DomEditSelection) => {
+          if (selection.id === "clip-b") throw originalError;
+        }),
+      });
+      commit = handleDomZIndexReorderCommit;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    let rejection: unknown;
+    await act(async () => {
+      try {
+        await commit!(
+          elements.map((element, index) => ({
+            element,
+            zIndex: 3 - index,
+            id: element.id,
+            sourceFile: "index.html",
+            key: element.id,
+          })),
+          "clip-lane-move:failure",
+        );
+      } catch (error) {
+        rejection = error;
+      }
+    });
+
+    expect(rejection).toBe(originalError);
+    expect(elements.map((element) => element.style.zIndex)).toEqual(["10", "11", "12"]);
+    expect(
+      usePlayerStore
+        .getState()
+        .elements.map(({ zIndex, hasExplicitZIndex }) => ({ zIndex, hasExplicitZIndex })),
+    ).toEqual([
+      { zIndex: 10, hasExplicitZIndex: false },
+      { zIndex: 11, hasExplicitZIndex: false },
+      { zIndex: 12, hasExplicitZIndex: false },
+    ]);
+    expect(writeProjectFile).toHaveBeenCalledWith("index.html", originalContent);
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Reorder layers",
+        kind: "manual",
+        coalesceKey: "clip-lane-move:failure",
+        coalesceMs: Infinity,
+      }),
+    );
+    expect(forceReloadSdkSession).toHaveBeenCalledOnce();
     act(() => root.unmount());
   });
 });

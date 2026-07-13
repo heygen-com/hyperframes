@@ -6,9 +6,8 @@ import {
 } from "../player/components/timelineEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
 import { getTimelineElementIdentity } from "../player/lib/timelineElementHelpers";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelection";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 function isHTMLElement(element: Element | null): element is HTMLElement {
@@ -110,14 +109,7 @@ export function extendRootDurationIfNeeded(newEnd: number): boolean {
   return true;
 }
 // ── Types ──
-export interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  /** Per-entry coalesce window override (ms); lets a slow follow-up still merge. */
-  coalesceMs?: number;
-  files: Record<string, { before: string; after: string }>;
-}
+export type { RecordEditInput } from "../utils/studioFileHistory";
 export function buildPatchTarget(element: {
   domId?: string;
   hfId?: string;

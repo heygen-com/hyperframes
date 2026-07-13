@@ -359,6 +359,11 @@
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
       "packages/studio/src/utils/sourcePatcher.ts",
+      // useGsapSelectionHandlers.ts: pre-existing parallel structure with
+      // useDomEditWiring.ts (thin useCallback wrappers guarding on selection);
+      // only gained two optional pass-through parameters here, but the line
+      // shift makes fallow re-flag the pre-existing clone.
+      "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
       // gsapParser.ts: recast/babel GSAP writer — intentional duplication between
       // recast and acorn parallel implementations (pre-existing, moved from core).
       "packages/parsers/src/gsapParser.ts",

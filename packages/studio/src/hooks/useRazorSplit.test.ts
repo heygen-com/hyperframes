@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
@@ -9,6 +8,7 @@ import { useRazorSplit } from "./useRazorSplit";
 import { createPersistentEditHistoryStore } from "./usePersistentEditHistory";
 import { createEmptyEditHistory } from "../utils/editHistory";
 import type { EditHistoryStorageAdapter } from "../utils/editHistoryStorage";
+import { createSplitFetchMock, mountProbe } from "./useRazorSplit.testHelpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -56,68 +56,7 @@ interface Harness {
   splitRequests: SplitRequest[];
   singleRef: { current: SingleSplit | undefined };
   allRef: { current: SplitAll | undefined };
-  root: ReturnType<typeof createRoot>;
-}
-
-function decodePathFromUrl(url: string, marker: string): string {
-  const encoded = url.slice(url.indexOf(marker) + marker.length);
-  return decodeURIComponent(encoded);
-}
-
-interface SplitBody {
-  splitTime: number;
-  elementStart: number;
-  elementDuration: number;
-}
-
-/**
- * Fetch mock shared by both harnesses: GSAP mutations 400 (no script in fixtures),
- * split-element writes a `<!--split-->` marker so `changed` is true, and file reads
- * echo the in-memory `disk`. `onSplit` (when set) records each split request's body.
- */
-function createSplitFetchMock(
-  disk: Record<string, string>,
-  onSplit?: (path: string, body: SplitBody) => void,
-) {
-  return vi.fn(async (url: string, init?: RequestInit) => {
-    const u = String(url);
-    if (u.includes("/gsap-mutations/")) {
-      // No GSAP script in the fixtures — mirror the server's 400 response.
-      return new Response(JSON.stringify({ error: "no GSAP script found in file" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (u.includes("/file-mutations/split-element/")) {
-      const path = decodePathFromUrl(u, "/file-mutations/split-element/");
-      if (onSplit) onSplit(path, JSON.parse(String(init?.body)) as SplitBody);
-      // Return content that differs from the original so `changed` is true.
-      const after = `${disk[path]}<!--split-->`;
-      disk[path] = after; // server writes the split to disk
-      return new Response(JSON.stringify({ ok: true, changed: true, content: after }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (u.includes("/files/")) {
-      const path = decodePathFromUrl(u, "/files/").replace(/\?.*$/, "");
-      return new Response(JSON.stringify({ content: disk[path] ?? "" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    void init;
-    throw new Error(`unexpected fetch: ${u}`);
-  });
-}
-
-/** Mount a render-only probe component into a fresh host and return its root. */
-function mountComponent(Component: React.ComponentType): ReturnType<typeof createRoot> {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  act(() => root.render(React.createElement(Component)));
-  return root;
+  root: ReturnType<typeof mountProbe>;
 }
 
 function mountRazorSplit(): Harness {
@@ -157,7 +96,7 @@ function mountRazorSplit(): Harness {
     return null;
   }
 
-  const root = mountComponent(Component);
+  const root = mountProbe(Component);
   return { splitRequests, singleRef, allRef, root };
 }
 
@@ -243,7 +182,7 @@ interface UndoHarness {
   disk: Record<string, string>;
   store: ReturnType<typeof createPersistentEditHistoryStore>;
   forceReloadSdkSession: ReturnType<typeof vi.fn>;
-  root: ReturnType<typeof createRoot>;
+  root: ReturnType<typeof mountProbe>;
 }
 
 function mountRazorSplitWithHistory(): UndoHarness {
@@ -279,7 +218,7 @@ function mountRazorSplitWithHistory(): UndoHarness {
     singleRef.current = handleRazorSplit;
     return null;
   }
-  const root = mountComponent(Component);
+  const root = mountProbe(Component);
   return { singleRef, disk, store, forceReloadSdkSession, root };
 }
 

@@ -19,6 +19,7 @@ import {
 } from "./gsapKeyframeCacheHelpers";
 import type {
   CommitMutation,
+  CommitMutationOptions,
   SafeGsapCommitMutation,
   TrackGsapSaveFailure,
 } from "./gsapScriptCommitTypes";
@@ -140,6 +141,7 @@ export function useGsapKeyframeOps({
       animationId: string,
       percentage: number,
       properties: Record<string, number | string>,
+      commitOverrides?: Partial<CommitMutationOptions>,
     ) => {
       if (sdkSession && sdkDeps) {
         const sourceFile = selection.sourceFile || activeCompPath || "index.html";
@@ -150,14 +152,21 @@ export function useGsapKeyframeOps({
           properties,
           sdkSession,
           sdkDeps,
-          { label: `Add keyframe at ${percentage}%` },
+          {
+            label: `Add keyframe at ${percentage}%`,
+            ...commitOverrides,
+          },
         );
         if (handled) return;
       }
       return commitMutation(
         selection,
         { type: "add-keyframe", animationId, percentage, properties },
-        { label: `Add keyframe at ${percentage}%`, softReload: true },
+        {
+          label: `Add keyframe at ${percentage}%`,
+          softReload: true,
+          ...commitOverrides,
+        },
       );
     },
     [commitMutation, activeCompPath, sdkSession, sdkDeps],
@@ -261,6 +270,7 @@ export function useGsapKeyframeOps({
       animationId: string,
       resolvedFromValues?: Record<string, number | string>,
       duration?: number,
+      commitOverrides: Partial<CommitMutationOptions> = { softReload: true },
     ) => {
       if (sdkSession && sdkDeps) {
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
@@ -270,7 +280,11 @@ export function useGsapKeyframeOps({
           resolvedFromValues,
           sdkSession,
           sdkDeps,
-          { label: "Convert to keyframes" },
+          {
+            label: "Convert to keyframes",
+            ...commitOverrides,
+            skipRefresh: commitOverrides?.skipReload,
+          },
         );
         if (handled) return;
       }
@@ -279,7 +293,7 @@ export function useGsapKeyframeOps({
         // `duration` only applies when the target is a static `set` (which has
         // none) — it spans the converted keyframes across the element's clip.
         { type: "convert-to-keyframes", animationId, resolvedFromValues, duration },
-        { label: "Convert to keyframes" },
+        { label: "Convert to keyframes", ...commitOverrides },
       );
     },
     [commitMutation, activeCompPath, sdkSession, sdkDeps],

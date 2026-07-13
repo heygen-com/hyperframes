@@ -1,6 +1,10 @@
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import {
+  readProjectFileContent,
+  saveProjectFilesWithHistory,
+  type DomEditCommitBaseParams,
+} from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
@@ -8,24 +12,76 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
-import type { EditHistoryKind } from "../utils/editHistory";
 
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
+async function restoreReorderedFile(
+  pid: string | null,
+  sourceFile: string,
+  originalContent: Promise<string | undefined> | undefined,
+  coalesceKey: string,
+  writeProjectFile: (path: string, content: string) => Promise<void>,
+  recordEdit: DomEditCommitBaseParams["editHistory"]["recordEdit"],
+  showToast: DomEditCommitBaseParams["showToast"],
+): Promise<boolean> {
+  const content = await originalContent;
+  if (content === undefined || !pid) return false;
+  try {
+    const changedPaths = await saveProjectFilesWithHistory({
+      projectId: pid,
+      label: "Reorder layers",
+      kind: "manual",
+      coalesceKey,
+      coalesceMs: Infinity,
+      files: { [sourceFile]: content },
+      readFile: (path) => readProjectFileContent(pid, path),
+      writeFile: writeProjectFile,
+      recordEdit,
+    });
+    return changedPaths.length > 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `Failed to restore ${sourceFile}`;
+    showToast(`Layer reorder rollback failed: ${message}`, "error");
+    return false;
+  }
 }
 
-interface UseElementLifecycleOpsParams {
-  activeCompPath: string | null;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
-  projectIdRef: React.MutableRefObject<string | null>;
-  reloadPreview: () => void;
-  clearDomSelection: () => void;
+async function restoreFulfilledReorderFiles(
+  entries: ReadonlyArray<{ sourceFile: string }>,
+  settled: PromiseSettledResult<void>[],
+  originals: ReadonlyMap<string, Promise<string | undefined>>,
+  pid: string | null,
+  coalesceKey: string,
+  writeProjectFile: (path: string, content: string) => Promise<void>,
+  recordEdit: DomEditCommitBaseParams["editHistory"]["recordEdit"],
+  showToast: DomEditCommitBaseParams["showToast"],
+  forceReloadSdkSession?: () => void,
+): Promise<void> {
+  try {
+    const fulfilledPaths = new Set(
+      entries.flatMap((entry, index) =>
+        settled[index]?.status === "fulfilled" ? [entry.sourceFile] : [],
+      ),
+    );
+    const restoredFiles = await Promise.all(
+      [...fulfilledPaths].map((sourceFile) =>
+        restoreReorderedFile(
+          pid,
+          sourceFile,
+          originals.get(sourceFile),
+          coalesceKey,
+          writeProjectFile,
+          recordEdit,
+          showToast,
+        ),
+      ),
+    );
+    if (restoredFiles.some(Boolean)) forceReloadSdkSession?.();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to restore reordered layers";
+    showToast(`Layer reorder rollback failed: ${message}`, "error");
+  }
+}
+
+interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
   /** Resolver-shadow tripwire for the reordered targets (telemetry-only, decoupled from cutover). */
@@ -35,7 +91,12 @@ interface UseElementLifecycleOpsParams {
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    options: {
+      label: string;
+      coalesceKey: string;
+      coalesceMs?: number;
+      skipRefresh?: boolean;
+    },
   ) => Promise<void>;
   /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
   onElementDeleted?: (selection: DomEditSelection) => void;
@@ -66,17 +127,7 @@ export function useElementLifecycleOps({
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
-        const response = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        );
-        if (!response.ok) {
-          throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`);
-        }
-
-        const data = (await response.json()) as { content?: string };
-        const originalContent = data.content;
-        if (typeof originalContent !== "string")
-          throw new Error(`Missing file contents for ${targetPath}`);
+        const originalContent = await readProjectFileContent(pid, targetPath);
 
         const patchTarget = buildDomEditPatchTarget(selection);
         if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
@@ -159,6 +210,9 @@ export function useElementLifecycleOps({
   // ponytail: z-index reorder writes inline-style patches via commitPositionPatchToHtml →
   // persistDomEditOperations → onTrySdkPersist, so it is already SDK-cut-over as setStyle.
   // No SDK reorder/reparent op exists; DOM sibling order stays server-authoritative if ever needed.
+  // ponytail: true single-disk-write atomicity for N different elements needs a server batch
+  // endpoint accepting multiple targets in one file-mutation call; patch-element addresses only
+  // one target per call. Infinite coalescing plus failure write-back is the interim fix.
   const handleDomZIndexReorderCommit = useCallback(
     // fallow-ignore-next-line complexity
     (
@@ -182,6 +236,17 @@ export function useElementLifecycleOps({
       const coalesceKey =
         gestureCoalesceKey ??
         `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      const pid = projectIdRef.current;
+      const originalContentByPath = new Map<string, Promise<string | undefined>>();
+      if (pid) {
+        for (const { sourceFile } of entries) {
+          if (originalContentByPath.has(sourceFile)) continue;
+          originalContentByPath.set(
+            sourceFile,
+            readProjectFileContent(pid, sourceFile).catch(() => undefined),
+          );
+        }
+      }
       const saves: Array<Promise<void>> = [];
       const rollbacks: Array<() => void> = [];
       for (let i = 0; i < entries.length; i++) {
@@ -235,6 +300,7 @@ export function useElementLifecycleOps({
             {
               label: "Reorder layers",
               coalesceKey,
+              coalesceMs: Infinity,
               skipRefresh: i < entries.length - 1,
             },
           ),
@@ -242,18 +308,37 @@ export function useElementLifecycleOps({
       }
       // Resolves once every z-index patch is persisted so a same-file timing write
       // can be ordered after it (see applyTimelineStackingReorder callers).
-      return Promise.allSettled(saves).then((settled) => {
+      return Promise.allSettled(saves).then(async (settled) => {
         const rejected = settled.find(
           (result): result is PromiseRejectedResult => result.status === "rejected",
         );
         if (rejected) {
           for (const rollback of rollbacks) rollback();
-          return Promise.reject(rejected.reason);
+          await restoreFulfilledReorderFiles(
+            entries,
+            settled,
+            originalContentByPath,
+            pid,
+            coalesceKey,
+            writeProjectFile,
+            editHistory.recordEdit,
+            showToast,
+            forceReloadSdkSession,
+          );
+          throw rejected.reason;
         }
         return undefined;
       });
     },
-    [commitPositionPatchToHtml, onReorderShadow],
+    [
+      commitPositionPatchToHtml,
+      editHistory.recordEdit,
+      forceReloadSdkSession,
+      onReorderShadow,
+      projectIdRef,
+      showToast,
+      writeProjectFile,
+    ],
   );
 
   return {

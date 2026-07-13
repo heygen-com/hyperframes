@@ -111,6 +111,62 @@ async function splitGsapAnimations(
   };
 }
 
+function getOriginalContent(originals: ReadonlyMap<string, string>, path: string): string {
+  const original = originals.get(path);
+  if (original === undefined) {
+    throw new Error(`Missing original contents for ${path}`);
+  }
+  return original;
+}
+
+async function restoreFilesToOriginal(
+  originals: ReadonlyMap<string, string>,
+  paths: Iterable<string>,
+  writeProjectFile: (path: string, content: string) => Promise<void>,
+): Promise<void> {
+  for (const path of paths) {
+    await writeProjectFile(path, getOriginalContent(originals, path));
+  }
+}
+
+async function readOriginalFiles(
+  pid: string,
+  elements: TimelineElement[],
+  activeCompPath: string | null,
+): Promise<Map<string, string>> {
+  const originals = new Map<string, string>();
+  for (const element of elements) {
+    const path = element.sourceFile || activeCompPath || "index.html";
+    if (!originals.has(path)) {
+      originals.set(path, await readFileContent(pid, path));
+    }
+  }
+  return originals;
+}
+
+async function splitElementsAtTime(
+  pid: string,
+  elements: TimelineElement[],
+  splitTime: number,
+  activeCompPath: string | null,
+  originals: ReadonlyMap<string, string>,
+  snapshots: Map<string, { before: string; after: string }>,
+  writeProjectFile: (path: string, content: string) => Promise<void>,
+): Promise<number> {
+  let count = 0;
+  for (const element of elements) {
+    const result = await executeSplit(pid, element, splitTime, activeCompPath, writeProjectFile);
+    if (!result.changed) continue;
+    snapshots.set(result.targetPath, {
+      before: getOriginalContent(originals, result.targetPath),
+      after: result.patchedContent,
+    });
+    await writeProjectFile(result.targetPath, result.patchedContent);
+    count++;
+  }
+  return count;
+}
+
 // fallow-ignore-next-line complexity
 async function executeSplit(
   pid: string,
@@ -176,7 +232,11 @@ async function executeSplit(
     } catch (gsapError) {
       // GSAP mutation failed — the HTML split already wrote to disk.
       // Restore the original content to avoid a corrupt half-split state.
-      await writeProjectFile(targetPath, originalContent);
+      await restoreFilesToOriginal(
+        new Map([[targetPath, originalContent]]),
+        [targetPath],
+        writeProjectFile,
+      );
       throw gsapError;
     }
   }
@@ -274,45 +334,26 @@ export function useRazorSplit({
       const splittable = selectSplittableElements(elements, splitTime);
       if (splittable.length === 0) return;
 
+      let originals = new Map<string, string>();
+      const finalSnapshots = new Map<string, { before: string; after: string }>();
       try {
-        const originals = new Map<string, string>();
-        for (const el of splittable) {
-          const path = el.sourceFile || activeCompPath || "index.html";
-          if (!originals.has(path)) {
-            originals.set(path, await readFileContent(pid, path));
-          }
-        }
-
-        let splitCount = 0;
-        const finalContent = new Map<string, string>();
-
-        for (const element of splittable) {
-          const result = await executeSplit(
-            pid,
-            element,
-            splitTime,
-            activeCompPath,
-            writeProjectFile,
-          );
-          if (result.changed) {
-            finalContent.set(result.targetPath, result.patchedContent);
-            await writeProjectFile(result.targetPath, result.patchedContent);
-            splitCount++;
-          }
-        }
-
+        originals = await readOriginalFiles(pid, splittable, activeCompPath);
+        const splitCount = await splitElementsAtTime(
+          pid,
+          splittable,
+          splitTime,
+          activeCompPath,
+          originals,
+          finalSnapshots,
+          writeProjectFile,
+        );
         if (splitCount === 0) return;
 
         domEditSaveTimestampRef.current = Date.now();
         await recordEdit({
           label: `Split ${splitCount} clips at ${splitTime.toFixed(2)}s`,
           kind: "timeline",
-          files: Object.fromEntries(
-            [...finalContent].map(([path, after]) => [
-              path,
-              { before: originals.get(path) ?? "", after },
-            ]),
-          ),
+          files: Object.fromEntries(finalSnapshots),
         });
 
         // Resync the stale SDK doc after the batched server write (see the
@@ -322,6 +363,7 @@ export function useRazorSplit({
         trackStudioRazorSplit({ mode: "all", count: splitCount });
         showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
       } catch (error) {
+        await restoreFilesToOriginal(originals, finalSnapshots.keys(), writeProjectFile);
         const message = error instanceof Error ? error.message : "Failed to split clips";
         showToast(message, "error");
       }
