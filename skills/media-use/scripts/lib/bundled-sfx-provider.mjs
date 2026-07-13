@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 
 const LIB_DIR = join(import.meta.dirname, "..", "..", "audio", "assets", "sfx");
 
@@ -8,6 +8,10 @@ const normalize = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+
+export function extensionForBundledSfxFile(filename) {
+  return extname(filename) || ".mp3";
+}
 
 function score(intent, key, entry) {
   const query = normalize(intent);
@@ -41,7 +45,7 @@ export const bundledSfxProvider = {
     if (!existsSync(localPath)) return null;
     return {
       localPath,
-      ext: ".mp3",
+      ext: extensionForBundledSfxFile(best.entry.file),
       source: "bundled",
       metadata: {
         description: best.entry.description || best.key,
