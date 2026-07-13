@@ -1006,6 +1006,20 @@ describe("duplicate_audio_track", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT fire when floating-point arithmetic makes adjacent audio boundaries differ", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="1">
+    <audio id="a" src="a.wav" data-track-index="0" data-start="0.1" data-duration="0.2">
+    <audio id="b" src="b.wav" data-track-index="0" data-start="0.3" data-duration="0.2">
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const project = makeProject(html);
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find((f) => f.code === "duplicate_audio_track");
+    expect(finding).toBeUndefined();
+  });
+
   it("does NOT fire for audio on different tracks", async () => {
     const html = `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="20">

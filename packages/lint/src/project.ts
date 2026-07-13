@@ -484,6 +484,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
 }
 
 function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFinding[] {
+  const timingEpsilon = 0.0001;
   const findings: HyperframeLintFinding[] = [];
   function extractAttr(tag: string, name: string): string | null {
     const re = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i");
@@ -521,7 +522,7 @@ function lintDuplicateAudioTracks(htmlSources: HtmlSource[]): HyperframeLintFind
       const a = tracks[i]!;
       const b = tracks[j]!;
       if (a.trackIndex !== b.trackIndex) continue;
-      if (a.start < b.end && b.start < a.end) {
+      if (a.start < b.end - timingEpsilon && b.start < a.end - timingEpsilon) {
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
