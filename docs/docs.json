@@ -103,7 +103,8 @@
                   "prompting/code-and-prs",
                   "prompting/music-and-slideshows",
                   "prompting/captions-and-talking-heads",
-                  "prompting/motion-graphics"
+                  "prompting/motion-graphics",
+                  "prompting/remotion-migration"
                 ]
               },
               {
