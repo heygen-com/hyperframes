@@ -175,7 +175,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     }
     domEditSaveTimestampRef.current = Date.now();
     if (result.before != null && result.after != null) {
-      await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, files: { [targetPath]: { before: result.before, after: result.after } } });
+      await editHistory.recordEdit({ label: options.label, kind: "manual", coalesceKey: options.coalesceKey, coalesceMs: options.coalesceMs, files: { [targetPath]: { before: result.before, after: result.after } } });
     }
     if (result.after != null) onFileContentChanged?.(targetPath, result.after);
     // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a

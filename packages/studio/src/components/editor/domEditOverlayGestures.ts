@@ -216,6 +216,7 @@ export type UseDomEditOverlayGesturesOptions = {
       s: DomEditSelection,
       n: { width: number; height: number },
       offset?: { x: number; y: number },
+      restore?: () => void,
     ) => Promise<void> | void
   >;
   onRotationCommitRef: RefObject<

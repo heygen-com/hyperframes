@@ -16,6 +16,7 @@ export interface MutationResult {
 export interface CommitMutationOptions {
   label: string;
   coalesceKey?: string;
+  coalesceMs?: number;
   softReload?: boolean;
   skipReload?: boolean;
   beforeReload?: () => void;
@@ -66,6 +67,7 @@ export interface GsapScriptCommitsParams {
       label: string;
       kind: EditHistoryKind;
       coalesceKey?: string;
+      coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };

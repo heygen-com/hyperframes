@@ -75,6 +75,7 @@ interface DomEditOverlayProps {
     selection: DomEditSelection,
     next: { width: number; height: number },
     offset?: { x: number; y: number },
+    restore?: () => void,
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;

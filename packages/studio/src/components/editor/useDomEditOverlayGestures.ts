@@ -29,10 +29,7 @@ import {
 import {
   type GroupOverlayItem,
   type OverlayRect,
-  cornerEdgeLength,
-  elementCornerOverlayPoints,
   orientedOverlayRect,
-  overlayCornersCentroid,
   resolveDomEditGroupOverlayRect,
 } from "./domEditOverlayGeometry";
 import {
@@ -45,15 +42,16 @@ import {
   ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
   resolveDomEditRotationGesture,
-  resolveResizeCenterAnchorOffset,
 } from "./domEditOverlayGestures";
-import { computeNextResizeAnchor, resolveCenterResizeSize } from "./domEditResizeLocal";
+import { resolveCenterResizeSize } from "./domEditResizeLocal";
+import { resolveResizeDraftRect } from "./resizeDraft";
 import {
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { resolveSnapAdjustment, resolveEquidistanceGuides, SNAP_THRESHOLD_PX } from "./snapEngine";
+import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -285,71 +283,20 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const measureOrientedRect = () =>
         overlayEl && iframe ? orientedOverlayRect(overlayEl, iframe, sel.element) : null;
 
-      // Keep the element's CENTER visually planted by translating it through the
-      // manual-offset channel (member created at gesture start, on every corner): pin
-      // the center by measuring the centroid of its real transformed corners after
-      // the size write and translating it back to its gesture-start center —
-      // rotation-safe for any transform-origin. Memberless is a defensive fallback.
-      let draftRect: OverlayRect;
-      if (g.pathOffsetMember) {
-        // Measure real corners ONCE — reused below, skipping a redundant measureOrientedRect call.
-        const corners =
-          overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, sel.element) : null;
-        const fixedStart = g.resizeFixedCenterStart;
-        let anchor: { dx: number; dy: number };
-        if (corners && fixedStart) {
-          // `centerNow` is measured on the LIVE element, which already carries the
-          // offset applied on the PREVIOUS frame. `applyManualOffsetDragDraft`
-          // treats its argument as the ABSOLUTE offset (from initialOffset 0), so
-          // `fixedStart - centerNow` is only the RESIDUAL correction — it must be
-          // ADDED to the offset already in flight, not used as the absolute value.
-          // Using it absolutely makes the anchor oscillate between the correct
-          // value and zero every frame (measure moves the center back to
-          // fixedStart → residual 0 → offset dropped → center un-pins → repeat).
-          // Release then commits whichever parity the last pointermove landed on,
-          // so the element "shifts a bit" after release. Accumulate onto the
-          // previous anchor to converge (fa4f39168).
-          const centerNow = overlayCornersCentroid(corners);
-          anchor = computeNextResizeAnchor(g.lastResizeAnchor, fixedStart, centerNow);
-        } else {
-          // Geometry unmeasurable — fall back to the AABB half-delta.
-          const fallbackRect = measureOrientedRect();
-          anchor = resolveResizeCenterAnchorOffset({
-            originWidth: g.originWidth,
-            originHeight: g.originHeight,
-            overlayWidth: fallbackRect ? fallbackRect.width : g.originWidth,
-            overlayHeight: fallbackRect ? fallbackRect.height : g.originHeight,
-          });
-        }
-        g.lastResizeAnchor = anchor;
-        applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
-        // Re-measure the oriented box AFTER the anchor translate so it hugs the
-        // element's true rendered bounds every frame.
-        const anchoredRect = measureOrientedRect();
-        draftRect = anchoredRect ?? {
-          left: g.originLeft + anchor.dx,
-          top: g.originTop + anchor.dy,
-          width: corners ? cornerEdgeLength(corners.nw, corners.ne) : g.originWidth,
-          height: corners ? cornerEdgeLength(corners.nw, corners.sw) : g.originHeight,
-          editScaleX: g.editScaleX,
-          editScaleY: g.editScaleY,
-          angle: g.actualRotation,
-        };
-      } else {
-        // Re-measure the element's oriented box AFTER the size write. The size draft
-        // rounds/clamps and (with a centered transform-origin + GSAP scale) the real
-        // rendered size diverges from the CSS size, so measure rather than trust math.
-        const sizedRect = measureOrientedRect();
-        draftRect = sizedRect ?? {
-          left: g.originLeft,
-          top: g.originTop,
-          width: g.originWidth,
-          height: g.originHeight,
-          editScaleX: g.editScaleX,
-          editScaleY: g.editScaleY,
-          angle: g.actualRotation,
-        };
-      }
+      const draftRect = resolveResizeDraftRect(
+        g,
+        sel.element,
+        overlayEl,
+        iframe,
+        measureOrientedRect,
+      );
+      logResizeMove({
+        pointer: { x: e.clientX, y: e.clientY },
+        nextSize,
+        anchor: g.lastResizeAnchor ?? null,
+        draftRect,
+        liveInlineStyle: sel.element.getAttribute("style"),
+      });
       box.style.left = `${draftRect.left}px`;
       box.style.top = `${draftRect.top}px`;
       box.style.width = `${draftRect.width}px`;
@@ -534,23 +481,33 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         member && anchor && (anchor.dx !== 0 || anchor.dy !== 0)
           ? applyManualOffsetDragCommit(member, anchor.dx, anchor.dy)
           : null;
+      logResize("release", {
+        finalSize,
+        anchor: anchor ?? null,
+        finalOffset: finalOffset ?? null,
+        hasMember: !!member,
+        inlineStyle: sel.element.getAttribute("style"),
+      });
+      const restore = () => {
+        if (
+          !g.manualEditDragToken ||
+          !isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
+        )
+          return;
+        restoreStudioBoxSize(sel.element, g.initialBoxSize);
+        if (finalOffset) restoreStudioPathOffset(sel.element, g.initialPathOffset);
+      };
       void Promise.resolve(
-        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined),
+        opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore),
       )
         .catch((error) => {
           console.error("resize commit failed", error);
-          if (
-            g.manualEditDragToken &&
-            isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
-          ) {
-            restoreStudioBoxSize(sel.element, g.initialBoxSize);
-            if (finalOffset) restoreStudioPathOffset(sel.element, g.initialPathOffset);
-          }
         })
         .finally(() => {
           if (member) endManualOffsetDragMembers([member]);
           else endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         });
+      logResizeSettle(sel.element, "post-release");
     }
   };
 

@@ -10,7 +10,11 @@
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
+import {
+  POSITION_CHANNELS,
+  tryGsapDragIntercept,
+  tryGsapRotationIntercept,
+} from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
@@ -22,7 +26,10 @@ import {
 } from "./useSafeGsapCommitMutation";
 import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { setElementGsapPosition } from "../utils/elementGsap";
+import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
+import { runGestureTransaction } from "./gestureTransaction";
+import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 
 export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
@@ -157,54 +164,88 @@ export function useGsapAwareEditing({
       selection: DomEditSelection,
       next: { width: number; height: number },
       offset?: { x: number; y: number },
+      restore: () => void = () => undefined,
     ) => {
-      if (gsapCommitMutation) {
-        try {
-          const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
-          const handled = await tryGsapResizeIntercept(
-            selection,
-            next,
-            selectedGsapAnimations,
+      const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
+      const selector = selectorFromSelection(selection);
+      const hasLivePositionTween = selector
+        ? hasNonHoldTweenForElement(
             previewIframeRef.current,
-            gsapCommitMutation,
-            makeFetchFallback(selection),
-          );
-          if (handled) {
-            // Scale-route resize already settles the live drop rect and persists
-            // its residual position inside tryGsapResizeIntercept. Width/height
-            // resize does not, so persist the anchored-corner offset once through
-            // the canonical GSAP drag channel.
-            if (offset && !scaleRoute) {
-              const selector = selectorFromSelection(selection);
-              if (selector) {
-                const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
-                  x: 0,
-                  y: 0,
-                };
-                const { newX, newY } = computeDraggedGsapPosition(
-                  selection.element,
-                  offset,
-                  gsapPos,
-                );
-                setElementGsapPosition(selection.element, newX, newY);
-              }
-              await tryGsapDragIntercept(
+            selector,
+            undefined,
+            POSITION_CHANNELS,
+          )
+        : false;
+      logResize("commit-route", {
+        next,
+        offset: offset ?? null,
+        scaleRoute,
+        animCount: selectedGsapAnimations.length,
+        animGroups: selectedGsapAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
+      });
+      return runGestureTransaction({
+        element: selection.element,
+        label: "Resize layer",
+        settle: () => {
+          // Scale resize settles its center-scale residual after the scale commit
+          // renders. Width/height can settle its anchored position immediately.
+          if (!offset || scaleRoute || !selector) return;
+          const gsapPos = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+            x: 0,
+            y: 0,
+          };
+          const { newX, newY } = computeDraggedGsapPosition(selection.element, offset, gsapPos);
+          logResize("sync-settle", { gsapPos, offset, newX, newY });
+          setElementGsapPosition(selection.element, newX, newY);
+        },
+        persist: async (commit) => {
+          if (gsapCommitMutation) {
+            const commitMutation = commit(gsapCommitMutation);
+            try {
+              const handled = await tryGsapResizeIntercept(
                 selection,
-                offset,
+                next,
                 selectedGsapAnimations,
                 previewIframeRef.current,
-                gsapCommitMutation,
+                commitMutation,
                 makeFetchFallback(selection),
               );
+              if (handled) {
+                logResize("intercept-handled", {
+                  scaleRoute,
+                  willForwardOffset: !!(offset && !scaleRoute),
+                });
+                // Scale-route resize persists its residual position internally.
+                // Width/height persists the already-settled anchor through drag.
+                if (offset && !scaleRoute) {
+                  await tryGsapDragIntercept(
+                    selection,
+                    offset,
+                    selectedGsapAnimations,
+                    previewIframeRef.current,
+                    commitMutation,
+                    makeFetchFallback(selection),
+                  );
+                }
+                logResizeSettle(selection.element, scaleRoute ? "gsap-scale" : "gsap-size");
+                return;
+              }
+            } catch (error) {
+              trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
+              throw error;
             }
-            return;
           }
-        } catch (error) {
-          trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
-          throw error;
-        }
-      }
-      return handleDomBoxSizeCommit(selection, next, offset);
+          logResize("dom-route", {
+            next,
+            offset: offset ?? null,
+            hadGsapMutation: !!gsapCommitMutation,
+          });
+          logResizeSettle(selection.element, "dom-route");
+          await handleDomBoxSizeCommit(selection, next, offset);
+        },
+        restore,
+        skipPixelAssert: hasLivePositionTween,
+      });
     },
     [
       handleDomBoxSizeCommit,

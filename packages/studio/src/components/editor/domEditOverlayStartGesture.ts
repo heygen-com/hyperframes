@@ -32,6 +32,7 @@ import {
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
+import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
@@ -262,5 +263,22 @@ export function startGesture(
     resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
     resizeFixedCenterStart,
   };
+  if (kind === "resize") {
+    resetResizeMoveLog();
+    logResize("start", {
+      handle: options?.resizeHandle ?? "se",
+      pointer: { x: e.clientX, y: e.clientY },
+      center: { x: centerX, y: centerY },
+      origin: { left: rect.left, top: rect.top, w: rect.width, h: rect.height },
+      actual: { w: actualWidth, h: actualHeight },
+      editScale: { x: rect.editScaleX, y: rect.editScaleY },
+      contentScale: { x: contentScaleX, y: contentScaleY },
+      rotation: rotation.angle,
+      hasOffsetMember: !!pathOffsetMember,
+      fixedCenterStart: resizeFixedCenterStart ?? null,
+      initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
+      initialInlineStyle: sel.element.getAttribute("style"),
+    });
+  }
   return true;
 }

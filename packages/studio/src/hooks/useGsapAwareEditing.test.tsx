@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./gsapResizeIntercept", () => ({ tryGsapResizeIntercept: mocks.resize }));
 vi.mock("./gsapRuntimeBridge", () => ({
+  POSITION_CHANNELS: ["x", "y"],
   tryGsapDragIntercept: mocks.drag,
   tryGsapRotationIntercept: vi.fn(),
 }));
@@ -45,18 +46,20 @@ function mountResizeHandler(animations: GsapAnimation[]) {
   const element = document.createElement("div");
   const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
   const fallback = vi.fn().mockResolvedValue(undefined);
+  const commitMutation = vi.fn().mockResolvedValue(undefined);
   let resize:
     | ((
         selection: DomEditSelection,
         size: { width: number; height: number },
         offset?: { x: number; y: number },
+        restore?: () => void,
       ) => Promise<void>)
     | null = null;
   function Harness() {
     resize = useGsapAwareEditing({
       domEditSelection: selection,
       selectedGsapAnimations: animations,
-      gsapCommitMutation: vi.fn(),
+      gsapCommitMutation: commitMutation,
       previewIframeRef: { current: null },
       showToast: vi.fn(),
       bumpGsapCache: vi.fn(),
@@ -71,7 +74,7 @@ function mountResizeHandler(animations: GsapAnimation[]) {
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { selection, fallback, resize: resize!, root };
+  return { selection, fallback, commitMutation, resize: resize!, root };
 }
 
 describe("useGsapAwareEditing anchored resize", () => {
@@ -98,13 +101,13 @@ describe("useGsapAwareEditing anchored resize", () => {
     act(() => h.root.unmount());
   });
 
-  it("settles the live GSAP position before the deferred anchor persist resolves", async () => {
-    let resolveDrag!: (handled: boolean) => void;
-    const pendingDrag = new Promise<boolean>((resolve) => {
-      resolveDrag = resolve;
+  it("settles the live GSAP position before resize persistence reaches its first await", async () => {
+    let resolveResize!: (handled: boolean) => void;
+    const pendingResize = new Promise<boolean>((resolve) => {
+      resolveResize = resolve;
     });
-    mocks.resize.mockResolvedValue(true);
-    mocks.drag.mockReturnValue(pendingDrag);
+    mocks.resize.mockReturnValue(pendingResize);
+    mocks.drag.mockResolvedValue(true);
     mocks.readPosition.mockReturnValue({ x: 120.4, y: 80.2 });
     const h = mountResizeHandler([]);
     h.selection.element.setAttribute("data-hf-drag-gsap-base-x", "120.4");
@@ -116,15 +119,46 @@ describe("useGsapAwareEditing anchored resize", () => {
     act(() => {
       commit = h.resize(h.selection, { width: 300, height: 200 }, { x: -50.2, y: -25.6 });
     });
-    await vi.waitFor(() => expect(mocks.drag).toHaveBeenCalledTimes(1));
 
     expect(mocks.setPosition).toHaveBeenCalledWith(h.selection.element, 70, 55);
     expect(mocks.setPosition.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.drag.mock.invocationCallOrder[0]!,
+      mocks.resize.mock.invocationCallOrder[0]!,
     );
 
-    resolveDrag(true);
+    resolveResize(true);
     await act(() => commit);
+    act(() => h.root.unmount());
+  });
+
+  it("passes a transaction-scoped commit wrapper into the resize path", async () => {
+    mocks.resize.mockImplementation(async (selection, _size, _animations, _iframe, commit) => {
+      await commit(selection, { type: "resize" }, { label: "Resize", softReload: true });
+      return true;
+    });
+    const h = mountResizeHandler([]);
+
+    await act(() => h.resize(h.selection, { width: 300, height: 200 }));
+
+    expect(h.commitMutation).toHaveBeenCalledWith(
+      h.selection,
+      { type: "resize" },
+      expect.objectContaining({
+        coalesceKey: expect.stringMatching(/^tx:Resize layer:\d+$/),
+        softReload: true,
+      }),
+    );
+    act(() => h.root.unmount());
+  });
+
+  it("restores once when resize persistence fails", async () => {
+    const error = new Error("resize failed");
+    const restore = vi.fn();
+    mocks.resize.mockRejectedValue(error);
+    const h = mountResizeHandler([]);
+
+    const commit = h.resize(h.selection, { width: 300, height: 200 }, undefined, restore);
+    await expect(commit).rejects.toBe(error);
+    expect(restore).toHaveBeenCalledTimes(1);
     act(() => h.root.unmount());
   });
 
