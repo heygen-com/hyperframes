@@ -180,7 +180,7 @@ function runFetchSfx(argv) {
     const names = (f.extra?.sfx ?? "")
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter((s) => s && s.toLowerCase() !== "none");
     if (names.length && f.number != null) lines.push({ id: pad2(f.number), sfx: names });
   }
 
