@@ -283,61 +283,33 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   },
 
   // video_nested_in_timed_element
-  ({ source, tags }) => {
+  ({ tags, rootTag }) => {
     const findings: HyperframeLintFinding[] = [];
-    // HTML5 void elements cannot contain children, so they can never be a
-    // parent of a nested <video>. Skipping them avoids false positives where
-    // the linter looks for `</img>` and never finds it.
-    const voidElements = new Set([
-      "area",
-      "base",
-      "br",
-      "col",
-      "embed",
-      "hr",
-      "img",
-      "input",
-      "link",
-      "meta",
-      "source",
-      "track",
-      "wbr",
-    ]);
-    const timedTagPositions: Array<{ name: string; start: number; id?: string }> = [];
-    for (const tag of tags) {
-      if (tag.name === "video" || tag.name === "audio") continue;
-      if (voidElements.has(tag.name)) continue;
-      // Skip the composition root — it uses data-start as a playback anchor, not as a clip timer
-      if (readAttr(tag.raw, "data-composition-id")) continue;
-      if (readAttr(tag.raw, "data-start")) {
-        timedTagPositions.push({
-          name: tag.name,
-          start: tag.index,
-          id: readAttr(tag.raw, "id") || undefined,
-        });
-      }
-    }
     for (const tag of tags) {
       if (tag.name !== "video") continue;
       if (!readAttr(tag.raw, "data-start")) continue;
-      for (const parent of timedTagPositions) {
-        if (parent.start < tag.index) {
-          const parentClosePattern = new RegExp(`</${parent.name}>`, "gi");
-          const between = source.substring(parent.start, tag.index);
-          if (!parentClosePattern.test(between)) {
-            findings.push({
-              code: "video_nested_in_timed_element",
-              severity: "error",
-              message: `<video> with data-start is nested inside <${parent.name}${parent.id ? ` id="${parent.id}"` : ""}> which also has data-start. The framework cannot manage playback of nested media — video will be FROZEN in renders.`,
-              elementId: readAttr(tag.raw, "id") || undefined,
-              fixHint:
-                "Move the <video> to be a direct child of the stage, or remove data-start from the wrapper div (use it as a non-timed visual container).",
-              snippet: truncateSnippet(tag.raw),
-            });
-            break;
-          }
-        }
-      }
+      const parent = tags
+        .filter(
+          (candidate) =>
+            candidate !== tag &&
+            candidate.index < tag.index &&
+            candidate.closeIndex != null &&
+            candidate.closeIndex > tag.index,
+        )
+        .sort((a, b) => b.index - a.index)[0];
+      if (!parent || parent === rootTag) continue;
+
+      const parentId = readAttr(parent.raw, "id") || undefined;
+      const parentIsTimed = readAttr(parent.raw, "data-start") != null;
+      findings.push({
+        code: "video_nested_in_timed_element",
+        severity: "error",
+        message: `<video> with data-start is nested inside <${parent.name}${parentId ? ` id="${parentId}"` : ""}>${parentIsTimed ? " which also has data-start" : ""}. Managed video must be a direct child of the host composition root or it can render FROZEN/black.`,
+        elementId: readAttr(tag.raw, "id") || undefined,
+        fixHint:
+          "Move the <video> to be a direct child of the composition root/stage. Apply sizing and motion to the video itself or to a separate overlay element.",
+        snippet: truncateSnippet(tag.raw),
+      });
     }
     return findings;
   },

@@ -171,6 +171,27 @@ describe("media rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("reports video nested in an untimed visual wrapper", async () => {
+    // The renderer only discovers managed media that are direct children of
+    // the host composition root. An untimed wrapper is enough to make the
+    // video render black even though the wrapper itself is not a clip.
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div class="video-shell">
+      <video id="wrapped-video" src="clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+    </div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "video_nested_in_timed_element");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("wrapped-video");
+    expect(finding?.fixHint).toContain("direct child");
+  });
+
   it("reports imperative play() control on managed media ids", async () => {
     const html = `
 <html><body>
