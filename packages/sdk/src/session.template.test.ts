@@ -78,6 +78,22 @@ describe("template-based sub-comp compositions", () => {
     );
     expect(comp.getElement("hf-dup")?.text).toBe("tpl");
   });
+
+  it("models GSAP animations declared inside a composition template", async () => {
+    const comp = await openComposition(`
+      <template data-composition-id="document-card">
+        <div data-hf-id="hf-line" class="line">line</div>
+        <script>
+          var tl = gsap.timeline({ paused: true });
+          tl.to("[data-hf-id=\\"hf-line\\"]", { x: 100, duration: 1 }, 0);
+        </script>
+      </template>
+    `);
+
+    const animationIds = comp.getElement("hf-line")?.animationIds ?? [];
+    expect(animationIds).toHaveLength(1);
+    expect(comp.getAllAnimationIds()).toEqual(new Set(animationIds));
+  });
 });
 
 // The authored sub-comp form `hyperframes add` scaffolds: the composition id is

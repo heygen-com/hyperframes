@@ -199,6 +199,82 @@ describe("layoutAudit helpers", () => {
   });
 });
 
+// #U10: held-duration severity tiering on top of the existing collapse step.
+// Sample counts below (9) mirror the CLI's default grid so the "1 sample =
+// entrance/exit transient, 2+ adjacent samples = held" framing in the
+// approach doc lines up with the numbers used here.
+describe("persistence-tiered severity (#U10)", () => {
+  it("demotes a content_overlap seen at only one sample among several to info", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [{ ...issue("content_overlap", "warning"), time: 3 }],
+      9,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 1 });
+  });
+
+  it("promotes content_overlap held across >= 2 adjacent samples to error", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...issue("content_overlap", "warning"), time: 3 },
+        { ...issue("content_overlap", "warning"), time: 3.6 },
+      ],
+      9,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
+  });
+
+  it("does not demote a finding held at every sample — persistence, not a single hit", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...issue("text_box_overflow", "error"), time: 1 },
+        { ...issue("text_box_overflow", "error"), time: 3 },
+        { ...issue("text_box_overflow", "error"), time: 5 },
+      ],
+      9,
+    );
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 3 });
+  });
+
+  it("only re-promotes content_overlap — other held codes keep their original severity", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [
+        { ...issue("container_overflow", "warning"), time: 3 },
+        { ...issue("container_overflow", "warning"), time: 3.6 },
+      ],
+      9,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "warning" });
+  });
+
+  it("skips tiering entirely on a single-sample run — nothing to compare a transient against", () => {
+    const collapsed = collapseStaticLayoutIssues(
+      [{ ...issue("content_overlap", "warning"), time: 3 }],
+      1,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "warning" });
+  });
+
+  it("infers the sample count from distinct issue times when none is given", () => {
+    // Two distinct times among the raw issues imply a multi-sample run even
+    // without an explicit count, so the single-occurrence group still demotes.
+    const collapsed = collapseStaticLayoutIssues([
+      { ...issue("content_overlap", "warning"), time: 3 },
+      { ...issue("text_box_overflow", "error"), time: 5 },
+    ]);
+
+    const overlap = collapsed.find((found) => found.code === "content_overlap");
+    expect(overlap).toMatchObject({ severity: "info" });
+  });
+});
+
 function issue(code: LayoutIssue["code"], severity: LayoutIssue["severity"]): LayoutIssue {
   return {
     code,

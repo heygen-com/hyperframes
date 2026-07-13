@@ -6,71 +6,71 @@
       "files": 144
     },
     "faceless-explainer": {
-      "hash": "e92b2d69f90dc859",
+      "hash": "4a833c28bb0717b7",
       "files": 18
     },
     "figma": {
-      "hash": "99538ee56a4ca553",
+      "hash": "0e6e96f5a76ff824",
       "files": 2
     },
     "general-video": {
-      "hash": "a9fc26e52f6acabe",
+      "hash": "434d5b70ef1779bd",
       "files": 1
     },
     "hyperframes": {
-      "hash": "47f82d8393592344",
+      "hash": "2242ec76ec739327",
       "files": 1
     },
     "hyperframes-animation": {
-      "hash": "16ecdf00cf5cebf1",
+      "hash": "b982a1af9821e326",
       "files": 99
     },
     "hyperframes-cli": {
-      "hash": "3debfac5d7216214",
+      "hash": "8c574964954d4a32",
       "files": 7
     },
     "hyperframes-core": {
-      "hash": "25fa15b7ec6b8ff1",
+      "hash": "5fa959259d152618",
       "files": 15
     },
     "hyperframes-creative": {
-      "hash": "d60c84ddca9ea6db",
+      "hash": "3e5bcbf46dc14427",
       "files": 69
     },
     "hyperframes-keyframes": {
-      "hash": "555c0cd491c40cea",
+      "hash": "040453e302a0e15b",
       "files": 3
     },
     "hyperframes-registry": {
-      "hash": "e3b389526834109d",
+      "hash": "5f49178cc43e100b",
       "files": 10
     },
     "media-use": {
-      "hash": "89d1719ed24ae7da",
-      "files": 128
+      "hash": "b7314d0451ce0170",
+      "files": 130
     },
     "motion-graphics": {
-      "hash": "0f1ac928e387a74c",
+      "hash": "dafcdce07d221aa4",
       "files": 23
     },
     "music-to-video": {
-      "hash": "5bb405421a7e19ba",
+      "hash": "ccb6181af8bcef09",
       "files": 132
     },
     "pr-to-video": {
-      "hash": "1f64a03c4dacf0f6",
+      "hash": "bc9cdd00417a0503",
       "files": 22
     },
     "product-launch-video": {
-      "hash": "01acd1cb59d1dab7",
-      "files": 20
+      "hash": "8e15e3bf6a546651",
+      "files": 21
     },
     "remotion-to-hyperframes": {
       "hash": "aa599f027db4b994",
       "files": 70
     },
     "slideshow": {
-      "hash": "114b57cf22b39068",
+      "hash": "0f0364c54f77cb9b",
       "files": 2
     },
     "talking-head-recut": {
@@ -78,7 +78,7 @@
       "files": 27
     },
     "website-to-video": {
-      "hash": "79af52a847abaa43",
+      "hash": "e8143700c50b7469",
       "files": 32
     }
   }

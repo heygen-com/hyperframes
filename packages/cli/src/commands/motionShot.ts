@@ -36,6 +36,8 @@ interface ScopeResolution {
 }
 
 export interface ShotOptions {
+  /** Project-relative HTML entry to render. Defaults to `index.html`. */
+  entryFile?: string;
   /** Equal-time samples across the (windowed) timeline. Default 9. */
   samples?: number;
   /** "path" = ghosts at real positions + path; "strip" = filmstrip by time. */
@@ -619,7 +621,7 @@ export async function captureMotionPathShot(
   const { serveStaticProjectHtml } = await import("../utils/staticProjectServer.js");
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
 
-  const html = await bundleToSingleHtml(projectDir);
+  const html = await bundleToSingleHtml(projectDir, { entryFile: opts.entryFile });
   const server = await serveStaticProjectHtml(
     projectDir,
     html,

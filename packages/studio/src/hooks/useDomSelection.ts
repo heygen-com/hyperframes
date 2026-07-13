@@ -1,10 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { TimelineElement } from "../player";
+import type { SelectElementOptions, TimelineElement } from "../player";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
 } from "../utils/studioPreviewHelpers";
-import { resolveTimelineIdForSelection, type RightPanelTab } from "../utils/studioHelpers";
+import {
+  findMatchingTimelineElementId,
+  findTimelineIdByAncestor,
+  type RightPanelTab,
+} from "../utils/studioHelpers";
 import {
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -20,7 +24,6 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
-import { usePlayerStore } from "../player/store/playerStore";
 
 // ── Types ──
 
@@ -44,7 +47,7 @@ export interface UseDomSelectionParams {
   captionEditMode: boolean;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   timelineElements: TimelineElement[];
-  setSelectedTimelineElementId: (id: string | null) => void;
+  setSelectedTimelineElementId: (id: string | null, options?: SelectElementOptions) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   previewIframe: HTMLIFrameElement | null;
@@ -92,6 +95,7 @@ export interface UseDomSelectionReturn {
   ) => Promise<DomEditSelection | null>;
   handleTimelineElementSelect: (element: TimelineElement | null) => Promise<void>;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => Promise<void>;
+  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
   applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
 }
 
@@ -206,42 +210,27 @@ export function useDomSelection({
       if (nextSelection) {
         if (options?.revealPanel !== false) {
           setRightCollapsed(false);
-          // Keep the Variables tab in place — selecting elements is part of
-          // the bind flow there; yanking to Design would lose the context.
+          // Keep the Variables tab in place — selecting elements is part of the bind
+          // flow there; yanking to Design would lose the context.
           if (rightPanelTabRef.current !== "variables") {
             setRightPanelTab("design");
           }
         }
-        // Mirror the whole DOM group to the store so it stays the single source of
-        // truth: a single selection collapses to one id; a preserved group (echo
-        // during a gesture) keeps every member instead of shrinking to the anchor.
-        const anchorId = resolveTimelineIdForSelection(
-          nextSelection,
-          timelineElements,
-          activeCompPath,
-        );
-        const groupIds = nextGroup
-          .map((selection) =>
-            resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-          )
-          .filter((id): id is string => Boolean(id));
-        if (groupIds.length > 0) {
-          usePlayerStore.getState().setSelection(groupIds, anchorId);
-        } else {
-          setSelectedTimelineElementId(anchorId);
-        }
+        const nextSelectedTimelineId =
+          findMatchingTimelineElementId(nextSelection, timelineElements) ??
+          findTimelineIdByAncestor(
+            nextSelection.element,
+            timelineElements,
+            nextSelection.sourceFile || "index.html",
+          );
+        // Late marquee notify: a primary already in the live set must not collapse it.
+        setSelectedTimelineElementId(nextSelectedTimelineId, { preserveSet: true });
         return;
       }
 
       setSelectedTimelineElementId(null);
     },
-    [
-      setSelectedTimelineElementId,
-      timelineElements,
-      setRightCollapsed,
-      setRightPanelTab,
-      activeCompPath,
-    ],
+    [setSelectedTimelineElementId, timelineElements, setRightCollapsed, setRightPanelTab],
   );
 
   const clearDomSelection = useCallback(() => {
@@ -424,6 +413,55 @@ export function useDomSelection({
     [activeCompPath, applyDomSelection, buildDomSelectionFromTarget, previewIframeRef],
   );
 
+  const refreshDomEditGroupSelectionsFromPreview = useCallback(
+    // fallow-ignore-next-line complexity
+    async (selections: DomEditSelection[]) => {
+      const iframe = previewIframeRef.current;
+      let doc: Document | null = null;
+      try {
+        doc = iframe?.contentDocument ?? null;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const nextGroup: DomEditSelection[] = [];
+      for (const selection of selections) {
+        const element = findElementForSelection(doc, selection, activeCompPath);
+        if (!element) continue;
+        const nextSelection = await buildDomSelectionFromTarget(element);
+        if (nextSelection) nextGroup.push(nextSelection);
+      }
+      if (nextGroup.length === 0) return;
+
+      const currentSelection = domEditSelectionRef.current;
+      const nextSelection =
+        nextGroup.find((selection) => domEditSelectionsTargetSame(selection, currentSelection)) ??
+        nextGroup[0] ??
+        null;
+
+      domEditSelectionRef.current = nextSelection;
+      domEditGroupSelectionsRef.current = nextGroup;
+      setDomEditSelection(nextSelection);
+      setDomEditGroupSelections(nextGroup);
+
+      if (nextSelection) {
+        setSelectedTimelineElementId(
+          findMatchingTimelineElementId(nextSelection, timelineElements),
+        );
+      } else {
+        setSelectedTimelineElementId(null);
+      }
+    },
+    [
+      activeCompPath,
+      buildDomSelectionFromTarget,
+      setSelectedTimelineElementId,
+      timelineElements,
+      previewIframeRef,
+    ],
+  );
+
   // ── Effects ──
 
   // Clear hover unconditionally on composition/project/preview change
@@ -471,8 +509,7 @@ export function useDomSelection({
   const applyMarqueeSelection = useCallback(
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
-      // Honor the inspector-panels kill switch like applyDomSelection does, so
-      // marquee can't land selections while the inspector UI is suppressed.
+      // Honor the inspector-panels kill switch like applyDomSelection does.
       if (!STUDIO_INSPECTOR_PANELS_ENABLED) {
         domEditSelectionRef.current = null;
         domEditGroupSelectionsRef.current = [];
@@ -493,8 +530,7 @@ export function useDomSelection({
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup = [...nextGroup, s];
         }
       } else {
-        // Dedupe by target: under select-as-unit several marquee'd members collapse
-        // to the same group, which must count as one selection, not many duplicates.
+        // Dedupe by target: select-as-unit collapses marquee'd members to one group.
         nextGroup = [];
         for (const s of selections) {
           if (!domEditSelectionInGroup(nextGroup, s)) nextGroup.push(s);
@@ -505,23 +541,16 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
-      const nextTimelineId = resolveTimelineIdForSelection(
-        nextSelection,
-        timelineElements,
-        activeCompPath,
-      );
-      const nextTimelineIds = nextGroup
-        .map((selection) =>
-          resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
-        )
-        .filter((id): id is string => Boolean(id));
-      if (nextTimelineIds.length > 0) {
-        usePlayerStore.getState().setSelection(nextTimelineIds, nextTimelineId);
-      } else {
-        setSelectedTimelineElementId(null);
-      }
+      const nextTimelineId =
+        findMatchingTimelineElementId(nextSelection, timelineElements) ??
+        findTimelineIdByAncestor(
+          nextSelection.element,
+          timelineElements,
+          nextSelection.sourceFile || "index.html",
+        );
+      setSelectedTimelineElementId(nextTimelineId);
     },
-    [applyDomSelection, timelineElements, setSelectedTimelineElementId, activeCompPath],
+    [applyDomSelection, timelineElements, setSelectedTimelineElementId],
   );
 
   // Disabled inspector effect
@@ -558,6 +587,7 @@ export function useDomSelection({
     buildDomSelectionForTimelineElement,
     handleTimelineElementSelect,
     refreshDomEditSelectionFromPreview,
+    refreshDomEditGroupSelectionsFromPreview,
     applyMarqueeSelection,
   };
 }

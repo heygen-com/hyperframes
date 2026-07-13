@@ -1,12 +1,8 @@
 // fallow-ignore-file code-duplication
 // fallow-ignore-file dead-code
 import type { TimelineElement } from "../store/playerStore";
-import type { BlockedTimelineEditIntent, TimelineStackingReorderIntent } from "./timelineEditing";
-import type {
-  TimelineGroupCommitOptions,
-  TimelineGroupMoveChange,
-  TimelineGroupResizeChange,
-} from "../../hooks/useTimelineGroupEditing";
+import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+import type { BlockedTimelineEditIntent } from "./timelineEditing";
 
 /**
  * Shared callback signatures for timeline editing operations.
@@ -31,26 +27,30 @@ export interface TimelineDropCallbacks {
 export interface TimelineEditCallbacks {
   onMoveElement?: (
     element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "track"> & {
-      stackingReorder?: TimelineStackingReorderIntent | null;
-    },
+    updates: Pick<TimelineElement, "start" | "track">,
+  ) => Promise<void> | void;
+  /** Atomic multi-clip move (single undo) for main-track ripple + track-insert.
+   *  `coalesceKey` (drag-commit gesture id) merges the move history entry with a
+   *  lane change's follow-up z-reorder entry into one undo step. */
+  onMoveElements?: (
+    edits: Array<{ element: TimelineElement; updates: Pick<TimelineElement, "start" | "track"> }>,
+    coalesceKey?: string,
+    operation?: TimelineMoveOperation,
   ) => Promise<void> | void;
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
-  onMoveElements?: (
-    changes: TimelineGroupMoveChange[],
-    options?: TimelineGroupCommitOptions,
-  ) => Promise<void> | void;
   onResizeElements?: (
-    changes: TimelineGroupResizeChange[],
-    options?: TimelineGroupCommitOptions,
+    changes: Array<{
+      element: TimelineElement;
+      start: number;
+      duration: number;
+      playbackStart?: number;
+    }>,
+    options?: { coalesceKey?: string },
   ) => Promise<void> | void;
-  onPreviewMoveElements?: (changes: TimelineGroupMoveChange[]) => void;
-  onPreviewResizeElements?: (changes: TimelineGroupResizeChange[]) => void;
   onToggleTrackHidden?: (track: number, hidden: boolean) => Promise<void> | void;
-  onToggleElementHidden?: (elementKey: string, hidden: boolean) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;

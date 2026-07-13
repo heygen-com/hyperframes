@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ContextMenu } from "./AssetContextMenu";
 import { basename, getAudioSubtype } from "./assetHelpers";
 import { TIMELINE_ASSET_MIME } from "../../utils/timelineAssetDrop";
+import { usePlayerStore } from "../../player/store/playerStore";
+import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
+import { findClipForAsset, isPointerClick } from "../../utils/assetClickBehavior";
+import { resolveMediaPreviewUrl } from "../../player/components/thumbnailUtils";
 
 export function AudioRow({
   projectId,
@@ -12,6 +16,7 @@ export function AudioRow({
   isCopied,
   onDelete,
   onRename,
+  onAddAssetToTimeline,
 }: {
   projectId: string;
   asset: string;
@@ -21,6 +26,7 @@ export function AudioRow({
   isCopied: boolean;
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
+  onAddAssetToTimeline?: (path: string) => void;
 }) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -32,7 +38,36 @@ export function AudioRow({
   const animRef = useRef<number>(0);
   const name = basename(asset);
   const subtype = getAudioSubtype(asset);
-  const serveUrl = `/api/projects/${projectId}/preview/${asset}`;
+  const serveUrl = resolveMediaPreviewUrl(asset, projectId);
+
+  // CapCut-style click behavior: drag-threshold gate.
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
+  const elements = usePlayerStore((s) => s.elements);
+  const setPreviewAsset = useAssetPreviewStore((s) => s.setPreviewAsset);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    pointerDownRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const origin = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (!origin) return;
+      if (!isPointerClick(e.clientX - origin.x, e.clientY - origin.y)) return;
+      if (used) {
+        const clip = findClipForAsset(elements, asset);
+        if (clip) {
+          setSelectedElementId(clip.key ?? clip.id);
+          return;
+        }
+      }
+      // Not added → preview overlay (audio player)
+      setPreviewAsset(asset, projectId);
+    },
+    [used, elements, asset, projectId, setSelectedElementId, setPreviewAsset],
+  );
 
   useEffect(() => {
     return () => {
@@ -109,7 +144,8 @@ export function AudioRow({
     <>
       <div
         draggable
-        onClick={() => onCopy(asset)}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData(TIMELINE_ASSET_MIME, JSON.stringify({ path: asset }));
@@ -195,6 +231,7 @@ export function AudioRow({
           onCopy={onCopy}
           onDelete={onDelete}
           onRename={onRename}
+          onAddAtPlayhead={onAddAssetToTimeline}
         />
       )}
     </>

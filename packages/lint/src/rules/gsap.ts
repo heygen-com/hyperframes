@@ -1128,11 +1128,18 @@ export const gsapRules: LintRule<LintContext>[] = [
     const findings: HyperframeLintFinding[] = [];
     const cssOpacityZeroSelectors = new Set<string>();
 
+    // Single owner of "this declaration list sets opacity to EXACTLY zero" —
+    // boundary-anchored so `opacity: 0.98` never matches. Works for both a CSS
+    // block body (brace already stripped by the block regex) and an inline
+    // style attribute: the declaration ends at `;` or at end of input, which
+    // also catches a final declaration without a trailing semicolon.
+    const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
+
     for (const style of styles) {
       for (const [, selector, body] of style.content.matchAll(
         /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
       )) {
-        if (body && /opacity\s*:\s*0\s*[;}]/.test(body)) {
+        if (body && opacityExactlyZero.test(body)) {
           cssOpacityZeroSelectors.add((selector ?? "").trim());
         }
       }
@@ -1140,7 +1147,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     for (const tag of tags) {
       const inlineStyle = readAttr(tag.raw, "style");
-      if (!inlineStyle || !/opacity\s*:\s*0/.test(inlineStyle)) continue;
+      if (!inlineStyle || !opacityExactlyZero.test(inlineStyle)) continue;
       const id = readAttr(tag.raw, "id");
       const classes = readAttr(tag.raw, "class")?.split(/\s+/).filter(Boolean) ?? [];
       if (id) cssOpacityZeroSelectors.add(`#${id}`);

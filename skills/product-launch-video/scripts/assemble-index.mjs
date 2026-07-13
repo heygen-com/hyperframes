@@ -38,8 +38,8 @@
 // `lint` failures surface HERE instead of after assembly + a wasted render):
 //   ① AUTO-REPAIR — a sub-comp root missing data-width/data-height: inject the canvas
 //      dims (the renderer needs them on the cloned root; else lint root_missing_dimensions).
-//   ② HARD FAIL  — <video>/<audio> inside a sub-comp: the runtime only drives media that
-//      is a DIRECT child of the host root, so sub-comp media renders blank/black.
+//   ② APPROVED VIDEO HOIST — an explicitly marked frame video is moved to the host root;
+//      audio remains orchestrator-owned and unmarked media is still a hard failure.
 //   ③ HARD FAIL  — a timed element (data-start+duration+track-index) that is not the root
 //      and lacks class="clip" (shows the whole frame), or two same-track clips that overlap.
 //
@@ -161,9 +161,79 @@ function findRootTag(html) {
   return firstCompId;
 }
 
+function attrValueFrom(attrs, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = attrs.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`));
+  return match ? (match[1] ?? match[2]) : null;
+}
+
+function escapeHtmlAttr(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function approvedVideoAttrs(attrs) {
+  const forwarded = [];
+  for (const name of ["id", "src", "poster", "preload", "aria-label"]) {
+    const value = attrValueFrom(attrs, name);
+    if (value !== null) forwarded.push(`${name}="${escapeHtmlAttr(value)}"`);
+  }
+  for (const name of ["muted", "playsinline", "loop"]) {
+    if (attrPresent(attrs, name)) forwarded.push(name);
+  }
+  return forwarded.join(" ");
+}
+
+function hoistApprovedVideos(html, label) {
+  const videos = [];
+  const errors = [];
+  const scan = html
+    .replace(/<!--[\s\S]*?-->/g, (match) => " ".repeat(match.length))
+    .replace(/<script\b[\s\S]*?<\/script[^>]*>/gi, (match) => " ".repeat(match.length))
+    .replace(/<style\b[\s\S]*?<\/style[^>]*>/gi, (match) => " ".repeat(match.length));
+  const re = /<video\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/video\s*>/gi;
+  const repaired = html.replace(re, (full, attrs, inner, offset) => {
+    if (scan[offset] !== "<") return full;
+    if (attrValueFrom(attrs, "data-frame-video") !== "approved") return full;
+    const rawStart = attrValueFrom(attrs, "data-start");
+    const rawDuration = attrValueFrom(attrs, "data-duration");
+    const rawTrack = attrValueFrom(attrs, "data-track-index");
+    if (rawStart === null || rawDuration === null || rawTrack === null) {
+      errors.push(
+        `${label}: approved frame video must declare quoted data-start, data-duration, and data-track-index`,
+      );
+      return full;
+    }
+    const start = Number(rawStart);
+    const duration = Number(rawDuration);
+    const track = Number(rawTrack);
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      !Number.isFinite(track)
+    ) {
+      errors.push(
+        `${label}: approved frame video must declare finite data-start, positive data-duration, and data-track-index`,
+      );
+      return full;
+    }
+    videos.push({ attrs: approvedVideoAttrs(attrs), inner, start, duration, track });
+    return "<!-- approved frame video hoisted by assemble-index -->";
+  });
+  return { html: repaired, videos, errors };
+}
+
 // Returns { errors: string[], repairedHtml: string|null, repairNote: string|null }.
 function guardFrame(html, label) {
   const errors = [];
+  const originalHtml = html;
+  const approved = hoistApprovedVideos(html, label);
+  html = approved.html;
+  errors.push(...approved.errors);
   // Scan a copy with comments + <script>/<style> bodies blanked, so a tag-like string
   // in a comment (e.g. "<!-- match the host <video> coords -->") or in GSAP code can't
   // trip ②/③. ① still splices into the ORIGINAL html, so its offsets stay correct.
@@ -224,7 +294,7 @@ function guardFrame(html, label) {
   }
 
   // ① auto-repair: ensure the root carries data-width / data-height.
-  let repairedHtml = null;
+  let repairedHtml = approved.html !== originalHtml ? approved.html : null;
   let repairNote = null;
   const root = findRootTag(html);
   if (root) {
@@ -239,7 +309,7 @@ function guardFrame(html, label) {
     }
   }
 
-  return { errors, repairedHtml, repairNote };
+  return { errors, repairedHtml, repairNote, hoistedVideos: approved.videos };
 }
 
 // ---------- resolve mountable frames in document order ----------
@@ -299,7 +369,12 @@ for (const f of manifest.frames) {
   ) {
     die(`${label}: ${f.src} has no data-composition-id="${compId}" (host/inner id must match)`);
   }
-  mounted.push({ frame: f, compId, durationSeconds: r3(f.durationSeconds) });
+  mounted.push({
+    frame: f,
+    compId,
+    durationSeconds: r3(f.durationSeconds),
+    hoistedVideos: guard.hoistedVideos,
+  });
 }
 if (frameErrors.length) {
   die(
@@ -371,6 +446,25 @@ for (const m of mounted) {
     }
   }
   body.push("");
+}
+
+// Approved frame videos are mounted at the host root after frame clips. Translate
+// frame-relative timing to the global timeline and keep them off audio/frame lanes.
+for (const [frameIndex, m] of mounted.entries()) {
+  for (const video of m.hoistedVideos ?? []) {
+    const globalStart = r3(m.start + video.start);
+    const track = 1000 + frameIndex * 1000 + video.track;
+    const id = /(?:^|\s)id\s*=/.test(video.attrs) ? "" : ` id="el-${m.compId}-video-${frameIndex}"`;
+    body.push(
+      `      <video${id} ${video.attrs}`,
+      `        class="clip"`,
+      `        data-start="${globalStart}"`,
+      `        data-duration="${r3(video.duration)}"`,
+      `        data-track-index="${track}"`,
+      `      >${video.inner}</video>`,
+      "",
+    );
+  }
 }
 
 // (track 11) BGM — duck under narration when any voice is present. Loop-extend a short

@@ -1,11 +1,15 @@
 // Shared types, regex constants, and utility functions used across lint rule modules.
 // Nothing in this file should emit findings — it only parses and extracts.
 
+import { Parser } from "htmlparser2";
+
 export type OpenTag = {
   raw: string;
   name: string;
   attrs: string;
   index: number;
+  closeIndex?: number;
+  endIndex?: number;
 };
 
 export type ExtractedBlock = {
@@ -15,9 +19,6 @@ export type ExtractedBlock = {
   index: number;
 };
 
-const TAG_PATTERN = /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi;
-export const STYLE_BLOCK_PATTERN = /<style\b([^>]*)>([\s\S]*?)<\/style>/gi;
-export const SCRIPT_BLOCK_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const COMPOSITION_ID_IN_CSS_PATTERN = /\[data-composition-id=["']([^"']+)["']\]/g;
 export const TIMELINE_REGISTRY_INIT_PATTERN =
   /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
@@ -51,36 +52,57 @@ const TIMELINE_REGISTRY_OBJECT_BODY_PATTERN = /window\.__timelines\s*=\s*\{([\s\
 const TIMELINE_REGISTRY_OBJECT_ENTRY_PATTERN =
   /(?:["']([^"']+)["']|([A-Za-z_$][\w$]*))\s*:\s*[A-Za-z_$][\w$]*/g;
 
-export function extractOpenTags(source: string): OpenTag[] {
+export function parseHtmlStructure(source: string): {
+  tags: OpenTag[];
+  scripts: ExtractedBlock[];
+  styles: ExtractedBlock[];
+} {
   const tags: OpenTag[] = [];
-  let match: RegExpExecArray | null;
-  const pattern = new RegExp(TAG_PATTERN.source, TAG_PATTERN.flags);
-  while ((match = pattern.exec(source)) !== null) {
-    const raw = match[0];
-    if (raw.startsWith("</") || raw.startsWith("<!")) continue;
-    tags.push({
-      raw,
-      name: (match[1] || "").toLowerCase(),
-      attrs: match[2] || "",
-      index: match.index,
-    });
-  }
-  return tags;
-}
+  const blocks = { script: [] as ExtractedBlock[], style: [] as ExtractedBlock[] };
+  const openTagsByName = new Map<string, OpenTag[]>();
+  const openBlocks: Array<{
+    name: "script" | "style";
+    attrs: string;
+    contentStart: number;
+    index: number;
+  }> = [];
+  const parser: Parser = new Parser(
+    {
+      onopentag(name) {
+        const index = parser.startIndex;
+        const raw = source.slice(index, parser.endIndex + 1);
+        const attrs = raw.slice(name.length + 1, -1).replace(/\s*\/$/, "");
+        const tag = { raw, name, attrs, index };
+        tags.push(tag);
+        const sameNameStack = openTagsByName.get(name) ?? [];
+        sameNameStack.push(tag);
+        openTagsByName.set(name, sameNameStack);
+        if (name === "script" || name === "style") {
+          openBlocks.push({ name, attrs, contentStart: parser.endIndex + 1, index });
+        }
+      },
+      onclosetag(name) {
+        const tag = openTagsByName.get(name)?.pop();
+        if (tag) {
+          tag.closeIndex = parser.startIndex;
+          tag.endIndex = parser.endIndex + 1;
+        }
+        if (name !== "script" && name !== "style") return;
+        const block = openBlocks.pop();
+        if (!block || block.name !== name) return;
+        blocks[name].push({
+          attrs: block.attrs,
+          content: source.slice(block.contentStart, parser.startIndex),
+          raw: source.slice(block.index, parser.endIndex + 1),
+          index: block.index,
+        });
+      },
+    },
+    { decodeEntities: false, lowerCaseAttributeNames: false, lowerCaseTags: true },
+  );
+  parser.end(source);
 
-export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[] {
-  const blocks: ExtractedBlock[] = [];
-  let match: RegExpExecArray | null;
-  const p = new RegExp(pattern.source, pattern.flags);
-  while ((match = p.exec(source)) !== null) {
-    blocks.push({
-      attrs: match[1] || "",
-      content: match[2] || "",
-      raw: match[0],
-      index: match.index,
-    });
-  }
-  return blocks;
+  return { tags, scripts: blocks.script, styles: blocks.style };
 }
 
 /**
@@ -89,41 +111,25 @@ export function extractBlocks(source: string, pattern: RegExp): ExtractedBlock[]
  * composition's visible root", whereas `<html>` is where document-level
  * metadata like `data-composition-variables` lives.
  */
-export function findHtmlTag(source: string): OpenTag | null {
-  const match = /<html\b([^<>]*)>/i.exec(source);
-  if (!match) return null;
-  return {
-    raw: match[0],
-    name: "html",
-    attrs: match[1] ?? "",
-    index: match.index,
-  };
+export function findHtmlTag(tags: readonly OpenTag[]): OpenTag | null {
+  return tags.find((tag) => tag.name === "html") ?? null;
 }
 
 // fallow-ignore-next-line complexity
-export function findRootTag(source: string): OpenTag | null {
-  const bodyOpenMatch = /<body\b([^>]*)>/i.exec(source);
-  const bodyCloseMatch = /<\/body>/i.exec(source);
+export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): OpenTag | null {
+  const tags = parsedTags ?? parseHtmlStructure(source).tags;
+  const bodyTag = tags.find((tag) => tag.name === "body");
   if (
-    bodyOpenMatch &&
-    (readAttr(bodyOpenMatch[0], "data-composition-id") ||
-      readAttr(bodyOpenMatch[0], "data-width") ||
-      readAttr(bodyOpenMatch[0], "data-height"))
+    bodyTag &&
+    (readAttr(bodyTag.raw, "data-composition-id") ||
+      readAttr(bodyTag.raw, "data-width") ||
+      readAttr(bodyTag.raw, "data-height"))
   ) {
-    return {
-      raw: bodyOpenMatch[0],
-      name: "body",
-      attrs: bodyOpenMatch[1] ?? "",
-      index: bodyOpenMatch.index,
-    };
+    return bodyTag;
   }
-  const bodyStart = bodyOpenMatch ? bodyOpenMatch.index + bodyOpenMatch[0].length : 0;
-  const bodyEnd =
-    bodyOpenMatch && bodyCloseMatch && bodyCloseMatch.index > bodyStart
-      ? bodyCloseMatch.index
-      : source.length;
-  const bodyContent = bodyOpenMatch ? source.slice(bodyStart, bodyEnd) : source;
-  const bodyTags = extractOpenTags(bodyContent);
+  const bodyStart = bodyTag ? bodyTag.index + bodyTag.raw.length : 0;
+  const bodyEnd = bodyTag?.closeIndex ?? source.length;
+  const bodyTags = tags.filter((tag) => tag.index >= bodyStart && tag.index < bodyEnd);
   // Set when a leading <svg> defs block is skipped (see below) — extractOpenTags
   // is a flat, nesting-unaware scan, so without this the very next tag it
   // returns is the svg's own nested child (<defs>, <filter>, ...), not the
@@ -146,13 +152,12 @@ export function findRootTag(source: string): OpenTag | null {
       !readAttr(tag.raw, "data-width") &&
       !readAttr(tag.raw, "data-height")
     ) {
-      const closeMatch = /<\/svg\s*>/i.exec(bodyContent.slice(tag.index));
       // No closing tag found (malformed HTML) — skip everything rather than
       // risk returning one of the svg's own children as the root.
-      skipBefore = closeMatch ? tag.index + closeMatch.index + closeMatch[0].length : Infinity;
+      skipBefore = tag.endIndex ?? Infinity;
       continue;
     }
-    return { ...tag, index: tag.index + bodyStart };
+    return tag;
   }
   return null;
 }

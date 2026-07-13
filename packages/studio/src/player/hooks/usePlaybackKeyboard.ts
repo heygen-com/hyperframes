@@ -9,6 +9,7 @@
 import { useRef, useCallback } from "react";
 import { useCaptionStore } from "../../captions/store";
 import { shouldIgnorePlaybackShortcutEvent, SHUTTLE_SPEEDS } from "../lib/playbackShortcuts";
+import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
 import { stepFrameTime, STUDIO_PREVIEW_FPS } from "../lib/time";
 import type { PlaybackAdapter } from "../lib/playbackTypes";
@@ -97,6 +98,10 @@ export function usePlaybackKeyboard({
         togglePlay();
         return;
       }
+      // A nudgeable canvas selection owns the arrow keys (DomEditOverlay moves
+      // the element); frame-stepping would double-handle the same keystroke.
+      const arrowStep = e.code === "ArrowLeft" || e.code === "ArrowRight";
+      if (arrowStep && canvasNudgeKeysClaimed()) return;
       if (e.code === "ArrowLeft") {
         e.preventDefault();
         stepFrames(e.shiftKey ? -10 : -1);

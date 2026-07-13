@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useLayoutEffect } from "react";
-import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
+import { liveTime, type ZoomMode } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
@@ -117,21 +117,9 @@ export function useTimelinePlayhead({
   useMountEffect(() => {
     const unsub = liveTime.subscribe((t) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      const playheadX = getTimelinePlayheadLeft(t, ppsRef.current);
-      playheadRef.current.style.left = `${playheadX}px`;
-      const scroll = scrollRef.current;
-      if (
-        scroll &&
-        !isDragging.current &&
-        usePlayerStore.getState().isPlaying &&
-        shouldAutoScrollTimeline(zoomModeRef.current, scroll.scrollWidth, scroll.clientWidth)
-      ) {
-        const edgeMargin = scroll.clientWidth * 0.12;
-        if (playheadX > scroll.scrollLeft + scroll.clientWidth - edgeMargin)
-          scroll.scrollLeft = playheadX - scroll.clientWidth * 0.15;
-        else if (playheadX < scroll.scrollLeft + GUTTER)
-          scroll.scrollLeft = Math.max(0, playheadX - GUTTER);
-      }
+      // Playback deliberately does NOT scroll the viewport to chase the playhead —
+      // the user's scroll position is theirs; the playhead may run off-screen.
+      playheadRef.current.style.left = `${getTimelinePlayheadLeft(t, ppsRef.current)}px`;
     });
     return unsub;
   });

@@ -200,6 +200,28 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "for this render. Capture uses the platform's baseline route.",
     );
   }
+  // Fast-capture ancestor-background-image gate, same shape as the gates above.
+  // drawElementService's per-frame ancestor fill replicates only the nearest
+  // non-transparent ancestor background-COLOR behind the captured subtree; a
+  // background-image (linear-gradient, url) on <body>/<html>/a wrapper reads
+  // as transparent there, so a deeper ancestor's solid color paints instead
+  // wherever the subtree leaves pixels uncovered (measured: body gradient
+  // replaced by html color, 30.9 dB min vs baseline — and late-onset, so the
+  // self-verify grid can miss it). HF_FAST_CAPTURE_ANCESTOR_BG=true bypasses
+  // for R&D.
+  if (
+    cfg.useDrawElement &&
+    process.env.HF_FAST_CAPTURE_ANCESTOR_BG !== "true" &&
+    compiled.hasAncestorBackgroundImage
+  ) {
+    cfg.useDrawElement = false;
+    deCompileGate = "ancestor_background_image";
+    log.info(
+      "[Render] Fast capture: composition root's ancestors (body/html/wrapper) carry a " +
+        "background-image — disabling drawElementImage for this render. Capture uses the " +
+        "platform's baseline route.",
+    );
+  }
   // Shader-transition comps: page-side compositing is the faster, purpose-built
   // path for them, and resolveConfig force-disables it whenever drawElement is
   // on. With drawElement default-on that trade is backwards — prefer page-side

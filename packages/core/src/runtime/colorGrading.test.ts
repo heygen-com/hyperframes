@@ -1,7 +1,11 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
-import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
+import {
+  createColorGradingRuntime,
+  installAuthoredOpacityCapture,
+  type RuntimeColorGradingApi,
+} from "./colorGrading";
 
 let lastUniform1f: ReturnType<typeof vi.fn> | null = null;
 let lastUniform3f: ReturnType<typeof vi.fn> | null = null;
@@ -191,6 +195,60 @@ describe("createColorGradingRuntime", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     runtime?.redraw();
   }
+
+  it("restores the authored inline opacity captured before animation transients", () => {
+    const video = makeDrawableVideo();
+    // Parse-time capture stamped the authored value; by hide time GSAP has
+    // already left a from()-tween transient (0) in the inline style.
+    video.setAttribute("data-hf-authored-opacity", "0.75");
+    video.style.opacity = "0";
+    startRuntimeWithVideo(video);
+
+    expect(video.style.getPropertyPriority("opacity")).toBe("important");
+
+    runtime?.destroy();
+    runtime = null;
+
+    // Restore must use the authored 0.75, not the GSAP transient 0.
+    expect(video.style.getPropertyValue("opacity")).toBe("0.75");
+    expect(video.style.getPropertyPriority("opacity")).toBe("");
+  });
+
+  it("restores no inline opacity when the authored capture recorded none", () => {
+    const video = makeDrawableVideo();
+    video.setAttribute("data-hf-authored-opacity", "");
+    video.style.opacity = "0";
+    startRuntimeWithVideo(video);
+
+    runtime?.destroy();
+    runtime = null;
+
+    expect(video.style.getPropertyValue("opacity")).toBe("");
+  });
+
+  it("re-syncs the graded canvas when the source's inline transform changes", async () => {
+    const { video } = startRuntimeWithVideo();
+    const drawsBefore = texImage2DCalls.length;
+
+    // Simulate a studio drag draft: only the inline transform moves.
+    video.style.transform = "translate(120px, 60px)";
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it("does not redraw-loop on its own hide writes (opacity/visibility only)", async () => {
+    const { video } = startRuntimeWithVideo();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    const drawsBefore = texImage2DCalls.length;
+
+    // drawEntry's own source-hide writes touch opacity — geometry unchanged.
+    video.style.opacity = "0.5";
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    expect(texImage2DCalls.length).toBe(drawsBefore);
+  });
 
   it("re-hides source media after timeline visibility sync", () => {
     const { video, canvas } = startRuntimeWithVideo();
@@ -553,5 +611,58 @@ describe("createColorGradingRuntime", () => {
     expect(runtime?.getStatus("#hero-video").state).toBe("active");
     expect(video.hasAttribute("data-hf-color-grading-source-hidden")).toBe(true);
     expect(video.style.getPropertyValue("opacity")).toBe("0");
+  });
+});
+
+describe("installAuthoredOpacityCapture", () => {
+  it("stamps graded elements at insertion and never overwrites the stamp", async () => {
+    installAuthoredOpacityCapture();
+    const el = document.createElement("img");
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.5 } }));
+    el.style.opacity = "0.98";
+    document.body.appendChild(el);
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.98");
+
+    // A re-insert after an animation engine mutated the element keeps the
+    // original capture (has-attribute guard).
+    el.style.opacity = "0";
+    el.remove();
+    document.body.appendChild(el);
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.98");
+    el.remove();
+  });
+
+  it("stamps an empty value for graded elements without an authored inline opacity", async () => {
+    installAuthoredOpacityCapture();
+    const el = document.createElement("img");
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.5 } }));
+    document.body.appendChild(el);
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("");
+    el.remove();
+  });
+
+  it("stamps an already-inserted element the moment it GAINS grading at runtime", async () => {
+    installAuthoredOpacityCapture();
+    const el = document.createElement("img");
+    el.style.opacity = "0.9";
+    document.body.appendChild(el);
+    await Promise.resolve();
+    expect(el.hasAttribute("data-hf-authored-opacity")).toBe(false);
+
+    // Studio applies a preset to a previously ungraded element — no re-insert.
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.5 } }));
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.9");
+
+    // Later attribute rewrites (preset tweaks) never overwrite the stamp,
+    // even if a transient is live by then.
+    el.style.opacity = "0";
+    el.setAttribute(HF_COLOR_GRADING_ATTR, serializeHfColorGrading({ adjust: { exposure: 0.9 } }));
+    await Promise.resolve();
+    expect(el.getAttribute("data-hf-authored-opacity")).toBe("0.9");
+    el.remove();
   });
 });

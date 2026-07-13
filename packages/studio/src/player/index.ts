@@ -6,11 +6,12 @@ export { VideoThumbnail } from "./components/VideoThumbnail";
 export { CompositionThumbnail } from "./components/CompositionThumbnail";
 
 // Hooks
-export { useTimelinePlayer, resolveIframe } from "./hooks/useTimelinePlayer";
+export { useTimelinePlayer } from "./hooks/useTimelinePlayer";
+export { resolveIframe } from "./lib/timelineDOM";
 
 // Store
 export { usePlayerStore, liveTime } from "./store/playerStore";
-export type { TimelineElement, ZoomMode } from "./store/playerStore";
+export type { SelectElementOptions, TimelineElement } from "./store/playerStore";
 
 // Utils
 export { formatTime } from "./lib/time";

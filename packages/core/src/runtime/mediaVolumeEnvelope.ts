@@ -1,3 +1,5 @@
+import type { RuntimeTimelineLike } from "./types";
+
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
  * baking in audioVolumeEnvelope.ts) and the preview runtime (per-tick gain
@@ -125,10 +127,7 @@ export function probeElementVolumeKeyframes(
   return hasAutomation ? keyframes : null;
 }
 
-export interface RuntimeTimelineRef {
-  totalTime?: ((t: number, suppressEvents?: boolean) => unknown) | undefined;
-  seek?: ((t: number, suppressEvents?: boolean) => unknown) | undefined;
-}
+export type RuntimeTimelineRef = Partial<Pick<RuntimeTimelineLike, "totalTime" | "seek">>;
 
 /**
  * Probe a media element and, if volume automation is detected, store the
@@ -155,8 +154,17 @@ export function probeAndCacheElementVolume(
       // ignore seek failures during probe
     }
   };
-
+  // Sampling seeks the live timeline through the entire composition. Preserve
+  // its playhead so the probe cannot perturb the first rendered frame (or any
+  // user scrub in the preview).
+  const originalTime =
+    typeof timeline.totalTime === "function"
+      ? Number(timeline.totalTime())
+      : typeof timeline.seek === "function"
+        ? Number(timeline.seek())
+        : 0;
   const keyframes = probeElementVolumeKeyframes(mediaEl, seekFn, compositionDuration, 60);
+  if (Number.isFinite(originalTime)) seekFn(originalTime);
   if (keyframes) {
     cache.set(mediaEl, keyframes);
   }

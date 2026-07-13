@@ -107,7 +107,7 @@ Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3,
 
 **Deliver something you're proud of.** Before handing off, ask yourself: would I post this on social media with my name on it? If not, fix what's wrong.
 
-**Gate:** `npx hyperframes lint` and `npx hyperframes validate` pass with zero errors, and the final response includes the active Studio project URL.
+**Gate:** `npx hyperframes check` pass with zero errors, and the final response includes the active Studio project URL.
 
 ---
 

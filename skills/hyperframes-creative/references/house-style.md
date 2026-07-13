@@ -27,7 +27,7 @@ If the content genuinely calls for one of these — centered layout for a solemn
 - Match light/dark to content: food, wellness, kids → light. Tech, cinema, finance → dark.
 - One accent hue. Same background across all scenes.
 - Tint neutrals toward your accent (even subtle warmth/coolness beats dead gray).
-- **Contrast:** enforced by `hyperframes validate` (WCAG AA). Text must be readable with decoratives removed.
+- **Contrast:** enforced by `hyperframes check` (WCAG AA). Text must be readable with decoratives removed.
 - Declare palette up front. Don't invent colors per-element.
 
 ## Background Layer

@@ -44,6 +44,7 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
+import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -186,7 +187,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       for (let i = 0; i < arr.length; i++) normalized[`tl-${i}`] = arr[i];
     }
-    (window as Record<string, unknown>).__timelines = normalized;
+    (window as unknown as Record<string, unknown>).__timelines = normalized;
   }
 
   // Agents sometimes omit data-start on the root composition element. The
@@ -295,7 +296,6 @@ export function initSandboxRuntimeModular(): void {
 
   const MIN_VALID_TIMELINE_DURATION_SECONDS = 1 / 60;
   const TIMELINE_FLOOR_COVERAGE_RATIO = 0.75;
-  const PLAY_REBIND_HOLD_SECONDS = 2;
   const METADATA_REBIND_MIN_DURATION_GAIN_SECONDS = 0.05;
   const METADATA_REBIND_DEBOUNCE_MS = 100;
   const MAX_DIAGNOSTIC_MESSAGE_LENGTH = 240;
@@ -776,7 +776,9 @@ export function initSandboxRuntimeModular(): void {
           !!entry[1] && typeof entry[1].play === "function" && typeof entry[1].pause === "function",
       );
       if (usable.length !== 1) return { timeline: null };
-      const [soleId, soleTimeline] = usable[0];
+      const sole = usable[0];
+      if (!sole) return { timeline: null };
+      const [soleId, soleTimeline] = sole;
       return {
         timeline: soleTimeline,
         selectedTimelineIds: [soleId],
@@ -1223,7 +1225,7 @@ export function initSandboxRuntimeModular(): void {
       // reapplyPositionEditsAfterSeek to un-bake it. Call the apply hook
       // directly here as well, since the wrapper may not be installed yet
       // during initial rebind (timing race on first load / soft reload).
-      const applyFn = (window as Record<string, unknown>).__hfStudioManualEditsApply;
+      const applyFn = (window as unknown as Record<string, unknown>).__hfStudioManualEditsApply;
       if (typeof applyFn === "function") applyFn();
 
       // SDK moveElement edits (data-hf-edit-base-x/y markers) render as a
@@ -1332,6 +1334,7 @@ export function initSandboxRuntimeModular(): void {
   (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind = () => {
     childrenBound = false;
     bindRootTimelineIfAvailable();
+    syncTimedElementVisibility(state.currentTime);
   };
 
   const emitRootStageLayoutDiagnostics = () => {
@@ -1689,6 +1692,64 @@ export function initSandboxRuntimeModular(): void {
   const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
 
+  const syncTimedElementVisibility = (currentTime: number) => {
+    const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
+    const rootComp = resolveRootCompositionElement();
+    for (const rawNode of visibilityNodes) {
+      if (!(rawNode instanceof HTMLElement)) continue;
+
+      if (rawNode.hasAttribute("data-hidden")) {
+        if (!dataHiddenDisplayNodes.has(rawNode)) {
+          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
+          dataHiddenDisplayNodes.add(rawNode);
+        }
+        rawNode.style.display = "none";
+        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+          colorGradingRuntime?.setSourceVisibility(rawNode, false);
+        }
+        continue;
+      }
+
+      if (dataHiddenDisplayNodes.has(rawNode)) {
+        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
+        if (previousDisplay) {
+          rawNode.style.display = previousDisplay;
+        } else {
+          rawNode.style.removeProperty("display");
+        }
+        dataHiddenDisplayRestores.delete(rawNode);
+        dataHiddenDisplayNodes.delete(rawNode);
+      }
+
+      let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
+      // Descendants must not override a hidden ancestor clip. CSS visibility can
+      // otherwise leak child pixels through inactive scenes because a descendant
+      // with visibility:visible escapes an ancestor's visibility:hidden.
+      if (isVisibleNow) {
+        let ancestor = rawNode.parentElement;
+        while (ancestor) {
+          if (ancestor === rootComp) break;
+          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
+            if (!isTimedElementVisibleAt(ancestor, currentTime)) {
+              isVisibleNow = false;
+              break;
+            }
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
+      rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
+      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+        colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
+      }
+      if (isVisibleNow) {
+        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
+      } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
+        rawNode.style.display = "none";
+      }
+    }
+  };
+
   const syncMediaForCurrentState = () => {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
@@ -1771,61 +1832,7 @@ export function initSandboxRuntimeModular(): void {
         },
       });
     }
-    const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
-    const rootComp = resolveRootCompositionElement();
-    for (const rawNode of visibilityNodes) {
-      if (!(rawNode instanceof HTMLElement)) continue;
-
-      if (rawNode.hasAttribute("data-hidden")) {
-        if (!dataHiddenDisplayNodes.has(rawNode)) {
-          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
-          dataHiddenDisplayNodes.add(rawNode);
-        }
-        rawNode.style.display = "none";
-        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
-          colorGradingRuntime?.setSourceVisibility(rawNode, false);
-        }
-        continue;
-      }
-
-      if (dataHiddenDisplayNodes.has(rawNode)) {
-        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
-        if (previousDisplay) {
-          rawNode.style.display = previousDisplay;
-        } else {
-          rawNode.style.removeProperty("display");
-        }
-        dataHiddenDisplayRestores.delete(rawNode);
-        dataHiddenDisplayNodes.delete(rawNode);
-      }
-
-      let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
-      // Descendants must not override a hidden ancestor clip. CSS visibility can
-      // otherwise leak child pixels through inactive scenes because a descendant
-      // with visibility:visible escapes an ancestor's visibility:hidden.
-      if (isVisibleNow) {
-        let ancestor = rawNode.parentElement;
-        while (ancestor) {
-          if (ancestor === rootComp) break;
-          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
-            if (!isTimedElementVisibleAt(ancestor, state.currentTime)) {
-              isVisibleNow = false;
-              break;
-            }
-          }
-          ancestor = ancestor.parentElement;
-        }
-      }
-      rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
-        colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
-      }
-      if (isVisibleNow) {
-        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
-      } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
-        rawNode.style.display = "none";
-      }
-    }
+    syncTimedElementVisibility(state.currentTime);
   };
 
   const postState = (force: boolean) => {
@@ -1996,8 +2003,10 @@ export function initSandboxRuntimeModular(): void {
     // handler. Identity is stable as long as the inputs are stable (each
     // adapter is expected to return the same promise on repeat calls while
     // its work is in flight).
+    const firstPromise = promises[0];
+    if (!firstPromise) return true;
     const combined: PromiseLike<unknown> =
-      promises.length === 1 ? promises[0] : Promise.all(promises);
+      promises.length === 1 ? firstPromise : Promise.all(promises);
     if (combined !== trackedAdapterReadyPromise) {
       trackedAdapterReadyPromise = combined;
       trackedAdapterReadySettled = false;
@@ -2512,10 +2521,10 @@ export function initSandboxRuntimeModular(): void {
     }
 
     for (const child of children) {
-      if (!isObjectRecord(child) || !isObjectRecord(child.vars)) continue;
-      const hasCallback = GSAP_CALLBACK_NAMES.some(
-        (name) => typeof child.vars[name] === "function",
-      );
+      if (!isObjectRecord(child)) continue;
+      const vars = child.vars;
+      if (!isObjectRecord(vars)) continue;
+      const hasCallback = GSAP_CALLBACK_NAMES.some((name) => typeof vars[name] === "function");
       if (!hasCallback) continue;
 
       const totalDuration = readGsapDuration(child, "totalDuration");
@@ -2629,24 +2638,25 @@ export function initSandboxRuntimeModular(): void {
       transportTickCount += 1;
 
       // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps)
-      if (transportTickCount % 60 === 0) {
-        const shouldHoldRebind =
-          clock.isPlaying() &&
-          state.capturedTimeline != null &&
-          clock.now() < PLAY_REBIND_HOLD_SECONDS;
-        if (!shouldHoldRebind) {
-          const prevTimeline = state.capturedTimeline;
-          if (bindRootTimelineIfAvailable()) {
-            if (state.capturedTimeline && !player._timeline) {
-              player._timeline = state.capturedTimeline;
-            }
-            if (state.capturedTimeline && state.capturedTimeline !== prevTimeline) {
-              state.capturedTimeline.pause();
-            }
-            const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
-            if (dur > 0) clock.setDuration(dur);
-            postTimeline();
+      if (
+        shouldAttemptPeriodicTimelineBind({
+          tick: transportTickCount,
+          isPlaying: clock.isPlaying(),
+          hasCapturedTimeline: state.capturedTimeline != null,
+          currentTimeSeconds: clock.now(),
+        })
+      ) {
+        const prevTimeline = state.capturedTimeline;
+        if (bindRootTimelineIfAvailable()) {
+          if (state.capturedTimeline && !player._timeline) {
+            player._timeline = state.capturedTimeline;
           }
+          if (state.capturedTimeline && state.capturedTimeline !== prevTimeline) {
+            state.capturedTimeline.pause();
+          }
+          const dur = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+          if (dur > 0) clock.setDuration(dur);
+          postTimeline();
         }
       }
       if (transportTickCount % 20 === 0) {

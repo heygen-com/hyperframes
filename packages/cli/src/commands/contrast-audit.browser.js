@@ -158,6 +158,22 @@ window.__contrastAuditPrepare = function () {
     }
     if (!hasText) continue;
 
+    // Same decorative opt-out the layout audit honors: text marked (or inside)
+    // data-layout-ignore is set dressing, not copy a viewer must read —
+    // deliberately dim rail labels, ghost typography, texture text.
+    if (el.closest && el.closest("[data-layout-ignore]")) continue;
+
+    // Text that has (nearly) left the canvas — a cursor exiting the frame, an
+    // element parked off-screen — is not readable content, and sampling its
+    // clamped edge reads whatever pixels happen to sit at the border (the
+    // classic false "white-on-white"). Require a minimally-visible on-canvas
+    // intersection before judging contrast; the layout audit separately owns
+    // off-canvas detection as its own finding class.
+    var vis = el.getBoundingClientRect();
+    var onX = Math.min(vis.right, window.innerWidth) - Math.max(vis.left, 0);
+    var onY = Math.min(vis.bottom, window.innerHeight) - Math.max(vis.top, 0);
+    if (onX < 8 || onY < 8) continue;
+
     var cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none") continue;
     if (parseFloat(cs.opacity) <= 0.01) continue;

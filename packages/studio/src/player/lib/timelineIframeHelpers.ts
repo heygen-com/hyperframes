@@ -18,6 +18,7 @@ import {
   getTimelineElementSelectorIndex,
   getTimelineElementDisplayLabel,
   buildTimelineElementIdentity,
+  readTimelineElementZIndex,
 } from "./timelineElementHelpers";
 
 // ---------------------------------------------------------------------------
@@ -377,6 +378,7 @@ export function buildMissingCompositionElements(
       selector,
       selectorIndex,
       sourceFile,
+      zIndex: readTimelineElementZIndex(el),
     };
     if (compSrc) {
       entry.compositionSrc = compSrc;

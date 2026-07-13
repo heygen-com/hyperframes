@@ -520,6 +520,34 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
 
     The linter detects missing attributes, missing adapter libraries (GSAP, Lottie, Three.js), structural problems, and more. See [Common Mistakes](/guides/common-mistakes) for details on each rule.
 
+    ### `check`
+
+    The browser verification gate: everything the old `validate` → `inspect` → `snapshot` loop did, in **one** command with one browser session:
+
+    ```bash
+    npx hyperframes check [dir]
+    npx hyperframes check [dir] --json         # {ok, lint, runtime, layout, motion, contrast, snapshots}
+    npx hyperframes check [dir] --snapshots    # annotated overview frames + per-finding crops
+    npx hyperframes check [dir] --at 1.5,4,7.25
+    npx hyperframes check [dir] --strict       # exit non-zero on warnings too
+    ```
+
+    `check` runs the linter first (browser skipped entirely on lint errors), then loads the bundled composition once and sweeps one seek grid running every audit per sample: runtime console errors and failed requests, layout defects (overflow, clipping, held overlaps, occlusion), `*.motion.json` sidecar assertions, and WCAG AA contrast.
+
+    | Flag | Description |
+    |------|-------------|
+    | `--json` | Aggregated machine-readable envelope; every finding carries selector, `data-*` identity, source file, bbox, and sample time |
+    | `--snapshots` | Write overview frames (annotated with labeled finding boxes when there are errors) plus `finding-NN-<code>.png` crops |
+    | `--samples` / `--at` / `--at-transitions` | Control the seek grid (default 9 samples; `--at-transitions` adds tween boundaries) |
+    | `--tolerance` | Allowed overflow in px before reporting (default 2) |
+    | `--timeout` | Initial settle budget in ms (default 3000) |
+    | `--no-contrast` | Skip the WCAG audit while iterating |
+    | `--strict` | Exit non-zero on warnings too (default: only errors) |
+    | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate: flags content whose center sits inside the fractional band (optional `severity`, `seek`) |
+    | `--frame-check` | Opt-in media out-of-frame detection (img/svg/video/canvas) |
+
+    Contrast failures are **errors** and include the sampled fg/bg colors, measured vs required ratio, and a suggested compliant color. Severity is persistence-aware: single-sample transients demote to info, held findings gate the exit code, and a frozen timeline on a 3s+ composition fails with `sweep_static`.
+
     ### `beats`
 
     Detect the beats in a composition's music track and write them to a beat file the Studio uses to draw beat guides on the timeline:
@@ -548,6 +576,8 @@ Word-level transcripts (whisper output) are grouped into readable caption cues o
     Requires a local Chrome (the same one used by `render`; run `npx hyperframes browser ensure` if missing). Detection runs the **same** algorithm the Studio uses; results are near-identical (a different headless-Chrome audio sample rate can shift beat times by a frame or two).
 
     ### `inspect`
+
+    <Warning>Deprecated: use [`check`](#check) — it covers this layout sweep plus runtime, motion, and contrast in one browser session. `inspect` keeps working and marks `_meta.deprecated: true` in JSON output.</Warning>
 
     Inspect rendered visual layout across the composition timeline:
 

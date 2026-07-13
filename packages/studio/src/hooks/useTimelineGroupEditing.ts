@@ -21,6 +21,7 @@ import {
 export interface TimelineGroupMoveChange {
   element: TimelineElement;
   start: number;
+  track?: number;
 }
 
 export interface TimelineGroupResizeChange {
@@ -152,9 +153,13 @@ export function useTimelineGroupEditing({
     (changes: TimelineGroupMoveChange[], options?: TimelineGroupCommitOptions) => {
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
-        patchIframeDomTiming(previewIframeRef.current, change.element, [
+        const attrs: Array<[string, string]> = [
           ["data-start", formatTimelineAttributeNumber(change.start)],
-        ]);
+        ];
+        if (change.track != null) {
+          attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
+        }
+        patchIframeDomTiming(previewIframeRef.current, change.element, attrs);
       }
 
       const maxEnd = Math.max(...changes.map((change) => change.start + change.element.duration));
@@ -169,7 +174,10 @@ export function useTimelineGroupEditing({
             : null,
         );
         const canUseSdk =
-          !needsExtension && sharedPath !== null && sdkChanges.every((change) => change !== null);
+          !needsExtension &&
+          sharedPath !== null &&
+          changes.every((change) => change.track == null) &&
+          sdkChanges.every((change) => change !== null);
         if (canUseSdk) {
           const handled = await sdkTimingBatchPersist(
             sdkChanges.filter((change): change is NonNullable<typeof change> => change !== null),
@@ -194,7 +202,13 @@ export function useTimelineGroupEditing({
           changes.map((change) => ({
             element: change.element,
             buildPatches: (original, target) =>
-              buildTimelineMoveTimingPatch(original, target, change.start, change.element.duration),
+              buildTimelineMoveTimingPatch(
+                original,
+                target,
+                change.start,
+                change.element.duration,
+                change.track,
+              ),
           })),
           coalesceKey,
         );

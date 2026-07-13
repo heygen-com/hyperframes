@@ -15,6 +15,31 @@ import { isFinitePositive } from "./playbackAdapter";
 // Duration attribute helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Read a host element's effective CSS stacking order for the timeline's reverse
+ * z→lane mapping. Prefers the inline `style.zIndex` (what the canvas context
+ * menu and LayersPanel z-edits write via handleDomZIndexReorderCommit), falls
+ * back to computed style; "auto" / empty / unparseable ⇒ 0. Works with a
+ * detached parse Document (no defaultView) as well as a live iframe. Mirrors
+ * canvasContextMenuZOrder.parseZIndex semantics so the two directions agree.
+ */
+export function readTimelineElementZIndex(el: Element): number {
+  const html = el as HTMLElement;
+  const parseZ = (value: string | null | undefined): number | null => {
+    if (value == null || value === "" || value === "auto") return null;
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? n : null;
+  };
+  const fromInline = parseZ(html.style?.zIndex);
+  if (fromInline != null) return fromInline;
+  const view = el.ownerDocument?.defaultView;
+  if (view?.getComputedStyle) {
+    const fromComputed = parseZ(view.getComputedStyle(html).zIndex);
+    if (fromComputed != null) return fromComputed;
+  }
+  return 0;
+}
+
 function readDurationAttribute(el: Element | null | undefined): number {
   if (!el) return 0;
   const duration =
@@ -36,20 +61,44 @@ export function isTimelineIgnoredElement(el: Element): boolean {
   );
 }
 
-export function readTimelineDurationFromDocument(doc: Document | null | undefined): number {
+/**
+ * Furthest clip end (start + RAW `data-duration`) over every non-root clip in the
+ * document. Reads the authored attribute, NOT any runtime-computed value — so it
+ * is immune to the runtime's clamp that truncates a clip's live duration to the
+ * composition length. This is the source of truth for content-driven duration:
+ * computing it from the store instead would feed the truncated value back in and
+ * make the composition length ratchet down (research HANDOFF-3 §6.1 feedback loop).
+ */
+export function furthestClipEndFromDocument(doc: Document | null | undefined): number {
   if (!doc) return 0;
-  const rootDuration = readDurationAttribute(doc.querySelector("[data-composition-id]"));
-  if (rootDuration > 0) return rootDuration;
-
+  const root = doc.querySelector("[data-composition-id]");
   let maxEnd = 0;
   for (const node of Array.from(doc.querySelectorAll("[data-start]"))) {
-    if (isTimelineIgnoredElement(node)) continue;
+    if (node === root || isTimelineIgnoredElement(node)) continue;
     const start = Number.parseFloat(node.getAttribute("data-start") ?? "");
     const duration = readDurationAttribute(node);
     if (!Number.isFinite(start) || start < 0 || duration <= 0) continue;
     maxEnd = Math.max(maxEnd, start + duration);
   }
   return maxEnd;
+}
+
+export function readTimelineDurationFromDocument(doc: Document | null | undefined): number {
+  if (!doc) return 0;
+  const rootDuration = readDurationAttribute(doc.querySelector("[data-composition-id]"));
+  if (rootDuration > 0) return rootDuration;
+  return furthestClipEndFromDocument(doc);
+}
+
+/**
+ * Furthest clip end parsed straight from a composition SOURCE STRING (the HTML
+ * being saved). Uses raw `data-duration`, so it is the correct input for syncing
+ * the root duration after an edit — reading the store instead would use the
+ * runtime-truncated durations and shrink the composition (the feedback loop).
+ */
+export function furthestClipEndFromSource(source: string): number {
+  if (!source) return 0;
+  return furthestClipEndFromDocument(new DOMParser().parseFromString(source, "text/html"));
 }
 
 // ---------------------------------------------------------------------------

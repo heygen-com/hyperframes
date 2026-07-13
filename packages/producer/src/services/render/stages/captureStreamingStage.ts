@@ -80,6 +80,26 @@ import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { updateJobStatus } from "../shared.js";
 
 /**
+ * No-frame-progress watchdog for the parallel DE streaming path. The router
+ * auto-enables this path for the ≥24GB macOS trial cohort, so a worker that
+ * wedges mid-capture (a hung seek/screenshot at an early frame) would
+ * otherwise sit until the per-frame CDP `protocolTimeout` (~5 min) fires —
+ * a silent multi-minute hang that only THEN reaches the pinned fallback.
+ * Trip well before that: if no NEW frame lands within this window, abort the
+ * pool so the orchestrator re-renders via screenshot. Default 60s ≫ any real
+ * per-frame budget (15–32 ms), so a legit slow frame won't false-trip; a
+ * false trip only costs the (slower, never-wrong) screenshot fallback.
+ */
+const DEFAULT_DE_PARALLEL_STALL_MS = 60_000;
+const DE_PARALLEL_STALL_POLL_MS = 5_000;
+
+function resolveParallelStallTimeoutMs(): number {
+  const raw = process.env.HF_DE_PARALLEL_STALL_MS;
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DE_PARALLEL_STALL_MS;
+}
+
+/**
  * Pre-built ffmpeg streaming-encoder options, exactly matching the
  * second argument to `spawnStreamingEncoder`. The sequencer constructs
  * this from its in-scope preset / dimensions / quality fields and
@@ -589,6 +609,38 @@ export async function runCaptureStreamingStage(
         }
       };
 
+      // Progress-stall watchdog. Wired through a SEPARATE controller (linked
+      // to the parent abort) rather than the job's `abortSignal` so a
+      // watchdog trip stays distinguishable from a real cancellation: the
+      // orchestrator gates its pinned fallback on `abortSignal.aborted`, which
+      // stays false here, so a stall re-renders via screenshot instead of
+      // being swallowed as a cancel. On trip we also abort the reorder buffer
+      // so peer workers parked in `waitForFrame` reject instead of deadlocking
+      // the pool (executeParallelCapture awaits ALL workers).
+      const stallController = new AbortController();
+      const forwardParentAbort = () => stallController.abort();
+      if (abortSignal) {
+        if (abortSignal.aborted) stallController.abort();
+        else abortSignal.addEventListener("abort", forwardParentAbort, { once: true });
+      }
+      const stallTimeoutMs = resolveParallelStallTimeoutMs();
+      let lastCapturedFrames = 0;
+      let lastProgressAt = Date.now();
+      let stalled = false;
+      const stallTimer = setInterval(
+        () => {
+          if (Date.now() - lastProgressAt <= stallTimeoutMs) return;
+          stalled = true;
+          const stallErr = new Error(
+            `[Render] Parallel drawElement capture stalled: no frame progress for ${stallTimeoutMs}ms ` +
+              `(stuck at ${lastCapturedFrames}/${totalFrames}).`,
+          );
+          reorderBuffer.abort(stallErr);
+          stallController.abort();
+        },
+        Math.min(stallTimeoutMs, DE_PARALLEL_STALL_POLL_MS),
+      );
+
       let workerResults;
       try {
         workerResults = await executeParallelCapture(
@@ -597,8 +649,12 @@ export async function runCaptureStreamingStage(
           tasks,
           buildCaptureOptions(),
           createRenderVideoFrameInjector,
-          abortSignal,
+          stallController.signal,
           (progress) => {
+            if (progress.capturedFrames > lastCapturedFrames) {
+              lastCapturedFrames = progress.capturedFrames;
+              lastProgressAt = Date.now();
+            }
             job.framesRendered = progress.capturedFrames;
             const frameProgress = progress.capturedFrames / progress.totalFrames;
             const progressPct = 25 + frameProgress * 55;
@@ -631,7 +687,22 @@ export async function runCaptureStreamingStage(
         // orchestrator's verify-retry handler recognizes it — the worker pool
         // flattens worker errors into a plain message string.
         if (parallelDrainError) throw parallelDrainError;
+        // A watchdog trip aborts the pool via stallController, so the pool
+        // rejects with a generic "[Parallel] Capture failed" string. Replace
+        // it with a clear, non-cancellation stall error (the parent abort did
+        // NOT fire) so the orchestrator's pinned fallback re-renders via
+        // screenshot instead of masking a 5-min hang.
+        if (stalled && abortSignal?.aborted !== true) {
+          throw new Error(
+            `[Render] Parallel drawElement capture stalled after ${stallTimeoutMs}ms with no ` +
+              `frame progress (last frame ${lastCapturedFrames}/${totalFrames}); ` +
+              `falling back to screenshot.`,
+          );
+        }
         throw err;
+      } finally {
+        clearInterval(stallTimer);
+        abortSignal?.removeEventListener("abort", forwardParentAbort);
       }
       if (parallelDrainError) throw parallelDrainError;
       pushWorkerDedupPerfs(workerResults, dedupPerfs);

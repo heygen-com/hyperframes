@@ -16,6 +16,7 @@ import { buildStats } from "./lib/stats.mjs";
 import { typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
+import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
@@ -29,9 +30,13 @@ import {
   HEYGEN_INSTALL_COMMAND,
   HEYGEN_MIN_VERSION,
   HEYGEN_UPDATE_COMMAND,
+  consumeHeygenRemediation,
   firstSemver,
+  flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
+
+const INGEST_TYPES = [...listTypes(), "video"];
 
 // resolve shells `fetch`/`freezeUrl` and modern ESM; 18 is the floor where those
 // exist without flags. Named so the --doctor node check verifies something real
@@ -237,6 +242,15 @@ function recordAvailable(projectDir, record) {
   return record.type === "grade" && record.grading;
 }
 
+// Sparse `{ authMethod }` for a heygen-family provider name (e.g. "heygen.tts"),
+// else `{}` — keeps auth_method telemetry absent for every non-heygen resolve
+// instead of implying an auth method that doesn't apply.
+function heygenAuthMethodFor(provider) {
+  if (!provider || !provider.startsWith("heygen.")) return {};
+  const authMethod = heygenAuthMethod();
+  return authMethod ? { authMethod } : {};
+}
+
 function localizeImportedRecord(record, localPath) {
   if (record?.type === "grade" && record.grading?.lut) {
     record.grading = {
@@ -365,6 +379,14 @@ async function run() {
     }
   }
 
+  // A search/generate attempt against heygen may have fired a fire-and-forget
+  // media_use_provider_error track (reportHeygenFailure — heygen-search.mjs /
+  // voice-provider.mjs are sync call sites several layers below here and can't
+  // await it themselves). Join it now, before any process.exit() below can
+  // race it: both it and the miss/success telemetry below are separate,
+  // non-keepalive HTTP connections with no ordering guarantee otherwise.
+  await flushHeygenFailureTracking();
+
   if (!searchResult) {
     await track("media_use_resolve_miss", {
       type,
@@ -426,9 +448,24 @@ async function run() {
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
       prompt: intent,
+      // heygenAuthMethodFor spreads first so an explicit authMethod on a
+      // future provider's own metadata.provenance can still override it below
+      // -- safe today (no provider sets authMethod itself), but keep this
+      // ordering if that ever changes.
+      ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
     },
   };
+
+  const heygenRemediation = consumeHeygenRemediation();
+  if (
+    searchResult.metadata?.provider === "bundled.sfx" &&
+    !localOnly &&
+    !args.provider &&
+    heygenRemediation
+  ) {
+    record.advisory = heygenRemediation;
+  }
 
   appendRecord(projectDir, record);
   regenerateIndex(projectDir);
@@ -721,8 +758,8 @@ async function resolveColor(type, intent, options) {
 }
 
 async function ingest(src) {
-  if (!type || !listTypes().includes(type)) {
-    console.error(`error: --from requires --type (one of: ${listTypes().join(", ")})`);
+  if (!type || !INGEST_TYPES.includes(type)) {
+    console.error(`error: --from requires --type (one of: ${INGEST_TYPES.join(", ")})`);
     process.exit(2);
   }
   const isUrl = /^https?:\/\//i.test(src);
@@ -1081,6 +1118,13 @@ async function result(record, source) {
     // parametric), or "params" (offline). Surfaces silent CDN→params downgrades
     // in prod, which --doctor can't (it only answers "reachable now?").
     via: record.provenance?.via,
+    // Free (OAuth) vs. paid (API-key) heygen path — sparse: absent for every
+    // non-heygen provider (see heygenAuthMethodFor at construction time). On a
+    // cache/reuse hit this reports how the asset was ORIGINALLY fetched, not
+    // this resolve's own credential state — intentional: it's a conversion
+    // signal about the fetch that actually consumed a heygen credit, not
+    // about the (free, no-credential) act of copying a cached file.
+    auth_method: record.provenance?.authMethod,
     local_only: !!args["local-only"],
     provider_override: !!args.provider,
   });
@@ -1129,6 +1173,7 @@ const DEFAULT_EXT = {
   icon: ".svg",
   logo: ".svg",
   brand: ".png",
+  video: ".mp4",
   grade: ".cube",
   lut: ".cube",
 };

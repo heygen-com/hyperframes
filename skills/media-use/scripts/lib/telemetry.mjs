@@ -20,6 +20,41 @@ const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
 const TIMEOUT_MS = 1500;
 let identifiedAccount = false;
+let warnedNonDefaultHost = false;
+
+// Same CI/test signals the test suite itself sets (resolve.test.mjs's U7 test
+// sets NODE_ENV=test and clears CI to prove the interception seam works) —
+// reused here, not a new heuristic, so that deliberate test usage never
+// triggers the warning below.
+function isTestOrCiContext() {
+  return (
+    process.env.CI === "true" ||
+    process.env.CI === "1" ||
+    process.env.NODE_ENV === "test" ||
+    process.env.NODE_ENV === "development"
+  );
+}
+
+// Test-only interception seam: a real HTTP destination a test can point at,
+// so a spawned-child test (resolve.test.mjs) can prove track() never reaches
+// production rather than trusting DO_NOT_TRACK alone (a future call site or
+// test could forget to set that env var). Falls back to the real production
+// host whenever unset — production behavior is unchanged.
+//
+// Safety net: if this ever leaks into a real user's shell, track() would
+// silently redirect to a likely-dead host and postBatch()'s catch{} would
+// swallow the failure with zero signal. Surface one stderr warning outside
+// test/CI contexts so a real user gets some indication instead of silence.
+function posthogHost() {
+  const override = process.env.MEDIA_USE_TELEMETRY_HOST;
+  if (override && !warnedNonDefaultHost && !isTestOrCiContext()) {
+    warnedNonDefaultHost = true;
+    console.error(
+      `media-use: telemetry is redirected to a non-default host via MEDIA_USE_TELEMETRY_HOST (${override}) — unset it unless this is intentional.`,
+    );
+  }
+  return override || POSTHOG_HOST;
+}
 
 /** True when telemetry must NOT be sent (opt-out envs, CI, dev). */
 export function optedOut() {
@@ -104,7 +139,10 @@ function heygenAccountDistinctId() {
     const user = parsed.user;
     if (!user || typeof user !== "object" || Array.isArray(user)) return null;
     const id = typeof user.email === "string" && user.email.trim() ? user.email : user.username;
-    return typeof id === "string" && id.trim() ? id.trim() : null;
+    // Lowercased so this joins with the CLI's own identify call regardless of
+    // the account's stored email casing — two different-case distinct ids
+    // would otherwise split one person across two PostHog profiles.
+    return typeof id === "string" && id.trim() ? id.trim().toLowerCase() : null;
   } catch {
     return null;
   }
@@ -131,7 +169,7 @@ function showTelemetryNotice() {
 
 async function postBatch(batch) {
   try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
+    await fetch(`${posthogHost()}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Connection: "close" },
       body: JSON.stringify({ api_key: POSTHOG_API_KEY, batch }),
@@ -180,4 +218,5 @@ export function __anonymousIdForTest() {
 
 export function __resetTelemetryForTest() {
   identifiedAccount = false;
+  warnedNonDefaultHost = false;
 }

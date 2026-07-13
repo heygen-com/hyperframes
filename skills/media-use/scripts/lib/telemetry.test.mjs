@@ -182,6 +182,45 @@ test("track identifies a signed-in HeyGen account once and still sends events", 
   }
 });
 
+test("track identifies with a lowercased email regardless of stored casing", async () => {
+  const savedEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const { root, home } = sandbox();
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true };
+  };
+  try {
+    withoutTelemetryOptOut();
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(home, ".hyperframes/config.json"),
+      JSON.stringify({ anonymousId: "anon-3" }),
+    );
+    mkdirSync(join(home, ".heygen"), { recursive: true });
+    writeFileSync(
+      join(home, ".heygen/credentials"),
+      JSON.stringify({ user: { email: "Alice@Example.com", username: "alice" } }),
+    );
+
+    await track("media_use_resolve", { type: "bgm", source: "search" });
+
+    const batch = parseFetchBodies(calls);
+    const identify = batch.filter((item) => item.event === "$identify");
+    assert.equal(identify.length, 1);
+    // Lowercased so this joins with heygen-cli's own identify call regardless
+    // of the account's stored email casing -- otherwise the same person could
+    // split into two PostHog profiles by email case alone.
+    assert.equal(identify[0].distinct_id, "alice@example.com");
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
 test("track does not identify when signed out", async () => {
   const savedEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
@@ -245,6 +284,65 @@ test("first run notice prints to stderr once and never stdout", async () => {
     globalThis.fetch = originalFetch;
     console.error = originalError;
     console.log = originalLog;
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
+test("warns once on stderr when MEDIA_USE_TELEMETRY_HOST is set outside a test/CI context", async () => {
+  const savedEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  const { root } = sandbox();
+  const stderr = [];
+  globalThis.fetch = async () => ({ ok: true });
+  console.error = (...args) => stderr.push(args.join(" "));
+  try {
+    // No opt-out, no CI/NODE_ENV signal — mirrors a real user's shell where
+    // this test-only var leaked in by accident and tracking is not disabled.
+    withoutTelemetryOptOut();
+    process.env.MEDIA_USE_TELEMETRY_HOST = "http://127.0.0.1:1"; // nothing listens; irrelevant here
+    await track("media_use_resolve", { type: "bgm" });
+    await track("media_use_resolve", { type: "bgm" });
+
+    const warnings = stderr.filter((line) => line.includes("MEDIA_USE_TELEMETRY_HOST"));
+    assert.equal(warnings.length, 1, "expected exactly one warning across repeated calls");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
+test("does not warn when MEDIA_USE_TELEMETRY_HOST is set the way the U7 interception test sets it", async () => {
+  const savedEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  const { root } = sandbox();
+  const stderr = [];
+  globalThis.fetch = async () => ({ ok: true });
+  console.error = (...args) => stderr.push(args.join(" "));
+  try {
+    withoutTelemetryOptOut();
+    // Same env shape resolve.test.mjs's U7 test uses to allow tracking through:
+    // DO_NOT_TRACK=0, CI unset/empty, NODE_ENV=test.
+    process.env.DO_NOT_TRACK = "0";
+    process.env.CI = "";
+    process.env.NODE_ENV = "test";
+    process.env.MEDIA_USE_TELEMETRY_HOST = "http://127.0.0.1:1";
+    await track("media_use_resolve", { type: "bgm" });
+
+    assert.equal(
+      stderr.some((line) => line.includes("MEDIA_USE_TELEMETRY_HOST")),
+      false,
+      "the U7 test's own use of the override must not print a spurious warning",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
     restoreEnv(savedEnv);
     rmSync(root, { recursive: true, force: true });
     __resetTelemetryForTest();

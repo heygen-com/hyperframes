@@ -1,3 +1,4 @@
+// fallow-ignore-file complexity
 import {
   existsSync,
   mkdirSync,
@@ -1510,12 +1511,14 @@ async function run(): Promise<void> {
   }
 }
 
-void run().catch((error) => {
-  console.error(
-    JSON.stringify({
-      event: "test_suite_fatal",
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  void run().catch((error) => {
+    console.error(
+      JSON.stringify({
+        event: "test_suite_fatal",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    process.exitCode = 1;
+  });
+}

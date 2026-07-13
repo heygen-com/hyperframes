@@ -33,7 +33,7 @@ Build the **hero-frame end-state** in CSS first (flex + padding; never absolute 
 
 ## Critical correctness (GSAP / seek)
 
-Opacity-gate delayed elements (set hidden until their entrance). Clamp at tween bounds (no overshoot past a held value). Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`). One motif per scene. Run `hyperframes inspect` for overflow / collisions.
+Opacity-gate delayed elements (set hidden until their entrance). Clamp at tween bounds (no overshoot past a held value). Allowed eases: `power1–4`, `back`, `bounce`, `circ`, `elastic`, `expo`, `sine` (`.in/.out/.inOut`). One motif per scene. Run `hyperframes check` for overflow / collisions.
 
 ## Verify-fix
 

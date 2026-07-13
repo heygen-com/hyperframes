@@ -7,9 +7,11 @@ import {
   mkdirSync,
   existsSync,
   readdirSync,
+  chmodSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createServer } from "node:http";
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendRecord, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
@@ -129,6 +131,81 @@ function test(name, fn) {
 
 // --- manifest cache hit ---
 
+test("bundled SFX resolve without HeyGen on PATH", () => {
+  setup();
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: tmp },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.match(parsed.advisory?.message ?? "", /Install: curl -fsSL/);
+  assert.ok(existsSync(join(tmp, parsed.path)));
+  cleanup();
+});
+
+function writeFakeHeygen(body, exitCode = 0) {
+  const binDir = join(tmp, "bin");
+  mkdirSync(binDir, { recursive: true });
+  const command = join(binDir, "heygen");
+  writeFileSync(command, `#!/bin/sh\n${body}\nexit ${exitCode}\n`);
+  chmodSync(command, 0o755);
+  return binDir;
+}
+
+test("bundled SFX advises update when the HeyGen CLI is outdated", () => {
+  setup();
+  const binDir = writeFakeHeygen('echo "heygen v0.1.5 does not support --headers" >&2', 1);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.match(parsed.advisory?.message ?? "", /heygen update/);
+  cleanup();
+});
+
+test("bundled SFX does not advise installation after a healthy catalog miss", () => {
+  setup();
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "bundled.sfx");
+  assert.equal(parsed.advisory, undefined);
+  cleanup();
+});
+
+test("explicit local bundled SFX resolution does not advise installation", () => {
+  for (const extraArgs of [["--local-only"], ["--provider", "bundled.sfx"]]) {
+    setup();
+    const result = spawnResolve(
+      ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json", ...extraArgs],
+      { env: { HOME: tmp, PATH: tmp } },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.provenance.provider, "bundled.sfx");
+    assert.equal(parsed.advisory, undefined);
+    cleanup();
+  }
+});
+
+test("human bundled fallback prints the install hint once", () => {
+  setup();
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp], {
+    env: { HOME: tmp, PATH: tmp },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr.match(/Install: curl -fsSL/g)?.length, 1);
+  assert.match(result.stdout, /resolved sfx_001/);
+  cleanup();
+});
+
 test("project manifest hit skips providers", () => {
   setup();
   const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
@@ -176,6 +253,84 @@ test("entity hit matches across icon/image (figma-imported brand marks)", () => 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.id, "image_001");
   assert.equal(parsed._source, "cached");
+  cleanup();
+});
+
+// --- auth_method provenance (U6) ---
+
+test("manifest hit for an OAuth-credentialed heygen resolve surfaces authMethod: oauth", () => {
+  setup();
+  const record = makeRecord({
+    id: "voice_001",
+    type: "voice",
+    path: ".media/audio/voice/voice_001.wav",
+    provenance: { provider: "heygen.tts", authMethod: "oauth", prompt: "oauth voice" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached voice");
+
+  const out = runResolve([
+    "--type",
+    "voice",
+    "--intent",
+    "oauth voice",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.authMethod, "oauth");
+  cleanup();
+});
+
+test("manifest hit for an API-key-credentialed heygen resolve surfaces authMethod: api_key", () => {
+  setup();
+  const record = makeRecord({
+    id: "voice_001",
+    type: "voice",
+    path: ".media/audio/voice/voice_001.wav",
+    provenance: { provider: "heygen.tts", authMethod: "api_key", prompt: "api key voice" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached voice");
+
+  const out = runResolve([
+    "--type",
+    "voice",
+    "--intent",
+    "api key voice",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.provenance.authMethod, "api_key");
+  cleanup();
+});
+
+test("manifest hit for a non-heygen provider omits authMethod entirely", () => {
+  setup();
+  const record = makeRecord({
+    id: "logo_001",
+    type: "logo",
+    path: ".media/images/logo_001.svg",
+    provenance: { provider: "svgl", prompt: "acme logo" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "<svg/>");
+
+  const out = runResolve(["--type", "logo", "--intent", "acme logo", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal("authMethod" in parsed.provenance, false);
   cleanup();
 });
 
@@ -298,6 +453,20 @@ test("--help exits 0", () => {
   assert.ok(out.includes("--from"));
   assert.ok(out.includes("--local-only"));
   assert.ok(out.includes("--stats"));
+});
+
+test("--from registers a derived video as documented", () => {
+  setup();
+  const source = join(tmp, "derived.mp4");
+  writeFileSync(source, "derived video bytes");
+
+  const out = runResolve(["--from", source, "--type", "video", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "video");
+  assert.match(parsed.path, /^\.media\/video\/video_001\.mp4$/);
+  assert.equal(readManifest(tmp)[0]?.type, "video");
+  cleanup();
 });
 
 test("unknown type error lists grade and lut", () => {
@@ -607,6 +776,87 @@ test("identical grade resolve hits the project cache without re-freezing", () =>
   assert.equal(second.path, first.path);
   assert.equal(readManifest(tmp).length, 1);
   cleanup();
+});
+
+// --- telemetry isolation (U7) ---
+
+// Every other test relies on runResolve/spawnResolve's default DO_NOT_TRACK:
+// "1" to keep track() a no-op. That default is fragile on its own (a future
+// call site or test could forget to set it), so telemetry.mjs also exposes a
+// MEDIA_USE_TELEMETRY_HOST override read at the point the POST URL is built.
+// This test proves that seam actually intercepts a real event end to end: a
+// resolve that reaches track("media_use_resolve", ...) with tracking allowed
+// posts to a local HTTP server instead of production, and the server actually
+// receives it (not just "nothing happened because nothing was listening").
+test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
+  setup();
+  const received = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        received.push(JSON.parse(body));
+      } catch {
+        // ignore malformed body; assertions below fail on empty `received`
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const sandboxHome = mkdtempSync(join(tmpdir(), "mu-resolve-telemetry-home-"));
+
+  try {
+    const record = makeRecord({
+      provenance: { prompt: "telemetry seam test", provider: "test" },
+    });
+    appendRecord(tmp, record);
+    const filePath = join(tmp, record.path);
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, "telemetry seam audio");
+
+    // Override this one invocation's env only: allow tracking (DO_NOT_TRACK
+    // default flipped off), sandbox HOME so anonymousId()/showTelemetryNotice()
+    // never touch the real developer machine, and point the host at the local
+    // server. HEYGEN_CONFIG_DIR is sandboxed too -- runResolve's env is
+    // {...process.env, ...env}, so a developer with that var set to a real
+    // credentials dir would otherwise have heygenAccountDistinctId() read
+    // their real email into this test's local-server payload despite HOME
+    // being sandboxed (HEYGEN_CONFIG_DIR, not HOME, resolves the credentials
+    // path). Every other test in this file keeps its untouched default env.
+    runResolve(["--type", "bgm", "--intent", "telemetry seam test", "--project", tmp, "--json"], {
+      env: {
+        DO_NOT_TRACK: "0",
+        HYPERFRAMES_NO_TELEMETRY: "0",
+        CI: "",
+        NODE_ENV: "test",
+        HOME: sandboxHome,
+        HEYGEN_CONFIG_DIR: join(sandboxHome, ".heygen"),
+        MEDIA_USE_TELEMETRY_HOST: `http://127.0.0.1:${port}`,
+      },
+    });
+
+    // runResolve blocks synchronously (execFileSync) until the child exits, which
+    // pauses this process's own event loop for that whole span — the child's
+    // request to our local server sits accepted-but-unprocessed in the kernel
+    // backlog until control returns here. Poll briefly to let the event loop
+    // drain it rather than asserting before the server has had a turn to run.
+    for (let i = 0; i < 100 && received.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(sandboxHome, { recursive: true, force: true });
+    cleanup();
+  }
+
+  assert.ok(received.length > 0, "expected the local telemetry server to receive a POST");
+  const resolveEvent = received[0].batch.find((event) => event.event === "media_use_resolve");
+  assert.ok(resolveEvent, "expected a media_use_resolve event in the intercepted batch");
+  assert.equal(resolveEvent.properties.provider, "test");
+  assert.equal(resolveEvent.properties.type, "bgm");
 });
 
 // --- run ---

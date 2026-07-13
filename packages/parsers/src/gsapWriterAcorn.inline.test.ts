@@ -101,3 +101,32 @@ window.__timelines["scene"] = gsap.timeline({ paused: true });`;
     expect(parseGsapScriptAcorn(out).animations).toHaveLength(2);
   });
 });
+
+describe("no duplicate vars keys on rewrite", () => {
+  const setSrc = `window.__timelines = window.__timelines || {};
+const tl = gsap.timeline({ paused: true });
+tl.set("#a", { z: 0, rotationX: 5, immediateRender: true }, 0);
+window.__timelines["main"] = tl;`;
+
+  it("update with immediateRender riding in newProps emits the key once", () => {
+    const id = parseGsapScriptAcorn(setSrc).animations[0]!.id;
+    // Studio paths that build props off live tween vars carry the flag along.
+    const out = updateAnimationInScript(setSrc, id, {
+      properties: { z: 0, rotationX: 9, immediateRender: "__raw:true" },
+    });
+    expect(out).toContain("rotationX: 9");
+    expect(out.match(/immediateRender/g)).toHaveLength(1);
+  });
+
+  it("addAnimationToScript dedupes a key present in both properties and extras", () => {
+    const { script: out } = addAnimationToScript(setSrc, {
+      targetSelector: "#b",
+      method: "set",
+      position: 0,
+      properties: { scale: 1, immediateRender: "__raw:true" },
+      extras: { immediateRender: "__raw:true" },
+    });
+    const setB = out.split("\n").find((l) => l.includes('"#b"'));
+    expect(setB?.match(/immediateRender/g)).toHaveLength(1);
+  });
+});

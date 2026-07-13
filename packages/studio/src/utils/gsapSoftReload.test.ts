@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { applySoftReload, ensureMotionPathPluginLoaded } from "./gsapSoftReload";
+import {
+  applySoftReload,
+  ensureMotionPathPluginLoaded,
+  diffSoftReloadableRestore,
+  applyUndoRestoreToPreview,
+} from "./gsapSoftReload";
 
 const SCRIPT_TEXT = `
 window.__timelines = window.__timelines || {};
@@ -107,7 +112,7 @@ describe("applySoftReload", () => {
     // async commit resolves. The rebuilt timeline must re-seek to the caller's
     // value, not the iframe's possibly-stale one.
     const { iframe, contentWindow } = buildMockIframe();
-    const result = applySoftReload(iframe, SCRIPT_TEXT, undefined, 0);
+    const result = applySoftReload(iframe, SCRIPT_TEXT, { currentTimeOverride: 0 });
     expect(result).toBe("applied");
     expect(contentWindow.__player.seek).toHaveBeenCalledWith(0);
   });
@@ -244,7 +249,7 @@ describe("applySoftReload", () => {
     (iframe.contentDocument as unknown as { head: unknown }).head = head;
 
     const onAsyncFailure = vi.fn();
-    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, onAsyncFailure);
+    const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, { onAsyncFailure });
 
     // Optimistically "applied" (script will run once the plugin loads) — and the
     // script has NOT executed yet, so the timeline isn't rebound synchronously.
@@ -361,5 +366,202 @@ describe("ensureMotionPathPluginLoaded", () => {
     // A subsequent call can retry (plugin still absent, flag cleared).
     ensureMotionPathPluginLoaded(iframe);
     expect(appendedScripts).toHaveLength(2);
+  });
+});
+
+// The authored-opacity restore: before the script re-runs (and its tweens
+// re-capture bounds), every animated element's inline opacity must be put back
+// to its AUTHORED value — from the after-write file HTML when provided, else
+// from the parse-time stamp. Otherwise a runtime transient (the color-grading
+// hide's 0, a mid-flight tween value) becomes a permanent tween bound.
+describe("applySoftReload authored-opacity restore", () => {
+  function buildIframeWithTarget(el: HTMLElement, overrides: Record<string, unknown> = {}) {
+    const scriptEl = document.createElement("script");
+    scriptEl.textContent =
+      'const tl = gsap.timeline({ paused: true }); tl.to("#box", { opacity: 0.5 });';
+    const tl = {
+      kill: vi.fn(),
+      pause: vi.fn(),
+      getChildren: () => [{ targets: () => [el] }],
+    };
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set: vi.fn() },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: { root: tl } as Record<string, unknown>,
+      __player: { getTime: () => 2.0, seek: vi.fn() },
+      __hfStudioManualEditsApply: vi.fn(),
+      ...overrides,
+    };
+    const container = document.createElement("div");
+    container.appendChild(scriptEl);
+    // Intercept only POST-SETUP appends: simulate the re-run script
+    // repopulating __timelines (as in buildMockIframe).
+    const realAppendChild = container.appendChild.bind(container);
+    container.appendChild = <T extends Node>(node: T): T => {
+      const result = realAppendChild(node);
+      if (node instanceof HTMLScriptElement && node.textContent?.includes("gsap.timeline")) {
+        contentWindow.__timelines.root = { kill: vi.fn(), pause: vi.fn() };
+      }
+      return result;
+    };
+    const contentDocument = {
+      querySelectorAll: (sel: string) => (sel === "script:not([src])" ? [scriptEl] : []),
+      createElement: (tag: string) => document.createElement(tag),
+      body: container,
+      head: document.createElement("div"),
+    };
+    return { iframe: { contentWindow, contentDocument } as unknown as HTMLIFrameElement };
+  }
+
+  /** Run one restore cycle over `el` and return the final inline opacity. */
+  function restoreOpacity(el: HTMLElement, authoredHtml?: string): string {
+    const { iframe } = buildIframeWithTarget(el);
+    expect(applySoftReload(iframe, SCRIPT_TEXT, authoredHtml ? { authoredHtml } : {})).toBe(
+      "applied",
+    );
+    return el.style.getPropertyValue("opacity");
+  }
+
+  it("restores opacity from the after-write HTML (matched by data-hf-id)", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-id", "hf-1");
+    el.style.setProperty("opacity", "0", "important"); // the grading hide
+
+    const opacity = restoreOpacity(
+      el,
+      '<html><body><img data-hf-id="hf-1" style="opacity: 0.98"></body></html>',
+    );
+
+    expect(opacity).toBe("0.98");
+    expect(el.style.getPropertyPriority("opacity")).toBe("");
+  });
+
+  it("falls back to the parse-time stamp when no after-write HTML is given", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-authored-opacity", "0.75");
+    el.style.opacity = "0.123"; // mid-flight tween transient
+
+    expect(restoreOpacity(el)).toBe("0.75");
+  });
+
+  it("an empty stamp (authored none) removes the inline opacity", () => {
+    const el = document.createElement("img");
+    el.setAttribute("data-hf-authored-opacity", "");
+    el.style.opacity = "0";
+
+    expect(restoreOpacity(el)).toBe("");
+  });
+});
+
+// ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
+
+const wrap = (body: string) => `<html><body>${body}</body></html>`;
+
+describe("diffSoftReloadableRestore", () => {
+  it("reports the changed id for an attribute/inline-style-only diff", () => {
+    const prev = wrap(`<div id="a" style="translate: 10px 10px">t</div>`);
+    const next = wrap(`<div id="a" style="translate: 0px 0px">t</div>`);
+    expect(diffSoftReloadableRestore(prev, next)).toEqual({ changedElementIds: ["a"] });
+  });
+
+  it("treats a structural change (added element) as NOT soft-reloadable", () => {
+    const prev = wrap(`<div id="a">t</div>`);
+    const next = wrap(`<div id="a">t</div><div id="a-split">t</div>`);
+    expect(diffSoftReloadableRestore(prev, next)).toBeNull();
+  });
+
+  it("treats an element text/child change as NOT soft-reloadable", () => {
+    const prev = wrap(`<div id="a">one</div>`);
+    const next = wrap(`<div id="a">two</div>`);
+    expect(diffSoftReloadableRestore(prev, next)).toBeNull();
+  });
+
+  it("allows a GSAP-script-only change (no id'd-attribute diff)", () => {
+    const prev = wrap(
+      `<div id="a">t</div><script>window.__timelines["root"]=gsap.timeline().to("#a",{x:1});</script>`,
+    );
+    const next = wrap(
+      `<div id="a">t</div><script>window.__timelines["root"]=gsap.timeline().to("#a",{x:9});</script>`,
+    );
+    expect(diffSoftReloadableRestore(prev, next)).toEqual({ changedElementIds: [] });
+  });
+});
+
+function buildLiveIframe(bodyHtml: string) {
+  const doc = document.implementation.createHTMLDocument("");
+  doc.body.innerHTML = bodyHtml;
+  const contentWindow = {
+    gsap: { timeline: () => {} },
+    __hfForceTimelineRebind: () => {},
+    __timelines: {} as Record<string, unknown>,
+    __player: { getTime: () => 3, seek: vi.fn() },
+    __hfStudioManualEditsApply: vi.fn(),
+  };
+  return {
+    iframe: { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement,
+    contentWindow,
+    doc,
+  };
+}
+
+describe("applyUndoRestoreToPreview", () => {
+  const ROOT = "index.html";
+
+  it("soft-applies an attribute/style-only restore: syncs the live element, no full reload", () => {
+    const { iframe, contentWindow, doc } = buildLiveIframe(
+      `<div id="a" style="translate: 10px 10px" data-hf-path-offset="true">t</div>`,
+    );
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(
+          `<div id="a" style="translate: 10px 10px" data-hf-path-offset="true">t</div>`,
+        ),
+        restored: wrap(`<div id="a" style="translate: 0px 0px" data-hf-path-offset="true">t</div>`),
+      },
+    };
+    const outcome = applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview);
+    expect(outcome).toBe("soft");
+    expect(reloadPreview).not.toHaveBeenCalled();
+    // Live element reverted to the restored inline style.
+    expect(doc.getElementById("a")!.getAttribute("style")).toBe("translate: 0px 0px");
+    // No GSAP script in the restore → the manual-edit reapply runs, playhead held.
+    expect(contentWindow.__player.seek).toHaveBeenCalledWith(3);
+    expect(contentWindow.__hfStudioManualEditsApply).toHaveBeenCalled();
+  });
+
+  it("full-reloads a multi-file restore", () => {
+    const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="x">t</div>`),
+        restored: wrap(`<div id="a">t</div>`),
+      },
+      "scenes/intro.html": { previous: "a", restored: "b" },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("full-reloads a structural restore (split/delete undo)", () => {
+    const { iframe } = buildLiveIframe(`<div id="a">t</div><div id="a-split">t</div>`);
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a">t</div><div id="a-split">t</div>`),
+        restored: wrap(`<div id="a">t</div>`),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
+    const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
+    const reloadPreview = vi.fn();
+    const files = { "scenes/intro.html": { previous: "a", restored: "b" } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
   });
 });

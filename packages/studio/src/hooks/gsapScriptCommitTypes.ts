@@ -16,6 +16,7 @@ export interface MutationResult {
 export interface CommitMutationOptions {
   label: string;
   coalesceKey?: string;
+  coalesceMs?: number;
   softReload?: boolean;
   skipReload?: boolean;
   beforeReload?: () => void;
@@ -38,11 +39,20 @@ export interface CommitMutationOptions {
   instantPatch?: { selector: string; change: RuntimeTweenChange };
 }
 
-export type CommitMutation = (
-  selection: DomEditSelection,
-  mutation: Record<string, unknown>,
-  options: CommitMutationOptions,
-) => Promise<void>;
+export interface CommitMutationCall {
+  selection: DomEditSelection;
+  mutation: Record<string, unknown>;
+  options: CommitMutationOptions;
+}
+
+export interface CommitMutation {
+  (
+    selection: DomEditSelection,
+    mutation: Record<string, unknown>,
+    options: CommitMutationOptions,
+  ): Promise<void>;
+  batch?: (calls: CommitMutationCall[], options: CommitMutationOptions) => Promise<void>;
+}
 
 export type SafeGsapCommitMutation = (
   selection: DomEditSelection,
@@ -66,6 +76,7 @@ export interface GsapScriptCommitsParams {
       label: string;
       kind: EditHistoryKind;
       coalesceKey?: string;
+      coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };

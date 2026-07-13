@@ -59,6 +59,7 @@ interface BrowserLaunchOptions {
   browserPath?: string;
   userDataDir?: string;
   remoteDebuggingPort?: number;
+  browserNoGpu?: boolean;
 }
 
 interface StudioLaunchOptions extends BrowserLaunchOptions {
@@ -150,6 +151,12 @@ export default defineCommand({
     "remote-debugging-port": {
       type: "string",
       description: "Chromium remote debugging port (requires --browser-path and --user-data-dir)",
+    },
+    "browser-no-gpu": {
+      type: "boolean",
+      default: false,
+      description:
+        "Launch the opened browser with --disable-gpu (requires --browser-path). For hosts where hardware acceleration crashes the graphics driver (e.g. NVIDIA Xid resets); with the system default browser use --no-open instead.",
     },
   },
   async run({ args }) {
@@ -248,6 +255,14 @@ export default defineCommand({
 
     const noOpen = !args.open;
     const browserPath = args["browser-path"] as string | undefined;
+    const browserNoGpu = !!args["browser-no-gpu"];
+    if (browserNoGpu && !browserPath) {
+      clack.log.error(
+        "--browser-no-gpu requires --browser-path (the system default browser cannot receive Chromium flags — use --no-open on GPU-unstable hosts)",
+      );
+      process.exitCode = 1;
+      return;
+    }
     const userDataDir = args["user-data-dir"] as string | undefined;
     let remoteDebuggingPort: number | undefined;
     try {
@@ -267,6 +282,7 @@ export default defineCommand({
         browserPath,
         userDataDir,
         remoteDebuggingPort,
+        browserNoGpu,
       });
     }
 
@@ -278,6 +294,7 @@ export default defineCommand({
         browserPath,
         userDataDir,
         remoteDebuggingPort,
+        browserNoGpu,
       });
     }
 
@@ -289,6 +306,7 @@ export default defineCommand({
       browserPath,
       userDataDir,
       remoteDebuggingPort,
+      browserNoGpu,
     });
   },
 });
@@ -688,6 +706,7 @@ function openStudioBrowser(
     browserPath: options?.browserPath,
     userDataDir: options?.userDataDir,
     remoteDebuggingPort: options?.remoteDebuggingPort,
+    disableGpu: options?.browserNoGpu,
   });
 }
 
@@ -729,7 +748,9 @@ function linkProjectIntoStudioData(
       }
     }
     if (!existsSync(symlinkPath)) {
-      symlinkSync(dir, symlinkPath, "dir");
+      // Windows: "dir" symlinks need Developer Mode or elevation (EPERM otherwise);
+      // NTFS junctions are unprivileged and keep the live write-back the studio needs.
+      symlinkSync(dir, symlinkPath, process.platform === "win32" ? "junction" : "dir");
       createdSymlink = true;
     }
   }

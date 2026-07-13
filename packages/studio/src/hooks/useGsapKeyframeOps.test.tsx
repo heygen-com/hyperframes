@@ -99,3 +99,62 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
     expect(labelArg).toBe("Retime keyframe (resize tween)");
   });
 });
+
+describe("useGsapKeyframeOps — keyframe transaction options", () => {
+  it("soft-reloads a standalone convert when the SDK path is unavailable", async () => {
+    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+      ok: true,
+    }));
+    const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
+
+    await act(async () => {
+      await api.convertToKeyframes(selection, "box-to-0-opacity");
+    });
+
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      expect.objectContaining({
+        type: "convert-to-keyframes",
+        animationId: "box-to-0-opacity",
+      }),
+      { label: "Convert to keyframes", softReload: true },
+    );
+  });
+
+  it("threads one coalesce key through skipped convert reload and terminal batch edit", async () => {
+    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+      ok: true,
+    }));
+    const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
+    const coalesceKey = "enable-keyframes:box-to-0-opacity:1";
+
+    await act(async () => {
+      await api.convertToKeyframes(selection, "box-to-0-opacity", undefined, undefined, {
+        skipReload: true,
+        coalesceKey,
+        coalesceMs: Infinity,
+      });
+      await api.addKeyframeBatch(
+        selection,
+        "box-to-0-opacity",
+        50,
+        { opacity: 0.5 },
+        {
+          coalesceKey,
+        },
+      );
+    });
+
+    expect(commitMutation.mock.calls[0]?.[2]).toEqual({
+      label: "Convert to keyframes",
+      skipReload: true,
+      coalesceKey,
+      coalesceMs: Infinity,
+    });
+    expect(commitMutation.mock.calls[1]?.[2]).toEqual({
+      label: "Add keyframe at 50%",
+      softReload: true,
+      coalesceKey,
+    });
+  });
+});

@@ -544,7 +544,7 @@ npx hyperframes lint
 Then run runtime validation:
 
 ```bash
-npx hyperframes validate
+npx hyperframes check
 ```
 
 Treat lint errors and validation `StaticGuard` contract messages as blockers even if a command exits successfully. Fix the file and rerun until lint reports `0 error(s)` and validation reports no runtime errors.

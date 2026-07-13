@@ -3107,12 +3107,27 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
  * init-time screenshot → the render falls back to the screenshot path (slower,
  * never wrong). Cost when passing: ~K×(seek+screenshot) ≈ 150–300ms at init.
  */
+/**
+ * Timeline fractions the self-verify samples. First k-1 evenly spaced, last
+ * pinned at 95%: late-onset damage (an end-of-comp reveal exposing pixels DE
+ * paints wrong) was invisible to the old (i+1)/(k+1) grid, whose final sample
+ * sat at 80% — measured miss: a body-gradient drop starting at ~79% of the
+ * timeline passed verification while the drained output bottomed at 30.9 dB.
+ */
+export function computeDeVerifySampleFractions(k: number): number[] {
+  if (k <= 0) return [];
+  if (k === 1) return [0.95];
+  return [...Array.from({ length: k - 1 }, (_, i) => (i + 1) / k), 0.95];
+}
+
 async function captureDeVerificationFrames(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  const kRaw = Number(process.env.HF_DE_VERIFY ?? "4");
+  // Explicit HF_DE_VERIFY wins; otherwise the session's own sample count
+  // (raised by the parallel coordinator for multi-worker DE), then default 4.
+  const kRaw = Number(process.env.HF_DE_VERIFY ?? session.options.deVerifySamples ?? "4");
   const k = Number.isFinite(kRaw) ? Math.max(0, Math.min(8, Math.floor(kRaw))) : 4;
   if (k === 0 || process.env.HF_FORCE_DRAWELEMENT === "1") return;
   if (session.options.format === "png") return; // worker-encode drain (the consumer) is jpeg-only
@@ -3153,7 +3168,7 @@ async function captureDeVerificationFrames(
   // render (the detectCssEffectRisk lesson), and because DE frames and truth
   // would share the corruption, PSNR would pass on the damaged output.
   // Seeking 0 → ascending reproduces the render's own seek order.
-  const fractions = Array.from({ length: k }, (_, i) => (i + 1) / (k + 1));
+  const fractions = computeDeVerifySampleFractions(k);
   const seekTo = async (t: number): Promise<void> => {
     await page.evaluate((tt: number) => {
       const hf = (
@@ -3223,6 +3238,8 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     staticDedupArmed: (session.staticFrames?.size ?? 0) > 0,
     staticDedupPredicted: session.staticFrames?.size ?? 0,
     staticDedupSkipReason: session.staticDedupSkipReason,
+    beginFrameNoDamage: session.beginFrameNoDamageCount,
+    beginFrameHasDamage: session.beginFrameHasDamageCount,
     captureMode: session.captureMode,
     deGateReason: session.deGateReason,
     deWorkerEncode: session.workerEncodeEnabled ?? false,
@@ -3291,7 +3308,39 @@ const MEMORY_EXHAUSTION_ERROR_PATTERNS = [
   /JavaScript heap out of memory/i,
 ];
 
+// The producer's deployed runtime is Bun (JavaScriptCore), not Node (V8) —
+// see `packages/gcp-cloud-run/Dockerfile`'s `CMD ["bun", "dist/server.js"]`.
+// JSC's own allocation-failure message for the equivalent single-oversized-
+// allocation RangeErrors above is the bare string "Out of memory" (verified:
+// `new Uint8Array(Number.MAX_SAFE_INTEGER)`, an unbounded `Set`, and
+// `"x".repeat(2**53)` all throw exactly this under Bun) — none of the V8
+// patterns above match it. This is exactly the substring the comment above
+// says NOT to match anywhere in the message (benign browser-console noise
+// like a WebGL `CONTEXT_LOST … out of memory` carries that phrase too), so
+// this checks the ENTIRE (trimmed) message equals it, not merely contains
+// it — a compound message with other text around the phrase still misses.
+const BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE = /^out of memory\.?$/i;
+
+// The parallel-DE capture path — the exact cohort the OOM-aware retry in
+// renderOrchestrator.ts targets — never reaches isMemoryExhaustionError with
+// a bare message: `executeParallelCapture`/`formatWorkerFailure`
+// (parallelCoordinator.ts) always wrap a worker's error as
+// "Worker N: <message>", optionally suffixed "; diagnostics: ..." and joined
+// with other failed workers' segments via "; ", all prefixed
+// "[Parallel] Capture failed: ". The exact-match check above is defeated by
+// that wrapping entirely (verified) — this pattern recovers the Bun OOM
+// signal by requiring "out of memory" appear immediately after "Worker N: "
+// and immediately before end-of-string, ";", or ".", i.e. as the WHOLE
+// worker-segment content, not merely somewhere inside it. This preserves the
+// exact-match property (no bare "out of memory" substring inside otherwise-
+// unrelated worker text, e.g. "Worker 2: WebGL context lost, out of memory
+// reported by driver" does NOT match) while surviving this codebase's own
+// error-flattening.
+const BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE = /\bworker \d+: out of memory\.?(?:;|$)/i;
+
 export function isMemoryExhaustionError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
+  if (BUN_MEMORY_EXHAUSTION_EXACT_MESSAGE.test(message.trim())) return true;
+  if (BUN_MEMORY_EXHAUSTION_WRAPPED_WORKER_MESSAGE.test(message)) return true;
   return MEMORY_EXHAUSTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
 }

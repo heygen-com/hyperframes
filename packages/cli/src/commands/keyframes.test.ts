@@ -1,11 +1,30 @@
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
-import { collectShotSelectors, surfaceComposition } from "./keyframes.js";
+import { collectShotSelectors, resolveScope, surfaceComposition } from "./keyframes.js";
 
 beforeAll(() => ensureDOMParser());
 
 const wrap = (script: string) =>
   `<!doctype html><html><body><div id="root" data-composition-id="main" data-duration="4"><div id="dot" class="clip"></div></div><script>${script}</script></body></html>`;
+
+describe("keyframes direct composition scope", () => {
+  it("keeps the project root and passes the nested HTML entry to --shot", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));
+    const compositionsDir = join(projectDir, "compositions");
+    mkdirSync(compositionsDir);
+    writeFileSync(join(projectDir, "index.html"), wrap(""));
+    const scenePath = join(compositionsDir, "scene.html");
+    writeFileSync(scenePath, wrap(""));
+
+    const scope = resolveScope({ target: scenePath });
+
+    expect(scope.projectDir).toBe(projectDir);
+    expect(scope.entryFile).toBe("compositions/scene.html");
+  });
+});
 
 describe("keyframes multi-stroke traces", () => {
   it("composites ≥2 position strokes on one element into a single trace", () => {

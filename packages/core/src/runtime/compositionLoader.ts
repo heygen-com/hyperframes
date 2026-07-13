@@ -366,14 +366,15 @@ async function mountCompositionContent(params: {
     details: Record<string, string | number | boolean | null | string[]>;
   }) => void;
 }): Promise<void> {
-  let innerRoot: Element | null = null;
+  let innerRoot: HTMLElement | null = null;
   if (params.authoredCompositionId) {
     const candidateRoots = Array.from(
-      params.sourceNode.querySelectorAll<Element>("[data-composition-id]"),
+      params.sourceNode.querySelectorAll<HTMLElement>("[data-composition-id]"),
     );
     innerRoot =
       candidateRoots.find(
         (candidate) =>
+          candidate instanceof HTMLElement &&
           candidate.getAttribute("data-composition-id") === params.authoredCompositionId,
       ) ?? null;
   }

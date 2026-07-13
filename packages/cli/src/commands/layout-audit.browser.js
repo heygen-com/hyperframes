@@ -81,6 +81,22 @@
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
+  function uniqueSelectorFor(element) {
+    const preferred = selectorFor(element);
+    try {
+      if (document.querySelectorAll(preferred).length === 1) return preferred;
+    } catch {
+      // Fall through to a structural selector.
+    }
+    const parent = element.parentElement;
+    if (!parent) return preferred;
+    const siblings = Array.from(parent.children).filter(
+      (child) => child.tagName === element.tagName,
+    );
+    const index = siblings.indexOf(element) + 1;
+    return `${uniqueSelectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
+  }
+
   function hasIgnoreFlag(element) {
     return !!element.closest("[data-layout-ignore], [data-layout-check='ignore']");
   }
@@ -96,6 +112,14 @@
       if (Number.isFinite(parsed)) opacity *= parsed;
     }
     return opacity;
+  }
+
+  function hasOpacityBelow(element, floor) {
+    for (let current = element; current; current = current.parentElement) {
+      const parsed = Number.parseFloat(getComputedStyle(current).opacity || "1");
+      if (Number.isFinite(parsed) && parsed < floor) return true;
+    }
+    return false;
   }
 
   // A clip-path can shrink an element's painted region to nothing (e.g. a
@@ -142,9 +166,20 @@
     return !paintsAnyProbePoint(element, rect);
   }
 
-  function isVisibleElement(element) {
+  function isVisibleElement(element, opacityFloor, probeClipPath) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     if (hasIgnoreFlag(element)) return false;
+    if (
+      opacityFloor != null &&
+      typeof element.checkVisibility === "function" &&
+      !element.checkVisibility({
+        opacityProperty: true,
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      })
+    ) {
+      return false;
+    }
     const style = getComputedStyle(element);
     if (
       style.display === "none" ||
@@ -153,32 +188,57 @@
     ) {
       return false;
     }
-    if (opacityChain(element) < 0.2) return false;
+    if (
+      opacityFloor == null ? opacityChain(element) < 0.2 : hasOpacityBelow(element, opacityFloor)
+    ) {
+      return false;
+    }
     const rect = element.getBoundingClientRect();
     if (rect.width <= 0.5 || rect.height <= 0.5) return false;
-    return !isClippedAway(element);
+    return probeClipPath === false || !isClippedAway(element);
   }
 
-  function textContentFor(element) {
-    return (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+  function directTextNodes(element) {
+    return Array.from(element.childNodes).filter((node) => node.nodeType === 3);
   }
 
-  function hasOwnTextCandidate(element) {
-    const text = textContentFor(element);
+  function textContentFor(element, ownTextOnly) {
+    const content = ownTextOnly
+      ? directTextNodes(element)
+          .map((node) => node.textContent || "")
+          .join("")
+      : element.innerText || element.textContent || "";
+    return content.replace(/\s+/g, " ").trim();
+  }
+
+  function hasOwnTextCandidate(element, directOnly) {
+    const text = textContentFor(element, directOnly);
     if (!text) return false;
+    if (directOnly) return true;
     for (const child of Array.from(element.children)) {
       if (isVisibleElement(child) && textContentFor(child)) return false;
     }
     return true;
   }
 
-  function textRectFor(element) {
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const rects = Array.from(range.getClientRects()).filter(
-      (rect) => rect.width > 0.5 && rect.height > 0.5,
-    );
-    range.detach();
+  function textClientRects(element, directOnly) {
+    const subjects = directOnly ? directTextNodes(element) : [element];
+    const rects = [];
+    for (const subject of subjects) {
+      const range = document.createRange();
+      range.selectNodeContents(subject);
+      rects.push(
+        ...Array.from(range.getClientRects()).filter(
+          (rect) => rect.width > 0.5 && rect.height > 0.5,
+        ),
+      );
+      range.detach();
+    }
+    return rects;
+  }
+
+  function textRectFor(element, directOnly) {
+    const rects = textClientRects(element, directOnly);
     if (rects.length === 0) return null;
 
     const union = rects.reduce(
@@ -567,9 +627,12 @@
     const area = intersectionArea(a.rect, b.rect);
     if (area <= Math.min(rectArea(a.rect), rectArea(b.rect)) * 0.2) return null;
     return {
-      // Warning, not error: must not fail the exit code (ok = errorCount === 0)
-      // for compositions that intentionally layer text. Re-promote once the
-      // data-layout-allow-overlap opt-out is widely adopted.
+      // Warning at the per-sample level: a single-sample overlap is usually an
+      // entrance/exit transient (two blocks crossing mid-animation), not a real
+      // collision. `collapseStaticLayoutIssues` (utils/layoutAudit.ts) re-promotes
+      // this to error once the SAME overlap is held across >= 2 adjacent samples
+      // (or ~500ms of timeline) — a persistence-tiered replacement for the old
+      // "re-promote once data-layout-allow-overlap is widely adopted" plan (#U10).
       code: "content_overlap",
       severity: "warning",
       time,
@@ -602,6 +665,7 @@
   }
 
   const RASTER_TAGS = new Set(["IMG", "VIDEO", "CANVAS"]);
+  const FRAME_MEDIA_TAGS = new Set([...RASTER_TAGS, "SVG"]);
 
   // An element hides text beneath it when it paints opaque pixels at near-full
   // opacity: raster content (img/video/canvas), a background image, or a solid
@@ -667,41 +731,179 @@
     return hit;
   }
 
+  const OCCLUSION_PROBE_Y_FRACTIONS = [0.25, 0.5, 0.75];
+  const OCCLUSION_PROBE_X_FRACTIONS = [0.03, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.97];
+  const OCCLUSION_GRID_POINTS =
+    OCCLUSION_PROBE_Y_FRACTIONS.length * OCCLUSION_PROBE_X_FRACTIONS.length;
+
+  // Short, atomic text (a label/button/word, no whitespace) reads as a single
+  // unit — ANY covered probe point changes what it says, so flag at any hit
+  // (the pre-#U10 behaviour). Longer prose survives a nibbled edge; only flag
+  // once a real share of it is covered — see `occludedTextIssue`.
+  const ATOMIC_LABEL_MAX_CHARS = 16;
+  const PROSE_COVERAGE_FLOOR = 0.15;
+
+  function isAtomicLabel(text) {
+    return text.length > 0 && text.length <= ATOMIC_LABEL_MAX_CHARS && !/\s/.test(text);
+  }
+
   // Sweep a grid across the text box (three rows, not just the mid-line, so
-  // overlays covering only part of a multi-line block are caught) and return
-  // the first opaque element painted over any sample point.
-  function firstOccluder(element, textRect) {
-    for (const yFraction of [0.25, 0.5, 0.75]) {
+  // overlays covering only part of a multi-line block are caught). Unlike a
+  // first-hit scan, this keeps sampling every point so it can report what
+  // fraction of the box is actually covered — a corner nibble on a paragraph
+  // reads very differently from a label buried under an overlay. Still
+  // returns the first opaque element found, for `containerSelector`.
+  function occlusionCoverage(element, textRect) {
+    let occluder = null;
+    let hits = 0;
+    for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
       const y = textRect.top + textRect.height * yFraction;
-      for (const xFraction of [0.03, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.97]) {
-        const occluder = occluderAt(element, textRect.left + textRect.width * xFraction, y);
-        if (occluder) return occluder;
+      for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
+        const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+        if (!hit) continue;
+        hits += 1;
+        if (!occluder) occluder = hit;
       }
     }
-    return null;
+    return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
   }
 
   // Catches the blind spot the overflow checks miss: text that fits its box
-  // perfectly but is covered by a later sibling/overlay.
+  // perfectly but is covered by a later sibling/overlay. An atomic label
+  // (short, no whitespace) flags at any coverage; ordinary prose only flags
+  // once coveredFraction clears PROSE_COVERAGE_FLOOR, since a sliver of edge
+  // cover on a paragraph is usually a styling artifact, not a reading defect.
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
     const textRect = textRectFor(element);
     if (!textRect) return null;
-    const occluder = firstOccluder(element, textRect);
+    const text = textContentFor(element);
+    const { occluder, coveredFraction } = occlusionCoverage(element, textRect);
     if (!occluder) return null;
+    if (!isAtomicLabel(text) && coveredFraction < PROSE_COVERAGE_FLOOR) return null;
     return {
       code: "text_occluded",
       severity: "error",
       time,
       selector: selectorFor(element),
       containerSelector: selectorFor(occluder),
-      text: textContentFor(element),
+      text,
       message: "Text is hidden beneath an opaque element.",
       rect: textRect,
+      coveredFraction,
       fixHint:
         "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
     };
   }
+
+  // Text whose glyphs paint with an effectively transparent fill renders
+  // invisibly even though the element, its box, opacity and color all read as
+  // present — so geometry/occlusion/contrast audits miss it (contrast reads
+  // `color`, not the fill that actually paints). `-webkit-text-fill-color`
+  // overrides `color` for the glyph fill AND inherits, so a parent's
+  // `transparent` fill silently blanks descendant text that has its own opaque
+  // `color`. Its computed value already resolves to `color` when unset, so it
+  // is the effective fill directly. Clipped text (`background-clip: text`)
+  // legitimately uses a transparent fill — BUT only when a background actually
+  // paints the glyphs; a `background-clip: text` with no gradient/image and no
+  // opaque background-color paints nothing, so it stays reportable.
+  function invisibleTextIssue(element, time) {
+    const textRect = textRectFor(element);
+    if (!textRect) return null;
+    const text = textContentFor(element);
+    if (!text) return null;
+    const cs = getComputedStyle(element);
+    // Vendor computed-style props are read by property (camelCase), matching
+    // the rest of this script; `webkitTextFillColor` computes to `color` when
+    // unset, so it is the effective fill directly.
+    const fill = cs.webkitTextFillColor || cs.color;
+    if (colorAlpha(fill) > 0.05) return null;
+    const clip = cs.webkitBackgroundClip || cs.backgroundClip || "";
+    if (/text/i.test(clip)) {
+      const bgImage = cs.backgroundImage || "none";
+      const paintsGlyphs =
+        bgImage !== "none" || colorAlpha(cs.backgroundColor || "rgba(0, 0, 0, 0)") > 0.05;
+      // A usable clipped background fills the glyphs — legitimate gradient/solid
+      // clipped text. If nothing paints, fall through and report it.
+      if (paintsGlyphs) return null;
+    }
+    return {
+      code: "text_not_painted",
+      severity: "error",
+      time,
+      selector: selectorFor(element),
+      text,
+      message:
+        "Text paints with an effectively transparent fill (-webkit-text-fill-color / color), so its glyphs are invisible.",
+      rect: textRect,
+      fixHint:
+        "Set an explicit, opaque `color` on the text — and an explicit `-webkit-text-fill-color` if an ancestor makes the fill transparent. If the transparency is intentional gradient text, add `background-clip: text`.",
+    };
+  }
+
+  function candidateAnchor(element) {
+    const dataAttributes = {};
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.name.startsWith("data-")) dataAttributes[attribute.name] = attribute.value;
+    }
+    const source = element
+      .closest("[data-composition-file]")
+      ?.getAttribute("data-composition-file");
+    return {
+      selector: uniqueSelectorFor(element),
+      dataAttributes,
+      sourceFile: source || "index.html",
+    };
+  }
+
+  function geometryCandidate(element, kind, rect, elementRect, rootRect, tolerance) {
+    const tag = element.tagName.toLowerCase();
+    const text = kind === "text" ? textContentFor(element, true) : tag;
+    const overflow = kind === "media" ? overflowFor(elementRect, rootRect, tolerance) : null;
+    return {
+      kind,
+      tag,
+      text,
+      rect,
+      elementRect,
+      ...candidateAnchor(element),
+      ...(overflow ? { overflow } : {}),
+    };
+  }
+
+  window.__hyperframesGeometryCandidates = function collectGeometryCandidates(options) {
+    const includeText = options?.text === true;
+    const includeMedia = options?.media === true;
+    if (!includeText && !includeMedia) return [];
+    const tolerance = typeof options?.tolerance === "number" ? options.tolerance : 2;
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const rootRect = rootRectFor(root);
+    const candidates = [];
+    for (const element of Array.from(document.querySelectorAll("body *"))) {
+      if (element.closest('[data-composition-id="captions"], .caption-layer, #caption-stage')) {
+        continue;
+      }
+      if (!isVisibleElement(element, 0.05, false)) continue;
+      const elementRect = toRect(element.getBoundingClientRect());
+      if (includeText && hasOwnTextCandidate(element, true)) {
+        const rect = textRectFor(element, true);
+        if (rect) {
+          candidates.push(
+            geometryCandidate(element, "text", rect, elementRect, rootRect, tolerance),
+          );
+        }
+      }
+      if (includeMedia && FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) {
+        candidates.push(
+          geometryCandidate(element, "media", elementRect, elementRect, rootRect, tolerance),
+        );
+      }
+    }
+    return candidates;
+  };
 
   window.__hyperframesLayoutAudit = function auditLayout(options) {
     const time = options && typeof options.time === "number" ? options.time : 0;
@@ -712,7 +914,9 @@
       document.querySelector("[data-composition-id]") ||
       document.body;
     const rootRect = rootRectFor(root);
-    const elements = Array.from(root.querySelectorAll("*")).filter(isVisibleElement);
+    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
+      isVisibleElement(element),
+    );
     const issues = [];
 
     for (const element of elements) {
@@ -722,10 +926,68 @@
       issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
       const occluded = occludedTextIssue(element, time);
       if (occluded) issues.push(occluded);
+      const invisible = invisibleTextIssue(element, time);
+      if (invisible) issues.push(invisible);
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));
     return issues;
+  };
+
+  // Frozen-sweep guard (#U10, checkPipeline.ts): a compact per-sample
+  // fingerprint of every visible element's box + opacity, in DOM order. Node
+  // calls this once per seeked grid point and compares the strings across the
+  // whole run — if every sample produces the identical string, the seek never
+  // actually moved anything and the whole audit run is unreliable. Deliberately
+  // a single opaque string (not a structured array) since Node only ever needs
+  // equality, not per-element diffing.
+  // Pixel-only media motion (a 2D/WebGL canvas repainting or a playing video
+  // without any element moving) is invisible to a geometry+opacity fingerprint
+  // and false-positives sweep_static. Downsample each visible canvas/video to
+  // 8x8 and fold its pixels into the fingerprint. Tainted, zero-sized, or
+  // unreadable media hashes to a constant — no worse than geometry-only
+  // detection and never a new false negative for DOM-motion compositions.
+  // Media inside iframes is intentionally outside this fingerprint: it lives
+  // in a separate document, and cross-origin frames are inaccessible under SOP.
+  function mediaPixelHash(element) {
+    try {
+      const rect = element.getBoundingClientRect();
+      const sourceWidth = element.videoWidth || element.width || rect.width;
+      const sourceHeight = element.videoHeight || element.height || rect.height;
+      if (!sourceWidth || !sourceHeight) return "x";
+      const off = document.createElement("canvas");
+      off.width = 8;
+      off.height = 8;
+      const ctx = off.getContext("2d");
+      if (!ctx) return "x";
+      ctx.drawImage(element, 0, 0, 8, 8);
+      const data = ctx.getImageData(0, 0, 8, 8).data;
+      let hash = 0;
+      for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
+      return String(hash);
+    } catch {
+      return "x";
+    }
+  }
+
+  window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
+    const root =
+      document.querySelector("[data-composition-id][data-width][data-height]") ||
+      document.querySelector("[data-composition-id]") ||
+      document.body;
+    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
+      isVisibleElement(element),
+    );
+    const parts = elements.map((element) => {
+      const rect = toRect(element.getBoundingClientRect());
+      const opacity = round(opacityChain(element));
+      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
+    });
+    for (const media of root.querySelectorAll("canvas, video")) {
+      if (!isVisibleElement(media)) continue;
+      parts.push(`p:${mediaPixelHash(media)}`);
+    }
+    return parts.join("|");
   };
 })();

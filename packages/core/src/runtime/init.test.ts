@@ -12,11 +12,13 @@ function createMockTimeline(duration: number): RuntimeTimelineLike {
     pause: () => {
       state.paused = true;
     },
-    seek: (time: number) => {
-      state.time = time;
+    seek: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
-    totalTime: (time: number) => {
-      state.time = time;
+    totalTime: (time?: number) => {
+      if (time !== undefined) state.time = time;
+      return state.time;
     },
     time: () => state.time,
     duration: () => state.duration,
@@ -1562,6 +1564,36 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
 
+  it("restores timed element visibility after a forced timeline rebind", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-root="true" data-duration="30" data-width="1920" data-height="1080">
+        <div class="clip" id="clip-expired" data-start="0" data-duration="15.234"></div>
+        <div class="clip" id="clip-future" data-start="20.83" data-duration="3"></div>
+        <div class="clip" id="clip-control" data-start="10" data-duration="10"></div>
+      </div>
+    `;
+    const clipExpired = document.querySelector<HTMLElement>("#clip-expired");
+    const clipFuture = document.querySelector<HTMLElement>("#clip-future");
+    const clipControl = document.querySelector<HTMLElement>("#clip-control");
+    window.__timelines = { root: createMockTimeline(30) };
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(16.2);
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+
+    if (clipExpired) clipExpired.style.visibility = "visible";
+    if (clipFuture) clipFuture.style.visibility = "visible";
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+  });
+
   it("onSetMuted preserves authored muted attribute on video elements", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");
@@ -1754,6 +1786,26 @@ describe("initSandboxRuntimeModular", () => {
     const beforeResume = seekTimes.length;
     raf.step(16);
     expect(seekTimes.length).toBeGreaterThan(beforeResume);
+  });
+
+  it("keeps a usable bound timeline when the registry entry is replaced", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-start="0" data-duration="5" data-width="1920" data-height="1080"></div>
+    `;
+    const originalTimeline = createMockTimeline(5);
+    window.__timelines = { root: originalTimeline };
+    initSandboxRuntimeModular();
+
+    const replacementTimeline = createMockTimeline(8);
+    window.__timelines.root = replacementTimeline;
+    for (let frame = 0; frame < 60; frame += 1) raf.step(16);
+
+    expect(window.__player?.getDuration()).toBe(5);
   });
 
   // applyClipLayout force-absolutizes authored root-level timed clips so they

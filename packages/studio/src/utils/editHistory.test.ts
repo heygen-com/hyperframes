@@ -209,6 +209,41 @@ describe("edit history", () => {
     expect(state.undo[0].files["index.html"].after).toBe("c");
   });
 
+  it("merges a lane-change move with its z-reorder past the default window via entry coalesceMs", () => {
+    // The z entry records only after the move persist's round-trip — often >300ms.
+    // Both sides pass coalesceMs: 5000 with the shared gesture key so the pair
+    // still folds into ONE undo step.
+    const move = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Move timeline clips",
+      kind: "timeline",
+      coalesceKey: "clip-lane-move:1",
+      coalesceMs: 5000,
+      files: { "index.html": { before: "a", after: "b" } },
+      now: 100,
+      id: "move-entry",
+    });
+    const zReorder = buildEditHistoryEntry({
+      projectId: "project-1",
+      label: "Reorder layers",
+      kind: "manual",
+      coalesceKey: "clip-lane-move:1",
+      coalesceMs: 5000,
+      files: { "index.html": { before: "b", after: "c" } },
+      now: 500,
+      id: "z-entry",
+    });
+
+    const state = pushEditHistoryEntry(
+      pushEditHistoryEntry(createEmptyEditHistory(), move),
+      zReorder,
+    );
+
+    expect(state.undo).toHaveLength(1);
+    expect(state.undo[0].files["index.html"].before).toBe("a");
+    expect(state.undo[0].files["index.html"].after).toBe("c");
+  });
+
   it("folds a slow GSAP follow-up into the timing edit via a per-entry coalesceMs override", () => {
     const timing = buildEditHistoryEntry({
       projectId: "project-1",

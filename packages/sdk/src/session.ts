@@ -35,7 +35,7 @@ import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScript, resolveScoped, declarationElement } from "./engine/model.js";
+import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { parseStartExpression } from "@hyperframes/core/runtime/start-expression";
@@ -314,26 +314,30 @@ class CompositionImpl implements Composition {
   // ── WS-C: timing accessors + typed setHold ───────────────────────────────────
 
   /**
-   * Cache of parsed GSAP labels keyed by EXACT script text. extractGsapLabels does
-   * a full acorn parse; caching avoids re-parsing on repeated getElementTimings reads
-   * when the script is unchanged. The content (not reference) key means any script
-   * edit changes the text and invalidates the cache, so renumbered tweens never yield
-   * stale label positions.
+   * Cache of parsed GSAP labels keyed by the ordered list of EXACT script texts.
+   * extractGsapLabels does a full acorn parse; caching avoids re-parsing on repeated
+   * getElementTimings reads when the scripts are unchanged.
    */
-  private _gsapLabelCache: { script: string; labels: ReturnType<typeof extractGsapLabels> } | null =
-    null;
+  private _gsapLabelCache: {
+    scripts: string[];
+    labels: ReturnType<typeof extractGsapLabels>;
+  } | null = null;
 
   // fallow-ignore-next-line complexity
   getElementTimings(): Record<HfId, ElementTimingSnapshot> {
-    const script = getGsapScript(this.parsed.document);
+    const scripts = getGsapScripts(this.parsed.document);
 
-    // Extract all addLabel("name", position) calls from the GSAP script (see cache note above).
+    // Extract all addLabel("name", position) calls from every GSAP script.
     let allLabels: ReturnType<typeof extractGsapLabels>;
-    if (script && this._gsapLabelCache?.script === script) {
-      allLabels = this._gsapLabelCache.labels;
+    const cachedScripts = this._gsapLabelCache?.scripts;
+    const cacheMatches =
+      cachedScripts?.length === scripts.length &&
+      cachedScripts.every((script, index) => script === scripts[index]);
+    if (cacheMatches) {
+      allLabels = this._gsapLabelCache?.labels ?? [];
     } else {
-      allLabels = script ? extractGsapLabels(script) : [];
-      this._gsapLabelCache = script ? { script, labels: allLabels } : null;
+      allLabels = scripts.flatMap((script) => extractGsapLabels(script));
+      this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
 
     // Resolve a `data-start` that's a relative-timing REFERENCE ("intro", "intro + 2" —
@@ -555,8 +559,11 @@ class CompositionImpl implements Composition {
   }
 
   getAllAnimationIds(): Set<string> {
-    const script = getGsapScript(this.parsed.document);
-    return script ? parsedAnimationIds(script) : new Set();
+    const ids = new Set<string>();
+    for (const script of getGsapScripts(this.parsed.document)) {
+      for (const id of parsedAnimationIds(script)) ids.add(id);
+    }
+    return ids;
   }
 
   // ── Selection API ────────────────────────────────────────────────────────────

@@ -1,13 +1,10 @@
 import type { HyperframeLintFinding, HyperframeLinterOptions } from "./types";
 import {
-  extractBlocks,
-  extractOpenTags,
+  parseHtmlStructure,
   findRootTag,
   collectCompositionIds,
   readAttr,
   stripHtmlComments,
-  STYLE_BLOCK_PATTERN,
-  SCRIPT_BLOCK_PATTERN,
 } from "./utils";
 import type { OpenTag, ExtractedBlock } from "./utils";
 
@@ -34,19 +31,31 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
   // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
   // stay ReDoS-free and catch markers that re-form when a comment is removed.
   let source = stripHtmlComments(rawSource);
-  const sourceWithoutTemplates = source.replace(
-    /<template\b[^>]*>[\s\S]*?<\/template(?:\s[^>]*)?>/gi,
-    " ",
+  const initialStructure = parseHtmlStructure(source);
+  const templateTags = initialStructure.tags.filter(
+    (tag) => tag.name === "template" && tag.closeIndex != null,
   );
-  const templateMatch = source.match(/<template[^>]*>([\s\S]*)<\/template>/i);
+  let sourceWithoutTemplates = source;
+  for (const template of [...templateTags].reverse()) {
+    const end = template.endIndex ?? template.index;
+    sourceWithoutTemplates =
+      sourceWithoutTemplates.slice(0, template.index) +
+      " ".repeat(end - template.index) +
+      sourceWithoutTemplates.slice(end);
+  }
   // Some sub-composition files are HTML shells whose real root lives inside a
   // <template>. Keep nested templates intact when the visible document already
   // has a composition root; only unwrap when no root exists outside templates.
-  if (templateMatch?.[1] && !findRootTag(sourceWithoutTemplates)) source = templateMatch[1];
+  const template = templateTags[0];
+  let structure = initialStructure;
+  if (template && !findRootTag(sourceWithoutTemplates)) {
+    source = source.slice(template.index + template.raw.length, template.closeIndex);
+    structure = parseHtmlStructure(source);
+  }
 
-  const tags = extractOpenTags(source);
+  const tags = structure.tags;
   const styles = [
-    ...extractBlocks(source, STYLE_BLOCK_PATTERN),
+    ...structure.styles,
     ...(options.externalStyles ?? []).map((style) => ({
       attrs: `href="${style.href}"`,
       content: style.content,
@@ -54,9 +63,9 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
       index: -1,
     })),
   ];
-  const scripts = extractBlocks(source, SCRIPT_BLOCK_PATTERN);
+  const scripts = structure.scripts;
   const compositionIds = collectCompositionIds(tags);
-  const rootTag = findRootTag(source);
+  const rootTag = findRootTag(source, tags);
   const rootCompositionId = readAttr(rootTag?.raw || "", "data-composition-id");
 
   return {

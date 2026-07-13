@@ -1194,6 +1194,63 @@ describe("GSAP rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("errors when a style block's LAST declaration is opacity:0 without a semicolon", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero">Hello</div>
+  </div>
+  <style>
+    #hero { font-size: 200px; opacity: 0 }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#hero", { opacity: 0, duration: 0.25 }, 0.1);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeDefined();
+  });
+
+  it("does NOT error for inline opacity: 0.98 + gsap.from({opacity:0}) — fractional is not zero", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="image-clip" style="opacity: 0.98; filter: blur(23px);" src="x.png">
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#image-clip", { opacity: 0, duration: 0.8 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeUndefined();
+  });
+
+  it("still errors for inline opacity: 0 without a trailing semicolon", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" style="font-size: 120px; opacity: 0">Hello</div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.from("#title", { opacity: 0, duration: 0.5 }, 0.2);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_from_opacity_noop");
+    expect(finding).toBeDefined();
+  });
+
   it("does NOT error when gsap.from({opacity:0}) and CSS has no opacity:0", async () => {
     const html = `
 <html><body>

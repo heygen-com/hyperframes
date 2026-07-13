@@ -693,7 +693,7 @@ describe("buildTimelineAgentPrompt", () => {
       prompt: "Move the title later and lower the music",
     });
 
-    expect(text).toContain("Time range: 0:01 - 0:04");
+    expect(text).toContain("Time range: 00:01 - 00:04");
     expect(text).toContain("#title (div)");
     expect(text).toContain("#music (audio)");
     expect(text).toContain("Move the title later and lower the music");

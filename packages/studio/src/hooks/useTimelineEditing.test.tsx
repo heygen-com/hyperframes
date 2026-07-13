@@ -159,7 +159,7 @@ type TimelineRecordEdit = NonNullable<
 function renderTimelineEditingHookWithLifecycle(input: {
   timelineElements: TimelineElement[];
   iframe: HTMLIFrameElement;
-  commitPositionPatchToHtml: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>;
+  commitDomEditPatchBatches: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>;
 }): {
   move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"];
   unmount: () => void;
@@ -176,7 +176,7 @@ function renderTimelineEditingHookWithLifecycle(input: {
       projectIdRef: { current: "p1" },
       reloadPreview: vi.fn(),
       clearDomSelection: vi.fn(),
-      commitPositionPatchToHtml: input.commitPositionPatchToHtml,
+      commitDomEditPatchBatches: input.commitDomEditPatchBatches,
     });
     const commitRef = useRef(lifecycle.handleDomZIndexReorderCommit);
     commitRef.current = lifecycle.handleDomZIndexReorderCommit;
@@ -481,11 +481,11 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     ]);
     const front = timelineElement({ id: "front", track: 0, zIndex: 0 });
     const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    const commitPositionPatchToHtml = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    const commitDomEditPatchBatches = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
-      commitPositionPatchToHtml,
+      commitDomEditPatchBatches,
     });
 
     await act(async () => {
@@ -501,8 +501,11 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       await flushAsyncWork();
     });
 
-    expect(commitPositionPatchToHtml).toHaveBeenCalled();
-    expect(commitPositionPatchToHtml.mock.calls[0]![1]).toEqual([
+    expect(commitDomEditPatchBatches).toHaveBeenCalled();
+    const batch = commitDomEditPatchBatches.mock.calls[0]![0] as Array<{
+      patches: Array<{ operations: unknown[] }>;
+    }>;
+    expect(batch[0]?.patches[0]?.operations).toEqual([
       { type: "inline-style", property: "z-index", value: "2" },
       { type: "inline-style", property: "position", value: "relative" },
     ]);
@@ -522,14 +525,13 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       { ...back, hasExplicitZIndex: false },
     ]);
     const saveError = new Error("save failed");
-    const commitPositionPatchToHtml = vi
+    const commitDomEditPatchBatches = vi
       .fn<(...args: unknown[]) => Promise<void>>()
-      .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(saveError);
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
-      commitPositionPatchToHtml,
+      commitDomEditPatchBatches,
     });
     const doc = iframe.contentDocument;
     if (!doc) throw new Error("Expected iframe document");
@@ -576,29 +578,24 @@ describe("useTimelineEditing timeline z-index reorder", () => {
     unmount();
   });
 
-  it("waits for every lifecycle z-index save before resolving a reorder", async () => {
+  it("waits for the lifecycle z-index batch before resolving a reorder", async () => {
     const iframe = createPreviewIframe([
       { id: "front", track: 0, style: "position: relative; z-index: 1" },
       { id: "back", track: 1, style: "position: relative; z-index: 0" },
     ]);
     const front = timelineElement({ id: "front", track: 0, zIndex: 1 });
     const back = timelineElement({ id: "back", track: 1, zIndex: 0 });
-    let releaseFirst!: () => void;
-    let releaseSecond!: () => void;
-    const firstSave = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
+    let releaseBatch!: () => void;
+    const batchSave = new Promise<void>((resolve) => {
+      releaseBatch = resolve;
     });
-    const secondSave = new Promise<void>((resolve) => {
-      releaseSecond = resolve;
-    });
-    const commitPositionPatchToHtml = vi
+    const commitDomEditPatchBatches = vi
       .fn<(...args: unknown[]) => Promise<void>>()
-      .mockReturnValueOnce(firstSave)
-      .mockReturnValueOnce(secondSave);
+      .mockReturnValueOnce(batchSave);
     const { move, unmount } = renderTimelineEditingHookWithLifecycle({
       timelineElements: [front, back],
       iframe,
-      commitPositionPatchToHtml,
+      commitDomEditPatchBatches,
     });
     let settled = false;
 
@@ -621,17 +618,11 @@ describe("useTimelineEditing timeline z-index reorder", () => {
       await flushAsyncWork();
     });
 
-    expect(commitPositionPatchToHtml).toHaveBeenCalledTimes(2);
+    expect(commitDomEditPatchBatches).toHaveBeenCalledTimes(1);
     expect(settled).toBe(false);
 
     await act(async () => {
-      releaseFirst();
-      await flushAsyncWork();
-    });
-    expect(settled).toBe(false);
-
-    await act(async () => {
-      releaseSecond();
+      releaseBatch();
       await movePromise;
       await flushAsyncWork();
     });

@@ -6,12 +6,10 @@ import {
 } from "../player/components/timelineEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
 import { getTimelineElementIdentity } from "../player/lib/timelineElementHelpers";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelection";
-import type { EditHistoryKind } from "../utils/editHistory";
+import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { extendRootDurationInSource } from "../utils/rootDuration";
-
+export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
   // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
@@ -20,7 +18,6 @@ function isHTMLElement(element: Element | null): element is HTMLElement {
   const Ctor = element.ownerDocument?.defaultView?.HTMLElement ?? globalThis.HTMLElement;
   return element instanceof Ctor;
 }
-
 /**
  * Resolve a timeline vertical move to a z-index stacking reorder and commit it
  * through the shared layers-panel reorder path. Reads live sibling z-index from
@@ -38,13 +35,12 @@ export function applyTimelineStackingReorder(input: {
   iframe: HTMLIFrameElement | null;
   activeCompPath: string | null;
   commit: TimelineZIndexReorderCommit | null | undefined;
+  coalesceKey?: string;
 }): Promise<void> {
   // Audio has no visual stacking; a vertical drag on it must never write z-index.
   if (input.element.tag === "audio") return Promise.resolve();
-
   const intent = input.stackingReorder ?? null;
   if (intent == null || intent.zIndexChanges.length === 0) return Promise.resolve();
-
   // Resolve each change's live element from the change's OWN locator (the intent
   // is self-contained), falling back to the top-level element list. Sub-comp
   // children aren't in `timelineElements`, so a list-only lookup would miss them.
@@ -67,7 +63,6 @@ export function applyTimelineStackingReorder(input: {
     sourceFile: string;
     key: string;
   }> = [];
-
   for (const change of intent.zIndexChanges) {
     const sibling = siblingByKey.get(change.key);
     const domId = change.domId ?? sibling?.domId;
@@ -86,48 +81,17 @@ export function applyTimelineStackingReorder(input: {
       key: change.key,
     });
   }
-
   if (commitEntries.length === 0) return Promise.resolve();
-  return input.commit?.(commitEntries) ?? Promise.resolve();
+  return input.commit?.(commitEntries, input.coalesceKey) ?? Promise.resolve();
 }
-
-/**
- * Remove the keyframes currently selected in the player store from the active
- * element's GSAP animation. Reads selection lazily so it stays correct when
- * invoked from a ref callback. Extracted from StudioApp to keep it under the
- * studio 600-LOC cap.
- */
-export function deleteSelectedKeyframes(session: {
-  selectedGsapAnimations: readonly { id: string; keyframes?: unknown }[];
-  handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
-}): void {
-  const { selectedKeyframes, selectedElementId } = usePlayerStore.getState();
-  const animation = session.selectedGsapAnimations.find((anim) => anim.keyframes);
-  if (!animation) return;
-  // Only the active element's keyframes; a stale cross-element selection must not delete here.
-  for (const pct of selectedKeyframePercentagesForElement(selectedKeyframes, selectedElementId)) {
-    session.handleGsapRemoveKeyframe(animation.id, pct);
-  }
-}
-
 export function extendRootDurationIfNeeded(newEnd: number): boolean {
   const store = usePlayerStore.getState();
   if (newEnd <= store.duration) return false;
   store.setDuration(newEnd);
   return true;
 }
-
 // ── Types ──
-
-export interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  /** Per-entry coalesce window override (ms); lets a slow follow-up still merge. */
-  coalesceMs?: number;
-  files: Record<string, { before: string; after: string }>;
-}
-
+export type { RecordEditInput } from "../utils/studioFileHistory";
 export function buildPatchTarget(element: {
   domId?: string;
   hfId?: string;
@@ -150,9 +114,7 @@ export function buildPatchTarget(element: {
   }
   return null;
 }
-
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
-
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
@@ -172,7 +134,6 @@ export function findTimelineElementInIframe(
     return null;
   }
 }
-
 export function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
@@ -186,7 +147,6 @@ export function patchIframeDomTiming(
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
 }
-
 function postRootDurationToPreview(
   iframe: HTMLIFrameElement | null,
   durationSeconds: number,
@@ -203,7 +163,6 @@ function postRootDurationToPreview(
     "*",
   );
 }
-
 // fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,
@@ -236,12 +195,26 @@ export function buildTimelineMoveTimingPatch(
   target: PatchTarget,
   start: number,
   duration: number,
+  track?: number,
 ): string {
-  const patched = applyPatchByTarget(original, target, {
+  if (!Number.isFinite(start) || !Number.isFinite(duration)) {
+    console.warn(
+      `[Timeline] buildTimelineMoveTimingPatch: non-finite timing (start=${start}, duration=${duration}) — patch skipped`,
+    );
+    return original;
+  }
+  let patched = applyPatchByTarget(original, target, {
     type: "attribute",
     property: "start",
     value: formatTimelineAttributeNumber(start),
   });
+  if (track != null && Number.isFinite(track)) {
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "track-index",
+      value: formatTimelineAttributeNumber(track),
+    });
+  }
   return extendRootDurationInSource(patched, start + duration);
 }
 
@@ -595,5 +568,6 @@ export function foldedScaleGsapMutation(input: {
     });
 }
 
-// Re-export applyPatchByTarget for use in the hook (avoids double import in callers)
 export { applyPatchByTarget, formatTimelineAttributeNumber };
+
+export { patchDocumentRootDuration } from "./timelineEditingGsap";

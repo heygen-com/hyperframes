@@ -2,6 +2,7 @@ import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -349,8 +350,11 @@ export function splitElementInHtml(
     el.parentElement!.appendChild(clone);
   }
 
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
   return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
+    // The split owns its new nodes' stable ids. Leaving the clone unstamped makes
+    // the next preview request persist different bytes after history is recorded.
+    html: ensureHfIds(html),
     matched: true,
     newId,
   };

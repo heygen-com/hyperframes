@@ -13,18 +13,15 @@ type GuardCheckResult = {
   failed: GuardSpec[];
 };
 
+// Keep only temporary source-shape guards that do not yet have behavioral
+// coverage. Timeline replacement and early-play rebinding are exercised by
+// init.test.ts and timelineRebindPolicy.test.ts instead of regexes.
 const GUARD_SPECS: GuardSpec[] = [
   {
     id: "external_compositions_gate",
     description: "Do not bind timelines before external compositions are loaded",
     filePath: "src/runtime/init.ts",
     pattern: /if\s*\(\s*!externalCompositionsReady\s*\)\s*return\s+false;/,
-  },
-  {
-    id: "usable_timeline_gate",
-    description: "Skip rebinding when current timeline is already usable",
-    filePath: "src/runtime/init.ts",
-    pattern: /if\s*\(\s*currentTimeline\s*&&\s*currentTimelineUsable\s*\)\s*return\s+false;/,
   },
   {
     id: "child_timeline_activation",
@@ -38,18 +35,6 @@ const GUARD_SPECS: GuardSpec[] = [
     filePath: "src/runtime/init.ts",
     pattern:
       /if\s*\(\s*!isUsableTimelineDuration\(rootDurationSeconds\)\s*&&\s*rootChildCandidates\.length\s*>\s*0\s*\)/,
-  },
-  {
-    id: "loop_guard_rebind",
-    description: "Enable loop guard based timeline rebinding",
-    filePath: "src/runtime/init.ts",
-    pattern: /if\s*\(\s*rebindTimelineFromResolution\(resolution,\s*"loop_guard"\)\s*\)/,
-  },
-  {
-    id: "early_play_rebind_hold",
-    description: "Hold rebinding during first playback seconds",
-    filePath: "src/runtime/init.ts",
-    pattern: /shouldHoldRebindDuringEarlyPlay/,
   },
   {
     id: "external_script_ordering",

@@ -32,6 +32,18 @@ describe("resolveProjectOrThrow", () => {
     }
   });
 
+  it("accepts a directory without index.html when an explicit entry will be resolved", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-explicit-entry-project-"));
+    try {
+      const project = resolveProjectOrThrow(dir, { requireIndex: false });
+      expect(project.dir).toBe(dir);
+      expect(project.indexPath).toBe(join(dir, "index.html"));
+      expect(project.name).toBe(basename(dir));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts a directory with index.html", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-valid-project-"));
     try {
