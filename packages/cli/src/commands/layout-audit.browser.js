@@ -760,13 +760,20 @@
   // part of a transient crossfade overlap.
   // fallow-ignore-next-line complexity
   function occluderAt(element, x, y) {
-    if (typeof document.elementFromPoint !== "function") return null;
-    const hit = document.elementFromPoint(x, y);
-    if (!isForeignElement(element, hit)) return null;
-    if (sharedPreserve3d(element, hit)) return null;
-    if (!isOpaqueOccluder(hit)) return null;
-    if (isCrossSceneTransitionOverlap(element, hit)) return null;
-    return hit;
+    // Walk the paint-ordered stack: a transparent layer on top must not mask an opaque one below it.
+    const stack =
+      typeof document.elementsFromPoint === "function"
+        ? document.elementsFromPoint(x, y)
+        : typeof document.elementFromPoint === "function"
+          ? [document.elementFromPoint(x, y)].filter(Boolean)
+          : [];
+    for (const hit of stack) {
+      if (!isForeignElement(element, hit)) return null;
+      if (sharedPreserve3d(element, hit)) return null;
+      if (isCrossSceneTransitionOverlap(element, hit)) return null;
+      if (isOpaqueOccluder(hit)) return hit;
+    }
+    return null;
   }
 
   const OCCLUSION_PROBE_Y_FRACTIONS = [0.25, 0.5, 0.75];
