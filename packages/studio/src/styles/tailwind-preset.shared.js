@@ -12,6 +12,9 @@ const studioPreset = {
         },
         panel: {
           bg: "#0C0C0E",
+          // Open inspector-section body — slightly lighter than headers (bg)
+          // so the recessed scrollable region reads distinct.
+          "bg-inset": "#121214",
           input: "#161618",
           surface: "#18181B",
           hover: "#27272A",

@@ -537,7 +537,7 @@ export function PropertyPanelFlat({
               animateEntrance={justToggledIds.includes(openGroup.id)}
             />
             <div
-              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline px-4 py-3`}
+              className={`${justToggledIds.includes(openGroup.id) ? "hf-flat-group-enter " : ""}min-h-0 flex-1 overflow-y-auto border-b border-panel-hairline bg-panel-bg-inset px-4 py-3 shadow-[inset_0_2px_4px_-1px_rgba(0,0,0,0.5)]`}
             >
               {openGroup.content}
             </div>
