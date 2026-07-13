@@ -232,11 +232,7 @@ async function executeSplit(
     } catch (gsapError) {
       // GSAP mutation failed — the HTML split already wrote to disk.
       // Restore the original content to avoid a corrupt half-split state.
-      await restoreFilesToOriginal(
-        new Map([[targetPath, originalContent]]),
-        [targetPath],
-        writeProjectFile,
-      );
+      await writeProjectFile(targetPath, originalContent);
       throw gsapError;
     }
   }
@@ -363,7 +359,13 @@ export function useRazorSplit({
         trackStudioRazorSplit({ mode: "all", count: splitCount });
         showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
       } catch (error) {
-        await restoreFilesToOriginal(originals, finalSnapshots.keys(), writeProjectFile);
+        // Best-effort rollback — a failing restore write must not swallow the
+        // original error's toast, which is what tells the user the split failed.
+        try {
+          await restoreFilesToOriginal(originals, finalSnapshots.keys(), writeProjectFile);
+        } catch {
+          /* leave disk as-is; the original failure is reported below */
+        }
         const message = error instanceof Error ? error.message : "Failed to split clips";
         showToast(message, "error");
       }

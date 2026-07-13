@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
+import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload";
@@ -325,14 +326,10 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   // exact prior content as its undo `before` (matching the style/delete paths),
   // instead of a normalized full-DOM re-emit that would reformat the whole file.
   const readProjectFileContent = useCallback(
-    async (path: string): Promise<string> => {
+    (path: string): Promise<string> => {
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No active project");
-      const res = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(path)}`);
-      if (!res.ok) throw new Error(`Failed to read ${path}`);
-      const data = (await res.json()) as { content?: string };
-      if (typeof data.content !== "string") throw new Error(`Missing file contents for ${path}`);
-      return data.content;
+      return readSharedProjectFileContent(pid, path);
     },
     [projectIdRef],
   );

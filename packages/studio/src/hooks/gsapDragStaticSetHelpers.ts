@@ -16,25 +16,15 @@ interface UpdatePropertyMutation {
  * value the source write didn't (one source of truth). Each mutation contributes
  * its `{property: value}` channel to the patch's props.
  */
-function setPatchFromUpdateProperties(
-  selector: string,
-  mutations: UpdatePropertyMutation[],
-  global = false,
-): { selector: string; change: RuntimeTweenChange } {
-  const props: SetPatchProps = {};
-  for (const m of mutations) props[m.property as keyof SetPatchProps] = m.value;
-  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
-  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
-  return { selector, change: { kind: global ? "global-set" : "set", props } };
-}
-
-/** Single-mutation convenience over {@link setPatchFromUpdateProperties}. */
 export function setPatchFromUpdateProperty(
   selector: string,
   mutation: UpdatePropertyMutation,
   global = false,
 ): { selector: string; change: RuntimeTweenChange } {
-  return setPatchFromUpdateProperties(selector, [mutation], global);
+  const props: SetPatchProps = { [mutation.property as keyof SetPatchProps]: mutation.value };
+  // An off-timeline `gsap.set` has no runtime tween to patch — apply it to the
+  // element directly. An on-timeline `tl.set` mutates its tween (so a re-seek keeps it).
+  return { selector, change: { kind: global ? "global-set" : "set", props } };
 }
 
 /**

@@ -338,6 +338,9 @@ describe("useEnableKeyframes — flat tween transaction", () => {
     expect(addKeyframeBatch.mock.calls[0]?.[3]).toEqual({
       softReload: true,
       coalesceKey: convertOptions?.coalesceKey,
+      // Must carry the convert phase's infinite window so the inside-range
+      // apply folds into one undo entry regardless of round-trip latency.
+      coalesceMs: Infinity,
     });
   });
 });

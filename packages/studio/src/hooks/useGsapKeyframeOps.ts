@@ -55,6 +55,21 @@ interface GsapKeyframeOpsParams extends SdkKeyframeDeps {
   trackGsapSaveFailure: TrackGsapSaveFailure;
 }
 
+/**
+ * Translate a gesture's commit overrides into the SDK persist options. The
+ * server path's `softReload`/`skipReload` maps to the SDK's `skipRefresh`, and
+ * `coalesceKey`/`coalesceMs` must ride along so an SDK-routed edit folds into
+ * one undo entry the same way the server path does.
+ */
+function toSdkPersistOptions(label: string, overrides?: Partial<CommitMutationOptions>) {
+  return {
+    label,
+    coalesceKey: overrides?.coalesceKey,
+    coalesceMs: overrides?.coalesceMs,
+    skipRefresh: overrides?.skipReload,
+  };
+}
+
 export function useGsapKeyframeOps({
   activeCompPath,
   commitMutation,
@@ -152,10 +167,7 @@ export function useGsapKeyframeOps({
           properties,
           sdkSession,
           sdkDeps,
-          {
-            label: `Add keyframe at ${percentage}%`,
-            ...commitOverrides,
-          },
+          toSdkPersistOptions(`Add keyframe at ${percentage}%`, commitOverrides),
         );
         if (handled) return;
       }
@@ -204,11 +216,7 @@ export function useGsapKeyframeOps({
               percentage,
               sdkSession,
               sdkDeps,
-              {
-                label,
-                coalesceKey: commitOverrides?.coalesceKey,
-                skipRefresh: commitOverrides?.skipReload,
-              },
+              toSdkPersistOptions(label, commitOverrides),
             );
             if (handled) return;
           }
@@ -290,11 +298,7 @@ export function useGsapKeyframeOps({
           resolvedFromValues,
           sdkSession,
           sdkDeps,
-          {
-            label: "Convert to keyframes",
-            ...commitOverrides,
-            skipRefresh: commitOverrides?.skipReload,
-          },
+          toSdkPersistOptions("Convert to keyframes", commitOverrides),
         );
         if (handled) return;
       }

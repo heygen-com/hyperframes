@@ -435,7 +435,7 @@ export function useEnableKeyframes(
       const convertCommitOverrides: Partial<CommitMutationOptions> = {
         skipReload: true,
         coalesceKey,
-        coalesceMs: Infinity,
+        coalesceMs: Number.POSITIVE_INFINITY,
       };
       await session.handleGsapConvertToKeyframes(
         flatAnim.id,
@@ -448,6 +448,11 @@ export function useEnableKeyframes(
         const applyCommitOverrides: Partial<CommitMutationOptions> = {
           softReload: true,
           coalesceKey,
+          // Must match the convert phase's window: editHistory keys coalescing
+          // off the incoming entry, so without Infinity here the apply (landing
+          // after two POSTs + a fetch) falls back to the 300ms default and the
+          // conversion splits into two undo entries under real latency.
+          coalesceMs: Number.POSITIVE_INFINITY,
         };
         await applyKeyframeAtPlayhead(session, sel, converted, t, iframe, applyCommitOverrides);
       }

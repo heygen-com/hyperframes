@@ -18,6 +18,7 @@ export interface CutoverDeps {
       label: string;
       kind: EditHistoryKind;
       coalesceKey?: string;
+      coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;
     }) => Promise<void>;
   };
@@ -84,6 +85,8 @@ function wrongCompositionFile(deps: CutoverDeps, targetPath: string): boolean {
 interface CutoverOptions {
   label?: string;
   coalesceKey?: string;
+  /** Coalesce window (ms); Infinity folds across a slow round-trip. */
+  coalesceMs?: number;
   /** Skip the preview reload (mirrors the server path's skipRefresh). */
   skipRefresh?: boolean;
 }
@@ -110,6 +113,7 @@ export async function persistSdkSerialize(
     label: options?.label ?? "Edit layer",
     kind: "manual",
     ...(options?.coalesceKey ? { coalesceKey: options.coalesceKey } : {}),
+    ...(options?.coalesceMs != null ? { coalesceMs: options.coalesceMs } : {}),
     files: { [targetPath]: { before: originalContent, after } },
   });
   if (deps.refresh) deps.refresh(after);

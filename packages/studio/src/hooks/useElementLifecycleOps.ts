@@ -13,47 +13,50 @@ import {
 } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
+/** The shared deps a reorder rollback needs — one object instead of threading
+ *  pid/coalesceKey/writeProjectFile/recordEdit/showToast through every call. */
+interface ReorderRollbackDeps {
+  pid: string | null;
+  coalesceKey: string;
+  writeProjectFile: (path: string, content: string) => Promise<void>;
+  recordEdit: DomEditCommitBaseParams["editHistory"]["recordEdit"];
+  showToast: DomEditCommitBaseParams["showToast"];
+  forceReloadSdkSession?: () => void;
+}
+
 async function restoreReorderedFile(
-  pid: string | null,
+  deps: ReorderRollbackDeps,
   sourceFile: string,
   originalContent: Promise<string | undefined> | undefined,
-  coalesceKey: string,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
-  recordEdit: DomEditCommitBaseParams["editHistory"]["recordEdit"],
-  showToast: DomEditCommitBaseParams["showToast"],
 ): Promise<boolean> {
   const content = await originalContent;
+  const { pid } = deps;
   if (content === undefined || !pid) return false;
   try {
     const changedPaths = await saveProjectFilesWithHistory({
       projectId: pid,
       label: "Reorder layers",
       kind: "manual",
-      coalesceKey,
-      coalesceMs: Infinity,
+      coalesceKey: deps.coalesceKey,
+      coalesceMs: Number.POSITIVE_INFINITY,
       files: { [sourceFile]: content },
       readFile: (path) => readProjectFileContent(pid, path),
-      writeFile: writeProjectFile,
-      recordEdit,
+      writeFile: deps.writeProjectFile,
+      recordEdit: deps.recordEdit,
     });
     return changedPaths.length > 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : `Failed to restore ${sourceFile}`;
-    showToast(`Layer reorder rollback failed: ${message}`, "error");
+    deps.showToast(`Layer reorder rollback failed: ${message}`, "error");
     return false;
   }
 }
 
 async function restoreFulfilledReorderFiles(
+  deps: ReorderRollbackDeps,
   entries: ReadonlyArray<{ sourceFile: string }>,
   settled: PromiseSettledResult<void>[],
   originals: ReadonlyMap<string, Promise<string | undefined>>,
-  pid: string | null,
-  coalesceKey: string,
-  writeProjectFile: (path: string, content: string) => Promise<void>,
-  recordEdit: DomEditCommitBaseParams["editHistory"]["recordEdit"],
-  showToast: DomEditCommitBaseParams["showToast"],
-  forceReloadSdkSession?: () => void,
 ): Promise<void> {
   try {
     const fulfilledPaths = new Set(
@@ -63,21 +66,13 @@ async function restoreFulfilledReorderFiles(
     );
     const restoredFiles = await Promise.all(
       [...fulfilledPaths].map((sourceFile) =>
-        restoreReorderedFile(
-          pid,
-          sourceFile,
-          originals.get(sourceFile),
-          coalesceKey,
-          writeProjectFile,
-          recordEdit,
-          showToast,
-        ),
+        restoreReorderedFile(deps, sourceFile, originals.get(sourceFile)),
       ),
     );
-    if (restoredFiles.some(Boolean)) forceReloadSdkSession?.();
+    if (restoredFiles.some(Boolean)) deps.forceReloadSdkSession?.();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to restore reordered layers";
-    showToast(`Layer reorder rollback failed: ${message}`, "error");
+    deps.showToast(`Layer reorder rollback failed: ${message}`, "error");
   }
 }
 
@@ -300,7 +295,7 @@ export function useElementLifecycleOps({
             {
               label: "Reorder layers",
               coalesceKey,
-              coalesceMs: Infinity,
+              coalesceMs: Number.POSITIVE_INFINITY,
               skipRefresh: i < entries.length - 1,
             },
           ),
@@ -315,15 +310,17 @@ export function useElementLifecycleOps({
         if (rejected) {
           for (const rollback of rollbacks) rollback();
           await restoreFulfilledReorderFiles(
+            {
+              pid,
+              coalesceKey,
+              writeProjectFile,
+              recordEdit: editHistory.recordEdit,
+              showToast,
+              forceReloadSdkSession,
+            },
             entries,
             settled,
             originalContentByPath,
-            pid,
-            coalesceKey,
-            writeProjectFile,
-            editHistory.recordEdit,
-            showToast,
-            forceReloadSdkSession,
           );
           throw rejected.reason;
         }

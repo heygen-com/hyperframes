@@ -10,6 +10,7 @@ import { smoothGestureKeyframes } from "../utils/gestureSmoother";
 import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isInstantHold } from "./gsapShared";
@@ -69,14 +70,14 @@ interface GestureSessionRef {
   selectedGsapAnimations?: GsapAnimation[];
   commitMutation?: (
     mutation: Record<string, unknown>,
-    options: {
-      label: string;
-      coalesceKey?: string;
-      coalesceMs?: number;
-      softReload?: boolean;
-      skipReload?: boolean;
-    },
+    options: CommitMutationOptions,
   ) => Promise<void>;
+}
+
+/** Only the LAST group in a per-group commit loop reloads the preview; the
+ *  earlier ones skip it, so a multi-group gesture recording is one reload. */
+function reloadOnlyLast(index: number, count: number): Partial<CommitMutationOptions> {
+  return index === count - 1 ? { softReload: true } : { skipReload: true };
 }
 
 let gestureRecordingCommitCounter = 0;
@@ -273,9 +274,7 @@ export function useGestureCommit({
                   {
                     label: "Gesture recording (new range)",
                     ...coalesceOptions,
-                    ...(index === keyframeGroups.length - 1
-                      ? { softReload: true }
-                      : { skipReload: true }),
+                    ...reloadOnlyLast(index, keyframeGroups.length),
                   },
                 );
               }
@@ -298,9 +297,7 @@ export function useGestureCommit({
               {
                 label: "Gesture recording",
                 ...coalesceOptions,
-                ...(index === keyframeGroups.length - 1
-                  ? { softReload: true }
-                  : { skipReload: true }),
+                ...reloadOnlyLast(index, keyframeGroups.length),
               },
             );
           }
