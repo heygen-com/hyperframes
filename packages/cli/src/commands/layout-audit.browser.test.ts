@@ -486,6 +486,128 @@ describe("layout-audit.browser invisible text", () => {
   });
 });
 
+describe("layout-audit.browser coordinate-frame findings", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
+    clearGeometryCollector();
+  });
+
+  it("flags a positioned element rendering mostly outside its positioning ancestor", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="diagram"><div id="node"></div><div id="badge"></div></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        diagram: rect({ left: 610, top: 130, width: 700, height: 700 }),
+        node: rect({ left: 1490, top: 170, width: 160, height: 160 }),
+        badge: rect({ left: 580, top: 160, width: 120, height: 120 }),
+      },
+      {
+        diagram: { position: "relative" },
+        node: { position: "absolute" },
+        badge: { position: "absolute" },
+      },
+    );
+
+    installAuditScript();
+    const issues = runAudit().filter((issue) => issue.code === "positioned_out_of_parent");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: "warning",
+      selector: "#node",
+      containerSelector: "#diagram",
+    });
+  });
+
+  it("flags a painted panel crossing the canvas and skips unpainted decoration", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="panel"></div>
+        <div id="glow"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        panel: rect({ left: 1700, top: 600, width: 300, height: 300 }),
+        glow: rect({ left: 1800, top: 0, width: 400, height: 400 }),
+      },
+      {
+        panel: { backgroundColor: "rgb(20, 20, 30)", paddingTop: "16px" },
+      },
+    );
+
+    installAuditScript();
+    const issues = runAudit().filter((issue) => issue.code === "box_out_of_canvas");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: "warning",
+      selector: "#panel",
+      overflow: { right: 80 },
+    });
+  });
+
+  it("flags connector paths drawn in a foreign frame and passes anchored ones", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="connector-svg">
+          <path id="detached" class="connector-line" d="M 980 580 L 380 280" />
+          <path id="anchored" class="connector-line" d="M 900 353 L 300 53" />
+        </svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        "connector-svg": rect({ left: 80, top: 227, width: 1740, height: 830 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+
+    installAuditScript();
+    const issues = runAudit().filter((issue) => issue.code === "connector_detached");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "warning", selector: "#detached" });
+  });
+
+  it("skips svgs and paths without connector intent", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="n1"></div>
+        <div id="n2"></div>
+        <svg id="art"><path id="squiggle" d="M 10 10 L 200 200" /></svg>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        n1: rect({ left: 900, top: 500, width: 160, height: 160 }),
+        n2: rect({ left: 300, top: 200, width: 160, height: 160 }),
+        art: rect({ left: 1400, top: 100, width: 400, height: 400 }),
+      },
+      {
+        n1: { backgroundColor: "rgb(30, 40, 50)" },
+        n2: { backgroundColor: "rgb(30, 40, 50)" },
+      },
+    );
+
+    installAuditScript();
+    expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
+  });
+});
+
 describe("layout-audit.browser content overlap", () => {
   afterEach(() => {
     vi.restoreAllMocks();

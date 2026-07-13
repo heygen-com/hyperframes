@@ -841,6 +841,201 @@
     };
   }
 
+  function positioningAncestor(element, root) {
+    for (let current = element.parentElement; current; current = current.parentElement) {
+      if (current === root || current === document.body) return null;
+      if (getComputedStyle(current).position !== "static") return current;
+    }
+    return null;
+  }
+
+  // A positioned child rendering mostly outside its positioning ancestor is a coordinate-frame mistake, not a layout choice.
+  function positionedOutOfParentIssues(root, time) {
+    const issues = [];
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
+      const position = getComputedStyle(element).position;
+      if (position !== "absolute" && position !== "fixed") continue;
+      const parent = positioningAncestor(element, root);
+      if (!parent || !isVisibleElement(parent)) continue;
+      const childRect = toRect(element.getBoundingClientRect());
+      if (rectArea(childRect) < 2500) continue;
+      const parentRect = toRect(parent.getBoundingClientRect());
+      if (intersectionArea(childRect, parentRect) >= rectArea(childRect) * 0.3) continue;
+      issues.push({
+        code: "positioned_out_of_parent",
+        severity: "warning",
+        time,
+        selector: selectorFor(element),
+        containerSelector: selectorFor(parent),
+        text: textContentFor(element),
+        message:
+          "Positioned element renders mostly outside its positioning ancestor — its coordinates were likely computed in a different frame (canvas/viewport pixels).",
+        rect: childRect,
+        containerRect: parentRect,
+        fixHint:
+          "Compute left/top in the positioning ancestor's frame (subtract its rect), or mark intentional placement with data-layout-allow-overflow.",
+      });
+    }
+    return issues;
+  }
+
+  function isContentBox(element) {
+    if (FRAME_MEDIA_TAGS.has(element.tagName)) return false;
+    const style = getComputedStyle(element);
+    return hasPaint(style) && hasMeaningfulBoxStyle(style);
+  }
+
+  // Painted boxes breaching the canvas: text is canvas_overflow's, media is frame_out_of_frame's, panels were nobody's.
+  function boxCanvasOverflowIssues(root, rootRect, time) {
+    const issues = [];
+    const floor = Math.max(24, Math.min(rootRect.width, rootRect.height) * 0.025);
+    const rootArea = rectArea(rootRect);
+    const flagged = new Set();
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
+      if (hasOwnTextCandidate(element)) continue;
+      const rect = toRect(element.getBoundingClientRect());
+      if (rectArea(rect) >= rootArea * 0.95) continue;
+      const overflow = overflowFor(rect, rootRect, floor);
+      if (!overflow || !isContentBox(element)) continue;
+      if (element.parentElement && flagged.has(element.parentElement)) {
+        flagged.add(element);
+        continue;
+      }
+      flagged.add(element);
+      issues.push({
+        code: "box_out_of_canvas",
+        severity: "warning",
+        time,
+        selector: selectorFor(element),
+        containerSelector: selectorFor(root),
+        text: textContentFor(element).slice(0, 48),
+        message: "Element box extends outside the composition canvas.",
+        rect,
+        containerRect: rootRect,
+        overflow,
+        fixHint:
+          "Move the element inward, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+      });
+    }
+    return issues;
+  }
+
+  const CONNECTOR_NAME = /conn|arrow|edge|link|flow|wire/i;
+
+  function connectorNameFor(element) {
+    const className =
+      typeof element.className === "string" ? element.className : element.className.baseVal || "";
+    return `${element.id || ""} ${className}`;
+  }
+
+  // Endpoints from an absolute-command path `d`; relative/H/V/closed paths bail to null.
+  function pathEndpointsFor(d) {
+    if (!d || /[a-z]/.test(d.replace(/e[+-]?\d+/gi, "")) || /[HVZ]/.test(d)) return null;
+    const numbers = (d.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi) || []).map(Number);
+    if (numbers.length < 4 || numbers.some((value) => !Number.isFinite(value))) return null;
+    return {
+      start: { x: numbers[0], y: numbers[1] },
+      end: { x: numbers[numbers.length - 2], y: numbers[numbers.length - 1] },
+    };
+  }
+
+  function svgUserToScreen(svg, svgRect, point) {
+    const viewBox = (svg.getAttribute("viewBox") || "")
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    const hasViewBox =
+      viewBox.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0;
+    const scaleX = hasViewBox ? svgRect.width / viewBox[2] : 1;
+    const scaleY = hasViewBox ? svgRect.height / viewBox[3] : 1;
+    const minX = hasViewBox ? viewBox[0] : 0;
+    const minY = hasViewBox ? viewBox[1] : 0;
+    return {
+      x: svgRect.left + (point.x - minX) * scaleX,
+      y: svgRect.top + (point.y - minY) * scaleY,
+    };
+  }
+
+  function distanceToRect(point, rect) {
+    const dx = Math.max(rect.left - point.x, 0, point.x - rect.right);
+    const dy = Math.max(rect.top - point.y, 0, point.y - rect.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Solid, compact elements a connector could plausibly anchor to.
+  function connectorAnchorRects(root, rootRect) {
+    const rects = [];
+    const rootArea = rectArea(rootRect);
+    for (const element of Array.from(root.querySelectorAll("*"))) {
+      if (element.closest("svg") || !isVisibleElement(element)) continue;
+      const rect = toRect(element.getBoundingClientRect());
+      const area = rectArea(rect);
+      if (area < 400 || area > rootArea * 0.15) continue;
+      if (
+        !RASTER_TAGS.has(element.tagName) &&
+        !textContentFor(element) &&
+        !hasOpaqueBackground(getComputedStyle(element))
+      ) {
+        continue;
+      }
+      rects.push(rect);
+    }
+    return rects;
+  }
+
+  function isConnectorPath(svg, path) {
+    if (path.hasAttribute("marker-start") || path.hasAttribute("marker-end")) return true;
+    return (
+      CONNECTOR_NAME.test(connectorNameFor(svg)) || CONNECTOR_NAME.test(connectorNameFor(path))
+    );
+  }
+
+  // A connector line whose BOTH endpoints land far from every anchorable element is drawn in the wrong frame.
+  function connectorDetachmentIssues(root, rootRect, time) {
+    const issues = [];
+    let anchors = null;
+    const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
+    for (const svg of Array.from(root.querySelectorAll("svg"))) {
+      if (!isVisibleElement(svg) || hasAllowOverflowFlag(svg)) continue;
+      const svgRect = toRect(svg.getBoundingClientRect());
+      for (const path of Array.from(svg.querySelectorAll("path"))) {
+        if (!isConnectorPath(svg, path)) continue;
+        const endpoints = pathEndpointsFor(path.getAttribute("d"));
+        if (!endpoints) continue;
+        if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
+        if (anchors.length < 2) return issues;
+        const start = svgUserToScreen(svg, svgRect, endpoints.start);
+        const end = svgUserToScreen(svg, svgRect, endpoints.end);
+        const gap = Math.min(
+          Math.min(...anchors.map((rect) => distanceToRect(start, rect))),
+          Math.min(...anchors.map((rect) => distanceToRect(end, rect))),
+        );
+        if (gap <= threshold) continue;
+        issues.push({
+          code: "connector_detached",
+          severity: "warning",
+          time,
+          selector: selectorFor(path),
+          containerSelector: selectorFor(svg),
+          message: `Connector path endpoints are ${Math.round(gap)}px from the nearest anchorable element — measured coordinates were likely drawn into an SVG with a different origin.`,
+          rect: toRect({
+            left: Math.min(start.x, end.x),
+            top: Math.min(start.y, end.y),
+            right: Math.max(start.x, end.x),
+            bottom: Math.max(start.y, end.y),
+            width: Math.abs(end.x - start.x),
+            height: Math.abs(end.y - start.y),
+          }),
+          fixHint:
+            "Subtract the SVG's own rect when converting measured coordinates, and keep the SVG a direct child of the stage.",
+        });
+      }
+    }
+    return issues;
+  }
+
   function candidateAnchor(element) {
     const dataAttributes = {};
     for (const attribute of Array.from(element.attributes)) {
@@ -932,6 +1127,9 @@
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
     issues.push(...contentOverlapIssues(root, time));
+    issues.push(...positionedOutOfParentIssues(root, time));
+    issues.push(...boxCanvasOverflowIssues(root, rootRect, time));
+    issues.push(...connectorDetachmentIssues(root, rootRect, time));
     return issues;
   };
 

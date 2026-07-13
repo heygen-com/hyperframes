@@ -19,6 +19,10 @@ export type LayoutIssueCode =
   | "text_not_painted"
   | "caption_zone_collision"
   | "frame_out_of_frame"
+  // Coordinate-frame findings — geometry computed in one frame, rendered in another.
+  | "positioned_out_of_parent"
+  | "box_out_of_canvas"
+  | "connector_detached"
   // Frozen-sweep guard (#U10) — a whole-run meta-finding, not a per-sample
   // geometry observation; never persistence-tiered (see `applyPersistenceTier`).
   | "sweep_static"
@@ -203,6 +207,9 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "container_overflow",
   "content_overlap",
   "text_occluded",
+  "positioned_out_of_parent",
+  "box_out_of_canvas",
+  "connector_detached",
 ]);
 
 export function collapseStaticLayoutIssues(
@@ -276,7 +283,25 @@ function applyPersistenceTier(issue: LayoutIssue, multiSampleRun: boolean): Layo
   if (issue.code === "content_overlap" && isContentOverlapHeldLongEnough(issue, occurrences)) {
     return { ...issue, severity: "error" };
   }
+  if (issue.code === "canvas_overflow" && isCanvasBreachHeldLarge(issue, occurrences)) {
+    return { ...issue, severity: "warning" };
+  }
   return issue;
+}
+
+// A canvas breach both held across samples and large relative to the canvas is a real defect, not an entrance transient.
+function isCanvasBreachHeldLarge(issue: LayoutIssue, occurrences: number): boolean {
+  if (
+    occurrences < HELD_ACROSS_SAMPLES_MIN_OCCURRENCES ||
+    !issue.overflow ||
+    !issue.containerRect
+  ) {
+    return false;
+  }
+  const breach = Math.max(
+    ...Object.values(issue.overflow).filter((value) => typeof value === "number"),
+  );
+  return breach >= Math.min(issue.containerRect.width, issue.containerRect.height) * 0.05;
 }
 
 // Split out of applyPersistenceTier so the two independent "held long enough"
