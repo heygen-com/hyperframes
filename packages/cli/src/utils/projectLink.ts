@@ -13,6 +13,18 @@ type ProjectLinks = Record<string, ProjectLink>;
 const CONFIG_DIR = join(homedir(), ".hyperframes");
 const PROJECTS_FILE = join(CONFIG_DIR, "projects.json");
 
+/** Read + parse a JSON object file, or null if it's missing, unreadable, or not an object. */
+function readJsonRecord(path: string): Record<string, unknown> | null {
+  try {
+    if (!existsSync(path)) return null;
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 function isProjectLink(value: unknown): value is ProjectLink {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const link = value as Record<string, unknown>;
@@ -22,21 +34,15 @@ function isProjectLink(value: unknown): value is ProjectLink {
 }
 
 function readProjectLinks(): ProjectLinks {
-  try {
-    if (!existsSync(PROJECTS_FILE)) return {};
-    const parsed: unknown = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-
-    const links: ProjectLinks = {};
-    for (const [path, value] of Object.entries(parsed)) {
-      if (isProjectLink(value)) {
-        links[path] = { projectId: value.projectId, url: value.url };
-      }
+  const record = readJsonRecord(PROJECTS_FILE);
+  if (!record) return {};
+  const links: ProjectLinks = {};
+  for (const [path, value] of Object.entries(record)) {
+    if (isProjectLink(value)) {
+      links[path] = { projectId: value.projectId, url: value.url };
     }
-    return links;
-  } catch {
-    return {};
   }
+  return links;
 }
 
 function writeProjectLinks(links: ProjectLinks): void {
@@ -70,34 +76,38 @@ export function ensureProjectId(absDir: string): string {
   return projectId;
 }
 
-// A committed, in-project id so a whole team publishes to one shared link. Holds the id
-// only — never a secret; ownership is enforced server-side by the authenticated space.
+// A committed, in-project descriptor so a whole team publishes to one shared link. Holds
+// the project id and (for team spaces) the space id — never a secret; ownership is
+// enforced server-side by the authenticated space's membership.
 const TEAM_PROJECT_DIR = ".hyperframes";
 const TEAM_PROJECT_FILE = "project.json";
+
+export interface TeamProject {
+  projectId: string;
+  /** Shared team space id. Absent for a personal-space project (resolves per-user). */
+  spaceId?: string;
+}
 
 function teamProjectPath(projectDir: string): string {
   return join(resolve(projectDir), TEAM_PROJECT_DIR, TEAM_PROJECT_FILE);
 }
 
-export function readTeamProjectId(projectDir: string): string | null {
-  try {
-    const file = teamProjectPath(projectDir);
-    if (!existsSync(file)) return null;
-    const parsed: unknown = JSON.parse(readFileSync(file, "utf-8"));
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      const id = (parsed as Record<string, unknown>).projectId;
-      if (typeof id === "string" && id.length > 0) return id;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+export function readTeamProject(projectDir: string): TeamProject | null {
+  const record = readJsonRecord(teamProjectPath(projectDir));
+  if (!record || typeof record.projectId !== "string" || record.projectId.length === 0) return null;
+  const spaceId =
+    typeof record.spaceId === "string" && record.spaceId.length > 0 ? record.spaceId : undefined;
+  return { projectId: record.projectId, ...(spaceId ? { spaceId } : {}) };
 }
 
-/** Write the committed team id file and return its path (for a "commit this" hint). */
-export function writeTeamProjectId(projectDir: string, projectId: string): string {
+/** Write the committed team descriptor and return its path (for a "commit this" hint). */
+export function writeTeamProject(projectDir: string, team: TeamProject): string {
   const file = teamProjectPath(projectDir);
+  const body: TeamProject = {
+    projectId: team.projectId,
+    ...(team.spaceId ? { spaceId: team.spaceId } : {}),
+  };
   mkdirSync(join(resolve(projectDir), TEAM_PROJECT_DIR), { recursive: true });
-  writeFileSync(file, `${JSON.stringify({ projectId }, null, 2)}\n`);
+  writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`);
   return file;
 }

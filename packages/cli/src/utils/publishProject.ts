@@ -511,6 +511,8 @@ export interface PublishOptions {
   public?: boolean;
   /** Stable project id to update in place. Only sent when authenticated. */
   projectId?: string;
+  /** Shared team space id, sent as X-Space-Id so team members converge. Only when authenticated. */
+  spaceId?: string;
 }
 
 export async function publishProjectArchive(
@@ -523,16 +525,20 @@ export async function publishProjectArchive(
   const apiBaseUrl = getPublishApiBaseUrl();
   const credential = await tryResolveCredential();
   const authHeaders = credential ? buildAuthHeaders(credential) : {};
-  // A stable id only means something to an authenticated owner — the server ignores it
-  // otherwise, and anonymous publishes always mint a fresh project.
+  // A stable id / team space only mean something to an authenticated owner — the server
+  // ignores them otherwise, and anonymous publishes always mint a fresh project.
   const projectId = credential ? opts.projectId : undefined;
+  const spaceId = credential ? opts.spaceId : undefined;
+  // X-Space-Id rides with the auth headers on the metadata requests only (never the
+  // presigned S3 PUT), so the server resolves the shared team space instead of the personal one.
+  const metadataHeaders = spaceId ? { ...authHeaders, "x-space-id": spaceId } : authHeaders;
   const result =
     (await publishProjectArchiveStaged(
       apiBaseUrl,
       title,
       archive,
       isPublic,
-      authHeaders,
+      metadataHeaders,
       projectId,
     )) ??
     (await publishProjectArchiveDirect(
@@ -540,7 +546,7 @@ export async function publishProjectArchive(
       title,
       archive,
       isPublic,
-      authHeaders,
+      metadataHeaders,
       projectId,
     ));
   // Remember the server's id + url so the next publish of this directory updates in place.

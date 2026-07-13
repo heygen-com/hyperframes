@@ -17,15 +17,15 @@ describe("projectLink", () => {
   let ensureProjectId: typeof import("./projectLink.js").ensureProjectId;
   let readProjectLink: typeof import("./projectLink.js").readProjectLink;
   let writeProjectLink: typeof import("./projectLink.js").writeProjectLink;
-  let readTeamProjectId: typeof import("./projectLink.js").readTeamProjectId;
-  let writeTeamProjectId: typeof import("./projectLink.js").writeTeamProjectId;
+  let readTeamProject: typeof import("./projectLink.js").readTeamProject;
+  let writeTeamProject: typeof import("./projectLink.js").writeTeamProject;
 
   beforeEach(async () => {
     osState.home = mkdtempSync(join(tmpdir(), "hf-home-"));
     projectsPath = join(osState.home, ".hyperframes", "projects.json");
     projectDirs = [];
     vi.resetModules();
-    ({ ensureProjectId, readProjectLink, writeProjectLink, readTeamProjectId, writeTeamProjectId } =
+    ({ ensureProjectId, readProjectLink, writeProjectLink, readTeamProject, writeTeamProject } =
       await import("./projectLink.js"));
   });
 
@@ -97,14 +97,20 @@ describe("projectLink", () => {
     expect(Object.keys(JSON.parse(readFileSync(projectsPath, "utf-8")))).toEqual([resolve(dir)]);
   });
 
-  it("reads and writes a committed team project id", () => {
+  it("reads and writes a committed team project (id + optional space)", () => {
     const dir = makeProjectDir();
-    expect(readTeamProjectId(dir)).toBeNull();
+    expect(readTeamProject(dir)).toBeNull();
 
-    const file = writeTeamProjectId(dir, "hfp_team");
+    // Personal-space project: id only, no spaceId key.
+    const soloFile = writeTeamProject(dir, { projectId: "hfp_solo" });
+    expect(readTeamProject(dir)).toEqual({ projectId: "hfp_solo" });
+    const soloBody = readFileSync(soloFile, "utf-8");
+    expect(soloBody).not.toContain("spaceId");
+    // Never a secret.
+    expect(soloBody).not.toContain("token");
 
-    expect(readTeamProjectId(dir)).toBe("hfp_team");
-    // The committed file holds the id only — never a secret.
-    expect(readFileSync(file, "utf-8")).not.toContain("token");
+    // Team-space project: id + shared space id round-trip.
+    writeTeamProject(dir, { projectId: "hfp_team", spaceId: "space-42" });
+    expect(readTeamProject(dir)).toEqual({ projectId: "hfp_team", spaceId: "space-42" });
   });
 });

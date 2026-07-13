@@ -670,4 +670,35 @@ describe("publishProjectArchive", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  async function publishWithTeamSpace(authed: boolean) {
+    // Set explicitly (not just for the authed case) so calling this twice in one test —
+    // authed then anonymous — doesn't leak the credential mock across calls.
+    if (authed) withOAuthCredential();
+    else authMocks.tryResolveCredential.mockResolvedValue(null);
+    const dir = makeProjectDir();
+    const fetchMock = ownedStagedFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      await publishProjectArchive(dir, { projectId: "hfp_stable", spaceId: "space-42" });
+      return fetchMock;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("sends X-Space-Id only when authenticated (metadata requests, never the S3 PUT)", async () => {
+    const authed = await publishWithTeamSpace(true);
+    // Metadata calls (upload=0, complete=2) carry the team space header...
+    expect(authed.mock.calls[0]![1].headers["x-space-id"]).toBe("space-42");
+    expect(authed.mock.calls[2]![1].headers["x-space-id"]).toBe("space-42");
+    // ...but the presigned S3 PUT (1) must NOT — extra headers break the signature.
+    expect(authed.mock.calls[1]![1].headers).not.toHaveProperty("x-space-id");
+
+    // Anonymous: the header is dropped entirely even if a space was requested.
+    const anon = await publishWithTeamSpace(false);
+    expect(anon.mock.calls[0]![1].headers).not.toHaveProperty("x-space-id");
+    expect(anon.mock.calls[2]![1].headers).not.toHaveProperty("x-space-id");
+  });
 });
