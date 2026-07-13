@@ -431,6 +431,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         })
         .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
     } else if (g.kind === "drag") {
+      // A moved drag (taps returned earlier) must not let the release click
+      // re-select whatever now sits under the pointer — dropping over a
+      // higher-z element should keep the dragged element selected, not select
+      // the drop target. Mirrors the resize branch below.
+      opts.suppressNextBoxClickRef.current = true;
       const dx = g.lastSnappedDx ?? e.clientX - g.startX;
       const dy = g.lastSnappedDy ?? e.clientY - g.startY;
       if (!g.pathOffsetMember) {
