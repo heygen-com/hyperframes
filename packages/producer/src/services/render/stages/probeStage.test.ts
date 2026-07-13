@@ -6,6 +6,7 @@ import { hasAutoStartVideos, hasScriptedAudioVolumeAutomation } from "./probeSta
 // the correct forceScreenshot value (regression for #1236 — probe was launched
 // in beginframe mode even when lowMemoryMode demanded screenshot capture).
 const capturedCfgs: unknown[] = [];
+const capturedOptions: unknown[] = [];
 
 const mockPage = {
   evaluate: async () => ({
@@ -39,12 +40,13 @@ mock.module("@hyperframes/engine", () => ({
   createCaptureSession: async (
     _url: string,
     _dir: string,
-    _opts: unknown,
+    opts: unknown,
     _nullArg: unknown,
     cfg: unknown,
   ) => {
     createSessionCallCount++;
     capturedCfgs.push(cfg);
+    capturedOptions.push(opts);
     if (createSessionError && createSessionCallCount <= createSessionFailUntilAttempt) {
       throw createSessionError;
     }
@@ -276,6 +278,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs.length).toBeGreaterThan(0);
     const capturedCfg = capturedCfgs[0] as { forceScreenshot: boolean };
     expect(capturedCfg.forceScreenshot).toBe(false);
+  });
+});
+
+describe("runProbeStage — render variable threading", () => {
+  it("passes render variables to the duration-discovery capture session", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    input.job.config.variables = { short: true, sceneCount: 2 };
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({
+      variables: { short: true, sceneCount: 2 },
+    });
   });
 });
 
