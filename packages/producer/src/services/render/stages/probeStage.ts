@@ -199,6 +199,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       fps: job.config.fps,
       format: needsAlpha ? "png" : "jpeg",
       quality: needsAlpha ? undefined : 80,
+      variables: job.config.variables,
       deviceScaleFactor,
     };
 
