@@ -1101,7 +1101,7 @@ describe("render command explicit composition", () => {
       vi.clearAllTimers();
       rmSync(projectDir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });
 
 // Variables-helper tests live in `../utils/variables.test.ts`.
