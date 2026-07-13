@@ -132,10 +132,9 @@ function test(name, fn) {
 
 test("bundled SFX resolve without HeyGen on PATH", () => {
   setup();
-  const result = spawnResolve(
-    ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"],
-    { env: { HOME: tmp, PATH: tmp } },
-  );
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: tmp },
+  });
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.ok, true);

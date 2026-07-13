@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const trackEvent = vi.fn();
+const flush = vi.fn(() => Promise.resolve());
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
+  flush: () => flush(),
 }));
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
@@ -174,6 +176,14 @@ describe("trackCheckReport", () => {
 describe("render telemetry events", () => {
   beforeEach(() => {
     trackEvent.mockClear();
+    flush.mockClear();
+  });
+
+  it("flushes immediately after render_complete and render_error (exit races the lazy flush)", () => {
+    trackRenderComplete({ durationMs: 1000, fps: 30, quality: "draft", docker: false, gpu: false });
+    expect(flush).toHaveBeenCalledTimes(1);
+    trackRenderError({ fps: 30, quality: "draft", docker: false });
+    expect(flush).toHaveBeenCalledTimes(2);
   });
 
   it("redacts paths and URL query strings from render error messages", () => {
@@ -310,6 +320,27 @@ describe("render telemetry events", () => {
     );
   });
 
+  it("sends beginframe no-damage reuse counters on render_complete", () => {
+    trackRenderComplete({
+      durationMs: 6000,
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      gpu: false,
+      beginFrameNoDamageFrames: 720,
+      beginFrameHasDamageFrames: 480,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_complete",
+      expect.objectContaining({
+        begin_frame_no_damage_frames: 720,
+        begin_frame_has_damage_frames: 480,
+      }),
+      undefined,
+    );
+  });
+
   it("redacts render_observation messages and includes renderJobId for correlation", () => {
     trackRenderObservation({
       renderJobId: "render-123",
@@ -338,6 +369,22 @@ describe("render telemetry events", () => {
         stage_elapsed_ms: 30_000,
         message: "Navigation failed for [path]",
       }),
+    );
+  });
+
+  it("carries capture_parallel_stream on render_error via the shared payload", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "standard",
+      docker: false,
+      errorMessage: "worker crashed",
+      captureParallelStream: "beginframe",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({ capture_parallel_stream: "beginframe" }),
+      undefined,
     );
   });
 });

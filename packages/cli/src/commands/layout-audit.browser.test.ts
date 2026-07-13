@@ -346,6 +346,114 @@ it("uses the bridge opacity floor across the ancestor chain", () => {
   expect(candidates.some((candidate) => candidate.selector === "#stacked-copy")).toBe(true);
 });
 
+describe("layout-audit.browser invisible text", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
+    clearGeometryCollector();
+  });
+
+  // The mock resolves computed style per element, so setting `webkitTextFillColor`
+  // on the headline models exactly what the browser computes there — whether the
+  // value was authored on the element or inherited from an ancestor.
+  function invisibleTextScene(
+    headlineStyle: Partial<CSSStyleDeclaration>,
+    text = "Headline copy",
+  ): AuditIssue[] {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="headline">${text}</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 150, width: 300, height: 56 }),
+        text: rect({ left: 40, top: 150, width: 300, height: 56 }),
+      },
+      { headline: headlineStyle },
+    );
+    installAuditScript();
+    return runAudit();
+  }
+
+  const flagged = (issues: AuditIssue[]) =>
+    issues.some((issue) => issue.code === "text_not_painted");
+  const style = (s: Record<string, string>) => s as unknown as Partial<CSSStyleDeclaration>;
+
+  it("flags a directly transparent -webkit-text-fill-color", () => {
+    const issues = invisibleTextScene(
+      style({ color: "rgb(255, 255, 255)", webkitTextFillColor: "rgba(0, 0, 0, 0)" }),
+    );
+    expect(issues.find((i) => i.code === "text_not_painted")).toMatchObject({
+      selector: "#headline",
+      severity: "error",
+    });
+  });
+
+  it("flags an inherited transparent fill overriding the child's opaque color", () => {
+    // getComputedStyle on the child resolves the inherited fill to transparent
+    // (browsers always return the rgba() form), even though the child sets its
+    // own opaque `color`.
+    expect(
+      flagged(
+        invisibleTextScene(
+          style({ color: "rgb(255, 255, 255)", webkitTextFillColor: "rgba(0, 0, 0, 0)" }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags color:transparent when no explicit fill is set (color fallback)", () => {
+    // -webkit-text-fill-color unset → resolves to `color`; a transparent color
+    // must still be caught via the `|| cs.color` fallback.
+    expect(flagged(invisibleTextScene(style({ color: "rgba(0, 0, 0, 0)" })))).toBe(true);
+  });
+
+  it("does not flag opaque text with a default fill", () => {
+    expect(flagged(invisibleTextScene(style({ color: "rgb(255, 255, 255)" })))).toBe(false);
+  });
+
+  it("does not flag gradient text (transparent fill clipped over a real background)", () => {
+    expect(
+      flagged(
+        invisibleTextScene(
+          style({
+            color: "rgb(255, 255, 255)",
+            webkitTextFillColor: "rgba(0, 0, 0, 0)",
+            webkitBackgroundClip: "text",
+            backgroundImage: "linear-gradient(90deg, rgb(255, 0, 0), rgb(0, 0, 255))",
+          }),
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("still flags background-clip:text when no background actually paints the glyphs", () => {
+    // A clipped-to-text fill with no gradient/image and a transparent background
+    // paints nothing — a broken gradient must remain reportable.
+    expect(
+      flagged(
+        invisibleTextScene(
+          style({
+            webkitTextFillColor: "rgba(0, 0, 0, 0)",
+            webkitBackgroundClip: "text",
+            backgroundImage: "none",
+            backgroundColor: "rgba(0, 0, 0, 0)",
+          }),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not flag an element with a transparent fill but no text content", () => {
+    expect(
+      flagged(invisibleTextScene(style({ webkitTextFillColor: "rgba(0, 0, 0, 0)" }), "")),
+    ).toBe(false);
+  });
+});
+
 describe("layout-audit.browser content overlap", () => {
   afterEach(() => {
     vi.restoreAllMocks();

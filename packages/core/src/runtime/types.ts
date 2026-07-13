@@ -228,17 +228,32 @@ export type RuntimeSeekOptions = {
   suppressEvents?: boolean;
 };
 
+export type RuntimeTimelineChildLike = {
+  targets?: () => unknown[];
+  vars?: unknown;
+  startTime?: () => number;
+  duration?: () => number;
+  parent?: RuntimeTimelineChildLike;
+};
+
 export type RuntimeTimelineLike = {
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, suppressEvents?: boolean) => void;
-  totalTime?: (timeSeconds: number, suppressEvents?: boolean) => void;
+  seek: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
+  progress?: (value?: number, suppressEvents?: boolean) => unknown;
   time: () => number;
   duration: () => number;
   add: (timeline: RuntimeTimelineLike, startAtSeconds: number) => void;
   paused: (paused?: boolean) => void;
   timeScale?: (rate: number) => void;
   set: (target: RuntimeGsapSetTarget, vars: RuntimeGsapSetVars, atSeconds?: number) => void;
+  getChildren?: (
+    nested?: boolean,
+    tweens?: boolean,
+    timelines?: boolean,
+    ignoreBeforeTime?: number,
+  ) => RuntimeTimelineChildLike[];
 };
 
 export type RuntimeDeterministicAdapter = {

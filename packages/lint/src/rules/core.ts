@@ -264,11 +264,12 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // missing_timeline_registry + timeline_registry_missing_init
-  ({ source, rawSource, options }) => {
+  ({ source, rawSource, rootTag, options }) => {
     // Sub-compositions inherit window.__timelines from the host composition
     if (options.isSubComposition || rawSource.trimStart().toLowerCase().startsWith("<template")) {
       return [];
     }
+    if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
     const findings: HyperframeLintFinding[] = [];
     if (
       !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&

@@ -145,7 +145,7 @@ if (only.has("tts") && lines.length) {
     }
     const rel = `assets/voice/${id}.wav`;
     const abs = join(hyperframesDir, rel);
-    const { ok, words } = await synthesizeOne({
+    const { ok, words, error } = await synthesizeOne({
       provider: ttsProvider,
       text,
       voiceId,
@@ -155,7 +155,7 @@ if (only.has("tts") && lines.length) {
       hyperframesDir,
     });
     if (!ok) {
-      anomalies.push(`line ${id}: TTS failed — omitted`);
+      anomalies.push(`line ${id}: TTS failed — omitted${error ? ` (${error})` : ""}`);
       return null;
     }
     let wordArr = words; // heygen: native; else transcribe

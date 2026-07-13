@@ -34,6 +34,7 @@ import {
   shouldRetryViaPinnedFallback,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  shouldStreamParallelCapture,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -112,6 +113,44 @@ describe("extractStandaloneEntryFromIndex", () => {
     const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/outro.html");
 
     expect(extracted).toBeNull();
+  });
+
+  it("re-points the wrapper duration at the scene's own, not the master's", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+    const sceneHtml = `<template id="scene1-template"><div data-composition-id="scene1" data-width="640" data-height="360" data-duration="3"></div></template>`;
+
+    const extracted = extractStandaloneEntryFromIndex(
+      indexHtml,
+      "compositions/scene1.html",
+      sceneHtml,
+    );
+
+    // The extracted standalone advertises the scene file's 3s, not the mount's 2s or master's 12s.
+    expect(extracted).toContain('data-duration="3"');
+    expect(extracted).not.toContain('data-duration="12"');
+  });
+
+  it("falls back to the mount's data-duration when the scene file isn't supplied", () => {
+    const indexHtml = `<!DOCTYPE html>
+<html>
+<body>
+  <div data-composition-id="master" data-width="640" data-height="360" data-duration="12">
+    <div id="scene1" data-composition-id="scene1" data-composition-src="compositions/scene1.html" data-start="0" data-duration="2"></div>
+  </div>
+</body>
+</html>`;
+
+    const extracted = extractStandaloneEntryFromIndex(indexHtml, "compositions/scene1.html");
+
+    expect(extracted).toContain('data-duration="2"');
+    expect(extracted).not.toContain('data-duration="12"');
   });
 });
 
@@ -1763,10 +1802,26 @@ describe("shouldPreferParallelDrawElement (DE parallel router)", () => {
     probeDeGated: false,
     experimentalParallelDeOptIn: false,
     routerEnabled: true,
+    totalMemoryMb: 32768,
+    minMemoryMb: 24576,
   };
 
   it("routes an auto-resolved multi-worker render for an eligible long comp", () => {
     expect(shouldPreferParallelDrawElement(eligible)).toBe(true);
+  });
+
+  it("withholds the parallel bet below the RAM floor (16 GB black-slab report)", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 16384 })).toBe(false);
+  });
+
+  it("routes exactly at the RAM floor", () => {
+    expect(shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 24576 })).toBe(true);
+  });
+
+  it("minMemoryMb <= 0 disables the RAM guard", () => {
+    expect(
+      shouldPreferParallelDrawElement({ ...eligible, totalMemoryMb: 8192, minMemoryMb: 0 }),
+    ).toBe(true);
   });
 
   it("is disabled by default (routerEnabled: false is the shipped default)", () => {
@@ -1993,5 +2048,45 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
         deParallelRouter: undefined,
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
+  const eligible = {
+    routerEnabled: true,
+    workerCount: 3,
+    useDrawElement: false,
+    outputFormat: "mp4" as const,
+    streamingOk: true,
+    layeredOrEffectRoute: false,
+  };
+
+  it("routes an eligible multi-worker non-drawElement render", () => {
+    expect(shouldStreamParallelCapture(eligible)).toBe(true);
+  });
+
+  it("is disabled by default (kill switch off is the shipped default)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
+  });
+
+  it("never fires for single-worker renders (those already stream)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+
+  it("never fires when drawElement will capture (the DE routers own that path)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, useDrawElement: true })).toBe(false);
+  });
+
+  it("only applies to mp4", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "png-sequence" })).toBe(false);
+  });
+
+  it("respects the streaming-encode config/duration gates", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, streamingOk: false })).toBe(false);
+  });
+
+  it("skips HDR-layered and shader-transition routes", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
   });
 });

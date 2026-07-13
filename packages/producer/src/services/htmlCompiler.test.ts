@@ -8,6 +8,7 @@ import {
   collectExternalAssets,
   compileForRender,
   injectSdkPositionEditsRenderScript,
+  detectAncestorBackgroundImage,
   detectRenderModeHints,
   detectShaderTransitionUsage,
   detectThreeDTransformUsage,
@@ -715,6 +716,65 @@ describe("detectThreeDTransformUsage", () => {
 
   it("does not match perspective: none", () => {
     expect(detectThreeDTransformUsage("<style>.s { perspective: none; }</style>")).toBe(false);
+  });
+});
+
+describe("detectAncestorBackgroundImage", () => {
+  const wrap = (headCss: string, bodyAttrs = "", inner = "") =>
+    `<!doctype html><html><head><style>${headCss}</style></head><body${bodyAttrs ? ` ${bodyAttrs}` : ""}>` +
+    `<div id="root" data-composition-id="main" data-duration="10">${inner}</div></body></html>`;
+
+  it("detects a linear-gradient body background from a style rule", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("body { background: linear-gradient(135deg, #1b2735, #090a0f); }"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a url() background-image on html", () => {
+    expect(detectAncestorBackgroundImage(wrap('html { background-image: url("bg.png"); }'))).toBe(
+      true,
+    );
+  });
+
+  it("detects an inline gradient style on body", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap("", 'style="background: radial-gradient(circle, #111, #000)"'),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects a class-selected wrapper between body and the root", () => {
+    const html =
+      "<!doctype html><html><head><style>.page-bg { background-image: linear-gradient(#111, #000); }</style></head>" +
+      '<body><div class="page-bg"><div data-composition-id="main" data-duration="10"></div></div></body></html>';
+    expect(detectAncestorBackgroundImage(html)).toBe(true);
+  });
+
+  it("ignores background-image on elements inside the composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        wrap(
+          "#hero { background-image: linear-gradient(#111, #000); }",
+          "",
+          '<div id="hero"></div>',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores plain background-color ancestors", () => {
+    expect(detectAncestorBackgroundImage(wrap("html, body { background: #0d1117; }"))).toBe(false);
+  });
+
+  it("returns false without a composition root", () => {
+    expect(
+      detectAncestorBackgroundImage(
+        "<html><head><style>body { background: linear-gradient(#111, #000); }</style></head><body></body></html>",
+      ),
+    ).toBe(false);
   });
 });
 

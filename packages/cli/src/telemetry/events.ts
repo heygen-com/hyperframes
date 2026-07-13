@@ -1,6 +1,6 @@
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
-import { trackEvent } from "./client.js";
+import { flush, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 
 // run_id is attached only when the orchestrator set HYPERFRAMES_RUN_ID — an
@@ -53,6 +53,9 @@ export interface RenderObservabilityTelemetryPayload {
   captureDePreRouterWorkers?: number;
   captureDeSelfVerifyFallback?: boolean;
   captureDeFallbackReason?: string;
+  /** Non-DE parallel-streaming router outcome ("screenshot" | "beginframe" —
+   * routed; "eligible_off" — would route but the kill switch is off). */
+  captureParallelStream?: string;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -104,6 +107,7 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     de_pre_router_workers: props.captureDePreRouterWorkers,
     de_self_verify_fallback: props.captureDeSelfVerifyFallback,
     de_fallback_reason: props.captureDeFallbackReason,
+    capture_parallel_stream: props.captureParallelStream,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,
@@ -147,6 +151,10 @@ export function trackRenderComplete(
     staticDedupSkipReason?: string;
     staticDedupPredictedFrames?: number;
     staticDedupReusedFrames?: number;
+    // BeginFrame no-damage reuse outcome (Linux/Docker lastFrameCache — the BF
+    // counterpart of static dedup). Undefined outside beginframe capture mode.
+    beginFrameNoDamageFrames?: number;
+    beginFrameHasDamageFrames?: number;
     // drawElement fast-capture outcome (default-on release visibility).
     // Undefined on render paths with no capture session.
     deCaptureMode?: string;
@@ -234,6 +242,8 @@ export function trackRenderComplete(
       static_dedup_skip_reason: props.staticDedupSkipReason,
       static_dedup_predicted_frames: props.staticDedupPredictedFrames,
       static_dedup_reused_frames: props.staticDedupReusedFrames,
+      begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
+      begin_frame_has_damage_frames: props.beginFrameHasDamageFrames,
       de_capture_mode: props.deCaptureMode,
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
@@ -288,6 +298,14 @@ export function trackRenderComplete(
     },
     props.distinctId,
   );
+  // Send immediately instead of waiting for the exit-time flush. The render
+  // command's normal teardown (agent-pipe EPIPE → process.exit(0), or an
+  // explicit process.exit) kills the lazy beforeExit flush mid-flight, which
+  // is why only ~10-15% of successful renders ever produced a render_complete
+  // — and the survivors skewed toward users with low RTT to PostHog. The
+  // process is alive and idle here; if it still dies mid-request, the queue
+  // keeps the event for the exit-time flushSync() fallback.
+  void flush();
 }
 
 export function trackRenderError(
@@ -329,6 +347,9 @@ export function trackRenderError(
     },
     props.distinctId,
   );
+  // Same rationale as trackRenderComplete: error paths process.exit(1) before
+  // the lazy flush can win its race — send now, exit-time fallback covers the rest.
+  void flush();
 }
 
 export function trackRenderObservation(props: {

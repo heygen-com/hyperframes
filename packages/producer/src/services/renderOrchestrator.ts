@@ -76,6 +76,7 @@ import {
   isDrawElementVerificationError,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
+import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
 import {
@@ -372,6 +373,25 @@ export interface RenderPerfSummary {
     predictedFrames: number;
     reusedFrames: number;
     skipReason?: string;
+  };
+  /**
+   * BeginFrame no-damage reuse outcome for this render (Linux/Docker),
+   * aggregated across the sequential session or all parallel workers: frames
+   * Chrome reported unchanged (`hasDamage=false` → previous buffer reused via
+   * the engine's lastFrameCache) vs frames freshly encoded. The BF counterpart
+   * of `staticDedup` (predictive dedup never arms under beginframe); the
+   * static-frame fraction is noDamageFrames / (noDamageFrames + hasDamageFrames).
+   * Undefined when no session captured in beginframe mode.
+   *
+   * Like every metric aggregated from `dedupPerfs` (staticDedup, drawElement,
+   * subTimelineWait), a partial-capture RETRY replaces the counters with the
+   * final attempt's set (see the reset in executeDiskCaptureWithAdaptiveRetry)
+   * — after a missing-range retry the counts cover only the recaptured ranges,
+   * not the whole render, so noDamage + hasDamage may be < totalFrames.
+   */
+  beginFrameReuse?: {
+    noDamageFrames: number;
+    hasDamageFrames: number;
   };
   /**
    * drawElement fast-capture outcome for this render (default-on release
@@ -945,7 +965,27 @@ function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-function createStandaloneEntryRenderClone(root: Element, host: Element): Element {
+/**
+ * Read the `data-duration` off a scene file's `<template>` root — the scene's
+ * own authored length. linkedom does not implement inert `<template>` content,
+ * so we re-parse `template.innerHTML` (the pattern htmlBundler uses) to reach
+ * the composition root inside it. Returns null when the file has no template
+ * or the root declares no duration.
+ */
+function readSceneRootDuration(entryHtml: string | undefined): string | null {
+  if (!entryHtml) return null;
+  const { document } = parseHTML(entryHtml);
+  const template = document.querySelector("template");
+  const scope = template ? parseHTML(template.innerHTML).document : document;
+  const root = scope.querySelector("[data-composition-id]") as Element | null;
+  return root?.getAttribute("data-duration") ?? null;
+}
+
+function createStandaloneEntryRenderClone(
+  root: Element,
+  host: Element,
+  sceneDuration: string | null,
+): Element {
   // linkedom's cloneNode returns `any` (not `Node`), so the Element cast
   // is needed to access setAttribute/appendChild without losing type safety.
   const hostClone = host.cloneNode(true) as Element;
@@ -954,6 +994,18 @@ function createStandaloneEntryRenderClone(root: Element, host: Element): Element
   if (root === host) return hostClone;
 
   const rootClone = root.cloneNode(false) as Element;
+  // The standalone composition IS the mounted scene, not the master shell that
+  // wraps it. A shallow clone of the master root otherwise keeps the master's
+  // data-duration (the whole project's length), so `render -c <scene>` rendered
+  // the scene for the entire project duration — or threw "Composition has zero
+  // duration" when the master derived its length from siblings now removed.
+  // Re-point the wrapper's duration at the scene's own; drop it (derive from the
+  // single child) only when the scene declared none.
+  if (sceneDuration != null) {
+    rootClone.setAttribute("data-duration", sceneDuration);
+  } else {
+    rootClone.removeAttribute("data-duration");
+  }
   rootClone.appendChild(hostClone);
   return rootClone;
 }
@@ -1130,6 +1182,10 @@ export function shouldPreferParallelDrawElement(args: {
   experimentalParallelDeOptIn: boolean;
   /** HF_DE_PARALLEL_ROUTER === "true" — the router's own kill switch, default off. */
   routerEnabled: boolean;
+  /** Machine RAM (os.totalmem, MB). */
+  totalMemoryMb: number;
+  /** RAM floor for routing; <=0 disables the guard. */
+  minMemoryMb: number;
 }): boolean {
   return (
     args.routerEnabled &&
@@ -1144,7 +1200,14 @@ export function shouldPreferParallelDrawElement(args: {
     !args.layeredOrEffectRoute &&
     !args.supersampling &&
     !args.probeDeGated &&
-    !args.experimentalParallelDeOptIn
+    !args.experimentalParallelDeOptIn &&
+    // RAM floor: routed parallel DE runs 3 concurrent hardware-GPU Chrome
+    // instances. On a 16 GB machine that produced vertical black slabs in the
+    // final MP4 (wild report, CLI 0.7.52) — compositor tiles evicted under
+    // GPU/memory pressure, and sampled self-verify can miss partial-frame
+    // damage. Single-worker DE (the inversion) stays available below the
+    // floor; only the parallel bet is withheld.
+    (args.minMemoryMb <= 0 || args.totalMemoryMb >= args.minMemoryMb)
   );
 }
 
@@ -1236,6 +1299,54 @@ export function shouldRetryViaPinnedFallback(args: {
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
 
+/**
+ * Parallel-streaming router for NON-drawElement capture (screenshot on
+ * macOS/Windows/forced-screenshot, BeginFrame on Linux): should this
+ * multi-worker render stream captured frame buffers straight into the single
+ * ffmpeg stdin encoder (interleaved distribution + ordered reorder-buffer
+ * writer — the PR #2056 machinery) instead of the parallel disk path (workers
+ * write JPEGs, a separate sequential encode pass reads them back)?
+ *
+ * Measured motivation (2026-07-10, macOS SS W3): the disk path's encode is a
+ * purely additive tail (~27% of wall clock on a 3,600-frame comp). Streaming
+ * overlapped it for 1.29x on a uniform-cost comp and was a wash (not a
+ * regression) on a 39%-static bimodal comp — the interleaved writer's
+ * near-lockstep coupling eats the encode win when frame costs are bimodal.
+ * v1 accepts the wash; static-aware routing is a documented follow-up.
+ *
+ * Unlike the DE router this deliberately does NOT require auto-resolved
+ * workers: streaming doesn't change the worker count, so an explicit
+ * `--workers 3` should benefit too. It requires !useDrawElement
+ * (post-resolveConfig — always true on Linux): DE parallel renders belong to
+ * the DE parallel router (HF_DE_PARALLEL_ROUTER) with its self-verify
+ * machinery; both DE predicates independently require useDrawElement, making
+ * the two routers mutually exclusive by construction.
+ */
+export function shouldStreamParallelCapture(args: {
+  /** HF_CAPTURE_PARALLEL_STREAM === "true" — kill switch, default OFF. */
+  routerEnabled: boolean;
+  workerCount: number;
+  /** cfg.useDrawElement AFTER resolveConfig clamps. */
+  useDrawElement: boolean;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site —
+   * carries the enableStreamingEncode/format/duration-cap gates. */
+  streamingOk: boolean;
+  /** HDR layered composite or shader transitions — bespoke pipelines
+   * (including page-side compositing, which only engages when
+   * hasShaderTransitions) that never stream. */
+  layeredOrEffectRoute: boolean;
+}): boolean {
+  return (
+    args.routerEnabled &&
+    args.workerCount > 1 &&
+    !args.useDrawElement &&
+    args.outputFormat === "mp4" &&
+    args.streamingOk &&
+    !args.layeredOrEffectRoute
+  );
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -1257,6 +1368,7 @@ export function shouldDiscardProbeSessionForPageSideCompositing(args: {
 export function extractStandaloneEntryFromIndex(
   indexHtml: string,
   entryFile: string,
+  entryHtml?: string,
 ): string | null {
   const normalizedEntryFile = normalizeCompositionSrcPath(entryFile);
   const { document } = parseHTML(indexHtml);
@@ -1282,7 +1394,12 @@ export function extractStandaloneEntryFromIndex(
     ) ?? null;
   if (!root) return null;
 
-  const renderClone = createStandaloneEntryRenderClone(root, host);
+  // The scene file is the source of truth for its own duration; fall back to the
+  // mount's data-duration (its window in the master timeline) when the scene
+  // file content isn't supplied.
+  const sceneDuration = readSceneRootDuration(entryHtml) ?? host.getAttribute("data-duration");
+
+  const renderClone = createStandaloneEntryRenderClone(root, host, sceneDuration);
   replaceBodyWithRenderClone(body, renderClone);
 
   return document.toString();
@@ -1459,6 +1576,7 @@ export async function executeRenderJob(
       const standaloneHtml = extractStandaloneEntryFromIndex(
         readFileSync(projectIndexPath, "utf-8"),
         entryFile,
+        rawEntry,
       );
       if (!standaloneHtml) {
         throw new Error(
@@ -1529,6 +1647,10 @@ export async function executeRenderJob(
     // render already executing in the same process. Threading this as a
     // local instead closes that cross-talk, not just the sequential leak.
     let deParallelStreamForced = false;
+    // Per-render (not process-global) signal that the NON-DE parallel-stream
+    // router fired — same threading discipline as deParallelStreamForced
+    // (see that flag's comment for why this must never be an env mutation).
+    let captureParallelStreamForced = false;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -1777,10 +1899,7 @@ export async function executeRenderJob(
       browserTimeout: cfg.browserTimeout,
     });
     updateCaptureObservability({ browserGpuMode: resolvedBrowserGpuMode });
-    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
-      composition.videos.length,
-      resolvedBrowserGpuMode,
-    );
+    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
     const captureOptions: CaptureOptions = {
       width,
@@ -1919,6 +2038,17 @@ export async function executeRenderJob(
     const deParallelMinFrames = Number.isFinite(deParallelMinFramesNum)
       ? deParallelMinFramesNum
       : 2000;
+    // RAM floor default 24 GB: the wild black-slab report was a 16 GB
+    // machine; every clean routed cohort in telemetry so far is >=24 GB.
+    // HF_DE_PARALLEL_MIN_MEM_MB overrides (0 disables the guard).
+    const deParallelMinMemRaw = process.env.HF_DE_PARALLEL_MIN_MEM_MB;
+    const deParallelMinMemNum =
+      deParallelMinMemRaw === undefined || deParallelMinMemRaw.trim() === ""
+        ? 24576
+        : Number(deParallelMinMemRaw);
+    const deParallelMinMemoryMb = Number.isFinite(deParallelMinMemNum)
+      ? deParallelMinMemNum
+      : 24576;
     const deParallelRouterEligible = shouldPreferParallelDrawElement({
       workerCount: WOULD_RESOLVE_MULTI_WORKER,
       requestedWorkers: job.config.workers,
@@ -1938,6 +2068,8 @@ export async function executeRenderJob(
         process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true" ||
         process.env.HF_DE_PARALLEL_STREAM === "true",
       routerEnabled: deParallelRouterEnabled,
+      totalMemoryMb: Math.round(totalmem() / (1024 * 1024)),
+      minMemoryMb: deParallelMinMemoryMb,
     });
     // Declared ahead of resolution (assigned below, after calibration) so
     // captureStageObservationData can close over it for the calibration
@@ -2107,6 +2239,50 @@ export async function executeRenderJob(
       deParallelRouter: deParallelRouter ?? "none",
     });
 
+    // Non-DE parallel-streaming router — see shouldStreamParallelCapture.
+    // Mutually exclusive with the DE inversion/router above by construction
+    // (both DE predicates require useDrawElement; this requires its negation).
+    const captureParallelStreamRouterEnabled = process.env.HF_CAPTURE_PARALLEL_STREAM === "true";
+    const captureParallelStreamArgs = {
+      workerCount,
+      useDrawElement: cfg.useDrawElement,
+      outputFormat,
+      streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
+    };
+    const captureParallelStreamEligible = shouldStreamParallelCapture({
+      routerEnabled: captureParallelStreamRouterEnabled,
+      ...captureParallelStreamArgs,
+    });
+    if (captureParallelStreamEligible) {
+      captureParallelStreamForced = true;
+      // Which mode will stream: the engine picks beginframe only on Linux with
+      // headless-shell and no forced screenshot (frameCapture.ts preMode);
+      // everything else is screenshot. Recorded for telemetry cohorting.
+      const captureParallelStream =
+        process.platform === "linux" && !captureForceScreenshot ? "beginframe" : "screenshot";
+      log.info(
+        `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
+          `(interleaved, ${workerCount} workers) instead of the disk path. ` +
+          "Set HF_CAPTURE_PARALLEL_STREAM=false to disable.",
+      );
+      updateCaptureObservability({ captureParallelStream });
+      // NOTE: no string data on the checkpoint — RenderObservationData string
+      // values are dropped unless the key is in observability.ts's
+      // ALLOWED_STRING_DATA_KEYS allow-list. The message carries the detail.
+      observability.checkpoint(
+        "worker_resolution",
+        `parallel ${captureParallelStream} capture routed to streaming`,
+      );
+    } else if (shouldStreamParallelCapture({ routerEnabled: true, ...captureParallelStreamArgs })) {
+      // The kill switch is the ONLY failed gate: emit a passive cohort-sizing
+      // signal (capture_parallel_stream = "eligible_off") so the default-off
+      // soak can measure how many fleet renders WOULD route before anyone
+      // enables the flag. Observability-only — no behavior change, no log
+      // noise on the default path.
+      updateCaptureObservability({ captureParallelStream: "eligible_off" });
+    }
+
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
@@ -2123,7 +2299,7 @@ export async function executeRenderJob(
       outputFormat,
       workerCount,
       job.duration,
-      deParallelStreamForced,
+      deParallelStreamForced || captureParallelStreamForced,
     );
     log.info("streaming-encode gate", {
       enabled: useStreamingEncode,
@@ -2367,7 +2543,7 @@ export async function executeRenderJob(
                 workerCount,
                 probeSession,
                 outputFormat,
-                forceParallelStream: deParallelStreamForced,
+                forceParallelStream: deParallelStreamForced || captureParallelStreamForced,
                 streamingEncoderOptions: {
                   fps: job.config.fps,
                   width,

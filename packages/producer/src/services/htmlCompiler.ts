@@ -78,6 +78,8 @@ export interface CompiledComposition {
   usesThreeDTransforms: boolean;
   /** Author HTML/CSS use mix-blend-mode (pre-CDN-inline scan). */
   usesMixBlendMode: boolean;
+  /** Ancestors of the composition root carry a background-image (gradient/url). */
+  hasAncestorBackgroundImage: boolean;
 }
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
@@ -322,6 +324,64 @@ const MIX_BLEND_MODE_PATTERN = /mix-blend-mode\s*:/i;
 
 function detectMixBlendModeUsage(html: string): boolean {
   return MIX_BLEND_MODE_PATTERN.test(html);
+}
+
+/** A background declaration whose value paints an image (gradient or url). */
+const BACKGROUND_IMAGE_DECL_PATTERN =
+  /(?:^|;|\{)\s*background(?:-image)?\s*:[^;}]*(?:\bgradient\s*\(|url\s*\()/i;
+
+/**
+ * Background-image signals on ancestors of the composition root.
+ * drawElementImage only paints the captured subtree; drawElementService's
+ * per-frame ancestor fill replicates what lies behind it by walking up the
+ * DOM for the nearest non-transparent `backgroundColor`. A background-IMAGE
+ * (linear-gradient, url) on <body>/<html>/a wrapper reads as transparent in
+ * that scan, so a deeper ancestor's solid color paints instead — measured:
+ * a body `linear-gradient` replaced by the html background color wherever
+ * the subtree left pixels uncovered (30.9 dB min vs baseline), and the
+ * damage can set in late enough to slip past the self-verify sample grid.
+ * Backgrounds on elements INSIDE the root are painted correctly and are
+ * deliberately not matched — this walks only the root's ancestor chain and
+ * the style rules that select into it.
+ */
+export function detectAncestorBackgroundImage(html: string): boolean {
+  const { document } = parseHTML(html);
+  const root = document.querySelector("[data-composition-id]");
+  if (!root) return false;
+  const ancestors: Element[] = [];
+  for (let el = root.parentElement; el; el = el.parentElement) ancestors.push(el);
+  if (document.documentElement && !ancestors.includes(document.documentElement)) {
+    ancestors.push(document.documentElement);
+  }
+  // Inline styles on the ancestor chain.
+  for (const el of ancestors) {
+    const style = el.getAttribute("style");
+    if (style && BACKGROUND_IMAGE_DECL_PATTERN.test(`{${style}}`)) return true;
+  }
+  // <style> rules: any rule carrying an image-painting background declaration
+  // whose selector resolves to an ancestor of the root. Selector matching goes
+  // through querySelectorAll so class/id/compound selectors on wrappers are
+  // covered, not just literal `body`/`html`.
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent ?? "";
+    for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const [, selectorList = "", declarations = ""] = rule;
+      if (!BACKGROUND_IMAGE_DECL_PATTERN.test(`{${declarations}}`)) continue;
+      for (const selector of selectorList.split(",")) {
+        const sel = selector.trim();
+        if (!sel || sel.startsWith("@")) continue;
+        if (/^(?:html|:root)$/i.test(sel)) return true;
+        try {
+          for (const matched of document.querySelectorAll(sel)) {
+            if (ancestors.includes(matched)) return true;
+          }
+        } catch {
+          // Selector syntax linkedom can't parse (e.g. vendor pseudo) — skip.
+        }
+      }
+    }
+  }
+  return false;
 }
 
 const SHADER_TRANSITION_USAGE_PATTERN =
@@ -1706,6 +1766,7 @@ export async function compileForRender(
   // composition that loads GSAP from a CDN.
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const usesMixBlendMode = detectMixBlendModeUsage(sanitizedHtml);
+  const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(
@@ -1881,6 +1942,7 @@ export async function compileForRender(
     hasShaderTransitions,
     usesThreeDTransforms,
     usesMixBlendMode,
+    hasAncestorBackgroundImage,
   };
 }
 

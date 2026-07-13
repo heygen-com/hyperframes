@@ -796,6 +796,51 @@
     };
   }
 
+  // Text whose glyphs paint with an effectively transparent fill renders
+  // invisibly even though the element, its box, opacity and color all read as
+  // present — so geometry/occlusion/contrast audits miss it (contrast reads
+  // `color`, not the fill that actually paints). `-webkit-text-fill-color`
+  // overrides `color` for the glyph fill AND inherits, so a parent's
+  // `transparent` fill silently blanks descendant text that has its own opaque
+  // `color`. Its computed value already resolves to `color` when unset, so it
+  // is the effective fill directly. Clipped text (`background-clip: text`)
+  // legitimately uses a transparent fill — BUT only when a background actually
+  // paints the glyphs; a `background-clip: text` with no gradient/image and no
+  // opaque background-color paints nothing, so it stays reportable.
+  function invisibleTextIssue(element, time) {
+    const textRect = textRectFor(element);
+    if (!textRect) return null;
+    const text = textContentFor(element);
+    if (!text) return null;
+    const cs = getComputedStyle(element);
+    // Vendor computed-style props are read by property (camelCase), matching
+    // the rest of this script; `webkitTextFillColor` computes to `color` when
+    // unset, so it is the effective fill directly.
+    const fill = cs.webkitTextFillColor || cs.color;
+    if (colorAlpha(fill) > 0.05) return null;
+    const clip = cs.webkitBackgroundClip || cs.backgroundClip || "";
+    if (/text/i.test(clip)) {
+      const bgImage = cs.backgroundImage || "none";
+      const paintsGlyphs =
+        bgImage !== "none" || colorAlpha(cs.backgroundColor || "rgba(0, 0, 0, 0)") > 0.05;
+      // A usable clipped background fills the glyphs — legitimate gradient/solid
+      // clipped text. If nothing paints, fall through and report it.
+      if (paintsGlyphs) return null;
+    }
+    return {
+      code: "text_not_painted",
+      severity: "error",
+      time,
+      selector: selectorFor(element),
+      text,
+      message:
+        "Text paints with an effectively transparent fill (-webkit-text-fill-color / color), so its glyphs are invisible.",
+      rect: textRect,
+      fixHint:
+        "Set an explicit, opaque `color` on the text — and an explicit `-webkit-text-fill-color` if an ancestor makes the fill transparent. If the transparency is intentional gradient text, add `background-clip: text`.",
+    };
+  }
+
   function candidateAnchor(element) {
     const dataAttributes = {};
     for (const attribute of Array.from(element.attributes)) {
@@ -881,6 +926,8 @@
       issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
       const occluded = occludedTextIssue(element, time);
       if (occluded) issues.push(occluded);
+      const invisible = invisibleTextIssue(element, time);
+      if (invisible) issues.push(invisible);
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
@@ -895,6 +942,31 @@
   // actually moved anything and the whole audit run is unreliable. Deliberately
   // a single opaque string (not a structured array) since Node only ever needs
   // equality, not per-element diffing.
+  // Pixel-only canvas motion (a 2D/WebGL canvas repainting without any element
+  // moving) is invisible to a geometry+opacity fingerprint and false-positived
+  // sweep_static (wild report: 4K WebGL comp needed a transparent moving DOM
+  // sentinel to pass). Downsample each visible canvas to 8x8 and fold its
+  // pixels into the fingerprint. Tainted/zero-sized/unreadable canvases hash
+  // to a constant — no worse than today, never a new false NEGATIVE for
+  // DOM-motion comps.
+  function canvasPixelHash(canvas) {
+    try {
+      if (!canvas.width || !canvas.height) return "x";
+      const off = document.createElement("canvas");
+      off.width = 8;
+      off.height = 8;
+      const ctx = off.getContext("2d");
+      if (!ctx) return "x";
+      ctx.drawImage(canvas, 0, 0, 8, 8);
+      const data = ctx.getImageData(0, 0, 8, 8).data;
+      let hash = 0;
+      for (let i = 0; i < data.length; i++) hash = (hash * 31 + data[i]) >>> 0;
+      return String(hash);
+    } catch {
+      return "x";
+    }
+  }
+
   window.__hyperframesLayoutGeometry = function collectLayoutGeometry() {
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
@@ -903,12 +975,15 @@
     const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
       isVisibleElement(element),
     );
-    return elements
-      .map((element) => {
-        const rect = toRect(element.getBoundingClientRect());
-        const opacity = round(opacityChain(element));
-        return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
-      })
-      .join("|");
+    const parts = elements.map((element) => {
+      const rect = toRect(element.getBoundingClientRect());
+      const opacity = round(opacityChain(element));
+      return `${rect.left},${rect.top},${rect.width},${rect.height},${opacity}`;
+    });
+    for (const canvas of root.querySelectorAll("canvas")) {
+      if (!isVisibleElement(canvas)) continue;
+      parts.push(`c:${canvasPixelHash(canvas)}`);
+    }
+    return parts.join("|");
   };
 })();

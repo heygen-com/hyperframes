@@ -227,6 +227,15 @@ describe("core rules", () => {
     expect(finding).toBeDefined();
   });
 
+  it("allows a timeline-free root that explicitly declares data-no-timeline", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-no-timeline data-width="1920" data-height="1080" data-duration="5"></div>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "missing_timeline_registry")).toBeUndefined();
+  });
+
   it("does not flag missing_timeline_registry on a sub-composition (inherits from host)", async () => {
     const html = `
 <html><body>

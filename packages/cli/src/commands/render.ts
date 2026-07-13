@@ -1984,6 +1984,8 @@ function trackRenderMetrics(
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
     staticDedupPredictedFrames: perf?.staticDedup?.predictedFrames,
     staticDedupReusedFrames: perf?.staticDedup?.reusedFrames,
+    beginFrameNoDamageFrames: perf?.beginFrameReuse?.noDamageFrames,
+    beginFrameHasDamageFrames: perf?.beginFrameReuse?.hasDamageFrames,
     deCaptureMode: perf?.drawElement?.mode,
     deCompileGate: perf?.drawElement?.compileGate,
     deClampReason: perf?.drawElement?.clampReason,

@@ -68,6 +68,16 @@ export interface RenderCaptureObservability {
   deParallelRouter?: "routed" | "reverted";
   /** Worker count the resolver would have used absent the router; undefined if it never fired. */
   dePreRouterWorkers?: number;
+  /**
+   * Non-DE parallel-streaming router outcome (HF_CAPTURE_PARALLEL_STREAM):
+   * "screenshot" | "beginframe" — the render passed every gate AND the kill
+   * switch was on, so it was routed through the interleaved streaming encoder
+   * (the value is the capture mode that streamed); "eligible_off" — the render
+   * passed every gate EXCEPT the kill switch (passive cohort-sizing signal for
+   * the default-off soak: how many renders WOULD route if enabled). Absent =
+   * ineligible regardless of the switch.
+   */
+  captureParallelStream?: "screenshot" | "beginframe" | "eligible_off";
   protocolTimeoutMs?: number;
   pageNavigationTimeoutMs?: number;
   playerReadyTimeoutMs?: number;
