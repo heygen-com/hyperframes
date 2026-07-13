@@ -7,9 +7,9 @@ import {
 import { getElementZIndex } from "../player/lib/layerOrdering";
 import { getTimelineElementIdentity } from "../player/lib/timelineElementHelpers";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
-import { selectedKeyframePercentagesForElement } from "../utils/keyframeSelection";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { extendRootDurationInSource } from "../utils/rootDuration";
+export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 function isHTMLElement(element: Element | null): element is HTMLElement {
   if (!element) return false;
   // Use the element's OWN realm's HTMLElement: timeline clips live in the preview
@@ -83,24 +83,6 @@ export function applyTimelineStackingReorder(input: {
   }
   if (commitEntries.length === 0) return Promise.resolve();
   return input.commit?.(commitEntries, input.coalesceKey) ?? Promise.resolve();
-}
-/**
- * Remove the keyframes currently selected in the player store from the active
- * element's GSAP animation. Reads selection lazily so it stays correct when
- * invoked from a ref callback. Extracted from StudioApp to keep it under the
- * studio 600-LOC cap.
- */
-export function deleteSelectedKeyframes(session: {
-  selectedGsapAnimations: readonly { id: string; keyframes?: unknown }[];
-  handleGsapRemoveKeyframe: (animId: string, pct: number) => void;
-}): void {
-  const { selectedKeyframes, selectedElementId } = usePlayerStore.getState();
-  const animation = session.selectedGsapAnimations.find((anim) => anim.keyframes);
-  if (!animation) return;
-  // Only the active element's keyframes; a stale cross-element selection must not delete here.
-  for (const pct of selectedKeyframePercentagesForElement(selectedKeyframes, selectedElementId)) {
-    session.handleGsapRemoveKeyframe(animation.id, pct);
-  }
 }
 export function extendRootDurationIfNeeded(newEnd: number): boolean {
   const store = usePlayerStore.getState();

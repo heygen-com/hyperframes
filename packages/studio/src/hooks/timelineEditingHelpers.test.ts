@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyTimelineStackingReorder, extendRootDurationIfNeeded } from "./timelineEditingHelpers";
+import {
+  applyTimelineStackingReorder,
+  deleteSelectedKeyframes,
+  extendRootDurationIfNeeded,
+} from "./timelineEditingHelpers";
 import type { TimelineElement } from "../player/store/playerStore";
 import { usePlayerStore } from "../player/store/playerStore";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 afterEach(() => {
   usePlayerStore.getState().reset();
@@ -100,5 +105,33 @@ describe("extendRootDurationIfNeeded", () => {
     expect(extendRootDurationIfNeeded(5)).toBe(false);
     expect(extendRootDurationIfNeeded(3)).toBe(false);
     expect(usePlayerStore.getState().duration).toBe(5);
+  });
+});
+
+describe("deleteSelectedKeyframes", () => {
+  it("coalesces all removals and reloads only after the last one", () => {
+    usePlayerStore.setState({
+      selectedElementId: "card",
+      selectedKeyframes: new Set(["card:10", "card:50", "card:90"]),
+    });
+    const handleGsapRemoveKeyframe =
+      vi.fn<(animId: string, pct: number, options?: Partial<CommitMutationOptions>) => void>();
+
+    deleteSelectedKeyframes({
+      selectedGsapAnimations: [{ id: "card-position", keyframes: {} }],
+      handleGsapRemoveKeyframe,
+    });
+
+    expect(handleGsapRemoveKeyframe).toHaveBeenCalledTimes(3);
+    const options = handleGsapRemoveKeyframe.mock.calls.map((call) => call[2]);
+    expect(new Set(options.map((entry) => entry?.coalesceKey)).size).toBe(1);
+    expect(options).toEqual([
+      expect.objectContaining({ coalesceMs: Infinity, skipReload: true }),
+      expect.objectContaining({ coalesceMs: Infinity, skipReload: true }),
+      expect.objectContaining({ coalesceMs: Infinity, softReload: true }),
+    ]);
+    expect(options[0]).not.toHaveProperty("softReload");
+    expect(options[1]).not.toHaveProperty("softReload");
+    expect(options[2]).not.toHaveProperty("skipReload");
   });
 });

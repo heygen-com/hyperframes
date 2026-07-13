@@ -69,9 +69,17 @@ interface GestureSessionRef {
   selectedGsapAnimations?: GsapAnimation[];
   commitMutation?: (
     mutation: Record<string, unknown>,
-    options: { label: string; softReload?: boolean },
+    options: {
+      label: string;
+      coalesceKey?: string;
+      coalesceMs?: number;
+      softReload?: boolean;
+      skipReload?: boolean;
+    },
   ) => Promise<void>;
 }
+
+let gestureRecordingCommitCounter = 0;
 
 interface UseGestureCommitParams {
   domEditSessionRef: React.MutableRefObject<GestureSessionRef>;
@@ -113,6 +121,10 @@ export function useGestureCommit({
       return;
     }
     commitInFlightRef.current = true;
+    const coalesceOptions = {
+      coalesceKey: `gesture-recording:${++gestureRecordingCommitCounter}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+    };
     gestureStateRef.current = "idle";
     isGestureRecordingRef.current = false;
     const frozenSamples = gestureRecording.stopRecording();
@@ -243,7 +255,8 @@ export function useGestureCommit({
               // Emit one tween per property group so a mixed-prop gesture (e.g.
               // x/y + opacity) doesn't collapse into an untagged legacy mixed
               // tween that the position-only drag intercept can't edit.
-              for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
+              const keyframeGroups = partitionKeyframesByGroup(keyframes);
+              for (const [index, groupKfs] of keyframeGroups.entries()) {
                 await liveSession.commitMutation(
                   {
                     type: "add-with-keyframes",
@@ -257,14 +270,21 @@ export function useGestureCommit({
                     // not inherit a sigmoid.
                     easeEach: "none",
                   },
-                  { label: "Gesture recording (new range)", softReload: true },
+                  {
+                    label: "Gesture recording (new range)",
+                    ...coalesceOptions,
+                    ...(index === keyframeGroups.length - 1
+                      ? { softReload: true }
+                      : { skipReload: true }),
+                  },
                 );
               }
             }
           }
         } else {
           // No existing tween — same per-group split as the new-range branch above.
-          for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
+          const keyframeGroups = partitionKeyframesByGroup(keyframes);
+          for (const [index, groupKfs] of keyframeGroups.entries()) {
             await liveSession.commitMutation(
               {
                 type: "add-with-keyframes",
@@ -275,7 +295,13 @@ export function useGestureCommit({
                 // Linear fallback (see above) — constant-speed segments stay linear.
                 easeEach: "none",
               },
-              { label: "Gesture recording", softReload: true },
+              {
+                label: "Gesture recording",
+                ...coalesceOptions,
+                ...(index === keyframeGroups.length - 1
+                  ? { softReload: true }
+                  : { skipReload: true }),
+              },
             );
           }
         }

@@ -309,6 +309,7 @@ export function useDomEditTextCommits({
       nextTextFields: DomEditTextField[],
       options?: { importedFont?: ImportedFontAsset | null },
     ) => {
+      const isLatestTextCommit = bumpDomEditCommitVersion(domTextCommitVersionRef);
       const textCommit = planDomTextCommit(
         selection.textFields,
         nextTextFields,
@@ -348,14 +349,14 @@ export function useDomEditTextCommits({
               : undefined,
           });
         },
-        shouldRevert: () => true,
+        shouldRevert: () => isLatestTextCommit(),
         revert: () => {
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
         },
         onError: (error) =>
           reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
-        shouldResync: () => true,
+        shouldResync: isLatestTextCommit,
         resync: () =>
           resyncDomTextSelectionFromPreview(
             doc,

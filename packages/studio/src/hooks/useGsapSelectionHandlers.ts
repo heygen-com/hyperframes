@@ -78,7 +78,12 @@ export function useGsapSelectionHandlers({
     properties: Record<string, number | string>,
     commitOverrides?: Partial<CommitMutationOptions>,
   ) => Promise<void>;
-  removeKeyframe: (sel: DomEditSelection, animId: string, percentage: number) => void;
+  removeKeyframe: (
+    sel: DomEditSelection,
+    animId: string,
+    percentage: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
+  ) => void;
   moveKeyframe: (
     sel: DomEditSelection,
     animId: string,
@@ -255,11 +260,16 @@ export function useGsapSelectionHandlers({
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );
   const handleGsapRemoveKeyframe = useCallback(
-    (animId: string, percentage: number, selectionOverride?: DomEditSelection | null) => {
+    (
+      animId: string,
+      percentage: number,
+      commitOverrides?: Partial<CommitMutationOptions>,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
       trackStudioEvent("keyframe", { action: "remove" });
-      removeKeyframe(sel, animId, percentage);
+      removeKeyframe(sel, animId, percentage, commitOverrides);
     },
     [domEditSelection, removeKeyframe],
   );

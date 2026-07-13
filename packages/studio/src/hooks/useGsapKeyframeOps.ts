@@ -173,7 +173,12 @@ export function useGsapKeyframeOps({
   );
 
   const removeKeyframe = useCallback(
-    (selection: DomEditSelection, animationId: string, percentage: number) => {
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      percentage: number,
+      commitOverrides?: Partial<CommitMutationOptions>,
+    ) => {
       const sourceFile = selection.sourceFile || activeCompPath || "index.html";
       const mutation = { type: "remove-keyframe", animationId, percentage };
       void executeOptimisticKeyframeCacheUpdate({
@@ -191,6 +196,7 @@ export function useGsapKeyframeOps({
           ),
         }),
         persist: async () => {
+          const label = `Remove keyframe at ${percentage}%`;
           if (sdkSession && sdkDeps) {
             const handled = await sdkGsapRemoveKeyframePersist(
               sourceFile,
@@ -198,14 +204,18 @@ export function useGsapKeyframeOps({
               percentage,
               sdkSession,
               sdkDeps,
-              { label: `Remove keyframe at ${percentage}%` },
+              {
+                label,
+                coalesceKey: commitOverrides?.coalesceKey,
+                skipRefresh: commitOverrides?.skipReload,
+              },
             );
             if (handled) return;
           }
-          await commitMutation(selection, mutation, {
-            label: `Remove keyframe at ${percentage}%`,
-            softReload: true,
-          });
+          const commitOptions = commitOverrides?.skipReload
+            ? { label, ...commitOverrides }
+            : { label, softReload: true, ...commitOverrides };
+          await commitMutation(selection, mutation, commitOptions);
         },
       }).catch((error) => {
         trackGsapSaveFailure(error, selection, mutation, `Remove keyframe at ${percentage}%`);
