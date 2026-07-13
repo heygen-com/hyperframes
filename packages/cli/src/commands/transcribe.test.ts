@@ -39,6 +39,7 @@ describe("transcribe command", () => {
       new WhisperUnavailableError("whisper-cpp not found. Install: brew install whisper-cpp"),
     );
     vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -65,6 +66,15 @@ describe("transcribe command", () => {
     expect(process.exitCode).toBe(0);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: true });
     expect(trackCommandFailure).not.toHaveBeenCalled();
+
+    const diagnostic = vi.mocked(console.error).mock.calls.at(-1)?.[0];
+    expect(typeof diagnostic).toBe("string");
+    if (typeof diagnostic !== "string") throw new Error("Expected stderr diagnostic");
+    expect(JSON.parse(diagnostic)).toEqual({
+      level: "warning",
+      reason: "whisper_unavailable",
+      message: "whisper-cpp not found. Install: brew install whisper-cpp",
+    });
   });
 
   it("imports an SRT and exports an SRT sidecar from transcript.json", async () => {

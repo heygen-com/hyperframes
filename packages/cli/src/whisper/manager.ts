@@ -151,15 +151,15 @@ export function findWhisper(): WhisperResult | undefined {
   return findFromEnv() ?? findFromSystem() ?? findBuiltBinary();
 }
 
-export function getInstallInstructions(): string {
-  if (platform() === "darwin") {
+export function getInstallInstructions(targetPlatform: NodeJS.Platform = platform()): string {
+  if (targetPlatform === "darwin") {
     return "brew install whisper-cpp";
   }
-  if (platform() === "linux") {
+  if (targetPlatform === "linux") {
     return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
   }
-  if (platform() === "win32") {
-    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
+  if (targetPlatform === "win32") {
+    return "Download the prebuilt whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases/latest, or build with cmake: https://github.com/ggml-org/whisper.cpp#building";
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }

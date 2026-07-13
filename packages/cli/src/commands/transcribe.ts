@@ -319,6 +319,18 @@ async function transcribeAudio(
     if (isWhisperUnavailable(err)) {
       trackTranscribeUnavailable({ optional: opts.optional === true });
       if (opts.json) {
+        // Keep the machine-readable result on stdout, but also surface the
+        // skipped prerequisite on stderr. Pipeline wrappers commonly discard
+        // successful stdout, so an optional exit 0 must not become silent.
+        if (opts.optional) {
+          console.error(
+            JSON.stringify({
+              level: "warning",
+              reason: "whisper_unavailable",
+              message,
+            }),
+          );
+        }
         console.log(JSON.stringify({ ok: false, skipped: true, reason: "whisper_unavailable" }));
       } else {
         spin?.stop(c.warn(`Captions skipped — ${message}`));

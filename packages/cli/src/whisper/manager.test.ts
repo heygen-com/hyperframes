@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { WhisperUnavailableError, isWhisperUnavailable } from "./manager.js";
+import {
+  WhisperUnavailableError,
+  getInstallInstructions,
+  isWhisperUnavailable,
+} from "./manager.js";
 
 describe("isWhisperUnavailable", () => {
   it("recognizes WhisperUnavailableError instances", () => {
@@ -26,5 +30,14 @@ describe("isWhisperUnavailable", () => {
     );
     expect(isWhisperUnavailable("whisper-cpp not found")).toBe(false);
     expect(isWhisperUnavailable(undefined)).toBe(false);
+  });
+});
+
+describe("getInstallInstructions", () => {
+  it("points Windows users to the prebuilt x64 archive before the source-build fallback", () => {
+    const instructions = getInstallInstructions("win32");
+
+    expect(instructions).toContain("whisper-bin-x64.zip");
+    expect(instructions).toContain("cmake");
   });
 });
