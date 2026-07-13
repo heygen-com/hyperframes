@@ -22,6 +22,9 @@ export async function fontToDataUri(input: Buffer, originalFormat: string): Prom
   if (originalFormat === "woff2") {
     return `data:font/woff2;base64,${input.toString("base64")}`;
   }
+  if (originalFormat === "ttc") {
+    return `data:font/collection;base64,${input.toString("base64")}`;
+  }
   try {
     const compressed = await compressToWoff2(input);
     return `data:font/woff2;base64,${compressed.toString("base64")}`;
