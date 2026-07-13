@@ -998,6 +998,29 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("does NOT report overlapping_gsap_tweens for distinct loop-built DOM targets", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="caption-card-0"></div>
+    <div id="caption-card-1"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    for (let i = 0; i < 2; i++) {
+      const card = document.getElementById("caption-card-" + i);
+      tl.to(card, { opacity: 1, duration: 1 }, i * 0.5);
+    }
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+    expect(finding).toBeUndefined();
+  });
+
   it("warns when an opacity exit ends at a clip start boundary without a hard kill", async () => {
     const html = `
 <html><body>

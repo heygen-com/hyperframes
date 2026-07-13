@@ -219,10 +219,10 @@
     const text = textContentFor(element, directOnly);
     if (!text) return false;
     if (directOnly) return true;
-    for (const child of Array.from(element.children)) {
-      if (isVisibleElement(child) && textContentFor(child)) return false;
-    }
-    return true;
+    // Aggregate text may come exclusively from descendants (including hidden
+    // captions). The container itself does not paint that text and must not be
+    // audited as though it did.
+    return textContentFor(element, true).length > 0;
   }
 
   function textClientRects(element, directOnly) {

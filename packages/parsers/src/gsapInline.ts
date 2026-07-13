@@ -340,7 +340,11 @@ function expandBody(
 ): Node[] {
   const block = substituteParams(cloneNode({ type: "BlockStatement", body: bodyStmts }), bindings);
   tagTimelineCalls(block.body, prov, ctx);
-  return expandStatements(block.body, { ...ctx, depth: ctx.depth + 1 });
+  block.body = expandStatements(block.body, { ...ctx, depth: ctx.depth + 1 });
+  // Keep each synthetic expansion in its own lexical scope. Flattening repeated
+  // loop/helper bodies into Program scope makes same-named local DOM bindings
+  // overwrite one another during selector analysis.
+  return [block];
 }
 
 function inlineHelper(call: Node, ctx: ExpandCtx): Node[] {
