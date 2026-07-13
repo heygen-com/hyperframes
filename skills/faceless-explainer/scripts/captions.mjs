@@ -47,10 +47,26 @@ const r3 = (x) => Number(x.toFixed(3));
 // ── grouping params ───────────────────────────────────────────────────────────
 const SILENCE_GAP = 0.18; // s of silence between words → split
 const TAIL_PAD = 0.12; // s the group lingers after its last word
-const SENT_END = /[.?!,;:—]$/;
+const SENT_END = /[.?!,;:—。！？；：，、]$/;
 const DENSITY_WINDOW = 1.0; // s window for words/sec density
-function wordCap(density) {
-  return density > 3.5 ? 2 : density > 2.5 ? 3 : 4;
+const CJK_TEXT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+function wordCap(density, text) {
+  const cap = density > 3.5 ? 2 : density > 2.5 ? 3 : 4;
+  // CJK ASR providers commonly emit one timing token per character. Treat two
+  // characters as roughly one display word so dense Mandarin/Japanese/Korean
+  // streams do not collapse into unreadable 1–2 character captions.
+  return CJK_TEXT.test(text) ? cap * 2 : cap;
+}
+function joinCaptionWords(words) {
+  return words.reduce(
+    (text, word, index) =>
+      text +
+      (index > 0 && !(CJK_TEXT.test(words[index - 1].text) && CJK_TEXT.test(word.text))
+        ? " "
+        : "") +
+      word.text,
+    "",
+  );
 }
 
 function runBuild(argv) {
@@ -129,7 +145,7 @@ function runBuild(argv) {
     const full = cur && cur.words.length >= cur.cap;
     if (!cur || crossFrame || gap || full) {
       if (cur) groups.push(cur);
-      cur = { frame: w.frame, cap: wordCap(densityAt(i)), words: [] };
+      cur = { frame: w.frame, cap: wordCap(densityAt(i), w.text), words: [] };
     }
     cur.words.push(w);
     if (SENT_END.test(w.text)) {
@@ -151,7 +167,7 @@ function runBuild(argv) {
       frame: g.frame,
       start: r3(first.start),
       end,
-      text: g.words.map((w) => w.text).join(" "),
+      text: joinCaptionWords(g.words),
       words: g.words.map((w, wi) => ({
         id: `caption-word-${gi}-${wi}`,
         text: w.text,
@@ -478,7 +494,7 @@ function buildCaptionsHtml(groups, total, W, H) {
         g.words.forEach(function (w) {
           var s = document.createElement("span");
           s.className = "caption-word";
-          s.textContent = w.text + " ";
+          s.textContent = w.text + (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(w.text) ? "" : " ");
           el.appendChild(s);
         });
         cap.appendChild(el);
