@@ -72,6 +72,11 @@ const preflightState = vi.hoisted(() => ({
   },
 }));
 
+const orphanCleanupState = vi.hoisted(() => ({
+  calls: 0,
+  killed: 0,
+}));
+
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
     resolveConfig: vi.fn((overrides: Record<string, unknown>) => {
@@ -128,6 +133,13 @@ vi.mock("../browser/preflight.js", () => ({
   runEnvironmentChecks: vi.fn(async () => preflightState.result),
 }));
 
+vi.mock("../utils/orphanCleanup.js", () => ({
+  killOrphanedProcesses: vi.fn(() => {
+    orphanCleanupState.calls += 1;
+    return orphanCleanupState.killed;
+  }),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
@@ -173,6 +185,8 @@ describe("renderLocal browser GPU config", () => {
     configState.writeConfigCalls = [];
     trackingState.shouldTrack = true;
     trackingState.renderObservations = [];
+    orphanCleanupState.calls = 0;
+    orphanCleanupState.killed = 0;
     resetTrialState();
     savedEnv.clear();
     savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
@@ -183,6 +197,22 @@ describe("renderLocal browser GPU config", () => {
     delete process.env.HYPERFRAMES_FFPROBE_PATH;
     delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
     delete process.env.HF_DE_PARALLEL_ROUTER;
+  });
+
+  it("cleans orphaned browser trees before starting a local render", async () => {
+    orphanCleanupState.killed = 1;
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(orphanCleanupState.calls).toBe(1);
   });
 
   afterEach(() => {
