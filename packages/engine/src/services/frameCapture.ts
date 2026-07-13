@@ -222,6 +222,41 @@ export function isDrawElementVerificationError(err: unknown): boolean {
   return false;
 }
 
+/** Wait for inline CSS background images introduced by the latest seek. */
+export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const root = globalThis as typeof globalThis & {
+      __hf_css_background_decoded?: Set<string>;
+    };
+    const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
+    const urls: string[] = [];
+    const urlPattern = /url\(\s*(?:"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|([^)'"\s][^)]*?))\s*\)/g;
+
+    for (const element of document.querySelectorAll<HTMLElement>('[style*="background"]')) {
+      const backgroundImage = element.style.backgroundImage;
+      if (!backgroundImage || backgroundImage === "none") continue;
+
+      for (const match of backgroundImage.matchAll(urlPattern)) {
+        const url = match[1] ?? match[2] ?? match[3]?.trim();
+        if (url && !decoded.has(url)) urls.push(url);
+      }
+    }
+
+    await Promise.all(
+      [...new Set(urls)].map(async (url) => {
+        const image = new Image();
+        image.src = url;
+        try {
+          await image.decode();
+          decoded.add(url);
+        } catch {
+          // Keep existing capture behavior for missing assets; request diagnostics report them.
+        }
+      }),
+    );
+  });
+}
+
 // Circular buffer for browser console messages dumped on render failure diagnostics.
 // Complex compositions produce 100+ messages; 50 was too small to capture relevant errors.
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
@@ -2004,6 +2039,8 @@ async function prepareFrameForCapture(
     return !!(window as unknown as { __hf_page_composite_pending?: boolean })
       .__hf_page_composite_pending;
   }, quantizedTime);
+
+  await decodeDynamicCssBackgroundImages(page);
 
   const seekMs = Date.now() - seekStart;
 
