@@ -1,0 +1,83 @@
+---
+title: Runtimes and 3D
+description: "GSAP is the default and you rarely name it — but real 3D, existing animation files, and scene transitions each have a runtime worth pinning in the prompt."
+---
+
+HyperFrames animates through the [frame-adapter](/concepts/frame-adapters) pattern: any runtime that can answer "what should the screen look like at frame N?" plugs in and renders deterministically. [GSAP](/guides/gsap-animation) is the default adapter and covers most motion — you rarely need to name it. The cases below are the ones where the default choice can go wrong, so the prompt should pick the runtime for you.
+
+## Real 3D → Three.js via the adapter
+
+This is the one pin to state every time. For anything with genuine **depth, lighting, or a camera** — a rotating product, a scene you move through, surfaces that catch light — ask for Three.js explicitly:
+
+> Build the scene in **Three.js via the adapter**: a product model on a turntable, one key light and a soft fill, slow rotation.
+
+- ❌ `isometric cards floating in CSS 3D with perspective`
+- ✅ `build the isometric scene in Three.js via the adapter, with real depth and lighting`
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-3d-cards.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The Three.js version of the isometric-cards prompt — real shadows and lighting, one-shot.*
+
+
+The engine rationale: CSS `perspective` transforms skew flat planes — they read flat the moment lighting or parallax matters, because there is no light source and no camera, only projected rectangles. Three.js is a first-party seek-safe runtime (`hf-seek` events plus `window.__hfThreeTime`), so a real 3D scene renders frame-accurately like everything else. This is a validated default, not a preference — treat "real 3D" as "Three.js" unless you specifically want a flat, stylized fake-3D look.
+
+Camera moves are part of the same rule. A "drone orbit", dolly, or push-in only exists where there's an actual camera:
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/camera-orbit.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*A seek-driven Three.js drone orbit — the camera sweeps a continuous arc; impossible with CSS transforms.*
+
+
+- ❌ `a drone-orbit camera move around the logo` (with no runtime named — CSS has no camera to orbit)
+- ✅ `orbit the camera around the logo — Three.js via the adapter`
+
+## Existing animation files → Lottie
+
+If you already have a designed animation — an After Effects export, a `.json` or `.lottie` file, an icon animation from a designer — don't ask the agent to redraw it. Point at the file and ask for Lottie:
+
+> Play this Lottie file (`assets/loader.lottie`) centered, then fade to the title.
+
+The Lottie adapter seeks the existing animation frame-by-frame, so the designer's work renders exactly as authored. Asking the agent to recreate it in GSAP throws away the source and lands somewhere approximate.
+
+## Simple UI and text motion → the default
+
+Fades, slides, staggers, counters, kinetic type, hover-style reveals — the everyday motion — is what GSAP does natively, and it's already the default. You don't name a runtime here; you describe the motion (see [Premium motion](/prompting/motion)):
+
+> The headline slides up per word, staggered 0.1s apart, easing out as it lands.
+
+CSS keyframes and the Web Animations API are also supported adapters, worth naming only when you're bringing existing CSS `@keyframes` or WAAPI code you want kept as-is. For a fresh ask, let the default handle it.
+
+## Scene-to-scene → shader transitions
+
+Motion *within* a scene is one thing; the handoff *between* scenes is another. For a designed transition — a wipe, a glitch, a liquid dissolve — ask for a shader transition at that specific moment:
+
+> Hard-cut between the first three scenes; use a **shader transition** (glitch) into the final logo scene.
+
+Name the moments — shader transitions are for the two or three beats that deserve them, not every cut. See [Transitions](/prompting/transitions) for the vocabulary.
+
+## Determinism surfaces in the prompt
+
+Every runtime renders under the same [determinism](/concepts/determinism) contract: the frame clock is `t = frame / fps`, and there is **no wall clock, no live network at render time, and no unseeded randomness**. Two asks bump into this, so phrase them accordingly:
+
+- ❌ `fetch the current BTC price and count up to it` — a render-time fetch isn't allowed; the render must be reproducible
+- ✅ `count up to $67,400` (a fixed value baked in), or `read the target from a variable I pass at render time`
+
+- ❌ `scatter 200 particles randomly` — unseeded randomness renders differently each frame and breaks reproducibility
+- ✅ `scatter 200 particles from a seeded random layout` — say **seeded** and the positions are stable across frames and re-renders
+
+The rule of thumb: anything the video needs to *know* must be present before rendering starts — baked in, or passed as a [variable](/prompting/variables-and-templating). Anything random must be seeded.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Frame adapters (concept)" icon="plug" href="/concepts/frame-adapters">
+    The seek-by-frame contract and the full list of supported runtimes.
+  </Card>
+  <Card title="Deterministic rendering" icon="lock" href="/concepts/determinism">
+    Why no live data and no unseeded randomness — the reproducibility guarantee.
+  </Card>
+  <Card title="Premium motion" icon="wand-magic-sparkles" href="/prompting/motion">
+    Describing everyday GSAP motion so it doesn't read as cheap.
+  </Card>
+  <Card title="Transitions" icon="film" href="/prompting/transitions">
+    Naming the scene-to-scene handoffs worth a shader transition.
+  </Card>
+</CardGroup>

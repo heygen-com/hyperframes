@@ -1,0 +1,87 @@
+---
+title: Data and maps
+description: "Prompt animated charts, count-up stats, and maps — highlight regions, draw flows, size bubbles — or hand-draw a chart for full control."
+---
+
+Numbers and geography are the two subjects where "what data" and "how it moves" are separate decisions. The [Data](/catalog/blocks/data-chart) blocks give you a polished chart or map you feed values into; the count-up [showcase](/catalog/blocks/apple-money-count) blocks handle the odometer-and-flourish moment. Everything here plugs into the [one-shot skeleton](/prompting/anatomy) — the data goes in the "copy" slot, the block name in "technique."
+
+### Charts: name the block, or hand-draw
+
+There are two ways to get a chart, and the choice is about control:
+
+- **Name [`data-chart`](/catalog/blocks/data-chart)** to get the built animated bar + line chart — staggered reveal, value labels, NYT-style typography — and feed it your numbers. Fast, consistent, no design decisions.
+- **Say "hand-draw everything — no chart library"** to make the agent build the chart from inline SVG and GSAP instead. You give up the polish of the block for total control over shape, motion, and layout — a bar race that overtakes mid-animation, an arc that draws to match a counter, a layout no library ships.
+
+Feed data inline or as a file. Small series go straight in the prompt; a CSV gets referenced and parsed at build time (keep it deterministic — no [render-time fetches](/concepts/determinism)).
+
+> 12-second 1920x1080 video. Turn this into an animated bar chart with a staggered reveal and value labels counting up on each bar:
+> ```
+> Python 41, TypeScript 33, Rust 19, Go 14, Java 9
+> ```
+> Use the `data-chart` registry block. No audio.
+
+> 10-second 1920x1080 video, dark slate background. Title "Top languages 2026" top-left. Five horizontal bars (Python, TypeScript, Rust, Go, Java) grow from zero with staggered starts, overtaking each other twice mid-animation; each bar has a right-edge value label counting up to its final %. End state holds 2s with the leader pulsing once. Hand-draw everything — no chart library. No audio.
+
+**State the block *or* opt out of it — don't leave it implicit.** "Animate this data" without a decision drifts between a generic block and an improvised layout.
+- ❌ `animate this CSV as a chart`
+- ✅ `turn this CSV into an animated bar chart — use the data-chart registry block` **or** `…hand-draw everything, no chart library`
+
+**Format numbers for the animation you asked for.** An odometer count-up needs fixed digit columns; a `$0 → $4.2M` range forces an awkward `$0.0M` start.
+- ❌ `counts from $0 to $4.2M`
+- ✅ `counts up to $4.2M`
+
+### Count-up stats
+
+For a single hero number, [`apple-money-count`](/catalog/blocks/apple-money-count) is the Apple-style finance counter — it rolls from $0, flashes green, and bursts money icons with sound. Name it when you want that exact flourish; hand-draw when you want a bare number in your own type.
+
+> /motion-graphics 6-second 1920x1080 video, dark navy background. Beat 1 (0-1s): label "ARR" fades up small, top-center. Beat 2 (1-4s): a giant number counts up to $4.2M with an odometer roll, easing out as it lands. Beat 3 (4-6s): "+312% YoY" stamps in below in green, then settles into a gentle ambient idle. Use the `apple-money-count` registry block as base. No narration.
+
+### Maps: match the ask to the map
+
+Each map block answers a different geographic question. Say what the map is *for* and name the matching block:
+
+| You want to…                                    | Name this block                                    | Length |
+| ----------------------------------------------- | -------------------------------------------------- | ------ |
+| Shade US states by a value (choropleth)         | [`us-map`](/catalog/blocks/us-map)                 | 12s    |
+| Size US cities by a value (proportional bubbles)| [`us-map-bubble`](/catalog/blocks/us-map-bubble)   | 12s    |
+| Draw connections between US cities (origin→dest)| [`us-map-flow`](/catalog/blocks/us-map-flow)       | 12s    |
+| Show US states as an equal-weight hex grid      | [`us-map-hex`](/catalog/blocks/us-map-hex)         | 10s    |
+| Shade Spain by autonomous community             | [`spain-map`](/catalog/blocks/spain-map)           | 12s    |
+| Shade the world country by country              | [`world-map`](/catalog/blocks/world-map)           | 14s    |
+
+The US map encodings combine — asking to "shade states *and* draw flows between two cities" gets you one composition: the agent merges the blocks at source onto a shared projection so arcs land exactly on the choropleth's states.
+
+> 12-second 1920x1080 video. A US choropleth shades states by adoption rate with staggered reveals and a gradient legend, then connection arcs draw between San Francisco, Austin, and New York. Use the `us-map` and `us-map-flow` registry blocks. No audio.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-us-map-flows.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+<Note>
+  The map blocks fetch their geo data from a CDN at runtime, which violates the deterministic-render rules — the agent bakes the projected geometry into the composition instead. You never need to ask for this; it's part of building the map correctly.
+</Note>
+
+**Pick the encoding, don't just say "map."** Choropleth (color), bubble (size), hex (equal weight), and flow (arcs) tell different stories from the same data.
+- ❌ `put California's number on a US map`
+- ✅ `size each city as a proportional bubble` → `us-map-bubble`, or `shade each state by value` → `us-map`
+
+**Name the region's block.** The choropleths are region-specific with baked-in projections (`spain-map` is D3 conic conformal, `world-map` is Natural Earth) — there's no generic "any country" map.
+- ❌ `a map of Spain's regions` (leaves the projection and geography to chance)
+- ✅ `use the spain-map registry block`
+
+### Routes and flights
+
+For a point-to-point journey — a route drawing across a map with a landing beat — [`nyc-paris-flight`](/catalog/blocks/nyc-paris-flight) is the Apple-style flight animation: a plane flies New York → Paris with a marker circle, landing pop, and sound effects. Use it as the base and re-point the endpoints in your prompt.
+
+> /motion-graphics 6-second 1920x1080 video. A realistic map with a plane flying between two cities, a marker circle at the origin, and a landing pop at the destination. Use the `nyc-paris-flight` registry block as base. No narration.
+
+**A route is a flow with a vehicle, not a static arc.** If you want the drawn arc without the plane and sound, that's `us-map-flow`; if you want the journey performance, that's `nyc-paris-flight`.
+- ❌ `draw a line from NYC to Paris` (ambiguous between arc-only and full flight)
+- ✅ `a plane flies the route with a landing pop` → `nyc-paris-flight`
+
+### Where to go next
+
+- [Anatomy of a one-shot prompt](/prompting/anatomy) — the skeleton, and why odometers need fixed digit columns.
+- [Copy-paste examples](/prompting/examples) — bar-chart race and stat-tile prompts to adapt.
+- [Generated artwork](/prompting/generated-artwork) — where hand-drawn HTML/CSS/SVG shines, and where it doesn't.
+- [The specification dial](/prompting/specification-dial) — deciding when to name a block versus hand-draw.

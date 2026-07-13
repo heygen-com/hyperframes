@@ -1,0 +1,62 @@
+---
+title: Porting from Remotion
+description: "What to say to migrate an existing Remotion (React) composition's source into HyperFrames HTML — and what to expect the agent to refuse."
+---
+
+## What this makes
+
+Not a new video — a **translation**. The [`/remotion-to-hyperframes`](/prompting/overview) workflow reads an existing Remotion (React) composition's source and rewrites it as HyperFrames HTML: the same frames, the same timing, the same visual output, running on GSAP instead of React's frame-callback model.
+
+This is a migration, not a creation workflow. It only fires on an explicit ask to port, convert, migrate, or translate a **Remotion** source. Two things that look similar but aren't this:
+
+- "Make something like my Remotion video" with no ask to migrate the actual source → a fresh build, [`/general-video`](/prompting/anatomy).
+- A non-Remotion source (After Effects, Framer Motion, plain React/CSS) → there's no Remotion source to translate; re-create it natively instead.
+
+The direction is one-way. There's no export back out to Remotion or any other framework.
+
+## Base prompt
+
+> /remotion-to-hyperframes Port the composition at `src/HeroReveal.tsx` (Remotion project root: `.`) to HyperFrames. Keep the same duration, fps, and dimensions. Write `TRANSLATION_NOTES.md` for anything that doesn't translate cleanly.
+
+Naming the exact file (not just "my Remotion project") matters once a project has more than one `<Composition>` registered — say which one.
+
+## What won't translate — and why that's correct
+
+The skill lints the source before translating anything, and **refuses** rather than approximates when it hits a pattern HyperFrames' seek-driven model can't represent deterministically:
+
+- **State-driven animation** — `useState`, `useReducer`, or `useEffect`/`useLayoutEffect` with real dependencies. HyperFrames seeks to an arbitrary frame and expects the same pixels every time; a state machine that reacts to its own history can't guarantee that. The skill recommends a runtime-interop pattern instead of silently producing a translation that "looks right" but isn't frame-accurate.
+- **Third-party React UI kits** — MUI, Chakra, Mantine, antd, shadcn, Radix, NextUI. There's no HTML/CSS/GSAP equivalent to translate them into.
+- **`@remotion/lambda` deploy config** — not a blocker. It's dropped (deployment config, not animation) and the rest of the composition still translates.
+
+If your source hits a blocker, expect the agent to stop and explain the interop recommendation rather than push through — that's the correct behavior, not a failure. Don't ask it to "just approximate" past a blocker; the whole point of this workflow is a validated, measured translation, not a best-effort guess.
+
+## Validation is not optional
+
+Every translation is graded against the Remotion original by SSIM (structural similarity) on rendered frames, not eyeballed. If you're porting something non-trivial, ask for the check explicitly:
+
+> After translating, render both the Remotion original and the HyperFrames version and report the SSIM diff.
+
+A translation that "looks right" in preview can still measure meaningfully below the validated baseline — that's the difference this workflow is built to catch.
+
+## The knobs that matter
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Exact source file** | "the composition at `src/HeroReveal.tsx`" | A Remotion project can register several `<Composition>`s — name the one you mean |
+| **Preserve exact timing** | "keep the same duration, fps, and dimensions" | The default; state it anyway so the agent doesn't round or resize |
+| **Gap documentation** | "write `TRANSLATION_NOTES.md` for anything that doesn't translate cleanly" | Approximated fonts, dropped volume ramps, and substituted presentations get recorded, not silently absorbed |
+| **Validation** | "report the SSIM diff against the original" | Makes the fidelity check part of the deliverable instead of an optional afterthought |
+
+## Common failure modes
+
+**Asking for a fresh build with Remotion as inspiration.** If you don't have an actual Remotion source to translate, this isn't the workflow — it's a normal build.
+- ❌ `/remotion-to-hyperframes make something like my Remotion intro`
+- ✅ `/general-video make an intro like this: [description]` — no Remotion source, no migration
+
+**Asking it to push past a lint blocker.** A `useState`-driven composition isn't a "translate it anyway, best effort" situation — it's a different problem (runtime interop), and forcing a translation produces something that looks plausible but isn't frame-accurate.
+- ❌ `just convert it, don't worry about the state stuff`
+- ✅ let the agent recommend the interop pattern, then decide whether that fits your case
+
+**Skipping validation on a non-trivial port.** A visual-only check misses timing/easing drift that only shows up in a frame-by-frame SSIM diff.
+- ❌ *(no request to validate — accepting on "looks right")*
+- ✅ `render both and report the SSIM diff`

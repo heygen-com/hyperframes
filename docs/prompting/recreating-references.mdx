@@ -1,0 +1,34 @@
+---
+title: Recreating something you saw
+description: "Transcribe motion, iterate with absolute targets, distill the constants — and know where the text-only ceiling is."
+---
+
+In practice, matching a specific reference from text alone reaches roughly 90% — but only with a specific workflow, and knowing where the ceiling is.
+
+**Transcribe motion, not just composition.** Watch the reference frame by frame and write down: the exact duration, the camera's path, what each element does with timestamps, how entrances overlap, which layers are blurred, sampled colors. A prompt built this way one-shots ~75% of the target — structure and motion arc land, rendering calibration doesn't.
+
+**Iterate with absolute targets.** Compare your render against the reference frame by frame, then correct one axis at a time while freezing everything that already matches. State corrections as absolute values, not relative nudges — "dot radius = 25% of row spacing", not "make dots 2x finer". Relative corrections pendulum: too big, then too small, then too big. Expect a handful of rounds to converge.
+
+**Distill the converged values back into the prompt.** Iteration is a search; the found constants are reusable. A prompt carrying them one-shots ~80–90% of the converged quality on a fresh build — the discrete facts (timings, counts, hexes, ratios, camera arcs) transfer losslessly, while continuous qualities (glow prominence, framing feel) still vary by a calibration note or two. And the converged composition file itself is the pixel-exact artifact: renders are deterministic, so re-rendering it reproduces the result bit-for-bit.
+
+A distilled spec that one-shots a broadcast-style animated globe:
+
+<Accordion title="Worked example: the hologram globe (full distilled spec)">
+  > 1.8-second 1920x1080 video, Three.js via the adapter (seek-driven, no rAF). One continuous shot; every element is still moving on the final frame.
+  >
+  > FIELD: blue-violet background, linear #2a24a8 → #12105e top-to-bottom with a soft radial lift at center; faint blurred vertical cyan light-streaks (#5ee0e8 at ~10% opacity, ~340px spacing) drifting 70px left across the piece; deep corner vignette; soft-light film grain at ~6% (seeded noise).
+  >
+  > GLOBE: royal-blue sphere (#4348f2), lit from upper-left with a 0.58 ambient floor; a broad subtle satin band (#6470ff, very wide falloff, ~30% mix) sweeping the upper curve; a strong cyan rim-light line (#5ee8f0) tracing only the top edge. Continents in TWO layers: (a) a heavily-blurred darker-blue silhouette (#3439c2, 80% opacity) just under the surface, reading as a soft shadow shape; (b) a dot-matrix just above the surface on an equal-area grid (0.9° latitude rows, longitude step widening with latitude): dot radius = 24–28% of row spacing — clear blue gaps between dots — growing slightly toward the equator, 85% dot opacity; two color populations — cyan-aqua #5ee0e8 north, spring-green #7ce97a from latitude ~32° southward — with seeded ±30% per-dot brightness variance; dots dimmed to 40% in the view-space lower-right shadow zone. Continents read as distinct dotted landmasses covering ~30–35% of the visible hemisphere, with royal-blue ocean dominating the rest.
+  >
+  > CAMERA: open EXTREMELY close — the sphere's curve fills the entire frame, horizon exiting the upper corners — then one continuous pull-back + crane (fov 52°→40°) ending with the dome filling the lower half edge-to-edge, its silhouette touching both frame edges, horizon at ~45%. Ease power1.inOut computed over a 2.0s window while rendering 1.8s so the move never settles on-screen. The globe rotates 28° about its vertical axis, linear, continents drifting right-to-left, never stopping.
+  >
+  > ORBS — 12 across three depth planes, world-anchored on the upper hemisphere so stems stay vertical, popping at staggered starts 0.45s→1.15s (0.06–0.13s apart), each rising 0.44–0.56s with back.out overshoot (vary 1.7–2.6 per orb), then bobbing ±8px on phase-offset sines forever. 5 midground (~90–110px at end framing): soft mint body #a7ecc4 with a darker-green under-shade #3f9b5e at lower-left and a pale rim #d6ffe8 top-right, no white core; each wrapped in a soft additive bloom sprite ~3.5x its diameter whose texture is HOLLOW-centered peaking ~35% just outside the orb edge (a bright-cored additive glow over the opaque orb blows the mint to lime); plus a thin soft halo ring ~4.2x radius at 60% opacity, always subtler than the orb itself, with a slow 5% scale pulse. 4 background (~30px, sharp, tighter bloom). 3 foreground near-lens bokeh (~160–190px, dense mint radial-gradient sprites riding the camera at center-left / lower-center / upper-right, ~70% opacity, drifting ±30px laterally, no stems). Stems: 2–3px additive cyan cylinders fading to transparent at the surface. Tag canvas-generated sprite textures sRGB or the mints wash out pale.
+  >
+  > CAPTION: "Across 82 Countries" — Inter 300, 34px, 0.06em tracking, white at 90%, top-center 12% from the top; left-to-right per-letter fade starting t=1.0s completing ~1.45s, then a slow 6px upward drift still easing at the final frame.
+  >
+  > No audio.
+    <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/recreate-globe-oneshot.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+    *The one-shot render produced by this exact spec on a fresh build — no iteration.*
+  </Accordion>
+
+The honest ceiling: words carry discrete, countable things losslessly and underdetermine continuous perceptual qualities — bloom falloff, material feel, optical color mixing. That last 10% doesn't close from text; it oscillates. If pixel-exact matters, keep the composition file.

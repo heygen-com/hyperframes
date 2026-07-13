@@ -1,0 +1,91 @@
+---
+title: Caption styles
+description: "Map caption tone to named caption components, and prompt per-word emphasis for composed videos."
+---
+
+## What caption styles do and when they trigger
+
+Caption components are drop-in snippets that render animated on-screen text — one visual identity per component, animating per word or per line. Prompts trigger this layer when you ask for captions, subtitles, kinetic text, lyric-style words, or word-by-word titles inside a composition you're building. Describe the *energy* of the captions and the agent picks matching typography, size, and animation; name a component to lock the look.
+
+<Note>
+  These components are for **composed videos** — captions you author into a HyperFrames composition. To add captions to an existing **talking-head MP4**, use the [`/embedded-captions`](/prompting/captions-and-talking-heads) workflow instead: it carries its own catalog of caption identities built around subject matting and occlusion (the caption sits *behind* the speaker), which the composition snippets below don't do.
+</Note>
+
+## Tone → caption component
+
+| Tone | Components |
+| ---- | ---------- |
+| **Hype / high-energy social** | [`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam), [`caption-highlight`](/catalog/components/caption-highlight), [`caption-particle-burst`](/catalog/components/caption-particle-burst), [`caption-emoji-pop`](/catalog/components/caption-emoji-pop) |
+| **Clean / corporate** | [`caption-clip-wipe`](/catalog/components/caption-clip-wipe), [`caption-weight-shift`](/catalog/components/caption-weight-shift) |
+| **Elegant / editorial** | [`caption-editorial-emphasis`](/catalog/components/caption-editorial-emphasis), [`caption-gradient-fill`](/catalog/components/caption-gradient-fill), [`caption-weight-shift`](/catalog/components/caption-weight-shift) |
+| **Neon / nightlife / music** | [`caption-neon-glow`](/catalog/components/caption-neon-glow), [`caption-neon-accent`](/catalog/components/caption-neon-accent) |
+| **Tech / cyber / glitch** | [`caption-glitch-rgb`](/catalog/components/caption-glitch-rgb), [`caption-matrix-decode`](/catalog/components/caption-matrix-decode) |
+| **Karaoke / lyric / follow-along** | [`caption-pill-karaoke`](/catalog/components/caption-pill-karaoke), [`caption-highlight`](/catalog/components/caption-highlight) |
+| **Textured / cinematic display type** | [`caption-texture`](/catalog/components/caption-texture), [`texture-mask-text`](/catalog/components/texture-mask-text) |
+| **Depth / 3D layering** | [`caption-parallax-layers`](/catalog/components/caption-parallax-layers) |
+
+## Text-effect components
+
+Three [Text Effects](/catalog/components/morph-text) components do one focused job rather than caption a whole track:
+
+| Component | Use when |
+| --------- | -------- |
+| [`caption-blend-difference`](/catalog/components/caption-blend-difference) | Text sits over busy or shifting footage and must stay legible — it auto-inverts per pixel against whatever is behind it. |
+| [`morph-text`](/catalog/components/morph-text) | You want one spot to cycle through a short word list with a gooey morph ("fast / simple / yours"). |
+| [`texture-mask-text`](/catalog/components/texture-mask-text) | A large display word filled with a physical texture (brick, rock, wood, metal, lava). |
+
+## Example prompts
+
+> /faceless-explainer 30-second vertical explainer. Add [`caption-highlight`](/catalog/components/caption-highlight) captions, TikTok-style — the visible line stays up, one word highlighted at a time.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-captions-catalog.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+<Note>
+  Caption components ship as demos — a fixed word list, landscape sizing, an 8-second timeline. The agent re-authors the words and timings to your narration and re-sizes for your format; that's expected, not a workaround. If you want one full-screen word at a time (no visible line), that's [`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam), not `caption-highlight`.
+</Note>
+
+> Hype captions with [`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam): one full-screen word per beat, alternating slam-in direction.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/caption-kinetic-slam.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above with an authored 24-word line, unedited.*
+
+
+> Neon music-video captions using [`caption-neon-glow`](/catalog/components/caption-neon-glow). Make brand names larger with an accent color and highlight the numbers differently.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/caption-neon-glow.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited — the brand renders 1.4x in magenta, numbers in amber, distinct from the default cyan.*
+
+
+> Fill the hero word "STONE" with [`texture-mask-text`](/catalog/components/texture-mask-text) using the rock texture.
+
+## Knobs
+
+- **Tone** picks typography, size, and animation — Hype (heavy, 72–96px, scale-pop) through Storytelling (serif, 44–56px, slow fade). See the caption-tone table in [vocabulary](/prompting/vocabulary).
+- **Per-word emphasis.** "Make brand names larger with accent color," "highlight numbers differently," "add bounce to emotional keywords" all work — several components key off this: [`caption-editorial-emphasis`](/catalog/components/caption-editorial-emphasis) drives a dramatic size contrast on emphasis words, [`caption-particle-burst`](/catalog/components/caption-particle-burst) fires on keywords, and the neon components carry keyword accent colors.
+- **Texture variable.** [`caption-texture`](/catalog/components/caption-texture) ships lava, marble, metal, wood, concrete, and rock — name the one you want.
+- **Word list.** [`morph-text`](/catalog/components/morph-text) cycles an editable list; quote the words in order.
+- **Format.** Full-screen single-word styles ([`caption-kinetic-slam`](/catalog/components/caption-kinetic-slam)) and TikTok-style highlights ([`caption-highlight`](/catalog/components/caption-highlight)) are built for vertical / social framing — say "vertical" or "9:16" so sizing and safe areas match.
+
+## Failure modes
+
+**Don't stack a heavy effect on every word.** Caption components already animate per word; layering another emphasis on top of that competes and turns illegible. Emphasize only the keywords.
+- ❌ `make every word explode with particles`
+- ✅ `caption-particle-burst, firing only on the keywords`
+
+**Don't mix caption styles in one section.** One identity per composition (or per section) reads as designed; two competing styles read as a mistake.
+- ❌ `use caption-neon-glow and caption-matrix-decode together`
+- ✅ pick one; switch styles only across a clear section break
+
+**Don't reach for these on talking-head footage.** These are composition snippets, not the matting/occlusion pipeline — captions won't sit behind the speaker.
+- ❌ `/hyperframes add caption-highlight to my interview.mp4`
+- ✅ `/embedded-captions` (see [captions and talking heads](/prompting/captions-and-talking-heads))
+
+**Don't match a hype style to calm content.** A high-energy caption on a corporate explainer fights the tone; let the tone table pick the identity.
+- ❌ `glitchy RGB captions` (on a wellness brand piece)
+- ✅ `clean captions with caption-clip-wipe`
+
+**Don't invent caption names.** Only the components in the [Captions](/catalog/components/caption-highlight) and [Text Effects](/catalog/components/morph-text) groups exist.
+- ❌ `add typewriter-bounce captions`
+- ✅ describe the tone ("tutorial, monospace, typewriter") or name a real component

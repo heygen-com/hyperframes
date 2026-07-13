@@ -1,0 +1,88 @@
+---
+title: Design systems and brand
+description: "Point the agent at a source of brand truth — a design spec, a site, or a Figma file — instead of asking for 'on-brand', and let it compose the frame."
+---
+
+"Make it on-brand" is the single vaguest thing you can ask. The agent has no way to know what your brand *is*, so it invents one. The fix is always the same: give it a **source of brand truth** — a design spec, a live site, or a Figma file — and name it in the prompt. Everything on this page is a way to do that.
+
+## Point at a spec, don't describe a vibe
+
+HyperFrames projects can carry a design spec — `frame.md` (video-first) or `design.md` — whose frontmatter tokens are the machine-readable brand: exact hex values, font families, weight relationships, and the brand's Do's and Don'ts. When one exists, name it:
+
+> Use the palette and type from `frame.md`. Build a 15-second feature announcement.
+
+- ❌ `make it feel on-brand and premium`
+- ✅ `pull colors and fonts from design.md; premium means generous spacing and one restrained accent`
+
+The engine rationale: `on-brand` is a mood the agent guesses at. A spec's frontmatter is normative — the agent quotes the hex and font family verbatim instead of approximating, and reads the prose sections for intent. If your brand lives somewhere else (a PDF brand guide, a screenshot, pasted hex codes), attach it — attachments and pasted tokens are read more reliably than a described impression.
+
+## Brand is truth for color and type — not for layout
+
+A design spec tells the agent what the brand *looks like*; it does **not** dictate how to compose a video frame. Say what's sacred and let the agent stage the rest:
+
+> Colors and fonts are locked to the brand — keep the exact hexes and the display/body pairing. Layout, spacing, and motion are yours to compose for video.
+
+The engine rationale: web-scale brand values don't survive video. A `1px` border with a `0.06`-opacity shadow is invisible after H.264 compression; a web body size vanishes on a 1080p frame. The brand color, background choice (if the brand is a light canvas, keep it light), fonts, and weight relationships are strict — but type sizes, decorative opacity, and border weight get scaled up for the medium. Over-specifying layout from a web design system fights this; pin the palette and typography, delegate the frame.
+
+## Use the site's own palette and fonts
+
+When there's no spec but there is a brand out there, point at it and let the agent extract:
+
+> Match this site's look — pull its palette and fonts — and make a 20-second launch clip: `https://…`
+
+For a well-known brand, naming it is often enough for the agent to research the palette and typography. One caveat worth stating: a single-page-app homepage often returns a near-empty shell, so if the palette comes back thin, point the agent at a blog, press, or docs page instead. This is the same brand-truth move — the *site* is the source instead of a file.
+
+## Bringing in a Figma frame, brand, or logo
+
+If the brand lives in Figma, ask for it directly — the agent imports it rather than eyeballing a screenshot:
+
+> Bring in the brand tokens from this Figma file, then build the intro: `https://figma.com/…`
+
+> Import this Figma frame as the opening scene and this logo as an SVG: `<links>`
+
+The [Figma import](/guides/figma) path freezes each import as a local asset with recorded provenance (so renders stay deterministic) and imports brand variables as composition brand tokens. Two things worth knowing when you phrase the ask:
+
+- **Import tokens before components.** Say "brand tokens first, then the components" — that's what lets imported component colors link to your brand variables instead of baking in duplicate hexes.
+- **Storyboard frames are states, not slides.** If you point at a strip of scene frames, ask the agent to *reconstruct the motion between them* — a frame showing an element at four positions is one element animating, not four stills to flip through.
+
+## Keeping a multi-video series consistent
+
+For a series — a launch set, a weekly clip, a per-region cut — consistency comes from a **shared source of truth**, not from re-describing the brand each time:
+
+> All four videos share `frame.md` for palette and type. Only the headline and the stat change per video.
+
+Because the runtime exposes every declared brand token as a CSS custom property, the parts that stay constant come from the one spec (or one set of imported Figma tokens), and the parts that vary become [variables](/prompting/variables-and-templating). Change one brand value in the spec and every video re-skins on the next render — you don't touch four files. This is where design systems and templating meet: the brand is shared, the content is parameterized.
+
+## Supplying brand assets by path
+
+Logos, fonts, textures, and product shots are inputs — hand the agent the path, don't ask it to draw them:
+
+> Logo at `assets/logo.svg`, brand font files in `assets/fonts/`, product shot at `assets/hero.png`. Use them; don't invent placeholders.
+
+Prefer an SVG logo (scalable, animatable) over a raster one. State the paths explicitly so the agent wires the real assets instead of generating stand-ins — and so the render is deterministic, with every asset present locally before it starts.
+
+## Supply inputs a workflow accepts — don't fight its preset
+
+The creation workflows (`/product-launch-video`, `/website-to-video`, and the rest) each come with a designed look. The productive move is to feed that look your brand inputs, not to override its composition after the fact:
+
+- ❌ `run /product-launch-video, then restyle every scene to my colors afterward`
+- ✅ `run /product-launch-video with my palette, fonts, and logo as inputs up front`
+
+The engine rationale: a workflow's preset is a coherent, tested system — colors, spacing, motion, and component treatments that hang together. Supplying brand inputs at the start lets it apply your palette and type *within* that system. Restyling scene-by-scene afterward pulls threads out of a design that was balanced as a whole, and you spend more effort fighting the preset than you'd have spent handing it a spec.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Figma Import" icon="figma" href="/guides/figma">
+    Import brand tokens, assets, components, and motion from a Figma file.
+  </Card>
+  <Card title="Variables and templating" icon="sliders" href="/prompting/variables-and-templating">
+    Turn brand tokens into variables that re-skin a whole series from one value.
+  </Card>
+  <Card title="The specification dial" icon="gauge" href="/prompting/specification-dial">
+    How pinning exact hexes and type direction removes drift.
+  </Card>
+  <Card title="Claude Design" icon="message" href="/guides/claude-design">
+    Attach a brand guide or screenshot to seed a first draft from your look.
+  </Card>
+</CardGroup>

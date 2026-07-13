@@ -1,0 +1,24 @@
+---
+title: When to generate artwork
+description: "Code-drawn wins for UI, type, geometry, and 3D; illustration-led hero art comes from an image model, animated as layers."
+---
+
+Code-drawn HTML/CSS/SVG excels where the medium is native: UI mockups, typography, geometric shapes, charts, pixel art, and 3D via Three.js. For **illustration-led** hero art — characters, painterly scenes, sculptural objects — hand-drawn SVG tops out at clipart quality no matter how well you prompt. The fix is a hybrid:
+
+> Generate the hero artwork as an image (via the media-use skill's image generation), then animate it with code. Anything that must move independently — eyelids, light beams, drawing lines — stays a code layer on top of the static art.
+
+Three rules that make this work:
+
+1. **Generate on a solid contrasting background** (magenta works) so the subject keys out cleanly. A light subject on a light background gets silently eaten.
+2. **Key flat vector-style art with a chroma key** (`ffmpeg colorkey`), not AI background removal — `remove-background`'s matting model is tuned for photographic and human subjects and reads flat art unreliably, sometimes keeping the background instead of the subject. Reserve `remove-background` for photographs.
+3. **Put a restraint clause in the generation prompt** ("minimal, lots of negative space") — image models fill the frame by default, and a busy generated texture reads as cheap as bad vector art.
+
+## The difference, side by side
+
+The same brief — four people arm in arm, warm gradient sweaters, flat-illustration style — built both ways. Same animation beats, same craft layer (lighting, atmosphere, grade); the only variable is where the figures came from.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-hand-drawn.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Hand-drawn SVG figures — clean, but the proportions and gesture read as clipart.*
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/artwork-generated.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Generated illustration animated as layers — real anatomy and editorial shading; the animated line still passes behind the figures because the artwork was keyed to transparency.*

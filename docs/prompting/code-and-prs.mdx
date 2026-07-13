@@ -1,0 +1,78 @@
+---
+title: Code changes and PRs
+description: "What to say to turn a GitHub pull request into a code-change explainer — changelog, feature reveal, fix, or refactor walkthrough."
+---
+
+## What this makes
+
+A code-change explainer built from a GitHub pull request. The [`/pr-to-video`](/prompting/overview) workflow reads the PR through `gh` — the diff, commits, files, and contributors — reshapes it into a story, and builds it frame by frame, rendering code beats on a purpose-built diff surface.
+
+The input is a **code change**, not a website or a product page. A PR link (`https://github.com/owner/repo/pull/N`), an `owner/repo#N` ref, or "this PR" in a checked-out repo all work. A product to sell → [`/product-launch-video`](/prompting/product-launch); a topic with no PR → [`/faceless-explainer`](/prompting/explainers). Unsure → start at `/hyperframes`.
+
+## Base prompt
+
+Verified, from the [examples](/prompting/examples) page — a 30-second feature reveal:
+
+> /pr-to-video Make a 30-second 1920x1080 feature-reveal video from [PR URL]. Lead with what users get, not the diff; show the key code change with the `code-diff` block for one beat only; end on version number + repo URL. No narration, kinetic captions instead.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-pr-video.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="Changelog roundup">
+    > /pr-to-video Make a ~40-second 1920x1080 changelog video from [PR URL]. Changelog angle: open with the release line, then one beat per notable change — a short label and a one-line "what it does" each. Show at most two `code-diff` hunks across the whole video. End on version + repo URL. Calm male TTS narration, no captions.
+    
+    <video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/variant-pr-changelog.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+    *Rendered from this prompt with [PR URL] = heygen-com/hyperframes#2092, unedited.*
+
+    A changelog trades depth for breadth — many small changes, each a beat, rather than one change explored deeply. Keep code beats sparse so the pace stays fast. A PR doesn't carry its shipping version — the agent finds it from the release tag or the package manifest on main.
+  </Accordion>
+  <Accordion title="Fix explainer">
+    > /pr-to-video Make a ~40-second 1920x1080 fix-explainer from [PR URL], for developers. Fix angle: state the bug's symptom first, then the root cause, then the one-line fix on the `code-diff` block. End on version + repo URL. No narration, kinetic captions.
+
+    A fix reads as symptom → cause → fix. Lead with what users saw break, not the stack trace — the diff is the payoff, not the opening.
+  </Accordion>
+  <Accordion title="Refactor walkthrough">
+    > /pr-to-video Make a ~70-second 1920x1080 refactor-walkthrough from [PR URL], for developers. Refactor angle: why the old shape hurt, then the new shape, showing the before/after with the `code-morph` block for the key file. End on version + repo URL. Calm male TTS narration.
+
+    A refactor changes shape without changing behavior, so the story is *why* the new structure is better. `code-morph` animates one form transforming into another — the right block when the point is the transition, not a line-by-line delta.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+| Knob | What to say | Why it matters |
+| --- | --- | --- |
+| **Impact vs diff** | "lead with what users get, not the diff" | The video explains the *change*, it doesn't read the diff aloud; opening on impact answers "why should I care?" before the code |
+| **How many hunks** | "one `code-diff` beat only" / "at most two hunks" | Code beats feature 2-4 real hunks total, each a small legible snippet — a whole file is unreadable at video scale |
+| **Which code block** | `code-diff` for a delta · `code-morph` for a refactor · `code-typing` for new code | The block matches the story: a diff shows added/removed lines, a morph shows one shape becoming another |
+| **Angle** | "changelog" / "feature-reveal" / "fix-explainer" / "refactor-walkthrough" | Sets the story shape; the workflow reshapes the PR into it rather than walking files in diff order |
+| **Audience** | "for developers" (default) / "mixed technical" / "non-technical stakeholders" | Shifts how much the narration assumes — a non-technical cut leans harder on impact and lighter on code |
+| **End card** | "end on version number + repo URL" | The conventional close for a code explainer; state what goes on it so it's a real CTA, not an afterthought |
+| **Narration vs captions** | "calm male narration" or "no narration, kinetic captions instead" | Both are supported; captions-only keeps it silent-friendly for social, narration carries a longer walkthrough |
+| **Length** | "~30s" for one headline, up to ~3 min for a large PR | The workflow reads the change size and recommends a tier — a huge PR is a ceiling on story, not a floor to fill |
+
+<Tip>
+  The style is fixed to the workflow's warm-editorial preset with a navy code surface built for diffs — it's what makes the code beats legible. You don't choose a theme here; you choose the angle, the hunks, and the narration.
+</Tip>
+
+## Common failure modes
+
+**Forcing a theme over the preset.** The style is fixed for a reason — the navy code surface is tuned for diff legibility; a foreign theme fights it and produces a compromise (see [rules and anti-patterns](/prompting/rules-and-anti-patterns)).
+- ❌ `/pr-to-video ... dark theme, neon accents`
+- ✅ let the preset carry the look; spend your specificity on the angle and the code beats
+
+**Asking for the whole diff.** A PR video explains the change; it doesn't recite every file. A full diff is unreadable at video scale.
+- ❌ `walk through the entire diff, file by file`
+- ✅ `feature the 2-3 key hunks, each a small legible snippet`
+
+**Opening on the code.** The diff is the payoff, not the hook — lead with what the change means.
+- ❌ `start with the diff, then explain what it does`
+- ✅ `lead with what users get, then show the key hunk`
+
+**Hard-timing a narrated cut.** With narration the spoken length sets the runtime; state a range, not a fixed number.
+- ❌ `a 40-second narrated walkthrough`
+- ✅ `a ~40-second narrated walkthrough`

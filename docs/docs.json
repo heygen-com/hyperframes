@@ -72,6 +72,61 @@
             ]
           },
           {
+            "group": "Prompt Guide",
+            "pages": [
+              "prompting/overview",
+              {
+                "group": "Fundamentals",
+                "pages": [
+                  "prompting/anatomy",
+                  "prompting/examples",
+                  "prompting/specification-dial",
+                  "prompting/vocabulary",
+                  "prompting/iterating",
+                  "prompting/rules-and-anti-patterns"
+                ]
+              },
+              {
+                "group": "Making it look good",
+                "pages": [
+                  "prompting/visual-specs",
+                  "prompting/motion",
+                  "prompting/generated-artwork",
+                  "prompting/recreating-references"
+                ]
+              },
+              {
+                "group": "By video type",
+                "pages": [
+                  "prompting/product-launch",
+                  "prompting/explainers",
+                  "prompting/code-and-prs",
+                  "prompting/music-and-slideshows",
+                  "prompting/captions-and-talking-heads",
+                  "prompting/motion-graphics",
+                  "prompting/remotion-migration"
+                ]
+              },
+              {
+                "group": "By feature",
+                "pages": [
+                  "prompting/transitions",
+                  "prompting/captions-catalog",
+                  "prompting/overlays-and-lower-thirds",
+                  "prompting/code-blocks",
+                  "prompting/data-and-maps",
+                  "prompting/vfx-and-liquid-glass",
+                  "prompting/rendering-and-output",
+                  "prompting/editing-existing-videos",
+                  "prompting/media-and-audio",
+                  "prompting/variables-and-templating",
+                  "prompting/runtimes-and-3d",
+                  "prompting/design-systems"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Guides",
             "pages": [
               "guides/pipeline",
@@ -86,7 +141,6 @@
               "guides/copilot-cli",
               "guides/claude-design",
               "guides/open-design",
-              "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
               "guides/keyframes",
@@ -410,5 +464,11 @@
     "socials": {
       "github": "https://github.com/heygen-com/hyperframes"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/guides/prompting",
+      "destination": "/prompting/overview"
+    }
+  ]
 }

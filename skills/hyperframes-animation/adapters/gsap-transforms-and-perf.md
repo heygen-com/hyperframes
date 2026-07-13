@@ -54,6 +54,7 @@ Animate any custom property. Works for color, length, number — anything CSS wi
 
 - `svgOrigin` sets transform origin in the SVG's global coordinate space (not the element's local box). **Do not** combine `svgOrigin` with `transformOrigin` on the same element — pick one.
 - Animate SVG transform attributes via the same alias names (`x`, `y`, `rotation`) — GSAP handles the SVG-specific quirks.
+- **Runtime-created SVG (`createElementNS`) has no reliable center pivot.** GSAP can't resolve `transformOrigin`/`svgOrigin` to the geometric center of an element built at runtime, so `scale`/`rotation` pivot on the SVG's `(0,0)` origin instead of the shape's middle. Fix: draw the animated geometry centered at local `(0,0)` and place it with a wrapping `<g transform="translate(x,y)">` — the group positions it, the tween scales/rotates it about its own center.
 
 ## Performance Rules
 

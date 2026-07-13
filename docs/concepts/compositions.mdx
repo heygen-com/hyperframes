@@ -37,6 +37,8 @@ You can embed one composition inside another in two ways: loading from an extern
   <Tab title="External file">
     Reference another HTML file with `data-composition-src`. The framework automatically fetches the file, extracts the `<template>` content, mounts it, executes scripts, and registers the timeline.
 
+    `data-composition-src` paths resolve relative to the **project root**, not the referencing file — a nested composition one level deep still writes `compositions/foo.html`, never `../compositions/foo.html`.
+
     ```html index.html
     <div
       id="el-5"

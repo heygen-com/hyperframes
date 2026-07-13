@@ -1,0 +1,75 @@
+---
+title: Music videos and slideshows
+description: "Two music- and slide-driven outputs that look alike in a brief but ship differently — a beat-synced MP4 versus a navigable deck — and how to route to the right one."
+---
+
+## Two outputs that a brief blurs together
+
+"Make a slideshow from these photos and this track" and "make a slideshow deck for my pitch" both say *slideshow*, but they produce different things and route to different workflows. Name the output you want up front.
+
+| You want | Route | Output |
+| --- | --- | --- |
+| Photos / clips cut to a music track, exported as a video | `/music-to-video` | A beat-synced **MP4** with audio |
+| A presentation you click through — slides, reveals, speaker notes | `/slideshow` | A **navigable deck**, not an MP4 |
+
+`/music-to-video` turns a **music track** — an audio file, a video to pull audio from, or a track generated from a mood brief — into a beat-synced video. The music drives all pacing; any photos or clips you supply are cut onto the same beat grid, and a complete video needs zero assets (typography carries it otherwise). There is no narration and no website capture.
+
+`/slideshow` authors a HyperFrames deck — discrete slides with fragment reveals, hotspot branching, and a built-in presenter mode with speaker notes. Its output is the **running deck**, served with `hyperframes present`. Do not point `render` at a deck: it resolves only the first scene and emits a silently truncated MP4. If the user didn't explicitly ask for a slideshow, the skill confirms the deck route before authoring — that's a routing decision, not a style preference. One authoring detail worth knowing: fragment reveal times are absolute positions on the deck's master timeline, not per-slide offsets.
+
+## Base prompt — beat-synced slideshow
+
+The verified starting point: photos cut to a track, exported to a square MP4.
+
+> /music-to-video 20-second 1080x1080 video from ./track.mp3 (pick the best 20 seconds of the track) and the 8 photos in ./shots/. Cut on the beat grid, one photo per bar, punch-in on downbeats, `whip-pan` transitions on phrase changes. End on the last photo with "SUMMER '26" in condensed caps. No TTS.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/example-music-slideshow.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited.*
+
+
+Every timing decision here is delegated to the track's own analysis — you describe the *treatment* ("one photo per bar", "punch-in on downbeats"), and the beat grid supplies the *times*.
+
+## Variants
+
+<AccordionGroup>
+  <Accordion title="Lyric video">
+    > /music-to-video 30-second 1080x1920 lyric video from ./song.mp3 (pick the strongest 30-second section — a verse into the hook). Transcribe the vocals for word timing. Lines rise in one at a time on the beat, big condensed type on a dark grain background; the hook lands with each word punching in on its downbeat. Keyword in each line highlighted in acid green. No photos — typography only. No TTS.
+
+    Word-level timing comes from transcribing the track (or from lyrics you paste, placed on the beat grid). No supplied assets needed — type is the whole video.
+  </Accordion>
+  <Accordion title="Kinetic promo from a mood brief (no track)">
+    > /music-to-video 15-second 1080x1080 kinetic promo. No track supplied — generate one: driving synthwave, high energy. Cut hard on the beat: full-frame word cards ("FASTER", "SHARPER", "SHIP IT") slam in on downbeats, alternating black/white with inverted type, a glitch flash on each phrase change. End on the wordmark "NOVA" holding with a subtle ambient idle. No TTS.
+
+    With no audio supplied, the track is generated from the mood you describe; the beat grid it produces still drives every cut. Fast, high-energy briefs suit this workflow best.
+  </Accordion>
+  <Accordion title="Presentation deck (slideshow)">
+    > /slideshow Build a 5-slide pitch deck, 1920x1080. One idea per slide, each headline a complete-sentence claim (not a label), punchline first. Slide 2 reveals three pain points one at a time as fragments. Slide 3 shows bottom-up market math (accounts × ACV), not a bare "$40B TAM". Add presenter notes to every slide, and a hotspot on slide 3 that branches to a "sizing methodology" detail slide. I'll present it with `hyperframes present`.
+
+    This produces a clickable deck, not a video. Fragments are reveal hold-points inside a slide; the hotspot branches off the main line and returns on Back. Headlines follow the deck's hard rules — complete-sentence claims, one idea + one visual per slide, font no smaller than a 30pt equivalent.
+  </Accordion>
+</AccordionGroup>
+
+## The knobs that matter
+
+**The beat grid.** `/music-to-video` analyzes the track once into energy phases, onsets, rolls, silences, hard stops, and phrases, then cuts at real musical changes. You steer *how* it cuts, not *when*: "one photo per bar" sets cut density, "punch-in on downbeats" adds the accent, "transitions on phrase changes" reserves the visible moves for structural boundaries. On genuinely rhythmic music the grid is trustworthy and cuts snap to the beat; on calm music the grid is a metronome the analyzer imposed, so the skill paces by phrase and energy instead of hard-cutting — say "let it flow, no hard cuts" if the track is ambient.
+
+**Track section — describe, don't timestamp.** Ask for "the best 20 seconds" or "the verse into the hook" and let the analyzer choose boundaries that land on musical anchors. Hard timestamps ("use 0:32–0:52") cut mid-phrase and fight the grid.
+
+**Asset supply.** Zero assets is valid — typography and templates carry a complete video. Any photos or clips you hand it are woven in *on the same beat grid* (beat-cut or Ken Burns), so more assets means more to cut between, not a different pacing model. Point at a directory ("the 8 photos in ./shots/") and name the end card.
+
+**Deck structure (slideshow).** Fragments (reveal hold-points), hotspots + branch sequences (off-line detail slides), and presenter notes are the deck's structural knobs. Ask for them by name — "reveal the bullets as fragments", "branch to a detail slide from a hotspot", "add speaker notes" — and the island wiring follows.
+
+## Failure modes
+
+**Hard track timestamps.** The whole point of `/music-to-video` is that the track's structure sets the cuts. A literal time window ignores the analyzed beat grid and lands cuts mid-phrase.
+- ❌ `use the section from 0:32 to 0:52`
+- ✅ `pick the best 20 seconds of the track`
+
+**Expecting an MP4 from `/slideshow`.** A deck is authored as several top-level scenes with no master-root composition, so `render` resolves only the first one and truncates. The supported outputs are the live `present` deck and per-slide snapshots.
+- ❌ `/slideshow ... then render it to deck.mp4`
+- ✅ `/slideshow ... I'll present it with hyperframes present` — or, if you actually need a rendered video, use `/music-to-video` (beat-synced) or `/general-video`.
+
+**Wrong workflow for the output.** Photos set to music that you'll export and post is `/music-to-video`; a thing you click through live is `/slideshow`. Picking by the word "slideshow" alone builds the wrong deliverable.
+
+<Tip>
+  Both prompts here are unnarrated. `/music-to-video` has no TTS by design; if you want a spoken voice-over instead of a music bed, that's a different workflow (see the router in `/hyperframes`). For the six-part skeleton these prompts share, see [Prompt anatomy](/prompting/anatomy); for adjectives that map to eases and transitions, [Vocabulary](/prompting/vocabulary).
+</Tip>

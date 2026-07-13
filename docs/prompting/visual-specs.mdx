@@ -1,0 +1,28 @@
+---
+title: High-fidelity looks
+description: "Write a visual spec — every element named, positioned, colored, and timed — to carry a specific look in words."
+---
+
+You can carry a specific look in words alone when the prompt reads like a designer's spec — every element named, positioned, colored, and timed. Compare a loose description ("dark night scene, mountain, glowing ring, title fades in") with a spec:
+
+> 8-second 1920x1080 title card. Scene, back to front: #0a0e2a night sky with faint grain; a huge concentric ring system (5 rings, 1px strokes at 8% white opacity, innermost ring glowing #4a5fd9) centered 40% from the top; behind the rings an orange radial glow (#ff6a2b core → transparent, ~300px) igniting at the peak's right shoulder from 2s; a low-poly mountain (6-8 dark navy facets, #141a3d–#1e2650) filling the lower third, a white road S-curving up its face with a soft glow; thin horizontal cloud streaks (white, 6% opacity) drifting right at two heights; a man's silhouette, pure black, ~90px tall, bottom-right, fading in at 2.5s. At 3.5s "SHOWREEL" — thin geometric sans, ~140px, 0.35em tracking, white at 90% — fades in per letter across the ring center, the orange glow bleeding through the O. Slow 4% push-in across the full 8s. No audio.
+
+Every element is a primitive the agent can build directly. Two honest limits:
+
+- **Organic illustration** (drawn characters, painterly texture) can't be fully carried by text — words underdetermine a drawing. Steer to geometric shape language ("flat rounded-geometric figure, circle head, no facial features"), or generate the artwork (see [When to generate artwork](/prompting/generated-artwork)).
+- **Photographic and live-action content** must be supplied as files — mention the paths explicitly.
+
+## Two more worked specs
+
+The same density applied to a product-UI piece and a typographic piece — both one-shot from these exact words. Where a builder had to make a judgment call on the first pass, the spec below pins it, which is the editing loop these specs live by: build, see what the words underdetermined, tighten the words.
+
+> 6-second 1920x1080. A frosted-glass command palette (640x84px, 20px radius, rgba(255,255,255,0.08) fill, 1px rgba(255,255,255,0.25) border, heavy backdrop blur) centered on a #0b0f1a field with two soft accent glows drifting slowly — #5b6cff upper-left, #22d3a5 lower-right, ~400px, 20% opacity. At 0.4s the palette scales in 0.96→1 settling with back.out(1.2). At 0.8s a grey placeholder "Search commands…" types on; at 2.2s it fades out over 0.2s and the query "render 4k" types in white. At 2.8s three result rows (56px tall, 12px gaps: icon square, label, shortcut chip) cascade in as a detached list below the fixed bar, staggered 0.12s, each rising 12px with back.out(1.4). At 4.2s a 10%-opacity #5b6cff fill sweeps left to right across the first row and its shortcut chip pulses once. Rows and glows keep a barely-visible drift to the end. No audio.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/spec-command-palette.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the spec above, unedited.*
+
+> 7-second 1920x1080. Off-black #101014 field with fine static film grain at 4%. The word "PRECISION" in ~220px heavy condensed caps (a heavy system face condensed with scaleX 0.82), white, 0.02em tracking, centered: its letters assemble from alternating top/bottom 40px offsets with power3.out and a 0.05s stagger, starting 0.3s. At 1.8s a 2px hairline rule draws left-to-right beneath the word, 60% of its width, centered. At 2.4s a 40px tabular-mono counter fades in below and ticks 99.999 → 00.001 mm over 2.2s with expo.out deceleration. At 5.2s the whole lockup eases to 1.03 scale over 0.5s while the word cools from white to #d8d8de, then settles into a slow ±1% breathing idle to the end. No audio.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/spec-precision-type.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the spec above, unedited.*
+

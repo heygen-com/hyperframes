@@ -1,0 +1,54 @@
+---
+title: Rules and anti-patterns
+description: "The technical rules that keep renders correct, and the prompt patterns that cause friction."
+---
+
+## Rules to know
+
+The skills enforce these automatically, but if you hand-edit compositions or debug issues, these are the rules that matter:
+
+1. **Register all timelines** on `window.__timelines` — the renderer can't seek animations it doesn't know about.
+2. **Video elements must be `muted`** — audio goes in separate `<audio>` elements so the renderer can mix it.
+3. **No `Math.random()`** — random values produce different frames on each render, breaking determinism. Use a seeded PRNG (e.g. mulberry32) if you need pseudo-random values.
+4. **Synchronous timeline construction** — no `async`/`await` or `fetch()` during GSAP timeline setup.
+5. **Timed elements need `class="clip"`** — plus `data-start`, `data-duration`, and `data-track-index`.
+6. **Add entrance animations to every scene** — elements appearing without animation feel broken on video.
+7. **Add transitions between scenes** — jump cuts between scenes are almost always unintentional in composed video.
+
+<Warning>
+  Rules 1–5 are technical requirements — breaking them produces incorrect renders. Rules 6–7 are best practices that the skills apply by default. You can override them when you have a reason to.
+</Warning>
+
+
+
+## Anti-patterns
+
+Each one causes friction or wrong output for a specific engine reason — with the fix.
+
+**Don't ask for React / Vue components.** Compositions are plain HTML with `data-*` attributes and a GSAP timeline; framework components force a translation step.
+- ❌ `build a React component for the intro`
+- ✅ `build the intro scene` (the agent writes composition HTML directly)
+
+**Don't over-spec resolution or framerate.** Defaults (1920×1080, 30fps) render fast and look great; higher specs slow rendering meaningfully.
+- ❌ `render in 4K 60fps` (for a social clip)
+- ✅ say nothing — or `4K` only when the delivery target actually needs it
+
+**Don't skip the slash command.** Without `/hyperframes`, the agent guesses at HTML video conventions instead of loading the framework's actual rules.
+- ❌ `make me a video of...`
+- ✅ `/hyperframes make me a video of...`
+
+**Don't paste raw error logs.** `check` localizes the problem first (lint, then a browser gate); a bare log makes the agent re-derive what the tool already knows.
+- ❌ pasting 200 lines of console output
+- ✅ `check reports a missing asset in scene 2 — fix it`
+
+**Don't assume the agent knows your assets.** It will look, but a path skips the search.
+- ❌ `use my logo`
+- ✅ `use assets/logo.svg`
+
+**Don't override a workflow's designed style.** Each workflow skill carries an art-directed preset; fighting it produces a compromise, not your theme.
+- ❌ `/pr-to-video ... dark theme`
+- ✅ let the preset carry the look, or use a freeform build when you need full style control
+
+**Don't hard-time a verbatim script.** With supplied narration text, duration follows the spoken words.
+- ❌ `a 60-second explainer from this script: ...`
+- ✅ `a ~60-second explainer from this script: ...`

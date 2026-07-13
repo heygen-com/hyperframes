@@ -1,0 +1,34 @@
+---
+title: Motion that reads premium
+description: "Seven motion-grammar rules from frame-by-frame study of professional work — nothing stops, the camera acts, action overlaps, imperfection stays reproducible."
+---
+
+Static frames can be perfect and the video still feels cheap if the motion is dead. Professional motion design follows a grammar you can put directly in prompts:
+
+1. **Nothing ever fully stops.** Every "hold" carries ambient idle motion — a 1-2% breathing scale, slow drift, a shimmer. Never write "holds motionless"; write "settles into a gentle ambient idle." A frozen final second is the single biggest cheap-motion tell.
+2. **The camera is an actor.** Give each scene one continuous camera move — a 4-8% push-in, a slow orbit, parallax between layered planes — easing gently but never settling on screen (compute the ease over a window slightly longer than the render).
+3. **Overlapping action.** No two elements share a start or end time. Entrances stagger at irregular offsets; the next element begins while the last is still settling.
+4. **Overshoot and follow-through.** Every pop scales past its target and settles back; letters can tumble in individually with rotation.
+5. **Depth planes.** One or two large, heavily-blurred foreground elements drifting near the lens sell depth instantly.
+6. **Match pacing to genre.** Showreel-style cuts run 1.5-4 seconds per idea; a stretched 8-second version of a 2-second idea feels slow no matter how it's animated.
+7. **Handmade imperfection stays reproducible.** A stop-motion or hand-animated feel wants irregular timing, not machine-smooth eases — but true unseeded randomness breaks the render: HyperFrames must produce the identical frame every time it seeks to the same point, and `Math.random()` can't promise that. Seed a PRNG once at composition start instead, and step discrete elements between held positions (a "two-frame hold": land, hold two frames, jump to the next offset) rather than tweening continuously between them. The irregularity is real — it just comes from a seed, not from chance.
+
+## The grammar, measured
+
+The same composition built twice — identical content, identical layout; the only variable is the motion treatment. The first build commits the anti-patterns above: simultaneous identical entrances, no camera, a frozen final 2.4 seconds. The second applies the six rules.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/motion-before.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Every anti-pattern: tiles enter together, nothing overlaps, the last seconds are a freeze-frame.*
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/motion-after.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*The six rules: staggered overshoot entrances, a continuous 5% push, ambient idle, a blurred foreground plane, sparkline draw-ins as secondary motion.*
+
+The difference is measurable, not just visible: in the final second the frozen build has bit-identical consecutive frames, while the motion-grammar build changes every single frame — corroborated by the encoder (211KB vs 2.5MB for the same content). A frozen final second is the cheap-motion tell you can test for.
+
+## Handmade, still deterministic
+
+Rule 1's ambient idle is *continuous* — a slow, smooth breathing scale. Rule 7 is a different tool for a different job: when the brief wants something that reads as physically hand-animated (paper cutouts, stop-motion, a wobbly hand-drawn line), continuous easing is the wrong texture — it reads as digital no matter how organic the curve. What you want is irregular, but reproducible:
+
+> A paper-cutout garden scene: flowers, leaves, and a bee drifting on visible wires, like stop-motion. Seed a random offset per element at the start (same seed every render) so each leaf sways to a slightly different rhythm, but hold each position for exactly two frames before stepping to the next — discrete jumps, not a smooth tween. It should read as intentionally handmade, not glitchy.
+
+Name the seed and the hold length explicitly — "seeded" and "two-frame hold" are the two words that keep an agent from reaching for `Math.random()` and quietly breaking every re-render. Ask for it, and seeking to frame 214 twice gives you the identical frame twice, exactly like every other HyperFrames render — the imperfection is designed in, not left to chance.

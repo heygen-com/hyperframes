@@ -1,0 +1,104 @@
+---
+title: Media and audio
+description: "Ask for the voiceover, music, sound, captions, cutouts, and assets a composition needs — with the precise, unambiguous phrasing the media pipeline acts on."
+---
+
+HyperFrames owns media *playback*; a companion media pipeline resolves everything else — voice, music, sound effects, images, icons, logos, captions, and background removal. You reach all of it by describing what the composition needs, and the agent resolves each need to a frozen local file. The craft here is precision: vague media asks ("add some music," "no sound") are the ones that come back wrong, because the pipeline does exactly what the words say.
+
+## Voiceover (TTS)
+
+Text-to-speech runs locally through Kokoro — no API key needed — with a HeyGen TTS upsell behind it. Describe the content and the agent picks a fitting voice, or name the voice, tone, and speed directly:
+
+> Generate narration for this script with a professional female voice.
+
+> Add TTS voiceover, British male voice, at 1.1× speed.
+
+The [Vocabulary](/prompting/vocabulary#text-to-speech-voices) table maps content types to Kokoro voices (for example `af_heart` / `af_nova` for a product demo, `am_adam` / `bf_emma` for a tutorial, `af_sky` / `am_michael` for marketing). Name one directly if you already know it; otherwise describe the read and let the agent choose.
+
+- ❌ `add a voice`
+- ✅ `warm, unhurried female narration of the quoted script` — tone and pace are what actually change the delivery
+
+## Background music
+
+Music resolves from a large catalog by mood, and it should almost always sit *under* the narration, not compete with it. Give the mood **and** a loudness target — the pipeline can duck and normalize to a level, so an explicit target lands a mix instead of a guess:
+
+> Add subtle electronic BGM, kept under −18 dB so it stays beneath the voiceover.
+
+> Upbeat tech-launch music bed at a low level, ducking under narration.
+
+- ❌ `add background music` — you'll get a full-volume track fighting the VO
+- ✅ `subtle background music, ducked ~12 dB under the voice` — a mix instruction the pipeline can execute
+
+<Tip>
+  A stated loudness target ("under −18 dB," "ducked under the voice") is the difference between music that supports the piece and music that buries it. When there's narration, always say the bed goes under it.
+</Tip>
+
+## Sound effects
+
+SFX resolve from a small bundled library plus the catalog. Cue them to specific moments — a transition, a stamp-in, an impact — rather than sprinkling them:
+
+> Add a whoosh on each of the three scene transitions.
+
+> Put a soft click on the button press at 0:04.
+
+## Captions and transcription
+
+Captions come from word-level timestamps. When you generate a voiceover, the timing comes with it; for existing footage, transcription produces the timing (Parakeet by default, with a whisper.cpp fallback). Scaffolding a project from a source video can generate captions from its audio directly.
+
+> Transcribe the narration and add karaoke-style captions synced to it.
+
+> Generate captions from `assets/interview.mp4` and style them hype, scale-pop.
+
+Caption *look* is its own vocabulary (tone, size, per-word emphasis) — see [Captions catalog](/prompting/captions-catalog) for the styles. This page is about producing the timed text; that page is about styling it.
+
+## Background removal (transparent cutouts)
+
+The `remove-background` command mattes a subject out of a video or image locally and hands you a transparent WebM you can drop into any scene as a `<video>`:
+
+> Remove the background from `assets/presenter.mp4` and float the subject over the scene.
+
+One caveat is load-bearing: the built-in model is **purpose-built for people** — head-and-shoulders or full-body, reasonably stable framing, a background that contrasts with the subject. It returns a mostly-empty mask on **non-human subjects** (products, animals, objects). If you need to cut out a product, say so — the agent should route to a different tool rather than run the person model and get nothing.
+
+- ❌ `remove the background from this product shot` with the built-in command — the human-matting model can't see it
+- ✅ `matte the presenter out of assets/talk.mp4` (person) — or, for a product, flag that it's a non-human subject so a different matter is used
+
+The [Remove background guide](/guides/remove-background) covers the person-only caveat, the two-layer plate for text-behind-subject, and alternatives for objects and hair-fine mattes.
+
+## Video-in-video and picture-in-picture
+
+Layering footage — a talking head over a scene, a subject in front of a headline, PiP inset — is a compositing prompt. Two grounded rules keep it frame-accurate, and the agent applies them for you, but naming the layout you want helps:
+
+> Put the transparent presenter cutout in the bottom-right, over the chart scene.
+
+> Layer the headline *behind* the presenter so their silhouette occludes the text.
+
+<Note>
+  Two mechanics the workflow skills handle automatically (from the [Remove background guide](/guides/remove-background#compositing-patterns-and-pitfalls)): a cutout that reveals into view is wrapped in a non-timed `<div>` and the *wrapper* is animated (the framework forces `opacity: 1` on timed clips, so animating the video directly does nothing); and both the base video and the cutout mount at `data-start="0"` so their decoders stay in sync at the cut. You rarely need to say this — but it's why "late-mounting" a PiP clip can land a frame off.
+</Note>
+
+## The supplied-assets rule
+
+The single most reliable media instruction is an explicit path. The agent will search when you describe an asset, but a path removes every ambiguity about *which* file — and for your own brand assets, it's the only way to guarantee the right one:
+
+- ❌ `use my logo`
+- ✅ `use assets/logo.svg`
+
+This matters even when resolution would otherwise work: brand and entity assets should point at *your* file, not a resolved lookalike. (Third-party logos are a separate case — the pipeline pulls official marks from a logo cascade and never hand-redraws them, so "add the LinkedIn logo" is fine; "add my company's logo" needs a path.)
+
+## Say what "no sound" actually means
+
+The most common audio mistake is a negative that means less than you think. "No narration" removes the voiceover — it does **not** silence music or sound effects. If you want genuine silence, say so:
+
+- ❌ `no narration` when you mean a completely silent video — music and SFX can still be added
+- ✅ `no audio at all` — the unambiguous way to ask for silence
+
+This mirrors the negatives discipline in [Anatomy](/prompting/anatomy): close the gap explicitly, because the engine acts on the literal words.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Vocabulary" href="/prompting/vocabulary">Voice names, caption tones, and audio-reactive mappings</Card>
+  <Card title="Captions catalog" href="/prompting/captions-catalog">Styling the timed text this page produces</Card>
+  <Card title="Remove background guide" href="/guides/remove-background">The matting command, its person-only caveat, and alternatives</Card>
+  <Card title="Video components" href="/guides/video-components">Installable overlays, captions, and effects</Card>
+</CardGroup>

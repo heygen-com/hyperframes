@@ -1,0 +1,101 @@
+---
+title: VFX and liquid glass
+description: "Prompt device mockups, liquid-glass UI, shatter/portal/magnetic moments, and ambient polish — and know which effects need the canvas pipeline."
+---
+
+This is the showy end of the catalog: 3D device mockups, frosted-glass Apple UI, and cinematic moments where HTML shatters or gets sucked through a portal. Two groups do the work — the [HTML-in-Canvas](/catalog/blocks/vfx-iphone-device) blocks (real WebGL, live HTML rendered as GPU textures) and the [Effects](/catalog/components/vignette) components (lightweight CSS polish). Knowing which is which is the difference between an effect that renders and one that surprises you. All of it slots into the [one-shot skeleton](/prompting/anatomy) at the "technique" step.
+
+### Device mockups
+
+To put your product UI inside a real phone or laptop, name [`vfx-iphone-device`](/catalog/blocks/vfx-iphone-device) — real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, a product-review camera choreography, and a 360° turntable. For a styled iOS/macOS *environment* (home screen, desktop, dock) rather than a bare device, reach for the liquid-glass system blocks below.
+
+> /product-launch-video 15-second 1920x1080 video. Our dashboard UI lives on the screen of a real iPhone 15 Pro Max that turntables slowly under product-review lighting, then a MacBook Pro slides in beside it showing the same UI wider. Use the `vfx-iphone-device` registry block. No narration.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-device-mockup.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above (the block's demo UI on screen), unedited.*
+
+
+**Ask for the device *and* what's on its screen.** The block renders live HTML into the screen but ships with its own demo UI — describing your UI (or pointing at screenshots/paths) is what makes the agent replace the block's screen content instead of shipping the demo.
+- ❌ `show my app on an iPhone` (you'll get the block's built-in demo UI)
+- ✅ `our dashboard UI (screenshots in assets/ui/) on the screen of the iPhone 15 Pro Max, turntabling`
+
+### Liquid-glass UI treatments
+
+The liquid-glass blocks are frosted-glass Apple-style UI floating over an aurora shader background. Pick by the surface you want:
+
+| You want…                                        | Name this block                                                  | Length |
+| ------------------------------------------------ | ---------------------------------------------------------------- | ------ |
+| A full iOS 26 home screen on a 3D iPhone          | [`ios26-liquid-glass`](/catalog/blocks/ios26-liquid-glass)       | 15s    |
+| A macOS Tahoe desktop on a 3D MacBook             | [`macos-tahoe-liquid-glass`](/catalog/blocks/macos-tahoe-liquid-glass) | 15s |
+| Glass notification cards                          | [`liquid-glass-notification`](/catalog/blocks/liquid-glass-notification) | 8s |
+| A glass context menu                              | [`liquid-glass-context-menu`](/catalog/blocks/liquid-glass-context-menu) | 8s |
+| Glass media / playback controls                   | [`liquid-glass-media-controls`](/catalog/blocks/liquid-glass-media-controls) | 8s |
+| Glass stat cards, panels, pill chips              | [`liquid-glass-widgets`](/catalog/blocks/liquid-glass-widgets)   | 8s     |
+
+The four `liquid-glass-*` panel blocks share the aurora-shader stage, so they compose cleanly into one scene; `ios26-liquid-glass` and `macos-tahoe-liquid-glass` are complete device environments and generally stand alone.
+
+> 8-second 1920x1080 video. Frosted glass notification cards drift in and stack over an aurora shader background, each reading a fake alert ("Build passed", "Deploy live", "0 incidents"). Use the `liquid-glass-notification` registry block. No audio.
+
+**"Liquid glass" means the block, not a filter you're describing.** These are complete WebGL stages; asking for "a glassy blur on my div" gets you a CSS `backdrop-filter`, not this look.
+- ❌ `add a liquid glass effect over my text`
+- ✅ `use the liquid-glass-widgets registry block for the stat cards`
+
+### Shatter, portal, magnetic, and cursor moments
+
+The `vfx-*` blocks are single cinematic beats — spend them on a transition or a reveal, not a whole video:
+
+| The moment                                       | Name this block                                     | Length |
+| ------------------------------------------------ | --------------------------------------------------- | ------ |
+| HTML shatters into glass fragments               | [`vfx-shatter`](/catalog/blocks/vfx-shatter)        | 12s    |
+| A dimension breach with volumetric light         | [`vfx-portal`](/catalog/blocks/vfx-portal)          | 10s    |
+| A magnetic-field particle visualization          | [`vfx-magnetic`](/catalog/blocks/vfx-magnetic)      | 15s    |
+| HTML floating over an organic liquid surface     | [`vfx-liquid-background`](/catalog/blocks/vfx-liquid-background) | 12s |
+| A dramatic text reveal with chromatic shadow rays | [`vfx-text-cursor`](/catalog/blocks/vfx-text-cursor) | 8s    |
+
+> /motion-graphics 8-second 1920x1080 video. Beat 1 (0-4s): a landing-page hero holds under directional light. Beat 2 (4-6s): the whole page shatters into glass fragments that scatter. Beat 3 (6-8s): bold white text slams in on black. Use the `vfx-shatter` registry block. No narration, no image or media files.
+
+**Name the exact effect — "explode," "break," "burst" don't map.** Each block is a specific simulation.
+- ❌ `make the UI explode`
+- ✅ `the page shatters into glass fragments` → `vfx-shatter`, or `gets pulled through a portal` → `vfx-portal`
+
+### Ambient polish
+
+The [Effects](/catalog/components/vignette) components are lightweight, pure-CSS finishing passes you layer *on top* of a finished scene — grain, vignette, a light sweep, a subtle push:
+
+| Say this                       | Component                                              |
+| ------------------------------ | ------------------------------------------------------ |
+| Film grain / texture           | [`grain-overlay`](/catalog/components/grain-overlay)   |
+| Darkened cinematic edges       | [`vignette`](/catalog/components/vignette)             |
+| A light sweep across text      | [`shimmer-sweep`](/catalog/components/shimmer-sweep)   |
+| Slow push-in on a card         | [`parallax-zoom`](/catalog/components/parallax-zoom)   |
+| Card pulls back to reveal siblings | [`parallax-unzoom`](/catalog/components/parallax-unzoom) |
+| Screen dissolves into a grid   | [`grid-pixelate-wipe`](/catalog/components/grid-pixelate-wipe) |
+
+These are the ambient layer of the [motion grammar](/prompting/motion): grain and a slow `parallax-zoom` keep a "held" beat alive instead of freezing. Never write "holds motionless" — a still final second is the biggest cheap-motion tell; let a grain overlay and a 2% push carry the hold.
+
+> 6-second 1920x1080 video. A product logo settles center-frame, then holds — but keep it alive with a film grain overlay and a slow 3% push-in, plus one shimmer sweep across the wordmark at 4s. Use the `grain-overlay`, `parallax-zoom`, and `shimmer-sweep` registry components. No audio.
+
+**Reach for grain over a literal freeze.** The engine holds the final state exactly as written.
+- ❌ `logo appears and holds still to the end`
+- ✅ `logo settles, then a grain overlay and slow push keep the hold breathing` (see [ambient idle](/prompting/motion))
+
+### When an effect needs the canvas pipeline
+
+The distinction that trips people up: the **HTML-in-Canvas blocks are not CSS**. The device mockups, liquid-glass stages, and `vfx-*` blocks render live DOM into WebGL textures via the experimental `drawElementImage` API — which needs a Chrome flag. The [HTML-in-Canvas guide](/guides/html-in-canvas) documents the real behavior:
+
+- **Rendering enables the flag automatically** (`--enable-features=CanvasDrawElement`), including inside Docker — so a video render of these blocks works with no setup.
+- **Live preview in the Studio needs the flag turned on manually** (`chrome://flags/#canvas-draw-element` → *Enabled* → restart). Without it, these blocks fall back rather than showing the effect in preview.
+- The blocks **feature-detect and degrade gracefully**, so a browser without the flag won't crash — it just won't show the WebGL treatment.
+
+The Effects components above have none of this — they're plain CSS and animate everywhere, preview included. So if you need something visible in Studio preview today with zero setup, prefer the CSS Effects; the HTML-in-Canvas group is where the flag caveat lives.
+
+<Warning>
+  Don't promise a stakeholder a live Studio preview of a liquid-glass or device block without confirming the Chrome flag is enabled on that machine — the rendered MP4 is unaffected, but the in-browser preview may fall back. See the [HTML-in-Canvas guide](/guides/html-in-canvas).
+</Warning>
+
+### Where to go next
+
+- [Anatomy of a one-shot prompt](/prompting/anatomy) — the skeleton, and quoting on-screen copy.
+- [Motion that reads premium](/prompting/motion) — the ambient-idle rule these polish layers serve.
+- [Copy-paste examples](/prompting/examples) — a `vfx-liquid-background` social-card prompt to adapt.
+- [HTML-in-Canvas guide](/guides/html-in-canvas) — how `drawElementImage` works and the flag details.

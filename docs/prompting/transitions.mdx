@@ -1,0 +1,89 @@
+---
+title: Transitions
+description: "Map energy and mood to named shader and CSS transition blocks, and prompt them per seam."
+---
+
+## What transitions do and when they trigger
+
+A transition tells the viewer how two scenes relate — a crossfade says "this continues," a whip pan says "next point," a burn says "something changed." Any composition with more than one scene needs them: without a transition, a scene change reads as an unintentional jump cut (see [rules and anti-patterns](/prompting/rules-and-anti-patterns)). The skills add transitions by default, so prompts trigger this layer whenever you describe scene changes, crossfades, wipes, reveals, or a mood ("warm," "clinical," "glitchy") — or when you name a block directly.
+
+Two families, both first-class:
+
+- **[Shader transitions](/catalog/blocks/cross-warp-morph)** composite both scenes per-pixel on a WebGL canvas — they warp, dissolve, and morph in ways CSS cannot. Reach for these when the *handoff itself* is a moment (a hero reveal, a topic pivot with weight).
+- **CSS transitions** animate the scene containers with opacity, transforms, clip-path, and filters. Simpler and lighter; reach for these for the 60–70% of ordinary scene changes where the content is just continuing.
+
+Choose by the effect you want, not by which is easier. See also the transitions table in [vocabulary](/prompting/vocabulary).
+
+<Note>
+  The catalog pages linked here are standalone demos of each effect. In a real multi-scene build the agent wires the same effects through the `@hyperframes/shader-transitions` package (`HyperShader.init`) — you never need to say that; naming the transition is enough.
+</Note>
+
+## Energy → transition
+
+Pick **one primary** transition for most scene changes, plus one or two accents for topic changes and the climax. Never use a different transition on every seam — that reads as chaos, not design.
+
+| Energy | Shader primary | CSS primary | Feels like |
+| ------ | -------------- | ----------- | ---------- |
+| **Calm** (wellness, brand story, luxury) | [`cross-warp-morph`](/catalog/blocks/cross-warp-morph), [`thermal-distortion`](/catalog/blocks/thermal-distortion) | [`transitions-blur`](/catalog/blocks/transitions-blur), [`transitions-dissolve`](/catalog/blocks/transitions-dissolve) | Soft, slow, drifting |
+| **Medium** (corporate, SaaS, explainer) | [`whip-pan`](/catalog/blocks/whip-pan), [`cinematic-zoom`](/catalog/blocks/cinematic-zoom) | [`transitions-push`](/catalog/blocks/transitions-push), [`transitions-cover`](/catalog/blocks/transitions-cover) | Clean, directional, decisive |
+| **High** (promos, sports, music, launch) | [`ridged-burn`](/catalog/blocks/ridged-burn), [`glitch`](/catalog/blocks/glitch), [`chromatic-radial-split`](/catalog/blocks/chromatic-radial-split) | [`transitions-scale`](/catalog/blocks/transitions-scale), [`transitions-destruction`](/catalog/blocks/transitions-destruction), [`transitions-light`](/catalog/blocks/transitions-light) | Fast, punchy, aggressive |
+
+## Mood → transition
+
+Energy sets tempo; mood sets meaning. Describe the brand feeling and the agent picks a matching block.
+
+| Mood | Shader | CSS |
+| ---- | ------ | --- |
+| **Warm / inviting** | [`light-leak`](/catalog/blocks/light-leak), [`thermal-distortion`](/catalog/blocks/thermal-distortion), [`cross-warp-morph`](/catalog/blocks/cross-warp-morph) | [`transitions-light`](/catalog/blocks/transitions-light), [`transitions-blur`](/catalog/blocks/transitions-blur) |
+| **Cold / clinical** | [`gravitational-lens`](/catalog/blocks/gravitational-lens) | [`transitions-mechanical`](/catalog/blocks/transitions-mechanical), [`transitions-grid`](/catalog/blocks/transitions-grid) |
+| **Editorial / magazine** | [`whip-pan`](/catalog/blocks/whip-pan) | [`transitions-push`](/catalog/blocks/transitions-push) |
+| **Tech / futuristic** | [`glitch`](/catalog/blocks/glitch), [`chromatic-radial-split`](/catalog/blocks/chromatic-radial-split) | [`transitions-grid`](/catalog/blocks/transitions-grid) |
+| **Tense / edgy** | [`ridged-burn`](/catalog/blocks/ridged-burn), [`glitch`](/catalog/blocks/glitch), [`domain-warp-dissolve`](/catalog/blocks/domain-warp-dissolve) | [`transitions-distortion`](/catalog/blocks/transitions-distortion) |
+| **Playful / fun** | [`ripple-waves`](/catalog/blocks/ripple-waves), [`swirl-vortex`](/catalog/blocks/swirl-vortex) | [`transitions-3d`](/catalog/blocks/transitions-3d), [`transitions-radial`](/catalog/blocks/transitions-radial) |
+| **Dramatic / cinematic** | [`cinematic-zoom`](/catalog/blocks/cinematic-zoom), [`gravitational-lens`](/catalog/blocks/gravitational-lens), [`domain-warp-dissolve`](/catalog/blocks/domain-warp-dissolve) | [`transitions-scale`](/catalog/blocks/transitions-scale) |
+| **Premium / luxury** | [`cross-warp-morph`](/catalog/blocks/cross-warp-morph), [`thermal-distortion`](/catalog/blocks/thermal-distortion) | [`transitions-blur`](/catalog/blocks/transitions-blur), [`transitions-dissolve`](/catalog/blocks/transitions-dissolve) |
+| **Retro / analog** | [`light-leak`](/catalog/blocks/light-leak) | [`transitions-light`](/catalog/blocks/transitions-light) |
+
+Special-purpose seams: [`flash-through-white`](/catalog/blocks/flash-through-white) for a bright cut on an impact beat, [`sdf-iris`](/catalog/blocks/sdf-iris) for a clean iris reveal into a hero shot.
+
+## Example prompts
+
+Name the block and the seam — transitions are the one place where per-seam control usually beats letting the agent decide.
+
+> /general-video Six-scene SaaS explainer. Use [`whip-pan`](/catalog/blocks/whip-pan) as the primary transition between related points, and one [`cinematic-zoom`](/catalog/blocks/cinematic-zoom) into the final pricing reveal. Medium energy, ~0.4s each.
+
+<video controls muted loop playsinline preload="metadata" src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/validate-transitions.mp4" style={{ borderRadius: "0.5rem", marginTop: "0.75rem" }}></video>
+*Rendered from the prompt above, unedited — whip-pan on four seams, cinematic-zoom into the pricing reveal.*
+
+
+> Between beats 2 and 3, transition with [`swirl-vortex`](/catalog/blocks/swirl-vortex); keep every other seam on a plain blur crossfade.
+
+> Warm transitions for this wellness brand — [`light-leak`](/catalog/blocks/light-leak) between scenes, nothing sharp or mechanical. Slow, 0.6–0.8s.
+
+> Music promo, high energy. [`glitch`](/catalog/blocks/glitch) on the phrase changes, [`ridged-burn`](/catalog/blocks/ridged-burn) on the drop. Fast cuts, 0.15–0.25s.
+
+## Knobs
+
+- **Duration** follows energy: calm 0.5–0.8s, medium 0.3–0.5s, high 0.15–0.3s. Say a number to pin it.
+- **Primary + accents.** One primary carries most seams; spend your boldest accent on the climax. State the split ("`whip-pan` throughout, one `ridged-burn` on the reveal").
+- **Per-seam placement.** "on phrase changes," "between beats 2 and 3," "into the final scene" all bind a transition to a specific cut.
+- **Blur intensity** (CSS blur crossfades): heavier (20–30px) for calm, light (3–6px) for high energy.
+- **Easing presets:** `snappy`, `smooth`, `gentle`, `dramatic`, `instant`, `luxe` map to tuned duration/ease pairs.
+
+## Failure modes
+
+**Don't fade the outgoing scene out, then fade the next one in.** The renderer holds each scene's final state, so an explicit fade-out followed by an entrance renders as a jump cut with a dip in the middle — not a transition. The transition *is* the exit; both scenes hand off at the same instant.
+- ❌ `fade scene 1 out, then fade scene 2 in`
+- ✅ `cross-warp-morph from scene 1 to scene 2`
+
+**Don't ask for a different transition on every seam.** A new effect at each cut reads as noise; consistency is what makes the one bold accent land.
+- ❌ `use a different transition between each scene`
+- ✅ `whip-pan as the primary, one glitch on the hero reveal`
+
+**Don't leave "add transitions" unqualified when tone matters.** Bare requests get a sensible default; if the brand feeling is load-bearing, name the energy or mood (see [the specification dial](/prompting/specification-dial)).
+- ❌ `add some transitions`
+- ✅ `medium-energy editorial transitions — whip-pan primary`
+
+**Don't invent transition names.** Only the blocks in the [shader](/catalog/blocks/cross-warp-morph) and CSS transition groups exist; a made-up name (`page-curl`, `star-iris`) sends the agent guessing at raw GLSL or an unsupported CSS effect.
+- ❌ `add a page-curl transition`
+- ✅ pick a real block, e.g. `sdf-iris` for an iris reveal
