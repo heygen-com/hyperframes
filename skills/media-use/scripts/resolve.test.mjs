@@ -379,6 +379,20 @@ test("--help exits 0", () => {
   assert.ok(out.includes("--stats"));
 });
 
+test("--from registers a derived video as documented", () => {
+  setup();
+  const source = join(tmp, "derived.mp4");
+  writeFileSync(source, "derived video bytes");
+
+  const out = runResolve(["--from", source, "--type", "video", "--project", tmp, "--json"]);
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.type, "video");
+  assert.match(parsed.path, /^\.media\/video\/video_001\.mp4$/);
+  assert.equal(readManifest(tmp)[0]?.type, "video");
+  cleanup();
+});
+
 test("unknown type error lists grade and lut", () => {
   try {
     runResolve(["--type", "bogus", "--intent", "x"], { stdio: "pipe" });

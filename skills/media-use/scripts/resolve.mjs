@@ -19,6 +19,8 @@ import { findGlobalBySha } from "./lib/cache.mjs";
 import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
+
+const INGEST_TYPES = [...listTypes(), "video"];
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
 import {
   freezeLibraryLut,
@@ -720,8 +722,8 @@ async function resolveColor(type, intent, options) {
 }
 
 async function ingest(src) {
-  if (!type || !listTypes().includes(type)) {
-    console.error(`error: --from requires --type (one of: ${listTypes().join(", ")})`);
+  if (!type || !INGEST_TYPES.includes(type)) {
+    console.error(`error: --from requires --type (one of: ${INGEST_TYPES.join(", ")})`);
     process.exit(2);
   }
   const isUrl = /^https?:\/\//i.test(src);
@@ -1135,6 +1137,7 @@ const DEFAULT_EXT = {
   icon: ".svg",
   logo: ".svg",
   brand: ".png",
+  video: ".mp4",
   grade: ".cube",
   lut: ".cube",
 };
