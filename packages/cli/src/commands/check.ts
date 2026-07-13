@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand, parseArgs } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
@@ -39,82 +39,85 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 export function createCheckCommand(
   dependencies: CheckCommandDependencies = DEFAULT_COMMAND_DEPENDENCIES,
 ) {
+  const argsDefinition = {
+    dir: { type: "positional", description: "Project directory", required: false },
+    json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+    samples: {
+      type: "string",
+      description: "Number of midpoint samples across the duration (default: 9)",
+      default: "9",
+    },
+    at: {
+      type: "string",
+      description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
+    },
+    "at-transitions": {
+      type: "boolean",
+      description:
+        "Also sample at every tween start/end boundary (plus segment midpoints) to catch transient overlaps at transition seams",
+      default: false,
+    },
+    "max-transition-samples": {
+      type: "string",
+      description:
+        "Optional cap on transition-derived samples; when it truncates, the omitted count is reported (default: unlimited)",
+    },
+    "max-issues": {
+      type: "string",
+      description: "Maximum issues to print or return after static collapse (default: 80)",
+      default: "80",
+    },
+    "collapse-static": {
+      type: "boolean",
+      description: "Collapse repeated static issues across samples (default: true)",
+      default: true,
+    },
+    tolerance: {
+      type: "string",
+      description: "Allowed pixel overflow before reporting an issue (default: 2)",
+      default: "2",
+    },
+    timeout: {
+      type: "string",
+      description: "Ms to wait for scripts and media to settle initially (default: 3000)",
+      default: "3000",
+    },
+    contrast: {
+      type: "boolean",
+      description: "Run the WCAG AA contrast pass (enabled by default)",
+      default: true,
+    },
+    strict: {
+      type: "boolean",
+      description: "Exit non-zero on warnings too",
+      default: false,
+    },
+    snapshots: {
+      type: "boolean",
+      description: "Save the five contrast-pass PNGs under snapshots/",
+      default: false,
+    },
+    "caption-zone": {
+      type: "string",
+      description:
+        'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
+    },
+    "frame-check": {
+      type: "string",
+      description:
+        'Bare --frame-check uses defaults (tol=2px, severity=warning, seek=.5; breach floor=max(120px, 6% of shorter canvas edge)); or pass "severity=error;seek=.25,.75;tol=4" to tune',
+    },
+  } as const;
+
   return defineCommand({
     meta: {
       name: "check",
       description:
         "Run lint, runtime, layout, motion, and WCAG contrast verification in one browser session",
     },
-    args: {
-      dir: { type: "positional", description: "Project directory", required: false },
-      json: { type: "boolean", description: "Output agent-readable JSON", default: false },
-      samples: {
-        type: "string",
-        description: "Number of midpoint samples across the duration (default: 9)",
-        default: "9",
-      },
-      at: {
-        type: "string",
-        description: "Comma-separated timestamps in seconds (e.g., --at 1.5,4,7.25)",
-      },
-      "at-transitions": {
-        type: "boolean",
-        description:
-          "Also sample at every tween start/end boundary (plus segment midpoints) to catch transient overlaps at transition seams",
-        default: false,
-      },
-      "max-transition-samples": {
-        type: "string",
-        description:
-          "Optional cap on transition-derived samples; when it truncates, the omitted count is reported (default: unlimited)",
-      },
-      "max-issues": {
-        type: "string",
-        description: "Maximum issues to print or return after static collapse (default: 80)",
-        default: "80",
-      },
-      "collapse-static": {
-        type: "boolean",
-        description: "Collapse repeated static issues across samples (default: true)",
-        default: true,
-      },
-      tolerance: {
-        type: "string",
-        description: "Allowed pixel overflow before reporting an issue (default: 2)",
-        default: "2",
-      },
-      timeout: {
-        type: "string",
-        description: "Ms to wait for scripts and media to settle initially (default: 3000)",
-        default: "3000",
-      },
-      contrast: {
-        type: "boolean",
-        description: "Run the WCAG AA contrast pass (enabled by default)",
-        default: true,
-      },
-      strict: {
-        type: "boolean",
-        description: "Exit non-zero on warnings too",
-        default: false,
-      },
-      snapshots: {
-        type: "boolean",
-        description: "Save the five contrast-pass PNGs under snapshots/",
-        default: false,
-      },
-      "caption-zone": {
-        type: "string",
-        description:
-          'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
-      },
-      "frame-check": {
-        type: "string",
-        description:
-          'Bare --frame-check uses defaults (tol=2px, severity=warning, seek=.5; breach floor=max(120px, 6% of shorter canvas edge)); or pass "severity=error;seek=.25,.75;tol=4" to tune',
-      },
-    },
-    async run({ args }) {
+    args: argsDefinition,
+    async run({ rawArgs }) {
+      const args = parseArgs(normalizeFrameCheckRawArgs(rawArgs), argsDefinition);
       const asJson = args.json === true;
 
       try {
@@ -142,6 +145,14 @@ export function createCheckCommand(
         process.exitCode = 1;
       }
     },
+  });
+}
+
+function normalizeFrameCheckRawArgs(rawArgs: string[]): string[] {
+  return rawArgs.map((arg, index) => {
+    if (arg !== "--frame-check") return arg;
+    const next = rawArgs[index + 1];
+    return next === undefined || next.startsWith("-") ? "--frame-check=" : arg;
   });
 }
 
