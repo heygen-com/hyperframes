@@ -51,7 +51,7 @@ const server = await createFileServer({ projectDir: COMP_DIR, port: 0 });
 const session = await createCaptureSession(
   server.url,
   OUT_DIR,
-  { width: WIDTH, height: HEIGHT, fps: FPS, format: "png" },
+  { width: WIDTH, height: HEIGHT, fps: { num: FPS, den: 1 }, format: "png" },
   null,
 );
 await initializeSession(session);
