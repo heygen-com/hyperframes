@@ -901,6 +901,8 @@
   // 8x8 and fold its pixels into the fingerprint. Tainted, zero-sized, or
   // unreadable media hashes to a constant — no worse than geometry-only
   // detection and never a new false negative for DOM-motion compositions.
+  // Media inside iframes is intentionally outside this fingerprint: it lives
+  // in a separate document, and cross-origin frames are inaccessible under SOP.
   function mediaPixelHash(element) {
     try {
       const rect = element.getBoundingClientRect();
