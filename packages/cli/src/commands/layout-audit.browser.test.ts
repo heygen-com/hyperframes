@@ -141,6 +141,49 @@ describe("layout-audit.browser", () => {
     expect(runAudit()).toEqual([]);
   });
 
+  it("suppresses intentional ellipsis clipping under overflow opt-outs", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="overflow-optout">
+          <div id="headline" style="width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">
+            Intentional long truncated label
+          </div>
+        </div>
+      </div>
+    `;
+    const headline = document.querySelector("#headline");
+    if (!(headline instanceof HTMLElement)) throw new Error("missing headline");
+    Object.defineProperties(headline, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 240 },
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, value: 20 },
+    });
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        headline: rect({ left: 40, top: 60, width: 100, height: 20 }),
+        text: rect({ left: 40, top: 60, width: 240, height: 20 }),
+      },
+      {
+        headline: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" },
+      },
+    );
+
+    installAuditScript();
+    const textOverflowCodes = () =>
+      runAudit()
+        .map((issue) => issue.code)
+        .filter((code) => code === "clipped_text" || code === "text_box_overflow");
+
+    expect(textOverflowCodes()).toEqual(["clipped_text", "text_box_overflow"]);
+    document.querySelector("#overflow-optout")?.setAttribute("data-layout-allow-overflow", "");
+    expect(textOverflowCodes()).toEqual([]);
+    document.querySelector("#overflow-optout")?.removeAttribute("data-layout-allow-overflow");
+    headline.setAttribute("data-layout-bleed", "true");
+    expect(textOverflowCodes()).toEqual([]);
+  });
+
   it("does not flag glyph-ink vertical spill within the font-metric band on a non-clipping box", () => {
     // A painted, non-clipping caption-word-like box whose glyph ink (text rect) exceeds its snug
     // line-height box by a few px vertically — normal typography, nothing is clipped. (fontSize
