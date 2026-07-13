@@ -1564,6 +1564,36 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekTimes[seekTimes.length - 1]).toBe(0);
   });
 
+  it("restores timed element visibility after a forced timeline rebind", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-root="true" data-duration="30" data-width="1920" data-height="1080">
+        <div class="clip" id="clip-expired" data-start="0" data-duration="15.234"></div>
+        <div class="clip" id="clip-future" data-start="20.83" data-duration="3"></div>
+        <div class="clip" id="clip-control" data-start="10" data-duration="10"></div>
+      </div>
+    `;
+    const clipExpired = document.querySelector<HTMLElement>("#clip-expired");
+    const clipFuture = document.querySelector<HTMLElement>("#clip-future");
+    const clipControl = document.querySelector<HTMLElement>("#clip-control");
+    window.__timelines = { root: createMockTimeline(30) };
+
+    initSandboxRuntimeModular();
+    window.__player?.seek(16.2);
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+
+    if (clipExpired) clipExpired.style.visibility = "visible";
+    if (clipFuture) clipFuture.style.visibility = "visible";
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(clipExpired?.style.visibility).toBe("hidden");
+    expect(clipFuture?.style.visibility).toBe("hidden");
+    expect(clipControl?.style.visibility).toBe("visible");
+  });
+
   it("onSetMuted preserves authored muted attribute on video elements", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "root");

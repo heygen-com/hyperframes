@@ -1334,6 +1334,7 @@ export function initSandboxRuntimeModular(): void {
   (window as Window & { __hfForceTimelineRebind?: () => void }).__hfForceTimelineRebind = () => {
     childrenBound = false;
     bindRootTimelineIfAvailable();
+    syncTimedElementVisibility(state.currentTime);
   };
 
   const emitRootStageLayoutDiagnostics = () => {
@@ -1691,6 +1692,64 @@ export function initSandboxRuntimeModular(): void {
   const dataHiddenDisplayRestores = new WeakMap<HTMLElement, string>();
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
 
+  const syncTimedElementVisibility = (currentTime: number) => {
+    const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
+    const rootComp = resolveRootCompositionElement();
+    for (const rawNode of visibilityNodes) {
+      if (!(rawNode instanceof HTMLElement)) continue;
+
+      if (rawNode.hasAttribute("data-hidden")) {
+        if (!dataHiddenDisplayNodes.has(rawNode)) {
+          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
+          dataHiddenDisplayNodes.add(rawNode);
+        }
+        rawNode.style.display = "none";
+        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+          colorGradingRuntime?.setSourceVisibility(rawNode, false);
+        }
+        continue;
+      }
+
+      if (dataHiddenDisplayNodes.has(rawNode)) {
+        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
+        if (previousDisplay) {
+          rawNode.style.display = previousDisplay;
+        } else {
+          rawNode.style.removeProperty("display");
+        }
+        dataHiddenDisplayRestores.delete(rawNode);
+        dataHiddenDisplayNodes.delete(rawNode);
+      }
+
+      let isVisibleNow = isTimedElementVisibleAt(rawNode, currentTime);
+      // Descendants must not override a hidden ancestor clip. CSS visibility can
+      // otherwise leak child pixels through inactive scenes because a descendant
+      // with visibility:visible escapes an ancestor's visibility:hidden.
+      if (isVisibleNow) {
+        let ancestor = rawNode.parentElement;
+        while (ancestor) {
+          if (ancestor === rootComp) break;
+          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
+            if (!isTimedElementVisibleAt(ancestor, currentTime)) {
+              isVisibleNow = false;
+              break;
+            }
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
+      rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
+      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
+        colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
+      }
+      if (isVisibleNow) {
+        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
+      } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
+        rawNode.style.display = "none";
+      }
+    }
+  };
+
   const syncMediaForCurrentState = () => {
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
@@ -1773,61 +1832,7 @@ export function initSandboxRuntimeModular(): void {
         },
       });
     }
-    const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
-    const rootComp = resolveRootCompositionElement();
-    for (const rawNode of visibilityNodes) {
-      if (!(rawNode instanceof HTMLElement)) continue;
-
-      if (rawNode.hasAttribute("data-hidden")) {
-        if (!dataHiddenDisplayNodes.has(rawNode)) {
-          dataHiddenDisplayRestores.set(rawNode, rawNode.style.getPropertyValue("display"));
-          dataHiddenDisplayNodes.add(rawNode);
-        }
-        rawNode.style.display = "none";
-        if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
-          colorGradingRuntime?.setSourceVisibility(rawNode, false);
-        }
-        continue;
-      }
-
-      if (dataHiddenDisplayNodes.has(rawNode)) {
-        const previousDisplay = dataHiddenDisplayRestores.get(rawNode);
-        if (previousDisplay) {
-          rawNode.style.display = previousDisplay;
-        } else {
-          rawNode.style.removeProperty("display");
-        }
-        dataHiddenDisplayRestores.delete(rawNode);
-        dataHiddenDisplayNodes.delete(rawNode);
-      }
-
-      let isVisibleNow = isTimedElementVisibleAt(rawNode, state.currentTime);
-      // Descendants must not override a hidden ancestor clip. CSS visibility can
-      // otherwise leak child pixels through inactive scenes because a descendant
-      // with visibility:visible escapes an ancestor's visibility:hidden.
-      if (isVisibleNow) {
-        let ancestor = rawNode.parentElement;
-        while (ancestor) {
-          if (ancestor === rootComp) break;
-          if (ancestor instanceof HTMLElement && ancestor.hasAttribute("data-start")) {
-            if (!isTimedElementVisibleAt(ancestor, state.currentTime)) {
-              isVisibleNow = false;
-              break;
-            }
-          }
-          ancestor = ancestor.parentElement;
-        }
-      }
-      rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      if (rawNode instanceof HTMLVideoElement || rawNode instanceof HTMLImageElement) {
-        colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
-      }
-      if (isVisibleNow) {
-        if (isTimedClipInFlow(rawNode)) rawNode.style.removeProperty("display");
-      } else if (isTimedClipInFlow(rawNode) && isTimedClipLeaf(rawNode)) {
-        rawNode.style.display = "none";
-      }
-    }
+    syncTimedElementVisibility(state.currentTime);
   };
 
   const postState = (force: boolean) => {
