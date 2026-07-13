@@ -97,6 +97,15 @@ async function dispatchBufferedCommits(calls: BufferedCommit[]): Promise<void> {
 }
 
 /**
+ * Dev-only [hf-commit] lifecycle trace. The production observability lives in
+ * the trackStudioEvent commit_* events (always on); these console lines are a
+ * developer aid and stay out of end users' consoles.
+ */
+function traceCommit(stage: string, data: Record<string, unknown>): void {
+  if (import.meta.env.DEV) console.info(`[hf-commit] ${stage}`, data);
+}
+
+/**
  * Owns the visual + persistence + history lifecycle for one gesture release.
  * `settle` deliberately runs before the first promise is created or awaited.
  */
@@ -106,9 +115,9 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   let mutationCount = 0;
   let reloadCount = 0;
   const bufferedCommits: BufferedCommit[] = [];
-  console.info("[hf-commit] start", { label: tx.label, coalesceKey });
+  traceCommit("start", { label: tx.label, coalesceKey });
   tx.settle();
-  console.info("[hf-commit] settled", { label: tx.label, coalesceKey });
+  traceCommit("settled", { label: tx.label, coalesceKey });
 
   const before = !tx.skipPixelAssert ? readPixelRect(tx.element) : null;
   const commit: TxCommit = (commitMutation) => {
@@ -132,7 +141,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
     .then(async () => {
       await dispatchBufferedCommits(bufferedCommits);
       const durationMs = Math.round(performance.now() - startedAt);
-      console.info("[hf-commit] persisted", { label: tx.label, coalesceKey });
+      traceCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {
         const after = readPixelRect(tx.element);
         const delta = pixelDelta(before, after);
@@ -173,7 +182,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
         error_name: error instanceof Error ? error.name : "unknown",
         restore_ran: true,
       });
-      console.info("[hf-commit] restore", { label: tx.label, coalesceKey });
+      traceCommit("restore", { label: tx.label, coalesceKey });
       throw error;
     });
 }
