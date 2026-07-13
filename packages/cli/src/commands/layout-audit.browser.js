@@ -105,6 +105,10 @@
     return !!element.closest("[data-layout-allow-overflow]");
   }
 
+  function hasTextClipOptOut(element) {
+    return hasAllowOverflowFlag(element) || element.hasAttribute("data-layout-bleed");
+  }
+
   function opacityChain(element) {
     let opacity = 1;
     for (let current = element; current; current = current.parentElement) {
@@ -394,6 +398,7 @@
   }
 
   function clippedTextIssue(element, time, tolerance) {
+    if (hasTextClipOptOut(element)) return null;
     const style = getComputedStyle(element);
     if (!clipsOverflow(style)) return null;
     const overflowX = element.scrollWidth - element.clientWidth;
@@ -455,7 +460,7 @@
     const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
     if (
       containerOverflow &&
-      !hasAllowOverflowFlag(element) &&
+      !hasTextClipOptOut(element) &&
       !clippedByAncestor(element, container)
     ) {
       const style = elementStyle;
@@ -481,7 +486,7 @@
     }
 
     const canvasOverflow = overflowFor(textRect, rootRect, tolerance);
-    if (canvasOverflow && !hasAllowOverflowFlag(element)) {
+    if (canvasOverflow && !hasTextClipOptOut(element)) {
       issues.push({
         code: "canvas_overflow",
         severity: "info",
