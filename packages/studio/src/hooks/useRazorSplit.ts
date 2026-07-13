@@ -23,11 +23,9 @@ interface UseRazorSplitOptions {
   /**
    * Resync the in-memory SDK session after the server-side split write (the
    * split-element / split-gsap endpoints write the file directly, so the SDK's
-   * linkedom doc is now stale). Without this, a later SDK-routed edit serializes
-   * the PRE-split doc and reverts the split on disk — the undo baseline recorded
-   * here then no longer matches disk, so Cmd+Z trips the "changed externally"
-   * guard. Every other server-side-write timeline path (move / resize / delete /
-   * drop / visibility) already calls this; the split path was the sole omission.
+   * linkedom doc is now stale). This reload is read-only; the split endpoint owns
+   * the final on-disk bytes and history baseline. Every other server-side-write
+   * timeline path (move / resize / delete / drop / visibility) also resyncs.
    */
   forceReloadSdkSession?: () => void;
   isRecordingRef?: React.RefObject<boolean>;
@@ -285,10 +283,8 @@ export function useRazorSplit({
           recordEdit,
         });
 
-        // Server wrote the file; resync the stale in-memory SDK doc BEFORE the
-        // reload so a later SDK-routed edit can't serialize the pre-split doc and
-        // revert this split (which would desync disk from the undo baseline just
-        // recorded → Cmd+Z reports "changed externally").
+        // Server writes bypass the SDK session, so reopen it before refreshing
+        // the preview. The split response already owns the final persisted bytes.
         forceReloadSdkSession?.();
         reloadPreview();
         trackStudioRazorSplit({ mode: "single", count: 1 });
