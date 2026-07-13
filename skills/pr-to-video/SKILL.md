@@ -13,60 +13,27 @@ Use this skill to ingest a GitHub pull request, understand the change, plan a co
 
 > **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue. This skill is for a **GitHub pull request** (a code change). Route other intents elsewhere: a product launch/promo → `/product-launch-video`; a general website tour → `/website-to-video`; a topic explainer with no PR → `/faceless-explainer`; captions on existing footage → `/embedded-captions`; a short unnarrated motion graphic → `/motion-graphics`; a whole-repo or multi-PR release walkthrough → `/general-video`. **Out of scope:** live / at-render-time data — PR facts are read once at author time and baked in. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
-You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the two modes, the gate types, and the brief fields; the mode governs the Step 0/3/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
+You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the gate types and how `BRIEF.md`'s `flow`/`storyboard` derive the mode that governs the Step 3/4/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 
 Workflow: Step 0 setup → `hyperframes.json`; Step 1 ingest → `capture/extracted/` + `assets/<login>.png`; Step 2 design system → `frame.md`; Step 3 storyboard/script → `STORYBOARD.md` and `SCRIPT.md`; Step 3.1 audio → `audio_meta.json`; Step 4 visual design → enriched `STORYBOARD.md`; Step 5 frames → `compositions/frames/NN-*.html` and `index.html`; Step 6 final render → `renders/video.mp4`.
 
 ---
 
-## Step 0: Setup and Brief
+## Step 0: Setup
 
-Goal: Lock the PR reference and the core video brief, and create the HyperFrames project if needed.
+Goal: Enter with a confirmed brief — including the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo) — create the HyperFrames project, and make the brief durable. The style is always **claude** (fixed at Step 2, never asked).
 
-Get the **PR reference** (a full URL, an `<owner>/<repo>#<N>` ref, or "this PR" in a checked-out repo), then confirm the brief in two rounds — through the question UI when the environment has one, conversationally otherwise. The intro text states **message** (the ONE thing the video must say about this change, in one sentence), **language**, and the style (always **claude**). Skip a question only when the user's request already answered it.
-
-**Check for a recipe first.** Before any question, run `node ../media-use/scripts/recipe.mjs list --hyperframes . --workflow pr-to-video`. On a match (the user named one, said "like last time", or the list has one for this workflow), ask one question before the mode — one match: use recipe <name> (approved <date>)?; several: list them all and ask which one, or none. Adopting one answers the brief from the recipe — state those values as locked fields with "from recipe <name>" receipts, skip Step 2 (`recipe.mjs use` copies its frame.md in), and draft Step 3 from its storyboard skeleton. The mode question still follows, and the review gates still run — a recipe fills in answers, not approvals. Declined or no match: proceed to Round 1.
-
-**Round 1 — mode.** One question, asked first **and alone** — wait for the answer before any Round 2 question goes out; never bundle the brief questions into the same message. Skip it when the request already carried a signal ("surprise me" / "just build it"):
-
-- **Collaborative (recommended)** — confirm the key choices together before building.
-- **Autonomous** — every decision is made for the user, each stated with its reason; the only remaining question is preview-before-render.
-
-Autonomous → ask nothing more. State the locked brief (all fields + receipts) as a heads-up and proceed straight through; the preview question waits at Step 6.
-
-**Round 2 — the brief (collaborative).** One round, these four questions, recommended option first with its receipt:
-
-- **Angle — what story does this PR tell?** changelog / feature-reveal / fix-explainer / refactor-walkthrough; recommend the one the PR itself suggests, with its basis.
-- **Audience — who is it for?** developers (default) · mixed technical · non-technical stakeholders.
-- **Length — how long?** From the size table below; the tier is a ceiling, and a one-headline story recommends inside 30–90s ("+A/−D across F files" is the receipt).
-- **Destination — where will it play?** YouTube / embed → 16:9 (default for a code explainer) · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
-
-Before asking, read the remembered defaults — brief contract § 2: a remembered value becomes the recommended option, its receipt naming the source project. A "go" accepts all recommended defaults.
-
-**Recommend the length from the PR's change size**, not a fixed guess. Before confirming the brief, peek at the PR once — a read-only call that also grounds the angle (Step 1 still does the full deterministic fetch):
-
-```bash
-gh pr view <PR_REF> --json title,additions,deletions,changedFiles
-```
-
-Pick the tier from `additions + deletions` (nudged up by `changedFiles`) and lead with it as the default (the user can override; hard cap ~3 min):
-
-| PR change size                    | Recommended length |
-| --------------------------------- | ------------------ |
-| trivial (≲ 50 lines changed)      | ~20–40s            |
-| focused (~50–200 lines)           | ~40–70s            |
-| substantial (~200–600 lines)      | ~70–110s           |
-| large (≳ 600 lines, or 25+ files) | ~110–180s          |
-
-State the basis in one phrase when you propose it (e.g. "~40s — small change, +44/−13 across 12 files"). A huge PR doesn't mean a long video — the tier is a **ceiling** on how much story the diff can support, never a floor to fill. When the story is **one headline change**, recommend inside the 30–90s sweet spot regardless of the size tier, and say so (the tier's range can still appear as a non-recommended option for a fuller walkthrough).
+**The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`): it checks recipes and remembered defaults, and conducts this route's questions — including the PR-size → length doctrine, which lives whole in `../hyperframes/references/route-briefs.md` § /pr-to-video — then hands back the locked brief. Edit requests skip all of this — go do the edit.
 
 Initialize only if `hyperframes.json` is missing. Name `<project>` from the PR in kebab-case, such as `acme-sdk-pr-1842`; never use the workspace name or a timestamp.
 
 `npx hyperframes init "videos/<project>" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
-**Show sign-in status before the brief** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../media-use` → Preflight for the canonical guidance.
+**Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Then record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset), and if the intent layer adopted a recipe, adopt it now: `node ../media-use/scripts/recipe.mjs use --hyperframes . --name <name>` copies its frame.md in (Step 2 is then skipped) and hands back the skeletons Step 3 drafts from — a recipe fills in answers, not approvals; the review gates still run.
 
-**Gate:** `hyperframes.json` exists; the PR ref is captured; angle, audience, length, destination → aspect, message, and language are locked; sign-in status was shown (signed in, or continuing offline); the confirmed answers were recorded as preferences (brief contract § 2).
+**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before any later step.** Treat it as a real decision point, not a passing note; don't fold the choice into another question, and don't write keys into a per-repo `.env`. (In an autonomous run, note the status and continue offline.) Auth ownership and offline fallbacks: `/media-use` § Providers.
+
+**Gate:** `hyperframes.json` and `BRIEF.md` exist; the PR ref is captured in the brief; the preference-backed answers were recorded (brief contract § 2); sign-in status was shown (signed in, or continuing offline).
 
 ---
 
@@ -249,7 +216,7 @@ The reusable, domain-agnostic shot shapes live in `../hyperframes-animation/blue
 
 | Read                                                                                                                                                        | When                                                                           |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Step 0: the interaction mode, brief fields, and how to ask.                    |
+| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Gate types, mode derivation from `BRIEF.md`, field semantics.                  |
 | `[../hyperframes-creative/references/story-spine.md](../hyperframes-creative/references/story-spine.md)`                                                    | Step 3: story doctrine — hook language, value-before-evidence, proposal shape. |
 | `[references/story-design.md](references/story-design.md)`                                                                                                  | Step 3: plan the PR explanation.                                               |
 | `[../hyperframes-animation/blueprints-index.md](../hyperframes-animation/blueprints-index.md)`                                                              | Step 3: role→blueprint menu. Step 4: pick the shot shape.                      |

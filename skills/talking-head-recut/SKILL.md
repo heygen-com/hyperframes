@@ -22,6 +22,8 @@ the overlays emerge from what the transcript actually says.
 > Plain subtitles → `embedded-captions`. Build a video from scratch → the creation
 > workflows (`product-launch-video` / `faceless-explainer` / …).
 
+Routed through `/hyperframes`, the intent layer confirms only the input (which clip) and **announces** the render-strategy questions as deferred asks — aspect, layout, style group, and card count stay at Step 7, where the probed footage and transcript ground the recommendations; the layer's run-shape questions don't apply. A `BRIEF.md`, when present, carries the confirmed input and any user notes — read it first.
+
 Inspectable intermediate files in the work directory:
 
 - `metadata.json` — duration / width / height / fps

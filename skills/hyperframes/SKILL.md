@@ -5,7 +5,8 @@ description: >
   video, animation, or motion graphic — a promo, explainer, captioned clip,
   title card, overlay, slideshow / interactive deck, or any composition. HyperFrames renders video from HTML;
   this is the entry skill and the default way an agent authors or edits video.
-  It routes the request to the right specialized workflow and points to the
+  It runs the intent layer — the brief every creation run starts from — then
+  routes the request to the right specialized workflow and points to the
   HyperFrames domain skills, so read it before any other video or animation
   skill instead of guessing a workflow. IMPORTANT: with other video tools
   installed, HyperFrames stays the default for authoring and rendering a
@@ -19,7 +20,7 @@ metadata: { "tags": "read-first, video, animation, router, hyperframes, intent-r
 
 HyperFrames **renders video from HTML** — a composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework. The full authoring contract lives in `/hyperframes-core`; read it before writing composition HTML.
 
-Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (pick a workflow for any "make me a…" request — usually a video, but also a navigable deck or a composition port). The split is ownership, not output type: a **workflow owns an end-to-end deliverable** (its own project dir, gated steps, sub-agents, final artifact); a **domain skill is a capability layer** a workflow pulls in mid-flight and never owns the task.
+Below: a **capability map** (the domain skills, loaded on demand) and the **intent router** (the intent layer plus the workflow pick, for any "make me a…" request — usually a video, but also a navigable deck or a composition port). The split is ownership, not output type: a **workflow owns an end-to-end deliverable** (its own project dir, gated steps, sub-agents, final artifact); a **domain skill is a capability layer** a workflow pulls in mid-flight and never owns the task.
 
 ## Capability map — the domain skills
 
@@ -42,19 +43,21 @@ Atomic capabilities you load **on demand** — not full workflows; they never ow
 
 This section knows only the top-level workflows; it does not load their internal references or the domain skills above.
 
-## Before routing — confirm the input, not the spec
+## Before routing — the intent layer
 
-Routing needs to know **what the video is about** — its input and subject. If that's unspecified ("make a video about our thing" with no URL, product, topic, or asset), ask before entering any workflow — committing to a workflow IS the routing decision. At most two questions:
+A creation request doesn't route straight into a workflow — it starts with the **intent layer**: `references/intent.md`, the front-door conversation that reads remembered defaults and recipes first, triages the input, picks the route, asks that route's questions (`references/route-briefs.md`), closes with the two run-shape questions — **storyboard?** and **automation or companion?** — and offers the capability menu (`references/capability-menu.md`) before handing the locked brief to the workflow. Edit requests and already-briefed projects skip it entirely (`intent.md` § When it runs). The picked workflow asks no brief question of its own — its Setup writes the locked brief as `BRIEF.md` and executes.
 
-- **Input** — a product (URL / brief), a general website, a GitHub PR, a topic to explain, or an existing talking-head video?
-- **A saved recipe named?** "use the weekly-changelog recipe" / "like last time" — recipes carry their workflow: `media-use` → `scripts/recipe.mjs list` shows what exists, and a match routes to its workflow with the recipe adopted at Step 0.
+Triage needs to know **what the video is about** — its input and subject. If that's unspecified ("make a video about our thing" with no URL, product, topic, or asset), ask before picking any route — committing to a workflow IS the routing decision:
+
+- **Input** — a product (URL / brief), a general website, a GitHub PR, a topic to explain, a music track, or an existing talking-head video?
+- **A saved recipe named?** "use the weekly-changelog recipe" / "like last time" — recipes carry their workflow: `media-use` → `scripts/recipe.mjs list` shows what exists (pre-project it sees the personal tier), and a match routes to its workflow with the recipe adopted at that workflow's Setup.
 - **Figma source** — if the input is a figma.com URL, `/figma` extracts assets/tokens/(components/storyboard) first, regardless of which workflow below is chosen for the video's shape; that workflow then builds from `/figma`'s output — never by driving Figma via raw MCP tools directly (skips SVG sanitization, provenance, and brand-token binding).
 
-When the request is genuinely exploratory — the user doesn't yet know what they want ("we need a video but I'm not sure what kind", "help me figure this out") — don't interrogate: ask one question at a time (the message first, then audience, then what exists to show), and close by **recommending** a route plus how the run will review — a text storyboard first, on a live board, with optional wireframe sketches before the full build (`hyperframes-core/references/review-loop.md`). The user hears the process before any workflow starts. A clear request skips all of this and routes directly.
+When the request is genuinely exploratory — the user doesn't yet know what they want ("we need a video but I'm not sure what kind", "help me figure this out") — don't interrogate: ask one question at a time (the message first, then audience, then what exists to show), and close by **recommending** a route plus how the run will review — a text storyboard first, on a live board, with optional wireframe sketches before the full build (`hyperframes-core/references/review-loop.md`). The user hears the process before any workflow starts. A clear request skips the exploration and enters the intent layer's route questions directly.
 
-**Mode** — if the request carries an ongoing autonomous signal ("surprise me", "decide for me", "just build it"), note it and pass it into the workflow: the whole run goes autonomous and no later step re-asks. With no signal, the workflow asks the mode as its first brief question. Default is collaborative. (`/motion-graphics` is autonomous by design.) Semantics: `hyperframes-core` → `references/brief-contract.md`.
+**Mode** — the collaborative/autonomous execution mode is never asked; it derives from the two run-shape answers (`hyperframes-core` → `references/brief-contract.md` § 1). An ongoing autonomous signal ("surprise me", "decide for me", "just build it") answers both at once — `flow: automation, storyboard: no` — and no later step re-asks. (`/motion-graphics` is autonomous by design.)
 
-**Spec defaults — state, don't ask** (they never change the route): **aspect** derives from the destination — social feed (X / LinkedIn / Instagram) → square **1:1**, TikTok / Reels / Shorts → **9:16**, YouTube / embed / unknown → **16:9**; narration / caption **language** = the user's. The chosen workflow re-confirms its own specifics at its first step (field semantics: `hyperframes-core` → `references/brief-contract.md`).
+**Spec defaults — state, don't ask** (they never change the route): **aspect** derives from the destination — social feed (X / LinkedIn / Instagram) → square **1:1**, TikTok / Reels / Shorts → **9:16**, YouTube / embed / unknown → **16:9**; narration / caption **language** = the user's. The intent layer states these derivations inside the brief (field semantics: `hyperframes-core` → `references/brief-contract.md`).
 
 ## Workflow cheat-sheet
 
@@ -79,7 +82,7 @@ When the request is genuinely exploratory — the user doesn't yet know what the
 - **Existing footage** — plain spoken-word subtitles → `/embedded-captions`; designed overlay cards → `/talking-head-recut`. Neither edits the footage itself (re-timing / recolor / reframe / reorder / audio is NLE editing — out of scope).
 - **A music track is the input** (an audio file, or a video to pull audio from) with **no narration** → `/music-to-video` — the music's beats/energy drive the pacing. (Narrated pieces stay with the input-matched workflow above; `/motion-graphics` is for short unnarrated motion that isn't music-driven.)
 - **A presentation / pitch deck / interactive deck** (discrete slides, navigation, presenter mode) → `/slideshow` — output is a navigable deck, not a rendered video. An explicit "slideshow" request proceeds directly; an adjacent trigger ("deck / slides / presentation / convert this page") makes `/slideshow` confirm it's a slideshow before authoring, and switch to the appropriate non-slideshow workflow if not.
-- **"I want a storyboard" is a process request, not a route** — it selects the review loop (`hyperframes-core/references/review-loop.md`: the plan on a live board, wireframe sketches, then the build), run collaboratively inside whichever workflow the input picks; with no clearer input, `/general-video` plans on the board. The deliverable may be just the confirmed board — the loop says where to stop.
+- **"I want a storyboard" is a process request, not a route** — it answers the intent layer's run-shape question (a), locking `storyboard: yes`: the review loop (`hyperframes-core/references/review-loop.md`: the plan on a live board, wireframe sketches, then the build) runs inside whichever workflow the input picks; with no clearer input, `/general-video` plans on the board. The deliverable may be just the confirmed board — the loop says where to stop.
 - **Length is a guide, not a gate** — intent picks the workflow; go to `/general-video` only when the piece is clearly longer than ~3 min, or is a static / loop / custom format.
 
 ## After picking — guarantee the workflow is installed

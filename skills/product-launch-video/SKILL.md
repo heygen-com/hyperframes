@@ -15,42 +15,27 @@ Use this skill to capture a product, understand its brand, plan a launch video, 
 
 > **Confirm the route before Step 0.** You are the orchestrator. Run each step, verify its gate, and only then continue to the next step. This skill is for a **product being marketed, launched, promoted, or revealed**, including requests such as "promo for our site" when the purpose is promotional. Route other intents elsewhere: a general non-launch website tour -> `/website-to-video`; a topic explainer with no product -> `/faceless-explainer`; a GitHub PR -> `/pr-to-video`; captions on existing footage -> `/embedded-captions`; a short unnarrated motion graphic -> `/motion-graphics`. If the user says only "make a video" or the route is uncertain, read `/hyperframes` first.
 
-You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the two modes, the gate types, and the brief fields; the mode governs the Step 0/3/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
+You are the orchestrator. Work in `videos/<project>/`. Run steps in order and pass each gate before continuing. User-gated steps are Step 0, Step 3, and Step 6. Read `../hyperframes-core/references/brief-contract.md` before Step 0 — it defines the gate types and how `BRIEF.md`'s `flow`/`storyboard` derive the mode that governs the Step 3/4/6 gates. Do every step yourself except Step 5, where you dispatch one sub-agent per frame. Do not put design or motion rules here; those live in the frame-worker sub-agent, this skill's local `../hyperframes-animation/rules/` + `../hyperframes-animation/blueprints/`, and `hyperframes-creative`.
 
 Workflow: Step 0 setup -> `hyperframes.json`; Step 1 capture -> `capture/`; Step 2 design system -> `frame.md`; Step 3 storyboard/script -> `STORYBOARD.md` and `SCRIPT.md`; Step 3.1 audio -> `audio_meta.json`; Step 4 visual design -> enriched `STORYBOARD.md`; Step 5 frames -> `compositions/frames/NN-*.html` and `index.html`; Step 6 final render -> `renders/video.mp4`.
 
 ---
 
-## Step 0: Setup and Brief
+## Step 0: Setup
 
-Goal: Lock the core video brief and create the HyperFrames project if needed.
+Goal: Enter with a confirmed brief, create the HyperFrames project, and make the brief durable.
+
+**The brief is confirmed by the intent layer, not by questions asked here.** Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — the brief is settled, and its `flow`/`storyboard` derive the mode (brief contract § 1). **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from the storyboard's frontmatter and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither — a fresh creation request that arrived here directly → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`): it checks recipes and remembered defaults, conducts this route's questions (`../hyperframes/references/route-briefs.md`), and hands back the locked brief. Edit requests skip all of this — go do the edit.
 
 Initialize only if `hyperframes.json` is missing. Name `<project>` from the brand or domain in kebab-case, such as `acme-promo`; never use workspace name or timestamp.
 
 `npx hyperframes init "videos/<project>" --non-interactive --example=blank` — `init` checks the installed skills against the latest on GitHub and updates the global set if any are out of date.
 
-**Show sign-in status before the brief** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before asking the brief or anything else.** Treat it as a real decision point, not a passing note; don't fold the choice into the brief question, and don't write keys into a per-repo `.env`. (In autonomous mode, note the status and continue offline.) See `../media-use` → Preflight for the canonical guidance.
+**Write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory): the intent layer's locked brief, shape per `../hyperframes-core/references/brief-format.md`. Then record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset), and if the intent layer adopted a recipe, adopt it now: `node ../media-use/scripts/recipe.mjs use --hyperframes . --name <name>` copies its frame.md in (Step 2 is then skipped) and hands back the skeletons Step 3 drafts from — a recipe fills in answers, not approvals; the review gates still run.
 
-**Confirm the brief** in two rounds — through the question UI when the environment has one, conversationally otherwise. The intro text states **message** (the ONE thing the promo must communicate, in one sentence) and **language**. Skip a question only when the user's request already answered it. (`VO_MODE` is asked in Step 1 only when a script was pasted.)
+**Show sign-in status before proceeding past Setup** — run `npx hyperframes auth status` and **relay its output verbatim (don't paraphrase or rewrite it).** It reports whether voice/BGM will use HeyGen or local engines and, when not signed in, how to sign in. **If not signed in, STOP and wait for the user to choose — sign in, or say "go"/"offline" to continue with local engines — before any later step.** Treat it as a real decision point, not a passing note; don't fold the choice into another question, and don't write keys into a per-repo `.env`. (In an autonomous run, note the status and continue offline.) Auth ownership and offline fallbacks: `/media-use` § Providers.
 
-**Check for a recipe first.** Before any question, run `node ../media-use/scripts/recipe.mjs list --hyperframes . --workflow product-launch-video`. On a match (the user named one, said "like last time", or the list has one for this workflow), ask one question before the mode — one match: use recipe <name> (approved <date>)?; several: list them all and ask which one, or none. Adopting one answers the brief from the recipe — state those values as locked fields with "from recipe <name>" receipts, skip Step 2 (`recipe.mjs use` copies its frame.md in), and draft Step 3 from its storyboard skeleton. The mode question still follows, and the review gates still run — a recipe fills in answers, not approvals. Declined or no match: proceed to Round 1.
-
-**Round 1 — mode.** One question, asked first **and alone** — wait for the answer before any Round 2 question goes out; never bundle the brief questions into the same message. Skip it when the request already carried a signal ("surprise me" / "just build it"):
-
-- **Collaborative (recommended)** — confirm the key choices together before building.
-- **Autonomous** — every decision is made for the user, each stated with its reason; the only remaining question is preview-before-render.
-
-Autonomous → ask nothing more. State the locked brief (all fields + receipts) as a heads-up and proceed straight through; the preview question waits at Step 6.
-
-**Round 2 — the brief (collaborative).** One round, these three questions, recommended option first with its receipt:
-
-- **Angle — what story shape should the promo take?** Options from the site's / brief's own positioning; recommend one, with its basis.
-- **Length — how long?** Recommend inside the 30–90s sweet spot, scaled to how much material the input gives you, with its basis.
-- **Destination — where will it play?** YouTube / embed → 16:9 · X / LinkedIn / Instagram feed → 1:1 · Shorts / TikTok → 9:16.
-
-Before asking, read the remembered defaults — brief contract § 2: a remembered value becomes the recommended option, its receipt naming the source project. A "go" accepts all recommended defaults.
-
-**Gate:** `hyperframes.json` exists, and the brief fields (angle, length, destination → aspect, message, language) are locked; sign-in status was shown (signed in, or continuing offline); the confirmed answers were recorded as preferences (brief contract § 2).
+**Gate:** `hyperframes.json` and `BRIEF.md` exist; the preference-backed answers were recorded (brief contract § 2); sign-in status was shown (signed in, or continuing offline).
 
 ---
 
@@ -58,7 +43,7 @@ Before asking, read the remembered defaults — brief contract § 2: a remembere
 
 Goal: Collect the source material, brand signals, and usable assets for the video.
 
-Classify the input and choose the path. Explicit URL -> capture it and use the site for narration and assets. Pasted script/brief -> save verbatim as `user_script.txt`, ask once "use it verbatim or restructure?", store answer as `VO_MODE`, then resolve capture target: URL in text -> use it; brand name only -> `WebSearch`, confirm URL in one line, then crawl; no URL/site -> no-capture path.
+Classify the input and choose the path. Explicit URL -> capture it and use the site for narration and assets. Pasted script/brief -> save verbatim as `user_script.txt`; `VO_MODE` (verbatim or restructured) comes from `BRIEF.md` — the intent layer asks it when a script arrives (ask once here only if the brief somehow lacks it). Then resolve capture target: URL in text -> use it; brand name only -> `WebSearch`, confirm URL in one line, then crawl; no URL/site (or the brief says don't scrape) -> no-capture path.
 
 Run capture with: `npx hyperframes capture "<URL>" -o ./capture`
 
@@ -220,7 +205,7 @@ The reusable, product-agnostic shot shapes live in `../hyperframes-animation/blu
 
 | Read                                                                                                                                                        | When                                                                           |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Step 0: the interaction mode, brief fields, and how to ask.                    |
+| `[../hyperframes-core/references/brief-contract.md](../hyperframes-core/references/brief-contract.md)`                                                      | Gate types, mode derivation from `BRIEF.md`, field semantics.                  |
 | `[../hyperframes-creative/references/story-spine.md](../hyperframes-creative/references/story-spine.md)`                                                    | Step 3: story doctrine — hook language, value-before-evidence, proposal shape. |
 | `[../hyperframes-creative/frame-presets/](../hyperframes-creative/frame-presets/)`                                                                          | Step 2: choose and adopt a frame preset.                                       |
 | `[../hyperframes-creative/references/design-spec.md](../hyperframes-creative/references/design-spec.md)`                                                    | Step 2: apply brand tokens correctly.                                          |

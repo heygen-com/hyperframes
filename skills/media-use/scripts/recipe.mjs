@@ -4,9 +4,10 @@
  *
  *   node recipe.mjs freeze --hyperframes . --name <n> --workflow <w> [--blocks a,b,c]
  *     Freeze the current approved run as a named recipe: frame.md + the
- *     storyboard skeleton (structure kept, content blanked) + the confirmed
- *     brief values. Re-freezing the same name bumps the version and archives
- *     the old folder as <name>@v<N>. Promotes to ~/.media/recipes/ immediately.
+ *     storyboard skeleton (structure kept, content blanked) + the brief
+ *     skeleton (when BRIEF.md exists) + the confirmed brief values.
+ *     Re-freezing the same name bumps the version and archives the old
+ *     folder as <name>@v<N>. Promotes to ~/.media/recipes/ immediately.
  *
  *   node recipe.mjs list --hyperframes . [--workflow <w>] [--json]
  *     Two-tier merged listing (project wins), newest approval first.
@@ -15,9 +16,9 @@
  *     Adopt a recipe: import it from the user tier if needed, copy its
  *     frame.md over the project's, and print the brief values + skeleton path.
  *
- * When workflows offer/consume recipes is the review loop's and Step 0's
- * business — see hyperframes-core/references/review-loop.md § 4 and each
- * workflow's Step 0 recipe check.
+ * When recipes are offered/consumed is the review loop's and the intent
+ * layer's business — see hyperframes-core/references/review-loop.md § 4 and
+ * the intent layer's recipe check (hyperframes → references/intent.md).
  */
 import { parseArgs } from "node:util";
 import { freezeRecipe, listRecipes, useRecipe } from "./lib/recipe-store.mjs";

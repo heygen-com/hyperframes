@@ -1,11 +1,14 @@
 ---
 name: general-video
 description: >
-  The fallback workflow for authoring or editing any custom HyperFrames composition at any
+  The freeform workflow for authoring or editing any custom HyperFrames composition at any
   length or format — longer / multi-scene pieces, brand and sizzle reels,
-  montages, title cards, static loops, freeform builds. Use only when no
-  specialized workflow fits the input; routing table at /hyperframes.
-metadata: { "tags": "orchestrator, general-video, fallback, freeform, composition-authoring" }
+  montages, title cards, static loops, freeform builds. It is both the fallback
+  when no specialized workflow fits the input AND the home of companion mode,
+  where the user co-creates with every HyperFrames capability on the table;
+  routing table at /hyperframes.
+metadata:
+  { "tags": "orchestrator, general-video, fallback, companion, freeform, composition-authoring" }
 ---
 
 > **First, keep this skill fresh — run silently, don't ask:** `npx hyperframes skills update general-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
@@ -16,22 +19,21 @@ metadata: { "tags": "orchestrator, general-video, fallback, freeform, compositio
 
 # general-video — general video workflow
 
-> **Confirm the route before you build.** This is the **fallback** for custom composition authoring. If the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/talking-head-recut`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
+> **Confirm the route before you build.** This is the **fallback** for custom composition authoring — and the **home of companion mode**: when `BRIEF.md` says `flow: companion`, this skill is the destination, not the fallback — stay here even when the input resembles a specialized workflow's. Otherwise, if the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/talking-head-recut`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
 
 **Build exactly what was asked.** A title card is a title card — not a title card + three supporting scenes + ambient music + captions. If extra scenes or elements would genuinely improve the piece, _propose_ them; don't add them silently. For small edits (fix a color, adjust one duration, add one element), skip the planning steps and go straight to the build.
 
 ## Approach
 
-### Discovery — open-ended requests only
+### Setup — the brief, the project, and the mode
 
-For vague, exploratory requests ("make something for our brand", "a cool intro") — understand intent before picking colors. Read the remembered defaults first (`hyperframes-core/references/brief-contract.md` § 2, Remembered defaults): a remembered destination or audience becomes the recommended answer, its receipt naming the source project. A named recipe goes further — "like last time" or a recipe name: `media-use` → `scripts/recipe.mjs use` fills design, structure, and brief from the frozen bundle (confirm with one question first).
+The brief comes from the intent layer, not from questions asked here. Opening rule, in order: **(1)** `BRIEF.md` exists → read it and ask nothing — its `flow`/`storyboard` derive the mode (`hyperframes-core/references/brief-contract.md` § 1), and `flow: companion` runs the companion section below. **(2)** No `BRIEF.md` but the project exists (`hyperframes.json` / `STORYBOARD.md` on disk) → resume from what's on disk and the recorded preferences; never re-interrogate a half-built project. **(3)** Neither, and the request is a fresh creation → read `/hyperframes` and run the intent layer (`../hyperframes/references/intent.md`; its /general-video entry carries the former discovery questions — audience, platform, priority, variations). For specific requests ("add a title card", "fix the timing on scene 3") and small edits, skip all of this and go straight to the build. An ongoing autonomous signal ("surprise me", "just build it") means one best shot, no board, your calls stated with one-line receipts as you make them.
 
-- **Audience** — who watches? developers / executives / general consumers?
-- **Platform** — where does it play? social (15s) / website hero / product demo / internal?
-- **Priority** — what matters most? motion quality / content accuracy / brand fidelity / speed?
-- **Variations** — one best shot, or 2-3 meaningfully different options (different pacing, energy, or structure — not just color swaps)?
+In an empty directory, scaffold first — `npx hyperframes init "videos/<project>" --non-interactive --example=blank`, project named from the brief in kebab-case — then **write `BRIEF.md` immediately after init** (never before — `init` refuses a non-empty directory), shape per `hyperframes-core/references/brief-format.md`, and record the preference-backed answers (`node ../media-use/scripts/prefs.mjs record` per field — `brief-format.md` names the subset). Inside an already-scaffolded project, the root is wherever `hyperframes.json` lives — `BRIEF.md` goes there. An adopted recipe lands now too: `media-use` → `scripts/recipe.mjs use` copies its frame.md in and hands back the skeletons (the adoption was confirmed at the intent layer — don't re-ask).
 
-For specific requests ("add a title card", "fix the timing on scene 3"), skip discovery. If the request carries an ongoing autonomous signal ("surprise me", "just build it" — `hyperframes-core/references/brief-contract.md` § 1), skip discovery too: default to one best shot and state your calls with one-line receipts as you make them.
+### Companion mode — the whole toolbox, conversationally
+
+`flow: companion` runs this workflow as a co-creation session: the user and the model shape the video together, and **every HyperFrames capability is reachable**. The map is `../hyperframes/references/capability-menu.md` — what each capability is, which skill owns it, and the one rule for reaching across: a capability living in another workflow's directory needs `npx hyperframes skills update <that-workflow>` first (workflow skills install lazily). Work from `BRIEF.md`'s body — its Assets, Customizations, and Notes are the user's own material and asks, already confirmed. Companion changes who drives, not what quality requires: the steps below still order the work (design system before layout, layout before animation), the quality gates hold, and when `storyboard: yes` the board opens and the review loop runs exactly as in any run (`hyperframes-core/references/review-loop.md`).
 
 ### Step 1 — Design system → `hyperframes-creative`
 
@@ -64,7 +66,7 @@ Before writing HTML, think at a high level:
 5. **Layout** — build the end state first (see below).
 6. **Animate** — then add motion via `hyperframes-animation`.
 
-**Plan on a board when there's a story to review.** For a multi-scene narrative piece in collaborative mode — or whenever the user asks for a storyboard — don't keep the plan in your head: write it as `STORYBOARD.md` (`hyperframes-core/references/storyboard-format.md`; one `## Frame N` per scene, `status: outline`, a declared `src`) and run the review loop (`hyperframes-core/references/review-loop.md`): the board opens itself, the plan is presented as a proposal, wireframe sketches are offered before the full build, and each scene is marked `built` as its sketch lands and `animated` as you finish it. The sketch pass is this skill's layout-before-animation with the user watching — the confirmed wireframe **is** the end state you then animate. Single-scene pieces, trivial edits, and autonomous runs skip the board and plan inline as above.
+**Plan on a board when there's a story to review.** For a multi-scene narrative piece when `BRIEF.md` says `storyboard: yes` — or the user asks for one mid-run — don't keep the plan in your head: write it as `STORYBOARD.md` (`hyperframes-core/references/storyboard-format.md`; one `## Frame N` per scene, `status: outline`, a declared `src`) and run the review loop (`hyperframes-core/references/review-loop.md`): the board opens itself, the plan is presented as a proposal, wireframe sketches are offered before the full build, and each scene is marked `built` as its sketch lands and `animated` as you finish it. The sketch pass is this skill's layout-before-animation with the user watching — the confirmed wireframe **is** the end state you then animate. Single-scene pieces, trivial edits, and autonomous runs skip the board and plan inline as above.
 
 ## Layout Before Animation
 

@@ -15,6 +15,8 @@ metadata:
 
 ## Operational flow (TL;DR)
 
+Routed through `/hyperframes`, the intent layer confirms only the input (which clip) and **announces** the identity pick as a deferred ask — the shortlist needs the probed clip, so it stays at step 1 below; the layer's run-shape questions don't apply (the footage is untouched, there is no storyboard to review). A `BRIEF.md`, when present, carries the confirmed input and any user notes — read it first.
+
 The craft prose below is long; the **pipeline itself is short** — and everything
 deterministic is computed or compiled, never hand-written:
 
