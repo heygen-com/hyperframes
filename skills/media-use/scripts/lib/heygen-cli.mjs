@@ -89,9 +89,19 @@ function classifyHeygenErrorResult(err) {
 // same "awaited so a short-lived run flushes it" discipline telemetry.mjs's
 // track() already documents, just reachable from a sync call site.
 const pendingFailureTracking = new Set();
+let pendingRemediation = null;
+
+export function consumeHeygenRemediation() {
+  const remediation = pendingRemediation;
+  pendingRemediation = null;
+  return remediation;
+}
 
 export function reportHeygenFailure(err, context, trackEvent = track) {
   const { code, message } = classifyHeygenErrorResult(err);
+  if (code === "not_found" || code === "outdated") {
+    pendingRemediation = { code, message };
+  }
   if (ACTIONABLE_MESSAGES.has(message)) {
     console.error(message);
   } else {

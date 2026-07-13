@@ -30,6 +30,7 @@ import {
   HEYGEN_INSTALL_COMMAND,
   HEYGEN_MIN_VERSION,
   HEYGEN_UPDATE_COMMAND,
+  consumeHeygenRemediation,
   firstSemver,
   flushHeygenFailureTracking,
   versionLessThan,
@@ -428,6 +429,16 @@ async function run() {
       ...searchResult.metadata?.provenance,
     },
   };
+
+  const heygenRemediation = consumeHeygenRemediation();
+  if (
+    searchResult.metadata?.provider === "bundled.sfx" &&
+    !localOnly &&
+    !args.provider &&
+    heygenRemediation
+  ) {
+    record.advisory = heygenRemediation;
+  }
 
   appendRecord(projectDir, record);
   regenerateIndex(projectDir);
