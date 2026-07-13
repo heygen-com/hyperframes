@@ -1,12 +1,13 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn() }));
 vi.mock("node:fs", () => ({ existsSync: vi.fn() }));
 
 const mockExec = vi.mocked(execSync);
+const mockExecFile = vi.mocked(execFileSync);
 const mockExists = vi.mocked(existsSync);
 
 // The common-dir fallback list is platform-gated (empty on win32), so pin the
@@ -51,5 +52,30 @@ describe("findFFmpeg", () => {
 
     const { findFFmpeg } = await import("./ffmpeg.js");
     expect(findFFmpeg()).toBeUndefined();
+  });
+});
+
+describe("resolveH264EncoderMode", () => {
+  it("falls back to VideoToolbox when libx264 is absent", async () => {
+    const { resolveH264EncoderMode } = await import("./ffmpeg.js");
+    const encoders = `
+ V....D h264_videotoolbox    VideoToolbox H.264 Encoder
+`;
+
+    expect(resolveH264EncoderMode(encoders, false)).toBe("gpu");
+  });
+
+  it("inspects the configured FFmpeg binary", async () => {
+    mockExecFile.mockReturnValue(
+      " V....D h264_videotoolbox    VideoToolbox H.264 Encoder\n" as never,
+    );
+    const { detectH264EncoderMode } = await import("./ffmpeg.js");
+
+    expect(detectH264EncoderMode("/custom/ffmpeg", false)).toBe("gpu");
+    expect(mockExecFile).toHaveBeenCalledWith(
+      "/custom/ffmpeg",
+      ["-hide_banner", "-encoders"],
+      expect.objectContaining({ encoding: "utf-8" }),
+    );
   });
 });

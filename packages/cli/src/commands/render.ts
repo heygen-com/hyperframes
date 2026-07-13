@@ -76,6 +76,7 @@ import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
+import { detectH264EncoderMode } from "../browser/ffmpeg.js";
 import { chromeLaunchRemediation } from "../browser/linuxDeps.js";
 import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
@@ -1449,6 +1450,18 @@ export async function renderLocal(
   if (preflight.ffprobePath) process.env.HYPERFRAMES_FFPROBE_PATH = preflight.ffprobePath;
   if (preflight.browser?.executablePath && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
     process.env.PRODUCER_HEADLESS_SHELL_PATH = preflight.browser.executablePath;
+  }
+
+  if (!options.gpu && options.format === "mp4" && preflight.ffmpegPath) {
+    const encoderMode = detectH264EncoderMode(preflight.ffmpegPath, false);
+    if (encoderMode === "gpu") {
+      console.warn(
+        c.warn(
+          "  FFmpeg does not include libx264; falling back to the available H.264 hardware encoder.",
+        ),
+      );
+      options = { ...options, gpu: true };
+    }
   }
 
   const producer = await loadProducer();
