@@ -16,6 +16,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
+import { sampleTweenBboxes } from "./animation-map-sampling.mjs";
 import { hyperframesPackageSpec, importPackagesOrBootstrap } from "./package-loader.mjs";
 
 const {
@@ -77,12 +78,7 @@ try {
       (_, k) => +(tw.start + ((k + 0.5) / FRAMES) * (tw.end - tw.start)).toFixed(3),
     );
 
-    const bboxes = [];
-    for (const t of times) {
-      await seekTo(session, t);
-      const bbox = await measureTarget(session, tw.selectorHint);
-      bboxes.push({ t, ...bbox });
-    }
+    const bboxes = await sampleTweenBboxes(session.page, tw.selectorHint, times);
 
     const animProps = tw.props.filter(
       (p) => !["parent", "overwrite", "immediateRender", "startAt", "runBackwards"].includes(p),
@@ -203,23 +199,6 @@ async function enumerateTweens(session) {
     results.sort((a, b) => a.start - b.start);
     return results;
   });
-}
-
-async function measureTarget(session, selector) {
-  return await session.page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return { x: 0, y: 0, w: 0, h: 0, missing: true };
-    const r = el.getBoundingClientRect();
-    const cs = getComputedStyle(el);
-    return {
-      x: Math.round(r.x),
-      y: Math.round(r.y),
-      w: Math.round(r.width),
-      h: Math.round(r.height),
-      opacity: parseFloat(cs.opacity),
-      visible: cs.visibility !== "hidden" && cs.display !== "none",
-    };
-  }, selector);
 }
 
 // ─── Tween description (the key output for agents) ──────────────────────────
