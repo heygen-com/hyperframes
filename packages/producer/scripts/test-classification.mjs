@@ -9,6 +9,7 @@ export const PRODUCER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), ".
 // or local sockets. Keep the list explicit so a filename-only rename does not
 // make Git/fallow re-audit thousands of unchanged test lines as new code.
 const INTEGRATION_TEST_FILES = new Set([
+  "src/services/coreRuntimeBrowser.test.ts",
   "src/services/deterministicFonts-systemCapture.test.ts",
   "src/services/distributed/assemble.test.ts",
   "src/services/distributed/chunkBoundary.test.ts",

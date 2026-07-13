@@ -4,7 +4,7 @@ import type { Plugin } from "vite";
 import type { Connect } from "vite";
 import type { ServerResponse } from "node:http";
 import { createFsAdapter } from "@hyperframes/sdk/adapters/fs";
-import type { PersistAdapter } from "@hyperframes/sdk/adapters/types";
+import type { PersistAdapter } from "@hyperframes/sdk";
 
 const COMP_ROOT = path.resolve(import.meta.dirname);
 const COMP_PATH = "composition.html";

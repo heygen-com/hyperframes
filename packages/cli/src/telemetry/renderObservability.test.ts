@@ -82,3 +82,24 @@ describe("renderObservabilityTelemetryPayload — DE inversion/router cohort (fa
     expect(payload.captureDeFallbackReason).toBeUndefined();
   });
 });
+
+describe("renderObservabilityTelemetryPayload — non-DE parallel-stream router", () => {
+  it("maps the router outcome", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ captureParallelStream: "beginframe" }),
+    );
+    expect(payload.captureParallelStream).toBe("beginframe");
+  });
+
+  it("maps the passive eligible_off cohort-sizing signal", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ captureParallelStream: "eligible_off" }),
+    );
+    expect(payload.captureParallelStream).toBe("eligible_off");
+  });
+
+  it("stays undefined when the router never fired", () => {
+    const payload = renderObservabilityTelemetryPayload(makeSummary({}));
+    expect(payload.captureParallelStream).toBeUndefined();
+  });
+});

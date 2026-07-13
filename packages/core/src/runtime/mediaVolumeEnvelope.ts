@@ -1,3 +1,5 @@
+import type { RuntimeTimelineLike } from "./types";
+
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
  * baking in audioVolumeEnvelope.ts) and the preview runtime (per-tick gain
@@ -125,10 +127,7 @@ export function probeElementVolumeKeyframes(
   return hasAutomation ? keyframes : null;
 }
 
-export interface RuntimeTimelineRef {
-  totalTime?: ((t?: number, suppressEvents?: boolean) => unknown) | undefined;
-  seek?: ((t?: number, suppressEvents?: boolean) => unknown) | undefined;
-}
+export type RuntimeTimelineRef = Partial<Pick<RuntimeTimelineLike, "totalTime" | "seek">>;
 
 /**
  * Probe a media element and, if volume automation is detected, store the

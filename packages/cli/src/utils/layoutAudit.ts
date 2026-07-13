@@ -16,6 +16,7 @@ export type LayoutIssueCode =
   | "container_overflow"
   | "content_overlap"
   | "text_occluded"
+  | "text_not_painted"
   | "caption_zone_collision"
   | "frame_out_of_frame"
   // Frozen-sweep guard (#U10) — a whole-run meta-finding, not a per-sample

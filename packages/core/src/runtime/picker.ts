@@ -142,8 +142,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (blocksPickerAtPoint(raw[0] ?? null)) return [];
     const dedupe: Record<string, true> = {};
     const candidates: Element[] = [];
-    for (let i = 0; i < raw.length; i += 1) {
-      const node = raw[i];
+    for (const [i, node] of raw.entries()) {
       if (!isPickableElement(node)) continue;
       const key = `${node.tagName}::${(node as HTMLElement).id || ""}::${i}`;
       if (dedupe[key]) continue;
@@ -157,8 +156,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   function extractElementInfo(el: Element): RuntimePickerElementInfo {
     const rect = el.getBoundingClientRect();
     const dataAttributes: Record<string, string> = {};
-    for (let i = 0; i < el.attributes.length; i += 1) {
-      const attr = el.attributes[i];
+    for (const attr of Array.from(el.attributes)) {
       if (attr.name.startsWith("data-")) {
         dataAttributes[attr.name] = attr.value;
       }

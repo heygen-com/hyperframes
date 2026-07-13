@@ -1299,6 +1299,54 @@ export function shouldRetryViaPinnedFallback(args: {
   return args.deWorkerInversion === "inverted" || args.deParallelRouter === "routed";
 }
 
+/**
+ * Parallel-streaming router for NON-drawElement capture (screenshot on
+ * macOS/Windows/forced-screenshot, BeginFrame on Linux): should this
+ * multi-worker render stream captured frame buffers straight into the single
+ * ffmpeg stdin encoder (interleaved distribution + ordered reorder-buffer
+ * writer — the PR #2056 machinery) instead of the parallel disk path (workers
+ * write JPEGs, a separate sequential encode pass reads them back)?
+ *
+ * Measured motivation (2026-07-10, macOS SS W3): the disk path's encode is a
+ * purely additive tail (~27% of wall clock on a 3,600-frame comp). Streaming
+ * overlapped it for 1.29x on a uniform-cost comp and was a wash (not a
+ * regression) on a 39%-static bimodal comp — the interleaved writer's
+ * near-lockstep coupling eats the encode win when frame costs are bimodal.
+ * v1 accepts the wash; static-aware routing is a documented follow-up.
+ *
+ * Unlike the DE router this deliberately does NOT require auto-resolved
+ * workers: streaming doesn't change the worker count, so an explicit
+ * `--workers 3` should benefit too. It requires !useDrawElement
+ * (post-resolveConfig — always true on Linux): DE parallel renders belong to
+ * the DE parallel router (HF_DE_PARALLEL_ROUTER) with its self-verify
+ * machinery; both DE predicates independently require useDrawElement, making
+ * the two routers mutually exclusive by construction.
+ */
+export function shouldStreamParallelCapture(args: {
+  /** HF_CAPTURE_PARALLEL_STREAM === "true" — kill switch, default OFF. */
+  routerEnabled: boolean;
+  workerCount: number;
+  /** cfg.useDrawElement AFTER resolveConfig clamps. */
+  useDrawElement: boolean;
+  outputFormat: NonNullable<RenderConfig["format"]>;
+  /** shouldUseStreamingEncode(cfg, format, 1, duration) at the call site —
+   * carries the enableStreamingEncode/format/duration-cap gates. */
+  streamingOk: boolean;
+  /** HDR layered composite or shader transitions — bespoke pipelines
+   * (including page-side compositing, which only engages when
+   * hasShaderTransitions) that never stream. */
+  layeredOrEffectRoute: boolean;
+}): boolean {
+  return (
+    args.routerEnabled &&
+    args.workerCount > 1 &&
+    !args.useDrawElement &&
+    args.outputFormat === "mp4" &&
+    args.streamingOk &&
+    !args.layeredOrEffectRoute
+  );
+}
+
 export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   forceScreenshot: boolean;
   usePageSideCompositing: boolean;
@@ -1599,6 +1647,10 @@ export async function executeRenderJob(
     // render already executing in the same process. Threading this as a
     // local instead closes that cross-talk, not just the sequential leak.
     let deParallelStreamForced = false;
+    // Per-render (not process-global) signal that the NON-DE parallel-stream
+    // router fired — same threading discipline as deParallelStreamForced
+    // (see that flag's comment for why this must never be an env mutation).
+    let captureParallelStreamForced = false;
     let deSelfVerifyFallback = false;
     let deFallbackReason: string | undefined;
     let deDrainStats: import("./render/stages/captureStreamingStage.js").DeDrainStats | undefined;
@@ -1847,10 +1899,7 @@ export async function executeRenderJob(
       browserTimeout: cfg.browserTimeout,
     });
     updateCaptureObservability({ browserGpuMode: resolvedBrowserGpuMode });
-    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(
-      composition.videos.length,
-      resolvedBrowserGpuMode,
-    );
+    const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
     const captureOptions: CaptureOptions = {
       width,
@@ -2190,6 +2239,50 @@ export async function executeRenderJob(
       deParallelRouter: deParallelRouter ?? "none",
     });
 
+    // Non-DE parallel-streaming router — see shouldStreamParallelCapture.
+    // Mutually exclusive with the DE inversion/router above by construction
+    // (both DE predicates require useDrawElement; this requires its negation).
+    const captureParallelStreamRouterEnabled = process.env.HF_CAPTURE_PARALLEL_STREAM === "true";
+    const captureParallelStreamArgs = {
+      workerCount,
+      useDrawElement: cfg.useDrawElement,
+      outputFormat,
+      streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
+      layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
+    };
+    const captureParallelStreamEligible = shouldStreamParallelCapture({
+      routerEnabled: captureParallelStreamRouterEnabled,
+      ...captureParallelStreamArgs,
+    });
+    if (captureParallelStreamEligible) {
+      captureParallelStreamForced = true;
+      // Which mode will stream: the engine picks beginframe only on Linux with
+      // headless-shell and no forced screenshot (frameCapture.ts preMode);
+      // everything else is screenshot. Recorded for telemetry cohorting.
+      const captureParallelStream =
+        process.platform === "linux" && !captureForceScreenshot ? "beginframe" : "screenshot";
+      log.info(
+        `[Render] Parallel ${captureParallelStream} capture will stream to the encoder ` +
+          `(interleaved, ${workerCount} workers) instead of the disk path. ` +
+          "Set HF_CAPTURE_PARALLEL_STREAM=false to disable.",
+      );
+      updateCaptureObservability({ captureParallelStream });
+      // NOTE: no string data on the checkpoint — RenderObservationData string
+      // values are dropped unless the key is in observability.ts's
+      // ALLOWED_STRING_DATA_KEYS allow-list. The message carries the detail.
+      observability.checkpoint(
+        "worker_resolution",
+        `parallel ${captureParallelStream} capture routed to streaming`,
+      );
+    } else if (shouldStreamParallelCapture({ routerEnabled: true, ...captureParallelStreamArgs })) {
+      // The kill switch is the ONLY failed gate: emit a passive cohort-sizing
+      // signal (capture_parallel_stream = "eligible_off") so the default-off
+      // soak can measure how many fleet renders WOULD route before anyone
+      // enables the flag. Observability-only — no behavior change, no log
+      // noise on the default path.
+      updateCaptureObservability({ captureParallelStream: "eligible_off" });
+    }
+
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
@@ -2206,7 +2299,7 @@ export async function executeRenderJob(
       outputFormat,
       workerCount,
       job.duration,
-      deParallelStreamForced,
+      deParallelStreamForced || captureParallelStreamForced,
     );
     log.info("streaming-encode gate", {
       enabled: useStreamingEncode,
@@ -2450,7 +2543,7 @@ export async function executeRenderJob(
                 workerCount,
                 probeSession,
                 outputFormat,
-                forceParallelStream: deParallelStreamForced,
+                forceParallelStream: deParallelStreamForced || captureParallelStreamForced,
                 streamingEncoderOptions: {
                   fps: job.config.fps,
                   width,

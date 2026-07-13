@@ -11,11 +11,13 @@ function createMockTimeline(opts?: { time?: number; duration?: number }): Runtim
     pause: vi.fn(() => {
       state.paused = true;
     }),
-    seek: vi.fn((t: number) => {
-      state.time = t;
+    seek: vi.fn((t?: number) => {
+      if (t !== undefined) state.time = t;
+      return state.time;
     }),
-    totalTime: vi.fn((t: number) => {
-      state.time = t;
+    totalTime: vi.fn((t?: number) => {
+      if (t !== undefined) state.time = t;
+      return state.time;
     }),
     time: vi.fn(() => state.time),
     duration: vi.fn(() => state.duration),
@@ -64,11 +66,13 @@ function createNestedTimelineHarness() {
       pause: vi.fn(() => {
         state.paused = true;
       }),
-      seek: vi.fn((t: number) => {
-        state.time = t;
+      seek: vi.fn((t?: number) => {
+        if (t !== undefined) state.time = t;
+        return state.time;
       }),
-      totalTime: vi.fn((t: number) => {
-        state.time = t;
+      totalTime: vi.fn((t?: number) => {
+        if (t !== undefined) state.time = t;
+        return state.time;
       }),
       time: vi.fn(() => state.time),
       duration: vi.fn(() => duration),
@@ -95,14 +99,16 @@ function createNestedTimelineHarness() {
     pause: vi.fn(() => {
       masterState.paused = true;
     }),
-    seek: vi.fn((t: number) => {
+    seek: vi.fn((t?: number) => {
+      if (t === undefined) return masterState.time;
       masterState.time = t;
       for (const child of children) {
         if (child.state.paused) continue;
         child.state.time = Math.max(0, Math.min(t - child.start, child.duration));
       }
     }),
-    totalTime: vi.fn((t: number) => {
+    totalTime: vi.fn((t?: number) => {
+      if (t === undefined) return masterState.time;
       masterState.time = t;
       for (const child of children) {
         if (child.state.paused) continue;

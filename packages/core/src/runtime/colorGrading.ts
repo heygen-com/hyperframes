@@ -542,7 +542,7 @@ function createProgram(
   return program;
 }
 
-function createTexture(gl: WebGLRenderingContext, filter = gl.LINEAR): WebGLTexture | null {
+function createTexture(gl: WebGLRenderingContext, filter: number = gl.LINEAR): WebGLTexture | null {
   const texture = gl.createTexture();
   if (!texture) return null;
   gl.bindTexture(gl.TEXTURE_2D, texture);

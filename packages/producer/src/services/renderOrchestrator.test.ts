@@ -34,6 +34,7 @@ import {
   shouldRetryViaPinnedFallback,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  shouldStreamParallelCapture,
   shouldUseStreamingEncode,
 } from "./renderOrchestrator.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -2047,5 +2048,45 @@ describe("shouldRetryViaPinnedFallback (widen the self-verify retry to generic c
         deParallelRouter: undefined,
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () => {
+  const eligible = {
+    routerEnabled: true,
+    workerCount: 3,
+    useDrawElement: false,
+    outputFormat: "mp4" as const,
+    streamingOk: true,
+    layeredOrEffectRoute: false,
+  };
+
+  it("routes an eligible multi-worker non-drawElement render", () => {
+    expect(shouldStreamParallelCapture(eligible)).toBe(true);
+  });
+
+  it("is disabled by default (kill switch off is the shipped default)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, routerEnabled: false })).toBe(false);
+  });
+
+  it("never fires for single-worker renders (those already stream)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, workerCount: 1 })).toBe(false);
+  });
+
+  it("never fires when drawElement will capture (the DE routers own that path)", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, useDrawElement: true })).toBe(false);
+  });
+
+  it("only applies to mp4", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "webm" })).toBe(false);
+    expect(shouldStreamParallelCapture({ ...eligible, outputFormat: "png-sequence" })).toBe(false);
+  });
+
+  it("respects the streaming-encode config/duration gates", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, streamingOk: false })).toBe(false);
+  });
+
+  it("skips HDR-layered and shader-transition routes", () => {
+    expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
   });
 });

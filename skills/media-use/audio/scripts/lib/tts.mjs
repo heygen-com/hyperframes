@@ -128,6 +128,17 @@ export function resolveNpxCliFromNpmExecPath(
   return pathExists(npxCliPath) ? npxCliPath : null;
 }
 
+export function resolveNpxCliPath(
+  npmExecPath = process.env.npm_execpath,
+  nodeExecPath = process.env.npm_node_execpath || process.execPath,
+  pathExists = existsSync,
+) {
+  const fromNpm = resolveNpxCliFromNpmExecPath(npmExecPath, pathExists);
+  if (fromNpm) return fromNpm;
+  const besideNode = join(dirname(nodeExecPath), "node_modules", "npm", "bin", "npx-cli.js");
+  return pathExists(besideNode) ? besideNode : null;
+}
+
 export function resolveSpawnCommand(
   cmd,
   args,
@@ -143,10 +154,11 @@ export function resolveSpawnCommand(
   // On Windows, npx resolves to npx.cmd, which Node cannot execute directly.
   // Avoid `shell:true` and the .cmd shim entirely by invoking npm's JS CLI with
   // node, preserving request-provided values as argv data instead of shell text.
-  const npxCliPath = resolveNpxCliFromNpmExecPath(env.npm_execpath, pathExists);
+  const nodeExecPath = env.npm_node_execpath || process.execPath;
+  const npxCliPath = resolveNpxCliPath(env.npm_execpath, nodeExecPath, pathExists);
   if (!npxCliPath) return null;
   return {
-    cmd: env.npm_node_execpath || process.execPath,
+    cmd: nodeExecPath,
     args: [npxCliPath, ...args.map((arg) => String(arg))],
     opts: { stdio: "ignore", windowsHide: true, ...opts },
   };
@@ -174,17 +186,17 @@ export function spawnP(
   const resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
   if (!resolved) {
     // resolveSpawnCommand only returns null for the npx-on-win32 case where
-    // npm_execpath isn't set (e.g. audio.mjs invoked directly with `node`, not
-    // through npm/npx). Without this, every call silently returns status:-1 and
-    // stdio:"ignore" hides why — callers just report "TTS failed - omitted" for
-    // every line. Surface the real reason once so it's diagnosable.
+    // neither npm's configured CLI nor the beside-node fallback exists. Without
+    // this, every call silently returns status:-1 and stdio:"ignore" hides why.
     if (!_warnedNpxResolution) {
       _warnedNpxResolution = true;
+      const reason = env.npm_execpath
+        ? `npm_execpath (${env.npm_execpath}) and the beside-node npm fallback could not be found`
+        : "npm_execpath is unset and the beside-node npm fallback could not be found";
       console.error(
-        `[media-use] Cannot run "${cmd}" on Windows: npm_execpath is not set, so the ` +
-          `npx JS CLI can't be located. This happens when this script is run directly with ` +
-          `\`node\` instead of through npm/npx. Every "${cmd}" call is being skipped. ` +
-          `Fix: run via \`npx\`/\`npm run\`, or export npm_execpath pointing at your npm-cli.js.`,
+        `[media-use] Cannot run "${cmd}" on Windows: ${reason}. ` +
+          `Every "${cmd}" call is being skipped. Install npm with Node, or run via ` +
+          `\`npx\`/\`npm run\` with a valid npm_execpath.`,
       );
     }
     return Promise.resolve({ status: -1 });

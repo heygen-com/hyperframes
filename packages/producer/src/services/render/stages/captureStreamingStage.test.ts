@@ -16,6 +16,7 @@ const spawnStreamingEncoder = mock(async () => ({
 }));
 let failCaptureFrameToBuffer = false;
 let failInitializeSession = false;
+let hangParallelUntilAbort = false;
 let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
@@ -44,11 +45,30 @@ mock.module("@hyperframes/engine", () => ({
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
     advanceTo: () => {},
+    abort: () => {},
   }),
   distributeFrames: () => [],
   distributeFramesInterleaved: () => [],
   DrawElementVerificationError,
-  executeParallelCapture: async () => {},
+  executeParallelCapture: async (
+    _url: string,
+    _workDir: string,
+    _tasks: unknown,
+    _opts: unknown,
+    _hook: unknown,
+    signal?: AbortSignal,
+  ) => {
+    if (hangParallelUntilAbort) {
+      // Simulate a wedged worker: make no frame progress, then reject with the
+      // pool's generic string once aborted (by the parent or the watchdog).
+      await new Promise<void>((_resolve, reject) => {
+        const fail = () => reject(new Error("[Parallel] Capture failed: aborted"));
+        if (signal?.aborted) return fail();
+        signal?.addEventListener("abort", fail, { once: true });
+      });
+    }
+    return [];
+  },
   getCapturePerfSummary: () => ({}),
   getFfmpegBinary: () => "ffmpeg",
   initializeSession: async (session: { isInitialized: boolean }) => {
@@ -189,6 +209,69 @@ describe("runCaptureStreamingStage", () => {
     expect((caught as Error).message).toBe("captureFrameToBuffer failed");
     expect(getCaptureStageBrowserConsole(caught)).toEqual(browserConsoleBuffer);
     expect(closeCaptureSession).toHaveBeenCalled();
+  });
+
+  it("trips the stall watchdog and rethrows a non-cancellation error when the parallel path makes no frame progress", async () => {
+    hangParallelUntilAbort = true;
+    const prev = process.env.HF_DE_PARALLEL_STALL_MS;
+    process.env.HF_DE_PARALLEL_STALL_MS = "50";
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const input = {
+      ...createInput(cfg),
+      totalFrames: 100,
+      workerCount: 2,
+      forceParallelStream: true,
+    };
+
+    let caught: unknown;
+    try {
+      await runCaptureStreamingStage(input);
+    } catch (error) {
+      caught = error;
+    } finally {
+      hangParallelUntilAbort = false;
+      if (prev === undefined) delete process.env.HF_DE_PARALLEL_STALL_MS;
+      else process.env.HF_DE_PARALLEL_STALL_MS = prev;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    // A stalled render must surface as a stall (→ pinned fallback), never as
+    // the raw "[Parallel] Capture failed" or a cancellation.
+    expect((caught as Error).message).toContain("stalled");
+    // Parent signal never fired, so the orchestrator won't read this as a cancel.
+    expect(input.abortSignal).toBeUndefined();
+  });
+
+  it("does not relabel a genuine parent-abort as a stall", async () => {
+    hangParallelUntilAbort = true;
+    const prev = process.env.HF_DE_PARALLEL_STALL_MS;
+    // Huge window so the watchdog never trips; the parent abort is what ends it.
+    process.env.HF_DE_PARALLEL_STALL_MS = "600000";
+    const controller = new AbortController();
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const input = {
+      ...createInput(cfg),
+      totalFrames: 100,
+      workerCount: 2,
+      forceParallelStream: true,
+      abortSignal: controller.signal,
+    };
+
+    let caught: unknown;
+    const run = runCaptureStreamingStage(input).catch((error: unknown) => {
+      caught = error;
+    });
+    controller.abort();
+    await run;
+
+    hangParallelUntilAbort = false;
+    if (prev === undefined) delete process.env.HF_DE_PARALLEL_STALL_MS;
+    else process.env.HF_DE_PARALLEL_STALL_MS = prev;
+
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).not.toContain("stalled");
   });
 });
 
