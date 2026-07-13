@@ -72,6 +72,8 @@ const preflightState = vi.hoisted(() => ({
   },
 }));
 
+const ffmpegEncoderState = vi.hoisted(() => ({ mode: "software" as "software" | "gpu" }));
+
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
     resolveConfig: vi.fn((overrides: Record<string, unknown>) => {
@@ -120,6 +122,7 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 vi.mock("../browser/ffmpeg.js", () => ({
+  detectH264EncoderMode: vi.fn(() => ffmpegEncoderState.mode),
   findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
   getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
 }));
@@ -173,6 +176,7 @@ describe("renderLocal browser GPU config", () => {
     configState.writeConfigCalls = [];
     trackingState.shouldTrack = true;
     trackingState.renderObservations = [];
+    ffmpegEncoderState.mode = "software";
     resetTrialState();
     savedEnv.clear();
     savedEnv.set("HYPERFRAMES_FFMPEG_PATH", process.env.HYPERFRAMES_FFMPEG_PATH);
@@ -321,6 +325,22 @@ describe("renderLocal browser GPU config", () => {
     expect(process.env.HYPERFRAMES_FFMPEG_PATH).toBe("/usr/bin/ffmpeg");
     expect(process.env.HYPERFRAMES_FFPROBE_PATH).toBe("/usr/bin/ffprobe");
     expect(process.env.PRODUCER_HEADLESS_SHELL_PATH).toBe("/mock/chrome");
+  });
+
+  it("falls back to hardware encoding when FFmpeg omits libx264", async () => {
+    ffmpegEncoderState.mode = "gpu";
+
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "high",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "force-sdr",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.useGpu).toBe(true);
   });
 
   it("resolves browser GPU from CLI flags, Docker mode, and env fallback", () => {
