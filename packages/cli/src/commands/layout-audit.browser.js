@@ -889,12 +889,18 @@
     return { issues, flagged };
   }
 
+  // A gradient reads as content when any stop is solid; all-translucent stops are glows/vignettes.
+  function gradientHasOpaqueStop(image) {
+    const colors = image.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|\btransparent\b/gi) || [];
+    return colors.some((color) => !/^transparent$/i.test(color) && colorAlpha(color) >= 0.6);
+  }
+
   function isPaintedPanel(element) {
     if (FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase())) return false;
     const style = getComputedStyle(element);
     const image = style.backgroundImage || "none";
-    // Gradient-only paint is decoration (spotlights, textures, vignettes); url() images, solid fills and borders are content.
     if (image.includes("url(")) return true;
+    if (image !== "none" && gradientHasOpaqueStop(image)) return true;
     if (!isTransparentColor(style.backgroundColor) && colorAlpha(style.backgroundColor) > 0.05) {
       return true;
     }
@@ -914,7 +920,7 @@
   const PANEL_HERO_AREA_FRACTION = 0.1;
 
   // Painted panels breaching the canvas: text is canvas_overflow's, media is frame_out_of_frame's, panels were nobody's.
-  function panelOutOfCanvasIssues(root, rootRect, time, escapedElements) {
+  function panelOutOfCanvasIssues(root, rootRect, time, tolerance, escapedElements) {
     const issues = [];
     const floor = Math.max(
       PANEL_BREACH_FLOOR_PX,
@@ -925,11 +931,11 @@
     for (const element of Array.from(root.querySelectorAll("*"))) {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) continue;
       if (escapedElements.has(element)) continue;
-      // Ownership is geometric, not elemental: skip only when the element's own text ALSO breaches
-      // (canvas_overflow owns that); a painted box breaching around in-bounds text is a panel finding.
+      // Ownership is geometric and strict-mutex: any text breach past canvas_overflow's own
+      // tolerance cedes the element to canvas_overflow; in-bounds text leaves the panel finding.
       if (hasOwnTextCandidate(element)) {
         const textRect = textRectFor(element);
-        if (textRect && overflowFor(textRect, rootRect, floor)) continue;
+        if (textRect && overflowFor(textRect, rootRect, tolerance)) continue;
       }
       const rect = toRect(element.getBoundingClientRect());
       if (rectArea(rect) >= rootArea * 0.95) continue;
@@ -1177,7 +1183,7 @@
     issues.push(...contentOverlapIssues(root, time));
     const escaped = escapedContainerIssues(root, time);
     issues.push(...escaped.issues);
-    issues.push(...panelOutOfCanvasIssues(root, rootRect, time, escaped.flagged));
+    issues.push(...panelOutOfCanvasIssues(root, rootRect, time, tolerance, escaped.flagged));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     return issues;
   };

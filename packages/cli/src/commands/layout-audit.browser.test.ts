@@ -607,6 +607,55 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
   });
 
+  it("flags a gradient-content hero but not an all-translucent gradient glow", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="gradient-hero"></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        "gradient-hero": rect({ left: 1400, top: 300, width: 800, height: 600 }),
+      },
+      {
+        // Opaque gradient stops read as content — miguel's regression case.
+        "gradient-hero": {
+          backgroundImage: "linear-gradient(90deg, rgb(16, 24, 40), rgb(52, 64, 84))",
+        },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit().filter((issue) => issue.code === "panel_out_of_canvas");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ severity: "warning", selector: "#gradient-hero" });
+  });
+
+  it("cedes ownership to canvas_overflow even for a shallow text breach", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="hero">Barely breaching title</div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        hero: rect({ left: 1400, top: 300, width: 800, height: 600 }),
+        // Text breaches 20px: past canvas_overflow's 2px tolerance, under the 27px panel floor.
+        text: rect({ left: 1740, top: 340, width: 200, height: 50 }),
+      },
+      {
+        hero: { backgroundColor: "rgb(20, 20, 30)" },
+      },
+    );
+    installAuditScript();
+
+    const issues = runAudit();
+    expect(issues.filter((issue) => issue.code === "panel_out_of_canvas")).toEqual([]);
+    expect(issues.some((issue) => issue.code === "canvas_overflow")).toBe(true);
+  });
+
   it("flags a painted hero whose box breaches while its direct text stays in-bounds", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
