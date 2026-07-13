@@ -4,7 +4,13 @@ import {
   createTimelineElementFromManifestClip,
   parseTimelineFromDOM,
   createImplicitTimelineLayersFromDOM,
+  mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
+import type { TimelineElement } from "../store/playerStore";
+
+function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
+  return { id, tag: "img", start: 0, duration: 5, track: 0, ...extra };
+}
 
 function makeDoc(html: string): Document {
   const d = document.implementation.createHTMLDocument();
@@ -134,5 +140,29 @@ describe("createImplicitTimelineLayersFromDOM — hfId from data-hf-id", () => {
     const layers = createImplicitTimelineLayersFromDOM(doc, 5);
 
     expect(layers).toEqual([]);
+  });
+});
+
+describe("mergeTimelineElementsPreservingDowngrades — genuine removal vs transient downgrade", () => {
+  it("drops a removed TOP-LEVEL element (undo of a split) instead of ghosting it", () => {
+    const current = [el("a"), el("a-split")]; // post-split store: original + clone
+    const next = [el("a")]; // fresh scan of the reverted file: clone gone
+    const merged = mergeTimelineElementsPreservingDowngrades(current, next, 30, 30);
+    expect(merged.map((e) => e.id)).toEqual(["a"]);
+  });
+
+  it("still preserves an enriched sub-composition child a bare re-scan drops", () => {
+    const current = [el("a"), el("sub-child", { compositionSrc: "sub.html" })];
+    const next = [el("a")]; // bare DOM scan misses the enriched sub-comp child
+    const merged = mergeTimelineElementsPreservingDowngrades(current, next, 30, 30);
+    expect(merged.map((e) => e.id).sort()).toEqual(["a", "sub-child"]);
+  });
+
+  it("trusts the fresh scan fully when it is not shorter", () => {
+    const current = [el("a"), el("b", { compositionSrc: "sub.html" })];
+    const next = [el("a"), el("c")];
+    expect(
+      mergeTimelineElementsPreservingDowngrades(current, next, 30, 30).map((e) => e.id),
+    ).toEqual(["a", "c"]);
   });
 });

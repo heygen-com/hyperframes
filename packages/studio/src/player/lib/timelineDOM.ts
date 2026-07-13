@@ -366,7 +366,14 @@ export function mergeTimelineElementsPreservingDowngrades(
 
   const nextIdentities = new Set(nextElements.map(getTimelineElementIdentity));
   const preserved = currentElements.filter(
-    (element) => !nextIdentities.has(getTimelineElementIdentity(element)),
+    (element) =>
+      !nextIdentities.has(getTimelineElementIdentity(element)) &&
+      // Only preserve enriched sub-composition children (compositionSrc set),
+      // which a bare DOM re-scan legitimately drops and enrichMissingCompositions
+      // re-adds. A TOP-LEVEL element missing from the fresh scan was genuinely
+      // removed (undo of a split, a delete), so let it go — otherwise undoing a
+      // split leaves a ghost clip in the timeline even though the file is reverted.
+      element.compositionSrc != null,
   );
   if (preserved.length === 0) return nextElements;
   return [...nextElements, ...preserved];
