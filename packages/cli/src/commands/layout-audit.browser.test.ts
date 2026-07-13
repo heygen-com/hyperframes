@@ -950,10 +950,38 @@ describe("layout-audit.browser occlusion", () => {
     expect(occluded).toBeDefined();
   });
 
-  it("does not probe text whose every text node is still at opacity 0 (entrance not started)", () => {
+  it("still flags text buried under an occluder that itself has pointer-events:none", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
-        <div id="headline"><span id="inner">Headline copy</span></div>
+        <div id="headline">Headline copy</div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        overlay: { backgroundColor: "rgb(10, 10, 10)", pointerEvents: "none" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    // Simulate hit-testing: the scrim is only hittable once the audit restores its pointer-events.
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () => {
+      const overlay = document.getElementById("overlay");
+      return overlay?.style.getPropertyValue("pointer-events") === "auto"
+        ? overlay
+        : document.getElementById("headline");
+    };
+    installAuditScript();
+    const occluded = runAudit().find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
+  it("does not probe text whose every text node is still at opacity 0 (whitespace-indented markup)", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">
+          <span id="inner">Headline copy</span>
+        </div>
         <div id="overlay"></div>
       </div>
     `;

@@ -546,7 +546,9 @@
   }
 
   function alphaFromParts(parts, index) {
-    return parts.length > index ? parsePx(parts[index]) : 1;
+    if (parts.length <= index) return 1;
+    const raw = parts[index].trim();
+    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
   }
 
   // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
@@ -659,18 +661,27 @@
   }
 
   function hasOpaqueBackground(style) {
+    let imageAlpha = 0;
     if (style.backgroundImage && style.backgroundImage !== "none") {
       if (style.backgroundImage.includes("url(")) return true;
       // A gradient only occludes as much as its colours — a 4%-alpha grid/scrim must not count.
-      if (gradientMaxAlpha(style.backgroundImage) > 0.6) return true;
+      imageAlpha = gradientMaxAlpha(style.backgroundImage);
     }
-    if (isTransparentColor(style.backgroundColor)) return false;
-    return colorAlpha(style.backgroundColor) > 0.6;
+    const colorValue = isTransparentColor(style.backgroundColor)
+      ? 0
+      : colorAlpha(style.backgroundColor);
+    // Layers composite: a 0.5 gradient over a 0.5 background colour paints at ~0.75.
+    return 1 - (1 - imageAlpha) * (1 - colorValue) > 0.6;
   }
 
   function gradientMaxAlpha(backgroundImage) {
+    // Any colour we cannot score (oklch/lab/named-colour fns/...) counts as opaque so real panels keep flagging.
+    const known = backgroundImage
+      .replace(/(?:repeating-)?(?:linear|radial|conic)-gradient\(/gi, "(")
+      .replace(/rgba?\([^)]*\)/gi, "");
+    if (/[a-z][a-z-]+\(/i.test(known)) return 1;
     const colors = backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b/g);
-    if (!colors) return 1; // named colours we cannot parse — keep the old (opaque) behaviour
+    if (!colors) return 1;
     let max = 0;
     for (const color of colors) {
       if (color === "transparent") continue;
@@ -781,43 +792,42 @@
   // reads very differently from a label buried under an overlay. Still
   // returns the first opaque element found, for `containerSelector`.
   function occlusionCoverage(element, textRect) {
-    // pointer-events:none text is invisible to elementFromPoint — restore hit-testing for the probe.
-    const restore = restoreHitTesting(element);
-    try {
-      let occluder = null;
-      let hits = 0;
-      for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
-        const y = textRect.top + textRect.height * yFraction;
-        for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
-          const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
-          if (!hit) continue;
-          hits += 1;
-          if (!occluder) occluder = hit;
-        }
+    let occluder = null;
+    let hits = 0;
+    for (const yFraction of OCCLUSION_PROBE_Y_FRACTIONS) {
+      const y = textRect.top + textRect.height * yFraction;
+      for (const xFraction of OCCLUSION_PROBE_X_FRACTIONS) {
+        const hit = occluderAt(element, textRect.left + textRect.width * xFraction, y);
+        if (!hit) continue;
+        hits += 1;
+        if (!occluder) occluder = hit;
       }
-      return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
-    } finally {
-      restore();
     }
+    return { occluder, coveredFraction: round(hits / OCCLUSION_GRID_POINTS) };
   }
 
-  function restoreHitTesting(element) {
-    if (getComputedStyle(element).pointerEvents !== "none") return () => {};
-    const previous = element.style.getPropertyValue("pointer-events");
-    const priority = element.style.getPropertyPriority("pointer-events");
-    element.style.setProperty("pointer-events", "auto", "important");
-    return () => {
-      if (previous) element.style.setProperty("pointer-events", previous, priority);
-      else element.style.removeProperty("pointer-events");
-    };
+  // pointer-events:none hides elements from elementFromPoint — both probed text AND occluders.
+  function restoreHitTesting(root) {
+    const restores = [];
+    for (const node of [root, ...root.querySelectorAll("*")]) {
+      if (getComputedStyle(node).pointerEvents !== "none") continue;
+      const previous = node.style.getPropertyValue("pointer-events");
+      const priority = node.style.getPropertyPriority("pointer-events");
+      node.style.setProperty("pointer-events", "auto", "important");
+      restores.push(() => {
+        if (previous) node.style.setProperty("pointer-events", previous, priority);
+        else node.style.removeProperty("pointer-events");
+      });
+    }
+    return () => restores.forEach((restore) => restore());
   }
 
-  // No text ink is on screen while every text-bearing node sits at opacity 0 (entrance not started).
+  // No text ink is on screen while every non-whitespace text node sits at ~0 opacity (entrance not started).
   function hasVisibleTextInk(element) {
     const nodes = [element, ...element.querySelectorAll("*")];
     for (const node of nodes) {
-      if (directTextNodes(node).length === 0) continue;
-      if (opacityChain(node) >= 0.2) return true;
+      if (!directTextNodes(node).some((textNode) => textNode.textContent.trim())) continue;
+      if (opacityChain(node) >= 0.05) return true;
     }
     return false;
   }
@@ -974,15 +984,20 @@
     );
     const issues = [];
 
-    for (const element of elements) {
-      if (!hasOwnTextCandidate(element)) continue;
-      const clipped = clippedTextIssue(element, time, tolerance);
-      if (clipped) issues.push(clipped);
-      issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
-      const occluded = occludedTextIssue(element, time);
-      if (occluded) issues.push(occluded);
-      const invisible = invisibleTextIssue(element, time);
-      if (invisible) issues.push(invisible);
+    const restoreHits = restoreHitTesting(root);
+    try {
+      for (const element of elements) {
+        if (!hasOwnTextCandidate(element)) continue;
+        const clipped = clippedTextIssue(element, time, tolerance);
+        if (clipped) issues.push(clipped);
+        issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance));
+        const occluded = occludedTextIssue(element, time);
+        if (occluded) issues.push(occluded);
+        const invisible = invisibleTextIssue(element, time);
+        if (invisible) issues.push(invisible);
+      }
+    } finally {
+      restoreHits();
     }
 
     issues.push(...containerOverflowIssues(root, time, tolerance));
