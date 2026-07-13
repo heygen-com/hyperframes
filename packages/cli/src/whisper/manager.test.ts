@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { WhisperUnavailableError, isWhisperUnavailable } from "./manager.js";
+import {
+  WHISPER_CPP_SYSTEM_BINARY_NAMES,
+  WhisperUnavailableError,
+  isWhisperUnavailable,
+} from "./manager.js";
+
+describe("system executable discovery", () => {
+  it("does not accept the unrelated Python whisper CLI", () => {
+    expect(WHISPER_CPP_SYSTEM_BINARY_NAMES).toEqual(["whisper-cli"]);
+    expect(WHISPER_CPP_SYSTEM_BINARY_NAMES).not.toContain("whisper");
+  });
+});
 
 describe("isWhisperUnavailable", () => {
   it("recognizes WhisperUnavailableError instances", () => {

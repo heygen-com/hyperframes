@@ -16,6 +16,11 @@ export interface WhisperResult {
   source: WhisperSource;
 }
 
+// Only whisper.cpp's current executable is compatible with the CLI arguments
+// used below. The unrelated Python `whisper` package installs a binary named
+// `whisper` with a different interface, so it must never satisfy discovery.
+export const WHISPER_CPP_SYSTEM_BINARY_NAMES = ["whisper-cli"] as const;
+
 // A missing/uninstallable whisper-cpp is an environment prerequisite gap (no
 // binary, no Homebrew, no compiler toolchain), not a transcription bug. Callers
 // that treat captions as optional (init, skill pipelines) skip on this and keep
@@ -67,7 +72,7 @@ function findFromEnv(): WhisperResult | undefined {
 }
 
 function findFromSystem(): WhisperResult | undefined {
-  for (const name of ["whisper-cli", "whisper"]) {
+  for (const name of WHISPER_CPP_SYSTEM_BINARY_NAMES) {
     const path = whichBinary(name);
     if (path) return { executablePath: path, source: "system" };
   }
