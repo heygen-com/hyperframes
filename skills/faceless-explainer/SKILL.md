@@ -58,7 +58,7 @@ Do **not** run `npx hyperframes capture` (there is no URL). Do not create `asset
 
 Goal: Choose one shipped frame preset; a script turns it into this video's `frame.md` + caption skin.
 
-You make the one judgment call — **which preset**. Read `../hyperframes-creative/references/design-spec.md` and browse `../hyperframes-creative/frame-presets/`; pick the preset whose look best fits the topic, tone, and audience. Then run:
+When `BRIEF.md` names a `style_preset` — the user picked it by eye from the showcases at the intent layer — use it; the judgment call is yours only when the brief is silent. Then you make the one call — **which preset**: read `../hyperframes-creative/references/design-spec.md` and browse `../hyperframes-creative/frame-presets/`; pick the preset whose look best fits the topic, tone, and audience. Then run:
 
 ```bash
 node <SKILL_DIR>/scripts/build-frame.mjs --preset <name> --hyperframes .
