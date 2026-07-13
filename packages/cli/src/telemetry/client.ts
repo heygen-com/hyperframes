@@ -1,42 +1,20 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { readConfig, writeConfig } from "./config.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
 import { getSystemMeta } from "./system.js";
-
-// This is a public project API key — safe to embed in client-side code.
-// It only allows writing events, not reading data.
-const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
-const POSTHOG_HOST = "https://us.i.posthog.com";
-const FLUSH_TIMEOUT_MS = 5_000;
+import { enqueue, POSTHOG_API_KEY, type EventProperties } from "./transport.js";
 
 // ---------------------------------------------------------------------------
-// Lightweight PostHog client — uses the HTTP batch API directly to avoid
-// pulling in the full posthog-node SDK and its dependencies.
-// All calls are fire-and-forget with a hard timeout.
+// CLI-facing telemetry policy: opt-out checks, system-metadata enrichment, and
+// the first-run disclosure notice. The reliability-critical delivery layer
+// (the event queue, `flush()`, and the exit-time `flushSync()`) lives in
+// transport.ts. `flush` / `flushSync` are re-exported here so existing callers
+// (events.ts, index.ts, the cli.ts exit handlers) keep importing from
+// `./client.js` unchanged.
 // ---------------------------------------------------------------------------
 
-interface EventProperties {
-  [key: string]: string | number | boolean | null | undefined;
-}
-
-interface QueuedEvent {
-  // Client-generated event id. PostHog dedupes on it, so an event that gets
-  // sent by an interrupted flush() AND re-sent by the exit-time flushSync()
-  // fallback still counts once.
-  uuid: string;
-  event: string;
-  properties: EventProperties;
-  timestamp: string;
-  // Override for the batch distinct_id. Defaults to the install's anonymousId.
-  // Used to attribute server-side studio renders to the browser user who
-  // triggered them, so the render funnel is joinable across processes.
-  distinctId?: string;
-}
-
-let eventQueue: QueuedEvent[] = [];
+export { flush, flushSync } from "./transport.js";
 
 let telemetryEnabled: boolean | null = null;
 
@@ -70,6 +48,8 @@ export function shouldTrack(): boolean {
 
 /**
  * Queue a telemetry event. Non-blocking, fail-silent.
+ * Enriches the event with system metadata, then hands it to the transport
+ * queue (which stamps the dedup uuid + timestamp).
  */
 export function trackEvent(
   event: string,
@@ -79,11 +59,9 @@ export function trackEvent(
   if (!shouldTrack()) return;
 
   const sys = getSystemMeta();
-  eventQueue.push({
-    uuid: randomUUID(),
+  enqueue(
     event,
-    distinctId,
-    properties: {
+    {
       ...properties,
       cli_version: VERSION,
       os: process.platform,
@@ -106,101 +84,8 @@ export function trackEvent(
       term_program: sys.term_program ?? undefined,
       agent_env_hints: sys.agent_env_hints ?? undefined,
     },
-    timestamp: new Date().toISOString(),
-  });
-}
-
-/**
- * Serialize events into a PostHog `/batch/` payload string. Pure — the queue
- * is untouched, so callers decide when events count as delivered.
- *
- * Each event carries its client-generated `uuid`, which PostHog treats as the
- * event id — re-sending the same event is idempotent, not a duplicate.
- *
- * $ip:null tells PostHog not to record the request IP for any of these events.
- * Server-side "Discard client IP data" is also enabled in project settings.
- */
-function buildPayload(events: readonly QueuedEvent[]): string | null {
-  if (events.length === 0) return null;
-  const config = readConfig();
-  const batch = events.map((e) => ({
-    uuid: e.uuid,
-    event: e.event,
-    properties: { ...e.properties, $ip: null },
-    distinct_id: e.distinctId ?? config.anonymousId,
-    timestamp: e.timestamp,
-  }));
-  return JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
-}
-
-/**
- * Flush all queued events to PostHog via async HTTP POST.
- * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
- * after high-value events (trackRenderComplete / trackRenderError), and the
- * `events` beacon command, which awaits delivery before its process exits.
- *
- * Events are only removed from the queue once the request has completed.
- * The old drain-first version silently lost the whole batch whenever the
- * process died with the fetch in flight — which is the NORMAL exit path for
- * `render`: an agent pipe closing triggers the EPIPE `process.exit(0)`, and
- * error paths call `process.exit(1)` directly, both killing the in-flight
- * request that `beforeExit` had just started. Keeping the queue intact until
- * delivery lets the exit-time flushSync() child (which survives the parent)
- * re-send anything unconfirmed; event uuids make that re-send idempotent.
- */
-export async function flush(): Promise<void> {
-  // Copy, not alias — events queued while the request is in flight must not
-  // be swept into the "delivered" set below.
-  const snapshot = eventQueue.slice();
-  const payload = buildPayload(snapshot);
-  if (payload == null) return;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
-
-  try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Connection: "close" },
-      body: payload,
-      signal: controller.signal,
-    });
-    // Delivered — forget exactly what was sent (events queued while the
-    // request was in flight stay for the next flush).
-    const sent = new Set(snapshot);
-    eventQueue = eventQueue.filter((e) => !sent.has(e));
-  } catch {
-    // Silently ignore — telemetry must never break the CLI. The events stay
-    // queued so the exit-time flushSync() fallback can still deliver them.
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Fire-and-forget flush for use in the `exit` event handler.
- * Spawns a detached child process that sends the HTTP request independently,
- * so the parent process exits immediately without waiting.
- */
-export function flushSync(): void {
-  const payload = buildPayload(eventQueue);
-  if (payload == null) return;
-  eventQueue = [];
-
-  try {
-    const child = spawn(
-      process.execPath,
-      [
-        "-e",
-        `fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:${JSON.stringify(payload)},signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
-      ],
-      { detached: true, stdio: "ignore" },
-    );
-    // Let the parent exit without waiting for the child
-    child.unref();
-  } catch {
-    // Silently ignore
-  }
+    distinctId,
+  );
 }
 
 /**
