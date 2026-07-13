@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // The mix filter graph is written to a temp file and passed via
-// -filter_complex_script (not inlined via -filter_complex) so the command
+// a file-valued filter option (not inlined via -filter_complex) so the command
 // line doesn't scale with track count — production code deletes that file
 // the moment the (real) ffmpeg process exits. The mock captures each call's
 // filter content synchronously, while the file still exists, into an
@@ -15,7 +15,9 @@ const { runFfmpegMock, capturedFilterScripts } = vi.hoisted(() => {
   return {
     capturedFilterScripts,
     runFfmpegMock: vi.fn(async (args: string[]) => {
-      const idx = args.indexOf("-filter_complex_script");
+      const legacyIdx = args.indexOf("-filter_complex_script");
+      const currentIdx = args.indexOf("-/filter_complex");
+      const idx = legacyIdx >= 0 ? legacyIdx : currentIdx;
       if (idx >= 0) {
         const { readFileSync } = await import("node:fs");
         capturedFilterScripts.push(readFileSync(args[idx + 1], "utf8"));
@@ -346,6 +348,57 @@ describe("processCompositionAudio", () => {
     const filter = capturedFilterScripts.at(-1);
     expect(filter).toContain(`amix=inputs=${trackCount}`);
     expect((filter?.match(/atrim=/g) ?? []).length).toBe(trackCount);
+  });
+
+  it("retries with the current file-valued filter option when a nightly removes the legacy alias", async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+    tempDirs.push(baseDir, workDir);
+
+    writeFileSync(join(baseDir, "voice.wav"), "stub");
+
+    runFfmpegMock
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+      })
+      .mockImplementationOnce(async () => {
+        capturedFilterScripts.push("");
+        return {
+          success: false,
+          durationMs: 1,
+          stderr: "Unrecognized option 'filter_complex_script'.\nError splitting the argument list",
+          exitCode: 8,
+        };
+      });
+
+    const result = await processCompositionAudio(
+      [
+        {
+          id: "voice",
+          src: "voice.wav",
+          start: 0,
+          end: 2,
+          mediaStart: 0,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ],
+      baseDir,
+      workDir,
+      join(baseDir, "out.m4a"),
+      2,
+    );
+
+    expect(result.success).toBe(true);
+    expect(runFfmpegMock).toHaveBeenCalledTimes(3);
+    const legacyArgs = runFfmpegMock.mock.calls[1]?.[0] as string[];
+    const currentArgs = runFfmpegMock.mock.calls[2]?.[0] as string[];
+    expect(legacyArgs).toContain("-filter_complex_script");
+    expect(currentArgs).toContain("-/filter_complex");
+    expect(currentArgs).not.toContain("-filter_complex_script");
+    expect(capturedFilterScripts[2]).toContain("amix=inputs=1");
   });
 
   it("prepares percent-encoded non-Latin audio srcs from decoded filesystem paths", async () => {
