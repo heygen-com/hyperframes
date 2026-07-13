@@ -221,4 +221,23 @@ describe("runEncodeStage config plumbing", () => {
       resolvedEngineConfig.ffmpegEncodeTimeout,
     );
   });
+
+  it("encodes transparent GIFs from captured PNG frames", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+    const paths = createFramesDir("png");
+
+    await runEncodeStage(
+      makeInput({
+        framesDir: paths.framesDir,
+        outputPath: join(paths.root, "out.gif"),
+        videoOnlyPath: join(paths.root, "video-only.mp4"),
+        isGif: true,
+        needsAlpha: true,
+      }),
+    );
+
+    expect(runFfmpegMock).toHaveBeenCalledTimes(2);
+    expect(runFfmpegMock.mock.calls[0]?.[0]).toContain(join(paths.framesDir, "frame_%06d.png"));
+    expect(runFfmpegMock.mock.calls[1]?.[0]).toContain(join(paths.framesDir, "frame_%06d.png"));
+  });
 });
