@@ -42,7 +42,15 @@ function startBoundedSource(
 ): boolean {
   const { elapsed, mediaStart, scheduledAt, safeRate, clipDuration } = opts;
   const hasBound = Number.isFinite(clipDuration) && clipDuration > 0;
-  const clipSourceLen = clipDuration * safeRate;
+  // Buffer content to play, in buffer seconds. The clip spans `clipDuration`
+  // composition seconds, and media advances 1:1 with composition time (the
+  // global rate scales the transport clock and the source's playbackRate
+  // together), so the buffer content consumed over the clip is exactly
+  // `clipDuration` — NOT scaled by rate. `start()`'s duration arg is buffer
+  // content seconds; playbackRate alone stretches it to the right wall time
+  // (clipDuration / rate). Multiplying by rate here truncated the clip at
+  // rate < 1 (audio cut out partway) and overran it at rate > 1.
+  const clipSourceLen = clipDuration;
   if (elapsed >= 0) {
     const remaining = clipSourceLen - elapsed;
     if (hasBound && remaining <= 0) return false;
