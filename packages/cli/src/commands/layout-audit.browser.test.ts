@@ -924,6 +924,16 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("does not treat transparent pixels in an image as text occlusion", () => {
+    const issues = auditImageOcclusionScene(0);
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still treats opaque pixels in an image as text occlusion", () => {
+    const occluded = auditImageOcclusionScene(255).find((issue) => issue.code === "text_occluded");
+    expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+  });
+
   it("respects the data-layout-allow-occlusion opt-out", () => {
     const issues = auditOcclusionScene({
       headlineAttrs: "data-layout-allow-occlusion",
@@ -1190,6 +1200,35 @@ function auditOcclusionScene(options: {
     headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
     topmostId: options.topmostId,
   });
+  installAuditScript();
+  return runAudit();
+}
+
+function auditImageOcclusionScene(alpha: number): ReturnType<typeof runAudit> {
+  document.body.innerHTML = `
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+      <div id="headline">Headline copy</div>
+      <img id="overlay" src="paper.png" alt="" />
+    </div>
+  `;
+  const overlay = document.getElementById("overlay") as HTMLImageElement;
+  Object.defineProperties(overlay, {
+    naturalWidth: { configurable: true, value: 100 },
+    naturalHeight: { configurable: true, value: 100 },
+  });
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage: vi.fn(),
+    getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([0, 0, 0, alpha]) })),
+  } as unknown as CanvasRenderingContext2D);
+  installOcclusionGeometry({
+    styleOverrides: { overlay: { objectFit: "fill" } },
+    headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+    topmostId: "overlay",
+  });
+  overlay.getBoundingClientRect = () => rect({ left: 0, top: 0, width: 1920, height: 1080 });
   installAuditScript();
   return runAudit();
 }
