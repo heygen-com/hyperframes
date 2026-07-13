@@ -39,11 +39,20 @@ export interface CommitMutationOptions {
   instantPatch?: { selector: string; change: RuntimeTweenChange };
 }
 
-export type CommitMutation = (
-  selection: DomEditSelection,
-  mutation: Record<string, unknown>,
-  options: CommitMutationOptions,
-) => Promise<void>;
+export interface CommitMutationCall {
+  selection: DomEditSelection;
+  mutation: Record<string, unknown>;
+  options: CommitMutationOptions;
+}
+
+export interface CommitMutation {
+  (
+    selection: DomEditSelection,
+    mutation: Record<string, unknown>,
+    options: CommitMutationOptions,
+  ): Promise<void>;
+  batch?: (calls: CommitMutationCall[], options: CommitMutationOptions) => Promise<void>;
+}
 
 export type SafeGsapCommitMutation = (
   selection: DomEditSelection,

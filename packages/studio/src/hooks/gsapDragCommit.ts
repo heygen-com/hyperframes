@@ -385,10 +385,9 @@ export async function commitKeyframedSizeFromResize(
       properties: Math.abs(p - pct) < 0.05 ? { width: newW, height: newH } : { ...prior },
     }));
 
-  // Add the size keyframe tween FIRST, then delete the old global hold. The two
-  // commits aren't transactional, so ordering matters: if the delete fails the
-  // size is preserved (animated, recoverable) rather than lost. Only the last
-  // commit triggers the reload.
+  // Add the size keyframe tween FIRST, then delete the old global hold. The gesture
+  // transport applies both in one ordered batch; a plain commit fallback keeps the
+  // same recoverable ordering. Only the transaction's result triggers the reload.
   const addLabel = `Resize (size keyframe ${pct.toFixed(0)}%)`;
   await callbacks.commitMutation(
     selection,

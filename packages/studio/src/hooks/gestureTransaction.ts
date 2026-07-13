@@ -1,4 +1,8 @@
-import type { CommitMutation, CommitMutationOptions } from "./gsapScriptCommitTypes";
+import type {
+  CommitMutation,
+  CommitMutationCall,
+  CommitMutationOptions,
+} from "./gsapScriptCommitTypes";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 type PixelRect = Pick<DOMRect, "x" | "y" | "width" | "height">;
@@ -59,6 +63,39 @@ function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+type BufferedCommit = CommitMutationCall & { dispatch: CommitMutation };
+
+function mergeTransactionOptions(calls: BufferedCommit[]): CommitMutationOptions {
+  const reloadCall = calls.find(({ options }) => options.softReload);
+  const source = reloadCall?.options ?? calls.at(-1)?.options;
+  if (!source) throw new Error("Cannot merge an empty gesture transaction");
+  const { skipReload: _skipReload, instantPatch: _instantPatch, ...options } = source;
+  return reloadCall ? { ...options, softReload: true } : { ...options, skipReload: true };
+}
+
+async function dispatchBufferedCommits(calls: BufferedCommit[]): Promise<void> {
+  const first = calls[0];
+  if (!first) return;
+  if (calls.length === 1) {
+    await first.dispatch(first.selection, first.mutation, first.options);
+    return;
+  }
+  const canBatch = calls.every(
+    ({ dispatch, selection }) =>
+      dispatch === first.dispatch && selection.sourceFile === first.selection.sourceFile,
+  );
+  if (canBatch && first.dispatch.batch) {
+    await first.dispatch.batch(
+      calls.map(({ selection, mutation, options }) => ({ selection, mutation, options })),
+      mergeTransactionOptions(calls),
+    );
+    return;
+  }
+  for (const { dispatch, selection, mutation, options } of calls) {
+    await dispatch(selection, mutation, options);
+  }
+}
+
 /**
  * Owns the visual + persistence + history lifecycle for one gesture release.
  * `settle` deliberately runs before the first promise is created or awaited.
@@ -68,6 +105,7 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   const coalesceKey = `tx:${tx.label}:${++transactionCounter}`;
   let mutationCount = 0;
   let reloadCount = 0;
+  const bufferedCommits: BufferedCommit[] = [];
   console.info("[hf-commit] start", { label: tx.label, coalesceKey });
   tx.settle();
   console.info("[hf-commit] settled", { label: tx.label, coalesceKey });
@@ -77,11 +115,13 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
     const wrapped: CommitMutation = (selection, mutation, options) => {
       mutationCount += 1;
       if (options.softReload) reloadCount += 1;
-      return commitMutation(
+      bufferedCommits.push({
+        dispatch: commitMutation,
         selection,
         mutation,
-        transactionOptions(options, coalesceKey, tx.label),
-      );
+        options: transactionOptions(options, coalesceKey, tx.label),
+      });
+      return Promise.resolve();
     };
     transactionCommits.add(wrapped);
     return wrapped;
@@ -89,7 +129,8 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
 
   return tx
     .persist(commit)
-    .then(() => {
+    .then(async () => {
+      await dispatchBufferedCommits(bufferedCommits);
       const durationMs = Math.round(performance.now() - startedAt);
       console.info("[hf-commit] persisted", { label: tx.label, coalesceKey });
       if (before) {

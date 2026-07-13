@@ -205,6 +205,136 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     return payload.animations[0];
   }
 
+  function postGsapMutationBatch(app: Hono, file: string, body: unknown): Promise<Response> {
+    return app.request(`http://localhost/projects/demo/gsap-mutations-batch/${file}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("applies an ordered GSAP mutation batch with one before/after write result", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const anim = await getFirstAnimation(app, "comp.html");
+
+    const res = await postGsapMutationBatch(app, "comp.html", {
+      mutations: [
+        {
+          type: "update-from-property",
+          animationId: anim.id,
+          property: "opacity",
+          value: 0.2,
+        },
+        {
+          type: "update-from-property",
+          animationId: anim.id,
+          property: "x",
+          value: -25,
+        },
+      ],
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      changed: boolean;
+      before: string;
+      after: string;
+      backupPath: string;
+      parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.before).toBe(FROMTO_COMP);
+    expect(result.after).toBe(readFileSync(join(projectDir, "comp.html"), "utf-8"));
+    expect(readFileSync(join(projectDir, result.backupPath), "utf-8")).toBe(FROMTO_COMP);
+    expect(result.parsed.animations[0].fromProperties).toMatchObject({ opacity: 0.2, x: -25 });
+  });
+
+  it.each(["first", "middle", "last"] as const)(
+    "rejects an invalid %s mutation without writing any part of the batch",
+    async (position) => {
+      const projectDir = createProjectDir();
+      writeHtml(projectDir, "comp.html", FROMTO_COMP);
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+      const anim = await getFirstAnimation(app, "comp.html");
+      const valid = {
+        type: "update-from-property",
+        animationId: anim.id,
+        property: "opacity",
+        value: 0.2,
+      };
+      const invalid =
+        position === "first"
+          ? {}
+          : position === "middle"
+            ? { ...valid, value: null }
+            : { type: "not-a-mutation" };
+      const mutations =
+        position === "first"
+          ? [invalid, valid, valid]
+          : position === "middle"
+            ? [valid, invalid, valid]
+            : [valid, valid, invalid];
+
+      const res = await postGsapMutationBatch(app, "comp.html", { mutations });
+
+      expect(res.status).toBe(400);
+      expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(FROMTO_COMP);
+    },
+  );
+
+  it("re-syncs position holds when a batch mixes hold-sync and ordinary mutations", async () => {
+    const projectDir = createProjectDir();
+    const html = `<!DOCTYPE html><html><body><div id="box"></div><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+</script></body></html>`;
+    writeHtml(projectDir, "hold.html", html);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await postGsapMutationBatch(app, "hold.html", {
+      mutations: [
+        {
+          type: "add-with-keyframes",
+          targetSelector: "#box",
+          position: 1,
+          duration: 1,
+          keyframes: [
+            { percentage: 0, properties: { x: 10, y: 20 } },
+            { percentage: 100, properties: { x: 30, y: 40 } },
+          ],
+        },
+        {
+          type: "add",
+          targetSelector: "#box",
+          method: "set",
+          position: 0,
+          properties: { opacity: 0.5 },
+        },
+      ],
+    });
+    const result = (await res.json()) as { scriptText: string };
+
+    expect(res.status).toBe(200);
+    expect(result.scriptText).toContain("hf-hold");
+    expect(result.scriptText.match(/hf-hold/g)).toHaveLength(1);
+  });
+
+  it.each([{}, { mutations: [] }])("rejects an empty or missing mutation batch", async (body) => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await postGsapMutationBatch(app, "index.html", body);
+
+    expect(res.status).toBe(400);
+  });
+
   it("update-from-property updates a fromTo start value in place", async () => {
     const projectDir = createProjectDir();
     writeHtml(projectDir, "comp.html", FROMTO_COMP);

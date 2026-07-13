@@ -217,6 +217,7 @@ let cleanup: (() => void) | null = null;
 function renderCommitHook() {
   const reloadPreview = vi.fn();
   const onCacheInvalidate = vi.fn();
+  const onFileContentChanged = vi.fn();
   const forceReloadSdkSession = vi.fn();
   const recordEdit = vi.fn(async () => {});
   const showToast = vi.fn();
@@ -231,7 +232,7 @@ function renderCommitHook() {
       domEditSaveTimestampRef: { current: 0 },
       reloadPreview,
       onCacheInvalidate,
-      onFileContentChanged: undefined,
+      onFileContentChanged,
       showToast,
       sdkSession: null,
       writeProjectFile: undefined,
@@ -252,6 +253,7 @@ function renderCommitHook() {
     api: hookApi,
     reloadPreview,
     onCacheInvalidate,
+    onFileContentChanged,
     forceReloadSdkSession,
     recordEdit,
     showToast,
@@ -382,5 +384,42 @@ describe("runCommit — instantPatch wiring", () => {
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
     expectSoftReloadedWith(deps.reloadPreview, "AFTER");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("batch capability posts ordered mutations and finalizes the result once", async () => {
+    applySoftReload.mockReturnValue("applied");
+    mockFetchResult();
+    const deps = renderCommitHook();
+    const firstMutation = { type: "add", value: 1 };
+    const lastMutation = { type: "delete", value: 2 };
+    const batch = deps.api.commitMutation.batch;
+    if (!batch) throw new Error("batch capability missing");
+
+    await act(async () => {
+      await batch(
+        [
+          { selection, mutation: firstMutation, options: { label: "Resize", skipReload: true } },
+          { selection, mutation: lastMutation, options: { label: "Resize", softReload: true } },
+        ],
+        { label: "Resize", coalesceKey: "tx:resize:1", coalesceMs: Infinity, softReload: true },
+      );
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/proj-1/gsap-mutations-batch/index.html",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ mutations: [firstMutation, lastMutation] }),
+      }),
+    );
+    expect(deps.recordEdit).toHaveBeenCalledTimes(1);
+    expect(deps.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "Resize", coalesceKey: "tx:resize:1" }),
+    );
+    expect(deps.onFileContentChanged).toHaveBeenCalledTimes(1);
+    expect(deps.forceReloadSdkSession).toHaveBeenCalledTimes(1);
+    expect(applySoftReload).toHaveBeenCalledTimes(1);
+    expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
   });
 });

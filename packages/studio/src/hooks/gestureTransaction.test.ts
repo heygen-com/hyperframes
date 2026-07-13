@@ -14,6 +14,25 @@ function rect(x: number, y: number, width: number, height: number): DOMRect {
   return { x, y, width, height } as DOMRect;
 }
 
+function runTwoMutationTransaction(
+  underlying: CommitMutation,
+  firstSelection: DomEditSelection,
+  secondSelection = firstSelection,
+): Promise<void> {
+  return runGestureTransaction({
+    element: firstSelection.element,
+    label: "Resize layer",
+    settle: vi.fn(),
+    persist: async (commit) => {
+      const commitMutation = commit(underlying);
+      await commitMutation(firstSelection, { type: "first" }, { label: "First" });
+      await commitMutation(secondSelection, { type: "last" }, { label: "Last", softReload: true });
+    },
+    restore: vi.fn(),
+    skipPixelAssert: true,
+  });
+}
+
 describe("runGestureTransaction", () => {
   beforeEach(() => {
     trackStudioEventMock.mockReset();
@@ -49,23 +68,18 @@ describe("runGestureTransaction", () => {
     const element = document.createElement("div");
     const selection = { element, id: "clip" } as DomEditSelection;
     const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+    const batch = vi.fn<NonNullable<CommitMutation["batch"]>>().mockResolvedValue(undefined);
+    underlying.batch = batch;
     const now = vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(112.6);
 
-    await runGestureTransaction({
-      element,
-      label: "Resize layer",
-      settle: vi.fn(),
-      persist: async (commit) => {
-        const commitMutation = commit(underlying);
-        await commitMutation(selection, { type: "first" }, { label: "First" });
-        await commitMutation(selection, { type: "last" }, { label: "Last", softReload: true });
-      },
-      restore: vi.fn(),
-      skipPixelAssert: true,
-    });
+    await runTwoMutationTransaction(underlying, selection);
 
-    const firstOptions = underlying.mock.calls[0]![2];
-    const lastOptions = underlying.mock.calls[1]![2];
+    expect(underlying).not.toHaveBeenCalled();
+    expect(batch).toHaveBeenCalledTimes(1);
+    const [calls, mergedOptions] = batch.mock.calls[0]!;
+    const firstOptions = calls[0]!.options;
+    const lastOptions = calls[1]!.options;
+    expect(calls.map(({ mutation }) => mutation)).toEqual([{ type: "first" }, { type: "last" }]);
     expect(firstOptions.coalesceKey).toBe(lastOptions.coalesceKey);
     expect(firstOptions.coalesceKey).toMatch(/^tx:Resize layer:\d+$/);
     expect(firstOptions.coalesceMs).toBe(Number.POSITIVE_INFINITY);
@@ -78,6 +92,13 @@ describe("runGestureTransaction", () => {
     // labels are overridden so the coalesced entry reads "Resize layer".
     expect(firstOptions.label).toBe("Resize layer");
     expect(lastOptions.label).toBe("Resize layer");
+    expect(mergedOptions).toMatchObject({
+      label: "Resize layer",
+      coalesceKey: firstOptions.coalesceKey,
+      coalesceMs: Number.POSITIVE_INFINITY,
+      softReload: true,
+    });
+    expect(mergedOptions.skipReload).toBeUndefined();
     expect(trackStudioEventMock).toHaveBeenCalledWith("commit_transaction", {
       label: "Resize layer",
       mutation_count: 2,
@@ -86,6 +107,58 @@ describe("runGestureTransaction", () => {
       pixel_asserted: false,
     });
     now.mockRestore();
+  });
+
+  it("falls back to sequential dispatch when the commit has no batch capability", async () => {
+    const element = document.createElement("div");
+    const selection = { element, id: "clip" } as DomEditSelection;
+    const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+
+    await runTwoMutationTransaction(underlying, selection);
+
+    expect(underlying).toHaveBeenCalledTimes(2);
+    expect(underlying.mock.calls[0]![2]).toMatchObject({ skipReload: true });
+    expect(underlying.mock.calls[1]![2]).toMatchObject({ softReload: true });
+  });
+
+  it("keeps a single mutation on the original commit path", async () => {
+    const element = document.createElement("div");
+    const selection = { element, id: "clip" } as DomEditSelection;
+    const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+    const batch = vi.fn<NonNullable<CommitMutation["batch"]>>().mockResolvedValue(undefined);
+    underlying.batch = batch;
+
+    await runGestureTransaction({
+      element,
+      label: "Move layer",
+      settle: vi.fn(),
+      persist: async (commit) => {
+        await commit(underlying)(
+          selection,
+          { type: "update-property" },
+          { label: "Move", softReload: true },
+        );
+      },
+      restore: vi.fn(),
+      skipPixelAssert: true,
+    });
+
+    expect(underlying).toHaveBeenCalledTimes(1);
+    expect(batch).not.toHaveBeenCalled();
+  });
+
+  it("does not batch mutations for different source files", async () => {
+    const element = document.createElement("div");
+    const firstSelection = { element, id: "a", sourceFile: "a.html" } as DomEditSelection;
+    const secondSelection = { element, id: "b", sourceFile: "b.html" } as DomEditSelection;
+    const underlying = vi.fn<CommitMutation>().mockResolvedValue(undefined);
+    const batch = vi.fn<NonNullable<CommitMutation["batch"]>>().mockResolvedValue(undefined);
+    underlying.batch = batch;
+
+    await runTwoMutationTransaction(underlying, firstSelection, secondSelection);
+
+    expect(batch).not.toHaveBeenCalled();
+    expect(underlying).toHaveBeenCalledTimes(2);
   });
 
   it("identifies transaction-owned commit wrappers without marking their underlying commit", async () => {

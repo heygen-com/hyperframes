@@ -106,6 +106,12 @@ interface RouteContext {
   json: (data: unknown, status?: number) => Response;
 }
 
+interface ResolvedGsapFile {
+  project: { dir: string };
+  filePath: string;
+  absPath: string;
+}
+
 /** Resolve project + safe absolute path for any project-scoped route. */
 async function resolveProjectPath(
   c: RouteContext,
@@ -842,6 +848,130 @@ async function executeGsapMutation(
     return executeGsapMutationRecast(body, block, respond);
   }
   return executeGsapMutationAcorn(body, block, respond);
+}
+
+function validateGsapMutationRequest(
+  c: RouteContext,
+  body: GsapMutationRequest | null,
+): Response | null {
+  if (!body || typeof body !== "object" || !("type" in body) || !body.type) {
+    return c.json({ error: "mutation type required" }, 400);
+  }
+  const unsafeFields = findUnsafeMutationValues(body);
+  if (unsafeFields.length > 0) return rejectUnsafeMutationValues(c, unsafeFields);
+  if (
+    body.type === "shift-positions-batch" &&
+    (!("shifts" in body) || !Array.isArray(body.shifts))
+  ) {
+    return c.json({ error: "shift-positions-batch requires a `shifts` array" }, 400);
+  }
+  return null;
+}
+
+async function prepareGsapMutationScript(
+  c: RouteContext,
+  res: ResolvedGsapFile,
+  firstMutation: GsapMutationRequest,
+): Promise<
+  | Response
+  | {
+      html: string;
+      block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>;
+    }
+> {
+  let html = readFileSync(res.absPath, "utf-8");
+  let block = extractGsapScriptBlock(html);
+  if (!block && (firstMutation.type === "add" || firstMutation.type === "add-with-keyframes")) {
+    const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
+    const { GSAP_CDN } = await import("@hyperframes/core");
+    const bootstrap = [
+      `<script src="${GSAP_CDN}"></script>`,
+      "<script>",
+      "window.__timelines = window.__timelines || {};",
+      "const tl = gsap.timeline({ paused: true });",
+      `window.__timelines["${compId}"] = tl;`,
+      "</script>",
+    ].join("\n");
+    html = html.includes("</body>")
+      ? html.replace("</body>", `${bootstrap}\n</body>`)
+      : `${html}\n${bootstrap}`;
+    block = extractGsapScriptBlock(html);
+  }
+  if (
+    !block &&
+    (firstMutation.type === "shift-positions" ||
+      firstMutation.type === "scale-positions" ||
+      firstMutation.type === "shift-positions-batch")
+  ) {
+    return c.json({
+      ok: true,
+      changed: false,
+      mutated: false,
+      parsed: { animations: [], timelineVar: "tl", preamble: "", postamble: "" },
+      before: html,
+      after: html,
+      scriptText: "",
+      path: res.filePath,
+      backupPath: null,
+    });
+  }
+  if (!block) return c.json({ error: "no GSAP script found in file" }, 400);
+  return { html, block };
+}
+
+async function applyGsapMutations(
+  c: RouteContext,
+  res: ResolvedGsapFile,
+  mutations: GsapMutationRequest[],
+): Promise<Response> {
+  const firstMutation = mutations[0];
+  if (!firstMutation) return c.json({ error: "mutations array required" }, 400);
+  const prepared = await prepareGsapMutationScript(c, res, firstMutation);
+  if (prepared instanceof Response) return prepared;
+  const { html, block } = prepared;
+
+  const initialScript = block.scriptText;
+  const skippedSelectors = new Set<string>();
+  const respond = (data: unknown, status?: number) =>
+    status ? c.json(data, status) : c.json(data);
+
+  for (const mutation of mutations) {
+    const result = await executeGsapMutation(mutation, block, respond);
+    if (result instanceof Response) return result;
+    let newScript = typeof result === "string" ? result : result.script;
+    if (typeof result !== "string") {
+      for (const selector of result.skippedSelectors) skippedSelectors.add(selector);
+    }
+    if (HOLD_SYNC_MUTATION_TYPES.has(mutation.type)) {
+      const parser = await loadGsapParser();
+      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+    }
+    block.scriptText = newScript;
+  }
+
+  const changed = block.scriptText !== initialScript;
+  const newHtml = changed ? block.replaceScript(block.scriptText) : html;
+  let backupPath: string | null = null;
+  if (changed) {
+    const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
+    if (backup.error) console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
+    backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
+    writeFileSync(res.absPath, newHtml, "utf-8");
+  }
+
+  const responsePayload: Record<string, unknown> = {
+    ok: true,
+    changed,
+    mutated: changed,
+    parsed: parseGsapScriptAcorn(block.scriptText),
+    before: html,
+    after: newHtml,
+    scriptText: block.scriptText,
+    path: res.filePath,
+    backupPath,
+  };
+  if (skippedSelectors.size > 0) responsePayload.skippedSelectors = [...skippedSelectors];
+  return c.json(responsePayload);
 }
 
 function executeGsapMutationAcorn(
@@ -2042,104 +2172,31 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as GsapMutationRequest | null;
-    if (!body || !body.type) {
-      return c.json({ error: "mutation type required" }, 400);
-    }
-    const unsafeFields = findUnsafeMutationValues(body);
-    if (unsafeFields.length > 0) {
-      return rejectUnsafeMutationValues(c, unsafeFields);
-    }
-    // Defensive shape guard: a malformed shift-positions-batch (missing/non-array
-    // `shifts`) would otherwise TypeError inside `for (const s of body.shifts)`.
-    if (body.type === "shift-positions-batch" && !Array.isArray(body.shifts)) {
-      return c.json({ error: "shift-positions-batch requires a `shifts` array" }, 400);
-    }
+    if (!body) return c.json({ error: "mutation type required" }, 400);
+    const error = validateGsapMutationRequest(c, body);
+    if (error) return error;
+    return applyGsapMutations(c, res, [body]);
+  });
 
-    let html = readFileSync(res.absPath, "utf-8");
-    let block = extractGsapScriptBlock(html);
-    if (!block && (body.type === "add" || body.type === "add-with-keyframes")) {
-      const compId = html.match(/data-composition-id="([^"]+)"/)?.[1] ?? "main";
-      const { GSAP_CDN } = await import("@hyperframes/core");
-      const gsapCdn = `<script src="${GSAP_CDN}"></script>`;
-      const bootstrap = [
-        gsapCdn,
-        "<script>",
-        "window.__timelines = window.__timelines || {};",
-        `const tl = gsap.timeline({ paused: true });`,
-        `window.__timelines["${compId}"] = tl;`,
-        "</script>",
-      ].join("\n");
-      if (html.includes("</body>")) {
-        html = html.replace("</body>", `${bootstrap}\n</body>`);
-      } else {
-        html += `\n${bootstrap}`;
-      }
-      block = extractGsapScriptBlock(html);
-    }
-    if (
-      !block &&
-      (body.type === "shift-positions" ||
-        body.type === "scale-positions" ||
-        body.type === "shift-positions-batch")
-    ) {
-      return c.json({
-        ok: true,
-        changed: false,
-        mutated: false,
-        parsed: { animations: [], timelineVar: "tl", preamble: "", postamble: "" },
-        before: html,
-        after: html,
-        scriptText: "",
-        path: res.filePath,
-        backupPath: null,
-      });
-    }
-    if (!block) {
-      return c.json({ error: "no GSAP script found in file" }, 400);
-    }
+  api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
+    const res = await resolveProjectPath(
+      c,
+      adapter,
+      (id) => `/projects/${id}/gsap-mutations-batch/`,
+      { mustExist: true },
+    );
+    if ("error" in res) return res.error;
 
-    const respond = (data: unknown, status?: number) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bridge between generic status and Hono's literal union
-      status ? c.json(data, status as any) : c.json(data);
-
-    const result = await executeGsapMutation(body, block, respond);
-    if (result instanceof Response) return result;
-
-    let newScript = typeof result === "string" ? result : result.script;
-    // Keep the "hold before first keyframe" sets in sync after any mutation that can
-    // change a position tween's first keyframe or its existence. Without it, an
-    // element snaps to its CSS base before the tween starts instead of holding its
-    // first keyframe (the universal NLE behavior).
-    if (HOLD_SYNC_MUTATION_TYPES.has(body.type)) {
-      const parser = await loadGsapParser();
-      newScript = parser.syncPositionHoldsBeforeKeyframes(newScript);
+    const body = (await c.req.json().catch(() => null)) as {
+      mutations?: GsapMutationRequest[];
+    } | null;
+    if (!body || !Array.isArray(body.mutations) || body.mutations.length === 0) {
+      return c.json({ error: "mutations array required" }, 400);
     }
-    const changed = newScript !== block.scriptText;
-    const newHtml = changed ? block.replaceScript(newScript) : html;
-    let backupPath: string | null = null;
-    if (changed) {
-      const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
-      if (backup.error)
-        console.warn(`Failed to create backup for ${res.filePath}: ${backup.error}`);
-      backupPath = backupPathForResponse(res.project.dir, backup.backupPath);
-      writeFileSync(res.absPath, newHtml, "utf-8");
+    for (const mutation of body.mutations) {
+      const error = validateGsapMutationRequest(c, mutation);
+      if (error) return error;
     }
-
-    const freshParsed = parseGsapScriptAcorn(newScript);
-    const responsePayload: Record<string, unknown> = {
-      ok: true,
-      changed,
-      mutated: changed,
-      parsed: freshParsed,
-      before: html,
-      after: newHtml,
-      scriptText: newScript,
-      path: res.filePath,
-      backupPath,
-    };
-    if (typeof result !== "string" && result.skippedSelectors.length > 0) {
-      responsePayload.skippedSelectors = result.skippedSelectors;
-    }
-    return c.json(responsePayload);
+    return applyGsapMutations(c, res, body.mutations);
   });
 }
