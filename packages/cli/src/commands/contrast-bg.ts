@@ -20,6 +20,59 @@
 export type Rgb = [number, number, number];
 export type Rgba = [number, number, number, number];
 
+/** WCAG relative luminance for an sRGB color. Mirrors contrast-audit.browser.js. */
+export function relativeLuminance(color: Rgb): number {
+  const channel = (value: number) => {
+    const srgb = value / 255;
+    return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+
+  return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2]);
+}
+
+/** WCAG contrast ratio between two opaque sRGB colors. */
+export function contrastRatio(first: Rgb, second: Rgb): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** WCAG AA minimum contrast for body or large text. */
+export function requiredContrastRatio(large: boolean): number {
+  return large ? 3 : 4.5;
+}
+
+/**
+ * Find the nearest passing foreground on the line toward the higher-contrast
+ * pole: white for a dark background, black for a light background.
+ */
+export function suggestCompliantForegroundColor(
+  foreground: Rgb,
+  background: Rgb,
+  requiredRatio: number,
+): Rgb {
+  if (contrastRatio(foreground, background) >= requiredRatio) return [...foreground];
+
+  const black: Rgb = [0, 0, 0];
+  const white: Rgb = [255, 255, 255];
+  const target =
+    contrastRatio(white, background) >= contrastRatio(black, background) ? white : black;
+
+  for (let step = 1; step <= 255; step += 1) {
+    const amount = step / 255;
+    const candidate: Rgb = [
+      Math.round(foreground[0] + (target[0] - foreground[0]) * amount),
+      Math.round(foreground[1] + (target[1] - foreground[1]) * amount),
+      Math.round(foreground[2] + (target[2] - foreground[2]) * amount),
+    ];
+    if (contrastRatio(candidate, background) >= requiredRatio) return candidate;
+  }
+
+  return [...target];
+}
+
 /** Parse a CSS `rgb()`/`rgba()` string. Returns null if it is not rgb(a). */
 export function parseColorRGBA(color: string | null | undefined): Rgba | null {
   const body = /rgba?\(([^)]+)\)/.exec(color ?? "")?.[1];

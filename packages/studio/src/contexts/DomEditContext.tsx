@@ -98,6 +98,15 @@ export function useDomEditActionsContext(): DomEditActionsValue {
   return ctx;
 }
 
+/**
+ * Optional access — returns null outside a provider. Lets the player-package
+ * <Timeline> (a public standalone export) reach the z-order persist path when
+ * embedded in the NLE without hard-requiring the provider in standalone/test mounts.
+ */
+export function useDomEditActionsContextOptional(): DomEditActionsValue | null {
+  return useContext(DomEditActionsContext);
+}
+
 export function useDomEditSelectionContext(): DomEditSelectionValue {
   const ctx = useContext(DomEditSelectionContext);
   if (!ctx) throw new Error("useDomEditSelectionContext must be used within DomEditProvider");

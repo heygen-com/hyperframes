@@ -3,7 +3,7 @@ export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues } from "../runtime/getVariables";
 import { cssVariableName } from "../tokenSlug";
 import { readFileSync, existsSync } from "fs";
-import { join, resolve, relative, dirname, isAbsolute, sep } from "path";
+import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
 import { transformSync } from "esbuild";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
@@ -131,6 +131,89 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
     if (rebased === basePath) return full;
     return `url(${quote || ""}${rebased}${suffix}${quote || ""})`;
   });
+}
+
+function rebaseRelativePath(urlValue: string, fromDir: string, toDir: string): string {
+  const { basePath, suffix } = splitUrlSuffix(urlValue.trim());
+  if (!basePath) return urlValue;
+  const absolutePath = resolve(fromDir, basePath);
+  const rebased = relative(resolve(toDir), absolutePath).split(sep).join("/");
+  return appendSuffixToUrl(rebased, suffix);
+}
+
+function rebaseSrcsetPaths(srcsetValue: string, fromDir: string, toDir: string): string {
+  if (!srcsetValue) return srcsetValue;
+  return srcsetValue
+    .split(",")
+    .map((rawCandidate) => {
+      const candidate = rawCandidate.trim();
+      if (!candidate) return candidate;
+      const parts = candidate.split(/\s+/);
+      const first = parts[0] ?? "";
+      if (parts.length === 0 || !isRelativeUrl(first)) return candidate;
+      parts[0] = rebaseRelativePath(first, fromDir, toDir);
+      return parts.join(" ");
+    })
+    .join(", ");
+}
+
+function rebaseColorGradingLutPath(value: string, fromDir: string, toDir: string): string {
+  if (!value.trim().startsWith("{")) return value;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return value;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return value;
+
+  const lut = Reflect.get(parsed, "lut");
+  if (typeof lut === "string") {
+    if (!isRelativeUrl(lut)) return value;
+    Reflect.set(parsed, "lut", rebaseRelativePath(lut, fromDir, toDir));
+    return JSON.stringify(parsed);
+  }
+  if (typeof lut !== "object" || lut === null || Array.isArray(lut)) return value;
+  const lutSrc = Reflect.get(lut, "src");
+  if (typeof lutSrc !== "string" || !isRelativeUrl(lutSrc)) return value;
+  Reflect.set(lut, "src", rebaseRelativePath(lutSrc, fromDir, toDir));
+  return JSON.stringify(parsed);
+}
+
+function rebaseEntryAuthoredAssetPaths(
+  document: Document,
+  sourceDir: string,
+  projectDir: string,
+): void {
+  for (const styleEl of [...document.querySelectorAll("style")]) {
+    styleEl.textContent = rebaseCssUrls(styleEl.textContent || "", sourceDir, projectDir);
+  }
+  for (const el of [...document.querySelectorAll("[style]")]) {
+    const styleAttr = el.getAttribute("style");
+    if (styleAttr) el.setAttribute("style", rebaseCssUrls(styleAttr, sourceDir, projectDir));
+  }
+  for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {
+    if (el.tagName === "LINK" && (el.getAttribute("rel") || "").toLowerCase() === "stylesheet")
+      continue;
+    if (el.tagName === "SCRIPT" && el.hasAttribute("src")) continue;
+    for (const attr of ["src", "href", "poster", "xlink:href"] as const) {
+      const value = el.getAttribute(attr);
+      if (!value || !isRelativeUrl(value)) continue;
+      el.setAttribute(attr, rebaseRelativePath(value, sourceDir, projectDir));
+    }
+  }
+  for (const el of [...document.querySelectorAll("[srcset]")]) {
+    const srcset = el.getAttribute("srcset");
+    if (srcset) el.setAttribute("srcset", rebaseSrcsetPaths(srcset, sourceDir, projectDir));
+  }
+  for (const el of [...document.querySelectorAll(`[${HF_COLOR_GRADING_ATTR}]`)]) {
+    const value = el.getAttribute(HF_COLOR_GRADING_ATTR);
+    if (value)
+      el.setAttribute(
+        HF_COLOR_GRADING_ATTR,
+        rebaseColorGradingLutPath(value, sourceDir, projectDir),
+      );
+  }
 }
 
 function inlineCssFile(
@@ -581,6 +664,8 @@ function stripJsCommentsParserSafe(source: string): string {
 }
 
 export interface BundleOptions {
+  /** Project-relative HTML entry to bundle. Defaults to `index.html`. */
+  entryFile?: string;
   /** Optional media duration prober (e.g., ffprobe). If omitted, media durations are not resolved. */
   probeMediaDuration?: MediaDurationProber;
   /**
@@ -692,11 +777,19 @@ export async function bundleToSingleHtml(
   projectDir: string,
   options?: BundleOptions,
 ): Promise<string> {
-  const indexPath = join(projectDir, "index.html");
-  if (!existsSync(indexPath)) throw new Error("index.html not found in project directory");
+  const entryFile = options?.entryFile ?? "index.html";
+  const indexPath = resolveWithinProject(projectDir, entryFile);
+  if (!indexPath || !existsSync(indexPath)) {
+    throw new Error(`${entryFile} not found in project directory`);
+  }
+  const sourceDir = dirname(indexPath);
+  const resolveEntryPath = (relativePath: string): string | null => {
+    const resolved = resolve(sourceDir, relativePath);
+    return isSafePath(projectDir, resolved) ? resolved : null;
+  };
 
   const rawHtml = readFileSync(indexPath, "utf-8");
-  const compiled = await compileHtml(rawHtml, projectDir, options?.probeMediaDuration);
+  const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
@@ -708,13 +801,17 @@ export async function bundleToSingleHtml(
   const withInterceptor = injectInterceptor(compiled, options?.runtime ?? "inline");
   const document = parseHTMLContent(withInterceptor);
 
+  if (resolve(sourceDir) !== resolve(projectDir)) {
+    rebaseEntryAuthoredAssetPaths(document, sourceDir, projectDir);
+  }
+
   // Inline local CSS
   const localCssChunks: string[] = [];
   let cssAnchorPlaced = false;
   for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
     const href = el.getAttribute("href");
     if (!href || !isRelativeUrl(href)) continue;
-    const cssPath = resolveWithinProject(projectDir, href);
+    const cssPath = resolveEntryPath(href);
     if (!cssPath) continue;
     const css = safeReadFile(cssPath);
     if (css == null) continue;
@@ -746,7 +843,7 @@ export async function bundleToSingleHtml(
   for (const el of [...document.querySelectorAll("script[src]")]) {
     const src = el.getAttribute("src");
     if (!src || !isRelativeUrl(src)) continue;
-    const jsPath = resolveWithinProject(projectDir, src);
+    const jsPath = resolveEntryPath(src);
     const js = jsPath ? safeReadFile(jsPath) : null;
     if (js == null) continue;
     localJsChunks.push(js);
@@ -781,7 +878,7 @@ export async function bundleToSingleHtml(
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {
       if (!isRelativeUrl(srcPath)) return null;
-      const compPath = resolveWithinProject(projectDir, srcPath);
+      const compPath = resolveEntryPath(srcPath);
       return compPath ? safeReadFile(compPath) : null;
     },
     parseHtml: parseHTMLContent,
@@ -814,7 +911,7 @@ export async function bundleToSingleHtml(
     if (seenCompScriptSrcs.has(extSrc)) continue;
     seenCompScriptSrcs.add(extSrc);
     if (isRelativeUrl(extSrc)) {
-      const jsPath = resolveWithinProject(projectDir, extSrc);
+      const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
         compScriptChunks.push(js);

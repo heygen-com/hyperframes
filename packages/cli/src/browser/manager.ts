@@ -77,6 +77,15 @@ function tryAcquireDirLock(lockDir: string): boolean {
   }
 }
 
+function isDirLockStale(lockDir: string, timeoutMs: number): boolean {
+  try {
+    return Date.now() - statSync(lockDir).mtimeMs > timeoutMs;
+  } catch (err) {
+    if (isErrno(err, "ENOENT")) return false;
+    throw err;
+  }
+}
+
 function reclaimStaleInstallLock(timeoutMs: number): void {
   if (!tryAcquireDirLock(INSTALL_RECLAIM_LOCK_DIR)) return;
   try {
@@ -88,6 +97,16 @@ function reclaimStaleInstallLock(timeoutMs: number): void {
     if (!isErrno(err, "ENOENT")) throw err;
   } finally {
     rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
+  }
+}
+
+function reclaimAbandonedReclaimLock(timeoutMs: number): void {
+  try {
+    if (isDirLockStale(INSTALL_RECLAIM_LOCK_DIR, timeoutMs)) {
+      rmSync(INSTALL_RECLAIM_LOCK_DIR, { recursive: true, force: true });
+    }
+  } catch (err) {
+    if (!isErrno(err, "ENOENT")) throw err;
   }
 }
 
@@ -113,6 +132,11 @@ export async function withInstallLock<T>(
   let lastNoticeMs = 0;
   for (;;) {
     if (existsSync(INSTALL_RECLAIM_LOCK_DIR)) {
+      // A process can die after acquiring the reclaim gate but before its
+      // synchronous cleanup runs. Without aging out that gate, every future
+      // installer sleeps here forever and never reaches the install-lock
+      // timeout/reclaim path below.
+      reclaimAbandonedReclaimLock(timings.staleMs);
       await sleep(timings.pollMs);
       continue;
     }
@@ -127,7 +151,7 @@ export async function withInstallLock<T>(
         `[browser] Waiting for another hyperframes process to finish installing chrome-headless-shell (${Math.round(waitedMs / 1000)}s elapsed)...`,
       );
     }
-    if (Date.now() > deadline) {
+    if (isDirLockStale(INSTALL_LOCK_DIR, timings.staleMs) || Date.now() > deadline) {
       // The reclaim gate matters when multiple waiters cross the timeout at
       // once: without it, waiter A can delete the stale lock and acquire a
       // fresh one, then waiter B (whose old deadline also expired) can delete

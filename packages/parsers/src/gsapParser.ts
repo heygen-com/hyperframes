@@ -1387,13 +1387,25 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
   const entries = Object.entries(props).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
+  const emitted = new Set(Object.keys(props));
   // immediateRender forces GSAP to apply the set when added to the timeline,
   // not on the first seek — without it, tl.set at position 0 on a paused
   // timeline is invisible until the playhead moves past 0. A base `gsap.set`
-  // already runs immediately, so it doesn't need (or get) the flag.
-  if (anim.method === "set" && !anim.global) entries.push("immediateRender: true");
+  // already runs immediately, so it doesn't need (or get) the flag. A parsed
+  // set carries the flag in extras — never emit the same key twice.
+  if (
+    anim.method === "set" &&
+    !anim.global &&
+    !emitted.has("immediateRender") &&
+    !(anim.extras && "immediateRender" in anim.extras)
+  ) {
+    entries.push("immediateRender: true");
+    emitted.add("immediateRender");
+  }
   if (anim.extras) {
     for (const [k, v] of Object.entries(anim.extras)) {
+      if (emitted.has(k)) continue;
+      emitted.add(k);
       entries.push(`${safeKey(k)}: ${valueToCode(v as number | string)}`);
     }
   }

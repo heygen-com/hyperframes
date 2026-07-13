@@ -7,7 +7,7 @@ import {
 } from "./domEditing";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
-import { usePlayerStore } from "../../player";
+import { usePlayerStore, liveTime } from "../../player";
 import {
   findMatchingTimelineElementId,
   resolveTimelineSelectionSeekTime,
@@ -47,6 +47,34 @@ function getTagBadge(tagName: string): string {
 
 function isCompositionHost(el: HTMLElement): boolean {
   return el.hasAttribute("data-composition-src") || el.hasAttribute("data-composition-file");
+}
+
+/**
+ * A trailing-rAF + cooldown throttle: `invoke` runs `run` at most once per
+ * animation frame and no more often than `throttleMs`. `cancel` clears any
+ * pending frame (call on cleanup). Extracted so the throttle can be exercised
+ * directly in tests instead of being reconstructed there.
+ */
+export function createRafThrottle(
+  run: () => void,
+  throttleMs = 100,
+): { invoke: () => void; cancel: () => void } {
+  let rafId: number | null = null;
+  let lastFired = 0;
+  return {
+    invoke: () => {
+      const now = performance.now();
+      if (rafId !== null || now - lastFired < throttleMs) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        lastFired = performance.now();
+        run();
+      });
+    },
+    cancel: () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    },
+  };
 }
 
 interface CollapsedState {
@@ -121,6 +149,20 @@ export const LayersPanel = memo(function LayersPanel() {
       return () => clearTimeout(timer);
     }
   }, [compositionLoading, collectLayers]);
+
+  // Subscribe to liveTime so the panel refreshes during scrubbing.
+  // liveTime bypasses React state (no re-renders per frame), so a plain
+  // usePlayerStore(s => s.currentTime) subscription never fires while the
+  // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
+  // avoid a collectLayers call on every animation frame.
+  useEffect(() => {
+    const throttle = createRafThrottle(collectLayers, 100);
+    const unsubscribe = liveTime.subscribe(throttle.invoke);
+    return () => {
+      unsubscribe();
+      throttle.cancel();
+    };
+  }, [collectLayers]);
 
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) => {

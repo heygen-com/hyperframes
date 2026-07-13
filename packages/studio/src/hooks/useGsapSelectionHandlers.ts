@@ -5,6 +5,7 @@ import { usePlayerStore } from "../player";
 import { computeCurrentPercentage } from "./gsapDragCommit";
 import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 /**
  * Thin useCallback wrappers that guard on `domEditSelection` before
@@ -75,8 +76,14 @@ export function useGsapSelectionHandlers({
     animId: string,
     percentage: number,
     properties: Record<string, number | string>,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => Promise<void>;
-  removeKeyframe: (sel: DomEditSelection, animId: string, percentage: number) => void;
+  removeKeyframe: (
+    sel: DomEditSelection,
+    animId: string,
+    percentage: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
+  ) => void;
   moveKeyframe: (
     sel: DomEditSelection,
     animId: string,
@@ -95,6 +102,7 @@ export function useGsapSelectionHandlers({
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
     duration?: number,
+    commitOverrides?: Partial<CommitMutationOptions>,
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => void;
 
@@ -232,20 +240,36 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapAddKeyframeBatch = useCallback(
-    (animId: string, percentage: number, properties: Record<string, number | string>) => {
+    (
+      animId: string,
+      percentage: number,
+      properties: Record<string, number | string>,
+      commitOverrides?: Partial<CommitMutationOptions>,
+    ) => {
       if (!domEditSelection) return Promise.resolve();
-      return addKeyframeBatch(domEditSelection, animId, percentage, properties).catch((error) => {
+      return addKeyframeBatch(
+        domEditSelection,
+        animId,
+        percentage,
+        properties,
+        commitOverrides,
+      ).catch((error) => {
         trackGsapHandlerFailure(error, domEditSelection, "add-keyframe", "Add keyframe");
       });
     },
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );
   const handleGsapRemoveKeyframe = useCallback(
-    (animId: string, percentage: number, selectionOverride?: DomEditSelection | null) => {
+    (
+      animId: string,
+      percentage: number,
+      commitOverrides?: Partial<CommitMutationOptions>,
+      selectionOverride?: DomEditSelection | null,
+    ) => {
       const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
       if (!sel) return;
       trackStudioEvent("keyframe", { action: "remove" });
-      removeKeyframe(sel, animId, percentage);
+      removeKeyframe(sel, animId, percentage, commitOverrides);
     },
     [domEditSelection, removeKeyframe],
   );
@@ -302,18 +326,27 @@ export function useGsapSelectionHandlers({
   );
 
   const handleGsapConvertToKeyframes = useCallback(
-    (animId: string, resolvedFromValues?: Record<string, number | string>, duration?: number) => {
+    (
+      animId: string,
+      resolvedFromValues?: Record<string, number | string>,
+      duration?: number,
+      commitOverrides?: Partial<CommitMutationOptions>,
+    ) => {
       if (!domEditSelection) return Promise.resolve();
-      return convertToKeyframes(domEditSelection, animId, resolvedFromValues, duration).catch(
-        (error) => {
-          trackGsapHandlerFailure(
-            error,
-            domEditSelection,
-            "convert-to-keyframes",
-            "Convert to keyframes",
-          );
-        },
-      );
+      return convertToKeyframes(
+        domEditSelection,
+        animId,
+        resolvedFromValues,
+        duration,
+        commitOverrides,
+      ).catch((error) => {
+        trackGsapHandlerFailure(
+          error,
+          domEditSelection,
+          "convert-to-keyframes",
+          "Convert to keyframes",
+        );
+      });
     },
     [domEditSelection, convertToKeyframes, trackGsapHandlerFailure],
   );

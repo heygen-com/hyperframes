@@ -15,6 +15,7 @@ interface UseDomEditPositionPatchCommitParams {
 interface PositionPatchOptions {
   label: string;
   coalesceKey: string;
+  coalesceMs?: number;
   skipRefresh?: boolean;
 }
 
@@ -30,6 +31,7 @@ export function useDomEditPositionPatchCommit({
         await persistDomEditOperations(selection, patches, {
           label: options.label,
           coalesceKey: options.coalesceKey,
+          coalesceMs: options.coalesceMs,
           skipRefresh: options.skipRefresh ?? true,
         });
       }).catch((error) => {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   MAX_PAGE_NAVIGATION_TIMEOUT_SECONDS,
+  hasExplicitCompositionArg,
   parseBrowserTimeoutMsArg,
   parseCompositionEntryArg,
   parseGifLoopArg,
@@ -104,6 +105,17 @@ describe("parseBrowserTimeoutMsArg", () => {
 });
 
 describe("parseCompositionEntryArg", () => {
+  it("uses one sentinel classifier for default and explicit composition values", () => {
+    expect([undefined, "", "   ", ".", "./"].map(hasExplicitCompositionArg)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(hasExplicitCompositionArg("./compositions/intro.html")).toBe(true);
+  });
+
   const PROJECT = "/proj";
   const stat = makeStat({
     [resolve(PROJECT, "index.html")]: "file",

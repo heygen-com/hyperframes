@@ -134,7 +134,7 @@ Dispatch a subagent. prompt = full `agents/builder.md` + dispatch context (`shot
 ### Step 6 — Verify (Bash → repair subagent on failure)
 
 ```bash
-(cd "$PROJECT_DIR" && npx hyperframes lint . && npx hyperframes inspect .)
+(cd "$PROJECT_DIR" && npx hyperframes check .)
 ```
 
 exit 0 → done. On lint/inspect errors, dispatch the repair subagent (`agents/finalize.md`: snapshot QA + one in-place fix pass + re-render). Never change a fixed duration in repair.

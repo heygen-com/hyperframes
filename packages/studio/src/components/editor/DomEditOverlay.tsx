@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
@@ -15,17 +15,20 @@ import {
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
+import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
-import { DomEditCropHandles } from "./DomEditCropHandles";
-import { DomEditRotateHandle } from "./DomEditRotateHandle";
+import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
+import { CanvasContextMenu } from "./CanvasContextMenu";
+import type { ZOrderPatch } from "./canvasContextMenuZOrder";
+import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -36,7 +39,6 @@ export {
 export {
   focusDomEditOverlayElement,
   hasDomEditRotationChanged,
-  resolveDomEditResizeGesture,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
@@ -72,6 +74,8 @@ interface DomEditOverlayProps {
   onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
+    offset?: { x: number; y: number },
+    restore?: () => void,
   ) => Promise<void> | void;
   onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
   onStyleCommit?: (property: string, value: string) => Promise<void> | void;
@@ -80,6 +84,19 @@ interface DomEditOverlayProps {
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
+  /**
+   * Delete the selected canvas element.
+   * Wire to handleDomEditElementDelete from useDomEditActionsContext —
+   * same handler the Delete/Backspace hotkey uses.
+   */
+  onDeleteSelection?: (selection: DomEditSelection) => void;
+  /**
+   * Called with the resolved z-order patch list after an optimistic DOM update.
+   * The patch list is tie-aware and may include sibling elements (see
+   * canvasContextMenuZOrder). Wire to handleDomZIndexReorderCommit from
+   * useDomEditActionsContext. See CanvasContextMenu.tsx module comment.
+   */
+  onApplyZIndex?: (selection: DomEditSelection, patches: ZOrderPatch[]) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -104,6 +121,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onRotationCommit,
   onStyleCommit,
   onMarqueeSelect,
+  onDeleteSelection,
+  onApplyZIndex,
 }: DomEditOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -120,8 +139,31 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
 
+  // Context menu state: position of the right-click that opened it.
+  // contextMenuSelection is the element the menu targets — captured at right-click
+  // time so the menu can open even before the React selection state settles.
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    sel: DomEditSelection;
+  } | null>(null);
+
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+
+  // Close the context menu whenever the selection moves off the element the menu
+  // targets (a click that reselects elsewhere, a deselect, or a preview reload
+  // that rebuilds the selection). Without this the menu can linger — orphaned —
+  // over a stale target after the underlying element is gone. A right-click that
+  // OPENS the menu also selects its target, so the common open path keeps the
+  // menu (same element) rather than immediately dismissing it.
+  useEffect(() => {
+    if (!contextMenu) return;
+    if (!selection || selection.element !== contextMenu.sel.element) {
+      setContextMenu(null);
+    }
+  }, [selection, contextMenu]);
+
   const activeCompositionPathRef = useRef(activeCompositionPath);
   activeCompositionPathRef.current = activeCompositionPath;
   const groupSelectionsRef = useRef(groupSelections);
@@ -240,6 +282,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     snapGuidesRef,
   });
 
+  // Arrow-key nudge (1px, Shift = 10px) — commits through the same
+  // path-offset callbacks as a drag, one undo entry per key burst.
+  const { flushNudge } = useDomEditNudge({
+    selection,
+    groupSelections,
+    allowCanvasMovement,
+    selectionRef,
+    overlayRectRef,
+    groupOverlayItemsRef,
+    gestureRef,
+    groupGestureRef,
+    blockedMoveRef,
+    onManualDragStartRef,
+    onPathOffsetCommitRef,
+    onGroupPathOffsetCommitRef,
+  });
+
   const marquee = useMarqueeGestures({
     iframeRef,
     overlayRef,
@@ -305,8 +364,23 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     const target = event.target as HTMLElement | null;
     if (target?.closest('[data-dom-edit-selection-box="true"]')) return;
 
-    // Start marquee if clicking on empty canvas (no element under pointer)
+    // Start marquee if clicking on empty canvas (no element under pointer).
+    // The hover selection is an ASYNC cache: on a fast click (or when the
+    // pointer was already resting over an element) it can still be empty while
+    // an element IS under the pointer — starting a marquee here would swallow
+    // the selection mousedown and the click would silently select nothing.
+    // Confirm emptiness with a fresh SYNCHRONOUS hit-test before committing.
     if (!hoverSelectionRef.current && onMarqueeSelectRef.current && compRect.width > 0) {
+      const iframe = iframeRef.current;
+      const freshTarget = iframe
+        ? getPreviewTargetFromPointer(
+            iframe,
+            event.clientX,
+            event.clientY,
+            activeCompositionPathRef.current,
+          )
+        : null;
+      if (freshTarget) return;
       const overlayEl = overlayRef.current;
       if (overlayEl) {
         const oRect = overlayEl.getBoundingClientRect();
@@ -354,6 +428,38 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     e.stopPropagation();
   };
 
+  // Right-click: select element first (if not already selected), then open menu.
+  const handleContextMenu = useCallback(
+    async (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+
+      // If no element is selected yet, resolve it from the pointer position first.
+      const currentSel = selectionRef.current;
+      let activeSel: DomEditSelection | null = currentSel;
+      if (!currentSel) {
+        const pointerEvent = event as unknown as React.PointerEvent<HTMLDivElement>;
+        const resolved = await onCanvasPointerMoveRef.current(pointerEvent);
+        if (!resolved) return; // Nothing under the cursor — skip menu.
+        onSelectionChangeRef.current(resolved, { revealPanel: true });
+        // Use `resolved` directly: React state (and therefore selectionRef) won't
+        // update synchronously after onSelectionChange — we'd be reading stale null.
+        activeSel = resolved;
+      } else {
+        // Check if the user right-clicked on an unselected element (hover target).
+        const hover = hoverSelectionRef.current;
+        if (hover && hover.element !== currentSel.element) {
+          onSelectionChangeRef.current(hover, { revealPanel: true });
+          activeSel = hover;
+        }
+      }
+
+      if (!activeSel) return;
+      setContextMenu({ x: event.clientX, y: event.clientY, sel: activeSel });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   return (
     <div
       ref={overlayRef}
@@ -362,142 +468,59 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       aria-label="Composition canvas"
       // Cursor follows marquee rect *state* (re-renders), not the mutable ref.
       style={marquee.marqueeRect ? { cursor: "crosshair" } : undefined}
-      onPointerDownCapture={(event) =>
-        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay)
-      }
+      onPointerDownCapture={(event) => {
+        // A pointer gesture supersedes a pending nudge burst — commit it first
+        // so the gesture's member snapshot starts from the nudged position.
+        flushNudge();
+        focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
+      }}
       onPointerDown={handleOverlayPointerDown}
       onMouseDown={handleOverlayMouseDown}
       onPointerMove={marquee.onPointerMove}
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
+      onContextMenu={handleContextMenu}
     >
       {hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
           className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-          style={hugRectForElement(hoverRect, hoverSelection.element)}
+          style={{
+            ...hugRectForElement(hoverRect, hoverSelection.element),
+            transform: hoverRect.angle ? `rotate(${hoverRect.angle}deg)` : undefined,
+          }}
         />
       )}
       {hasGroupSelection && groupOverlayItems.length > 1 && groupBounds && compRect.width > 0 && (
-        <>
-          {groupOverlayItems.map((item) => (
-            <div
-              key={item.key}
-              aria-hidden="true"
-              className="pointer-events-none absolute rounded-xl border border-studio-accent/70"
-              style={{
-                left: item.rect.left,
-                top: item.rect.top,
-                width: item.rect.width,
-                height: item.rect.height,
-              }}
-            />
-          ))}
-          <div
-            data-dom-edit-selection-box="true"
-            className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
-            style={{
-              left: groupBounds.left,
-              top: groupBounds.top,
-              width: groupBounds.width,
-              height: groupBounds.height,
-              cursor: allowCanvasMovement && groupCanMove ? "move" : "default",
-            }}
-            onPointerDown={(e) => {
-              if (!allowCanvasMovement || !groupCanMove || e.shiftKey) return;
-              gestures.startGroupDrag(e);
-            }}
-            onMouseDown={suppressBoxMouseDown}
-            onClick={handleBoxClick}
-          />
-        </>
+        <DomEditGroupChrome
+          groupOverlayItems={groupOverlayItems}
+          groupBounds={groupBounds}
+          allowCanvasMovement={allowCanvasMovement}
+          groupCanMove={groupCanMove}
+          gestures={gestures}
+          onBoxMouseDown={suppressBoxMouseDown}
+          onBoxClick={handleBoxClick}
+        />
       )}
       {!hasGroupSelection && selection && overlayRect && compRect.width > 0 && (
-        <>
-          {allowCanvasMovement && selection.capabilities.canApplyManualRotation && (
-            <DomEditRotateHandle
-              overlayRect={overlayRect}
-              cropOutlineInsetPx={cropOutlineInsetPx}
-              onStartRotate={(e) => {
-                e.stopPropagation();
-                gestures.startGesture("rotate", e);
-              }}
-            />
-          )}
-          <div
-            key={selectionKey}
-            ref={boxRef}
-            data-dom-edit-selection-box="true"
-            className={`pointer-events-auto absolute rounded-md ${boxChromeClass}`}
-            style={{
-              left: overlayRect.left,
-              top: overlayRect.top,
-              width: overlayRect.width,
-              height: overlayRect.height,
-              clipPath: boxClipPath,
-              cursor:
-                allowCanvasMovement && selection.capabilities.canApplyManualOffset
-                  ? "move"
-                  : "default",
-            }}
-            onPointerDown={(e) => {
-              if (!allowCanvasMovement || e.shiftKey) return;
-              if (selection.capabilities.canApplyManualOffset) {
-                gestures.startGesture("drag", e);
-                return;
-              }
-              e.preventDefault();
-              e.stopPropagation();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              blockedMoveRef.current = {
-                pointerId: e.pointerId,
-                startX: e.clientX,
-                startY: e.clientY,
-                notified: false,
-              };
-            }}
-            onMouseDown={suppressBoxMouseDown}
-            onClick={handleBoxClick}
-          >
-            {cropOutlineInsetPx && (
-              <div
-                className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
-                style={{
-                  left: cropOutlineInsetPx.left,
-                  top: cropOutlineInsetPx.top,
-                  right: cropOutlineInsetPx.right,
-                  bottom: cropOutlineInsetPx.bottom,
-                }}
-              />
-            )}
-            {allowCanvasMovement && selection.capabilities.canApplyManualSize && (
-              <div
-                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-studio-accent border border-studio-accent/60"
-                style={{
-                  cursor: "se-resize",
-                  touchAction: "none",
-                  ...(cropOutlineInsetPx && {
-                    right: cropOutlineInsetPx.right - 6,
-                    bottom: cropOutlineInsetPx.bottom - 6,
-                  }),
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  gestures.startGesture("resize", e);
-                }}
-              />
-            )}
-          </div>
-          {selection.capabilities.canCrop && groupSelections.length <= 1 && (
-            <DomEditCropHandles
-              selection={selection}
-              overlayRect={overlayRect}
-              onStyleCommit={onStyleCommitRef.current}
-            />
-          )}
-        </>
+        <DomEditSelectionChrome
+          selection={selection}
+          overlayRect={overlayRect}
+          allowCanvasMovement={allowCanvasMovement}
+          cropOutlineInsetPx={cropOutlineInsetPx ?? undefined}
+          boxRef={boxRef}
+          boxChromeClass={boxChromeClass}
+          boxClipPath={boxClipPath}
+          selectionKey={selectionKey}
+          groupSelectionCount={groupSelections.length}
+          blockedMoveRef={blockedMoveRef}
+          gestures={gestures}
+          onStyleCommit={onStyleCommitRef.current}
+          onBoxMouseDown={suppressBoxMouseDown}
+          onBoxClick={handleBoxClick}
+        />
       )}
       {childRects.length > 0 &&
         compRect.width > 0 &&
@@ -523,6 +546,29 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         onSelectionChangeRef={onSelectionChangeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
+      {contextMenu && (
+        <CanvasContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          selection={contextMenu.sel}
+          onClose={() => setContextMenu(null)}
+          onDelete={
+            onDeleteSelection
+              ? (sel) => {
+                  setContextMenu(null);
+                  onDeleteSelection(sel);
+                }
+              : undefined
+          }
+          onApplyZIndex={
+            onApplyZIndex
+              ? (patches) => {
+                  onApplyZIndex(contextMenu.sel, patches);
+                }
+              : undefined
+          }
+        />
+      )}
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}
@@ -535,8 +581,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       />
       <SnapGuideOverlay
         snapGuidesRef={snapGuidesRef}
-        overlayWidth={compRect.width}
-        overlayHeight={compRect.height}
+        compositionLeft={compRect.left}
+        compositionTop={compRect.top}
+        compositionWidth={compRect.width}
+        compositionHeight={compRect.height}
       />
     </div>
   );

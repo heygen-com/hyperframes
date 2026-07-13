@@ -1,42 +1,26 @@
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
+import {
+  readProjectFileContent,
+  saveProjectFilesWithHistory,
+  type DomEditCommitBaseParams,
+} from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
   buildDomEditPatchTarget,
   readHfId,
   type DomEditSelection,
 } from "../components/editor/domEditing";
-import type { PatchOperation } from "../utils/sourcePatcher";
-import type { EditHistoryKind } from "../utils/editHistory";
+import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
 
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
-
-interface UseElementLifecycleOpsParams {
-  activeCompPath: string | null;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
-  projectIdRef: React.MutableRefObject<string | null>;
-  reloadPreview: () => void;
-  clearDomSelection: () => void;
+interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id; returns true if handled. */
   onTrySdkDelete?: (hfId: string, originalContent: string, targetPath: string) => Promise<boolean>;
   /** Resolver-shadow tripwire for the reordered targets (telemetry-only, decoupled from cutover). */
   onReorderShadow?: (targets: string[]) => void;
   /** Resync the SDK session after a server-fallback delete. */
   forceReloadSdkSession?: () => void;
-  commitPositionPatchToHtml: (
-    selection: DomEditSelection,
-    patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; skipRefresh?: boolean },
-  ) => Promise<void>;
+  commitDomEditPatchBatches: CommitDomEditPatchBatches;
   /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
@@ -53,7 +37,7 @@ export function useElementLifecycleOps({
   onTrySdkDelete,
   onReorderShadow,
   forceReloadSdkSession,
-  commitPositionPatchToHtml,
+  commitDomEditPatchBatches,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
   // fallow-ignore-next-line complexity
@@ -66,17 +50,7 @@ export function useElementLifecycleOps({
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
-        const response = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
-        );
-        if (!response.ok) {
-          throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`);
-        }
-
-        const data = (await response.json()) as { content?: string };
-        const originalContent = data.content;
-        if (typeof originalContent !== "string")
-          throw new Error(`Missing file contents for ${targetPath}`);
+        const originalContent = await readProjectFileContent(pid, targetPath);
 
         const patchTarget = buildDomEditPatchTarget(selection);
         if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
@@ -156,8 +130,8 @@ export function useElementLifecycleOps({
     ],
   );
 
-  // ponytail: z-index reorder writes inline-style patches via commitPositionPatchToHtml →
-  // persistDomEditOperations → onTrySdkPersist, so it is already SDK-cut-over as setStyle.
+  // ponytail: z-index reorder folds every element patch for a source file in memory and sends
+  // one patch-elements-batch request, so each file is persisted with one atomic disk write.
   // No SDK reorder/reparent op exists; DOM sibling order stays server-authoritative if ever needed.
   const handleDomZIndexReorderCommit = useCallback(
     // fallow-ignore-next-line complexity
@@ -171,6 +145,7 @@ export function useElementLifecycleOps({
         sourceFile: string;
         key?: string;
       }>,
+      gestureCoalesceKey?: string,
     ) => {
       if (entries.length === 0) return Promise.resolve();
       // Resolver shadow (telemetry-only, decoupled from cutover): record whether
@@ -178,11 +153,12 @@ export function useElementLifecycleOps({
       onReorderShadow?.(
         entries.map((e) => readHfId(e.element)).filter((id): id is string => id != null),
       );
-      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
-      const saves: Array<Promise<void>> = [];
+      const coalesceKey =
+        gestureCoalesceKey ??
+        `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      const patchesBySourceFile = new Map<string, DomEditPatchBatch["patches"]>();
       const rollbacks: Array<() => void> = [];
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
+      for (const entry of entries) {
         const priorZIndex = entry.element.style.zIndex;
         const priorPosition = entry.element.style.position;
         const priorStoreEntry = entry.key
@@ -218,39 +194,32 @@ export function useElementLifecycleOps({
             });
           }
         });
-        saves.push(
-          commitPositionPatchToHtml(
-            {
-              element: entry.element,
-              id: entry.id ?? null,
-              hfId: readHfId(entry.element),
-              selector: entry.selector,
-              selectorIndex: entry.selectorIndex,
-              sourceFile: entry.sourceFile,
-            } as unknown as DomEditSelection,
-            patches,
-            {
-              label: "Reorder layers",
-              coalesceKey,
-              skipRefresh: i < entries.length - 1,
-            },
-          ),
-        );
+        const filePatches = patchesBySourceFile.get(entry.sourceFile) ?? [];
+        filePatches.push({
+          target: buildDomEditPatchTarget({
+            id: entry.id,
+            hfId: readHfId(entry.element),
+            selector: entry.selector,
+            selectorIndex: entry.selectorIndex,
+          }),
+          operations: patches,
+        });
+        patchesBySourceFile.set(entry.sourceFile, filePatches);
       }
-      // Resolves once every z-index patch is persisted so a same-file timing write
+      const batches = [...patchesBySourceFile].map(([sourceFile, patches]) => ({
+        sourceFile,
+        patches,
+      }));
+      // Resolves once every source-file batch is persisted so a same-file timing write
       // can be ordered after it (see applyTimelineStackingReorder callers).
-      return Promise.allSettled(saves).then((settled) => {
-        const rejected = settled.find(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        if (rejected) {
+      return commitDomEditPatchBatches(batches, { label: "Reorder layers", coalesceKey }).catch(
+        (error) => {
           for (const rollback of rollbacks) rollback();
-          return Promise.reject(rejected.reason);
-        }
-        return undefined;
-      });
+          throw error;
+        },
+      );
     },
-    [commitPositionPatchToHtml, onReorderShadow],
+    [commitDomEditPatchBatches, onReorderShadow],
   );
 
   return {

@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
-import { ensureHfIds } from "./hfIds.js";
+import { ensureHfIds, walkCompositionDescendants } from "./hfIds.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
@@ -388,7 +388,7 @@ export function parseHtml(html: string): ParsedHtml {
     }
   });
 
-  const scriptTags = doc.querySelectorAll("script");
+  const scriptTags = findScriptElementsDeep(doc);
   let gsapScript: string | null = null;
 
   for (const script of scriptTags) {
@@ -741,7 +741,7 @@ function stripGsapForId(script: string, elementId: string): string {
 }
 
 function cascadeRemoveGsapById(doc: Document, elementId: string): void {
-  for (const script of Array.from(doc.querySelectorAll("script"))) {
+  for (const script of findScriptElementsDeep(doc)) {
     const text = script.textContent ?? "";
     if (!text.includes("gsap") && !text.includes("ScrollTrigger")) continue;
     const updated = stripGsapForId(text, elementId);
@@ -842,13 +842,12 @@ export function validateCompositionHtml(html: string): ValidationResult {
     errors.push("javascript: URLs not allowed");
   }
 
-  const scripts = doc.querySelectorAll("script");
+  const scripts = findScriptElementsDeep(doc);
   if (scripts.length > 2) {
     warnings.push("Multiple script tags detected - only GSAP CDN and main script expected");
   }
 
-  const gsapScript = extractGsapScript(doc);
-  if (gsapScript) {
+  for (const gsapScript of extractGsapScripts(doc)) {
     const gsapValidation = validateCompositionGsap(gsapScript);
     errors.push(...gsapValidation.errors);
     warnings.push(...gsapValidation.warnings);
@@ -861,8 +860,17 @@ export function validateCompositionHtml(html: string): ValidationResult {
   };
 }
 
-function extractGsapScript(doc: Document): string | null {
-  const scripts = doc.querySelectorAll("script");
+function findScriptElementsDeep(doc: Document): Element[] {
+  const scripts: Element[] = [];
+  walkCompositionDescendants(doc, (el) => {
+    if (el.tagName.toLowerCase() === "script") scripts.push(el);
+  });
+  return scripts;
+}
+
+function extractGsapScripts(doc: Document): string[] {
+  const scripts = findScriptElementsDeep(doc);
+  const gsapScripts: string[] = [];
   for (const script of scripts) {
     const content = script.textContent || "";
     if (
@@ -870,8 +878,8 @@ function extractGsapScript(doc: Document): string | null {
       content.includes(".set(") ||
       content.includes(".to(")
     ) {
-      return content;
+      gsapScripts.push(content);
     }
   }
-  return null;
+  return gsapScripts;
 }

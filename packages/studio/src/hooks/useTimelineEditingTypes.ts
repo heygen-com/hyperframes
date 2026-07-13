@@ -22,6 +22,7 @@ export type TimelineZIndexReorderCommit = (
     sourceFile: string;
     key?: string;
   }>,
+  coalesceKey?: string,
 ) => Promise<void>;
 
 export interface UseTimelineEditingOptions {
@@ -43,3 +44,8 @@ export interface UseTimelineEditingOptions {
   forceReloadSdkSession?: () => void;
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
 }
+
+export type TimelineFileDropHandler = (
+  files: File[],
+  placement?: { start: number; track: number },
+) => Promise<void>;

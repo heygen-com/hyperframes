@@ -62,13 +62,14 @@ interface FsMockOptions {
   /** map of dir path -> entries returned by readdirSync */
   dirs?: Record<string, string[]>;
   touchError?: Error;
+  initialMtimeMs?: number;
 }
 
-function installFsMocks({ existing, dirs, touchError }: FsMockOptions) {
+function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
-  const mtimes = new Map([...existing].map((p) => [p, 0]));
+  const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
@@ -174,6 +175,7 @@ describe("findBrowser — cache resolution", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
     Object.defineProperty(process, "arch", { value: origArch, configurable: true });
     vi.restoreAllMocks();
@@ -347,6 +349,23 @@ describe("findBrowser — cache resolution", () => {
     expect(paths.has(HF_LOCK)).toBe(false);
   });
 
+  it("withInstallLock recovers when a crashed reclaimer leaves both lock directories", async () => {
+    vi.useFakeTimers();
+    const paths = installFsMocks({
+      existing: new Set([CACHE_ROOT, HF_LOCK, HF_RECLAIM_LOCK]),
+    });
+
+    const { withInstallLock } = await import("./manager.js");
+    const acquisition = withInstallLock(async () => "done", TEST_LOCK_TIMINGS);
+    await vi.advanceTimersByTimeAsync(TEST_LOCK_TIMINGS.pollMs * 2);
+
+    await expect(Promise.race([acquisition, Promise.resolve("still waiting")])).resolves.toBe(
+      "done",
+    );
+    expect(paths.has(HF_LOCK)).toBe(false);
+    expect(paths.has(HF_RECLAIM_LOCK)).toBe(false);
+  });
+
   it("withInstallLock does not reclaim another waiter's fresh lock after this waiter timed out", async () => {
     // Regression guard for the timeout-reclaim race: if multiple waiters cross
     // the stale-lock deadline together, waiter A can reclaim the stale lock and
@@ -392,12 +411,30 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("withInstallLock reports progress while waiting instead of staying silent", async () => {
-    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_LOCK]) });
+    // Fake timers freeze Date.now() so the lock mtime stays non-stale across
+    // the dynamic import that follows — without them, a slow import beat could
+    // push wall-clock past staleMs before `withInstallLock` even starts polling,
+    // firing the immediate-stale short-circuit and skipping the wait-notice
+    // branch this test exists to observe.
+    vi.useFakeTimers();
+    const paths = installFsMocks({
+      existing: new Set([CACHE_ROOT, HF_LOCK]),
+      initialMtimeMs: Date.now(),
+    });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const { withInstallLock } = await import("./manager.js");
-    await withInstallLock(async () => "done", { ...TEST_LOCK_TIMINGS, waitNoticeMs: 20 });
+    const acquisition = withInstallLock(async () => "done", {
+      ...TEST_LOCK_TIMINGS,
+      waitNoticeMs: 20,
+    });
 
+    // Advance past waitNoticeMs (fires the "Waiting for…" warn), then past
+    // staleMs (lets `reclaimStaleInstallLock` clear the held lock so the
+    // acquisition resolves).
+    await vi.advanceTimersByTimeAsync(TEST_LOCK_TIMINGS.staleMs + TEST_LOCK_TIMINGS.pollMs * 5);
+
+    await expect(acquisition).resolves.toBe("done");
     expect(paths.has(HF_LOCK)).toBe(false);
     expect(
       warnSpy.mock.calls.some(([msg]) =>

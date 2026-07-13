@@ -55,7 +55,7 @@ See `sub-compositions.md` for the full wiring pattern.
 
 - `id="root"` — template convention used by scaffolds and the transition catalog so CSS can target the composition root with `#root` instead of `[data-composition-id="main"]`. Not required by the runtime, but consistent with the rest of the ecosystem.
 - `class="clip"` — required runtime visibility marker on visible timed elements (`<div>`, `<img>`, …). See Clip Attributes above.
-- `data-layout-allow-overflow` — tells `hyperframes inspect` that overflow on this element (or its descendants) is intentional. Notes:
+- `data-layout-allow-overflow` — tells `hyperframes check` that overflow on this element (or its descendants) is intentional. Notes:
   - `inspect` measures `getBoundingClientRect` at sampled timestamps, not rendered pixels — `overflow: hidden` clips the visual but does **not** suppress an `inspect` overflow finding. This attribute is the escape hatch; CSS overflow is not.
   - Can be set on the composition **root** as well as on any child. When the cited offender is `div.<comp>-root inside div.<comp>-root` (the root reports its own children's union as overflowing), the fix goes on the root, not on individual text descendants — shrinking font sizes will not converge.
   - In a multi-scene `group_wN.html` (continue runs), every scene-local element stays in the DOM during the other scenes' time windows; the layout-box union almost always overflows the canvas during morph seams. Mark the root and every scene-local primary/supporting element with this attribute **at construction**, not after `inspect` flags it.

@@ -153,6 +153,61 @@ describe("useTimelinePlayer seek hydration", () => {
     unmountWithAct(root);
     unsubscribe();
   });
+
+  it("does not settle from an unsupported runtime protocol message", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    const iframe = document.createElement("iframe");
+    const iframeWindow = {
+      postMessage: vi.fn(),
+      scrollTo: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as Record<string, unknown>;
+    Object.defineProperty(iframe, "contentWindow", {
+      value: iframeWindow,
+      configurable: true,
+    });
+    Object.defineProperty(iframe, "contentDocument", {
+      value: document.implementation.createHTMLDocument("preview"),
+      configurable: true,
+    });
+
+    act(() => {
+      api.iframeRef.current = iframe;
+      api.onIframeLoad();
+    });
+    expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+    iframeWindow.__player = {
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      getTime: () => 0,
+      getDuration: () => 30,
+      isPlaying: () => false,
+    };
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow as unknown as Window,
+          data: { source: "hf-preview", type: "state", protocolVersion: 999 },
+        }),
+      );
+    });
+    expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: iframeWindow as unknown as Window,
+          data: { source: "hf-preview", type: "state" },
+        }),
+      );
+    });
+    expect(usePlayerStore.getState().timelineReady).toBe(true);
+
+    unmountWithAct(root);
+  });
 });
 
 describe("useTimelinePlayer audio controls (#835)", () => {

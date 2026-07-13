@@ -2,9 +2,10 @@ import type { RegistryItem } from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
   insertTimelineAssetIntoSource,
-  resolveTimelineAssetInitialGeometry,
+  resolveTimelineAssetCompositionSize,
 } from "./timelineAssetDrop";
 import { collectHtmlIds } from "./studioHelpers";
+import { generateId } from "./generateId";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
@@ -120,7 +121,9 @@ export async function addBlockToProject(
       );
 
       const isBlock = block.type === "hyperframes:block";
-      const hostDims = resolveTimelineAssetInitialGeometry(originalContent);
+      const { width: hostWidth, height: hostHeight } =
+        resolveTimelineAssetCompositionSize(originalContent);
+      const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
 
       const currentTime = opts.currentTime ?? 0;
       const start = placement
@@ -152,6 +155,11 @@ export async function addBlockToProject(
 
       const subCompHtml = [
         `<div`,
+        // A stable id (+ hf-id) is what authored sub-comps carry; without it the
+        // timeline can't dedup the host and renders duplicate clips that multiply
+        // on every interaction. Matches the authored-comp shape.
+        `  id="${compId}"`,
+        `  data-hf-id="hf-${generateId()}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
         `  data-start="${formatTimelineAttributeNumber(start)}"`,

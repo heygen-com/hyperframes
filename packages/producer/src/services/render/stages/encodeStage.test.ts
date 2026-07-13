@@ -154,6 +154,24 @@ describe("gif encode args", () => {
 });
 
 describe("runEncodeStage config plumbing", () => {
+  it("scales the encode timeout for long compositions", async () => {
+    const { runEncodeStage } = await import("./encodeStage.js");
+
+    await runEncodeStage(
+      makeInput({
+        job: {
+          ...makeInput().job,
+          duration: 754.8,
+        },
+        engineConfig: { ffmpegEncodeTimeout: 600_000 },
+      }),
+    );
+
+    expect(encodeFramesFromDirMock.mock.calls[0]?.[5]).toEqual({
+      ffmpegEncodeTimeout: 3_019_200,
+    });
+  });
+
   it("prefers engine config supplied by the orchestrator", async () => {
     const { runEncodeStage } = await import("./encodeStage.js");
     const orchestratorEngineConfig = { ffmpegEncodeTimeout: 54_321 };

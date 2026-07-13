@@ -1,5 +1,15 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { PatchOperation } from "../utils/sourcePatcher";
+import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
+
+export interface DomEditPatchBatch {
+  sourceFile: string;
+  patches: Array<{ target: PatchTarget; operations: PatchOperation[] }>;
+}
+
+export type CommitDomEditPatchBatches = (
+  batches: DomEditPatchBatch[],
+  options: { label: string; coalesceKey: string },
+) => Promise<void>;
 
 export type PersistDomEditOperations = (
   selection: DomEditSelection,
@@ -7,6 +17,7 @@ export type PersistDomEditOperations = (
   options?: {
     label?: string;
     coalesceKey?: string;
+    coalesceMs?: number;
     skipRefresh?: boolean;
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;

@@ -1,3 +1,8 @@
+// The media-metadata wait exists twice on purpose: once Node-side and once
+// inside a page.evaluate() body, which is serialized into the browser and
+// cannot import the Node helper. Line-level markers don't survive the clone
+// window drifting as the file is edited, hence the file-level suppression.
+// fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +13,12 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { c } from "../ui/colors.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
+import {
+  installPageFunctionGuard,
+  resolveCliChromeGpuMode,
+  seekCompositionTimeline,
+} from "../capture/captureCompositionFrame.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -85,67 +95,6 @@ async function getCompositionDuration(page: import("puppeteer-core").Page): Prom
   });
 }
 
-async function seekTo(page: import("puppeteer-core").Page, time: number): Promise<void> {
-  await waitForPreferredSeekTarget(page);
-  await page.evaluate((t: number) => {
-    // window.__player.renderSeek is exposed directly by the composition
-    // runtime (packages/core/src/runtime/init.ts) on every page load, and
-    // — unlike raw timeline.seek() — it also runs the runtime's own
-    // [data-start]/[data-duration] visibility sync, hiding clips outside
-    // their timeline window. window.__hf.seek only exists when the
-    // producer's render-pipeline bridge script has been injected, which
-    // validate's static preview server never does, so it was always
-    // falling through to the raw __timelines seek below and skipping that
-    // sync — leaving off-window elements looking fully visible to any
-    // check (e.g. the contrast audit) that reads computed style afterward.
-    const player = (window as unknown as { __player?: { renderSeek?: (t: number) => void } })
-      .__player;
-    if (player && typeof player.renderSeek === "function") {
-      player.renderSeek(t);
-      return;
-    }
-    if (window.__hf && typeof window.__hf.seek === "function") {
-      window.__hf.seek(t);
-      return;
-    }
-    const timelines = (window as unknown as Record<string, unknown>).__timelines as
-      | Record<string, { seek: (t: number) => void }>
-      | undefined;
-    if (timelines) {
-      for (const tl of Object.values(timelines)) {
-        if (typeof tl.seek === "function") tl.seek(t);
-      }
-    }
-  }, time);
-  await new Promise((r) => setTimeout(r, SEEK_SETTLE_MS));
-}
-
-interface WaitForFunctionPage {
-  waitForFunction: (pageFunction: () => boolean, options: { timeout: number }) => Promise<unknown>;
-}
-
-export async function waitForPreferredSeekTarget(
-  page: WaitForFunctionPage,
-  timeoutMs = PREFERRED_SEEK_TARGET_WAIT_MS,
-): Promise<void> {
-  try {
-    await page.waitForFunction(
-      () => {
-        const w = window as unknown as {
-          __hf?: { seek?: unknown };
-          __player?: { renderSeek?: unknown };
-        };
-        return typeof w.__player?.renderSeek === "function" || typeof w.__hf?.seek === "function";
-      },
-      { timeout: timeoutMs },
-    );
-  } catch {
-    // Older/static pages may only expose raw window.__timelines. Keep the
-    // legacy fallback path rather than turning a missing player API into a
-    // validate failure.
-  }
-}
-
 /**
  * Race a media element's `loadedmetadata`/`error` event against a deadline,
  * whichever comes first. Already-ready elements resolve immediately.
@@ -183,7 +132,7 @@ export function raceMediaReady(
  * the live page to read each element's intrinsic `.duration`, which static lint
  * can't see.
  */
-async function auditClipDurations(
+export async function auditClipDurations(
   page: import("puppeteer-core").Page,
   analyzeClipMediaFit: typeof import("@hyperframes/engine").analyzeClipMediaFit,
   extraWaitMs: number,
@@ -209,7 +158,6 @@ async function auditClipDurations(
       nodes.map((el) => {
         if (Number.isFinite(el.duration) && el.duration > 0) return Promise.resolve();
         return new Promise<void>((resolve) => {
-          // fallow-ignore-next-line code-duplication
           const cleanup = () => {
             el.removeEventListener("loadedmetadata", onReady);
             el.removeEventListener("error", onReady);
@@ -300,7 +248,12 @@ async function runContrastAudit(page: import("puppeteer-core").Page): Promise<Co
   const results: ContrastEntry[] = [];
   for (let i = 0; i < CONTRAST_SAMPLES; i++) {
     const t = +(((i + 0.5) / CONTRAST_SAMPLES) * duration).toFixed(3);
-    await seekTo(page, t);
+    await seekCompositionTimeline(page, t, {
+      fallbackToBridgeAndTimelines: true,
+      waitForPreferredSeekTargetMs: PREFERRED_SEEK_TARGET_WAIT_MS,
+      animationFrameSettle: "none",
+      settleMs: SEEK_SETTLE_MS,
+    });
 
     try {
       // __contrastAuditPrepare() hides each candidate text element's own
@@ -459,15 +412,17 @@ async function validateInBrowser(
     const browser = await ensureBrowser();
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
-    const browserGpuMode =
-      process.env.PRODUCER_BROWSER_GPU_MODE === "software" ? "software" : "hardware";
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
-      args: buildChromeArgs({ ...viewport, captureMode: "screenshot" }, { browserGpuMode }),
+      args: buildChromeArgs(
+        { ...viewport, captureMode: "screenshot" },
+        { browserGpuMode: resolveCliChromeGpuMode() },
+      ),
     });
 
     const page = await chromeBrowser.newPage();
+    await installPageFunctionGuard(page);
     await page.setViewport(viewport);
 
     page.on("console", (msg) => {
@@ -559,13 +514,16 @@ function emitJsonReport(
 ): void {
   console.log(
     JSON.stringify(
-      withMeta({
-        ok: errors.length === 0,
-        errors,
-        warnings,
-        contrast,
-        contrastFailures: contrastFailures.length,
-      }),
+      withMeta(
+        {
+          ok: errors.length === 0,
+          errors,
+          warnings,
+          contrast,
+          contrastFailures: contrastFailures.length,
+        },
+        { deprecated: true },
+      ),
       null,
       2,
     ),
@@ -612,7 +570,11 @@ function emitTextReport(
 function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
-      JSON.stringify(withMeta({ ok: false, error: message, errors: [], warnings: [] }), null, 2),
+      JSON.stringify(
+        withMeta({ ok: false, error: message, errors: [], warnings: [] }, { deprecated: true }),
+        null,
+        2,
+      ),
     );
     return;
   }
@@ -622,7 +584,7 @@ function emitFailureReport(message: string, asJson: boolean): void {
 export default defineCommand({
   meta: {
     name: "validate",
-    description: `Load a composition in headless Chrome and report console errors
+    description: `Load a composition in headless Chrome and report console errors (deprecated, use check)
 
 Examples:
   hyperframes validate
@@ -647,6 +609,7 @@ Examples:
     },
   },
   async run({ args }) {
+    printDeprecationNotice("validate");
     const project = resolveProject(args.dir);
     const timeout = parseInt(args.timeout as string, 10) || 3000;
     const useContrast = args.contrast ?? true;

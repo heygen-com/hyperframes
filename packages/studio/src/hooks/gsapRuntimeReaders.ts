@@ -3,8 +3,32 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import { getIframeGsap, queryIframeElement } from "./gsapShared";
+import {
+  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
+  HF_COLOR_GRADING_CANVAS_ID_PREFIX,
+} from "@hyperframes/core/color-grading";
+import { getIframeGsap, queryIframeElement, type IframeGsap } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
+
+/**
+ * The element's live value for `prop` as GSAP drives it. Opacity on a
+ * color-grading-hidden source needs a detour: the runtime hides the source
+ * with inline `opacity: 0 !important`, so computed opacity is the hide, not
+ * the animated value. The grading canvas mirrors the source's effective
+ * opacity every frame, so it is the truth for that one property — reading the
+ * raw 0 here is what bakes `opacity: 0` into committed keyframes.
+ */
+function readLiveGsapValue(gsap: IframeGsap, el: Element, prop: string): number {
+  if (prop === "opacity" && el.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) != null && el.id) {
+    const canvas = el.ownerDocument.getElementById(HF_COLOR_GRADING_CANVAS_ID_PREFIX + el.id);
+    const win = el.ownerDocument.defaultView;
+    if (canvas && win) {
+      const val = Number(win.getComputedStyle(canvas).opacity);
+      if (Number.isFinite(val)) return val;
+    }
+  }
+  return Number(gsap.getProperty(el, prop));
+}
 
 export function readGsapProperty(
   iframe: HTMLIFrameElement | null,
@@ -17,7 +41,7 @@ export function readGsapProperty(
   const el = queryIframeElement(iframe, selector);
   if (!el) return null;
   try {
-    const val = Number(gsap.getProperty(el, prop));
+    const val = readLiveGsapValue(gsap, el, prop);
     if (!Number.isFinite(val)) return null;
     return POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   } catch {
@@ -77,15 +101,15 @@ export function readAllAnimatedProperties(
     for (const p of Object.keys(anim.properties)) propKeys.add(p);
   }
 
-  // When a group filter is specified, only keep properties belonging to that group.
-  if (group) {
-    for (const p of propKeys) {
-      if (classifyPropertyGroup(p) !== group) propKeys.delete(p);
-    }
-  }
+  // When a group filter is specified, only properties belonging to that group
+  // may enter the result — including the baseline passes below. The whole
+  // point of property-group tweens is that a rotation commit never carries
+  // opacity/rotationX/etc. captured from unrelated tweens on the element.
+  const inGroup = (p: string) => !group || classifyPropertyGroup(p) === group;
+  const groupedPropKeys = new Set([...propKeys].filter(inGroup));
 
-  for (const prop of propKeys) {
-    const val = Number(gsap.getProperty(el, prop));
+  for (const prop of groupedPropKeys) {
+    const val = readLiveGsapValue(gsap, el, prop);
     if (Number.isFinite(val)) {
       result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
     }
@@ -110,13 +134,13 @@ export function readAllAnimatedProperties(
           const vars = child.vars;
           if (!vars) continue;
           for (const k of Object.keys(vars)) {
-            if (!GSAP_CONFIG_KEYS.has(k)) otherTweenProps.add(k);
+            if (!GSAP_CONFIG_KEYS.has(k) && inGroup(k)) otherTweenProps.add(k);
           }
         }
       }
     }
   } catch {}
-  for (const p of propKeys) otherTweenProps.delete(p);
+  for (const p of groupedPropKeys) otherTweenProps.delete(p);
 
   // Tier 1: Transform + visual properties with universal CSS defaults.
   // Safe to compare against hardcoded values — these are always 0 or 1
@@ -148,11 +172,11 @@ export function readAllAnimatedProperties(
   // Collect all properties that ANY tween on this element explicitly targets.
   // Only capture baseline values for these — GSAP reports non-default values
   // (scaleZ=0, brightness=0) for untouched properties, polluting keyframes.
-  const allTweenedProps = new Set([...propKeys, ...otherTweenProps]);
+  const allTweenedProps = new Set([...groupedPropKeys, ...otherTweenProps]);
   for (const [prop, defaultVal] of Object.entries(UNIVERSAL_BASELINE)) {
     if (prop in result) continue;
     if (!allTweenedProps.has(prop)) continue;
-    const val = Number(gsap.getProperty(el, prop));
+    const val = readLiveGsapValue(gsap, el, prop);
     if (Number.isFinite(val) && Math.round(val * 1000) !== Math.round(defaultVal * 1000)) {
       result[prop] = roundTo3(val);
     }
@@ -184,6 +208,7 @@ export function readAllAnimatedProperties(
   } catch {}
   for (const prop of COMPUTED_BASELINE) {
     if (prop in result) continue;
+    if (!inGroup(prop)) continue;
     if (otherTweenProps.has(prop)) continue;
     const gsapVal = Number(gsap.getProperty(el, prop));
     if (!Number.isFinite(gsapVal)) continue;

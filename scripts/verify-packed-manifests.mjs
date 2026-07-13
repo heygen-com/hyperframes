@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { extname, join, posix } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -254,6 +262,18 @@ function readPackedPackage(filename) {
   return JSON.parse(packedPackageJson);
 }
 
+export function verifyCliLicense(workspace, sourcePackage, packedPackage) {
+  if (workspace !== "packages/cli") return;
+
+  const expectedLicense = "Apache-2.0";
+  if (sourcePackage.license !== expectedLicense) {
+    throw new Error(`${workspace} must declare license ${expectedLicense}`);
+  }
+  if (packedPackage.license !== sourcePackage.license) {
+    throw new Error(`${workspace} packed manifest must preserve license ${expectedLicense}`);
+  }
+}
+
 function assertNoWorkspaceRefs(workspace, packedPackage) {
   const packedRefs = listWorkspaceRefs(packedPackage);
   if (packedRefs.length === 0) return;
@@ -263,32 +283,147 @@ function assertNoWorkspaceRefs(workspace, packedPackage) {
   );
 }
 
-function verifyPackedWorkspace(workspace, filename) {
+function verifyPackedWorkspace(workspace, sourcePackage, filename) {
   const packedPackage = readPackedPackage(filename);
   const packedFiles = listPackedFiles(filename);
 
+  verifyCliLicense(workspace, sourcePackage, packedPackage);
   assertNoWorkspaceRefs(workspace, packedPackage);
   verifyPackedEntrypoints(workspace, packedPackage, packedFiles);
   verifyPackedJavaScriptImports(workspace, filename, packedFiles);
 }
 
-function verifyWorkspace(workspace) {
+export function packageExportSpecifier(packageName, exportKey) {
+  return exportKey === "." ? packageName : `${packageName}/${exportKey.replace(/^\.\//, "")}`;
+}
+
+export function listPackedExportContracts(packedWorkspaces) {
+  return packedWorkspaces.flatMap(({ packedPackage }) =>
+    Object.entries(packedPackage.exports ?? {}).map(([exportKey, target]) => ({
+      specifier: packageExportSpecifier(packedPackage.name, exportKey),
+      typechecked: Boolean(target?.types),
+    })),
+  );
+}
+
+function writeConsumerFixture(packDir, packedWorkspaces) {
+  const fixtureDir = join(packDir, "consumer");
+  mkdirSync(fixtureDir);
+  const rootPackage = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+  const dependencies = Object.fromEntries(
+    packedWorkspaces.map(({ filename, packedPackage }) => [packedPackage.name, `file:${filename}`]),
+  );
+  dependencies.typescript = rootPackage.devDependencies.typescript;
+  dependencies["@types/node"] = rootPackage.devDependencies["@types/node"];
+  writeFileSync(
+    join(fixtureDir, "package.json"),
+    JSON.stringify(
+      { name: "packed-consumer", private: true, type: "module", dependencies },
+      null,
+      2,
+    ),
+  );
+
+  const contracts = listPackedExportContracts(packedWorkspaces);
+  const typeImports = contracts
+    .filter(({ typechecked }) => typechecked)
+    .map(({ specifier }) => `import ${JSON.stringify(specifier)};`)
+    .join("\n");
+  writeFileSync(join(fixtureDir, "consumer.ts"), `${typeImports}\n`);
+  writeFileSync(
+    join(fixtureDir, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2022",
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          lib: ["ES2022", "DOM", "DOM.Iterable"],
+          strict: true,
+          skipLibCheck: true,
+          noEmit: true,
+        },
+        include: ["consumer.ts"],
+      },
+      null,
+      2,
+    ),
+  );
+
+  const specifiers = contracts.map(({ specifier }) => specifier);
+  writeFileSync(
+    join(fixtureDir, "consumer-smoke.mjs"),
+    `const specifiers = ${JSON.stringify(specifiers, null, 2)};\n` +
+      `for (const specifier of specifiers) import.meta.resolve(specifier);\n` +
+      `const sdk = await import("@hyperframes/sdk");\n` +
+      `if (typeof sdk.openComposition !== "function") throw new Error("SDK root export missing");\n` +
+      `const memory = await import("@hyperframes/sdk/adapters/memory");\n` +
+      `if (typeof memory.createMemoryAdapter !== "function") throw new Error("memory adapter missing");\n` +
+      `const fsAdapter = await import("@hyperframes/sdk/adapters/fs");\n` +
+      `if (typeof fsAdapter.createFsAdapter !== "function") throw new Error("fs adapter missing");\n` +
+      `await import("@hyperframes/core");\n` +
+      `await import("@hyperframes/parsers");\n` +
+      `await import("@hyperframes/lint");\n` +
+      `await import("@hyperframes/studio-server");\n` +
+      `console.log(\`Resolved \${specifiers.length} packed exports and loaded public SDK adapters.\`);\n`,
+  );
+  return fixtureDir;
+}
+
+function verifyPackedConsumer(packDir, packedWorkspaces) {
+  const fixtureDir = writeConsumerFixture(packDir, packedWorkspaces);
+  execFileSync("bun", ["install", "--ignore-scripts"], {
+    cwd: fixtureDir,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  execFileSync(process.execPath, [join(fixtureDir, "node_modules", "typescript", "bin", "tsc")], {
+    cwd: fixtureDir,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  const smokeOutput = execFileSync("node", ["consumer-smoke.mjs"], {
+    cwd: fixtureDir,
+    encoding: "utf8",
+  });
+  const cliOutput = execFileSync(
+    join(fixtureDir, "node_modules", ".bin", "hyperframes"),
+    ["--help"],
+    {
+      cwd: fixtureDir,
+      encoding: "utf8",
+      env: { ...process.env, HYPERFRAMES_TELEMETRY_DISABLED: "1" },
+    },
+  );
+  if (!cliOutput.toLowerCase().includes("hyperframes")) {
+    throw new Error("Packed CLI help did not identify HyperFrames");
+  }
+  console.log(smokeOutput.trim());
+  console.log("Verified clean packed consumer install, type resolution, and CLI startup.");
+}
+
+function packAndVerifyWorkspace(workspace, packDir) {
   const sourcePackageJson = readWorkspacePackage(workspace);
-  if (sourcePackageJson.private) return;
+  if (sourcePackageJson.private) return null;
 
   assertPublishedExportsMatchSource(workspace, sourcePackageJson);
-
-  const packDir = mkdtempSync(join(tmpdir(), "hyperframes-pack-"));
-  try {
-    verifyPackedWorkspace(workspace, packWorkspace(workspace, packDir));
-    console.log(`Verified ${workspace}: packed manifest is publish-safe.`);
-  } finally {
-    rmSync(packDir, { force: true, recursive: true });
-  }
+  const filename = packWorkspace(workspace, packDir);
+  verifyPackedWorkspace(workspace, sourcePackageJson, filename);
+  const packedPackage = readPackedPackage(filename);
+  console.log(`Verified ${workspace}: packed manifest is publish-safe.`);
+  return { workspace, filename, packedPackage };
 }
 
 function main() {
-  listWorkspacePackageDirs().forEach(verifyWorkspace);
+  const packDir = mkdtempSync(join(tmpdir(), "hyperframes-pack-"));
+  try {
+    const packedWorkspaces = listWorkspacePackageDirs()
+      .map((workspace) => packAndVerifyWorkspace(workspace, packDir))
+      .filter(Boolean);
+    verifyPackedConsumer(packDir, packedWorkspaces);
+  } finally {
+    rmSync(packDir, { force: true, recursive: true });
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

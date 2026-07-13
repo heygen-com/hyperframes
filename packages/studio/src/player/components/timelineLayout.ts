@@ -7,38 +7,66 @@ export const TRACK_H = 48;
 export const RULER_H = 24;
 export const CLIP_Y = 3;
 export const CLIP_HANDLE_W = 18;
-const TIMELINE_SCROLL_BUFFER = 20;
+/**
+ * Half-width (as a fraction of TRACK_H) of the new-track INSERT band that
+ * straddles each lane boundary. Deliberately equals the clip's vertical inset
+ * (`CLIP_Y / TRACK_H`): a clip body fills [CLIP_Y, TRACK_H − CLIP_Y] of its row,
+ * so the ONLY region this band covers is the visible empty gutter between two
+ * clip bodies (plus the top/bottom breathing pads, handled separately by the
+ * rowFloat ≤ 0 / ≥ trackCount extremes). Aiming at a clip body is therefore a
+ * move-to-that-lane; only the inter-clip gap arms an insert — see resolveInsertRow.
+ * Threaded into resolveInsertRow by the drag preview so the hit band can never
+ * drift from the rendered clip geometry.
+ */
+export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
+/**
+ * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
+ * track-row y computation via {@link getTimelineRowTop} — never inline a magic
+ * offset; a track row's top is always `RULER_H + TRACKS_TOP_PAD + row*TRACK_H`.
+ *
+ * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
+ *   (~half a track height) so the first clip isn't jammed under the ruler.
+ * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
+ *   enough to comfortably drag a clip into the void to create a new bottom lane.
+ */
+export const TRACKS_TOP_PAD = 50;
+export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
 
-/* ── Timeline duration ─────────────────────────────────────────────── */
-
-// Committed timeline length: root duration or the furthest committed clip end,
-// with NO live drag/resize preview. This drives the zoom (fit-to-width pps) so
-// the pixels-per-second mapping stays fixed while you drag — otherwise a clip
-// dragged past the end grows the duration, shrinks pps, and jumps under the
-// pointer (a positive-feedback loop). The zoom re-fits once on drop.
-export function computeTimelineBasisDuration(
-  rootDuration: number,
-  clipEnds: readonly number[],
-): number {
-  const safeDur = Number.isFinite(rootDuration) ? rootDuration : 0;
-  if (clipEnds.length === 0) return safeDur;
-  const maxEnd = Math.max(safeDur, ...clipEnds);
-  return Number.isFinite(maxEnd) ? maxEnd : safeDur;
+/**
+ * The y (content-space) of the top edge of track ROW index `row` (0 = first
+ * displayed lane). The single source of truth for row→y — the ruler height plus
+ * the top breathing pad plus whole track lanes above it. Every clip/ghost/
+ * placeholder/insertion top and every pointer-y→row inversion goes through this
+ * (or its inverse in {@link getTimelineRowFromY}) so the pad can never drift.
+ */
+export function getTimelineRowTop(row: number): number {
+  return RULER_H + TRACKS_TOP_PAD + row * TRACK_H;
 }
 
-// Displayed length: the basis plus any active drag/resize preview end, so the
-// ruler and track width grow to follow a clip dragged past the current end
-// (with the zoom held fixed, the extra length becomes scrollable content).
-export function computeTimelineEffectiveDuration(
-  basisDuration: number,
-  previewEnds: readonly (number | null)[],
-): number {
-  let maxEnd = basisDuration;
-  for (const end of previewEnds) {
-    if (end != null && Number.isFinite(end)) maxEnd = Math.max(maxEnd, end);
-  }
-  return maxEnd;
+/**
+ * Inverse of {@link getTimelineRowTop}: the fractional row index for a content-
+ * space y (used for insert-row / drop-lane decisions). Subtracts the ruler and
+ * top pad before dividing by the track height.
+ */
+export function getTimelineRowFromY(contentY: number): number {
+  return (contentY - RULER_H - TRACKS_TOP_PAD) / TRACK_H;
 }
+/**
+ * While a clip drag is live, the rendered timeline extends this far past the
+ * ghost's end so the right-edge auto-scroll zone always has room to keep
+ * stepping — that's what lets a drag extend the timeline past its current
+ * rendered width (see Timeline.tsx displayContentWidth).
+ */
+export const DRAG_EXTEND_MARGIN_PX = 160;
+/**
+ * The rendered timeline always spans at least this many seconds of ruler +
+ * track lanes, even when the composition is shorter — the empty space on the
+ * right is a real, drag/drop-enabled surface (clips can be moved into it; the
+ * composition grows on commit, content-driven). In fit mode the fit pps is
+ * derived against this floor, so a 10s comp renders as ~1/6 of the viewport
+ * with 60s of ruler after it.
+ */
+export const MIN_TIMELINE_EXTENT_S = 60;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
 function getMajorTickInterval(duration: number, pixelsPerSecond?: number): number {
@@ -54,15 +82,15 @@ function getMajorTickInterval(duration: number, pixelsPerSecond?: number): numbe
   return durationIntervals.find((interval) => interval >= target) ?? 60;
 }
 
-function getMinorTickInterval(majorInterval: number, pixelsPerSecond?: number): number {
-  if (
-    Number.isFinite(pixelsPerSecond) &&
-    (pixelsPerSecond ?? 0) > 0 &&
-    (majorInterval / 2) * (pixelsPerSecond ?? 0) < 12
-  ) {
-    return 0;
-  }
-  return majorInterval / 2;
+// How many equal parts to split each major interval into for minor ticks. Prefer
+// quarters (4) so the midpoint stays a minor tick; fall back to halves (2) then
+// none (0) as ticks get too dense to read (< ~8px apart).
+function getMinorSubdivisions(majorInterval: number, pixelsPerSecond?: number): number {
+  const pps = Number.isFinite(pixelsPerSecond) ? (pixelsPerSecond ?? 0) : 0;
+  if (pps <= 0) return 4; // no zoom info (duration-fit mode): quarter ticks
+  if ((majorInterval / 4) * pps >= 8) return 4;
+  if ((majorInterval / 2) * pps >= 8) return 2;
+  return 0;
 }
 
 export function generateTicks(
@@ -72,39 +100,25 @@ export function generateTicks(
   if (duration <= 0 || !Number.isFinite(duration) || duration > 7200)
     return { major: [], minor: [] };
   const majorInterval = getMajorTickInterval(duration, pixelsPerSecond);
-  const minorInterval = getMinorTickInterval(majorInterval, pixelsPerSecond);
+  const subdivisions = getMinorSubdivisions(majorInterval, pixelsPerSecond);
+  const minorInterval = subdivisions > 0 ? majorInterval / subdivisions : 0;
   const major: number[] = [];
   const minor: number[] = [];
   const maxTicks = 2000; // Safety cap to prevent runaway tick generation
   for (let t = 0; t <= duration + 0.001 && major.length < maxTicks; t += majorInterval) {
     const rounded = Math.round(t * 100) / 100;
     major.push(rounded);
-    if (minorInterval > 0 && major.length + minor.length < maxTicks) {
-      const midpoint = Math.round((t + minorInterval) * 100) / 100;
-      if (midpoint <= duration + 0.001) minor.push(midpoint);
+    // Emit the (subdivisions - 1) minor ticks between this major and the next.
+    for (let k = 1; k < subdivisions && major.length + minor.length < maxTicks; k++) {
+      const m = Math.round((t + k * minorInterval) * 100) / 100;
+      if (m <= duration + 0.001) minor.push(m);
     }
   }
   return { major, minor };
 }
 
-/**
- * Ticks spanning the full visible ruler width, not just the composition, so a
- * zoomed-out ruler stays filled with labels instead of ending mid-panel. The
- * major/minor interval is driven by pixelsPerSecond (pixel spacing), so widening
- * the range keeps spacing identical — it only adds ticks past the content end.
- */
-export function generateVisibleTicks(
-  effectiveDuration: number,
-  pixelsPerSecond: number,
-  viewportWidth: number,
-  gutter: number,
-): { major: number[]; minor: number[] } {
-  const visible = viewportWidth > gutter ? (viewportWidth - gutter) / pixelsPerSecond : 0;
-  return generateTicks(Math.max(effectiveDuration, visible), pixelsPerSecond);
-}
-
 export function formatTimelineTickLabel(time: number, duration: number, majorInterval: number) {
-  if (!Number.isFinite(time)) return "0:00";
+  if (!Number.isFinite(time)) return "00:00";
   const safeTime = Math.max(0, time);
   if (majorInterval < 0.1) {
     const totalHundredths = Math.round(safeTime * 100);
@@ -126,6 +140,45 @@ export function formatTimelineTickLabel(time: number, duration: number, majorInt
     return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
   return formatTime(safeTime);
+}
+
+/* ── Width / duration derivation ──────────────────────────────────── */
+/**
+ * Fit-mode pixels-per-second: fill the viewport with the composition, but
+ * never map fewer than MIN_TIMELINE_EXTENT_S seconds onto it — a short comp
+ * takes a fraction of the width and the remaining ruler runs to 1:00.
+ * Manual zoom multiplies this base, so the floor only anchors the default.
+ */
+export function getTimelineFitPps(viewportWidth: number, effectiveDuration: number): number {
+  const safeDuration =
+    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
+  const span = Math.max(safeDuration, MIN_TIMELINE_EXTENT_S);
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= GUTTER) return 100;
+  return (viewportWidth - GUTTER - 2) / span;
+}
+
+/**
+ * The rendered timeline extent in px. Always covers, whichever is largest:
+ * the actual clip content, the visible viewport (no dead black after short
+ * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
+ * margin (drag/trim-to-extend), and the MIN_TIMELINE_EXTENT_S floor. Only the
+ * RENDERED extent grows; clip positions/durations are untouched.
+ */
+export function getTimelineDisplayContentWidth(input: {
+  trackContentWidth: number;
+  viewportWidth: number;
+  pps: number;
+  dragGhostEndPx?: number;
+  resizeGhostEndPx?: number;
+}): number {
+  const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
+  return Math.max(
+    input.trackContentWidth,
+    input.viewportWidth - GUTTER - 2,
+    input.dragGhostEndPx ?? 0,
+    input.resizeGhostEndPx ?? 0,
+    MIN_TIMELINE_EXTENT_S * safePps,
+  );
 }
 
 /* ── Scroll / zoom helpers ────────────────────────────────────────── */
@@ -180,7 +233,10 @@ export function getTimelinePlayheadLeft(time: number, pixelsPerSecond: number): 
 }
 
 export function getTimelineCanvasHeight(trackCount: number): number {
-  return RULER_H + Math.max(0, trackCount) * TRACK_H + TIMELINE_SCROLL_BUFFER;
+  // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
+  // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space
+  // below the last lane is real scrollable surface, not a hidden buffer.
+  return RULER_H + TRACKS_TOP_PAD + Math.max(0, trackCount) * TRACK_H + TRACKS_BOTTOM_PAD;
 }
 
 /* ── UI helpers ───────────────────────────────────────────────────── */
@@ -245,12 +301,15 @@ export function resolveTimelineAssetDrop(
   clientY: number,
 ): { start: number; track: number } {
   const x = clientX - input.rectLeft + input.scrollLeft - GUTTER;
-  const y = clientY - input.rectTop + input.scrollTop - RULER_H;
+  const contentY = clientY - input.rectTop + input.scrollTop;
   const start = Math.max(
     0,
     Math.min(input.duration, Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100),
   );
-  const rowIndex = Math.floor(y / Math.max(input.trackHeight, 1));
+  // Row from the shared row→y inverse so the top pad is honoured; a drop in the
+  // pad above the first lane floors to row 0, a drop in the bottom pad rounds
+  // past the last lane (getDefaultDroppedTrack then appends a new track).
+  const rowIndex = Math.floor(getTimelineRowFromY(contentY));
   return {
     start,
     track: getDefaultDroppedTrack(input.trackOrder, rowIndex),

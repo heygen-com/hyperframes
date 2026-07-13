@@ -51,7 +51,7 @@ After creating or editing any `.html` composition:
 
 ```bash
 npx hyperframes lint       # Static HTML structure check
-npx hyperframes validate   # Runtime check (headless Chrome — catches JS errors, missing assets)
+npx hyperframes check      # Browser gate (headless Chrome — runtime errors, layout, motion, WCAG contrast)
 ```
 
 Both must pass before previewing or considering work complete.

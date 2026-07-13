@@ -141,6 +141,24 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
   };
 }
 
+/**
+ * Collapse per-session/per-worker BeginFrame damage counters into one
+ * render-level reuse outcome (SUM across workers — each worker ticks its own
+ * frame range). Both zero ⟺ no beginframe session ran (screenshot/drawElement
+ * sessions never increment these) → undefined, mirroring staticDedup's
+ * "undefined when it never engaged" contract. Also inherits `dedupPerfs`'
+ * retry semantics: a partial-capture retry resets the sink, so the sums cover
+ * only the final attempt's recaptured ranges (may be < totalFrames).
+ */
+function aggregateBeginFrameReuse(
+  perfs: CapturePerfSummary[],
+): RenderPerfSummary["beginFrameReuse"] {
+  const noDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameNoDamage ?? 0), 0);
+  const hasDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameHasDamage ?? 0), 0);
+  if (noDamageFrames + hasDamageFrames === 0) return undefined;
+  return { noDamageFrames, hasDamageFrames };
+}
+
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
   workerCount: number;
@@ -224,6 +242,7 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },

@@ -114,13 +114,47 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
  * inner id would be duplicated across every clone. Form B is distinguished from
  * a clone-source by the presence of a direct `[data-composition-id]` child.
  */
+function getChildElements(parent: Element): Element[] {
+  const directChildren = Array.from(parent.children);
+  if (directChildren.length || parent.tagName.toLowerCase() !== "template") return directChildren;
+  const content = (parent as HTMLTemplateElement).content;
+  if (content?.children.length) return Array.from(content.children);
+  return directChildren;
+}
+
 export function isCompositionTemplate(el: Element): boolean {
   if (el.tagName.toLowerCase() !== "template") return false;
   if (el.getAttribute("data-composition-id") !== null) return true;
-  for (const child of Array.from(el.children)) {
+  for (const child of getChildElements(el)) {
     if (child.getAttribute("data-composition-id") !== null) return true;
   }
   return false;
+}
+
+/**
+ * Walk document-order descendants, descending through composition templates
+ * while keeping plain templates inert. linkedom's querySelectorAll does not
+ * expose template contents, so callers that model the served composition use
+ * this traversal instead.
+ */
+export function walkCompositionDescendants(
+  root: Document | Element,
+  visit: (el: Element) => void,
+): void {
+  const rootElement: Element | null =
+    root.nodeType === 9 ? (root as Document).documentElement : (root as Element);
+  if (!rootElement) return;
+
+  const walk = (parent: Element): void => {
+    for (const child of getChildElements(parent)) {
+      const isTemplate = child.tagName.toLowerCase() === "template";
+      if (isTemplate && !isCompositionTemplate(child)) continue;
+      visit(child);
+      walk(child);
+    }
+  };
+
+  walk(rootElement);
 }
 
 /**
@@ -132,12 +166,7 @@ export function isCompositionTemplate(el: Element): boolean {
  * skipped entirely (see isCompositionTemplate).
  */
 function walkElements(root: Element, visit: (el: Element) => void): void {
-  for (const child of Array.from(root.children)) {
-    const isTemplate = child.tagName.toLowerCase() === "template";
-    if (isTemplate && !isCompositionTemplate(child)) continue;
-    visit(child);
-    walkElements(child, visit);
-  }
+  walkCompositionDescendants(root, visit);
 }
 
 export function ensureHfIds(html: string): string {

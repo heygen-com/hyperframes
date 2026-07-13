@@ -38,3 +38,68 @@ describe("renderObservabilityTelemetryPayload — render-reliability counters", 
     expect(payload.captureMemoryExhaustionDetected).toBeUndefined();
   });
 });
+
+describe("renderObservabilityTelemetryPayload — DE inversion/router cohort (failure-path visibility)", () => {
+  it("maps the router cohort and its pre-router worker count", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deParallelRouter: "routed", dePreRouterWorkers: 2 }),
+    );
+    expect(payload.captureDeParallelRouter).toBe("routed");
+    expect(payload.captureDePreRouterWorkers).toBe(2);
+    expect(payload.captureDeWorkerInversion).toBeUndefined();
+    expect(payload.captureDePreInversionWorkers).toBeUndefined();
+  });
+
+  it("maps the inversion cohort and its pre-inversion worker count", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deWorkerInversion: "inverted", dePreInversionWorkers: 4 }),
+    );
+    expect(payload.captureDeWorkerInversion).toBe("inverted");
+    expect(payload.captureDePreInversionWorkers).toBe(4);
+    expect(payload.captureDeParallelRouter).toBeUndefined();
+  });
+
+  it("carries deSelfVerifyFallback so a hard failure mid-verify is still visible", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ deParallelRouter: "routed", deSelfVerifyFallback: true }),
+    );
+    expect(payload.captureDeSelfVerifyFallback).toBe(true);
+  });
+
+  it("carries deFallbackReason so a render that fails AFTER an OOM-triggered fallback attempt is distinguishable from one that never attempted a fallback", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({
+        deParallelRouter: "routed",
+        deSelfVerifyFallback: false,
+        deFallbackReason: "oom",
+      }),
+    );
+    expect(payload.captureDeFallbackReason).toBe("oom");
+  });
+
+  it("leaves deFallbackReason undefined when no fallback was ever attempted", () => {
+    const payload = renderObservabilityTelemetryPayload(makeSummary({}));
+    expect(payload.captureDeFallbackReason).toBeUndefined();
+  });
+});
+
+describe("renderObservabilityTelemetryPayload — non-DE parallel-stream router", () => {
+  it("maps the router outcome", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ captureParallelStream: "beginframe" }),
+    );
+    expect(payload.captureParallelStream).toBe("beginframe");
+  });
+
+  it("maps the passive eligible_off cohort-sizing signal", () => {
+    const payload = renderObservabilityTelemetryPayload(
+      makeSummary({ captureParallelStream: "eligible_off" }),
+    );
+    expect(payload.captureParallelStream).toBe("eligible_off");
+  });
+
+  it("stays undefined when the router never fired", () => {
+    const payload = renderObservabilityTelemetryPayload(makeSummary({}));
+    expect(payload.captureParallelStream).toBeUndefined();
+  });
+});

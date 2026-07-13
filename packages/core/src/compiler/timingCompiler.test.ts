@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   compileTimingAttrs,
@@ -5,6 +7,15 @@ import {
   extractResolvedMedia,
   clampDurations,
 } from "./timingCompiler.js";
+
+// Raw 0x00 bytes in the HFMASK delimiters shipped once and broke every render
+// under Bun's transpiler while behaving fine under Node (issue #2139) — only a
+// byte-level check catches that, so keep the delimiters as \x00 escapes.
+it("source contains no raw NUL bytes", () => {
+  const testPath = expect.getState().testPath ?? "";
+  const src = readFileSync(join(dirname(testPath), "timingCompiler.ts"), "latin1");
+  expect(src.includes("\x00")).toBe(false);
+});
 
 describe("compileTimingAttrs", () => {
   it("adds data-end when data-start and data-duration are present on a video", () => {
@@ -156,6 +167,22 @@ describe("compileTimingAttrs", () => {
     expect(compiled).toContain("<!-- a <video> in prose -->");
     expect(compiled).toContain('id="hf-video-0"');
     expect(compiled).toContain('data-end="2"');
+  });
+
+  it("preserves inert regions when compiled output is compiled again", () => {
+    const html = [
+      '<style>.hero::after { content: "$& $$ $` $\' <video>"; }</style>',
+      '<script>const markup = "$& $$ $` $\' <audio>";</script>',
+      '<video class="hero" src="a.mp4" data-start="0" data-duration="2">',
+    ].join("\n");
+
+    const first = compileTimingAttrs(html).html;
+    const second = compileTimingAttrs(first).html;
+
+    expect(second).toContain('<style>.hero::after { content: "$& $$ $` $\' <video>"; }</style>');
+    expect(second).toContain('<script>const markup = "$& $$ $` $\' <audio>";</script>');
+    expect(second).toContain('data-end="2"');
+    expect(second).not.toContain("HFMASK");
   });
 });
 

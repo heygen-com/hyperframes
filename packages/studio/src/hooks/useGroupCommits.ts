@@ -1,25 +1,12 @@
 import { useCallback } from "react";
-import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
+import {
+  readProjectFileContent,
+  saveProjectFilesWithHistory,
+  type DomEditCommitBaseParams,
+} from "../utils/studioFileHistory";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
-import type { EditHistoryKind } from "../utils/editHistory";
 
-interface RecordEditInput {
-  label: string;
-  kind: EditHistoryKind;
-  coalesceKey?: string;
-  files: Record<string, { before: string; after: string }>;
-}
-
-interface UseGroupCommitsParams {
-  activeCompPath: string | null;
-  showToast: (message: string, tone?: "error" | "info") => void;
-  writeProjectFile: (path: string, content: string) => Promise<void>;
-  domEditSaveTimestampRef: React.MutableRefObject<number>;
-  editHistory: { recordEdit: (entry: RecordEditInput) => Promise<void> };
-  projectIdRef: React.MutableRefObject<string | null>;
-  reloadPreview: () => void;
-  clearDomSelection: () => void;
+interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
    * structure the in-memory doc doesn't know about). */
   forceReloadSdkSession?: () => void;
@@ -81,15 +68,7 @@ async function commitStructuralMutation(
     | "reloadPreview"
   >,
 ): Promise<{ content?: string; groupId?: string }> {
-  const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
-  if (!response.ok) {
-    throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`);
-  }
-  const data = (await response.json()) as { content?: string };
-  const originalContent = data.content;
-  if (typeof originalContent !== "string") {
-    throw new Error(`Missing file contents for ${targetPath}`);
-  }
+  const originalContent = await readProjectFileContent(pid, targetPath);
 
   deps.domEditSaveTimestampRef.current = Date.now();
   const mutateResponse = await fetch(

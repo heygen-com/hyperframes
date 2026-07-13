@@ -177,9 +177,9 @@ Inject transitions, run checks, pause for review, then render.
 
 `npx hyperframes lint`
 
-`npx hyperframes validate`
+`npx hyperframes check`
 
-`npx hyperframes inspect`
+`npx hyperframes check`
 
 `npx hyperframes snapshot --at <frame-midpoints>`
 

@@ -4,9 +4,14 @@ import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { resolve, join, relative, isAbsolute, basename } from "node:path";
 import {
+  DEFAULT_ZOOM_SCALE,
+  captureRegionCrop,
   openSettledCompositionPage,
+  parseZoomTarget,
+  resolveCropRegion,
   runFfmpegOnce,
   seekCompositionTimeline,
+  type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import { resolveProject } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -104,7 +109,19 @@ export const examples: Example[] = [
   ["Capture 5 key frames from a composition", "snapshot capture"],
   ["Capture 10 evenly-spaced frames", "snapshot capture --frames 10"],
   ["View the 3D stage from an isometric angle", "snapshot capture --angle iso"],
+  ["Zoom into an element for a high-density crop", "snapshot --zoom '#headline'"],
+  [
+    "Zoom into an exact pixel region at 2x density",
+    "snapshot --zoom 100,50,400,300 --zoom-scale 2",
+  ],
 ];
+
+/** `--zoom-scale`: the deviceScaleFactor used for zoomed crops. Defaults to 3;
+ * falls back to the default for anything that doesn't parse as a positive number. */
+export function parseZoomScale(value: unknown): number {
+  const parsed = parseFloat(String(value ?? ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ZOOM_SCALE;
+}
 
 /**
  * Seeking the timeline to EXACTLY `data-duration` renders blank — the runtime
@@ -172,13 +189,17 @@ async function captureSnapshots(
     outputDir?: string;
     angle?: Camera;
     includeEnd?: boolean;
+    zoom?: ZoomTarget;
+    zoomScale?: number;
   },
 ): Promise<string[]> {
-  const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+  const { bundleWithLocalizedFonts } = await import("../utils/bundleWithLocalizedFonts.js");
 
   const numFrames = opts.frames ?? 5;
 
-  const html = await bundleToSingleHtml(projectDir);
+  // Localize fonts (embed remote @font-face as data URIs, matching the render
+  // path) so snapshots render the real font instead of a fallback sans.
+  const html = await bundleWithLocalizedFonts(projectDir);
   const server = await serveStaticProjectHtml(projectDir, html);
 
   const savedPaths: string[] = [];
@@ -301,8 +322,13 @@ async function captureSnapshots(
         syncVideoFrameVisibility = engine.syncVideoFrameVisibility;
         extractMediaMetadata = engine.extractMediaMetadata;
       } catch {
-        // Engine unavailable in this install — snapshot will still run, and
-        // compositions without <video data-start> get exactly the old behaviour.
+        // Engine unavailable in this install — snapshot still runs, but any
+        // <video data-start> will screenshot black (chrome-headless ignores
+        // programmatic currentTime writes). Say so instead of silently
+        // shipping black frames (two wild Windows reports).
+        console.warn(
+          `   ${c.warn("⚠")} @hyperframes/engine unavailable — <video> elements will appear black in snapshots. Verify media via a draft render's extracted frames instead.`,
+        );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
@@ -407,6 +433,13 @@ async function captureSnapshots(
             });
           }
 
+          if (active.length > 0 && updates.length < active.length) {
+            const missed = active.length - updates.length;
+            console.warn(
+              `   ${c.warn("⚠")} ${missed}/${active.length} active <video> frame(s) could not be extracted at ${time.toFixed(1)}s — those videos will appear black/stale in this snapshot`,
+            );
+          }
+
           // Sync visibility even when empty — clears stale overlays from prior seeks
           try {
             if (updates.length > 0) {
@@ -417,7 +450,9 @@ async function captureSnapshots(
               active.map((a) => a.id),
             );
           } catch {
-            /* fall through to plain screenshot */
+            console.warn(
+              `   ${c.warn("⚠")} video frame injection failed at ${time.toFixed(1)}s — <video> elements will appear black/stale in this snapshot`,
+            );
           }
         }
 
@@ -425,7 +460,29 @@ async function captureSnapshots(
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
-        await page.screenshot({ path: framePath, type: "png" });
+        if (opts.zoom) {
+          // Clip screenshot at a raised deviceScaleFactor — never CSS zoom or
+          // viewport resizing — so the composition's own layout is untouched.
+          const canvas = await page.evaluate(() => ({
+            width: window.innerWidth,
+            height: window.innerHeight,
+          }));
+          const region = await resolveCropRegion(page, opts.zoom, canvas);
+          if (!region) {
+            console.error(
+              `   ${c.warn("⚠")} --zoom target has no visible box at ${time.toFixed(1)}s — frame skipped`,
+            );
+            continue;
+          }
+          const buffer = await captureRegionCrop(
+            page,
+            region,
+            opts.zoomScale ?? DEFAULT_ZOOM_SCALE,
+          );
+          writeFileSync(framePath, buffer);
+        } else {
+          await page.screenshot({ path: framePath, type: "png" });
+        }
         const rel = relative(projectDir, framePath);
         savedPaths.push(rel.startsWith("..") || isAbsolute(rel) ? framePath : rel);
       }
@@ -480,6 +537,16 @@ export default defineCommand({
         "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
       default: true,
     },
+    zoom: {
+      type: "string",
+      description:
+        "Zoom into a CSS selector or an exact pixel region 'x,y,w,h'. Crops a high-density screenshot instead of the full frame — a raised deviceScaleFactor, never CSS zoom or viewport resizing, so layout stays identical. A selector matching nothing is an error, not a silent full-frame shot.",
+    },
+    "zoom-scale": {
+      type: "string",
+      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      default: "3",
+    },
     describe: {
       type: "string",
       description:
@@ -508,6 +575,8 @@ export default defineCommand({
           : String(args.describe);
 
     const camera = args.angle ? parseAngle(String(args.angle)) : undefined;
+    const zoomTarget = args.zoom ? parseZoomTarget(String(args.zoom)) : undefined;
+    const zoomScale = parseZoomScale(args["zoom-scale"]);
 
     const label = atTimestamps
       ? `${atTimestamps.length} frames at [${atTimestamps.map((t) => t.toFixed(1) + "s").join(", ")}]`
@@ -529,6 +598,8 @@ export default defineCommand({
         outputDir: snapshotDir,
         angle: camera,
         includeEnd: args.end !== false,
+        zoom: zoomTarget,
+        zoomScale,
       });
 
       if (paths.length === 0) {

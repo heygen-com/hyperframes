@@ -37,9 +37,9 @@ Each one causes friction or wrong output for a specific engine reason — with t
 - ❌ `make me a video of...`
 - ✅ `/hyperframes make me a video of...`
 
-**Don't paste raw error logs.** Lint and validate localize the problem first; a bare log makes the agent re-derive what the tools already know.
+**Don't paste raw error logs.** `check` localizes the problem first (lint, then a browser gate); a bare log makes the agent re-derive what the tool already knows.
 - ❌ pasting 200 lines of console output
-- ✅ `lint passes but validate reports a missing asset in scene 2 — fix it`
+- ✅ `check reports a missing asset in scene 2 — fix it`
 
 **Don't assume the agent knows your assets.** It will look, but a path skips the search.
 - ❌ `use my logo`

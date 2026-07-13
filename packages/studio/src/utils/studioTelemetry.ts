@@ -42,7 +42,10 @@ function getSessionProperties(): EventProperties {
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
     user_agent: navigator.userAgent,
-    url_hash: location.hash.replace(/#project\//, ""),
+    // Route slug only — drop the query string, which carries the current
+    // selection (selId / selSelector are the user's own element ids/CSS
+    // selectors) and other view state we must not send to analytics.
+    url_hash: location.hash.replace(/#project\//, "").split("?")[0],
   };
 }
 

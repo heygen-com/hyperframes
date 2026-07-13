@@ -277,6 +277,16 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
   // ── Stage 5: Encode ───────────────────────────────────────────────
   updateJobStatus(job, "encoding", "Encoding video", 75, onProgress);
 
+  // ffmpegEncodeTimeout is a total wall-clock cap, not an inactivity timeout.
+  // A fixed ten-minute cap reliably kills long high-quality disk-frame encodes
+  // that are still making progress. Preserve larger operator overrides while
+  // guaranteeing four seconds of encode budget per second of source video.
+  const scaledEncodeTimeout = Math.ceil((job.duration ?? 0) * 4_000);
+  const videoEngineCfg =
+    scaledEncodeTimeout > engineCfg.ffmpegEncodeTimeout
+      ? { ...engineCfg, ffmpegEncodeTimeout: scaledEncodeTimeout }
+      : engineCfg;
+
   const frameExt = needsAlpha ? "png" : "jpg";
   const framePattern = `frame_%06d.${frameExt}`;
   const encoderOpts = {
@@ -305,7 +315,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         encoderOpts,
         chunkedEncodeSize,
         abortSignal,
-        engineCfg,
+        videoEngineCfg,
       )
     : await encodeFramesFromDir(
         framesDir,
@@ -313,7 +323,7 @@ export async function runEncodeStage(input: EncodeStageInput): Promise<EncodeSta
         videoOnlyPath,
         encoderOpts,
         abortSignal,
-        engineCfg,
+        videoEngineCfg,
       );
   assertNotAborted();
 

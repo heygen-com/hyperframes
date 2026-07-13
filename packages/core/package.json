@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.7.48",
+  "version": "0.7.56",
   "description": "",
   "repository": {
     "type": "git",
@@ -106,6 +106,12 @@
       "node": "./dist/runtime/startExpression.js",
       "import": "./src/runtime/startExpression.ts",
       "types": "./src/runtime/startExpression.ts"
+    },
+    "./runtime/protocol": {
+      "bun": "./src/runtime/protocol.ts",
+      "node": "./dist/runtime/protocol.js",
+      "import": "./src/runtime/protocol.ts",
+      "types": "./src/runtime/protocol.ts"
     },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
@@ -307,6 +313,10 @@
         "import": "./dist/runtime/startExpression.js",
         "types": "./dist/runtime/startExpression.d.ts"
       },
+      "./runtime/protocol": {
+        "import": "./dist/runtime/protocol.js",
+        "types": "./dist/runtime/protocol.d.ts"
+      },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
@@ -402,8 +412,10 @@
     "test": "bun run check:position-edits-render && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "lint:runtime-preview-guards": "tsx scripts/lint-runtime-preview-guards.ts",
+    "test:runtime-coverage": "vitest run --coverage src/runtime",
+    "typecheck": "tsc --noEmit && bun run typecheck:runtime",
+    "typecheck:runtime": "tsc --noEmit -p tsconfig.runtime.json",
+    "lint:runtime-preview-guards": "bun scripts/lint-runtime-preview-guards.ts",
     "build:hyperframes-runtime": "tsx scripts/build-hyperframes-runtime-artifact.ts",
     "build:position-edits-render": "tsx scripts/build-position-edits-render.ts",
     "check:position-edits-render": "bun run build:position-edits-render && git diff --exit-code -- src/generated/position-edits-render-inline.ts",
@@ -415,9 +427,9 @@
     "test:hyperframe-runtime-duration-guards": "tsx scripts/test-hyperframe-runtime-duration-guards.ts",
     "test:hyperframe-runtime-parity": "tsx scripts/test-hyperframe-runtime-parity.ts",
     "test:hyperframe-runtime-security": "tsx scripts/test-hyperframe-runtime-security.ts",
-    "test:hyperframe-linter": "tsx scripts/test-hyperframe-linter.ts",
-    "test:hyperframe-runtime-ci": "bun run build:hyperframes-runtime && bun run test:hyperframe-runtime-contract && bun run test:hyperframe-runtime-behavior && bun run test:hyperframe-runtime-seek && bun run test:hyperframe-runtime-duration-guards && bun run test:hyperframe-runtime-parity && bun run test:hyperframe-runtime-security",
-    "check:hyperframe-html": "tsx scripts/check-hyperframe-static.ts",
+    "test:hyperframe-linter": "bun scripts/test-hyperframe-linter.ts",
+    "test:hyperframe-runtime-ci": "bun run typecheck:runtime && bun run lint:runtime-preview-guards && bun run build:hyperframes-runtime && bun run test:hyperframe-runtime-contract && bun run test:hyperframe-runtime-behavior && bun run test:hyperframe-runtime-seek && bun run test:hyperframe-runtime-duration-guards && bun run test:hyperframe-runtime-parity && bun run test:hyperframe-runtime-security && bun run test:runtime-coverage && bun run test:hyperframe-linter",
+    "check:hyperframe-html": "bun scripts/check-hyperframe-static.ts",
     "debug:timeline": "tsx scripts/debug-timeline.ts",
     "prepublishOnly": "echo skip"
   },

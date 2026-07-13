@@ -385,8 +385,7 @@ export function collectRuntimeTimelinePayload(params: {
     ),
   );
   let maxEnd = 0;
-  for (let i = 0; i < nodes.length; i += 1) {
-    const node = nodes[i];
+  for (const [i, node] of nodes.entries()) {
     if (node === root) continue;
     if (["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT"].includes(node.tagName))
       continue;

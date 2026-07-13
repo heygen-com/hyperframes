@@ -44,7 +44,7 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
-    // NLE notice — rendered conditionally via NLELayout when timeline is first shown.
+    // NLE notice — rendered conditionally via NLEContext/EditorShell when timeline is first shown.
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
@@ -90,6 +90,59 @@
     "packages/cli/src/cloud/_gen/**",
   ],
   "ignoreExports": [
+    // Public player-state types are consumed by package users outside this
+    // workspace. Keep the barrel stable even when no in-repo import needs it.
+    {
+      "file": "packages/studio/src/player/index.ts",
+      "exports": ["ZoomMode"],
+    },
+    // Part of useTimelineEditing's inferred public return type; consumers invoke
+    // handleTimelineGroupResize without importing the change type directly.
+    {
+      "file": "packages/studio/src/hooks/useTimelineGroupEditing.ts",
+      "exports": ["TimelineGroupResizeChange"],
+    },
+    {
+      "file": "packages/studio/src/player/components/timelineGroupEditing.ts",
+      "exports": [
+        "buildTimelineGroupResizeMembers",
+        "resolveTimelineGroupResizeChanges",
+        "applyTimelineGroupResizePreview",
+      ],
+    },
+    {
+      "file": "packages/studio/src/player/components/timelineEditing.ts",
+      "exports": [
+        "selectTimelineElementsInMarquee",
+        "TimelineGroupResizeEdge",
+        "TimelineGroupTimingMember",
+      ],
+    },
+    {
+      "file": "packages/studio/src/player/lib/timelineElementHelpers.ts",
+      "exports": ["furthestClipEndFromDocument", "furthestClipEndFromSource"],
+    },
+    {
+      "file": "packages/studio/src/components/sidebar/AssetContextMenu.tsx",
+      "exports": ["DeleteConfirm"],
+    },
+    {
+      "file": "packages/studio/src/utils/timelineAssetDrop.ts",
+      "exports": [
+        "setCompositionDurationToContent",
+        "extendCompositionDurationIfNeeded",
+        "fitTimelineAssetGeometry",
+        "resolveTimelineAssetCompositionSize",
+      ],
+    },
+    {
+      "file": "packages/studio/src/components/sidebar/assetHelpers.ts",
+      "exports": ["truncateMiddle", "formatDuration"],
+    },
+    {
+      "file": "packages/studio/src/utils/studioHelpers.ts",
+      "exports": ["resolveDroppedAssetDimensions"],
+    },
     // drawElementService is the bottom of the fast-capture Graphite stack
     // (#1917): its consumers (frameCapture in #1919) land two PRs upstack, so
     // a per-PR audit diffing against the merge base sees these exports as
@@ -312,6 +365,11 @@
       // and attribute tag-patchers; only the PatchOperation type gained two
       // optional fields here, but the line shift makes fallow re-flag them.
       "packages/studio/src/utils/sourcePatcher.ts",
+      // useGsapSelectionHandlers.ts: pre-existing parallel structure with
+      // useDomEditWiring.ts (thin useCallback wrappers guarding on selection);
+      // only gained two optional pass-through parameters here, but the line
+      // shift makes fallow re-flag the pre-existing clone.
+      "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
       // gsapParser.ts: recast/babel GSAP writer — intentional duplication between
       // recast and acorn parallel implementations (pre-existing, moved from core).
       "packages/parsers/src/gsapParser.ts",
@@ -572,14 +630,12 @@
       "packages/studio/src/components/editor/Transform3DCube.tsx",
       "packages/studio/src/components/LintModal.tsx",
       "packages/studio/src/components/MediaPreview.tsx",
-      "packages/studio/src/components/nle/NLELayout.tsx",
       "packages/studio/src/components/nle/NLEPreview.tsx",
       "packages/studio/src/components/sidebar/AudioRow.tsx",
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
       "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
-      "packages/studio/src/components/StudioPreviewArea.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",

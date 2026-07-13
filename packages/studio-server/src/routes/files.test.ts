@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files";
@@ -36,6 +44,14 @@ function createAdapter(projectDir: string): StudioApiAdapter {
       outputPath: "/tmp/out.mp4",
     }),
   };
+}
+
+function postElementPatchBatch(app: Hono, file: string, patches: unknown[]): Promise<Response> {
+  return app.request(`http://localhost/projects/demo/file-mutations/patch-elements-batch/${file}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ patches }),
+  });
 }
 
 describe("registerFileRoutes", () => {
@@ -116,13 +132,13 @@ describe("registerFileRoutes", () => {
         }),
       },
     );
+    expect(response.status).toBe(200);
     const payload = (await response.json()) as {
       changed?: boolean;
       path?: string;
       backupPath?: string;
     };
 
-    expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     expect(payload.path).toBe("index.html");
     expect(payload.backupPath).toMatch(/^\.hyperframes\/backup\//);
@@ -130,6 +146,96 @@ describe("registerFileRoutes", () => {
       '<div id="title">Before</div>',
     );
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain("After");
+  });
+
+  it("applies an ordered element patch batch with one file write", async () => {
+    const projectDir = createProjectDir();
+    const original =
+      '<div id="back" style="z-index: 1">Back</div><div id="front" style="z-index: 2">Front</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "back" },
+        operations: [{ type: "inline-style", property: "z-index", value: "2" }],
+      },
+      {
+        target: { id: "front" },
+        operations: [{ type: "inline-style", property: "z-index", value: "1" }],
+      },
+    ]);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      matched?: boolean[];
+      content?: string;
+      backupPath?: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(payload.changed).toBe(true);
+    expect(payload.matched).toEqual([true, true]);
+    expect(payload.content).toBe(readFileSync(join(projectDir, "index.html"), "utf-8"));
+    expect(payload.content).toContain('id="back" style="z-index: 2"');
+    expect(payload.content).toContain('id="front" style="z-index: 1"');
+    expect(readFileSync(join(projectDir, payload.backupPath!), "utf-8")).toBe(original);
+    expect(readdirSync(join(projectDir, ".hyperframes", "backup"))).toHaveLength(1);
+  });
+
+  it("returns changed false without writing for a no-op element patch batch", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="title" style="z-index: 4">Title</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "title" },
+        operations: [{ type: "inline-style", property: "z-index", value: "4" }],
+      },
+    ]);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      changed?: boolean;
+      matched?: boolean[];
+      content?: string;
+      backupPath?: string;
+    };
+
+    expect(payload.changed).toBe(false);
+    expect(payload.matched).toEqual([true]);
+    expect(payload.content).toBe(original);
+    expect(payload.backupPath).toBeUndefined();
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
+  });
+
+  it("rejects an unsafe value anywhere in an element patch batch without writing", async () => {
+    const projectDir = createProjectDir();
+    const original = '<div id="first">First</div><div id="second">Second</div>';
+    writeFileSync(join(projectDir, "index.html"), original);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postElementPatchBatch(app, "index.html", [
+      {
+        target: { id: "first" },
+        operations: [{ type: "inline-style", property: "z-index", value: "2" }],
+      },
+      {
+        target: { id: "second", selectorIndex: Number.NaN },
+        operations: [{ type: "inline-style", property: "z-index", value: "1" }],
+      },
+    ]);
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error?: string; fields?: string[] };
+
+    expect(payload.error).toContain("unsafe values");
+    expect(payload.fields).toContain("body.target.selectorIndex");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
+    expect(existsSync(join(projectDir, ".hyperframes", "backup"))).toBe(false);
   });
 
   // A realistic sub-composition: markup + GSAP wrapped in a <template>, tweens
@@ -204,6 +310,136 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     };
     return payload.animations[0];
   }
+
+  function postGsapMutationBatch(app: Hono, file: string, body: unknown): Promise<Response> {
+    return app.request(`http://localhost/projects/demo/gsap-mutations-batch/${file}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("applies an ordered GSAP mutation batch with one before/after write result", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const anim = await getFirstAnimation(app, "comp.html");
+
+    const res = await postGsapMutationBatch(app, "comp.html", {
+      mutations: [
+        {
+          type: "update-from-property",
+          animationId: anim.id,
+          property: "opacity",
+          value: 0.2,
+        },
+        {
+          type: "update-from-property",
+          animationId: anim.id,
+          property: "x",
+          value: -25,
+        },
+      ],
+    });
+    const result = (await res.json()) as {
+      ok: boolean;
+      changed: boolean;
+      before: string;
+      after: string;
+      backupPath: string;
+      parsed: { animations: Array<{ fromProperties?: Record<string, number | string> }> };
+    };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(true);
+    expect(result.before).toBe(FROMTO_COMP);
+    expect(result.after).toBe(readFileSync(join(projectDir, "comp.html"), "utf-8"));
+    expect(readFileSync(join(projectDir, result.backupPath), "utf-8")).toBe(FROMTO_COMP);
+    expect(result.parsed.animations[0].fromProperties).toMatchObject({ opacity: 0.2, x: -25 });
+  });
+
+  it.each(["first", "middle", "last"] as const)(
+    "rejects an invalid %s mutation without writing any part of the batch",
+    async (position) => {
+      const projectDir = createProjectDir();
+      writeHtml(projectDir, "comp.html", FROMTO_COMP);
+      const app = new Hono();
+      registerFileRoutes(app, createAdapter(projectDir));
+      const anim = await getFirstAnimation(app, "comp.html");
+      const valid = {
+        type: "update-from-property",
+        animationId: anim.id,
+        property: "opacity",
+        value: 0.2,
+      };
+      const invalid =
+        position === "first"
+          ? {}
+          : position === "middle"
+            ? { ...valid, value: null }
+            : { type: "not-a-mutation" };
+      const mutations =
+        position === "first"
+          ? [invalid, valid, valid]
+          : position === "middle"
+            ? [valid, invalid, valid]
+            : [valid, valid, invalid];
+
+      const res = await postGsapMutationBatch(app, "comp.html", { mutations });
+
+      expect(res.status).toBe(400);
+      expect(readFileSync(join(projectDir, "comp.html"), "utf-8")).toBe(FROMTO_COMP);
+    },
+  );
+
+  it("re-syncs position holds when a batch mixes hold-sync and ordinary mutations", async () => {
+    const projectDir = createProjectDir();
+    const html = `<!DOCTYPE html><html><body><div id="box"></div><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+</script></body></html>`;
+    writeHtml(projectDir, "hold.html", html);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await postGsapMutationBatch(app, "hold.html", {
+      mutations: [
+        {
+          type: "add-with-keyframes",
+          targetSelector: "#box",
+          position: 1,
+          duration: 1,
+          keyframes: [
+            { percentage: 0, properties: { x: 10, y: 20 } },
+            { percentage: 100, properties: { x: 30, y: 40 } },
+          ],
+        },
+        {
+          type: "add",
+          targetSelector: "#box",
+          method: "set",
+          position: 0,
+          properties: { opacity: 0.5 },
+        },
+      ],
+    });
+    const result = (await res.json()) as { scriptText: string };
+
+    expect(res.status).toBe(200);
+    expect(result.scriptText).toContain("hf-hold");
+    expect(result.scriptText.match(/hf-hold/g)).toHaveLength(1);
+  });
+
+  it.each([{}, { mutations: [] }])("rejects an empty or missing mutation batch", async (body) => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await postGsapMutationBatch(app, "index.html", body);
+
+    expect(res.status).toBe(400);
+  });
 
   it("update-from-property updates a fromTo start value in place", async () => {
     const projectDir = createProjectDir();
@@ -387,6 +623,145 @@ gsap.set("#box", { rotation: 45 });
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
     expect(payload.content).not.toContain("opacity");
+  });
+
+  // ── Canvas z-order / patch-target regression suite ────────────────────────
+  // A right-click "move to back" on an id-less element (e.g. a caption `.sub`
+  // div) once serialized `target.id: null`, which findUnsafeDomPatchValues
+  // rejected as `body.target.id`, bricking the edit. The RULE: `target.id` is
+  // metadata, not a layout value — a null there is genuinely invalid and stays
+  // rejected; the fix is that the client omits an absent id instead of sending
+  // null, so the patch degrades to a hfId / selector + selectorIndex match.
+  it("rejects a null target.id in a DOM patch (documents the rule)", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<div class="sub" style="z-index: 1">A</div><div class="sub" style="z-index: 2">B</div>',
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const before = readFileSync(join(projectDir, "index.html"), "utf-8");
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { id: null, selector: ".sub", selectorIndex: 1 },
+          operations: [{ type: "inline-style", property: "z-index", value: "0" }],
+        }),
+      },
+    );
+    const payload = (await response.json()) as { error?: string; fields?: string[] };
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain("unsafe values");
+    expect(payload.fields).toContain("body.target.id");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(before);
+  });
+
+  it("z-reorder with an omitted id degrades to a selector patch (id-less element)", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<div class="sub" style="z-index: 1">A</div><div class="sub" style="z-index: 2">B</div>',
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // id omitted (undefined) — the fixed client shape for an id-less element.
+        body: JSON.stringify({
+          target: { selector: ".sub", selectorIndex: 1 },
+          operations: [{ type: "inline-style", property: "z-index", value: "0" }],
+        }),
+      },
+    );
+    const payload = (await response.json()) as { changed?: boolean; content?: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.changed).toBe(true);
+    // The SECOND `.sub` (selectorIndex 1) is the one restacked, not the first.
+    expect(payload.content).toContain('<div class="sub" style="z-index: 1">A</div>');
+    expect(payload.content).toContain("z-index: 0");
+  });
+
+  it("duplicate-id document: a selector+index patch hits the right element, not a rejection", async () => {
+    const projectDir = createProjectDir();
+    // Two elements share id="main" AND class="root" (mirrors the user's project,
+    // where sub-compositions each carry id="main"). Match by selector + index.
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<div class="root" id="main" style="z-index: 5">first</div>' +
+        '<div class="root" id="main" style="z-index: 6">second</div>',
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target: { selector: ".root", selectorIndex: 1 },
+          operations: [{ type: "inline-style", property: "z-index", value: "0" }],
+        }),
+      },
+    );
+    const payload = (await response.json()) as { changed?: boolean; content?: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.changed).toBe(true);
+    // First "main" untouched; second one restacked.
+    expect(payload.content).toContain('<div class="root" id="main" style="z-index: 5">first</div>');
+    expect(payload.content).toContain("z-index: 0");
+  });
+
+  // Sibling canvas commits (position / size / text) carry real string ids like
+  // "v-hero" / "vo-part1" / "main". The guard must accept them — it only rejects
+  // null / non-finite numbers, never inspects the id string — so these never hit
+  // the z-order "unsafe values" variant.
+  it.each([
+    {
+      label: "position",
+      id: "v-hero",
+      op: { type: "inline-style", property: "left", value: "40px" },
+    },
+    {
+      label: "size",
+      id: "vo-part1",
+      op: { type: "inline-style", property: "width", value: "320px" },
+    },
+    {
+      label: "text",
+      id: "main",
+      op: { type: "text-content", property: "textContent", value: "Hi" },
+    },
+  ])("accepts a $label commit with a real fixture id ($id)", async ({ id, op }) => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), `<div id="${id}">x</div>`);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request(
+      "http://localhost/projects/demo/file-mutations/patch-element/index.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: { id }, operations: [op] }),
+      },
+    );
+    const payload = (await response.json()) as { changed?: boolean; error?: string };
+
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(payload.changed).toBe(true);
   });
 
   it("update-from-property returns 400 for a non-fromTo animation", async () => {
@@ -804,5 +1179,102 @@ tl.to("#box", { opacity: 1, duration: 1 }, 0);
     expect(result.after).toContain("(function () {");
     // The variable target was not flattened to a string-literal selector
     expect(result.after).toContain("tl.to(kicker,");
+  });
+
+  it("shift-positions-batch equals sequential single shifts (atomic multi-clip)", async () => {
+    const TWO_TWEENS = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, x: 100 }, 1);
+tl.to("#b", { duration: 1, x: 200 }, 2);
+</script></body></html>`;
+
+    const seqDir = createProjectDir();
+    writeHtml(seqDir, "seq.html", TWO_TWEENS);
+    const seqApp = new Hono();
+    registerFileRoutes(seqApp, createAdapter(seqDir));
+    await seqApp.request("http://localhost/projects/demo/gsap-mutations/seq.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions", targetSelector: "#a", delta: 1 }),
+    });
+    const seqRes = await seqApp.request("http://localhost/projects/demo/gsap-mutations/seq.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions", targetSelector: "#b", delta: 0.5 }),
+    });
+    const seqAfter = ((await seqRes.json()) as { after: string }).after;
+
+    const batchDir = createProjectDir();
+    writeHtml(batchDir, "batch.html", TWO_TWEENS);
+    const batchApp = new Hono();
+    registerFileRoutes(batchApp, createAdapter(batchDir));
+    const batchRes = await batchApp.request(
+      "http://localhost/projects/demo/gsap-mutations/batch.html",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "shift-positions-batch",
+          shifts: [
+            { targetSelector: "#a", delta: 1 },
+            { targetSelector: "#b", delta: 0.5 },
+          ],
+        }),
+      },
+    );
+    const batch = (await batchRes.json()) as { ok: boolean; changed: boolean; after: string };
+
+    expect(batchRes.status).toBe(200);
+    expect(batch.ok).toBe(true);
+    expect(batch.changed).toBe(true);
+    // Batching #a then #b in one write == applying them as two sequential single shifts.
+    expect(batch.after).toBe(seqAfter);
+  });
+
+  it("reports no GSAP mutation for shift-positions-batch in a file with no GSAP script", async () => {
+    // Same contract as its shift-positions / scale-positions siblings: a file with
+    // no GSAP block is a no-op {ok, changed:false}, not a 400.
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/index.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "shift-positions-batch",
+        shifts: [{ targetSelector: "#box", delta: 1 }],
+      }),
+    });
+    const result = (await res.json()) as { ok?: boolean; changed?: boolean; mutated?: boolean };
+
+    expect(res.status).toBe(200);
+    expect(result.ok).toBe(true);
+    expect(result.changed).toBe(false);
+    expect(result.mutated).toBe(false);
+  });
+
+  it("rejects a shift-positions-batch with a missing/non-array `shifts` field (400)", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(
+      projectDir,
+      "comp.html",
+      `<!DOCTYPE html><html><body><script data-hyperframes-gsap>
+const tl = gsap.timeline({ paused: true });
+tl.to("#a", { duration: 1, x: 100 }, 1);
+</script></body></html>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const res = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "shift-positions-batch" }),
+    });
+    const result = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(result.error).toContain("shifts");
   });
 });

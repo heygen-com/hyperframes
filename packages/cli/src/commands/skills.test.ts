@@ -97,6 +97,11 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => {
     checkSkills: vi.fn(async () => DEFAULT_CHECK),
     hyperframesSkillNames: vi.fn(() => ["hyperframes"]),
     presentSkills: vi.fn((names: readonly string[]) => [...names]),
+    // Default: nothing left to prune after `runSkillsRemove`. The real
+    // (unmocked) fs-level behavior is covered in skillsManifest.test.ts;
+    // here we only assert the wiring — what update passes in, and that it
+    // isn't reached when there's nothing removed.
+    pruneOrphanedLockEntries: vi.fn(() => []),
   };
 });
 
@@ -383,6 +388,81 @@ describe("hyperframes skills", () => {
     expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
   });
 
+  // Retired-skill regression (variant 1): the update engine's OWN targeted-
+  // install check must resolve the canonical (published) manifest, never a
+  // stale local `skills-manifest.json` a checkout might still have lying
+  // around — see resolveLatestManifest's in-repo shortcut. Without this, a
+  // skill retired upstream but still listed locally gets forced into
+  // `targets` (isCoreSkill pattern-matches `hyperframes-*`), `skills add`
+  // silently declines to install something that doesn't exist canonically,
+  // and the old code strict-threw on a "failure" that was never real.
+  it("checks freshness against the canonical manifest, never a possibly-stale local one", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+
+    await runSkillsUpdate();
+
+    // The update engine's own check (first call) must ask for canonical;
+    // the prune's check (last call, tested separately) intentionally doesn't.
+    expect(checkSkills).toHaveBeenNthCalledWith(1, expect.objectContaining({ canonical: true }));
+  });
+
+  // Retired-skill regression (variant 2): `skills remove` is a silent no-op
+  // for a lock entry with no on-disk bundle (upstream scans disk, not the
+  // lock, to decide what's "installed" — see pruneOrphanedLockEntries's
+  // doc comment). `skills update` must self-heal that lock entry itself so
+  // `check || update` actually converges instead of re-flagging it forever.
+  it("self-heals an orphaned lock entry after `skills remove` no-ops on it", async () => {
+    setPlatform("linux");
+    const { checkSkills, pruneOrphanedLockEntries } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills)
+      .mockResolvedValueOnce(DEFAULT_CHECK as never)
+      .mockResolvedValueOnce({
+        scope: "global",
+        skills: [{ name: "hyperframes-captions", status: "removed" }],
+      } as never);
+    vi.mocked(pruneOrphanedLockEntries).mockReturnValueOnce(["hyperframes-captions"]);
+
+    await runSkillsUpdate();
+
+    expect(pruneOrphanedLockEntries).toHaveBeenCalledWith(["hyperframes-captions"], "global");
+    expect(process.exitCode).toBe(0);
+  });
+
+  // The idempotent-second-run contract at the command level: once nothing is
+  // left attributed as removed (the fs-level idempotency of the prune itself
+  // is covered directly in skillsManifest.test.ts), a second `skills update`
+  // must be a clean no-op — no `skills remove` spawn, no prune call finding
+  // anything, still exit 0.
+  it("running update twice in a row converges — the second run prunes nothing", async () => {
+    setPlatform("linux");
+    const { checkSkills, pruneOrphanedLockEntries } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills)
+      .mockResolvedValueOnce(DEFAULT_CHECK as never)
+      .mockResolvedValueOnce({
+        scope: "global",
+        skills: [{ name: "hyperframes-captions", status: "removed" }],
+      } as never);
+    vi.mocked(pruneOrphanedLockEntries).mockReturnValueOnce(["hyperframes-captions"]);
+
+    await runSkillsUpdate();
+    expect(process.exitCode).toBe(0);
+    expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(true);
+
+    // Second run: nothing attributed as removed anymore (the lock entry was
+    // pruned above), so there's nothing left to reconcile.
+    state.spawnCalls = [];
+    vi.mocked(checkSkills)
+      .mockResolvedValueOnce(DEFAULT_CHECK as never)
+      .mockResolvedValueOnce({ scope: "global", skills: [] } as never);
+
+    await runSkillsUpdate();
+    expect(process.exitCode).toBe(0);
+    expect(state.spawnCalls.some((s) => s.args.includes("remove"))).toBe(false);
+    // Nothing to prune this time — pruneOrphanedLockEntries isn't even reached.
+    expect(pruneOrphanedLockEntries).toHaveBeenCalledTimes(1);
+  });
+
   // `update`'s prune runs the same removed-detection as `check`, so its
   // --source/--dir must reach the internal checkSkills() — otherwise the prune
   // reconciles against defaults even when the user pointed elsewhere.
@@ -613,6 +693,40 @@ describe("hyperframes skills update <names>", () => {
 
     expect(state.spawnCalls.some((s) => s.args.includes("add"))).toBe(false);
     expect(process.exitCode).toBe(1);
+  });
+
+  it("a malformed canonical manifest warns distinctly, then still degrades to presence mode", async () => {
+    setPlatform("linux");
+    const clack = await import("@clack/prompts");
+    vi.mocked(clack.log.warn).mockClear();
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockRejectedValue(
+      new Error("Malformed skills manifest from https://raw.githubusercontent.com/…"),
+    );
+
+    await runSkillsUpdateWith(["pr-to-video"]);
+
+    const warnedMalformed = vi
+      .mocked(clack.log.warn)
+      .mock.calls.some((args) => String(args[0]).includes("malformed"));
+    expect(warnedMalformed).toBe(true);
+    // Still degrades rather than failing the whole command.
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("a genuine offline error degrades silently — no malformed-manifest warning", async () => {
+    setPlatform("linux");
+    const clack = await import("@clack/prompts");
+    vi.mocked(clack.log.warn).mockClear();
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockRejectedValue(new Error("fetch failed"));
+
+    await runSkillsUpdateWith(["pr-to-video"]);
+
+    const warnedMalformed = vi
+      .mocked(clack.log.warn)
+      .mock.calls.some((args) => String(args[0]).includes("malformed"));
+    expect(warnedMalformed).toBe(false);
   });
 
   it("--json emits a parseable result on success", async () => {

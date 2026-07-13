@@ -106,7 +106,14 @@ export function samDeploy(opts: DeployOptions): void {
   const samDir = join(opts.repoRoot, "examples", "aws-lambda");
   const result = spawnSync("sam", args, { cwd: samDir, stdio: opts.stdio ?? "inherit" });
   if (result.status !== 0) {
-    throw new Error(`[lambda] sam deploy exited with code ${result.status ?? "unknown"}`);
+    throw new Error(
+      `[lambda] sam deploy exited with code ${result.status ?? "unknown"}\n` +
+        `If a prior attempt left a stack in ROLLBACK_COMPLETE, CloudFormation can't reuse it. ` +
+        `Delete it before retrying:\n` +
+        `  aws cloudformation delete-stack --stack-name aws-sam-cli-managed-default --region ${opts.region}\n` +
+        `  aws cloudformation delete-stack --stack-name ${opts.stackName} --region ${opts.region}\n` +
+        `(the first is SAM's managed artifacts stack from --resolve-s3; the second is the render stack).`,
+    );
   }
 }
 

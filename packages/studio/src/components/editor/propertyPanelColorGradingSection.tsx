@@ -24,6 +24,10 @@ import type { DomEditSelection } from "./domEditing";
 import { ColorGradingControls } from "./propertyPanelColorGradingControls";
 import { stripQueryAndHash } from "./propertyPanelHelpers";
 import { Section } from "./propertyPanelPrimitives";
+import {
+  acceptStudioRuntimeMessage,
+  postRuntimeControlMessage,
+} from "../../player/lib/runtimeProtocol";
 
 const COLOR_GRADING_DATA_KEY = HF_COLOR_GRADING_ATTR.replace(/^data-/, "");
 const RUNTIME_STATUS_REFRESH_DELAYS = [50, 250, 1000, 2500] as const;
@@ -393,35 +397,23 @@ export function ColorGradingSection({
 
   const postColorGrading = useCallback(
     (nextGrading: NormalizedHfColorGrading) => {
-      previewIframeRef?.current?.contentWindow?.postMessage(
-        {
-          source: "hf-parent",
-          type: "control",
-          action: "set-color-grading",
-          target,
-          grading: toBridgeColorGrading(nextGrading),
-        },
-        "*",
-      );
+      postRuntimeControlMessage(previewIframeRef?.current?.contentWindow, "set-color-grading", {
+        target,
+        grading: toBridgeColorGrading(nextGrading),
+      });
     },
     [previewIframeRef, target],
   );
 
   const postCompare = useCallback(
     (enabled: boolean) => {
-      previewIframeRef?.current?.contentWindow?.postMessage(
+      postRuntimeControlMessage(
+        previewIframeRef?.current?.contentWindow,
+        "set-color-grading-compare",
         {
-          source: "hf-parent",
-          type: "control",
-          action: "set-color-grading-compare",
           target,
-          compare: {
-            enabled,
-            position: 1,
-            lineWidth: 0,
-          },
+          compare: { enabled, position: 1, lineWidth: 0 },
         },
-        "*",
       );
     },
     [previewIframeRef, target],
@@ -440,7 +432,9 @@ export function ColorGradingSection({
     const onMessage = (event: MessageEvent) => {
       if (event.source !== iframe.contentWindow) return;
       const data = event.data as { source?: unknown; type?: unknown } | null;
-      if (data?.source === "hf-preview" && data.type === "ready") refreshAndReplay();
+      if (data?.source !== "hf-preview" || data.type !== "ready") return;
+      if (!acceptStudioRuntimeMessage(data)) return;
+      refreshAndReplay();
     };
     iframe.addEventListener("load", refreshAndReplay);
     window.addEventListener("message", onMessage);
