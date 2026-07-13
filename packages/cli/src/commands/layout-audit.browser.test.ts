@@ -605,6 +605,36 @@ describe("contrast-audit.browser background sampling", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ selector: "#label", wcagAA: true, bg: "rgb(10,10,10)" });
   });
+
+  it("skips text whose sampled backdrop remains transparent", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="overlay" data-width="640" data-height="360">
+        <span id="label">Live</span>
+      </div>
+    `;
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: "rgb(255, 255, 255)",
+          fontSize: "20px",
+          fontWeight: "700",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(document.getElementById("label")!, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 50, top: 50, width: 100, height: 30 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript(new Uint8ClampedArray(640 * 360 * 4));
+
+    expect(await runContrastAudit()).toEqual([]);
+  });
 });
 
 // Both blocks overlap heavily; only the exemption on block A should suppress

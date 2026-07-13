@@ -361,16 +361,24 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
     var stepY = Math.max(1, Math.floor((y1 - y0) / 6));
     var rr = [],
       gg = [],
-      bb = [];
+      bb = [],
+      aa = [];
     for (var y = y0; y <= y1; y += stepY) {
       for (var x = x0; x <= x1; x += stepX) {
         var idx = (y * w + x) * 4;
         rr.push(px[idx]);
         gg.push(px[idx + 1]);
         bb.push(px[idx + 2]);
+        aa.push(px[idx + 3]);
       }
     }
     if (rr.length === 0) continue;
+
+    // A transparent sampled backdrop is supplied by the downstream editor,
+    // not this composition. WCAG contrast cannot be inferred until that live
+    // video/image is known, so do not invent an opaque browser default and
+    // hard-fail an otherwise valid alpha overlay.
+    if (median(aa) < 255) continue;
 
     var bgR = median(rr),
       bgG = median(gg),
