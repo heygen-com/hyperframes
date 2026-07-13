@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -148,6 +149,70 @@ describe("useGsapAwareEditing anchored resize", () => {
       }),
     );
     act(() => h.root.unmount());
+  });
+
+  it("folds a group drag's member writes into one undo entry via a shared coalesceKey", async () => {
+    const capturedKeys: Array<string | undefined> = [];
+    mocks.drag.mockImplementation(
+      async (
+        selection: DomEditSelection,
+        _next: unknown,
+        _anims: unknown,
+        _iframe: unknown,
+        commit: (
+          s: DomEditSelection,
+          m: unknown,
+          o: { coalesceKey?: string; label?: string; softReload?: boolean },
+        ) => Promise<void>,
+      ) => {
+        await commit(selection, { type: "move" }, { label: "Move", softReload: true });
+        return true;
+      },
+    );
+    const commitMutation = vi.fn(
+      (_s: DomEditSelection, _m: unknown, o: { coalesceKey?: string }) => {
+        capturedKeys.push(o.coalesceKey);
+        return Promise.resolve();
+      },
+    );
+    let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
+    function Harness() {
+      groupCommit = useGsapAwareEditing({
+        domEditSelection: null,
+        selectedGsapAnimations: [],
+        gsapCommitMutation: commitMutation,
+        previewIframeRef: { current: null },
+        showToast: vi.fn(),
+        bumpGsapCache: vi.fn(),
+        makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+        trackGsapInteractionFailure: vi.fn(),
+        handleDomBoxSizeCommit: vi.fn(),
+        addGsapAnimation: vi.fn(),
+        convertToKeyframes: vi.fn(),
+        setArcPath: vi.fn(),
+        updateArcSegment: vi.fn(),
+      }).handleGsapAwareGroupPathOffsetCommit;
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+    const updates = [
+      {
+        selection: { element: document.createElement("div"), id: "a", selector: "#a" },
+        next: { x: 10, y: 10 },
+      },
+      {
+        selection: { element: document.createElement("div"), id: "b", selector: "#b" },
+        next: { x: 10, y: 10 },
+      },
+    ] as unknown as DomEditGroupPathOffsetCommit[];
+
+    await act(() => groupCommit(updates));
+
+    expect(capturedKeys).toHaveLength(2);
+    expect(capturedKeys[0]).toMatch(/^group-drag:\d+$/);
+    // Both members share ONE coalesceKey → they fold into a single undo entry.
+    expect(capturedKeys[0]).toBe(capturedKeys[1]);
+    act(() => root.unmount());
   });
 
   it("restores once when resize persistence fails", async () => {

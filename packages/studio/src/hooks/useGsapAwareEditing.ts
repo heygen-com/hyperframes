@@ -31,6 +31,10 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import { runGestureTransaction } from "./gestureTransaction";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 
+// Distinct coalesceKey per group drag so consecutive group drags don't fold
+// into one another's undo entry (module-local counter, not Date.now()).
+let groupDragCommitCounter = 0;
+
 export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
   selectedGsapAnimations: GsapAnimation[];
@@ -139,7 +143,18 @@ export function useGsapAwareEditing({
   // composition there's nothing to write (a no-op, exactly like the single-drag path).
   const handleGsapAwareGroupPathOffsetCommit = useCallback(
     async (updates: DomEditGroupPathOffsetCommit[]) => {
-      if (!gsapCommitMutation) return;
+      if (!gsapCommitMutation || updates.length === 0) return;
+      // A group drag is ONE user action: fold every member's position write into
+      // a single undo entry by forcing a shared coalesceKey (infinite window, so
+      // it survives the N sequential server round-trips) onto each commit —
+      // otherwise each member records its own entry and it takes N presses to undo.
+      const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
+      const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) =>
+        gsapCommitMutation(selection, mutation, {
+          ...options,
+          coalesceKey,
+          coalesceMs: Number.POSITIVE_INFINITY,
+        });
       for (const { selection, next } of updates) {
         try {
           await tryGsapDragIntercept(
@@ -147,7 +162,7 @@ export function useGsapAwareEditing({
             next,
             [],
             previewIframeRef.current,
-            gsapCommitMutation,
+            coalescedCommit,
             makeFetchFallback(selection),
           );
         } catch (error) {
