@@ -432,6 +432,10 @@ function extractRequestedFontFamilies(html: string): Map<string, string> {
   return requested;
 }
 
+export function fontFormatHint(src: string): "collection" | "woff2" {
+  return src.startsWith("data:font/collection;") ? "collection" : "woff2";
+}
+
 function buildFontFaceRule(
   familyName: string,
   src: string,
@@ -442,7 +446,7 @@ function buildFontFaceRule(
   return [
     "@font-face {",
     `  font-family: "${familyName}";`,
-    `  src: url("${src}") format("woff2");`,
+    `  src: url("${src}") format("${fontFormatHint(src)}");`,
     `  font-style: ${style};`,
     `  font-weight: ${weight};`,
     "  font-display: block;",
