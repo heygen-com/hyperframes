@@ -118,6 +118,19 @@ test("project tier overrides a promoted user-tier value", () => {
   });
 });
 
+test("the run-shape keys record and promote like any field", () => {
+  withSandbox(({ projectA, projectB }) => {
+    recordPreference({ projectDir: projectA, key: "flow", value: "automation" });
+    const promoted = recordPreference({ projectDir: projectB, key: "flow", value: "automation" });
+    assert.equal(promoted.promoted, true);
+    recordPreference({ projectDir: projectA, key: "storyboard", value: "yes" });
+    const merged = mergedPreferences(projectA);
+    assert.equal(merged.flow.value, "automation");
+    assert.equal(merged.storyboard.value, "yes");
+    assert.equal(merged.storyboard.source, "project");
+  });
+});
+
 test("style_preset is keyed per workflow", () => {
   withSandbox(({ projectA }) => {
     assert.equal(

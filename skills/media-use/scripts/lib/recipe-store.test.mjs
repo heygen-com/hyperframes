@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   freezeRecipe,
   listRecipes,
+  skeletonizeBrief,
   skeletonizeStoryboard,
   slugifyRecipeName,
   useRecipe,
@@ -46,6 +47,32 @@ Second prose line to collapse.
 ## Video direction
 
 Punchy, one accent color, hard cuts on the beat.
+`;
+
+const BRIEF = `---
+workflow: product-launch-video
+flow: automation
+storyboard: yes
+message: "Ship a launch video in an afternoon"
+audience: indie devs on X
+destination: x-feed
+aspect: 1080x1080
+language: en
+length: 60s
+angle: feature-reveal
+---
+
+## Intent
+
+Sell the afternoon-launch promise to indie devs.
+
+## Assets
+
+- public/dashboard.png — the real dashboard, proof beat.
+
+## Notes
+
+- No stock-photo aesthetics.
 `;
 
 function sandbox() {
@@ -107,6 +134,28 @@ test("skeletonize keeps structure, resets status, blanks content", () => {
   assert.match(skeleton, /<fill in: this video's content for the "Proof" beat/);
 });
 
+test("skeletonizeBrief keeps reusable keys, drops run-shape, blanks body sections", () => {
+  const skeleton = skeletonizeBrief(BRIEF);
+  // Reusable frontmatter kept.
+  assert.match(skeleton, /workflow: product-launch-video/);
+  assert.match(skeleton, /destination: x-feed/);
+  assert.match(skeleton, /aspect: 1080x1080/);
+  assert.match(skeleton, /length: 60s/);
+  assert.match(skeleton, /angle: feature-reveal/);
+  // Run-shape and content keys dropped.
+  assert.doesNotMatch(skeleton, /^flow:/m);
+  assert.doesNotMatch(skeleton, /^storyboard:/m);
+  assert.doesNotMatch(skeleton, /^message:/m);
+  assert.doesNotMatch(skeleton, /^audience:/m);
+  // Body sections kept as headings, prose blanked to placeholders.
+  assert.match(skeleton, /## Intent/);
+  assert.match(skeleton, /## Assets/);
+  assert.match(skeleton, /<fill in: this video's intent/);
+  assert.match(skeleton, /<fill in: this video's assets/);
+  assert.doesNotMatch(skeleton, /afternoon-launch promise/);
+  assert.doesNotMatch(skeleton, /dashboard\.png/);
+});
+
 test("freeze writes the folder, manifest record, and user-tier copy", () => {
   withSandbox(({ project, home }) => {
     recordPreference({ projectDir: project, key: "destination", value: "x-feed" });
@@ -139,6 +188,44 @@ test("freeze writes the folder, manifest record, and user-tier copy", () => {
     assert.match(manifest, /"entity":"weekly-launch"/);
 
     assert.ok(existsSync(join(home, ".media/recipes/weekly-launch/recipe.json")));
+  });
+});
+
+test("freeze with a BRIEF.md carries the brief skeleton; use hands its path back", () => {
+  withSandbox(({ project, root }) => {
+    writeFileSync(join(project, "BRIEF.md"), BRIEF);
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "product-launch-video",
+    });
+    assert.equal(frozen.briefSkeleton, true);
+    const skeleton = readFileSync(join(project, ".media/recipes/promo/brief-skeleton.md"), "utf8");
+    assert.match(skeleton, /destination: x-feed/);
+    assert.doesNotMatch(skeleton, /^flow:/m);
+
+    const fresh = join(root, "fresh-project");
+    mkdirSync(fresh, { recursive: true });
+    const used = useRecipe({ projectDir: fresh, name: "promo" });
+    assert.equal(used.briefSkeletonPath, ".media/recipes/promo/brief-skeleton.md");
+    assert.ok(existsSync(join(fresh, ".media/recipes/promo/brief-skeleton.md")));
+  });
+});
+
+test("freeze without a BRIEF.md degrades: no skeleton, use returns no path", () => {
+  withSandbox(({ project, root }) => {
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "product-launch-video",
+    });
+    assert.equal(frozen.briefSkeleton, false);
+    assert.ok(!existsSync(join(project, ".media/recipes/promo/brief-skeleton.md")));
+
+    const fresh = join(root, "fresh-project");
+    mkdirSync(fresh, { recursive: true });
+    const used = useRecipe({ projectDir: fresh, name: "promo" });
+    assert.equal(used.briefSkeletonPath, undefined);
   });
 });
 

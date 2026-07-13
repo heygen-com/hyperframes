@@ -55,7 +55,11 @@ try {
         : undefined,
     });
     if (args.json) console.log(JSON.stringify({ ok: true, ...frozen }));
-    else console.log(`froze recipe ${frozen.slug} (v${frozen.version}) → ${frozen.dir}`);
+    else {
+      console.log(`froze recipe ${frozen.slug} (v${frozen.version}) → ${frozen.dir}`);
+      if (!frozen.briefSkeleton)
+        console.log("  (no BRIEF.md in the project — brief skeleton skipped)");
+    }
   } else if (verb === "list") {
     const list = listRecipes({ projectDir: args.hyperframes, workflow: args.workflow });
     if (args.json) console.log(JSON.stringify(list));
@@ -77,6 +81,7 @@ try {
       );
       console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
       console.log(`  storyboard skeleton → ${used.skeletonPath}`);
+      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
       for (const key of ["destination", "aspect", "language", "voice", "style_preset"]) {
         if (used.recipe[key]) console.log(`  ${key}: ${used.recipe[key]}`);
       }

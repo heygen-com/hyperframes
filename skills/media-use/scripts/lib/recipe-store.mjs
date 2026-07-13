@@ -34,6 +34,10 @@ import { mergedPreferences } from "./prefs-store.mjs";
 /** Frontmatter keys that describe THIS video, not the reusable type. */
 const FRONTMATTER_CONTENT_KEYS = new Set(["message", "audience", "mode"]);
 
+/** BRIEF.md frontmatter keys that describe this run, not the reusable type —
+ * a recipe never locks the run's shape, so the intent layer always re-asks. */
+const BRIEF_CONTENT_KEYS = new Set(["flow", "storyboard", "message", "audience"]);
+
 /** Per-frame metadata that is content, not structure. */
 const FRAME_CONTENT_KEYS = new Set([
   "voiceover",
@@ -76,13 +80,13 @@ function frameTitle(headingLine) {
 }
 
 /** Frontmatter: drop the content keys, keep structure/style keys verbatim. */
-function skeletonFrontmatter(lines, out) {
+function skeletonFrontmatter(lines, out, contentKeys = FRONTMATTER_CONTENT_KEYS) {
   if (lines[0]?.trim() !== "---") return 0;
   out.push(lines[0]);
   let i = 1;
   while (i < lines.length && lines[i].trim() !== "---") {
     const key = lines[i].match(/^(\w+)\s*:/)?.[1]?.toLowerCase();
-    if (!key || !FRONTMATTER_CONTENT_KEYS.has(key)) out.push(lines[i]);
+    if (!key || !contentKeys.has(key)) out.push(lines[i]);
     i++;
   }
   if (i < lines.length) {
@@ -120,6 +124,29 @@ function skeletonFrameLine(line, state, out) {
  * (message/audience, narration guides, per-frame prose) down to a fill-in
  * placeholder that names the frame's role.
  */
+/**
+ * Skeletonize a BRIEF.md: keep the frontmatter's reusable keys (workflow,
+ * destination, aspect, language, length, angle…), drop the run-shape and
+ * content keys (flow, storyboard, message, audience), and blank each body
+ * section down to a fill-in placeholder under its kept heading.
+ */
+export function skeletonizeBrief(source) {
+  const lines = String(source ?? "").split(/\r?\n/);
+  const out = [];
+  let i = skeletonFrontmatter(lines, out, BRIEF_CONTENT_KEYS);
+  for (; i < lines.length; i++) {
+    const heading = lines[i].match(/^##\s+(.+)$/);
+    if (heading) {
+      out.push(lines[i], "");
+      out.push(
+        `<fill in: this video's ${heading[1].trim().toLowerCase()} — the recipe keeps the shape, this run supplies the specifics.>`,
+      );
+      out.push("");
+    }
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
 export function skeletonizeStoryboard(source) {
   const lines = String(source ?? "").split(/\r?\n/);
   const out = [];
@@ -203,6 +230,17 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     `${skeletonizeStoryboard(readFileSync(storyboard, "utf8")).trimEnd()}\n`,
   );
 
+  // Best-effort fourth artifact — projects briefed before BRIEF.md existed
+  // (or by workflows that don't write one) freeze fine without it.
+  const brief = join(root, "BRIEF.md");
+  const briefSkeleton = existsSync(brief);
+  if (briefSkeleton) {
+    writeFileSync(
+      join(dir, "brief-skeleton.md"),
+      `${skeletonizeBrief(readFileSync(brief, "utf8")).trimEnd()}\n`,
+    );
+  }
+
   const id = nextId(root, "recipe");
   appendRecord(root, {
     id,
@@ -223,7 +261,7 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     // The project-tier freeze already landed.
   }
 
-  return { id, slug, version, dir };
+  return { id, slug, version, dir, briefSkeleton };
 }
 
 function scanRecipesDir(dir, source) {
@@ -290,5 +328,9 @@ export function useRecipe({ projectDir, name }) {
     dir,
     frameSpecPath: "frame.md",
     skeletonPath: `.media/recipes/${slug}/storyboard-skeleton.md`,
+    // Recipes frozen before BRIEF.md existed have no brief skeleton — degrade.
+    briefSkeletonPath: existsSync(join(dir, "brief-skeleton.md"))
+      ? `.media/recipes/${slug}/brief-skeleton.md`
+      : undefined,
   };
 }

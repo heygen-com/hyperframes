@@ -192,6 +192,7 @@ if (type === "recipe") {
       );
       console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
       console.log(`  storyboard skeleton → ${used.skeletonPath}`);
+      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
     }
     process.exit(0);
   } catch (err) {

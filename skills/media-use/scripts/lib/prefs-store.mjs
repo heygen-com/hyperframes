@@ -27,6 +27,8 @@ export const PREFERENCE_KEYS = [
   "destination",
   "aspect",
   "language",
+  "flow",
+  "storyboard",
   "mode",
   "voice",
   "style_preset",
