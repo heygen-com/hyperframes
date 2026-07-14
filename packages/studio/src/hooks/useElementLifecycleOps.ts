@@ -243,6 +243,9 @@ export function useElementLifecycleOps({
         sourceFile,
         patches,
       }));
+      // Live z state changed with NO reload coming (skipReload below) — nudge
+      // DOM-derived views (Layers panel z-sort) to re-read the iframe.
+      usePlayerStore.getState().bumpZEditVersion();
       // Resolves once every source-file batch is persisted so a same-file timing write
       // can be ordered after it (see applyTimelineStackingReorder callers).
       //
@@ -264,6 +267,7 @@ export function useElementLifecycleOps({
         skipReload: true,
       }).catch((error) => {
         for (const rollback of rollbacks) rollback();
+        usePlayerStore.getState().bumpZEditVersion(); // rolled-back z is a live change too
         throw error;
       });
     },

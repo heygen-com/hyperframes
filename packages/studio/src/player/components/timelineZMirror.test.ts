@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
-import { resolveZMirrorLaneMove, type ZMirrorInput } from "./timelineZMirror";
+import {
+  resolveRepositionLaneMove,
+  resolveZMirrorLaneMove,
+  type ZMirrorInput,
+} from "./timelineZMirror";
 
 function el(
   id: string,
@@ -454,5 +458,128 @@ describe("resolveZMirrorLaneMove — degenerate inputs and determinism", () => {
     expect(r1).toEqual(r2);
     expect(r1).toEqual(r3);
     expect(first.elements).toEqual(snapshot); // pure — never mutates its input
+  });
+});
+
+describe("resolveRepositionLaneMove (Layers-panel equal jump)", () => {
+  // Bottom→top render order helper: keys as the panel's reversed order.
+  const reposition = (
+    element: TimelineElement,
+    elements: TimelineElement[],
+    desiredOrderKeys: (string | null)[],
+  ) => resolveRepositionLaneMove({ element, elements, desiredOrderKeys });
+
+  // Three stacked clips on lanes 0/1/2, all overlapping. Render order matches
+  // lanes today: bottom→top = c(2), b(1), t(0)... target starts on lane 2.
+  const stack3 = () => {
+    const a = el("a", 0, 0, 10);
+    const b = el("b", 1, 0, 10);
+    const t = el("t", 2, 0, 10);
+    return { a, b, t, elements: [a, b, t] };
+  };
+
+  it("multi-step jump to the top inserts a new lane above the new below-neighbor", () => {
+    const { t, elements } = stack3();
+    // t dragged to the TOP of the panel: bottom→top = [b, a, t].
+    // New below-neighbor is a (lane 0); lanes above are occupied/none free →
+    // insert at a's boundary (order.indexOf(0) = 0).
+    expect(reposition(t, elements, ["b", "a", "t"])).toEqual({ kind: "insert", insertRow: 0 });
+  });
+
+  it("multi-step jump lands on a free lane between the new neighbors", () => {
+    // Lanes 0,1,2,3: a(0), b(1) short-lived, c(2), t(3). Lane 1 is free over
+    // t's span. t dragged between a and c in paint order: above-neighbor a
+    // (lane 0), below-neighbor c (lane 2) → free lane 1, strictly between.
+    const a = el("a", 0, 0, 10);
+    const b = el("b", 1, 20, 5);
+    const c = el("c", 2, 0, 10);
+    const t = el("t", 3, 0, 10);
+    // bottom→top: c (bottom), t (middle), a (top); b not in the sibling set.
+    expect(reposition(t, [a, b, c, t], ["c", "t", "a"])).toEqual({
+      kind: "move",
+      displayTrack: 1,
+      persistTrack: 1,
+    });
+  });
+
+  it("drop toward the bottom lands on a free lane below the new above-neighbor", () => {
+    // Lanes: t(0), b(1), c(2) short-lived → lane 2 free over t's span.
+    const t = el("t", 0, 0, 10);
+    const b = el("b", 1, 0, 10);
+    const c = el("c", 2, 20, 5);
+    // t dragged below b: bottom→top = [t, b]. Above-neighbor b (lane 1) →
+    // closest free lane below it is lane 2.
+    expect(reposition(t, [t, b, c], ["t", "b"])).toEqual({
+      kind: "move",
+      displayTrack: 2,
+      persistTrack: 2,
+    });
+  });
+
+  it("drop below the bottom clip inserts a new bottom lane when none is free", () => {
+    const x = el("x", 0, 0, 10);
+    const y = el("y", 1, 0, 10);
+    const z = el("z", 2, 0, 10);
+    // x (top lane 0) dragged to the bottom of the panel: bottom→top = [x, z, y].
+    // Above-neighbor = z (lane 2); no free lane below it → insert below z
+    // (order.indexOf(2) + 1 = 3).
+    expect(reposition(x, [x, y, z], ["x", "z", "y"])).toEqual({ kind: "insert", insertRow: 3 });
+  });
+
+  it("skips non-clip siblings (null keys) when resolving neighbors", () => {
+    // t on TOP lane 0, a below on lane 1. t dragged below a in paint order,
+    // with two decorations (null keys) interleaved: the resolver must skip the
+    // nulls and find a (lane 1) as the above-neighbor → no free lane below it
+    // → insert below a (order.indexOf(1) + 1 = 2).
+    const t = el("t", 0, 0, 10);
+    const a = el("a", 1, 0, 10);
+    expect(reposition(t, [t, a], [null, "t", null, "a"])).toEqual({
+      kind: "insert",
+      insertRow: 2,
+    });
+  });
+
+  it("returns null when the drop leaves the clip where it already sits", () => {
+    const a = el("a", 0, 20, 5); // lane 0 free over t's span but t stays put
+    const b = el("b", 1, 0, 10);
+    const t = el("t", 2, 0, 10);
+    // bottom→top = [t, b] — t stays below b; nearest above-neighbor b (lane 1),
+    // scanning down from lane 1 finds t's own lane 2 first.
+    expect(reposition(t, [a, b, t], ["t", "b"])).toBeNull();
+  });
+
+  it("returns null for audio, zero-duration, decoration-only sets, and unknown self", () => {
+    const t = el("t", 1, 0, 10);
+    const a = el("a", 0, 0, 10);
+    expect(reposition(audio("s", 3, 0, 10), [t, a], ["s", "t"])).toBeNull();
+    expect(reposition(el("z0", 1, 0, 0), [t, a], ["z0", "t"])).toBeNull();
+    expect(reposition(t, [t, a], [null, "t", null])).toBeNull(); // no clip neighbor
+    expect(reposition(t, [t, a], ["a"])).toBeNull(); // self missing from order
+  });
+
+  it("audio lanes are never targeted (insert stays within the visual zone)", () => {
+    const a = el("a", 0, 0, 10);
+    const t = el("t", 1, 0, 10);
+    const music = audio("m", 2, 0, 30);
+    // t dropped below a... wait, t already below a. Drag a below t instead:
+    // bottom→top = [a, t]. Above-neighbor t (lane 1); no free visual lane below
+    // → insert below t (order.indexOf(1) + 1 = 2), never onto the audio lane.
+    expect(reposition(a, [a, t, music], ["a", "t"])).toEqual({ kind: "insert", insertRow: 2 });
+  });
+
+  it("is pure: identical inputs, identical outputs, input untouched", () => {
+    const build = () => {
+      const a = el("a", 0, 0, 10);
+      const b = el("b", 1, 0, 10);
+      const t = el("t", 2, 0, 10);
+      return { t, elements: [a, b, t] };
+    };
+    const first = build();
+    const snapshot = structuredClone(first.elements);
+    const r1 = reposition(first.t, first.elements, ["b", "a", "t"]);
+    const fresh = build();
+    const r2 = reposition(fresh.t, fresh.elements, ["b", "a", "t"]);
+    expect(r1).toEqual(r2);
+    expect(first.elements).toEqual(snapshot);
   });
 });

@@ -159,6 +159,114 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
   return { kind: "insert", insertRow: order.indexOf(referenceLane) + (up ? 0 : 1) };
 }
 
+export interface ZRepositionInput {
+  /** The clip the Layers-panel drag moved — store/display space. */
+  element: TimelineElement;
+  /** The expanded display element set (same set the drag commit reasons on). */
+  elements: TimelineElement[];
+  /**
+   * Timeline keys of the reordered sibling set in DESIRED render order,
+   * bottom→top, the moved element's own key included at its new slot. Siblings
+   * with no timeline presence carry null — they are skipped when resolving the
+   * nearest clip neighbors.
+   */
+  desiredOrderKeys: ReadonlyArray<string | null>;
+}
+
+/**
+ * Mirror an ARBITRARY z repositioning (a Layers-panel drag, which can jump
+ * several siblings in one drop) into a timeline lane move — the "equal jump"
+ * generalization of {@link resolveZMirrorLaneMove}'s one-step rule: the clip
+ * lands between its NEW paint neighbors' lanes.
+ *
+ * The reference lanes are the nearest siblings in the desired render order
+ * that are visual, same-file timeline clips: `above` = the first such sibling
+ * that now paints above the moved clip, `below` = the first that paints below.
+ * Target lane = the free lane (whole-span, same zone) strictly between the
+ * above-neighbor's lane and the below-neighbor's lane, closest to the above
+ * neighbor; when only one neighbor exists the zone edge bounds the search on
+ * the open side. No free lane in the interval → INSERT a new lane immediately
+ * beyond the above neighbor (below it), or immediately above the below
+ * neighbor when dropped on top — commitTrackInsert semantics, exactly like the
+ * menu mirror's insert fallback.
+ *
+ * Null when no mirror applies: audio / zero-length clips, no clip neighbor in
+ * the set (a z-only decoration shuffle), or the clip already sits where the
+ * drop puts it.
+ */
+// fallow-ignore-next-line complexity
+export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneMove {
+  const { element, elements, desiredOrderKeys } = input;
+  if (classifyZone(element) === "audio") return null;
+  if (!(element.duration > 0)) return null;
+
+  const selfKey = keyOf(element);
+  const selfIdx = desiredOrderKeys.indexOf(selfKey);
+  if (selfIdx === -1) return null;
+
+  const clipLaneForKey = (key: string | null): number | null => {
+    if (key == null) return null;
+    const el = elements.find((candidate) => keyOf(candidate) === key);
+    return el &&
+      classifyZone(el) === "visual" &&
+      el.duration > 0 &&
+      sameSourceFile(el, element) &&
+      keyOf(el) !== selfKey
+      ? el.track
+      : null;
+  };
+
+  // Nearest clip neighbor painting ABOVE (later in bottom→top order) / BELOW.
+  let aboveLane: number | null = null;
+  for (let i = selfIdx + 1; i < desiredOrderKeys.length && aboveLane == null; i++) {
+    aboveLane = clipLaneForKey(desiredOrderKeys[i]);
+  }
+  let belowLane: number | null = null;
+  for (let i = selfIdx - 1; i >= 0 && belowLane == null; i--) {
+    belowLane = clipLaneForKey(desiredOrderKeys[i]);
+  }
+  if (aboveLane == null && belowLane == null) return null;
+
+  const order = displayTrackOrder(elements);
+  const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const args = {
+    elements,
+    visualLanes,
+    start: element.start,
+    end: element.start + element.duration,
+    selfKey,
+  };
+
+  let lane: number | null;
+  let insertRow: number;
+  if (aboveLane != null) {
+    // Paints above = LOWER display lane: search DOWNWARD from the above
+    // neighbor (closest lane under it first), bounded by the below neighbor
+    // (exclusive) when one exists, else by the zone edge.
+    const refIdx = visualLanes.indexOf(aboveLane);
+    if (refIdx === -1) return null;
+    lane = closestFreeLane({ ...args, refIdx, up: false, boundLane: belowLane });
+    insertRow = order.indexOf(aboveLane) + 1;
+  } else {
+    // Dropped above everything that remains: search UPWARD from the below
+    // neighbor toward the zone top.
+    const refIdx = visualLanes.indexOf(belowLane!);
+    if (refIdx === -1) return null;
+    lane = closestFreeLane({ ...args, refIdx, up: true, boundLane: null });
+    insertRow = order.indexOf(belowLane!);
+  }
+
+  if (lane != null) {
+    if (lane === element.track) return null;
+    return {
+      kind: "move",
+      displayTrack: lane,
+      persistTrack: authoredTrackForLane(lane, elements, element),
+    };
+  }
+  return { kind: "insert", insertRow };
+}
+
 /**
  * ONE-ELEMENT-STEP bound (bring-forward / send-backward only): the lane of the
  * NEXT temporally-overlapping same-file visual element strictly beyond the

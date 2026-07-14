@@ -4,9 +4,12 @@ import { useExpandedTimelineElements } from "../../player/hooks/useExpandedTimel
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
   displayTrackOrder,
+  resolveRepositionLaneMove,
   resolveZMirrorLaneMove,
   type ZMirrorAction,
+  type ZMirrorLaneMove,
 } from "../../player/components/timelineZMirror";
+import type { TimelineElement } from "../../player/store/playerStore";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { buildStableSelector } from "../editor/domEditingDom";
@@ -56,37 +59,88 @@ export interface MirrorZOrderInput {
  * timeline mirror applies) or a rolled-back persist.
  */
 export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => Promise<boolean> {
+  const commitMirrorMove = useMirrorLaneMoveCommit();
+
+  return useCallback(
+    (input: MirrorZOrderInput) =>
+      commitMirrorMove(input.selectionKey, input.coalesceKey, (element, els) => {
+        // Map the crossed neighbor to its timeline key the same way z-reorder
+        // entries get theirs (siblingZIndexEntry): DOM id, else stable selector,
+        // scoped to the selection's source file.
+        const crossedKey = input.crossed
+          ? deriveTimelineStoreKey({
+              domId: input.crossed.id || undefined,
+              selector: buildStableSelector(input.crossed),
+              sourceFile: input.sourceFile,
+            })
+          : null;
+        return resolveZMirrorLaneMove({ action: input.action, element, elements: els, crossedKey });
+      }),
+    [commitMirrorMove],
+  );
+}
+
+export interface LayerReorderMirrorInput {
+  /** Timeline store key of the dragged layer (entry.key), if any. */
+  selectionKey: string | undefined;
+  /** Reordered sibling keys in DESIRED render order, bottom→top (null = no
+   *  timeline presence) — see resolveRepositionLaneMove. */
+  desiredOrderKeys: ReadonlyArray<string | null>;
+  /** The z persist's coalesce key — REQUIRED so the lane write folds into the
+   *  same undo entry as the z write. */
+  coalesceKey: string;
+}
+
+/**
+ * Mirror a Layers-panel drag (arbitrary reposition, possibly jumping several
+ * siblings) into a timeline lane move — the "equal jump". Identical plumbing,
+ * serialization, and undo-fold contract as {@link useCanvasZOrderTimelineMirror};
+ * only the resolver differs (resolveRepositionLaneMove's between-new-neighbors
+ * rule instead of the menu's four fixed actions).
+ */
+export function useLayerReorderTimelineMirror(): (
+  input: LayerReorderMirrorInput,
+) => Promise<boolean> {
+  const commitMirrorMove = useMirrorLaneMoveCommit();
+
+  return useCallback(
+    (input: LayerReorderMirrorInput) =>
+      commitMirrorMove(input.selectionKey, input.coalesceKey, (element, els) =>
+        resolveRepositionLaneMove({
+          element,
+          elements: els,
+          desiredOrderKeys: input.desiredOrderKeys,
+        }),
+      ),
+    [commitMirrorMove],
+  );
+}
+
+/**
+ * Shared commit plumbing for both mirrors: resolve the selection key against
+ * the expanded display set, run the caller's resolver, and persist the lane
+ * move through commitZMirrorLaneMove with the same deps + undo-fold contract.
+ * Resolves `true` when a lane move persisted, `false` for z-only actions (no
+ * timeline mirror applies) or a rolled-back persist.
+ */
+function useMirrorLaneMoveCommit(): (
+  selectionKey: string | undefined,
+  coalesceKey: string,
+  resolveMove: (element: TimelineElement, elements: TimelineElement[]) => ZMirrorLaneMove,
+) => Promise<boolean> {
   const elements = useExpandedTimelineElements();
   const elementsRef = useRef(elements);
   elementsRef.current = elements;
   const { onMoveElements } = useTimelineEditContextOptional();
 
   return useCallback(
-    (input: MirrorZOrderInput) => {
+    (selectionKey, coalesceKey, resolveMove) => {
       const els = elementsRef.current;
-      const element = input.selectionKey
-        ? els.find((e) => (e.key ?? e.id) === input.selectionKey)
-        : undefined;
+      const element = selectionKey ? els.find((e) => (e.key ?? e.id) === selectionKey) : undefined;
       // Not a timeline clip (canvas-only decoration) → z-only action, unchanged.
       if (!element) return Promise.resolve(false);
 
-      // Map the crossed neighbor to its timeline key the same way z-reorder
-      // entries get theirs (siblingZIndexEntry): DOM id, else stable selector,
-      // scoped to the selection's source file.
-      const crossedKey = input.crossed
-        ? deriveTimelineStoreKey({
-            domId: input.crossed.id || undefined,
-            selector: buildStableSelector(input.crossed),
-            sourceFile: input.sourceFile,
-          })
-        : null;
-
-      const move = resolveZMirrorLaneMove({
-        action: input.action,
-        element,
-        elements: els,
-        crossedKey,
-      });
+      const move = resolveMove(element, els);
       if (!move) return Promise.resolve(false);
 
       return commitZMirrorLaneMove(
@@ -97,10 +151,10 @@ export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => P
           trackOrder: displayTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
           onMoveElements: onMoveElements
-            ? (edits, coalesceKey, operation, coalesceMs) =>
+            ? (edits, coalesceKey2, operation, coalesceMs) =>
                 forwardRebasedTimelineMoveElements(
                   edits,
-                  coalesceKey,
+                  coalesceKey2,
                   operation,
                   onMoveElements,
                   coalesceMs,
@@ -109,7 +163,7 @@ export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => P
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z
           // stacking sync must not re-trigger and fight the just-set z values.
         },
-        input.coalesceKey,
+        coalesceKey,
         // Unbounded fold window: this record lands only AFTER the z persist's
         // server round-trip resolved, so the gap between the gesture's two
         // records exceeds editHistory's 300ms default under real latency and

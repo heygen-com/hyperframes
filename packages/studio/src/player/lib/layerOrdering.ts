@@ -27,34 +27,6 @@ export function getElementZIndex(element: HTMLElement): number {
   }
 }
 
-// fallow-ignore-next-line complexity
-export function hasExplicitZIndex(element: HTMLElement): boolean {
-  try {
-    const inline = element.style?.zIndex;
-    if (inline) return inline !== "auto";
-    const win = element.ownerDocument?.defaultView;
-    if (!win) return false;
-    const value = win.getComputedStyle(element).zIndex;
-    return value !== "auto" && value !== "";
-  } catch {
-    return false;
-  }
-}
-
-export function computeReorderZValues(
-  existingValues: readonly number[],
-  fromIndex: number,
-  toIndex: number,
-): number[] {
-  const reordered = [...existingValues];
-  const [moved] = reordered.splice(fromIndex, 1);
-  reordered.splice(toIndex, 0, moved);
-
-  const sorted = [...existingValues].sort((a, b) => b - a);
-  const hasDupes = sorted.some((v, i) => i > 0 && v === sorted[i - 1]);
-  return hasDupes ? reordered.map((_, i) => reordered.length - i) : sorted;
-}
-
 export function resolveStackingContextKey(item: StackingContextDescriptor): string {
   return item.stackingContextId ?? item.parentCompositionId ?? item.compositionAncestors[0] ?? "";
 }

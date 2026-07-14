@@ -6,6 +6,7 @@ import {
   parseZIndex,
   resolveCrossedNeighbor,
   resolveZOrderChange,
+  resolveZOrderReposition,
   type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
@@ -615,5 +616,61 @@ describe("isZOrderActionEnabled", () => {
     ] as ZOrderAction[]) {
       expect(isZOrderActionEnabled(target, action)).toBe(false);
     }
+  });
+});
+
+describe("resolveZOrderReposition (Layers-panel arbitrary drop)", () => {
+  it("multi-position jump with distinct z resolves to ONE between-z write", () => {
+    // Render order bottom→top today: target(1), a(3), b(5). Drop target between
+    // a and b → single write: z strictly between 3 and 5.
+    const { target, byId } = makeFamily("1", [
+      ["a", "3"],
+      ["b", "5"],
+    ]);
+    const patches = resolveZOrderReposition(target, [byId.a, target, byId.b]);
+    expect(patches).toEqual([{ element: target, zIndex: 4 }]);
+  });
+
+  it("jump to the very top writes one z above the previous top", () => {
+    const { target, byId } = makeFamily("1", [
+      ["a", "3"],
+      ["b", "5"],
+    ]);
+    const patches = resolveZOrderReposition(target, [byId.a, byId.b, target]);
+    expect(patches).toEqual([{ element: target, zIndex: 6 }]);
+  });
+
+  it("no-op drop (unchanged order) returns null", () => {
+    const { target, byId } = makeFamily("1", [
+      ["a", "3"],
+      ["b", "5"],
+    ]);
+    expect(resolveZOrderReposition(target, [target, byId.a, byId.b])).toBeNull();
+  });
+
+  it("tied z values renumber the scoped set minimally (band-safe)", () => {
+    const { target, byId } = makeFamily("2", [
+      ["a", "2"],
+      ["b", "2"],
+    ]);
+    // All tied at 2; DOM order target,a,b → render bottom→top target,a,b.
+    // Move target to the top: scoped renumber within the band.
+    const patches = resolveZOrderReposition(target, [byId.a, byId.b, target]);
+    expect(patches).not.toBeNull();
+    const z = new Map(patches!.map((p) => [(p.element as HTMLElement).id, p.zIndex]));
+    const zOf = (id: string) => z.get(id) ?? 2;
+    expect(zOf("a")).toBeLessThan(zOf("b"));
+    expect(zOf("b")).toBeLessThan(zOf("target"));
+  });
+
+  it("rejects elements that are not painting siblings of the target", () => {
+    const { target, byId } = makeFamily("1", [["a", "3"]]);
+    const stranger = makeEl("stranger", "2");
+    expect(resolveZOrderReposition(target, [stranger, target, byId.a])).toBeNull();
+  });
+
+  it("returns null for sets too small to reorder", () => {
+    const { target } = makeFamily("1", []);
+    expect(resolveZOrderReposition(target, [target])).toBeNull();
   });
 });
