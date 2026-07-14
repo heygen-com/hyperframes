@@ -600,6 +600,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const serverBuildSignature = await loadPreviewServerBuildSignature();
       return c.json({
         isHyperframes: true,
+        pid: process.pid,
         projectName: projectId,
         projectDir: projectDir,
         serverBuildSignature,

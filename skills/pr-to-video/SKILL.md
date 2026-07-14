@@ -138,7 +138,7 @@ Read `../hyperframes-creative/references/story-spine.md` (hook language, value-b
 
 Use `story-design.md` for the PR archetype (changelog / feature-reveal / fix-explainer / refactor-walkthrough), the PR-native frame types, hook, persuasion, beats, the per-frame word budget, and the credits close. The sequence comes from **narrative design, not the diff's file order** — explain the change, don't read the diff aloud. As a **soft guide**, consult the role→blueprint menu in `../hyperframes-animation/blueprints-index.md`: for each beat, write the voiceover in the shape its candidate blueprint implies and tag that candidate `blueprint:` id when one fits (story truth still decides which beats exist — never force a beat to fit a shape). Feature 2–4 real diff hunks (from `capture/diff.patch`), each a small legible snippet; name the `code-*` block each wants in the frame's `scene`. Frames carry no `asset_candidates` except the `credits` close (1–6 `assets/<login>.png` avatars). Use the exact required fields from the storyboard and script references.
 
-After drafting, present the plan as a proposal per story-spine § 3: open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). In that same message ask the user (a) to approve or request changes, and (b) whether they want a live preview of the storyboard scaffold (`npx hyperframes preview`) — open it only on a yes. Iterate until approved; carry the preview choice to Step 6. This is a **checkpoint gate** (brief contract § 1): in autonomous mode, post the same summary as a heads-up and proceed — the preview question is asked once, at Step 6.
+After drafting, present the plan as a proposal per story-spine § 3: open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). In that same message ask the user (a) to approve or request changes, and (b) whether they want a live preview of the storyboard scaffold — open it only on a yes. Start that preview once with `npx hyperframes preview "$PROJECT_DIR" --background`; retain the printed URL for Step 6 instead of starting another server. Iterate until approved; carry the preview choice to Step 6. This is a **checkpoint gate** (brief contract § 1): in autonomous mode, post the same summary as a heads-up and proceed — the preview question is asked once, at Step 6.
 
 **Gate:** `STORYBOARD.md` exists, every frame has the required narrative fields, `SCRIPT.md` exists when narration is needed, and the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -242,15 +242,17 @@ If a command fails, surface stderr and stop — don't pile on recovery commands.
 
 **Known false-positive — do not chase it.** `inspect` may report a handful of `text_box_overflow` errors of ~1–4px on the **caption** highlight words (selector `#caption-word-*` / `.caption-line`). The caption pill uses a deliberately snug `line-height` (set once in `scripts/captions.mjs`) and has **no `overflow:hidden`**, so a heavy display glyph's ink spills a few px into the pill's own padding — nothing is actually clipped. Treat these as expected and proceed. Do **not** inflate the caption `line-height` (it balloons the pill, which is worse). Only act on a `text_box_overflow` when it names a **frame** element (`#el-NN-*`), not a caption word.
 
-After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: open it if the user asked earlier, offer it if they declined earlier, do not ask again if they are already reviewing in Studio. In autonomous mode this is the one question the mode keeps: ask "preview first, or render?" — open the preview on yes, render on no — then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
+After checks pass, pause for user review. The video is assembled, viewable, and editable in Studio. Manage preview only once across Step 3 and Step 6: reuse the retained background-preview URL if the user asked earlier; if they declined earlier, offer it once and start it with the command below only on a yes. Do not ask again if they are already reviewing in Studio. In autonomous mode this is the one question the mode keeps: ask "preview first, or render?" — open the preview on yes, render on no — then deliver the MP4 with the contact sheet and the frame ids so revisions can target a single frame.
 
-Preview: `npx hyperframes preview`
+Preview: `npx hyperframes preview "$PROJECT_DIR" --background`
 
 Render only after user approval (autonomous mode: after the preview-or-render question):
 
 `npx hyperframes render --skill=pr-to-video --quality high --output renders/video.mp4`
 
 Do not rerun `lint`, `validate`, `inspect`, or `snapshot` after rendering unless the user asks.
+
+After the user is done reviewing (or after render when no more live edits are expected), stop only this project's background server: `npx hyperframes preview "$PROJECT_DIR" --stop`. Never tear it down while waiting for review.
 
 **Gate:** `lint`, `validate`, and `inspect` passed before render; user approved at the review pause (autonomous: checks passed and the delivery includes the contact sheet); `renders/video.mp4` exists. Final reply states the MP4 path and final duration.
 
