@@ -983,9 +983,9 @@
   function occludedTextIssue(element, time) {
     if (hasAllowOcclusionFlag(element)) return null;
     if (!hasVisibleTextInk(element)) return null;
-    const textRect = textRectFor(element);
+    const textRect = textRectFor(element, true);
     if (!textRect) return null;
-    const text = textContentFor(element);
+    const text = textContentFor(element, true);
     const { occluder, coveredFraction } = occlusionCoverage(element, textRect);
     if (!occluder) return null;
     if (!isAtomicLabel(text) && coveredFraction < PROSE_COVERAGE_FLOOR) return null;

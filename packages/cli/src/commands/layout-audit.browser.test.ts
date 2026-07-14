@@ -1428,6 +1428,47 @@ describe("layout-audit.browser occlusion", () => {
     expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("audits only a container's direct text when a hidden descendant also has text", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Visible copy<span id="hidden-copy">Hidden copy</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        "hidden-copy": { opacity: "0" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const issue = runAudit().find((candidate) => candidate.code === "text_occluded");
+    expect(issue?.text).toBe("Visible copy");
+  });
+
+  it("does not expand a container's text audit to a positioned descendant", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Visible copy<span id="positioned-copy">Positioned copy</span></div>
+        <div id="overlay"></div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: {
+        "positioned-copy": { position: "absolute" },
+        overlay: { backgroundColor: "rgb(10, 10, 10)" },
+      },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    const issues = runAudit().filter((candidate) => candidate.code === "text_occluded");
+    const headlineIssue = issues.find((candidate) => candidate.selector === "#headline");
+    expect(headlineIssue?.text).toBe("Visible copy");
+  });
+
   it("does not count a low-alpha gradient overlay (grid/scrim) as an opaque occluder", () => {
     const issues = auditOcclusionScene({
       overlayStyle: {
@@ -1713,7 +1754,11 @@ function installOcclusionGeometry(options: {
         selected = node;
       },
       getClientRects() {
-        return (selected as Element | null)?.id === (options.textRectElementId ?? "headline")
+        const selectedElement =
+          selected?.nodeType === Node.TEXT_NODE
+            ? (selected.parentElement as Element | null)
+            : (selected as Element | null);
+        return selectedElement?.id === (options.textRectElementId ?? "headline")
           ? ([options.headlineTextRect] as unknown as DOMRectList)
           : ([] as unknown as DOMRectList);
       },
@@ -1844,6 +1889,7 @@ async function runContrastAudit(): Promise<Array<Record<string, unknown>>> {
 interface AuditIssue {
   code: string;
   selector: string;
+  text?: string;
   containerSelector?: string;
   overflow?: Record<string, number>;
   message?: string;
