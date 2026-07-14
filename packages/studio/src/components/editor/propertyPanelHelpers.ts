@@ -30,14 +30,16 @@ export function isSelectedElementHidden(
 }
 
 /**
- * 4-part element identity for keying panel remounts on selection change —
+ * 5-part element identity for keying panel remounts on selection change —
  * id or selector alone collides for id-less same-selector siblings, leaving
- * mount-initialized state pointed at the previous element.
+ * mount-initialized state pointed at the previous element. Source scope is
+ * required because sub-compositions can reuse the same DOM identity.
  */
 export function selectionIdentityKey(
-  element: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex">,
+  element: Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile">,
 ): string {
   return [
+    element.sourceFile ?? "",
     element.id ?? "",
     element.hfId ?? "",
     element.selector ?? "",

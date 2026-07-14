@@ -456,8 +456,6 @@ export function StudioRightPanel({
 
   return (
     <>
-      {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via
-          the absolutely-positioned inner hit area. */}
       <div
         role="separator"
         aria-label="Resize inspector panel"
@@ -477,9 +475,7 @@ export function StudioRightPanel({
           setRightWidth(Math.max(160, Math.min(600, rightWidth + delta)));
         }}
       >
-        {/* Expanded hit zone: 8px wide, centered on the 3px seam */}
         <div className="absolute inset-y-0 -left-[2.5px] w-2" />
-        {/* Visible hairline */}
         <div className="absolute top-1/2 left-0 h-[52px] w-[3px] -translate-y-1/2 bg-white/12 transition-colors group-hover:bg-white/18 group-active:bg-white/24" />
       </div>
       <div
@@ -576,10 +572,6 @@ export function StudioRightPanel({
               ) : designPaneOpen ? (
                 propertyPanel
               ) : inspectorTabActive ? (
-                // Inspector tab selected but no pane can render (panes toggled
-                // off, or inspector inactive during playback/recording): show an
-                // explanation instead of silently rendering the render queue
-                // under a highlighted inspector tab.
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                   <p className="text-xs text-neutral-500">
                     Inspector is unavailable right now — select the Design or Layers pane above, or

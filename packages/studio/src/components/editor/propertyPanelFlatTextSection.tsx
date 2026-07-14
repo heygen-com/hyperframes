@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, X } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
-import { normalizeTextMetricValue } from "./propertyPanelHelpers";
+import { normalizeTextMetricValue, selectionIdentityKey } from "./propertyPanelHelpers";
 import { ColorField } from "./propertyPanelColor";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
@@ -26,9 +26,11 @@ import {
 /* ------------------------------------------------------------------ */
 
 const ALIGN_OPTIONS = [
+  { key: "start", label: "start", node: "S" },
   { key: "left", label: "left", node: "L" },
   { key: "center", label: "center", node: "C" },
   { key: "right", label: "right", node: "R" },
+  { key: "end", label: "end", node: "E" },
   { key: "justify", label: "justify", node: "J" },
 ];
 
@@ -167,10 +169,7 @@ function FlatTextFieldEditor({
         options={ALIGN_OPTIONS.map((option) => ({
           key: option.key,
           node: option.node,
-          active:
-            align === option.key ||
-            (option.key === "left" && align === "start") ||
-            (option.key === "right" && align === "end"),
+          active: align === option.key,
         }))}
         onChange={(next) => onSetTextFieldStyle(field.key, "text-align", next)}
       />
@@ -230,9 +229,15 @@ export function FlatTextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
-  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(
-    element.textFields[0]?.key ?? null,
-  );
+  const elementIdentity = selectionIdentityKey(element);
+  const firstTextFieldKey = element.textFields[0]?.key ?? null;
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(firstTextFieldKey);
+
+  // A new element can expose the same text-field keys as the prior selection.
+  // Always return to its first field instead of preserving stale local state.
+  useEffect(() => {
+    setActiveFieldKey(firstTextFieldKey);
+  }, [elementIdentity, firstTextFieldKey]);
 
   useEffect(() => {
     const nextFields = element.textFields;
@@ -240,7 +245,7 @@ export function FlatTextSection({
       if (current && nextFields.some((field) => field.key === current)) return current;
       return nextFields[0]?.key ?? null;
     });
-  }, [element.id, element.selector, element.textFields]);
+  }, [element.textFields]);
 
   if (!isTextEditableSelection(element)) return null;
   const textFields = element.textFields;

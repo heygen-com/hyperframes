@@ -58,8 +58,9 @@ export function FlatRow({
             type="button"
             data-flat-row-reset="true"
             title="Remove — fall back to default"
+            disabled={disabled}
             onClick={onReset}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-panel-text-3"
           >
             <RotateCcw size={11} />
           </button>
@@ -272,6 +273,7 @@ export function FlatSlider({
   // the leading edge and on a trailing timer, so the preview keeps updating
   // while dragging, with an immediate flush on release for the final value.
   const [draft, setDraft] = useState(value);
+  const draftRef = useRef(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitAtRef = useRef(0);
   const pendingRef = useRef<number | null>(null);
@@ -289,6 +291,7 @@ export function FlatSlider({
 
   useEffect(() => {
     if (draggingRef.current) return;
+    draftRef.current = value;
     setDraft(value);
     lastCommittedRef.current = value;
   }, [value]);
@@ -300,6 +303,11 @@ export function FlatSlider({
   );
 
   const clampedPct = Math.max(0, Math.min(100, ((draft - min) / Math.max(max - min, 1e-6)) * 100));
+
+  const setDraftValue = (nextDraft: number) => {
+    draftRef.current = nextDraft;
+    setDraft(nextDraft);
+  };
 
   const stepFromClientX = (clientX: number, rect: DOMRect) => {
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(rect.width, 1)));
@@ -333,6 +341,18 @@ export function FlatSlider({
       }, 40 - elapsed);
     }
   };
+  const cancelPendingCommit = () => {
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = null;
+    pendingRef.current = null;
+  };
+  const finishPointerDrag = (nextDraft?: number) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const finalDraft = nextDraft ?? draftRef.current;
+    setDraftValue(finalDraft);
+    commitDraft(finalDraft);
+  };
 
   return (
     <div className="flex min-h-[28px] items-center gap-2.5">
@@ -346,48 +366,44 @@ export function FlatSlider({
         aria-valuemax={max}
         aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
-        className={`relative h-5 flex-1 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+        className={`relative h-5 flex-1 touch-none ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
         onPointerDown={(e) => {
           if (disabled) return;
           draggingRef.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
+          setDraftValue(stepped);
           scheduleCommit(stepped);
         }}
         onPointerMove={(e) => {
           if (disabled || !e.currentTarget.hasPointerCapture(e.pointerId)) return;
           const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
+          setDraftValue(stepped);
           scheduleCommit(stepped);
         }}
         onPointerUp={(e) => {
+          if (disabled) return;
+          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
+          finishPointerDrag(stepped);
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             e.currentTarget.releasePointerCapture(e.pointerId);
           }
-          if (disabled) return;
-          if (!draggingRef.current) return;
-          draggingRef.current = false;
-          // Recompute from the event itself rather than reading the `draft`
-          // closure — if pointerdown+pointerup land in the same React batch
-          // (e.g. a very fast click), the onPointerUp handler can still be
-          // bound to the pre-drag render, making `draft` stale.
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          setDraft(stepped);
-          commitDraft(stepped);
         }}
         onPointerCancel={(e) => {
-          draggingRef.current = false;
+          if (!disabled) finishPointerDrag();
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             e.currentTarget.releasePointerCapture(e.pointerId);
           }
+        }}
+        onLostPointerCapture={() => {
+          if (!disabled) finishPointerDrag();
         }}
         onKeyDown={(e) => {
           if (disabled) return;
           const next = sliderKeyTarget(e.key, draft, min, max, step);
           if (next === null) return;
           e.preventDefault();
-          setDraft(next);
+          setDraftValue(next);
           commitDraft(next);
         }}
       >
@@ -429,8 +445,12 @@ export function FlatSlider({
               type="button"
               data-flat-slider-reset="true"
               title="Remove — fall back to default"
-              onClick={onReset}
-              className="text-panel-text-3 hover:text-panel-text-1"
+              disabled={disabled}
+              onClick={() => {
+                cancelPendingCommit();
+                onReset();
+              }}
+              className="text-panel-text-3 hover:text-panel-text-1 disabled:cursor-not-allowed disabled:hover:text-panel-text-3"
             >
               <RotateCcw size={11} />
             </button>
@@ -497,8 +517,9 @@ export function FlatSelectRow({
             type="button"
             data-flat-select-reset="true"
             title="Remove — fall back to default"
+            disabled={disabled}
             onClick={onReset}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100 disabled:cursor-not-allowed disabled:hover:text-panel-text-3"
           >
             <RotateCcw size={11} />
           </button>

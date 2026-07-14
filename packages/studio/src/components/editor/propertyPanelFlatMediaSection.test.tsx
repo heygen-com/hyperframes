@@ -246,6 +246,34 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     expect(onSetAttribute).toHaveBeenCalledWith("media-start", "30.00");
     act(() => root.unmount());
   });
+
+  it("uses 5% rate and 0.1 second media-start keyboard increments", () => {
+    const onSetAttribute = vi.fn();
+    const element = makeVideoElement();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <FlatMediaSection
+          projectDir={null}
+          element={element}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const tracks = host.querySelectorAll<HTMLElement>('[data-flat-slider-track="true"]');
+    act(() => {
+      tracks[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      tracks[2]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    });
+    expect(onSetAttribute).toHaveBeenCalledWith("playback-rate", "1.05");
+    expect(onSetAttribute).toHaveBeenCalledWith("media-start", "0.10");
+    act(() => root.unmount());
+  });
 });
 
 describe("FlatMediaSection — loop/muted/has-audio", () => {
