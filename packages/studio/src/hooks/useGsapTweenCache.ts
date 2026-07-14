@@ -6,6 +6,7 @@ import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBrid
 import {
   clearKeyframeCacheForElement,
   clearKeyframeCacheForFile,
+  writeGsapAnimationsForElement,
 } from "./gsapKeyframeCacheHelpers";
 import { toAbsoluteTime } from "./gsapShared";
 import { deduplicateKeyframes, synthesizeFlatTweenKeyframes } from "./gsapTweenSynth";
@@ -328,6 +329,12 @@ export function useGsapAnimationsForElement(
   // fallow-ignore-next-line complexity
   useEffect(() => {
     if (!elementId) return;
+    const sourceAnimations = animations.filter(
+      (animation) =>
+        animation.propertyGroup && (animation.keyframes || synthesizeFlatTweenKeyframes(animation)),
+    );
+    if (sourceAnimations.length > 0)
+      writeGsapAnimationsForElement(sourceFile, elementId, sourceAnimations);
 
     // Resolve the element's time range from the player store so we can
     // convert tween-relative keyframe percentages to clip-relative ones.
@@ -459,6 +466,7 @@ export function usePopulateKeyframeCacheForFile(
       const { elements, domClipChildren } = usePlayerStore.getState();
       const doc = iframeRef?.current?.contentDocument;
       const mergedByElement = new Map<string, GsapKeyframesData>();
+      const sourceByElement = new Map<string, GsapAnimation[]>();
       for (const anim of parsed.animations) {
         if (anim.hasUnresolvedKeyframes) continue;
         // Position-only static holds are not keyframed animations — skip them so
@@ -479,6 +487,11 @@ export function usePopulateKeyframeCacheForFile(
         // Attribute the tween to every element it animates (handles class /
         // group / descendant selectors, not just `#id`).
         for (const id of resolveSelectorElementIds(anim.targetSelector, doc)) {
+          // kfData is already resolved (real keyframes OR a synthesized flat
+          // tween), so a grouped flat tween joins the store like a keyframed one.
+          if (anim.propertyGroup) {
+            sourceByElement.set(id, [...(sourceByElement.get(id) ?? []), anim]);
+          }
           const { elStart, elDuration } = resolveClipTimingBasis(id, sf, elements, domClipChildren);
           const clipKeyframes = kfData.keyframes.map((kf) => {
             const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
@@ -508,6 +521,7 @@ export function usePopulateKeyframeCacheForFile(
         setKeyframeCache(`${sf}#${id}`, kfData);
         setKeyframeCache(id, kfData);
         if (sf !== "index.html") setKeyframeCache(`index.html#${id}`, kfData);
+        writeGsapAnimationsForElement(sf, id, sourceByElement.get(id));
       }
       astFetchDoneRef.current = fetchKey;
     });

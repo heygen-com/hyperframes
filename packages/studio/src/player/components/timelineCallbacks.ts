@@ -3,6 +3,15 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import type { BlockedTimelineEditIntent } from "./timelineEditing";
+import type { PropertyGroupName } from "@hyperframes/core/gsap-parser";
+
+export interface TimelinePropertyGroupKeyframeToggle {
+  animationId: string;
+  propertyGroup: PropertyGroupName;
+  tweenPercentage: number;
+  properties: Record<string, number | string>;
+  remove: boolean;
+}
 
 /**
  * Shared callback signatures for timeline editing operations.
@@ -58,14 +67,33 @@ export interface TimelineEditCallbacks {
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplitAll?: (splitTime: number) => Promise<void> | void;
-  onDeleteKeyframe?: (elementId: string, percentage: number) => void;
+  onDeleteKeyframe?: (
+    elementId: string,
+    percentage: number,
+    propertyGroup?: string,
+    tweenPercentage?: number,
+    animationId?: string,
+  ) => void;
   onDeleteAllKeyframes?: (elementId: string) => void;
   onChangeKeyframeEase?: (elementId: string, percentage: number, ease: string) => void;
-  onMoveKeyframeToPlayhead?: (elementId: string, percentage: number) => void;
+  onMoveKeyframeToPlayhead?: (
+    elementId: string,
+    percentage: number,
+    propertyGroup?: string,
+    tweenPercentage?: number,
+    animationId?: string,
+  ) => void;
   onMoveKeyframe?: (
     elementId: string,
     fromClipPercentage: number,
     toClipPercentage: number,
+    propertyGroup?: string,
+    tweenPercentage?: number,
+    animationId?: string,
   ) => void;
   onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
+  onTogglePropertyGroupKeyframe?: (
+    element: TimelineElement,
+    target: TimelinePropertyGroupKeyframeToggle,
+  ) => Promise<void> | void;
 }

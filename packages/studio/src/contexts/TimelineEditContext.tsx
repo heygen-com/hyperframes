@@ -44,6 +44,7 @@ export function TimelineEditProvider({
       value.onMoveKeyframeToPlayhead,
       value.onMoveKeyframe,
       value.onToggleKeyframeAtPlayhead,
+      value.onTogglePropertyGroupKeyframe,
     ],
   );
   return <TimelineEditContext.Provider value={memoized}>{children}</TimelineEditContext.Provider>;

@@ -13,6 +13,8 @@ const {
   trackStudioRazorSplit,
   trackStudioExpandedClipEdit,
   trackStudioFeedback,
+  trackStudioKeyframeLaneExpand,
+  trackStudioSegmentEaseEdit,
 } = await import("./events");
 
 describe("studio telemetry events", () => {
@@ -78,5 +80,18 @@ describe("studio telemetry events", () => {
       "survey sent",
       expect.objectContaining({ $survey_response: rating, rating_scale: 10 }),
     );
+  });
+
+  it("trackStudioKeyframeLaneExpand emits 'studio_keyframe_lane_expand' with expanded", () => {
+    trackStudioKeyframeLaneExpand({ expanded: true });
+    expect(trackEvent).toHaveBeenCalledWith("studio_keyframe_lane_expand", { expanded: true });
+  });
+
+  it("trackStudioSegmentEaseEdit emits 'studio_segment_ease_edit' with action and ease", () => {
+    trackStudioSegmentEaseEdit({ action: "commit", ease: "power2.out" });
+    expect(trackEvent).toHaveBeenCalledWith("studio_segment_ease_edit", {
+      action: "commit",
+      ease: "power2.out",
+    });
   });
 });

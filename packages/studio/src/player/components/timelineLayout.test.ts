@@ -2,15 +2,89 @@ import { describe, it, expect } from "vitest";
 import {
   RULER_H,
   TRACK_H,
+  LANE_H,
   TRACKS_TOP_PAD,
   TRACKS_BOTTOM_PAD,
   GUTTER,
-  TRACKS_LEFT_PAD,
   getTimelineRowTop,
   getTimelineRowFromY,
+  getTimelineRowOffsets,
   getTimelineCanvasHeight,
+  trackHeights,
   resolveTimelineAssetDrop,
 } from "./timelineLayout";
+
+describe("variable timeline row geometry", () => {
+  const tracks = [
+    [{ clipId: "a", laneCount: 0 }],
+    [{ clipId: "b", laneCount: 2 }],
+    [{ clipId: "c", laneCount: 1 }],
+  ];
+
+  it("resolves every row to the base height when no clip is expanded", () => {
+    expect(trackHeights(tracks)).toEqual([TRACK_H, TRACK_H, TRACK_H]);
+    expect(trackHeights(3)).toEqual([TRACK_H, TRACK_H, TRACK_H]);
+  });
+
+  it("adds one lane height per lane on an expanded clip", () => {
+    expect(trackHeights(tracks, new Set(["b"]))).toEqual([TRACK_H, TRACK_H + 2 * LANE_H, TRACK_H]);
+  });
+
+  it("derives row tops from cumulative offsets", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    expect(getTimelineRowOffsets(heights)).toEqual([
+      0,
+      TRACK_H,
+      2 * TRACK_H + 2 * LANE_H,
+      3 * TRACK_H + 2 * LANE_H,
+    ]);
+    expect(getTimelineRowTop(2, heights)).toBe(RULER_H + TRACKS_TOP_PAD + 2 * TRACK_H + 2 * LANE_H);
+  });
+
+  it("maps y inside an expanded lane region back to the expanded track", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    const yInSecondExpandedLane = getTimelineRowTop(1, heights) + TRACK_H + LANE_H * 1.5;
+    const row = getTimelineRowFromY(yInSecondExpandedLane, heights);
+    expect(Math.floor(row)).toBe(1);
+    expect(row).toBeGreaterThan(1.5);
+    expect(row).toBeLessThan(2);
+  });
+
+  it("sums resolved row heights into the canvas height", () => {
+    const heights = trackHeights(tracks, new Set(["b"]));
+    expect(getTimelineCanvasHeight(heights)).toBe(
+      RULER_H + TRACKS_TOP_PAD + 3 * TRACK_H + 2 * LANE_H + TRACKS_BOTTOM_PAD,
+    );
+  });
+});
+
+describe("collapsed timeline row geometry characterization", () => {
+  it.each([
+    [0, 74],
+    [1, 122],
+    [4, 266],
+  ])("keeps row %i at content y=%i", (row, expectedTop) => {
+    expect(getTimelineRowTop(row)).toBe(expectedTop);
+  });
+
+  it.each([
+    [74, 0],
+    [86, 0.25],
+    [146, 1.5],
+    [290, 4.5],
+  ])("maps content y=%i to fractional row %f", (contentY, expectedRow) => {
+    expect(getTimelineRowFromY(contentY)).toBe(expectedRow);
+  });
+
+  it.each([
+    [0, 146],
+    [1, 194],
+    [3, 290],
+    [5, 386],
+  ])("keeps the %i-track canvas height at %i", (trackCount, expectedHeight) => {
+    expect(getTimelineCanvasHeight(trackCount)).toBe(expectedHeight);
+  });
+});
 
 describe("track-area breathing pad y-math", () => {
   describe("getTimelineRowTop", () => {
@@ -78,15 +152,16 @@ describe("track-area breathing pad y-math", () => {
       rectTop: 0,
       scrollLeft: 0,
       scrollTop: 0,
+      contentOrigin: GUTTER,
       pixelsPerSecond: 100,
       duration: 60,
-      trackHeight: TRACK_H,
+      rowHeights: trackHeights(3),
       trackOrder: [0, 1, 2],
     };
 
     it("drops onto lane 0 when the pointer is in the middle of the first lane", () => {
       const clientY = getTimelineRowTop(0) + TRACK_H / 2;
-      const clientX = GUTTER + TRACKS_LEFT_PAD + 100; // t = 1s
+      const clientX = GUTTER + 100; // t = 1s (contentOrigin = GUTTER)
       const { start, track } = resolveTimelineAssetDrop(base, clientX, clientY);
       expect(track).toBe(0);
       expect(start).toBe(1);
@@ -102,6 +177,13 @@ describe("track-area breathing pad y-math", () => {
       const clientY = getTimelineRowTop(2) + TRACK_H + 4; // in the bottom pad
       const { track } = resolveTimelineAssetDrop(base, GUTTER, clientY);
       expect(track).toBe(3); // max(trackOrder)+1
+    });
+
+    it("keeps a drop in an expanded lane region on that track", () => {
+      const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H, TRACK_H];
+      const clientY = getTimelineRowTop(0, rowHeights) + TRACK_H + LANE_H;
+      const { track } = resolveTimelineAssetDrop({ ...base, rowHeights }, GUTTER, clientY);
+      expect(track).toBe(0);
     });
   });
 });

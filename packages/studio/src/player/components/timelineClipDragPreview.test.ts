@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { computeDragPreview, type DragPreviewContext } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
-import { RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
+import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Regression bed for the live-reproduced BUG 1: a PLAIN HORIZONTAL drag of a clip
@@ -51,13 +51,17 @@ function fakeScroll(): HTMLDivElement {
   } as unknown as HTMLDivElement;
 }
 
-function ctx(): DragPreviewContext {
+function ctx(
+  rowHeights?: readonly number[],
+  elements: TimelineElement[] = fixtureElements,
+): DragPreviewContext {
   return {
     scroll: fakeScroll(),
     pps: PPS,
     duration: 44.5,
     trackOrder: [0, 1, 2],
-    elements: fixtureElements,
+    elements,
+    rowHeights,
     selectedKeys: new Set<string>(),
     buildSnapTargets: () => [],
     audioTracks: new Set<number>(),
@@ -140,5 +144,48 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
     // Pointer well above the first lane (into the top pad → rowFloat < 0).
     const next = computeDragPreview(drag, originClientX, yForRow(-0.6), ctx());
     expect(next.insertRow).toBe(0); // a new TOP track will be created on drop
+  });
+
+  it("keeps a horizontal drag in the body of an expanded row out of insert mode", () => {
+    const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H, TRACK_H];
+    const clientY = RULER_H + TRACKS_TOP_PAD + rowHeights[0] - 8;
+    const { drag, clientX } = horizontalDrag(moodboard, 0.5, 2);
+    const next = computeDragPreview(
+      { ...drag, originClientY: clientY, pointerClientY: clientY },
+      clientX,
+      clientY,
+      ctx(rowHeights),
+    );
+    expect(next.insertRow).toBeNull();
+    expect(next.previewTrack).toBe(0);
+  });
+
+  it("uses the expanded row midpoint when choosing the side for an automatic insert", () => {
+    const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H];
+    const dragged = clip("dragged", 0, 0, 1, 3);
+    const occupied = [dragged, clip("block-0", 0, 0, 1, 2), clip("block-1", 1, 0, 1, 1)];
+    const clientY = RULER_H + TRACKS_TOP_PAD + 30;
+    const drag: DraggedClipState = {
+      element: dragged,
+      originClientX: 0,
+      originClientY: clientY,
+      originScrollLeft: 0,
+      originScrollTop: 0,
+      pointerClientX: 0,
+      pointerClientY: clientY,
+      pointerOffsetX: 0,
+      pointerOffsetY: 0,
+      previewStart: 0,
+      previewTrack: 0,
+      insertRow: null,
+      snapTime: null,
+      snapType: null,
+      started: true,
+    };
+    const next = computeDragPreview(drag, 0, clientY, {
+      ...ctx(rowHeights, occupied),
+      trackOrder: [0, 1],
+    });
+    expect(next.insertRow).toBe(0);
   });
 });

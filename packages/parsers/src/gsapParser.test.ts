@@ -1919,6 +1919,15 @@ describe("keyframe mutations", () => {
     expect([kf[2]!.properties.x, kf[2]!.properties.y]).toEqual([1040, 0]);
   });
 
+  it("updateKeyframeInScript — array-form ease-only update preserves existing properties", () => {
+    const id = getAnimId(ARRAY_KF_SCRIPT);
+    const updated = updateKeyframeInScript(ARRAY_KF_SCRIPT, id, 33.3, {}, "power2.inOut");
+    const kf = parseGsapScript(updated).animations[0].keyframes!.keyframes;
+    expect(kf[1]!.properties.x).toBe(520);
+    expect(kf[1]!.properties.y).toBe(120);
+    expect(kf[1]!.ease).toBe("power2.inOut");
+  });
+
   it("addKeyframeToScript — array-form: normalizes to object form + inserts 50%", () => {
     const id = getAnimId(ARRAY_KF_SCRIPT);
     const updated = addKeyframeToScript(ARRAY_KF_SCRIPT, id, 50, { x: 780, y: 60 });

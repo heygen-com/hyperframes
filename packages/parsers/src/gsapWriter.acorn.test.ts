@@ -15,7 +15,9 @@ import {
   updateAnimationInScript,
   updateKeyframeInScript,
 } from "./gsapWriterAcorn.js";
+import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import { parseGsapScript } from "./gsapParser.js";
+import { validateCompositionGsap } from "./gsapSerialize.js";
 
 // ---------------------------------------------------------------------------
 // Fixture scripts
@@ -374,6 +376,25 @@ describe("T6c — keyframe write ops", () => {
     expect(result).toContain('"50%": { opacity: 0.7 }');
     // 25% appears before 50% in the string
     expect(result.indexOf('"25%"')).toBeLessThan(result.indexOf('"50%"'));
+  });
+
+  it("addKeyframeToScript converts a flat tween and round-trips three sane points", () => {
+    const script = `\
+var tl = gsap.timeline({ paused: true });
+tl.to("#box", { x: 420, duration: 1 }, 0);
+window.__timelines["t"] = tl;`;
+    const animationId = parseGsapScriptAcorn(script).animations[0]!.id;
+
+    const result = addKeyframeToScript(script, animationId, 50, { x: 210 });
+    const reparsed = parseGsapScriptAcorn(result);
+
+    expect(reparsed.animations).toHaveLength(1);
+    expect(reparsed.animations[0]?.keyframes?.keyframes).toEqual([
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 50, properties: { x: 210 } },
+      { percentage: 100, properties: { x: 420 } },
+    ]);
+    expect(validateCompositionGsap(result)).toEqual({ valid: true, errors: [], warnings: [] });
   });
 
   it("addKeyframeToScript replaces value when percentage already exists", () => {

@@ -19,8 +19,11 @@ import {
   shouldAutoScrollTimeline,
 } from "./Timeline";
 import {
+  CLIP_Y,
   FIT_ZOOM_HEADROOM,
   GUTTER,
+  LABEL_COL_W,
+  LANE_H,
   MIN_TIMELINE_EXTENT_S,
   PLAYHEAD_HEAD_W,
   RULER_H,
@@ -28,6 +31,7 @@ import {
   TRACKS_LEFT_PAD,
   getTimelineDisplayContentWidth,
   getTimelineFitPps,
+  getTimelineLaneTop,
 } from "./timelineLayout";
 import { formatTime } from "../lib/time";
 import { usePlayerStore } from "../store/playerStore";
@@ -40,7 +44,178 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
+function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: string) {
+  const clip = host.querySelector<HTMLElement>(`[data-el-id="${clipId}"]`);
+  if (!clip) throw new Error(`Missing timeline clip ${clipId}`);
+  const trackContent = clip.parentElement;
+  if (!trackContent) throw new Error(`Missing content row for ${clipId}`);
+  const trackHeader = trackContent.previousElementSibling;
+  if (!(trackHeader instanceof HTMLElement)) throw new Error(`Missing track header for ${clipId}`);
+  const rulerTickLabel = Array.from(host.querySelectorAll("span")).find(
+    (node) => node.textContent === tickLabel,
+  );
+  const rulerTick = rulerTickLabel?.parentElement;
+  if (!rulerTick) throw new Error(`Missing ruler tick ${tickLabel}`);
+  const ruler = rulerTick.parentElement;
+  if (!ruler) throw new Error("Missing timeline ruler");
+  const rulerOrigin = ruler.previousElementSibling;
+  if (!(rulerOrigin instanceof HTMLElement)) throw new Error("Missing timeline ruler origin");
+  const playhead = Array.from(host.querySelectorAll<HTMLElement>("div")).find(
+    (node) => node.style.zIndex === "100",
+  );
+  if (!playhead) throw new Error("Missing timeline playhead");
+  return { clip, trackHeader, rulerTick, rulerOrigin, playhead };
+}
+
+function renderTimelineGeometry(clipId: string) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(React.createElement(Timeline));
+  });
+  return { host, root, ...getHorizontalGeometry(host, clipId, "00:10") };
+}
+
 describe("Timeline provider boundary", () => {
+  it("keeps all-collapsed horizontal positions at the 32px gutter", () => {
+    usePlayerStore.setState({
+      duration: 11,
+      timelineReady: true,
+      currentTime: 10,
+      zoomMode: "manual",
+      manualZoomPercent: 100,
+      elements: [{ id: "clip-1", tag: "div", start: 10, duration: 1, track: 0 }],
+    });
+
+    const { root, clip, trackHeader, rulerTick, rulerOrigin, playhead } =
+      renderTimelineGeometry("clip-1");
+
+    expect(trackHeader.style.width).toBe("32px");
+    expect(clip.style.left).toBe("1000px");
+    expect(clip.style.height).toBe("");
+    expect(clip.style.bottom).toBe(`${CLIP_Y}px`);
+    expect(rulerOrigin.style.width).toBe("32px");
+    expect(rulerTick.style.left).toBe("999.5px");
+    expect(playhead.style.left).toBe(`${1032 - PLAYHEAD_HEAD_W / 2}px`);
+    expect(playhead.style.width).toBe(`${PLAYHEAD_HEAD_W}px`);
+    expect(
+      resolveTimelineAssetDrop(
+        {
+          rectLeft: 100,
+          rectTop: 0,
+          scrollLeft: 0,
+          scrollTop: 0,
+          contentOrigin: GUTTER,
+          pixelsPerSecond: 100,
+          duration: 60,
+          trackOrder: [0],
+        },
+        1132,
+        100,
+      ).start,
+    ).toBe(10);
+    expect(getTimelineFitPps(640, 11, GUTTER)).toBe(10.1);
+
+    act(() => root.unmount());
+  });
+
+  it("reserves the label column and keeps expanded keyframes aligned with ruler time", () => {
+    usePlayerStore.setState({
+      duration: 20,
+      timelineReady: true,
+      currentTime: 10,
+      zoomMode: "manual",
+      manualZoomPercent: 100,
+      selectedElementId: "clip-1",
+      expandedClipIds: new Set(["clip-1"]),
+      elements: [
+        { id: "clip-1", label: "Hero card", tag: "div", start: 0, duration: 20, track: 0 },
+        { id: "clip-2", label: "Outro", tag: "div", start: 2, duration: 1, track: 1 },
+      ],
+      gsapAnimations: new Map([
+        [
+          "clip-1",
+          [
+            {
+              id: "position-tween",
+              targetSelector: "#clip-1",
+              method: "to",
+              position: 0,
+              duration: 20,
+              properties: {},
+              propertyGroup: "position",
+              keyframes: {
+                format: "percentage",
+                keyframes: [{ percentage: 50, properties: { x: 100 } }],
+              },
+            },
+          ],
+        ],
+      ]),
+    });
+
+    const { host, root, clip, trackHeader, rulerTick, rulerOrigin, playhead } =
+      renderTimelineGeometry("clip-1");
+    const { trackHeader: collapsedHeader } = getHorizontalGeometry(host, "clip-2", "00:10");
+    const diamond = host.querySelector<HTMLElement>(
+      '[data-keyframe-group="position"][data-keyframe-percentage="50"]',
+    );
+    if (!diamond) throw new Error("Missing expanded position keyframe");
+    const propertyLane = diamond.closest<HTMLElement>("[data-timeline-property-lane]");
+    if (!propertyLane) throw new Error("Missing flat position property lane");
+    const headerLane = trackHeader.querySelector<HTMLElement>('[data-property-group="position"]');
+    if (!headerLane) throw new Error("Missing position property header");
+    // Absolute x rebuilds from the content origin (the ruler-origin spacer),
+    // which now insets a GUTTER past the LABEL_COL_W label column so a 0%
+    // diamond has room to its left. The content row reaches that same origin via
+    // header (LABEL_COL_W) + its gutter margin, so ruler tick and diamond still
+    // coincide on the shared time x.
+    const contentOrigin = Number.parseFloat(rulerOrigin.style.width);
+    const rulerX = contentOrigin + Number.parseFloat(rulerTick.style.left) + 0.5;
+    const diamondX =
+      contentOrigin +
+      Number.parseFloat(propertyLane.style.left) +
+      Number.parseFloat(diamond.style.left) +
+      Number.parseFloat(diamond.style.width) / 2;
+
+    expect(clip.contains(propertyLane)).toBe(false);
+    expect(clip.style.height).toBe(`${TRACK_H - 2 * CLIP_Y}px`);
+    expect(clip.style.bottom).toBe("");
+    expect(propertyLane.style.top).toBe(`${getTimelineLaneTop(0)}px`);
+    expect(propertyLane.style.top).toBe(headerLane.style.top);
+    expect(propertyLane.style.background).toBe("");
+    expect(propertyLane.style.border).toBe("");
+    expect(propertyLane.style.borderRadius).toBe("");
+    expect(trackHeader.style.width).toBe(`${LABEL_COL_W}px`);
+    expect(rulerOrigin.style.width).toBe(`${LABEL_COL_W + GUTTER}px`);
+    expect(playhead.style.left).toBe(`${LABEL_COL_W + GUTTER + 1000 - PLAYHEAD_HEAD_W / 2}px`);
+    expect(diamondX).toBe(rulerX);
+    expect(rulerX).toBe(LABEL_COL_W + GUTTER + 1000);
+    expect(collapsedHeader.textContent).toContain("Outro");
+    expect(getTimelineFitPps(640, 20, LABEL_COL_W + GUTTER)).toBeCloseTo(
+      (640 - (LABEL_COL_W + GUTTER) - 2) / MIN_TIMELINE_EXTENT_S,
+    );
+    expect(
+      resolveTimelineAssetDrop(
+        {
+          rectLeft: 100,
+          rectTop: 0,
+          scrollLeft: 0,
+          scrollTop: 0,
+          contentOrigin: LABEL_COL_W + GUTTER,
+          pixelsPerSecond: 100,
+          duration: 60,
+          trackOrder: [0],
+        },
+        100 + LABEL_COL_W + GUTTER + 1000,
+        100,
+      ).start,
+    ).toBe(10);
+
+    act(() => root.unmount());
+  });
+
   // fallow-ignore-next-line code-duplication
   it("renders the public Timeline export without TimelineEditProvider", () => {
     const host = document.createElement("div");
@@ -153,8 +328,8 @@ describe("Timeline provider boundary", () => {
     });
 
     const row = button.parentElement?.parentElement;
-    // Row children: [sticky gutter, TRACKS_LEFT_PAD spacer, time-mapped content].
-    const trackContent = row?.children.item(2);
+    // Row children: [TimelineTrackHeader (sticky column), time-mapped content].
+    const trackContent = row?.children.item(1);
     expect(onToggleTrackHidden).toHaveBeenCalledWith(0, false);
     expect(trackContent).toBeInstanceOf(HTMLElement);
     if (!(trackContent instanceof HTMLElement)) {
@@ -212,6 +387,106 @@ describe("Timeline provider boundary", () => {
     });
 
     expect(onSeek).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("shows a disclosure only for grouped keyframes and toggles the track height", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    Object.defineProperty(host, "clientWidth", {
+      configurable: true,
+      value: 720,
+    });
+
+    usePlayerStore.setState({
+      duration: 4,
+      timelineReady: true,
+      elements: [
+        { id: "clip-1", tag: "div", start: 0, duration: 2, track: 0 },
+        { id: "clip-2", tag: "div", start: 2, duration: 2, track: 1 },
+      ],
+      keyframeCache: new Map([
+        [
+          "clip-1",
+          {
+            format: "percentage",
+            keyframes: [
+              { percentage: 0, properties: { x: 0 }, propertyGroup: "position" },
+              { percentage: 50, properties: { x: 100 }, propertyGroup: "position" },
+              { percentage: 100, properties: { opacity: 0 }, propertyGroup: "visual" },
+            ],
+          },
+        ],
+      ]),
+      gsapAnimations: new Map([
+        [
+          "clip-1",
+          [
+            {
+              id: "clip-1-position",
+              targetSelector: "#clip-1",
+              method: "to",
+              position: 0,
+              duration: 2,
+              properties: {},
+              propertyGroup: "position",
+              keyframes: {
+                format: "percentage",
+                keyframes: [
+                  { percentage: 0, properties: { x: 0 } },
+                  { percentage: 50, properties: { x: 100 } },
+                ],
+              },
+            },
+            {
+              id: "clip-1-visual",
+              targetSelector: "#clip-1",
+              method: "to",
+              position: 0,
+              duration: 2,
+              properties: {},
+              propertyGroup: "visual",
+              keyframes: {
+                format: "percentage",
+                keyframes: [{ percentage: 100, properties: { opacity: 0 } }],
+              },
+            },
+          ],
+        ],
+      ]),
+    });
+
+    const root = createRoot(host);
+    act(() => {
+      root.render(React.createElement(Timeline));
+    });
+
+    // Keyframed clip-1 is expanded by default (AE/Figma default); its disclosure
+    // lives in the left column. clip-2 has no keyframes so it never shows one.
+    const collapseButton = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Collapse clip-1 keyframes"]',
+    );
+    expect(collapseButton).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Expand clip-2 keyframes"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Collapse clip-2 keyframes"]')).toBeNull();
+
+    const clip = host.querySelector<HTMLElement>('[data-el-id="clip-1"]');
+    const row = clip?.parentElement?.parentElement;
+    expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set(["clip-1"]));
+    expect(row?.style.height).toBe(`${TRACK_H + 2 * LANE_H}px`);
+
+    // Collapsing sticks (does not bounce back open via auto-expand).
+    act(() => collapseButton?.click());
+    expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set());
+    expect(row?.style.height).toBe(`${TRACK_H}px`);
+
+    const expandButton = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Expand clip-1 keyframes"]',
+    );
+    expect(expandButton).not.toBeNull();
+    act(() => expandButton?.click());
+    expect(usePlayerStore.getState().expandedClipIds).toEqual(new Set(["clip-1"]));
+    expect(row?.style.height).toBe(`${TRACK_H + 2 * LANE_H}px`);
     act(() => root.unmount());
   });
 
@@ -461,23 +736,29 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   it("computes fit pps against the 60s floor for short compositions", () => {
     // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
     // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
-    const pps = getTimelineFitPps(viewport, 10);
-    expect(pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S);
-    expect(10 * pps).toBeCloseTo((viewport - GUTTER - TRACKS_LEFT_PAD - 2) / 6);
+    const pps = getTimelineFitPps(viewport, 10, GUTTER + TRACKS_LEFT_PAD);
+    expect(pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S);
+    expect(10 * pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / 6);
   });
 
   it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
-    expect(getTimelineFitPps(viewport, 60)).toBeCloseTo(
-      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (60 * FIT_ZOOM_HEADROOM),
+    expect(getTimelineFitPps(viewport, 60, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
+      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / (60 * FIT_ZOOM_HEADROOM),
     );
-    expect(getTimelineFitPps(viewport, 120)).toBeCloseTo(
-      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / (120 * FIT_ZOOM_HEADROOM),
+    expect(getTimelineFitPps(viewport, 120, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
+      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / (120 * FIT_ZOOM_HEADROOM),
+    );
+  });
+
+  it("subtracts the expanded keyframe label column before fitting headroom", () => {
+    expect(getTimelineFitPps(viewport, 120, LABEL_COL_W)).toBeCloseTo(
+      (viewport - LABEL_COL_W - 2) / (120 * FIT_ZOOM_HEADROOM),
     );
   });
 
   it("leaves CapCut-style trailing headroom: the comp ends at 1/1.2 of the usable width", () => {
-    const usable = viewport - GUTTER - TRACKS_LEFT_PAD - 2;
-    const pps = getTimelineFitPps(viewport, 120);
+    const usable = viewport - (GUTTER + TRACKS_LEFT_PAD) - 2;
+    const pps = getTimelineFitPps(viewport, 120, GUTTER + TRACKS_LEFT_PAD);
     // Composition content occupies usable/1.2 px; the remaining ~17% is empty
     // droppable ruler/lane surface past the end.
     expect(120 * pps).toBeCloseTo(usable / FIT_ZOOM_HEADROOM);
@@ -485,17 +766,17 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
   });
 
   it("falls back to 100 pps before the viewport is measured", () => {
-    expect(getTimelineFitPps(0, 10)).toBe(100);
-    expect(getTimelineFitPps(GUTTER + TRACKS_LEFT_PAD, 10)).toBe(100);
-    expect(getTimelineFitPps(Number.NaN, 10)).toBe(100);
+    expect(getTimelineFitPps(0, 10, GUTTER)).toBe(100);
+    expect(getTimelineFitPps(GUTTER, 10, GUTTER)).toBe(100);
+    expect(getTimelineFitPps(Number.NaN, 10, GUTTER)).toBe(100);
   });
 
   it("uses the floor for zero/invalid durations", () => {
-    expect(getTimelineFitPps(viewport, 0)).toBeCloseTo(
-      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
+    expect(getTimelineFitPps(viewport, 0, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
+      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S,
     );
-    expect(getTimelineFitPps(viewport, Number.NaN)).toBeCloseTo(
-      (viewport - GUTTER - TRACKS_LEFT_PAD - 2) / MIN_TIMELINE_EXTENT_S,
+    expect(getTimelineFitPps(viewport, Number.NaN, GUTTER + TRACKS_LEFT_PAD)).toBeCloseTo(
+      (viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S,
     );
   });
 });
@@ -504,14 +785,24 @@ describe("getTimelineDisplayContentWidth", () => {
   it("always spans at least MIN_TIMELINE_EXTENT_S seconds of content", () => {
     // 10s of content at 20 pps = 200px; the floor keeps 60s (1200px) rendered.
     expect(
-      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 400, pps: 20 }),
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 200,
+        viewportWidth: 400,
+        contentOrigin: GUTTER,
+        pps: 20,
+      }),
     ).toBe(MIN_TIMELINE_EXTENT_S * 20);
   });
 
   it("still fills the viewport when that is larger than the 60s floor", () => {
     expect(
-      getTimelineDisplayContentWidth({ trackContentWidth: 200, viewportWidth: 2000, pps: 5 }),
-    ).toBe(2000 - GUTTER - TRACKS_LEFT_PAD - 2);
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 200,
+        viewportWidth: 2000,
+        contentOrigin: GUTTER + TRACKS_LEFT_PAD,
+        pps: 5,
+      }),
+    ).toBe(2000 - (GUTTER + TRACKS_LEFT_PAD) - 2);
   });
 
   it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
@@ -519,6 +810,7 @@ describe("getTimelineDisplayContentWidth", () => {
       getTimelineDisplayContentWidth({
         trackContentWidth: 500,
         viewportWidth: 400,
+        contentOrigin: GUTTER,
         pps: 5,
         dragGhostEndPx: 5000,
       }),
@@ -530,6 +822,7 @@ describe("getTimelineDisplayContentWidth", () => {
       getTimelineDisplayContentWidth({
         trackContentWidth: 500,
         viewportWidth: 400,
+        contentOrigin: GUTTER,
         pps: 5,
         resizeGhostEndPx: 4200,
       }),
@@ -538,7 +831,12 @@ describe("getTimelineDisplayContentWidth", () => {
 
   it("keeps long content authoritative", () => {
     expect(
-      getTimelineDisplayContentWidth({ trackContentWidth: 9000, viewportWidth: 400, pps: 50 }),
+      getTimelineDisplayContentWidth({
+        trackContentWidth: 9000,
+        viewportWidth: 400,
+        contentOrigin: GUTTER,
+        pps: 50,
+      }),
     ).toBe(9000);
   });
 });
@@ -565,7 +863,7 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
       getTimelineScrollLeftForZoomAnchor({
         pointerX: 300,
         currentScrollLeft: 200,
-        gutter: 32,
+        contentOrigin: GUTTER,
         currentPixelsPerSecond: 10,
         nextPixelsPerSecond: 20,
         duration: 120,
@@ -578,7 +876,7 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
       getTimelineScrollLeftForZoomAnchor({
         pointerX: 300,
         currentScrollLeft: 0,
-        gutter: 32,
+        contentOrigin: GUTTER,
         currentPixelsPerSecond: 20,
         nextPixelsPerSecond: 5,
         duration: 120,
@@ -591,7 +889,7 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
       getTimelineScrollLeftForZoomAnchor({
         pointerX: 300,
         currentScrollLeft: 120,
-        gutter: 32,
+        contentOrigin: GUTTER,
         currentPixelsPerSecond: 0,
         nextPixelsPerSecond: 20,
         duration: 120,
@@ -601,27 +899,46 @@ describe("getTimelineScrollLeftForZoomAnchor", () => {
 });
 
 describe("getTimelinePlayheadLeft", () => {
-  it("offsets the wrapper by half the head width so the line CENTER = GUTTER + TRACKS_LEFT_PAD + t*pps", () => {
+  it("offsets the wrapper by half the head width so the line CENTER = contentOrigin + t*pps", () => {
     // Wrapper left + PLAYHEAD_HEAD_W/2 (where the 1px line is centered) must
-    // equal GUTTER + TRACKS_LEFT_PAD + t*pps at any zoom.
-    expect(getTimelinePlayheadLeft(4, 20) + PLAYHEAD_HEAD_W / 2).toBe(
+    // equal contentOrigin + t*pps at any zoom, for both the padded default
+    // origin and the plain gutter origin.
+    expect(getTimelinePlayheadLeft(4, 20, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
       GUTTER + TRACKS_LEFT_PAD + 4 * 20,
     );
-    expect(getTimelinePlayheadLeft(10, 7.5) + PLAYHEAD_HEAD_W / 2).toBe(
+    expect(getTimelinePlayheadLeft(10, 7.5, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
       GUTTER + TRACKS_LEFT_PAD + 75,
+    );
+    expect(getTimelinePlayheadLeft(4, 20, GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 4 * 20);
+    expect(getTimelinePlayheadLeft(10, 7.5, GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + 75);
+  });
+
+  it("uses the expanded keyframe label column as the playhead origin", () => {
+    expect(getTimelinePlayheadLeft(4, 20, LABEL_COL_W) + PLAYHEAD_HEAD_W / 2).toBe(
+      LABEL_COL_W + 4 * 20,
     );
   });
 
   it("centers the line exactly on the left pad's end (the 00:00 tick) at t = 0", () => {
-    expect(getTimelinePlayheadLeft(0, 20) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER + TRACKS_LEFT_PAD);
+    expect(getTimelinePlayheadLeft(0, 20, GUTTER + TRACKS_LEFT_PAD) + PLAYHEAD_HEAD_W / 2).toBe(
+      GUTTER + TRACKS_LEFT_PAD,
+    );
+  });
+
+  it("centers the line exactly on the gutter (the 00:00 tick) at t = 0", () => {
+    expect(getTimelinePlayheadLeft(0, 20, GUTTER) + PLAYHEAD_HEAD_W / 2).toBe(GUTTER);
   });
 
   it("guards invalid input", () => {
-    expect(getTimelinePlayheadLeft(Number.NaN, 20)).toBe(
+    expect(getTimelinePlayheadLeft(Number.NaN, 20, GUTTER + TRACKS_LEFT_PAD)).toBe(
       GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
     );
-    expect(getTimelinePlayheadLeft(4, Number.NaN)).toBe(
+    expect(getTimelinePlayheadLeft(4, Number.NaN, GUTTER + TRACKS_LEFT_PAD)).toBe(
       GUTTER + TRACKS_LEFT_PAD - PLAYHEAD_HEAD_W / 2,
+    );
+    expect(getTimelinePlayheadLeft(Number.NaN, 20, GUTTER)).toBe(GUTTER - PLAYHEAD_HEAD_W / 2);
+    expect(getTimelinePlayheadLeft(4, Number.NaN, LABEL_COL_W)).toBe(
+      LABEL_COL_W - PLAYHEAD_HEAD_W / 2,
     );
   });
 });
@@ -686,14 +1003,15 @@ describe("resolveTimelineAssetDrop", () => {
           rectTop: 200,
           scrollLeft: 0,
           scrollTop: 0,
+          contentOrigin: GUTTER,
           pixelsPerSecond: 100,
           duration: 10,
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        480, // rectLeft(100) + GUTTER + TRACKS_LEFT_PAD + 3s*100pps
-        // clientY updated for TRACKS_TOP_PAD=72: rectTop(200) + RULER_H(24) +
-        // TRACKS_TOP_PAD(72) + TRACK_H(48) + TRACK_H/2(24) = 368 → row 1 → track 3.
+        432, // rectLeft(100) + GUTTER(32) + 3s*100pps  (contentOrigin = GUTTER)
+        // clientY: rectTop(200) + RULER_H(24) + TRACKS_TOP_PAD(72) + TRACK_H(48)
+        // + TRACK_H/2(24) = 368 → row 1 → track 3.
         368,
       ),
     ).toEqual({ start: 3, track: 3 });
@@ -707,12 +1025,13 @@ describe("resolveTimelineAssetDrop", () => {
           rectTop: 200,
           scrollLeft: 0,
           scrollTop: 0,
+          contentOrigin: GUTTER,
           pixelsPerSecond: 100,
           duration: 10,
           trackHeight: 72,
           trackOrder: [0, 3, 7],
         },
-        250 + TRACKS_LEFT_PAD,
+        250, // rectLeft(100) + GUTTER(32) + 1.18s*100pps  (contentOrigin = GUTTER)
         600,
       ),
     ).toEqual({ start: 1.18, track: 8 });

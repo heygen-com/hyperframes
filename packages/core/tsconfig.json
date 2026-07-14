@@ -18,7 +18,8 @@
     "src/runtime/mediaVolumeEnvelope.ts",
     "src/runtime/positionEdits.ts",
     "src/runtime/protocol.ts",
-    "src/runtime/stackingContext.ts"
+    "src/runtime/stackingContext.ts",
+    "src/runtime/wiggleEase.ts"
   ],
   "include": ["src/**/*"],
   "exclude": [

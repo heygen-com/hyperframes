@@ -101,6 +101,28 @@ describe("useGsapKeyframeOps — resizeKeyframedTween", () => {
 });
 
 describe("useGsapKeyframeOps — keyframe transaction options", () => {
+  it("routes a flat-lane add through the add-keyframe writer mutation", async () => {
+    const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+      ok: true,
+    }));
+    const api = renderKeyframeOps({ commitMutation, trackGsapSaveFailure: vi.fn() });
+
+    await act(async () => {
+      await api.addKeyframeBatch(selection, "box-to-0-position", 50, { x: 210 });
+    });
+
+    expect(commitMutation).toHaveBeenCalledWith(
+      selection,
+      {
+        type: "add-keyframe",
+        animationId: "box-to-0-position",
+        percentage: 50,
+        properties: { x: 210 },
+      },
+      { label: "Add keyframe at 50%", softReload: true },
+    );
+  });
+
   it("soft-reloads a standalone convert when the SDK path is unavailable", async () => {
     const commitMutation = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
       ok: true,

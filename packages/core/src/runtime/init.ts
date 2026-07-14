@@ -49,6 +49,7 @@ import type {
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
+import { installStudioCustomEase } from "./customEase";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -173,7 +174,18 @@ export function initSandboxRuntimeModular(): void {
       // a stray warning is preferable to a broken runtime
     }
   };
+  const ensureStudioCustomEase = (): void => {
+    const g = window.gsap;
+    const w = window as Window & { __hfCustomEaseRegistered?: boolean };
+    if (!g || w.__hfCustomEaseRegistered) return;
+    try {
+      if (installStudioCustomEase(g)) w.__hfCustomEaseRegistered = true;
+    } catch {
+      // falling back to GSAP's default ease is preferable to a broken runtime
+    }
+  };
   ensureAutoMarkerNoop();
+  ensureStudioCustomEase();
   // Normalize html/body so browser defaults (8px margin, white background) never
   // bleed into renders as white bars. Runs in both preview and render contexts,
   // eliminating the preview/render parity gap that existed when only the React
