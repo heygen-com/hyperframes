@@ -1,9 +1,16 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { ChildProcess, execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
 import { lintProject } from "./project.js";
+
+// Keep project lint tests independent of the host's ffprobe installation.
+vi.mock("node:child_process", () => {
+  const mocked = { ChildProcess: class {}, execFile: vi.fn(), execSync: vi.fn() };
+  return { ...mocked, default: mocked };
+});
 
 function tmpProject(name: string): string {
   return mkdtempSync(join(tmpdir(), `hf-lint-test-${name}-`));
@@ -233,5 +240,165 @@ describe("template shell style sources", () => {
       findings.filter((finding) => finding.code === "composition_self_attribute_selector"),
     ).toHaveLength(3);
     expect(findings.some((finding) => finding.code === "texture_mask_asset_not_found")).toBe(true);
+  });
+});
+
+describe("hevc_preview_codec", () => {
+  interface ProbeStream {
+    codec_name: string;
+    codec_tag_string: string;
+  }
+
+  const mockExecFile = vi.mocked(execFile);
+
+  // Any real file works as a stand-in "ffprobe" path — execFile itself is
+  // mocked below, so it's never actually spawned.
+  const FAKE_FFPROBE_PATH = process.execPath;
+
+  function mockFfprobeStreams(streamsByFile: Record<string, ProbeStream[]>): void {
+    mockExecFile.mockImplementation((_file, args, _options, callback) => {
+      const filePath = args[args.length - 1] ?? "";
+      callback(
+        null,
+        Buffer.from(JSON.stringify({ streams: streamsByFile[filePath] ?? [] })),
+        Buffer.alloc(0),
+      );
+      return new ChildProcess();
+    });
+  }
+
+  function videoHtml(...videoSrcs: string[]): string {
+    const videoTags = videoSrcs
+      .map(
+        (src, i) =>
+          `<video id="v${i}" class="clip" src="${src}" muted data-start="${i * 5}" data-duration="5"></video>`,
+      )
+      .join("\n    ");
+    return `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    ${videoTags}
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  }
+
+  function makeVideoProject(
+    videoSrc: string,
+    writeVideoFile = true,
+  ): { project: string; videoAbsPath: string } {
+    const project = makeProject(videoHtml(videoSrc));
+    const videoAbsPath = join(project, videoSrc);
+    if (writeVideoFile) writeFileSync(videoAbsPath, "fake video bytes");
+    return { project, videoAbsPath };
+  }
+
+  async function hevcFindings(project: string): Promise<HyperframeLintFinding[]> {
+    const { results } = await lintProject(project);
+    return results.flatMap((r) => r.result.findings).filter((f) => f.code === "hevc_preview_codec");
+  }
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_FFPROBE_PATH = FAKE_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  afterEach(() => {
+    delete process.env.HYPERFRAMES_FFPROBE_PATH;
+    mockExecFile.mockReset();
+  });
+
+  it("flags an HEVC video with exactly one info finding naming the file", async () => {
+    const { project, videoAbsPath } = makeVideoProject("clip.mp4");
+    mockFfprobeStreams({
+      [videoAbsPath]: [{ codec_name: "hevc", codec_tag_string: "hvc1" }],
+    });
+
+    const result = await lintProject(project);
+    const findings = result.results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "hevc_preview_codec");
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe("info");
+    expect(findings[0]?.code).toBe("hevc_preview_codec");
+    expect(findings[0]?.message).toContain("clip.mp4");
+    expect(findings[0]?.message).toContain("requires a browser with HEVC support");
+    expect(result.totalErrors).toBe(0);
+    expect(result.results[0]?.result.ok).toBe(true);
+  });
+
+  it('flags an hev1-tagged HEVC video the same way (ffprobe reports codec_name "hevc" regardless of the container fourcc)', async () => {
+    const { project, videoAbsPath } = makeVideoProject("clip-hev1.mp4");
+    mockFfprobeStreams({
+      [videoAbsPath]: [{ codec_name: "hevc", codec_tag_string: "hev1" }],
+    });
+
+    const findings = await hevcFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("clip-hev1.mp4");
+  });
+
+  it("does not flag an H.264 video", async () => {
+    const { project, videoAbsPath } = makeVideoProject("clip.mp4");
+    mockFfprobeStreams({
+      [videoAbsPath]: [{ codec_name: "h264", codec_tag_string: "avc1" }],
+    });
+
+    const findings = await hevcFindings(project);
+
+    expect(findings).toHaveLength(0);
+  });
+
+  it("does not flag anything, and lint completes normally, when ffprobe cannot be resolved", async () => {
+    const { project } = makeVideoProject("clip.mp4");
+    process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
+
+    const { results, totalErrors } = await lintProject(project);
+
+    const findings = results.flatMap((r) => r.result.findings);
+    expect(findings.some((f) => f.code === "hevc_preview_codec")).toBe(false);
+    expect(mockExecFile).not.toHaveBeenCalled();
+    expect(totalErrors).toBe(0);
+  });
+
+  it("silently skips the finding when ffprobe errors or times out", async () => {
+    const { project } = makeVideoProject("clip.mp4");
+    mockExecFile.mockImplementation((_file, _args, _options, callback) => {
+      callback(new Error("ffprobe timed out"), Buffer.alloc(0), Buffer.alloc(0));
+      return new ChildProcess();
+    });
+
+    const { results, totalErrors } = await lintProject(project);
+
+    const findings = results.flatMap((entry) => entry.result.findings);
+    expect(findings.some((finding) => finding.code === "hevc_preview_codec")).toBe(false);
+    expect(totalErrors).toBe(0);
+  });
+
+  it("does not probe or flag a missing video file — missing_local_asset covers it instead", async () => {
+    const { project } = makeVideoProject("missing.mp4", false);
+
+    const { results } = await lintProject(project);
+
+    const findings = results.flatMap((r) => r.result.findings);
+    expect(findings.some((f) => f.code === "hevc_preview_codec")).toBe(false);
+    expect(findings.some((f) => f.code === "missing_local_asset")).toBe(true);
+    expect(mockExecFile).not.toHaveBeenCalled();
+  });
+
+  it("probes the same HEVC file once when referenced twice (per-run cache)", async () => {
+    const project = makeProject(videoHtml("clip.mp4", "clip.mp4"));
+    const videoAbsPath = join(project, "clip.mp4");
+    writeFileSync(videoAbsPath, "fake video bytes");
+    mockFfprobeStreams({
+      [videoAbsPath]: [{ codec_name: "hevc", codec_tag_string: "hvc1" }],
+    });
+
+    const findings = await hevcFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(mockExecFile).toHaveBeenCalledTimes(1);
   });
 });
