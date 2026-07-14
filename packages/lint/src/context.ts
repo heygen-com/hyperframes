@@ -1,11 +1,5 @@
 import type { HyperframeLintFinding, HyperframeLinterOptions } from "./types";
-import {
-  parseHtmlStructure,
-  findRootTag,
-  collectCompositionIds,
-  readAttr,
-  stripHtmlComments,
-} from "./utils";
+import { findRootTag, collectCompositionIds, readAttr, resolveRootStructure } from "./utils";
 import type { OpenTag, ExtractedBlock } from "./utils";
 
 export type { OpenTag, ExtractedBlock };
@@ -19,6 +13,7 @@ export type LintContext = {
   compositionIds: Set<string>;
   rootTag: OpenTag | null;
   rootCompositionId: string | null;
+  isTemplateWrappedRoot: boolean;
   options: HyperframeLinterOptions;
 };
 
@@ -27,31 +22,7 @@ export type { HyperframeLintFinding };
 
 export function buildLintContext(html: string, options: HyperframeLinterOptions = {}): LintContext {
   const rawSource = html || "";
-  // Strip HTML comments before scanning so a commented-out <template> or tag can't
-  // hijack the boundary match below. Linear + fixpoint (see stripHtmlComments) to
-  // stay ReDoS-free and catch markers that re-form when a comment is removed.
-  let source = stripHtmlComments(rawSource);
-  const initialStructure = parseHtmlStructure(source);
-  const templateTags = initialStructure.tags.filter(
-    (tag) => tag.name === "template" && tag.closeIndex != null,
-  );
-  let sourceWithoutTemplates = source;
-  for (const template of [...templateTags].reverse()) {
-    const end = template.endIndex ?? template.index;
-    sourceWithoutTemplates =
-      sourceWithoutTemplates.slice(0, template.index) +
-      " ".repeat(end - template.index) +
-      sourceWithoutTemplates.slice(end);
-  }
-  // Some sub-composition files are HTML shells whose real root lives inside a
-  // <template>. Keep nested templates intact when the visible document already
-  // has a composition root; only unwrap when no root exists outside templates.
-  const template = templateTags[0];
-  let structure = initialStructure;
-  if (template && !findRootTag(sourceWithoutTemplates)) {
-    source = source.slice(template.index + template.raw.length, template.closeIndex);
-    structure = parseHtmlStructure(source);
-  }
+  const { source, structure, isTemplateWrappedRoot } = resolveRootStructure(rawSource);
 
   const tags = structure.tags;
   const styles = [
@@ -77,6 +48,7 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
     compositionIds,
     rootTag,
     rootCompositionId,
+    isTemplateWrappedRoot,
     options,
   };
 }

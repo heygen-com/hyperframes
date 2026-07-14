@@ -384,6 +384,11 @@
       "packages/studio/src/hooks/useGsapSelectionHandlers.ts",
       // gsapParser.ts: recast/babel GSAP writer — intentional duplication between
       // recast and acorn parallel implementations (pre-existing, moved from core).
+      // project.test.ts: pre-existing parallel fixtures with
+      // packages/cli/src/utils/lintProject.test.ts from when project linting
+      // lived in the cli package; this change only prepends new template-root
+      // tests, and the line shift makes fallow re-flag the old clone.
+      "packages/lint/src/project.test.ts",
       "packages/parsers/src/gsapParser.ts",
       // hfIds.ts: 7-line clone with sdk/engine/mutate.ts — pre-existing duplication
       // from when hfIds lived in packages/core/src/parsers/. Moving the file to the

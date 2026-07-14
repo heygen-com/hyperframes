@@ -7,6 +7,7 @@ import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-compositi
 import { parseHTML } from "linkedom";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import type { HyperframeLintFinding, HyperframeLintResult } from "./types.js";
+import { resolveRootStructure } from "./utils.js";
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
@@ -464,7 +465,11 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     for (const file of rootHtmlFiles) {
       if (file === "caption-skin.html") continue;
       const content = readFileSync(join(projectDir, file), "utf-8");
-      if (/data-composition-id/i.test(content)) {
+      const isProjectEntry = file === "index.html";
+      if (
+        /data-composition-id/i.test(content) &&
+        (isProjectEntry || !resolveRootStructure(content).isTemplateWrappedRoot)
+      ) {
         rootCompositions.push(file);
       }
     }
