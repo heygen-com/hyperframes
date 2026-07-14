@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import i18n from "../i18n";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { useExpandedTimelineElements } from "../player/hooks/useExpandedTimelineElements";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -267,7 +268,7 @@ export function useTimelineTrackVisibilityEditing({
   return useCallback(
     async (track: number, hidden: boolean) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -289,7 +290,9 @@ export function useTimelineTrackVisibilityEditing({
       } catch (error) {
         console.error("[Timeline] Failed to toggle track visibility", error);
         const message =
-          error instanceof Error ? error.message : "Failed to toggle track visibility";
+          error instanceof Error
+            ? error.message
+            : i18n.t("hooks.timeline.toggleTrackVisibilityFailed");
         showToast(message);
       }
     },
@@ -328,7 +331,7 @@ export function useTimelineElementVisibilityEditing({
   return useCallback(
     async (elementKey: string, hidden: boolean) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -350,7 +353,9 @@ export function useTimelineElementVisibilityEditing({
       } catch (error) {
         console.error("[Timeline] Failed to toggle element visibility", error);
         const message =
-          error instanceof Error ? error.message : "Failed to toggle element visibility";
+          error instanceof Error
+            ? error.message
+            : i18n.t("hooks.timeline.toggleElementVisibilityFailed");
         showToast(message);
       }
     },

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { EASE_CURVES, EASE_LABELS, parseCustomEaseFromString } from "./gsapAnimationConstants";
 import { roundToCenti } from "../../utils/rounding";
 
@@ -120,6 +121,7 @@ export function EaseCurveSection({
   duration?: number;
   onCustomEaseCommit: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   const isCustom = ease.startsWith("custom(");
   const curveFromPreset = EASE_CURVES[ease];
   const customPoints = isCustom ? parseCustomEaseFromString(ease) : null;
@@ -211,20 +213,22 @@ export function EaseCurveSection({
   const bottom = yToSvg(0);
   const left = xToSvg(0);
   const right = xToSvg(1);
-  const label = isCustom ? "Custom curve" : (EASE_LABELS[ease] ?? ease);
+  const label = isCustom ? t("propertyPanel.customCurve") : (EASE_LABELS[ease] ?? ease);
   const bezierText = `${x1} · ${y1} · ${x2} · ${y2}`;
 
   return (
     <div className="rounded-lg bg-neutral-900/50 p-2">
       <EasePresetGrid currentEase={ease} onSelect={(name) => onCustomEaseCommit(name)} />
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-medium text-neutral-500">Speed curve</span>
+        <span className="text-[10px] font-medium text-neutral-500">
+          {t("editor.easeCurve.speedCurve")}
+        </span>
         <button
           type="button"
           onClick={play}
           className="rounded px-1.5 py-0.5 text-[10px] font-medium text-panel-accent transition-colors hover:bg-panel-accent/10"
         >
-          {progress !== null ? "Playing…" : "Preview"}
+          {progress !== null ? t("editor.easeCurve.playing") : t("editor.easeCurve.preview")}
         </button>
       </div>
       <div
@@ -348,15 +352,15 @@ export function EaseCurveSection({
       </div>
       {/* Axis + value readout */}
       <div className="mt-1.5 flex items-center justify-between px-0.5 text-[9px] text-neutral-600">
-        <span>{duration != null && duration > 0 ? "0s" : "start"}</span>
-        <span className="tracking-wide text-neutral-500">time →</span>
-        <span>{duration != null && duration > 0 ? `${duration}s` : "end"}</span>
+        <span>{duration != null && duration > 0 ? "0s" : t("editor.easeCurve.start")}</span>
+        <span className="tracking-wide text-neutral-500">{t("editor.easeCurve.timeArrow")}</span>
+        <span>{duration != null && duration > 0 ? `${duration}s` : t("editor.easeCurve.end")}</span>
       </div>
       <div className="mt-1 flex items-center justify-between px-0.5">
         <span className="text-[10px] text-neutral-400">{label}</span>
         <span
           className="font-mono text-[9px] tracking-tight text-neutral-600"
-          title="cubic-bezier control points"
+          title={t("editor.easeCurve.cubicBezierTitle")}
         >
           {bezierText}
         </span>

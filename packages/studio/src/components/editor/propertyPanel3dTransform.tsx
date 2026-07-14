@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { DomEditSelection } from "./domEditingTypes";
 import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
 import { MetricField } from "./propertyPanelPrimitives";
@@ -71,6 +72,7 @@ function Cube3dControl({
   onKeyframe?: () => void;
   keyframed?: boolean;
 }) {
+  const { t } = useTranslation();
   const pose: CubePose = {
     rotationX: gsapRuntimeValues.rotationX ?? 0,
     rotationY: gsapRuntimeValues.rotationY ?? 0,
@@ -175,7 +177,7 @@ function Cube3dControl({
           keyframed={keyframed}
         />
         <p className="mt-1 text-center text-[9px] leading-snug text-neutral-600">
-          Drag to tilt · Shift-drag to roll · Scroll for depth
+          {t("propertyPanel.dragToTilt")}
         </p>
       </div>
     </div>
@@ -295,6 +297,7 @@ export function PropertyPanel3dTransform({
   onConvertToKeyframes,
   onLivePreviewProps,
 }: PropertyPanel3dTransformProps) {
+  const { t } = useTranslation();
   // Expanded by default — the cube gizmo is the headline of this panel, so show
   // it up front rather than hiding it behind a collapsed header.
   const [collapsed, setCollapsed] = useState(false);
@@ -320,7 +323,7 @@ export function PropertyPanel3dTransform({
         onClick={() => setCollapsed((v) => !v)}
         className="mb-2 flex w-full items-center justify-between text-[10px] font-medium uppercase tracking-wider text-neutral-600 hover:text-neutral-400"
       >
-        <span>3D Transform</span>
+        <span>{t("propertyPanel.transform3d")}</span>
         <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor" aria-hidden>
           {collapsed ? <path d="M3 2l4 3-4 3z" /> : <path d="M2 3l3 4 3-4z" />}
         </svg>
@@ -350,7 +353,7 @@ export function PropertyPanel3dTransform({
           <div className={RESPONSIVE_GRID}>
             <Transform3dField
               ctx={ctx}
-              label="Z"
+              label={t("propertyPanel.z")}
               prop="z"
               scrub
               format={formatPxMetricValue}
@@ -359,7 +362,7 @@ export function PropertyPanel3dTransform({
             />
             <Transform3dField
               ctx={ctx}
-              label="Scale"
+              label={t("propertyPanel.scale")}
               prop="scale"
               scrub
               format={(v) => String(v)}
@@ -368,7 +371,7 @@ export function PropertyPanel3dTransform({
             />
             <Transform3dField
               ctx={ctx}
-              label="RotX"
+              label={t("propertyPanel.rotX")}
               prop="rotationX"
               format={(v) => `${v}°`}
               parse={parseDeg}
@@ -376,7 +379,7 @@ export function PropertyPanel3dTransform({
             />
             <Transform3dField
               ctx={ctx}
-              label="RotY"
+              label={t("propertyPanel.rotY")}
               prop="rotationY"
               format={(v) => `${v}°`}
               parse={parseDeg}
@@ -384,7 +387,7 @@ export function PropertyPanel3dTransform({
             />
             <Transform3dField
               ctx={ctx}
-              label="RotZ"
+              label={t("propertyPanel.rotZ")}
               prop="rotationZ"
               format={(v) => `${v}°`}
               parse={parseDeg}
@@ -392,7 +395,7 @@ export function PropertyPanel3dTransform({
             />
             <Transform3dField
               ctx={ctx}
-              label="Perspective"
+              label={t("propertyPanel.perspective")}
               prop="transformPerspective"
               scrub
               format={formatPxMetricValue}

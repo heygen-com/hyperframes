@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import i18n from "../i18n";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
@@ -97,13 +98,13 @@ export function useClipboard({
       }
 
       if (!html) {
-        showToast("Unable to copy this element.", "info");
+        showToast(i18n.t("hooks.clipboard.unableToCopy"), "info");
         return false;
       }
 
       const payload: ClipboardPayload = { kind: "timeline-clip", html, sourceFile: targetPath };
       clipboardRef.current = payload;
-      showToast("Copied clip", "info");
+      showToast(i18n.t("hooks.clipboard.copiedClip"), "info");
       return true;
     }
 
@@ -112,7 +113,7 @@ export function useClipboard({
     if (domSelection) {
       const html = getElementOuterHtml(previewIframeRef, domSelection);
       if (!html) {
-        showToast("Unable to copy this element.", "info");
+        showToast(i18n.t("hooks.clipboard.unableToCopy"), "info");
         return false;
       }
       const targetPath = domSelection.sourceFile || activeCompPath || "index.html";
@@ -124,7 +125,7 @@ export function useClipboard({
         originSelectorIndex: domSelection.selectorIndex,
       };
       clipboardRef.current = payload;
-      showToast("Copied element", "info");
+      showToast(i18n.t("hooks.clipboard.copiedElement"), "info");
       return true;
     }
 
@@ -134,7 +135,7 @@ export function useClipboard({
   const handlePaste = useCallback(async () => {
     const payload = clipboardRef.current;
     if (!payload) {
-      showToast("Nothing to paste.", "info");
+      showToast(i18n.t("hooks.clipboard.nothingToPaste"), "info");
       return;
     }
     const pid = projectIdRef.current;
@@ -181,9 +182,15 @@ export function useClipboard({
       });
 
       reloadPreview();
-      showToast(payload.kind === "timeline-clip" ? "Pasted clip" : "Pasted element", "info");
+      showToast(
+        payload.kind === "timeline-clip"
+          ? i18n.t("hooks.clipboard.pastedClip")
+          : i18n.t("hooks.clipboard.pastedElement"),
+        "info",
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to paste";
+      const message =
+        error instanceof Error ? error.message : i18n.t("hooks.clipboard.pasteFailed");
       showToast(message);
     }
   }, [

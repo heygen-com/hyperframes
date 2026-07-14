@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { GsapPercentageKeyframe } from "@hyperframes/core/gsap-parser";
 import { EASE_LABELS } from "./gsapAnimationConstants";
 import { EaseCurveSection } from "./EaseCurveSection";
@@ -56,16 +57,17 @@ export function KeyframeEaseList({
   /** Apply one ease to every segment at once (clears per-segment overrides). */
   onApplyAll?: (ease: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         <p className="text-[9px] font-semibold uppercase tracking-wider text-neutral-500">
-          Per-keyframe easing
+          {t("editor.keyframeEase.perKeyframeEasing")}
         </p>
         {onApplyAll && (
           <select
-            aria-label="Apply one ease to all segments"
-            title="Apply one ease to every segment (clears per-segment overrides)"
+            aria-label={t("editor.keyframeEase.applyAllAria")}
+            title={t("editor.keyframeEase.applyAllTitle")}
             value=""
             onChange={(e) => {
               const next = e.target.value;
@@ -74,7 +76,7 @@ export function KeyframeEaseList({
             className="ml-auto cursor-pointer rounded bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
           >
             <option value="" disabled>
-              Set all…
+              {t("editor.keyframeEase.setAll")}
             </option>
             {APPLY_ALL_EASES.map((name) => (
               <option key={name} value={name}>
@@ -90,7 +92,7 @@ export function KeyframeEaseList({
         const isExpanded = expandedPct === kf.percentage;
         const label = `${keyframes[i - 1].percentage}% → ${kf.percentage}%`;
         const easeLabel = segEase.startsWith("custom(")
-          ? "Custom"
+          ? t("editor.keyframeEase.custom")
           : (EASE_LABELS[segEase] ?? segEase);
         return (
           <div key={`${i}-${kf.percentage}`} className="rounded-md bg-neutral-900/50">

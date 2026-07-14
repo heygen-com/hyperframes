@@ -1,4 +1,5 @@
 import { useRef, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { RotateCcw, RotateCw, Camera } from "../icons/SystemIcons";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
@@ -10,6 +11,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useViewMode, type StudioViewMode } from "../contexts/ViewModeContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
+import { useLanguage } from "../i18n/useLanguage";
 
 export interface StudioHeaderProps {
   captureFrameHref: string;
@@ -23,8 +25,6 @@ export interface StudioHeaderProps {
 }
 
 function HyperframesLogo() {
-  // Full logo from logo-dark.svg (263×79): heygen label + gradient mark + hyperframes wordmark.
-  // All fill="black" paths inverted to white for the dark header.
   const height = 28;
   const width = Math.round(height * (263 / 79));
   return (
@@ -60,7 +60,6 @@ function HyperframesLogo() {
           <stop offset="1" stopColor="#4FDB5E" />
         </linearGradient>
       </defs>
-      {/* heygen label */}
       <path
         d="M0 16.6738H4.96V23.3838H11.53V16.6738H16.49V35.4538H11.53V27.6738H4.96V35.4538H0V16.6738Z"
         fill="white"
@@ -85,7 +84,6 @@ function HyperframesLogo() {
         d="M82.9688 20.4238H87.8488V22.4138C88.7588 20.9638 90.3488 20.1038 92.3288 20.1038C95.4988 20.1038 97.3988 22.3338 97.3988 25.8138V35.4438H92.5188V26.8638C92.5188 25.0438 91.8188 24.1838 90.4788 24.1838C88.9488 24.1838 87.8488 25.3638 87.8488 27.2638V35.4438H82.9688V20.4238Z"
         fill="white"
       />
-      {/* gradient icon mark */}
       <path
         d="M195.219 26.1937L213.529 38.9937C216.009 40.7237 220.239 38.7637 221.009 35.5337L228.419 4.33374C229.189 1.10374 225.879 -0.856262 222.589 0.873738L198.199 13.6737C192.649 16.5837 191.059 23.2837 195.219 26.1937Z"
         fill="url(#hf-g0)"
@@ -94,7 +92,6 @@ function HyperframesLogo() {
         d="M256.97 25.9638L232.58 38.7638C229.28 40.4938 225.98 38.5338 226.75 35.3038L234.16 4.10376C234.93 0.873757 239.16 -1.08624 241.64 0.643757L259.95 13.4438C264.12 16.3538 262.52 23.0538 256.97 25.9638Z"
         fill="url(#hf-g1)"
       />
-      {/* hyperframes wordmark */}
       <path
         d="M0 71.9996V42.7256H7.7367V53.1806H17.9826V42.7256H25.7193V71.9996H17.9826V59.8718H7.7367V71.9996H0Z"
         fill="white"
@@ -143,13 +140,17 @@ function HyperframesLogo() {
   );
 }
 
-const VIEW_MODE_OPTIONS: Array<{ mode: StudioViewMode; label: string }> = [
-  { mode: "storyboard", label: "Storyboard" },
-  { mode: "timeline", label: "Preview" },
-];
+const VIEW_MODE_OPTIONS = [
+  { mode: "storyboard", label: "Storyboard", labelKey: "header.storyboard" },
+  { mode: "timeline", label: "Preview", labelKey: "header.preview" },
+] as const satisfies ReadonlyArray<{
+  mode: StudioViewMode;
+  label: string;
+  labelKey: "header.storyboard" | "header.preview";
+}>;
 
-/** Segmented control switching the main stage between storyboard and preview. */
 function ViewModeToggle() {
+  const { t } = useTranslation();
   const { viewMode, setViewMode } = useViewMode();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -159,7 +160,6 @@ function ViewModeToggle() {
     setViewMode(mode);
   };
 
-  // Complete APG tabs pattern: roving tabIndex + arrow-key navigation.
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
@@ -173,9 +173,9 @@ function ViewModeToggle() {
     <div
       className="flex items-center gap-0.5 rounded-md bg-neutral-800 p-0.5"
       role="tablist"
-      aria-label="Studio view"
+      aria-label={t("header.studioView")}
     >
-      {VIEW_MODE_OPTIONS.map(({ mode, label }, index) => {
+      {VIEW_MODE_OPTIONS.map(({ mode, labelKey }, index) => {
         const active = viewMode === mode;
         return (
           <button
@@ -193,7 +193,7 @@ function ViewModeToggle() {
               active ? "bg-neutral-200 text-neutral-900" : "text-neutral-400 hover:text-neutral-200"
             }`}
           >
-            {label}
+            {t(labelKey)}
           </button>
         );
       })}
@@ -201,7 +201,24 @@ function ViewModeToggle() {
   );
 }
 
-// fallow-ignore-next-line complexity
+function LanguageSwitcher() {
+  const { t } = useTranslation();
+  const { currentLanguage, toggleLanguage } = useLanguage();
+
+  return (
+    <Tooltip label={t("language.switchLanguage")} side="bottom">
+      <button
+        type="button"
+        onClick={toggleLanguage}
+        className="h-7 min-w-[2rem] flex items-center justify-center rounded-md px-2 text-[11px] font-medium text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 transition-colors active:scale-[0.98]"
+        aria-label={t("language.switchLanguage")}
+      >
+        {currentLanguage === "en" ? "中" : "EN"}
+      </button>
+    </Tooltip>
+  );
+}
+
 export function StudioHeader({
   captureFrameHref,
   captureFrameFilename,
@@ -212,13 +229,13 @@ export function StudioHeader({
   inspectorPanelActive,
   onExport,
 }: StudioHeaderProps) {
+  const { t } = useTranslation();
   const { projectId, editHistory, handleUndo, handleRedo, renderQueue } = useStudioShellContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const isRendering = renderQueue.isRendering;
 
   return (
     <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
-      {/* Left: logo + project name */}
       <div className="flex items-center gap-3">
         <HyperframesLogo />
         <span className="text-neutral-700 select-none" aria-hidden="true">
@@ -226,15 +243,16 @@ export function StudioHeader({
         </span>
         <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
-      {/* Center: storyboard / preview toggle */}
       <ViewModeToggle />
-      {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
         <Tooltip
           label={
             editHistory.undoLabel
-              ? `Undo ${editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
-              : `Undo (${getHistoryShortcutLabel("undo")})`
+              ? t("header.undoWithLabel", {
+                  label: editHistory.undoLabel,
+                  shortcut: getHistoryShortcutLabel("undo"),
+                })
+              : t("header.undoWithLabel", { label: "", shortcut: getHistoryShortcutLabel("undo") })
           }
           side="bottom"
         >
@@ -250,7 +268,7 @@ export function StudioHeader({
                 ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
                 : "text-neutral-700 cursor-default"
             }`}
-            aria-label="Undo"
+            aria-label={t("header.undo")}
           >
             <RotateCcw size={14} />
           </button>
@@ -258,8 +276,11 @@ export function StudioHeader({
         <Tooltip
           label={
             editHistory.redoLabel
-              ? `Redo ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
-              : `Redo (${getHistoryShortcutLabel("redo")})`
+              ? t("header.redoWithLabel", {
+                  label: editHistory.redoLabel,
+                  shortcut: getHistoryShortcutLabel("redo"),
+                })
+              : t("header.redoWithLabel", { label: "", shortcut: getHistoryShortcutLabel("redo") })
           }
           side="bottom"
         >
@@ -275,12 +296,15 @@ export function StudioHeader({
                 ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
                 : "text-neutral-700 cursor-default"
             }`}
-            aria-label="Redo"
+            aria-label={t("header.redo")}
           >
             <RotateCw size={14} />
           </button>
         </Tooltip>
-        <Tooltip label={capturing ? "Capturing frame…" : "Capture current frame"} side="bottom">
+        <Tooltip
+          label={capturing ? t("header.capturingFrame") : t("header.captureFrame")}
+          side="bottom"
+        >
           <a
             href={captureFrameHref}
             download={captureFrameFilename}
@@ -300,7 +324,7 @@ export function StudioHeader({
                 ? "text-neutral-600 cursor-default"
                 : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.98]"
             }`}
-            aria-label={capturing ? "Capturing frame" : "Capture current frame"}
+            aria-label={capturing ? t("header.capturingFrame") : t("header.captureFrame")}
           >
             {capturing ? (
               <svg
@@ -326,12 +350,14 @@ export function StudioHeader({
             ) : (
               <Camera size={14} />
             )}
-            <span>{capturing ? "Capturing…" : "Capture"}</span>
+            <span>{capturing ? t("header.capturing") : t("header.capture")}</span>
           </a>
         </Tooltip>
         <Tooltip
           label={
-            STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+            STUDIO_INSPECTOR_PANELS_ENABLED
+              ? t("header.inspector")
+              : STUDIO_MANUAL_EDITING_DISABLED_TITLE
           }
           side="bottom"
         >
@@ -346,8 +372,6 @@ export function StudioHeader({
                 return;
               }
               trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: true });
-              // Keep the current selection when collapsing the Inspector — closing
-              // the panel shouldn't deselect the element.
               setRightCollapsed(true);
             }}
             disabled={!STUDIO_INSPECTOR_PANELS_ENABLED}
@@ -360,7 +384,9 @@ export function StudioHeader({
                   : "cursor-not-allowed border-transparent text-neutral-700"
             }`}
             aria-label={
-              STUDIO_INSPECTOR_PANELS_ENABLED ? "Inspector" : STUDIO_MANUAL_EDITING_DISABLED_TITLE
+              STUDIO_INSPECTOR_PANELS_ENABLED
+                ? t("header.inspector")
+                : STUDIO_MANUAL_EDITING_DISABLED_TITLE
             }
           >
             <svg
@@ -374,13 +400,11 @@ export function StudioHeader({
               <circle cx="12" cy="12" r="10" />
               <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
             </svg>
-            Inspector
+            {t("header.inspector")}
           </button>
         </Tooltip>
         <Tooltip
-          label={
-            isRendering ? "A render is already in progress" : "Render and export this composition"
-          }
+          label={isRendering ? t("header.renderInProgress") : t("header.renderAndExport")}
           side="bottom"
         >
           <button
@@ -394,9 +418,10 @@ export function StudioHeader({
             }}
             className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isRendering ? "Rendering…" : "Export"}
+            {isRendering ? t("header.rendering") : t("header.export")}
           </button>
         </Tooltip>
+        <LanguageSwitcher />
       </div>
     </div>
   );

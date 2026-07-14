@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   PencilSimple,
   Copy,
@@ -42,6 +43,7 @@ export function ContextMenu({
   onDuplicate: (path: string) => void;
   onDelete: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line no-restricted-syntax
@@ -87,7 +89,7 @@ export function ContextMenu({
             }}
           >
             <FilePlus size={12} weight="duotone" className="text-neutral-500" />
-            New File
+            {t("fileTree.newFile")}
           </button>
           <button
             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800 cursor-pointer text-left"
@@ -97,7 +99,7 @@ export function ContextMenu({
             }}
           >
             <FolderSimplePlus size={12} weight="duotone" className="text-neutral-500" />
-            New Folder
+            {t("fileTree.newFolder")}
           </button>
           <div className="border-t border-neutral-700 my-1" />
         </>
@@ -112,7 +114,7 @@ export function ContextMenu({
             }}
           >
             <FilePlus size={12} weight="duotone" className="text-neutral-500" />
-            New File
+            {t("fileTree.newFile")}
           </button>
           <div className="border-t border-neutral-700 my-1" />
         </>
@@ -125,7 +127,7 @@ export function ContextMenu({
         }}
       >
         <PencilSimple size={12} weight="duotone" className="text-neutral-500" />
-        Rename
+        {t("fileTree.rename")}
       </button>
       {!state.targetIsFolder && (
         <button
@@ -136,7 +138,7 @@ export function ContextMenu({
           }}
         >
           <Copy size={12} weight="duotone" className="text-neutral-500" />
-          Duplicate
+          {t("fileTree.duplicate")}
         </button>
       )}
       <div className="border-t border-neutral-700 my-1" />
@@ -148,7 +150,7 @@ export function ContextMenu({
         }}
       >
         <Trash size={12} weight="duotone" />
-        Delete
+        {t("fileTree.delete")}
       </button>
     </div>
   );
@@ -245,6 +247,7 @@ export function DeleteConfirm({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line no-restricted-syntax
@@ -269,20 +272,20 @@ export function DeleteConfirm({
       className="mx-1 my-0.5 p-2 bg-neutral-800 border border-neutral-700 rounded-md text-xs"
     >
       <p className="text-neutral-300 mb-2">
-        Delete <span className="font-medium text-neutral-100">{name}</span>?
+        {t("fileTree.delete")} <span className="font-medium text-neutral-100">{name}</span>?
       </p>
       <div className="flex gap-1.5">
         <button
           onClick={onCancel}
           className="flex-1 px-2 py-1 rounded bg-neutral-700 text-neutral-300 hover:bg-neutral-600 transition-colors"
         >
-          Cancel
+          {t("assetsTab.cancel")}
         </button>
         <button
           onClick={onConfirm}
           className="flex-1 px-2 py-1 rounded bg-red-900/60 text-red-300 hover:bg-red-800/60 transition-colors"
         >
-          Delete
+          {t("fileTree.delete")}
         </button>
       </div>
     </div>

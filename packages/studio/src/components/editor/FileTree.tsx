@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, FolderSimplePlus } from "@phosphor-icons/react";
 import {
   buildTree,
@@ -44,6 +45,7 @@ export const FileTree = memo(function FileTree({
   onImportFiles,
   lintFindingsByFile,
 }: FileTreeProps) {
+  const { t } = useTranslation();
   const tree = useMemo(() => buildTree(files), [files]);
   const children = useMemo(() => sortChildren(tree.children), [tree]);
 
@@ -222,20 +224,20 @@ export const FileTree = memo(function FileTree({
       {hasFileOps && (
         <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-neutral-800/50 flex-shrink-0">
           <span className="text-[10px] font-semibold tracking-wider text-neutral-600 uppercase">
-            Files
+            {t("fileTree.files")}
           </span>
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => handleNewFile("")}
               className="p-0.5 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 transition-colors"
-              title="New File"
+              title={t("fileTree.newFile")}
             >
               <Plus size={12} weight="bold" />
             </button>
             <button
               onClick={() => handleNewFolder("")}
               className="p-0.5 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 transition-colors"
-              title="New Folder"
+              title={t("fileTree.newFolder")}
             >
               <FolderSimplePlus size={12} weight="duotone" />
             </button>

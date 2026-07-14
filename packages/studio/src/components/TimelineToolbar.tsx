@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -11,7 +12,6 @@ import {
   getTimelineZoomPercent,
 } from "../player/components/timelineZoom";
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
-import { getTimelineToggleTitle } from "../utils/timelineDiscovery";
 import { usePlayerStore, type TimelineElement } from "../player";
 import {
   STUDIO_KEYFRAMES_ENABLED,
@@ -77,6 +77,7 @@ export function TimelineToolbar({
   domEditSession,
   onSplitElement,
 }: TimelineToolbarProps) {
+  const { t } = useTranslation();
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
@@ -104,7 +105,7 @@ export function TimelineToolbar({
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-3">
           <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-            Timeline
+            {t("timelineToolbar.timeline")}
           </div>
           {STUDIO_RAZOR_TOOL_ENABLED && (
             <div className="flex items-center border border-neutral-800 rounded overflow-hidden">
@@ -146,12 +147,12 @@ export function TimelineToolbar({
             <Tooltip
               label={
                 keyframeState === "active"
-                  ? "Remove keyframe at playhead (K)"
+                  ? t("timelineToolbar.removeKeyframe")
                   : keyframeState === "inactive"
                     ? keyframeWillExtend
-                      ? "Add keyframe at playhead, extends animation (K)"
-                      : "Add keyframe at playhead (K)"
-                    : "Add keyframe (K)"
+                      ? `${t("timelineToolbar.addKeyframe")}, extends animation`
+                      : t("timelineToolbar.addKeyframe")
+                    : t("timelineToolbar.enableKeyframes")
               }
             >
               <button
@@ -159,8 +160,8 @@ export function TimelineToolbar({
                 onClick={onToggleKeyframe}
                 aria-label={
                   keyframeState === "active"
-                    ? "Remove keyframe at playhead"
-                    : "Add keyframe at playhead"
+                    ? t("timelineToolbar.removeKeyframe")
+                    : t("timelineToolbar.addKeyframe")
                 }
                 className={`flex h-7 w-7 items-center justify-center rounded transition-colors active:scale-[0.98] ${
                   keyframeState === "active"
@@ -236,7 +237,7 @@ export function TimelineToolbar({
                 <Tooltip
                   label={
                     canSplit
-                      ? "Split clip at playhead (S)"
+                      ? t("timelineToolbar.splitClip")
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
@@ -245,7 +246,7 @@ export function TimelineToolbar({
                   <button
                     type="button"
                     disabled={!canSplit}
-                    aria-label="Split clip at playhead"
+                    aria-label={t("timelineToolbar.splitClip")}
                     onClick={() => {
                       if (canSplit && el) onSplitElement(el, currentTime);
                     }}
@@ -295,7 +296,7 @@ export function TimelineToolbar({
             })()}
         </div>
         <div className="flex items-center gap-1">
-          <Tooltip label="Fit timeline to width">
+          <Tooltip label={t("timelineToolbar.fitTimeline")}>
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
@@ -305,10 +306,10 @@ export function TimelineToolbar({
                   : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
               }`}
             >
-              Fit
+              {t("timelineToolbar.fit")}
             </button>
           </Tooltip>
-          <Tooltip label="Zoom out">
+          <Tooltip label={t("timelineToolbar.zoomOut")}>
             <button
               type="button"
               onClick={() => {
@@ -325,7 +326,7 @@ export function TimelineToolbar({
           <div className="min-w-[58px] text-center text-[10px] font-medium tabular-nums text-neutral-500">
             {`${displayedTimelineZoomPercent}%`}
           </div>
-          <Tooltip label="Zoom in">
+          <Tooltip label={t("timelineToolbar.zoomIn")}>
             <button
               type="button"
               onClick={() => {
@@ -337,12 +338,12 @@ export function TimelineToolbar({
               +
             </button>
           </Tooltip>
-          <Tooltip label={getTimelineToggleTitle(true)}>
+          <Tooltip label={t("timelineToolbar.hideEditor")}>
             <button
               type="button"
               onClick={toggleTimelineVisibility}
               className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
-              aria-label="Hide timeline editor"
+              aria-label={t("timelineToolbar.hideEditor")}
             >
               <svg
                 width="14"

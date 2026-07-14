@@ -2,6 +2,7 @@
 // playback-start resolution).
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
+import i18n from "../i18n";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { useRazorSplit } from "./useRazorSplit";
@@ -71,7 +72,7 @@ export function useTimelineEditing({
       coalesceKey?: string,
     ): Promise<void> => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return Promise.resolve();
       }
       const pid = projectIdRef.current;
@@ -331,7 +332,7 @@ export function useTimelineEditing({
     // fallow-ignore-next-line complexity
     async (element: TimelineElement) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -385,9 +386,10 @@ export function useTimelineEditing({
         usePlayerStore.getState().setSelectedElementId(null);
         forceReloadSdkSession?.();
         reloadPreview();
-        showToast(`Deleted ${label}. Use Undo to restore it.`, "info");
+        showToast(i18n.t("hooks.timeline.deletedUseUndo", { label }), "info");
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
+        const message =
+          error instanceof Error ? error.message : i18n.t("hooks.timeline.deleteFailed");
         showToast(message);
       }
     },
@@ -413,7 +415,7 @@ export function useTimelineEditing({
       durationOverride?: number,
     ) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -421,7 +423,7 @@ export function useTimelineEditing({
 
       const kind = getTimelineAssetKind(assetPath);
       if (!kind) {
-        showToast("Only image, video, and audio assets can be dropped onto the timeline.");
+        showToast(i18n.t("hooks.timeline.assetDropRestricted"));
         return;
       }
 
@@ -473,7 +475,7 @@ export function useTimelineEditing({
         reloadPreview();
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Failed to drop asset onto timeline";
+          error instanceof Error ? error.message : i18n.t("hooks.timeline.dropFailed");
         showToast(message);
       }
     },
@@ -495,7 +497,7 @@ export function useTimelineEditing({
     // fallow-ignore-next-line complexity
     async (files: File[], placement?: Pick<TimelineElement, "start" | "track">) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
       const pid = projectIdRef.current;
@@ -546,7 +548,7 @@ export function useTimelineEditing({
       const now = Date.now();
       if (now - lastBlockedTimelineToastAtRef.current < 1500) return;
       lastBlockedTimelineToastAtRef.current = now;
-      showToast("This clip can't be moved or resized from the timeline yet.", "info");
+      showToast(i18n.t("hooks.timeline.clipNotMovable"), "info");
     },
     [showToast],
   );

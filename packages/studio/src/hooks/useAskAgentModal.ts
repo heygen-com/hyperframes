@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import i18n from "../i18n";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/studioHelpers";
@@ -99,7 +100,7 @@ export function useAskAgentModal({
 
       const copied = await copyTextToClipboard(prompt);
       if (!copied) {
-        showToast("Could not copy prompt to clipboard.", "error");
+        showToast(i18n.t("hooks.askAgent.copyFailed"), "error");
         return;
       }
 

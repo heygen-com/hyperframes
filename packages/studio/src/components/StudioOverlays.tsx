@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 import { LintModal } from "./LintModal";
 import { AskAgentModal } from "./AskAgentModal";
 import { StudioGlobalDragOverlay } from "./StudioGlobalDragOverlay";
@@ -42,6 +43,8 @@ export function StudioOverlays({
   toasts,
   dismissToast,
 }: StudioOverlaysProps) {
+  const { t } = useTranslation();
+
   return (
     <>
       {lintModal !== null && (
@@ -59,8 +62,8 @@ export function StudioOverlays({
           findings={consoleErrors}
           projectId={projectId}
           projectDir={projectDir}
-          title="Console errors in preview"
-          promptIntro="Fix these runtime console errors from the composition preview"
+          title={t("shell.overlays.consoleErrorsTitle")}
+          promptIntro={t("shell.overlays.consoleErrorsIntro")}
           onClose={clearConsoleErrors}
         />
       )}

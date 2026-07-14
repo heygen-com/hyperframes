@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, Type } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
@@ -345,6 +346,7 @@ export function TextSection({
   onAddTextField: (afterFieldKey?: string) => string | Promise<string | null> | null;
   onRemoveTextField: (fieldKey: string) => void;
 }) {
+  const { t } = useTranslation();
   const hasTextControls = isTextEditableSelection(element);
   const [activeTextFieldKey, setActiveTextFieldKey] = useState<string | null>(
     element.textFields[0]?.key ?? null,
@@ -366,7 +368,7 @@ export function TextSection({
 
   if (textFields.length === 1) {
     return (
-      <Section title="Text" icon={<Type size={15} />} defaultCollapsed>
+      <Section title={t("propertyPanel.text")} icon={<Type size={15} />} defaultCollapsed>
         <TextFieldEditor
           field={activeField}
           styles={styles}
@@ -382,11 +384,11 @@ export function TextSection({
   }
 
   return (
-    <Section title="Text" icon={<Type size={15} />}>
+    <Section title={t("propertyPanel.text")} icon={<Type size={15} />}>
       <div className="space-y-4">
         <div className="grid gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <span className={LABEL}>Text layers</span>
+            <span className={LABEL}>{t("propertyPanel.textLayers")}</span>
             <button
               type="button"
               onClick={() => {
@@ -397,7 +399,7 @@ export function TextSection({
               className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
             >
               <Plus size={12} className="flex-shrink-0" />
-              <span className="truncate">Add text</span>
+              <span className="truncate">{t("propertyPanel.addText")}</span>
             </button>
           </div>
           <div className="grid gap-2">

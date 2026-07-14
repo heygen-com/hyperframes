@@ -28,6 +28,7 @@ videos/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 

@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Player } from "../../player";
+import i18n from "../../i18n";
 import {
   DEFAULT_PREVIEW_ZOOM,
   canStartPreviewPan,
@@ -127,6 +128,13 @@ export const NLEPreview = memo(function NLEPreview({
   onStageRef,
   onCompositionSizeChange,
 }: NLEPreviewProps) {
+  const [_langRevision, setLangRevision] = useState(0);
+  useEffect(() => {
+    const onLanguageChanged = () => setLangRevision((n) => n + 1);
+    i18n.on("languageChanged", onLanguageChanged);
+    return () => i18n.off("languageChanged", onLanguageChanged);
+  }, []);
+
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -227,7 +235,9 @@ export const NLEPreview = memo(function NLEPreview({
           }
           // Live per-frame readout — without this the HUD shows an empty pill
           // on the first-ever zoom and a stale percentage mid-gesture.
-          hud.textContent = isPreviewAtFit(clamped) ? "Fit" : `${Math.round(clamped.zoomPercent)}%`;
+          hud.textContent = isPreviewAtFit(clamped)
+            ? i18n.t("nle.fit")
+            : `${Math.round(clamped.zoomPercent)}%`;
         }
       }
 
@@ -248,7 +258,9 @@ export const NLEPreview = memo(function NLEPreview({
         if (showHud) {
           const hud = hudRef.current;
           if (hud) {
-            hud.textContent = isPreviewAtFit(final) ? "Fit" : `${Math.round(final.zoomPercent)}%`;
+            hud.textContent = isPreviewAtFit(final)
+              ? i18n.t("nle.fit")
+              : `${Math.round(final.zoomPercent)}%`;
             if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
             hudTimerRef.current = setTimeout(() => {
               if (hudRef.current) hudRef.current.style.opacity = "0";
@@ -461,7 +473,7 @@ export const NLEPreview = memo(function NLEPreview({
         ref={viewportRef}
         className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-700"
         tabIndex={0}
-        aria-label="Composition preview"
+        aria-label={i18n.t("nle.compositionPreview")}
       >
         <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
           <div
@@ -518,10 +530,10 @@ export const NLEPreview = memo(function NLEPreview({
             type="button"
             className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-sm hover:bg-black/70 hover:text-white transition-colors"
             onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
+            aria-label={i18n.t("nle.resetZoomAria")}
             data-testid="preview-reset-zoom"
           >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
+            {i18n.t("nle.resetZoom", { zoom: Math.round(settledZoom.zoomPercent) })}
           </button>
         )}
       </div>

@@ -7,6 +7,7 @@ import {
   forwardRef,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { CompositionsTab } from "./CompositionsTab";
 import { AssetsTab } from "./AssetsTab";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
@@ -95,6 +96,7 @@ export const LeftSidebar = memo(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const [tab, setTab] = useState<SidebarTab>(getPersistedTab);
     const tabRef = useRef(tab);
     tabRef.current = tab;
@@ -129,7 +131,7 @@ export const LeftSidebar = memo(
                       : "1fr 1fr 1fr",
                   }}
                 >
-                  <Tooltip label="Source code editor" side="bottom">
+                  <Tooltip label={t("leftSidebar.tooltipCode")} side="bottom">
                     <button
                       type="button"
                       onClick={() => selectTab("code")}
@@ -139,10 +141,10 @@ export const LeftSidebar = memo(
                           : "text-neutral-500 hover:text-neutral-200"
                       }`}
                     >
-                      Code
+                      {t("leftSidebar.code")}
                     </button>
                   </Tooltip>
-                  <Tooltip label="Compositions and sub-compositions" side="bottom">
+                  <Tooltip label={t("leftSidebar.tooltipComps")} side="bottom">
                     <button
                       type="button"
                       onClick={() => selectTab("compositions")}
@@ -152,10 +154,10 @@ export const LeftSidebar = memo(
                           : "text-neutral-500 hover:text-neutral-200"
                       }`}
                     >
-                      Comps
+                      {t("leftSidebar.comps")}
                     </button>
                   </Tooltip>
-                  <Tooltip label="Videos, images, audio, fonts" side="bottom">
+                  <Tooltip label={t("leftSidebar.tooltipAssets")} side="bottom">
                     <button
                       type="button"
                       onClick={() => selectTab("assets")}
@@ -165,11 +167,11 @@ export const LeftSidebar = memo(
                           : "text-neutral-500 hover:text-neutral-200"
                       }`}
                     >
-                      Assets
+                      {t("leftSidebar.assets")}
                     </button>
                   </Tooltip>
                   {STUDIO_BLOCKS_PANEL_ENABLED && (
-                    <Tooltip label="Browse blocks and components" side="bottom">
+                    <Tooltip label={t("leftSidebar.tooltipCatalog")} side="bottom">
                       <button
                         type="button"
                         onClick={() => selectTab("blocks")}
@@ -179,7 +181,7 @@ export const LeftSidebar = memo(
                             : "text-neutral-500 hover:text-neutral-200"
                         }`}
                       >
-                        Catalog
+                        {t("leftSidebar.catalog")}
                       </button>
                     </Tooltip>
                   )}
@@ -189,8 +191,8 @@ export const LeftSidebar = memo(
                     type="button"
                     onClick={onToggleCollapse}
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-transparent text-neutral-500 transition-colors hover:border-neutral-800 hover:bg-neutral-900 hover:text-neutral-300"
-                    title="Hide sidebar"
-                    aria-label="Hide sidebar"
+                    title={t("leftSidebar.hideSidebar")}
+                    aria-label={t("leftSidebar.hideSidebar")}
                   >
                     <svg
                       width="14"
@@ -254,7 +256,7 @@ export const LeftSidebar = memo(
                 <div className="flex-1 overflow-hidden min-w-0">
                   {codeChildren ?? (
                     <div className="flex items-center justify-center h-full text-neutral-600 text-sm">
-                      Select a file to edit
+                      {t("leftSidebar.selectFileToEdit")}
                     </div>
                   )}
                 </div>
@@ -284,7 +286,7 @@ export const LeftSidebar = memo(
                     <path d="M9 11l3 3L22 4" />
                     <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
                   </svg>
-                  {linting ? "Linting…" : "Lint"}
+                  {linting ? t("leftSidebar.linting") : t("leftSidebar.lint")}
                   {!linting && lintFindingCount != null && lintFindingCount > 0 && (
                     <span className="ml-1 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[9px] font-bold text-amber-400">
                       {lintFindingCount}

@@ -1,4 +1,5 @@
 import { memo, useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { VideoFrameThumbnail } from "../ui/VideoFrameThumbnail";
 import { Button } from "../ui/Button";
 import type { RenderJob } from "./useRenderQueue";
@@ -31,6 +32,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   onDelete,
   onCancel,
 }: RenderQueueItemProps) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -138,7 +140,9 @@ export const RenderQueueItem = memo(function RenderQueueItem({
           {isRendering && (
             <div className="mt-1">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] text-panel-text-4">{job.stage || "Rendering"}</span>
+                <span className="text-[9px] text-panel-text-4">
+                  {job.stage || t("renderQueue.renderStage")}
+                </span>
                 <span className="text-[9px] font-mono text-panel-accent">{job.progress}%</span>
               </div>
               <div
@@ -147,7 +151,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                 aria-valuenow={job.progress}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label={`Render progress: ${job.progress}%`}
+                aria-label={t("renderQueue.renderProgress", { progress: job.progress })}
               >
                 <div
                   className="h-full bg-panel-accent rounded-full transition-all duration-300"
@@ -215,8 +219,8 @@ export const RenderQueueItem = memo(function RenderQueueItem({
                     ? "text-panel-text-5 hover:text-panel-accent"
                     : "text-panel-text-5/30 cursor-default"
                 }`}
-                title={isComplete ? "Download" : undefined}
-                aria-label={`Download ${job.filename}`}
+                title={isComplete ? t("renderQueue.download") : undefined}
+                aria-label={`${t("renderQueue.download")} ${job.filename}`}
                 disabled={!isComplete}
               >
                 <svg

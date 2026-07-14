@@ -3,6 +3,7 @@
  * Extracted from App.tsx to keep file sizes under the 600-line limit.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
+import i18n from "../i18n";
 import { useGestureRecording } from "./useGestureRecording";
 import { simplifyGestureSamples } from "../utils/rdpSimplify";
 import { fitEasesFromVelocity } from "../utils/velocityEaseFitter";
@@ -122,7 +123,7 @@ export function useGestureCommit({
       const sel = capturedSelectionRef.current;
       if (!sel) {
         if (frozenSamples.length > 2) {
-          showToast("Selection lost during recording", "error");
+          showToast(i18n.t("hooks.gesture.selectionLost"), "error");
         }
         return;
       }
@@ -130,11 +131,11 @@ export function useGestureCommit({
         frozenSamples.length > 0 ? (frozenSamples[frozenSamples.length - 1]?.time ?? 0) : 0;
 
       if (frozenSamples.length <= 2) {
-        showToast("No gesture detected — move the pointer while recording", "error");
+        showToast(i18n.t("hooks.gesture.noGestureDetected"), "error");
         return;
       }
       if (duration <= 0) {
-        showToast("Recording too short — try again", "error");
+        showToast(i18n.t("hooks.gesture.recordingTooShort"), "error");
         return;
       }
 
@@ -156,7 +157,7 @@ export function useGestureCommit({
 
       const selector = sel.id ? `#${sel.id}` : sel.selector;
       if (!selector) {
-        showToast("Cannot save — element has no selector", "error");
+        showToast(i18n.t("hooks.gesture.noSelector"), "error");
         return;
       }
       if (liveSession.commitMutation) {
@@ -279,10 +280,10 @@ export function useGestureCommit({
           }
         }
       }
-      showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+      showToast(i18n.t("hooks.gesture.recordedKeyframes", { count: sortedPcts.length }), "info");
     } catch (err) {
       console.error("[GR:error]", err);
-      showToast(`Gesture commit failed: ${err}`, "error");
+      showToast(i18n.t("hooks.gesture.commitFailed", { detail: String(err) }), "error");
     } finally {
       store.requestSeek(recordingStartTimeRef.current);
       gestureRecording.clearSamples();
@@ -299,12 +300,12 @@ export function useGestureCommit({
     }
     const sel = domEditSessionRef.current.domEditSelection;
     if (!sel) {
-      showToast("Select an element first", "error");
+      showToast(i18n.t("hooks.gesture.selectElementFirst"), "error");
       return;
     }
     const iframe = previewIframeRef.current;
     if (!iframe) {
-      showToast("Preview not ready — try again", "error");
+      showToast(i18n.t("hooks.gesture.previewNotReady"), "error");
       return;
     }
 

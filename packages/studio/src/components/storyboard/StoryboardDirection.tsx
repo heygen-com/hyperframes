@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { StoryboardGlobals } from "@hyperframes/core/storyboard";
 
 export interface StoryboardDirectionProps {
@@ -10,18 +11,20 @@ export interface StoryboardDirectionProps {
  * This is the storyboard's "north star" pulled from the manifest frontmatter.
  */
 export function StoryboardDirection({ globals, frameCount }: StoryboardDirectionProps) {
+  const { t } = useTranslation();
+
   const meta = [
-    { label: "Arc", value: globals.arc },
-    { label: "Audience", value: globals.audience },
-    { label: "Voice", value: globals.extra.voice },
-    { label: "Format", value: globals.format },
-    { label: "Frames", value: String(frameCount) },
+    { label: t("storyboard.metaArc"), value: globals.arc },
+    { label: t("storyboard.metaAudience"), value: globals.audience },
+    { label: t("storyboard.metaVoice"), value: globals.extra.voice },
+    { label: t("storyboard.metaFormat"), value: globals.format },
+    { label: t("storyboard.metaFrames"), value: String(frameCount) },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
 
   return (
     <header className="border-b border-neutral-800 pb-5">
       <div className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
-        Storyboard
+        {t("storyboard.title")}
       </div>
       {globals.message ? (
         <h1 className="mt-1 text-2xl font-semibold leading-tight text-neutral-100">
@@ -29,7 +32,7 @@ export function StoryboardDirection({ globals, frameCount }: StoryboardDirection
         </h1>
       ) : (
         <h1 className="mt-1 text-2xl font-semibold leading-tight text-neutral-400">
-          Untitled storyboard
+          {t("storyboard.untitled")}
         </h1>
       )}
       <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2">

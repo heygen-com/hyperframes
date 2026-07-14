@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Copy, Check } from "@phosphor-icons/react";
 import { useStoryboard } from "../../hooks/useStoryboard";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -18,16 +19,20 @@ export interface StoryboardViewProps {
  */
 // fallow-ignore-next-line complexity
 export function StoryboardView({ projectId, onSelectComposition }: StoryboardViewProps) {
+  const { t } = useTranslation();
   const { data, loading, error, reload } = useStoryboard(projectId);
 
-  if (loading) return <StoryboardFrame>{<Message>Loading storyboard…</Message>}</StoryboardFrame>;
+  if (loading)
+    return <StoryboardFrame>{<Message>{t("storyboard.loading")}</Message>}</StoryboardFrame>;
   if (error) {
     return (
       <StoryboardFrame>
-        <Message tone="error">Couldn’t load the storyboard: {error}</Message>
+        <Message tone="error">
+          {t("storyboard.loadError")} {error}
+        </Message>
         <div className="flex justify-center">
           <Button size="sm" variant="secondary" onClick={reload}>
-            Retry
+            {t("storyboard.retry")}
           </Button>
         </div>
       </StoryboardFrame>
@@ -96,6 +101,7 @@ Add one \`## Frame N\` section per beat. Keep the arc tight.`;
 }
 
 function EmptyState({ path }: { path: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const prompt = handoffPrompt(path);
 
@@ -109,23 +115,25 @@ function EmptyState({ path }: { path: string }) {
   return (
     <div>
       <div className="rounded-lg border border-dashed border-neutral-800 px-6 py-10 text-center">
-        <h2 className="text-base font-semibold text-neutral-300">No storyboard yet</h2>
+        <h2 className="text-base font-semibold text-neutral-300">{t("storyboard.noStoryboard")}</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
-          Add a <code className="rounded bg-neutral-900 px-1 py-0.5 text-neutral-400">{path}</code>{" "}
-          at the project root to plan this video frame by frame. Hand this prompt to your coding
-          agent to scaffold it.
+          {t("storyboard.addPrompt")}{" "}
+          <code className="rounded bg-neutral-900 px-1 py-0.5 text-neutral-400">{path}</code>{" "}
+          {t("storyboard.addPromptSuffix")}
         </p>
 
         <div className="mx-auto mt-6 max-w-2xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 text-left">
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-            <span className="font-mono text-xs text-neutral-500">Prompt for your agent</span>
+            <span className="font-mono text-xs text-neutral-500">
+              {t("storyboard.promptForAgent")}
+            </span>
             <Button
               size="sm"
               variant="secondary"
               onClick={onCopy}
               icon={copied ? <Check size={14} /> : <Copy size={14} />}
             >
-              {copied ? "Copied" : "Copy prompt"}
+              {copied ? t("common.copied") : t("storyboard.copyPrompt")}
             </Button>
           </div>
           <pre className="max-h-64 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-400 whitespace-pre-wrap">
@@ -142,10 +150,12 @@ function EmptyState({ path }: { path: string }) {
 /** Faded placeholder of a filled board so landing here isn't a dead end —
  *  it previews the contact-sheet layout {@link StoryboardGrid} renders. */
 function SkeletonPreview() {
+  const { t } = useTranslation();
+
   return (
     <div aria-hidden="true" className="mt-10 select-none opacity-40">
       <div className="mb-4 text-center text-xs uppercase tracking-wide text-neutral-600">
-        Preview
+        {t("storyboard.previewLabel")}
       </div>
       <div className="grid gap-x-6 gap-y-8 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
         {[0, 1, 2].map((i) => (

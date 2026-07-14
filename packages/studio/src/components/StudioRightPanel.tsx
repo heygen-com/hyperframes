@@ -7,6 +7,7 @@ import {
   type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { Tooltip } from "./ui";
 import { PropertyPanel } from "./editor/PropertyPanel";
 import { LayersPanel } from "./editor/LayersPanel";
@@ -197,6 +198,7 @@ export function StudioRightPanel({
 
   const renderJobs = renderQueue.jobs as RenderJob[];
   const inspectorTabActive = rightPanelTab === "design" || rightPanelTab === "layers";
+  const { t } = useTranslation();
 
   // Derive scene list from the live clip manifest in the preview iframe.
   // fallow-ignore-next-line complexity
@@ -461,7 +463,7 @@ export function StudioRightPanel({
             <div className="flex min-w-0 items-center gap-1 overflow-hidden border-b border-neutral-800 px-3 py-2">
               {STUDIO_INSPECTOR_PANELS_ENABLED && (
                 <>
-                  <Tooltip label="Element styles and properties" side="bottom">
+                  <Tooltip label={t("rightPanel.tooltipDesign")} side="bottom">
                     <button
                       type="button"
                       onClick={() => handleInspectorPaneButtonClick("design")}
@@ -472,10 +474,10 @@ export function StudioRightPanel({
                           : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                       }`}
                     >
-                      Design
+                      {t("rightPanel.design")}
                     </button>
                   </Tooltip>
-                  <Tooltip label="Composition layer stack" side="bottom">
+                  <Tooltip label={t("rightPanel.tooltipLayers")} side="bottom">
                     <button
                       type="button"
                       onClick={() => handleInspectorPaneButtonClick("layers")}
@@ -486,12 +488,12 @@ export function StudioRightPanel({
                           : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                       }`}
                     >
-                      Layers
+                      {t("rightPanel.layers")}
                     </button>
                   </Tooltip>
                 </>
               )}
-              <Tooltip label="Render queue and exports" side="bottom">
+              <Tooltip label={t("rightPanel.tooltipRenders")} side="bottom">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("renders")}
@@ -502,10 +504,12 @@ export function StudioRightPanel({
                       : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                   }`}
                 >
-                  {renderJobs.length > 0 ? `Renders (${renderJobs.length})` : "Renders"}
+                  {renderJobs.length > 0
+                    ? t("rightPanel.rendersWithCount", { count: renderJobs.length })
+                    : t("rightPanel.renders")}
                 </button>
               </Tooltip>
-              <Tooltip label="Slideshow branching editor" side="bottom">
+              <Tooltip label={t("rightPanel.tooltipSlideshow")} side="bottom">
                 <button
                   type="button"
                   onClick={() => setRightPanelTab("slideshow")}
@@ -516,7 +520,7 @@ export function StudioRightPanel({
                       : "text-neutral-500 hover:bg-neutral-800/70 hover:text-neutral-200"
                   }`}
                 >
-                  Slideshow
+                  {t("rightPanel.slideshow")}
                 </button>
               </Tooltip>
             </div>

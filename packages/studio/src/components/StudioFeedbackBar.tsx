@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { trackStudioFeedback } from "../telemetry/events";
 
 const DEFAULT_FEEDBACK_INTERVAL = 10;
@@ -68,6 +69,7 @@ function markPrompted(): void {
 
 // fallow-ignore-next-line complexity
 export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
@@ -155,7 +157,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
       ].join(" ")}
     >
       {submitted ? (
-        <span className="text-neutral-500">Thanks for the feedback!</span>
+        <span className="text-neutral-500">{t("feedbackBar.thanks")}</span>
       ) : rating !== null ? (
         <>
           <input
@@ -167,7 +169,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
               if (e.key === "Enter") handleSubmit();
               if (e.key === "Escape") handleDismiss();
             }}
-            placeholder="Any details? (enter to send, esc to close)"
+            placeholder={t("feedbackBar.detailsPlaceholder")}
             className="flex-1 bg-transparent border-none text-[11px] text-neutral-300 placeholder-neutral-600 outline-none"
             maxLength={500}
           />
@@ -175,12 +177,12 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
             onClick={handleSubmit}
             className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors flex-shrink-0"
           >
-            send
+            {t("feedbackBar.send")}
           </button>
         </>
       ) : (
         <>
-          <span className="text-neutral-500 flex-shrink-0">How's the Studio experience?</span>
+          <span className="text-neutral-500 flex-shrink-0">{t("feedbackBar.prompt")}</span>
           <div className="flex items-center gap-0.5">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -196,7 +198,7 @@ export const StudioFeedbackBar = memo(function StudioFeedbackBar() {
           <button
             onClick={handleDismiss}
             className="text-neutral-700 hover:text-neutral-400 transition-colors flex-shrink-0"
-            aria-label="Dismiss"
+            aria-label={t("feedbackBar.dismissAria")}
           >
             <svg
               width="12"

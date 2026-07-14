@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -32,6 +33,7 @@ interface SnapToolbarProps {
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
+  const { t } = useTranslation();
   const [prefs, setPrefs] = useState(readSnapPrefs);
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
   // Motion-path "set destination" toggle — shown only when the selected element
@@ -124,8 +126,10 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
         }`}
         onClick={toggleSnap}
-        title={prefs.snapEnabled ? "Snap enabled (S)" : "Snap disabled (S)"}
-        aria-label="Toggle snap"
+        title={prefs.snapEnabled ? t("snapToolbar.snapEnabled") : t("snapToolbar.snapDisabled")}
+        aria-label={
+          prefs.snapEnabled ? t("snapToolbar.snapEnabled") : t("snapToolbar.snapDisabled")
+        }
       >
         <MagnetStraight size={16} weight={prefs.snapEnabled ? "fill" : "regular"} />
       </button>
@@ -144,8 +148,10 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             e.preventDefault();
             setGridPopoverOpen((v) => !v);
           }}
-          title={prefs.gridVisible ? "Grid visible (G)" : "Grid hidden (G)"}
-          aria-label="Toggle grid"
+          title={prefs.gridVisible ? t("snapToolbar.gridVisible") : t("snapToolbar.gridHidden")}
+          aria-label={
+            prefs.gridVisible ? t("snapToolbar.gridVisible") : t("snapToolbar.gridHidden")
+          }
         >
           <GridFour size={16} weight={prefs.gridVisible ? "fill" : "regular"} />
         </button>
@@ -156,7 +162,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
             className="absolute right-0 top-full mt-1 rounded-lg bg-neutral-800 border border-neutral-700 p-3 shadow-xl min-w-[180px]"
           >
             <label className="flex items-center justify-between text-xs text-white/80 mb-2">
-              <span>Grid spacing</span>
+              <span>{t("snapToolbar.gridSpacing")}</span>
               <input
                 type="number"
                 min={10}
@@ -179,7 +185,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
                 onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
                 className="accent-studio-accent"
               />
-              <span>Snap to grid</span>
+              <span>{t("snapToolbar.snapToGrid")}</span>
             </label>
           </div>
         )}

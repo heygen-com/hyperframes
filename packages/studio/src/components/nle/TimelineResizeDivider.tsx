@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 export const MIN_TIMELINE_H = 100;
 export const MIN_PREVIEW_H = 120;
@@ -21,6 +22,7 @@ export function TimelineResizeDivider({
   containerRef: React.RefObject<HTMLDivElement | null>;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   const isDragging = useRef(false);
   const timelineHRef = useRef(timelineH);
   timelineHRef.current = timelineH;
@@ -76,7 +78,7 @@ export function TimelineResizeDivider({
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize timeline (arrow keys)"
+      aria-label={t("nle.resizeTimelineAria")}
       aria-valuenow={Math.round(timelineH)}
       aria-valuemin={MIN_TIMELINE_H}
       aria-valuemax={Math.round(

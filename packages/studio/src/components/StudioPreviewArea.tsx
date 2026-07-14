@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { NLELayout } from "./nle/NLELayout";
 import { CaptionOverlay } from "../captions/components/CaptionOverlay";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
@@ -98,6 +99,7 @@ export function StudioPreviewArea({
   blockPreview,
   gestureOverlay,
 }: StudioPreviewAreaProps) {
+  const { t } = useTranslation();
   const {
     projectId,
     activeCompPath,
@@ -410,7 +412,7 @@ export function StudioPreviewArea({
                 >
                   <div className="flex items-center gap-1.5 px-2 py-0.5">
                     <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                      Captions
+                      {t("shell.previewArea.captions")}
                     </span>
                   </div>
                   <CaptionTimeline pixelsPerSecond={100} />

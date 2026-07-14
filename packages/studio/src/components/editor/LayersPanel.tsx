@@ -1,4 +1,5 @@
 import { memo, useState, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
@@ -54,6 +55,7 @@ interface CollapsedState {
 
 // fallow-ignore-next-line complexity
 export const LayersPanel = memo(function LayersPanel() {
+  const { t } = useTranslation();
   const { previewIframeRef, activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey, compositionLoading, timelineElements } = useStudioPlaybackContext();
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -250,8 +252,8 @@ export const LayersPanel = memo(function LayersPanel() {
   const visibleLayers = getVisibleLayers(layers, collapsed);
 
   const handleSingleSibling = useCallback(() => {
-    showToast("Only one layer at this level", "info");
-  }, [showToast]);
+    showToast(t("layersPanel.singleLayer"), "info");
+  }, [showToast, t]);
 
   const {
     dragKey,
@@ -270,8 +272,8 @@ export const LayersPanel = memo(function LayersPanel() {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-panel-bg px-6 text-center">
         <Layers size={18} className="mb-3 text-panel-text-5" />
-        <p className="text-sm font-medium text-panel-text-1">No layers</p>
-        <p className="mt-1 text-xs text-neutral-500">Load a composition to see its element tree</p>
+        <p className="text-sm font-medium text-panel-text-1">{t("layersPanel.noLayers")}</p>
+        <p className="mt-1 text-xs text-neutral-500">{t("layersPanel.noLayersHint")}</p>
       </div>
     );
   }
@@ -282,7 +284,9 @@ export const LayersPanel = memo(function LayersPanel() {
       onPointerLeave={() => handleLayerHover(null)}
     >
       <div className="border-b border-panel-border px-3 py-2 text-[11px] text-panel-text-3">
-        {layers.length} layer{layers.length === 1 ? "" : "s"}
+        {layers.length === 1
+          ? t("layersPanel.layerCount", { count: layers.length })
+          : t("layersPanel.layerCountPlural", { count: layers.length })}
       </div>
       <div
         ref={scrollContainerRef}

@@ -1,5 +1,6 @@
-import { StrictMode } from "react";
+import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import "./i18n";
 import { StudioApp } from "./App";
 import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { trackStudioEvent } from "./utils/studioTelemetry";
@@ -93,8 +94,10 @@ window.addEventListener("unhandledrejection", (event) => {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <StudioErrorBoundary>
-      <StudioApp />
-    </StudioErrorBoundary>
+    <Suspense fallback={null}>
+      <StudioErrorBoundary>
+        <StudioApp />
+      </StudioErrorBoundary>
+    </Suspense>
   </StrictMode>,
 );

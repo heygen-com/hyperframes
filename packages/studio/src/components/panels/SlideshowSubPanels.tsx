@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useId } from "react";
+import { useTranslation } from "react-i18next";
 import type { SlideRef, SlideHotspot, SlideSequence } from "@hyperframes/core/slideshow";
 import type { DomEditSelection } from "../editor/domEditing";
 import type { SceneInfo } from "./slideshowPanelHelpers";
@@ -52,6 +53,7 @@ export function SlideList({
   onToggle,
   onReorder,
 }: SlideListProps) {
+  const { t } = useTranslation();
   const slideIds = new Set(slides.map((s) => s.sceneId));
   const sceneById = new Map(scenes.map((s) => [s.id, s]));
   const orderedSlideScenes = slides
@@ -124,7 +126,9 @@ export function SlideList({
         );
       })}
       {scenes.length === 0 && (
-        <p className="px-3 py-2 text-[11px] text-neutral-500 italic">No scenes found</p>
+        <p className="px-3 py-2 text-[11px] text-neutral-500 italic">
+          {t("slideshowPanel.noScenesFound")}
+        </p>
       )}
     </div>
   );

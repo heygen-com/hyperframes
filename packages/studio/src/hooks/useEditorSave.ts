@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import i18n from "../i18n";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import type { EditHistoryKind } from "../utils/editHistory";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -69,10 +70,7 @@ export function useEditorSave({
             const now = Date.now();
             if (now - lastFailureToastAtRef.current > 5000) {
               lastFailureToastAtRef.current = now;
-              showToast(
-                `Couldn't save ${path} — your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
-                "error",
-              );
+              showToast(i18n.t("hooks.editorSave.failed", { path }), "error");
             }
           });
       });

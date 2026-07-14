@@ -1,4 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
 /** Rotate grab-handle above the selection. Anchors to the crop outline when
@@ -12,6 +13,7 @@ export function DomEditRotateHandle({
   cropOutlineInsetPx?: { top: number; right: number; bottom: number; left: number };
   onStartRotate: (e: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
+  const { t } = useTranslation();
   const inset = cropOutlineInsetPx ?? { top: 0, right: 0, bottom: 0, left: 0 };
   const visibleLeft = overlayRect.left + inset.left;
   const visibleWidth = Math.max(0, overlayRect.width - inset.left - inset.right);
@@ -32,8 +34,8 @@ export function DomEditRotateHandle({
         type="button"
         className="pointer-events-auto absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 rounded-full border border-studio-accent bg-studio-accent p-0 shadow-[0_0_0_2px_rgba(60,230,172,0.18)]"
         style={{ cursor: "grab", touchAction: "none" }}
-        title="Rotate"
-        aria-label="Rotate selection"
+        title={t("editor.domEdit.rotate")}
+        aria-label={t("editor.domEdit.rotateSelection")}
         onPointerDown={onStartRotate}
       />
     </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { X } from "../../icons/SystemIcons";
 import {
@@ -128,6 +129,7 @@ export function ColorField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -241,13 +243,15 @@ export function ColorField({
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <div className="min-w-0">
               <div className="truncate text-[11px] font-medium text-neutral-100">{label}</div>
-              <div className="text-[9px] uppercase tracking-[0.16em] text-neutral-600">Color</div>
+              <div className="text-[9px] uppercase tracking-[0.16em] text-neutral-600">
+                {t("editor.colorPicker.colorLabel")}
+              </div>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
-              aria-label="Close color picker"
+              aria-label={t("editor.colorPicker.closeAria")}
             >
               <X size={13} />
             </button>
@@ -295,13 +299,17 @@ export function ColorField({
                   {currentColor}
                 </div>
                 <div className="mt-0.5 text-[9px] text-neutral-600">
-                  S {saturationPercent}% · B {brightnessPercent}% · A {alphaPercent}%
+                  {t("editor.colorPicker.sbaFormat", {
+                    s: saturationPercent,
+                    b: brightnessPercent,
+                    a: alphaPercent,
+                  })}
                 </div>
               </div>
             </div>
 
             <ColorSlider
-              label="Hue"
+              label={t("editor.colorPicker.hue")}
               value={hsv.hue}
               min={0}
               max={360}
@@ -314,7 +322,7 @@ export function ColorField({
             />
 
             <ColorSlider
-              label="Alpha"
+              label={t("editor.colorPicker.alpha")}
               value={draftColor.alpha}
               min={0}
               max={1}
@@ -327,7 +335,7 @@ export function ColorField({
             />
 
             <label className="grid gap-1.5">
-              <span className={LABEL}>Hex</span>
+              <span className={LABEL}>{t("editor.colorPicker.hex")}</span>
               <input
                 value={hexDraft}
                 onChange={(event) => handleHexCommit(event.target.value)}
@@ -355,7 +363,7 @@ export function ColorField({
       <button
         type="button"
         disabled={disabled}
-        aria-label={`Pick ${label.toLowerCase()} color`}
+        aria-label={t("editor.colorPicker.pickColorAria", { label: label.toLowerCase() })}
         ref={buttonRef}
         onClick={openPicker}
         className={`${FIELD} flex items-center gap-3 text-left hover:border-neutral-700 disabled:cursor-not-allowed ${open ? "border-neutral-600" : ""}`}

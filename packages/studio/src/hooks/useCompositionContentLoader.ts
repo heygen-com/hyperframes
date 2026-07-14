@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import i18n from "../i18n";
 
 /**
  * Loads a composition file's content for the source editor when a composition
@@ -32,7 +33,12 @@ export function useCompositionContentLoader({
           setEditingFile({ path: comp, content: data.content });
         })
         .catch((err) => {
-          showToast(err instanceof Error ? err.message : `Failed to load ${comp}`, "error");
+          showToast(
+            err instanceof Error
+              ? err.message
+              : i18n.t("hooks.composition.loadFailed", { path: comp }),
+            "error",
+          );
         });
     },
     [projectId, setEditingFile, setActiveCompPath, showToast],

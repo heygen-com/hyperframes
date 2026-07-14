@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 /**
  * Extracts a representative JPEG frame from a video URL using a hidden
@@ -13,6 +14,7 @@ export function VideoFrameThumbnail({
   /** Shown instead of an endless shimmer when the video can't be decoded. */
   fallbackLabel?: string;
 }) {
+  const { t } = useTranslation();
   const [frame, setFrame] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -58,7 +60,9 @@ export function VideoFrameThumbnail({
   if (failed && !frame) {
     return (
       <div className="w-full h-full bg-neutral-800 flex items-center justify-center">
-        <span className="text-[9px] font-medium text-neutral-600">{fallbackLabel ?? "VIDEO"}</span>
+        <span className="text-[9px] font-medium text-neutral-600">
+          {fallbackLabel ?? t("ui.videoFallback")}
+        </span>
       </div>
     );
   }

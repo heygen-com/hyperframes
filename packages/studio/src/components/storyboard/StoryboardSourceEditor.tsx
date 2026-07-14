@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { SourceEditor } from "../editor/SourceEditor";
@@ -17,7 +18,7 @@ export interface StoryboardSourceEditorProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-const DISCARD_PROMPT = "Discard unsaved markdown changes?";
+const DISCARD_PROMPT_KEY = "storyboard.discardMarkdownChanges";
 
 interface EditableFile {
   content: string;
@@ -31,6 +32,7 @@ interface EditableFile {
 
 /** Load a project file's raw text and track edits + save state via the shared file manager. */
 function useEditableFile(path: string, onSaved: () => void): EditableFile {
+  const { t } = useTranslation();
   const { readProjectFile, writeProjectFile } = useFileManagerContext();
   const [content, setContent] = useState("");
   const [saved, setSaved] = useState("");
@@ -50,7 +52,7 @@ function useEditableFile(path: string, onSaved: () => void): EditableFile {
         setSaved(text);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "failed to load file");
+        if (!cancelled) setError(err instanceof Error ? err.message : t("storyboard.failedToLoad"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -58,7 +60,7 @@ function useEditableFile(path: string, onSaved: () => void): EditableFile {
     return () => {
       cancelled = true;
     };
-  }, [path, readProjectFile]);
+  }, [path, readProjectFile, t]);
 
   const save = useCallback(() => {
     if (saving) return; // coalesce a fast double Cmd+S into one PUT
@@ -69,9 +71,11 @@ function useEditableFile(path: string, onSaved: () => void): EditableFile {
         setSaved(content);
         onSaved();
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "failed to save"))
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : t("storyboard.failedToSave")),
+      )
       .finally(() => setSaving(false));
-  }, [writeProjectFile, path, content, onSaved, saving]);
+  }, [writeProjectFile, path, content, onSaved, saving, t]);
 
   return { content, setContent, dirty: content !== saved, loading, saving, error, save };
 }
@@ -144,6 +148,7 @@ export function StoryboardSourceEditor({
   onSaved,
   onDirtyChange,
 }: StoryboardSourceEditorProps) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState(files[0]?.path ?? "");
   // Reconcile against the current file list so a removed/renamed file can't strand the tab.
   const activePath = files.some((f) => f.path === selected) ? selected : (files[0]?.path ?? "");
@@ -166,7 +171,7 @@ export function StoryboardSourceEditor({
   // Switching files discards the in-memory buffer; confirm when there are unsaved edits.
   const selectFile = (path: string) => {
     if (path === activePath) return;
-    if (file.dirty && !window.confirm(DISCARD_PROMPT)) return;
+    if (file.dirty && !window.confirm(t(DISCARD_PROMPT_KEY))) return;
     setSelected(path);
   };
 
@@ -197,7 +202,11 @@ export function StoryboardSourceEditor({
         <div className="ml-auto flex items-center gap-3">
           {file.error && <span className="text-xs text-red-400">{file.error}</span>}
           <span className="text-xs text-neutral-500">
-            {file.saving ? "Saving…" : file.dirty ? "Unsaved changes" : "Saved"}
+            {file.saving
+              ? t("storyboard.saving")
+              : file.dirty
+                ? t("storyboard.unsavedChanges")
+                : t("storyboard.saved")}
           </span>
           <button
             type="button"
@@ -205,14 +214,16 @@ export function StoryboardSourceEditor({
             disabled={!file.dirty || file.saving}
             className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
           >
-            Save
+            {t("storyboard.save")}
           </button>
         </div>
       </div>
       <div className="flex flex-1 min-h-0">
         <div className="w-1/2 min-w-0 border-r border-neutral-800">
           {file.loading ? (
-            <div className="p-4 text-sm text-neutral-500">Loading {activePath}…</div>
+            <div className="p-4 text-sm text-neutral-500">
+              {t("storyboard.loadingFile", { path: activePath })}
+            </div>
           ) : (
             <SourceEditor
               content={file.content}

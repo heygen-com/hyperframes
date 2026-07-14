@@ -7,6 +7,7 @@ import {
   memo,
   type ReactNode,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useTimelinePlayer, PlayerControls, Timeline, usePlayerStore } from "../../player";
 import type { TimelineElement } from "../../player";
@@ -19,10 +20,7 @@ import { useCompositionStack } from "./useCompositionStack";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
 import { setCompositionSourceMap } from "../editor/domEditingDom";
 import { trackStudioExpandedClipEdit } from "../../telemetry/events";
-import {
-  TIMELINE_TOGGLE_SHORTCUT_LABEL,
-  getTimelineToggleTitle,
-} from "../../utils/timelineDiscovery";
+import { TIMELINE_TOGGLE_SHORTCUT_LABEL } from "../../utils/timelineDiscovery";
 import { ensureMotionPathPluginLoaded } from "../../utils/gsapSoftReload";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -116,6 +114,7 @@ export const NLELayout = memo(function NLELayout({
   onToggleTimeline,
   onCompositionLoadingChange: onCompositionLoadingChangeParent,
 }: NLELayoutProps) {
+  const { t } = useTranslation();
   const {
     iframeRef,
     togglePlay,
@@ -544,7 +543,7 @@ export const NLELayout = memo(function NLELayout({
                 onDrop={(event) => event.preventDefault()}
               >
                 <span className="rounded-md bg-neutral-900/90 px-2.5 py-1 text-[11px] text-neutral-400">
-                  Loading composition…
+                  {t("nle.loadingComposition")}
                 </span>
               </div>
             )}
@@ -554,14 +553,14 @@ export const NLELayout = memo(function NLELayout({
         <div className="flex-shrink-0 border-t border-neutral-800/50 bg-neutral-950/96">
           <div className="flex h-10 items-center justify-between px-3">
             <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500">
-              Timeline
+              {t("nle.timeline")}
             </div>
             <button
               type="button"
               onClick={onToggleTimeline}
               className="flex h-7 items-center gap-1.5 rounded-md border border-neutral-800 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-100"
-              title={getTimelineToggleTitle(false)}
-              aria-label="Show timeline editor"
+              title={t("nle.showTimelineEditor", { shortcut: TIMELINE_TOGGLE_SHORTCUT_LABEL })}
+              aria-label={t("nle.showTimelineEditorAria")}
             >
               <svg
                 width="13"
@@ -578,7 +577,7 @@ export const NLELayout = memo(function NLELayout({
                 <path d="M7 9h10" />
                 <path d="M8 5h8" />
               </svg>
-              <span>Show</span>
+              <span>{t("nle.show")}</span>
               <span className="hidden rounded bg-white/5 px-1 py-0.5 font-mono text-[9px] text-neutral-500 sm:inline">
                 {TIMELINE_TOGGLE_SHORTCUT_LABEL}
               </span>

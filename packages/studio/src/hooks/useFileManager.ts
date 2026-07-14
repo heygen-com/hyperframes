@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import i18n from "../i18n";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
@@ -157,7 +158,10 @@ export function useFileManager({
           }
         })
         .catch((err: unknown) => {
-          showToast(err instanceof Error ? err.message : `Failed to load ${path}`, "error");
+          showToast(
+            err instanceof Error ? err.message : i18n.t("hooks.fileManager.loadFailed", { path }),
+            "error",
+          );
         });
     },
     [showToast],
@@ -218,22 +222,26 @@ export function useFileManager({
         if (res.ok) {
           const data = await res.json();
           if (data.skipped?.length) {
-            showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
+            showToast(
+              i18n.t("hooks.fileManager.skippedTooLarge", {
+                names: data.skipped.join(", "),
+              }),
+            );
           }
           if (data.invalid?.length) {
             const names = data.invalid.map((entry: { name: string }) => entry.name).join(", ");
-            showToast(`Unsupported media skipped: ${names}`);
+            showToast(i18n.t("hooks.fileManager.unsupportedMediaSkipped", { names }));
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);
           return Array.isArray(data.files) ? data.files : [];
         } else if (res.status === 413) {
-          showToast("Upload rejected: payload too large");
+          showToast(i18n.t("hooks.fileManager.uploadRejectedTooLarge"));
         } else {
-          showToast(`Upload failed (${res.status})`);
+          showToast(i18n.t("hooks.fileManager.uploadFailedStatus", { status: res.status }));
         }
       } catch {
-        showToast("Upload failed: network error");
+        showToast(i18n.t("hooks.fileManager.uploadFailedNetwork"));
       }
       return [];
     },
@@ -262,7 +270,7 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create file failed: ${err.error}`);
-        showToast(`Couldn't create ${path}: ${err.error}`, "error");
+        showToast(i18n.t("hooks.fileManager.createFailed", { path, error: err.error }), "error");
       }
     },
     [refreshFileTree, handleFileSelect, showToast],
@@ -285,7 +293,10 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Create folder failed: ${err.error}`);
-        showToast(`Couldn't create folder ${path}: ${err.error}`, "error");
+        showToast(
+          i18n.t("hooks.fileManager.createFolderFailed", { path, error: err.error }),
+          "error",
+        );
       }
     },
     [refreshFileTree, showToast],
@@ -304,7 +315,7 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Delete failed: ${err.error}`);
-        showToast(`Couldn't delete ${path}: ${err.error}`, "error");
+        showToast(i18n.t("hooks.fileManager.deleteFailed", { path, error: err.error }), "error");
       }
     },
     [refreshFileTree, showToast],
@@ -328,7 +339,7 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Rename failed: ${err.error}`);
-        showToast(`Couldn't rename ${oldPath}: ${err.error}`, "error");
+        showToast(i18n.t("hooks.fileManager.renameFailed", { oldPath, error: err.error }), "error");
       }
     },
     [refreshFileTree, handleFileSelect, setRefreshKey, showToast],
@@ -350,7 +361,7 @@ export function useFileManager({
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Duplicate failed: ${err.error}`);
-        showToast(`Couldn't duplicate ${path}: ${err.error}`, "error");
+        showToast(i18n.t("hooks.fileManager.duplicateFailed", { path, error: err.error }), "error");
       }
     },
     [refreshFileTree, handleFileSelect, showToast],

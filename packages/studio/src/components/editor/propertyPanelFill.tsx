@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
 import {
   buildDefaultGradientModel,
@@ -205,6 +206,7 @@ export function GradientField({
   disabled?: boolean;
   onCommit: (nextValue: string) => void;
 }) {
+  const { t } = useTranslation();
   const previewRef = useRef<HTMLDivElement | null>(null);
   const parsed = parseGradient(value) ?? buildDefaultGradientModel(fallbackColor);
 
@@ -267,9 +269,9 @@ export function GradientField({
             value={parsed.kind}
             onChange={(next) => patch({ kind: next as GradientModel["kind"] })}
             options={[
-              { label: "Linear", value: "linear" },
-              { label: "Radial", value: "radial" },
-              { label: "Conic", value: "conic" },
+              { label: t("propertyPanel.linear"), value: "linear" },
+              { label: t("propertyPanel.radial"), value: "radial" },
+              { label: t("propertyPanel.conic"), value: "conic" },
             ]}
           />
           <label className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
@@ -280,7 +282,7 @@ export function GradientField({
               onChange={(e) => patch({ repeating: e.target.checked })}
               className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
             />
-            Repeat
+            {t("propertyPanel.repeat")}
           </label>
           <button
             type="button"
@@ -297,14 +299,16 @@ export function GradientField({
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <RotateCcw size={12} />
-            Reverse
+            {t("propertyPanel.reverse")}
           </button>
         </div>
       </div>
 
       {(parsed.kind === "linear" || parsed.kind === "conic") && (
         <div className="grid gap-1.5">
-          <span className={LABEL}>{parsed.kind === "linear" ? "Angle" : "Start angle"}</span>
+          <span className={LABEL}>
+            {parsed.kind === "linear" ? t("propertyPanel.angle") : t("propertyPanel.startAngle")}
+          </span>
           <SliderControl
             value={parsed.angle}
             min={0}
@@ -321,14 +325,14 @@ export function GradientField({
       {parsed.kind === "radial" && (
         <div className={RESPONSIVE_GRID}>
           <SelectField
-            label="Shape"
+            label={t("propertyPanel.shape")}
             value={parsed.shape}
             disabled={disabled}
             onChange={(next) => patch({ shape: next as GradientModel["shape"] })}
             options={["ellipse", "circle"]}
           />
           <SelectField
-            label="Size"
+            label={t("propertyPanel.size")}
             value={parsed.radialSize}
             disabled={disabled}
             onChange={(next) => patch({ radialSize: next as GradientModel["radialSize"] })}
@@ -340,7 +344,7 @@ export function GradientField({
       {(parsed.kind === "radial" || parsed.kind === "conic") && (
         <div className={RESPONSIVE_GRID}>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center X</span>
+            <span className={LABEL}>{t("propertyPanel.centerX")}</span>
             <SliderControl
               value={parsed.centerX}
               min={0}
@@ -353,7 +357,7 @@ export function GradientField({
             />
           </div>
           <div className="grid min-w-0 gap-1.5">
-            <span className={LABEL}>Center Y</span>
+            <span className={LABEL}>{t("propertyPanel.centerY")}</span>
             <SliderControl
               value={parsed.centerY}
               min={0}
@@ -370,7 +374,7 @@ export function GradientField({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className={LABEL}>Stops</span>
+          <span className={LABEL}>{t("propertyPanel.stops")}</span>
           <button
             type="button"
             disabled={disabled || parsed.stops.length >= 6}
@@ -378,7 +382,7 @@ export function GradientField({
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <Plus size={12} />
-            Add stop
+            {t("propertyPanel.addStop")}
           </button>
         </div>
         <div className="space-y-3">
@@ -388,13 +392,13 @@ export function GradientField({
               className="grid min-w-0 grid-cols-[minmax(0,1fr)_68px_28px] gap-2"
             >
               <ColorField
-                label={`Stop ${index + 1}`}
+                label={`${t("propertyPanel.stop")} ${index + 1}`}
                 value={stop.color}
                 disabled={disabled}
                 onCommit={(next) => updateStop(index, { color: next })}
               />
               <DetailField
-                label="Pos"
+                label={t("propertyPanel.pos")}
                 value={`${Math.round(stop.position)}%`}
                 disabled={disabled}
                 onCommit={(next) =>

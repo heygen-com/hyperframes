@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import i18n from "../i18n";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
@@ -70,7 +71,12 @@ function tryApplyBeatHistory(
   const fileAt = fileStack[fileStack.length - 1]?.createdAt ?? null;
   if (fileAt !== null && (direction === "undo" ? beatAt < fileAt : beatAt > fileAt)) return false;
   const label = direction === "undo" ? ps.undoBeatEdits() : ps.redoBeatEdits();
-  if (label) showToast(`${direction === "undo" ? "Undid" : "Redid"} ${label}`, "info");
+  if (label) {
+    showToast(
+      i18n.t(direction === "undo" ? "hooks.hotkeys.undid" : "hooks.hotkeys.redid", { label }),
+      "info",
+    );
+  }
   return true;
 }
 
@@ -247,7 +253,7 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       // that isn't in the raw `elements` list, so the s-key can't resolve them.
       // Nudge toward the razor tool instead of failing silently.
       if (!el && selectedElementId.includes("#")) {
-        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
+        cb.showToast(i18n.t("hooks.hotkeys.useRazorForSubComp"), "info");
         return;
       }
     }
@@ -382,7 +388,11 @@ export function useAppHotkeys({
       });
       if (!result.ok && result.reason === "content-mismatch") {
         showToast(
-          `File changed outside Studio. ${direction === "undo" ? "Undo" : "Redo"} history was not applied.`,
+          i18n.t(
+            direction === "undo"
+              ? "hooks.hotkeys.fileChangedOutsideUndo"
+              : "hooks.hotkeys.fileChangedOutsideRedo",
+          ),
           "info",
         );
         return;
@@ -398,7 +408,12 @@ export function useAppHotkeys({
           forceReloadSdkSession?.();
         }
         await syncHistoryPreviewAfterApply(result.paths);
-        showToast(`${direction === "undo" ? "Undid" : "Redid"} ${result.label}`, "info");
+        showToast(
+          i18n.t(direction === "undo" ? "hooks.hotkeys.undid" : "hooks.hotkeys.redid", {
+            label: result.label,
+          }),
+          "info",
+        );
       }
     },
     [

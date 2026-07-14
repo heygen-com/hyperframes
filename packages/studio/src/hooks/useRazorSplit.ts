@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import i18n from "../i18n";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
@@ -181,7 +182,7 @@ export function useRazorSplit({
     // fallow-ignore-next-line complexity
     async (element: TimelineElement, splitTime: number) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
 
@@ -193,7 +194,7 @@ export function useRazorSplit({
           await executeSplit(pid, element, splitTime, activeCompPath, writeProjectFile);
 
         if (!changed) {
-          showToast("Failed to split clip — playhead may be outside the clip", "error");
+          showToast(i18n.t("hooks.razor.splitFailedPlayhead"), "error");
           return;
         }
 
@@ -210,15 +211,23 @@ export function useRazorSplit({
 
         reloadPreview();
         trackStudioRazorSplit({ mode: "single", count: 1 });
-        showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");
+        showToast(
+          i18n.t("hooks.razor.splitAt", {
+            label: getTimelineElementLabel(element),
+            time: splitTime.toFixed(2),
+          }),
+          "info",
+        );
         if (skippedSelectors?.length) {
           showToast(
-            `Some animations use non-ID selectors (${skippedSelectors.join(", ")}) and were not retargeted`,
+            i18n.t("hooks.razor.animationsNotRetargeted", {
+              selectors: skippedSelectors.join(", "),
+            }),
             "info",
           );
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to split timeline clip";
+        const message = error instanceof Error ? error.message : i18n.t("hooks.razor.splitFailed");
         showToast(message, "error");
       }
     },
@@ -237,7 +246,7 @@ export function useRazorSplit({
   const handleRazorSplitAll = useCallback(
     async (splitTime: number) => {
       if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
+        showToast(i18n.t("hooks.timeline.cannotEditWhileRecording"), "error");
         return;
       }
 
@@ -290,9 +299,16 @@ export function useRazorSplit({
 
         reloadPreview();
         trackStudioRazorSplit({ mode: "all", count: splitCount });
-        showToast(`Split ${splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
+        showToast(
+          i18n.t("hooks.razor.splitMultiple", {
+            count: splitCount,
+            time: splitTime.toFixed(2),
+          }),
+          "info",
+        );
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to split clips";
+        const message =
+          error instanceof Error ? error.message : i18n.t("hooks.razor.splitClipsFailed");
         showToast(message, "error");
       }
     },

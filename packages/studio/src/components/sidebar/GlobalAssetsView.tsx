@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // Cross-project asset view — the global media-use cache (~/.media), fetched from
 // /api/assets/global. Self-contained (owns its fetch + state) so AssetsTab stays
@@ -40,6 +41,7 @@ export function globalAssetRows(records: GlobalAssetRecord[], query = ""): Globa
 }
 
 export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
+  const { t } = useTranslation();
   const [records, setRecords] = useState<GlobalAssetRecord[] | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -59,13 +61,12 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
   const rows = useMemo(() => globalAssetRows(records ?? [], searchQuery), [records, searchQuery]);
 
   if (records === null) {
-    return <p className="px-4 py-3 text-[11px] text-panel-text-5">Loading global assets…</p>;
+    return <p className="px-4 py-3 text-[11px] text-panel-text-5">{t("globalAssets.loading")}</p>;
   }
   if (rows.length === 0) {
     return (
       <p className="px-4 py-3 text-[11px] text-panel-text-5">
-        No assets in the global cache yet. Resolved media is promoted to <code>~/.media</code> and
-        becomes reusable across projects.
+        {t("globalAssets.empty")} <code>~/.media</code> {t("globalAssets.emptySuffix")}
       </p>
     );
   }

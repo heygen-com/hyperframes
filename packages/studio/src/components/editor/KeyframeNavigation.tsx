@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { KeyframeDiamond, type DiamondState } from "./KeyframeDiamond";
 
 interface KeyframeNavigationProps {
@@ -92,6 +93,7 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
   onRemoveKeyframe,
   onConvertToKeyframes,
 }: KeyframeNavigationProps) {
+  const { t } = useTranslation();
   // Find keyframes that contain this property
   const propertyKeyframes = keyframes?.filter((kf) => property in kf.properties) ?? [];
 
@@ -150,10 +152,10 @@ export const KeyframeNavigation = memo(function KeyframeNavigation({
         size={9}
         title={
           diamondState === "ghost"
-            ? `Convert ${property} to keyframes`
+            ? t("editor.keyframeNav.convertToKeyframes", { property })
             : diamondState === "active"
-              ? `Remove ${property} keyframe`
-              : `Add ${property} keyframe`
+              ? t("editor.keyframeNav.removeKeyframe", { property })
+              : t("editor.keyframeNav.addKeyframe", { property })
         }
       />
       <button

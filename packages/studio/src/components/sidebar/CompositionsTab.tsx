@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface CompositionsTabProps {
   projectId: string;
@@ -122,6 +123,7 @@ function CompCard({
   isRendering?: boolean;
   lintInfo?: { count: number; messages: string[] };
 }) {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -233,8 +235,12 @@ function CompCard({
       {onRender && (
         <button
           type="button"
-          title={isRendering ? "Rendering..." : `Render ${name}`}
-          aria-label={isRendering ? "Rendering..." : `Render ${name}`}
+          title={
+            isRendering ? t("compositionsTab.rendering") : t("compositionsTab.render", { name })
+          }
+          aria-label={
+            isRendering ? t("compositionsTab.rendering") : t("compositionsTab.render", { name })
+          }
           disabled={isRendering}
           onClick={(e) => {
             e.stopPropagation();
@@ -275,10 +281,13 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
+  const { t } = useTranslation();
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
-        <p className="text-xs text-neutral-600 text-center">No compositions found</p>
+        <p className="text-xs text-neutral-600 text-center">
+          {t("compositionsTab.noCompositions")}
+        </p>
       </div>
     );
   }
