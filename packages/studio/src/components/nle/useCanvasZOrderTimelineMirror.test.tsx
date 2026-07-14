@@ -84,6 +84,7 @@ function mountMirrorHarness(history: {
     label: string,
     kind: "manual" | "timeline",
     coalesceKey: string,
+    coalesceMs: number | undefined,
     after: string,
   ) => {
     const entry = buildEditHistoryEntry({
@@ -92,6 +93,7 @@ function mountMirrorHarness(history: {
       label,
       kind,
       coalesceKey,
+      coalesceMs,
       now: history.now(),
       files: { "index.html": { before: history.fileContent.current, after } },
     });
@@ -99,9 +101,14 @@ function mountMirrorHarness(history: {
     history.state = pushEditHistoryEntry(history.state, entry);
   };
 
-  const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (_edits, coalesceKey) => {
+  const onMoveElements: TimelineEditCallbacks["onMoveElements"] = (
+    _edits,
+    coalesceKey,
+    _operation,
+    coalesceMs,
+  ) => {
     history.moveCoalesceKeys.push(coalesceKey ?? "<none>");
-    record("Move timeline clips", "timeline", coalesceKey ?? "<none>", "C-move");
+    record("Move timeline clips", "timeline", coalesceKey ?? "<none>", coalesceMs, "C-move");
   };
 
   const api: Partial<HarnessApi> = {};
@@ -116,7 +123,7 @@ function mountMirrorHarness(history: {
       reloadPreview: vi.fn(),
       clearDomSelection: vi.fn(),
       commitDomEditPatchBatches: async (_batches, options) => {
-        record(options.label, "manual", options.coalesceKey, "B-z");
+        record(options.label, "manual", options.coalesceKey, options.coalesceMs, "B-z");
       },
     });
     api.commitZ = handleDomZIndexReorderCommit;
@@ -135,10 +142,12 @@ function makeHistory() {
   let tick = 1000;
   return {
     state: createEmptyEditHistory(),
-    // Deterministic clock: consecutive records land 50ms apart — inside the
+    // Deterministic clock: consecutive records land 400ms apart — PAST the
     // reducer's default 300ms coalesce window, as in the live flow where the
-    // mirror is dispatched right after the z persist resolves.
-    now: () => (tick += 50),
+    // mirror is dispatched only after the z persist's server round-trip
+    // resolves (real network latency exceeds 300ms). The fold must therefore
+    // ride the gesture's explicit coalesceMs window, not the default.
+    now: () => (tick += 400),
     fileContent: { current: "A-original" },
     moveCoalesceKeys: [] as string[],
   };
@@ -164,7 +173,10 @@ describe("useCanvasZOrderTimelineMirror", () => {
       { element: target, zIndex: 7, id: "t", sourceFile: "index.html", key: "index.html#t" },
     ];
     const coalesceKey = zReorderCoalesceKey(entries, "bring-forward");
-    expect(coalesceKey).toBe("z-reorder:bring-forward:t");
+    // Gesture-unique key: action + ids + a per-call gesture sequence, so two
+    // SEPARATE actions on the same selection never share a key (see the
+    // two-gestures test below) while this gesture's two records do.
+    expect(coalesceKey).toMatch(/^z-reorder:bring-forward:t:g\d+$/);
 
     await act(async () => {
       // The PreviewOverlays wiring: z commit first, mirror after it resolves,
@@ -192,6 +204,59 @@ describe("useCanvasZOrderTimelineMirror", () => {
     // Timeline UI reflects the lane change without a reload: optimistic store update.
     const t = usePlayerStore.getState().elements.find((e) => e.key === "index.html#t");
     expect(t?.track).toBe(0);
+  });
+
+  it("two SEPARATE gestures on the same selection produce TWO undo entries (distinct keys)", async () => {
+    // Two consecutive gestures on the same element: each mints its own coalesce
+    // key (gesture sequence), so even an unbounded per-gesture window must never
+    // merge distinct user actions into one undo step.
+    setStoreElements([
+      storeEl("t", 0, 0, 10),
+      storeEl("b", 1, 0, 10),
+      storeEl("c", 2, 0, 10),
+      storeEl("a", 3, 20, 5), // free lane 3 over t's span
+    ]);
+    const history = makeHistory();
+    const api = mountMirrorHarness(history);
+
+    const target = domTarget("t");
+    const entries: ReorderEntries = [
+      { element: target, zIndex: 7, id: "t", sourceFile: "index.html", key: "index.html#t" },
+    ];
+
+    // Identical action + identical selection still mints a fresh key per call.
+    expect(zReorderCoalesceKey(entries, "send-backward")).not.toBe(
+      zReorderCoalesceKey(entries, "send-backward"),
+    );
+
+    const keys: string[] = [];
+    // Gesture 1: t (lane 0) sent backward past b → lands on the free lane 3.
+    // Gesture 2: t brought forward past c → back onto the now-free lane 0.
+    // Both gestures mirror (lane move persists), so each records a z+move pair.
+    const gestures = [
+      { action: "send-backward" as const, crossedId: "b" },
+      { action: "bring-forward" as const, crossedId: "c" },
+    ];
+    for (const { action, crossedId } of gestures) {
+      const coalesceKey = zReorderCoalesceKey(entries, action);
+      keys.push(coalesceKey);
+      await act(async () => {
+        await api.commitZ(entries, coalesceKey, action);
+        const mirrored = await api.mirror({
+          selectionKey: "index.html#t",
+          action,
+          crossed: domTarget(crossedId),
+          sourceFile: "index.html",
+          coalesceKey,
+        });
+        expect(mirrored).toBe(true);
+      });
+    }
+
+    expect(keys[0]).not.toBe(keys[1]); // fresh key per gesture
+    // Each gesture folded its own z+move pair, but the two gestures stayed apart.
+    expect(history.state.undo).toHaveLength(2);
+    expect(history.moveCoalesceKeys).toEqual(keys);
   });
 
   it("z-only actions leave the timeline untouched (resolver null → single z undo entry)", async () => {

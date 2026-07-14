@@ -25,15 +25,25 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
 
+// One coalesce key per z-reorder gesture. A monotonic counter — NOT Date.now()
+// / Math.random(), which the determinism rules forbid — matches the
+// laneChangeGestureSeq precedent in timelineClipDragCommit.ts: the key only has
+// to be unique per gesture and identical across the gesture's records.
+let zReorderGestureSeq = 0;
+
 /**
- * Undo coalesce key for a z-reorder commit. The key carries the action kind so
- * two DIFFERENT actions on the same element set (e.g. "bring-forward" then
- * "send-backward" within the coalesce window) never merge into one undo step.
+ * Undo coalesce key for ONE z-reorder gesture — unique per call. The key
+ * carries the action kind + element ids for debuggability, plus a gesture
+ * sequence so two SEPARATE user actions (even the same action on the same
+ * selection) never share a key. That uniqueness is what makes the unbounded
+ * per-gesture coalesce window (see handleDomZIndexReorderCommit) safe: the
+ * fold can only ever merge records of the SAME gesture.
  *
- * Exported as THE single implementation of the key: the canvas z-order mirror
- * (useCanvasZOrderTimelineMirror) passes this exact key into its timeline lane
- * persist so editHistory folds the z write and the track write into one undo
- * entry — a drifting duplicate formula would silently split the undo.
+ * Exported as THE single implementation of the key: the canvas z-order wiring
+ * (PreviewOverlays) mints it once per gesture and passes the same instance to
+ * both the z persist and the timeline lane mirror (useCanvasZOrderTimelineMirror)
+ * so editHistory folds the z write and the track write into one undo entry —
+ * recomputing the key per record would silently split the undo.
  */
 export function zReorderCoalesceKey(
   entries: ReadonlyArray<{ element: HTMLElement; id?: string; selector?: string }>,
@@ -42,7 +52,7 @@ export function zReorderCoalesceKey(
   const ids = entries
     .map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el")
     .join(":");
-  return `z-reorder:${actionKind ?? "reorder"}:${ids}`;
+  return `z-reorder:${actionKind ?? "reorder"}:${ids}:g${zReorderGestureSeq++}`;
 }
 
 export function useElementLifecycleOps({
@@ -244,6 +254,13 @@ export function useElementLifecycleOps({
       return commitDomEditPatchBatches(batches, {
         label: "Reorder layers",
         coalesceKey,
+        // Unbounded window: every key this commit records under is unique per
+        // gesture (zReorderCoalesceKey's gesture seq, or the lane drag's
+        // clip-lane-move:<seq>), so the fold can only merge records of the SAME
+        // gesture — and those records are separated by a server round-trip
+        // (move→z on a lane drag, z→lane-mirror on a canvas action), which
+        // under real network latency exceeds the 300ms default window.
+        coalesceMs: Number.POSITIVE_INFINITY,
         skipReload: true,
       }).catch((error) => {
         for (const rollback of rollbacks) rollback();

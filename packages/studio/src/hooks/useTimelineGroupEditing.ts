@@ -37,6 +37,8 @@ export interface TimelineGroupResizeChange {
 export interface TimelineGroupCommitOptions {
   beforeTiming?: Promise<void>;
   coalesceKey?: string;
+  /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
+  coalesceMs?: number;
 }
 
 interface UseTimelineGroupEditingOptions {
@@ -137,6 +139,7 @@ export function useTimelineGroupEditing({
       label: string,
       batchChanges: PersistTimelineBatchChange[],
       coalesceKey: string,
+      coalesceMs?: number,
     ) => {
       await persistTimelineBatchEdit({
         projectId,
@@ -148,6 +151,7 @@ export function useTimelineGroupEditing({
         domEditSaveTimestampRef,
         pendingTimelineEditPathRef,
         coalesceKey,
+        coalesceMs,
       });
       forceReloadSdkSession?.();
     },
@@ -176,6 +180,7 @@ export function useTimelineGroupEditing({
       needsExtension: boolean;
       label: string;
       coalesceKey: string;
+      coalesceMs?: number;
     }): Promise<boolean> => {
       const sharedPath = allChangesSharePath(input.changes, activeCompPath);
       const canUseSdk =
@@ -196,7 +201,7 @@ export function useTimelineGroupEditing({
           compositionPath: activeCompPath,
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
         },
-        { label: input.label, coalesceKey: input.coalesceKey },
+        { label: input.label, coalesceKey: input.coalesceKey, coalesceMs: input.coalesceMs },
       );
     },
     [
@@ -234,6 +239,7 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
+      const coalesceMs = options?.coalesceMs;
       return enqueueGroupOperation("Move timeline clips", async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
@@ -243,6 +249,7 @@ export function useTimelineGroupEditing({
           needsExtension,
           label: "Move timeline clips",
           coalesceKey,
+          coalesceMs,
         });
         if (handledBySdk) return;
 
@@ -261,6 +268,7 @@ export function useTimelineGroupEditing({
               ),
           })),
           coalesceKey,
+          coalesceMs,
         );
         await finishGroupTimingGsapFallback({
           projectId,
@@ -327,6 +335,7 @@ export function useTimelineGroupEditing({
       // the just-patched live DOM. See syncPreviewContentDuration.
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? resizeCoalesceKey(changes);
+      const coalesceMs = options?.coalesceMs;
       return enqueueGroupOperation("Resize timeline clips", async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
@@ -339,6 +348,7 @@ export function useTimelineGroupEditing({
           needsExtension,
           label: "Resize timeline clips",
           coalesceKey,
+          coalesceMs,
         });
         if (handledBySdk) return;
 
@@ -355,6 +365,7 @@ export function useTimelineGroupEditing({
               }),
           })),
           coalesceKey,
+          coalesceMs,
         );
         await finishGroupTimingGsapFallback({
           projectId,

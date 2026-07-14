@@ -299,6 +299,8 @@ export interface PersistTimelineBatchEditInput {
   domEditSaveTimestampRef: React.MutableRefObject<number>;
   pendingTimelineEditPathRef: React.MutableRefObject<Set<string>>;
   coalesceKey?: string;
+  /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
+  coalesceMs?: number;
 }
 
 export async function persistTimelineBatchEdit(
@@ -347,6 +349,7 @@ export async function persistTimelineBatchEdit(
     label: input.label,
     kind: "timeline",
     coalesceKey: input.coalesceKey,
+    coalesceMs: input.coalesceMs,
     files,
     readFile: async (path) => originals.get(path) ?? readFileContent(input.projectId, path),
     writeFile: input.writeProjectFile,

@@ -408,6 +408,7 @@ export function useDomEditCommits({
           label: options.label,
           kind: "manual",
           coalesceKey: options.coalesceKey,
+          coalesceMs: options.coalesceMs,
           files,
         });
         forceReloadSdkSession?.();

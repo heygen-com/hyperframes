@@ -22,6 +22,7 @@ describe("TimelinePane move wrapper", () => {
       "clip-lane-move:7",
       "track-insert",
       onMoveElements,
+      Number.POSITIVE_INFINITY,
     );
     expect(onMoveElements).toHaveBeenCalledWith(
       [
@@ -32,6 +33,8 @@ describe("TimelinePane move wrapper", () => {
       ],
       "clip-lane-move:7",
       "track-insert",
+      // The per-gesture coalesce window rides along with the shared key.
+      Number.POSITIVE_INFINITY,
     );
   });
 

@@ -32,6 +32,10 @@ export interface MirrorZOrderInput {
  * resolved — serializing the two same-file writes, exactly like the lane-drag's
  * move→z ordering (see persistMoveEdits' doc) — and with the SAME coalesce key
  * the z persist recorded, so editHistory folds both records into one undo entry.
+ * Because the z round-trip puts a real-network gap between the two records, the
+ * lane persist carries an unbounded per-gesture coalesce window (see
+ * commitZMirrorLaneMove) — the shared key is unique per gesture
+ * (zReorderCoalesceKey's gesture seq), so the fold stays gesture-scoped.
  *
  * Element source: `useExpandedTimelineElements()` — the same expanded display
  * set the Timeline renders and the resolver expects (post-normalizeToZones
@@ -93,13 +97,26 @@ export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => P
           trackOrder: displayTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
           onMoveElements: onMoveElements
-            ? (edits, coalesceKey, operation) =>
-                forwardRebasedTimelineMoveElements(edits, coalesceKey, operation, onMoveElements)
+            ? (edits, coalesceKey, operation, coalesceMs) =>
+                forwardRebasedTimelineMoveElements(
+                  edits,
+                  coalesceKey,
+                  operation,
+                  onMoveElements,
+                  coalesceMs,
+                )
             : undefined,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z
           // stacking sync must not re-trigger and fight the just-set z values.
         },
         input.coalesceKey,
+        // Unbounded fold window: this record lands only AFTER the z persist's
+        // server round-trip resolved, so the gap between the gesture's two
+        // records exceeds editHistory's 300ms default under real latency and
+        // the fold would silently split into two undo entries. The shared key
+        // is unique per gesture (zReorderCoalesceKey's gesture seq), so the
+        // unbounded window can never merge two distinct user actions.
+        Number.POSITIVE_INFINITY,
       );
     },
     [onMoveElements],

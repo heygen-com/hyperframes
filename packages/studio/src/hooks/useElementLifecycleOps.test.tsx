@@ -18,6 +18,7 @@ afterEach(() => {
 interface BatchOptions {
   label: string;
   coalesceKey: string;
+  coalesceMs?: number;
   skipReload?: boolean;
 }
 
@@ -219,10 +220,15 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     });
 
     // Same element set, different actions — the keys must differ so the two
-    // edits never coalesce into one undo step within the coalesce window.
+    // edits never coalesce into one undo step. Each key also carries a fresh
+    // gesture sequence, which is what makes the commit's unbounded per-gesture
+    // coalesce window safe (see zReorderCoalesceKey).
     expect(captured).toHaveLength(2);
-    expect(captured[0]?.options.coalesceKey).toBe("z-reorder:bring-forward:clip-a");
-    expect(captured[1]?.options.coalesceKey).toBe("z-reorder:send-backward:clip-a");
+    expect(captured[0]?.options.coalesceKey).toMatch(/^z-reorder:bring-forward:clip-a:g\d+$/);
+    expect(captured[1]?.options.coalesceKey).toMatch(/^z-reorder:send-backward:clip-a:g\d+$/);
+    expect(captured[0]?.options.coalesceKey).not.toBe(captured[1]?.options.coalesceKey);
+    // The two-phase gesture fold rides an unbounded window on both records.
+    expect(captured[0]?.options.coalesceMs).toBe(Number.POSITIVE_INFINITY);
     act(() => root.unmount());
   });
 

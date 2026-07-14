@@ -23,6 +23,7 @@ export function persistTimelineMoveEditsAtomically(
   coalesceKey: string | undefined,
   operation: TimelineMoveOperation,
   deps: AtomicMoveDeps,
+  coalesceMs?: number,
 ): Promise<void> {
   return deps.handleTimelineGroupMove(
     edits.map(({ element, updates }) => ({
@@ -34,6 +35,6 @@ export function persistTimelineMoveEditsAtomically(
       // ("timing") omit it so they stay eligible for the SDK fast path.
       track: operation === "timing" ? undefined : updates.track,
     })),
-    { coalesceKey },
+    { coalesceKey, coalesceMs },
   );
 }

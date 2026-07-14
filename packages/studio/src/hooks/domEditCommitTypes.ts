@@ -11,6 +11,8 @@ export type CommitDomEditPatchBatches = (
   options: {
     label: string;
     coalesceKey: string;
+    /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
+    coalesceMs?: number;
     /**
      * Request skipping the preview iframe reload after a successful persist.
      * Only honored when the persist is provably in sync with the live DOM:

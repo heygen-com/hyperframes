@@ -336,6 +336,10 @@ describe("useDomEditCommits z-index reorder persistence", () => {
         label: "Reorder layers",
         kind: "manual",
         coalesceKey: "z-reorder:test",
+        // Unbounded per-gesture fold window (keys are unique per gesture):
+        // the z entry and its mirror/lane counterpart fold across the server
+        // round-trip that separates them.
+        coalesceMs: Number.POSITIVE_INFINITY,
         files: { "index.html": { before: original, after } },
       });
       // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
