@@ -686,6 +686,12 @@ function parsePercentageKeyframes(node: AstNode, scope: ScopeBindings): GsapKeyf
       for (const [k, v] of Object.entries(record)) {
         if (k === "ease" && typeof v === "string") {
           kfEase = v;
+        } else if (k === "duration") {
+          // `duration` is array-keyframe segment timing, not an animatable
+          // property. In a %-keyed object keyframe the % key owns timing, so a
+          // per-step `duration` is neither timing nor a property — skip it, or
+          // it surfaces as a bogus keyframe lane and corrupts the round-trip.
+          continue;
         } else if (typeof v === "number" || typeof v === "string") {
           properties[k] = v;
         }
